@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
-import { CoMotionError, CoMotionIOError } from "../src/errors.js";
+import { CoMotionError, CoMotionNotFoundError } from "../src/errors.js";
 import { openPresentation, packPresentation } from "../src/workspace.js";
 
 // root ignores permission bits, so the chmod-based failure below can never
@@ -165,7 +165,7 @@ describe("an invalid container opened repeatedly", () => {
 
 describe("a registry that exists but cannot be read", () => {
   it.skipIf(isRunningAsRoot)(
-    "raises CoMotionIOError, not a plain CoMotionError, so callers can tell it apart from 'not found'",
+    "raises a plain CoMotionError, not CoMotionNotFoundError, so callers know this is not a 'not found'",
     async () => {
       const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
       try {
@@ -175,14 +175,17 @@ describe("a registry that exists but cannot be read", () => {
         const { id } = await openPresentation(comotPath);
 
         // A real permission failure on projects.json itself — not a mock of
-        // readFile — the same EACCES class of failure ticket #11's
-        // CoMotionIOError distinction exists for, one layer above
-        // virtual-fs.ts's tree walk: every id-to-workDir lookup reads this
-        // file before any virtual path is ever resolved.
+        // readFile — the same EACCES class of failure the
+        // CoMotionNotFoundError distinction (ticket #11, fourth fix round)
+        // must NOT be granted: this is an operational failure, one layer
+        // above virtual-fs.ts's tree walk, every id-to-workDir lookup reads
+        // this file before any virtual path is ever resolved.
         await chmod(registryPath(), 0o000);
 
         try {
-          await expect(packPresentation(id, path.join(coMotionHome, "out.comot"))).rejects.toThrow(CoMotionIOError);
+          const failure = packPresentation(id, path.join(coMotionHome, "out.comot"));
+          await expect(failure).rejects.toThrow(CoMotionError);
+          await expect(failure).rejects.not.toBeInstanceOf(CoMotionNotFoundError);
         } finally {
           await chmod(registryPath(), 0o644);
         }

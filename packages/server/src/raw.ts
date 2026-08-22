@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionIOError, readPresentationFileBytes } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError, readPresentationFileBytes } from "@co-motion/core";
 
 /**
  * Byte-preserving read for `assets/` content (images, video, audio) that
@@ -43,16 +43,20 @@ export function rawContentTypeFor(virtualPath: string): string {
  * the same virtual tree every other read uses, and writes back the file's
  * exact bytes with a derived Content-Type and Content-Length.
  *
- * `readPresentationFileBytes` can fail two genuinely different ways, and
- * they must not be collapsed into the same response: the virtual path may
- * simply not resolve to a file (not found, or resolves to a directory) —
- * a real 404 — or it may resolve to a file that was actually discovered on
- * disk, with the underlying read itself then failing (permissions, a
- * failing disk, any other I/O error) — which is this server's problem, not
- * a missing asset, and must not be reported as one. `CoMotionIOError` (a
- * `CoMotionError` subtype, so it is checked first) marks that second case;
- * every other `CoMotionError` keeps meaning "the asset is not there".
- * Either way the response body is `error.message`, which — like every
+ * `readPresentationFileBytes` can fail for reasons that must not be
+ * collapsed into the same response, so the classification here is
+ * deliberately the narrow way round: only `CoMotionNotFoundError` (a
+ * `CoMotionError` subtype that positively means "the virtual path does
+ * not resolve to a file — not found, or resolves to a directory, or the
+ * presentation id itself is unknown") is a 404. Every other
+ * `CoMotionError` — an I/O failure reading the file or an earlier
+ * directory, a corrupt registry, or any subtype added later that nobody
+ * has taught this function about yet — is a 500, because "not an
+ * instance of CoMotionNotFoundError" is not evidence that the asset is
+ * missing. This is the inverse of an earlier version that treated
+ * "not an I/O error" as proof of absence, which silently 404'd every new
+ * error kind until someone noticed (ticket #11, fourth fix round). Either
+ * way the response body is `error.message`, which — like every
  * `CoMotionError` message — never contains the real filesystem path
  * (ADR-0004); only the caller-supplied virtual path may appear in it.
  */
@@ -65,13 +69,13 @@ export async function handleRawRequest(
   try {
     bytes = await readPresentationFileBytes(presentationId, virtualPath);
   } catch (error) {
-    if (error instanceof CoMotionIOError) {
-      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    if (error instanceof CoMotionNotFoundError) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;
     }
     if (error instanceof CoMotionError) {
-      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;
     }

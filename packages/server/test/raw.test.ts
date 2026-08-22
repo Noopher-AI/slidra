@@ -190,6 +190,28 @@ describe("GET /api/raw/<virtual path>", () => {
     },
   );
 
+  it("returns 500, not 404, when the presentation registry itself is corrupt", async () => {
+    const id = await openPresentationWithAssets();
+    const server = await serve(id);
+    // Real filesystem path of projects.json, per workspace.ts's
+    // registryPath(home) = path.join(home, "projects.json"). Corrupted for
+    // real (malformed JSON on disk, no mocking) — never asserted against
+    // the response. A damaged registry is a server-side failure, not
+    // evidence the requested asset is missing, so it must not be told
+    // back to the author as "your asset is missing".
+    const registryPath = path.join(coMotionHome, "projects.json");
+    await writeFile(registryPath, "{ not valid json");
+
+    const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBeTruthy();
+    expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+    expect(body.error).not.toContain(registryPath);
+    expect(body.error).not.toContain(coMotionHome);
+  });
+
   it("404s with an explicit body when the path does not resolve to anything", async () => {
     const id = await openPresentationWithAssets();
     const server = await serve(id);
