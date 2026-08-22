@@ -22,25 +22,66 @@ function registryPath(home: string): string {
   return path.join(home, "projects.json");
 }
 
-type Registry = Record<string, { workDir: string }>;
+interface RegistryEntry {
+  workDir: string;
+}
 
+// A Map cannot resolve inherited Object.prototype properties (`toString`,
+// `constructor`, `__proto__`, ...) by key — unlike a plain object, `.get()`
+// only ever returns an entry that was actually `.set()`. This makes an id
+// that happens to collide with a prototype property name structurally
+// impossible to mistake for a registry entry.
+type Registry = Map<string, RegistryEntry>;
+
+/**
+ * Reads and parses the registry. Only a genuinely missing file is treated as
+ * an empty registry — every other failure (malformed JSON, permission
+ * denied, any I/O error) is an explicit error, never a silent fallback to
+ * empty, because that would make every previously opened presentation
+ * unreachable the next time `open` writes the registry back out.
+ */
 async function readRegistry(home: string): Promise<Registry> {
+  let raw: string;
   try {
-    const raw = await readFile(registryPath(home), "utf-8");
-    return JSON.parse(raw) as Registry;
-  } catch {
-    return {};
+    raw = await readFile(registryPath(home), "utf-8");
+  } catch (error) {
+    if (isEnoent(error)) {
+      return new Map();
+    }
+    throw new CoMotionError("無法讀取簡報登記資料");
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new CoMotionError("簡報登記資料已損毀");
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new CoMotionError("簡報登記資料已損毀");
+  }
+
+  return new Map(Object.entries(parsed as Record<string, RegistryEntry>));
+}
+
+function isEnoent(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
 }
 
 async function writeRegistry(home: string, registry: Registry): Promise<void> {
   await mkdir(home, { recursive: true });
-  await writeFile(registryPath(home), `${JSON.stringify(registry, null, 2)}\n`);
+  const serialized = Object.fromEntries(registry);
+  await writeFile(registryPath(home), `${JSON.stringify(serialized, null, 2)}\n`);
 }
 
 async function lookupWorkDir(home: string, id: string): Promise<string> {
   const registry = await readRegistry(home);
-  const entry = registry[id];
+  const entry = registry.get(id);
   if (!entry) {
     throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
   }
@@ -80,7 +121,7 @@ export async function openPresentation(comotPath: string): Promise<{ id: string 
   await unpackContainer(comotPath, workDir);
 
   const registry = await readRegistry(home);
-  registry[id] = { workDir };
+  registry.set(id, { workDir });
   await writeRegistry(home, registry);
 
   return { id };
@@ -123,7 +164,12 @@ export async function listPresentationFiles(id: string): Promise<string[]> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   const results: string[] = [];
-  await walk(workDir, workDir, results);
+  try {
+    await walk(workDir, workDir, results);
+  } catch {
+    // workDir is the hidden work directory (ADR-0004) — never quote it.
+    throw new CoMotionError("讀取簡報內容時發生錯誤");
+  }
   return results.sort();
 }
 

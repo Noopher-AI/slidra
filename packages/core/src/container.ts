@@ -12,7 +12,13 @@ const REQUIRED_DIRS = ["slides", "assets"];
  */
 export async function packDirectory(sourceDir: string, outputPath: string): Promise<void> {
   const zippable: Zippable = {};
-  await collectFiles(sourceDir, sourceDir, zippable);
+  try {
+    await collectFiles(sourceDir, sourceDir, zippable);
+  } catch {
+    // sourceDir is either a private staging directory or the hidden work
+    // directory (ADR-0004) — never quote it.
+    throw new CoMotionError("讀取簡報內容時發生錯誤");
+  }
 
   for (const dir of REQUIRED_DIRS) {
     const dirEntryKey = `${dir}/`;
@@ -23,8 +29,12 @@ export async function packDirectory(sourceDir: string, outputPath: string): Prom
   }
 
   const zipped = zipSync(zippable, { level: 6 });
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, zipped);
+  try {
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, zipped);
+  } catch {
+    throw new CoMotionError(`無法寫入簡報檔案：${outputPath}`);
+  }
 }
 
 async function collectFiles(root: string, currentDir: string, zippable: Zippable): Promise<void> {
@@ -55,15 +65,18 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
     throw new CoMotionError(`指定的路徑不是檔案：${comotPath}`);
   }
 
-  const raw = await readFile(comotPath);
+  let raw: Buffer;
+  try {
+    raw = await readFile(comotPath);
+  } catch {
+    throw new CoMotionError(`無法讀取簡報檔案：${comotPath}`);
+  }
   let unzipped: Record<string, Uint8Array>;
   try {
     unzipped = unzipSync(new Uint8Array(raw));
   } catch {
     throw new CoMotionError(`簡報檔案已損壞，無法解壓：${comotPath}`);
   }
-
-  await mkdir(targetDir, { recursive: true });
 
   // Validate every entry before writing anything: a partially-unpacked
   // malicious archive is still a breach, so a bad entry must fail the whole
@@ -73,18 +86,26 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
     assertEntryWithinTarget(relativePath, resolvedTargetDir, comotPath);
   }
 
-  for (const [relativePath, content] of Object.entries(unzipped)) {
-    const destPath = path.join(targetDir, relativePath);
-    if (relativePath.endsWith("/")) {
-      await mkdir(destPath, { recursive: true });
-      continue;
-    }
-    await mkdir(path.dirname(destPath), { recursive: true });
-    await writeFile(destPath, content);
-  }
+  try {
+    await mkdir(targetDir, { recursive: true });
 
-  for (const dir of REQUIRED_DIRS) {
-    await mkdir(path.join(targetDir, dir), { recursive: true });
+    for (const [relativePath, content] of Object.entries(unzipped)) {
+      const destPath = path.join(targetDir, relativePath);
+      if (relativePath.endsWith("/")) {
+        await mkdir(destPath, { recursive: true });
+        continue;
+      }
+      await mkdir(path.dirname(destPath), { recursive: true });
+      await writeFile(destPath, content);
+    }
+
+    for (const dir of REQUIRED_DIRS) {
+      await mkdir(path.join(targetDir, dir), { recursive: true });
+    }
+  } catch {
+    // targetDir is the hidden work directory (ADR-0004) — never quote it,
+    // even when the failure is a plain permission/I-O error.
+    throw new CoMotionError(`無法解壓縮簡報檔案：${comotPath}`);
   }
 
   await validateProjectJson(targetDir, comotPath);

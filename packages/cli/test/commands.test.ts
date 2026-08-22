@@ -77,6 +77,31 @@ describe("open", () => {
     expect(result.message.length).toBeGreaterThan(0);
   });
 
+  it("fails with a CoMotionError, not a raw filesystem error, when the file is unreadable", async () => {
+    const { writeFile, chmod } = await import("node:fs/promises");
+    const unreadablePath = path.join(comotDir, "unreadable.comot");
+    await writeFile(unreadablePath, "irrelevant content");
+    await chmod(unreadablePath, 0o000);
+
+    try {
+      // A raw Node fs error (thrown, not a CoMotionError) would propagate
+      // straight out of dispatch instead of becoming an { ok: false }
+      // result — see registry.ts's "anything else propagates as a thrown
+      // error (a bug, not a user-facing failure)" contract.
+      const result = await registry.dispatch("open", { path: unreadablePath });
+
+      expect(result.ok).toBe(false);
+      // The caller may see back the exact string they typed (unreadablePath
+      // equals the caller-supplied path here), but never Node's own error
+      // text ("EACCES", "permission denied", errno codes).
+      expect(result.message).not.toContain("EACCES");
+      expect(result.message).not.toContain("permission denied");
+      expect(result.message).not.toContain("errno");
+    } finally {
+      await chmod(unreadablePath, 0o644);
+    }
+  });
+
   it("fails with a clear error when the file is not a valid container", async () => {
     const { writeFile } = await import("node:fs/promises");
     const brokenPath = path.join(comotDir, "broken.comot");
