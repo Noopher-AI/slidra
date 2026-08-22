@@ -68,7 +68,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const svgMarkup = await fetchText(`/api/files/${firstSlidePath}`);
     if (destroyed) return;
 
-    iframe.srcdoc = wrapSlideDocument(svgMarkup);
+    iframe.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(firstSlidePath)}`);
   }
 
   void reload();
@@ -87,8 +87,35 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   };
 }
 
-function wrapSlideDocument(bodyMarkup: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${bodyMarkup}</body></html>`;
+/**
+ * Wraps the fetched slide markup for `srcdoc`. When `baseHref` is given, a
+ * `<base>` element is injected so the browser's own relative-URL resolution
+ * — not a regex rewrite of untrusted markup (ADR-0003) — turns a slide
+ * reference like `href="../assets/photo.png"` into the byte-preserving
+ * `/api/raw/` route's path for it. A `srcdoc` document otherwise resolves
+ * relative URLs against the *parent* document's URL, which is why a
+ * relative asset reference needs this at all. `<base>` alone needs no
+ * sandbox token: subresource loads (`<img>`, `<video>`) from an
+ * opaque-origin document to this origin are not blocked by `sandbox`.
+ */
+function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
+  const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0">${bodyMarkup}</body></html>`;
+}
+
+/** The virtual directory a slide lives in, percent-encoded per segment. */
+function slideDirectory(slidePath: string): string {
+  const lastSlash = slidePath.lastIndexOf("/");
+  if (lastSlash === -1) return "";
+  return slidePath
+    .slice(0, lastSlash + 1)
+    .split("/")
+    .map((segment) => (segment === "" ? segment : encodeURIComponent(segment)))
+    .join("/");
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 async function fetchJson<T>(path: string): Promise<T> {

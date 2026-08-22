@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 
 /**
  * A virtual directory tree, built once per call by enumerating a real work
@@ -40,6 +40,12 @@ async function populate(realDir: string, node: VirtualDirectory): Promise<void> 
   } catch {
     // realDir is a real filesystem path inside the hidden work directory
     // (ADR-0004) — never quote it, even for a plain permission/I-O error.
+    //
+    // A failing readdir here is an operational failure, not evidence that
+    // anything is absent, so it stays a plain CoMotionError: only
+    // CoMotionNotFoundError is granted a 404 by callers such as
+    // handleRawRequest, and everything else — this included — is a 500
+    // (ticket #11, fourth fix round).
     throw new CoMotionError("讀取簡報內容時發生錯誤");
   }
   for (const entry of entries) {
@@ -87,7 +93,7 @@ export async function listVirtualEntries(workDir: string, virtualPath = ""): Pro
   const root = await buildVirtualTree(workDir);
   const node = navigate(root, splitVirtualPath(virtualPath));
   if (!node || node.type !== "directory") {
-    throw new CoMotionError(`找不到目錄：${virtualPath || "/"}`);
+    throw new CoMotionNotFoundError(`找不到目錄：${virtualPath || "/"}`);
   }
   return [...node.children.keys()].sort();
 }
@@ -104,10 +110,10 @@ export async function resolveVirtualFilePath(workDir: string, virtualPath: strin
   const root = await buildVirtualTree(workDir);
   const node = navigate(root, splitVirtualPath(virtualPath));
   if (!node) {
-    throw new CoMotionError(`找不到檔案：${virtualPath}`);
+    throw new CoMotionNotFoundError(`找不到檔案：${virtualPath}`);
   }
   if (node.type !== "file") {
-    throw new CoMotionError(`不是檔案：${virtualPath}`);
+    throw new CoMotionNotFoundError(`不是檔案：${virtualPath}`);
   }
   return node.realPath;
 }
@@ -121,10 +127,10 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
   const root = await buildVirtualTree(workDir);
   const node = navigate(root, splitVirtualPath(virtualPath));
   if (!node) {
-    throw new CoMotionError(`找不到檔案：${virtualPath}`);
+    throw new CoMotionNotFoundError(`找不到檔案：${virtualPath}`);
   }
   if (node.type !== "file") {
-    throw new CoMotionError(`不是檔案：${virtualPath}`);
+    throw new CoMotionNotFoundError(`不是檔案：${virtualPath}`);
   }
   let buffer: Buffer;
   try {
@@ -142,5 +148,45 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
     throw new CoMotionError(`${virtualPath} 是二進位資產，無法以文字讀取`);
+  }
+}
+
+/**
+ * Reads the raw bytes of the file at `virtualPath`, exactly as stored on
+ * disk — no text decoding, no validation of content. This is the
+ * byte-preserving sibling of `readVirtualFile`: browsers need `assets/`
+ * content (images, video, audio) as its original bytes, while `cat` and
+ * every other agent-facing read stays on `readVirtualFile`'s decoded text
+ * (ticket #11). It goes through the exact same tree lookup, so a path
+ * either resolves to a file that was actually discovered on disk or it
+ * resolves to nothing — same structural containment, same rule that a real
+ * filesystem path never appears in an error message.
+ *
+ * Two distinct failure causes both surface as a thrown error here, and
+ * callers (raw.ts in particular) need to tell them apart to answer with
+ * the right HTTP status: the path may simply not resolve to a file (a
+ * genuine 404), or it may resolve to a file that was actually discovered
+ * on disk but whose `readFile` then failed — a permissions problem, a
+ * failing disk, any other I/O error, which is a 500, not a 404. Only the
+ * first case throws `CoMotionNotFoundError`, the one type that positively
+ * means "genuinely absent"; the second stays a plain `CoMotionError`, so a
+ * caller that checks specifically for `CoMotionNotFoundError` treats it
+ * (correctly) as a server-side failure rather than a missing asset —
+ * without ever needing (or getting) the real filesystem path itself.
+ */
+export async function readVirtualFileBytes(workDir: string, virtualPath: string): Promise<Buffer> {
+  const root = await buildVirtualTree(workDir);
+  const node = navigate(root, splitVirtualPath(virtualPath));
+  if (!node) {
+    throw new CoMotionNotFoundError(`找不到檔案：${virtualPath}`);
+  }
+  if (node.type !== "file") {
+    throw new CoMotionNotFoundError(`不是檔案：${virtualPath}`);
+  }
+  try {
+    return await readFile(node.realPath);
+  } catch {
+    // node.realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`讀取檔案時發生錯誤：${virtualPath}`);
   }
 }
