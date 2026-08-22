@@ -44,6 +44,36 @@
 //                            path) to see the marker absent creates it and
 //                            exits; every later spawn finds the marker
 //                            present and replies normally instead.
+//                            requestPermissionOnPromptIndex: at this prompt
+//                            index, call session/request_permission before
+//                            streaming replies. permissionCommand (string,
+//                            default "co-motion ls") becomes
+//                            toolCall.rawInput.command — this is where
+//                            ticket #7's allowlist reads the shell command
+//                            from. The outcome is logged as
+//                            `{ permissionOutcome }`. permissionOptions
+//                            (array, default [allow_once, reject_once]):
+//                            overrides the offered option list, used to
+//                            script an adapter that offers only
+//                            `allow_always` (ticket #7 fix 2).
+//                            readTextFileOnPromptIndex / readTextFilePath /
+//                            readTextFileLine / readTextFileLimit: at this
+//                            prompt index, call fs/read_text_file for the
+//                            given virtual path (ticket #7). Logs
+//                            `{ readTextFileResult: content }` on success or
+//                            `{ readTextFileError: { code, message } }` on
+//                            failure. readTextFileEveryPromptFrom: like
+//                            readTextFileOnPromptIndex but repeats the same
+//                            read at every prompt index from this one
+//                            onward — used to prove a change made between
+//                            two turns is visible on the second read.
+//                            writeTextFileOnPromptIndex / writeTextFilePath /
+//                            writeTextFileContent: at this prompt index,
+//                            call fs/write_text_file (ticket #7 — this must
+//                            always fail). Logs
+//                            `{ writeTextFileError: { code, message } }` on
+//                            failure or `{ writeTextFileResult: true }` if
+//                            it unexpectedly succeeds.
 //
 // Every process also logs its own pid as the very first log line, so tests
 // can check with `process.kill(pid, 0)` whether a given spawn is still
@@ -51,11 +81,20 @@
 // subprocess".
 
 import * as acp from "@zed-industries/agent-client-protocol";
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
+import path from "node:path";
 
 const config = JSON.parse(process.env.FAKE_AGENT_CONFIG ?? "{}");
 const logPath = process.env.FAKE_AGENT_LOG;
+
+// The cwd the client handed us in `session/new` (see `newSession` below) —
+// kept so `prompt` can build an absolute `fs/read_text_file` path the same
+// way a real, conforming ACP agent does (ticket #7 fix 3): resolve the cwd
+// it was given, then join the relative path onto that resolved form. This
+// is what actually reproduces the `/var` vs `/private/var` mismatch a real
+// `claude-code-acp` 0.12.6 was probed sending on macOS.
+let sessionCwd;
 
 function log(entry) {
   if (!logPath) return;
@@ -88,6 +127,7 @@ class FakeAgent {
     // (ticket #6 fix 1: never a real project path, never under
     // CO_MOTION_HOME).
     log({ newSessionCwd: params.cwd });
+    sessionCwd = params.cwd;
 
     const markerPath = config.failFirstAttemptMarkerPath;
     if (markerPath && !existsSync(markerPath)) {
@@ -124,13 +164,63 @@ class FakeAgent {
     if (config.requestPermissionOnPromptIndex === index) {
       const response = await this.connection.requestPermission({
         sessionId: params.sessionId,
-        toolCall: { toolCallId: "fake-tool-call", title: "測試工具呼叫" },
-        options: [
+        toolCall: {
+          toolCallId: "fake-tool-call",
+          title: "測試工具呼叫",
+          // permissionOmitCommand scripts a tool call whose rawInput carries
+          // no `command` key at all — the "cannot determine the command"
+          // case the allowlist must fail closed on (ticket #7).
+          rawInput: config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "co-motion ls" },
+        },
+        // permissionOptions: overrides the default option list below (ticket
+        // #7 fix 2) — used to script an adapter that offers only
+        // `allow_always` (no `allow_once`), which the client must refuse
+        // rather than accept as a persistent grant.
+        options: config.permissionOptions ?? [
           { kind: "allow_once", name: "允許", optionId: "allow" },
           { kind: "reject_once", name: "拒絕", optionId: "reject" },
         ],
       });
       log({ permissionOutcome: response.outcome });
+    }
+
+    const shouldReadTextFile =
+      config.readTextFileOnPromptIndex === index ||
+      (config.readTextFileEveryPromptFrom !== undefined && index >= config.readTextFileEveryPromptFrom);
+    if (shouldReadTextFile) {
+      try {
+        // readTextFileAbsoluteUnderCwd: send an *absolute* path built by
+        // resolving the session cwd we were given and joining the relative
+        // virtual path onto it — the shape a real conforming agent sends
+        // (ticket #7 fix 3), as opposed to readTextFilePath, which is sent
+        // verbatim (used for plain relative paths and for absolute paths
+        // that are deliberately outside the session cwd).
+        const requestedPath = config.readTextFileAbsoluteUnderCwd
+          ? path.join(realpathSync(sessionCwd), config.readTextFileAbsoluteUnderCwd)
+          : config.readTextFilePath;
+        const response = await this.connection.readTextFile({
+          sessionId: params.sessionId,
+          path: requestedPath,
+          line: config.readTextFileLine ?? null,
+          limit: config.readTextFileLimit ?? null,
+        });
+        log({ readTextFileResult: response.content });
+      } catch (error) {
+        log({ readTextFileError: { code: error.code, message: error.message } });
+      }
+    }
+
+    if (config.writeTextFileOnPromptIndex === index) {
+      try {
+        await this.connection.writeTextFile({
+          sessionId: params.sessionId,
+          path: config.writeTextFilePath,
+          content: config.writeTextFileContent ?? "",
+        });
+        log({ writeTextFileResult: true });
+      } catch (error) {
+        log({ writeTextFileError: { code: error.code, message: error.message } });
+      }
     }
 
     for (const chunk of replies) {
