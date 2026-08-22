@@ -2,19 +2,13 @@ import { CoMotionError } from "@co-motion/core";
 import { createDefaultRegistry } from "./commands.js";
 import { parseArgv } from "./argv.js";
 
-// A downstream pipe closing early (e.g. `co-motion cat <id> <path> | head`)
-// makes a later process.stdout.write() fail with EPIPE. Node streams throw
-// an unhandled exception for an 'error' event with no listener, which would
-// crash the process for what is normal pipeline behaviour, not a real
-// failure. Installed once at module load — not inside main() — so calling
-// main() repeatedly (e.g. across tests) never registers more than one
-// listener on the shared process.stdout.
-process.stdout.on("error", (error: NodeJS.ErrnoException) => {
-  if (error.code === "EPIPE") {
-    process.exit(0);
-  }
-  throw error;
-});
+// EPIPE handling for a downstream pipe closing early (e.g.
+// `co-motion cat <id> <path> | head`) is installed in
+// packages/cli/bin/co-motion.js, not here. That file is the actual
+// executable and is never imported by this package's public API (index.ts
+// only re-exports `main` from this module) — so importing @co-motion/cli
+// can never install a process.stdout listener. Only running the real CLI
+// process can reach it.
 
 /**
  * Entry point for the `co-motion` executable. This is the only place in the
