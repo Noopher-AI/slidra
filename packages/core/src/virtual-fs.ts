@@ -144,3 +144,31 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
     throw new CoMotionError(`${virtualPath} 是二進位資產，無法以文字讀取`);
   }
 }
+
+/**
+ * Reads the raw bytes of the file at `virtualPath`, exactly as stored on
+ * disk — no text decoding, no validation of content. This is the
+ * byte-preserving sibling of `readVirtualFile`: browsers need `assets/`
+ * content (images, video, audio) as its original bytes, while `cat` and
+ * every other agent-facing read stays on `readVirtualFile`'s decoded text
+ * (ticket #11). It goes through the exact same tree lookup, so a path
+ * either resolves to a file that was actually discovered on disk or it
+ * resolves to nothing — same structural containment, same rule that a real
+ * filesystem path never appears in an error message.
+ */
+export async function readVirtualFileBytes(workDir: string, virtualPath: string): Promise<Buffer> {
+  const root = await buildVirtualTree(workDir);
+  const node = navigate(root, splitVirtualPath(virtualPath));
+  if (!node) {
+    throw new CoMotionError(`找不到檔案：${virtualPath}`);
+  }
+  if (node.type !== "file") {
+    throw new CoMotionError(`不是檔案：${virtualPath}`);
+  }
+  try {
+    return await readFile(node.realPath);
+  } catch {
+    // node.realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`讀取檔案時發生錯誤：${virtualPath}`);
+  }
+}

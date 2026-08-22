@@ -6,7 +6,7 @@ import { CoMotionError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
-import { listVirtualEntries, readVirtualFile } from "./virtual-fs.js";
+import { listVirtualEntries, readVirtualFile, readVirtualFileBytes } from "./virtual-fs.js";
 import { writeSlideElementText } from "./element-text.js";
 
 /**
@@ -199,6 +199,20 @@ export async function readPresentationFile(id: string, virtualPath: string): Pro
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   return readVirtualFile(workDir, virtualPath);
+}
+
+/**
+ * Reads a file's raw bytes inside the presentation identified by `id`,
+ * addressed by its virtual path — the byte-preserving sibling of
+ * `readPresentationFile` (ticket #11). This is what the browser needs for
+ * `assets/` content (images, video, audio); agent-facing reads stay on
+ * `readPresentationFile`'s decoded text. Same lookup, same id-to-workDir
+ * resolution, so it inherits the same structural containment.
+ */
+export async function readPresentationFileBytes(id: string, virtualPath: string): Promise<Buffer> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  return readVirtualFileBytes(workDir, virtualPath);
 }
 
 /**
