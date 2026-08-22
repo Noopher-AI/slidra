@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
 import { watch as fsWatch } from "node:fs";
-import path from "node:path";
 import { CoMotionError } from "./errors.js";
-import { resolveCoMotionHome } from "./workspace.js";
+import { resolveWorkDir } from "./workspace.js";
 
 /**
  * Watches one presentation's work directory for filesystem changes and
@@ -31,53 +29,34 @@ export interface PresentationWatcher {
 const DEBOUNCE_MS = 100;
 
 /**
- * Resolves `id` to its real work directory by re-reading the registry
- * directly. This intentionally duplicates `workspace.ts`'s private
- * `lookupWorkDir` (which is not exported, and `workspace.ts` is owned by
- * another unit this wave) rather than reaching into it — but it reuses the
- * exact same error wording an unknown id already produces elsewhere, so
- * callers see one consistent message rather than a second invented one.
- */
-async function lookupWorkDir(id: string): Promise<string> {
-  const home = resolveCoMotionHome();
-  const registryPath = path.join(home, "projects.json");
-
-  let raw: string;
-  try {
-    raw = await readFile(registryPath, "utf-8");
-  } catch {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
-  }
-
-  const entry = (parsed as Record<string, unknown>)[id];
-  if (
-    typeof entry !== "object" ||
-    entry === null ||
-    typeof (entry as { workDir?: unknown }).workDir !== "string"
-  ) {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
-  }
-
-  return (entry as { workDir: string }).workDir;
-}
-
-/**
  * Starts watching the presentation identified by `id`. Resolves only after
  * the id has been confirmed to exist, so a caller awaiting this gets the
- * same explicit unknown-id failure `readPresentationFile` would.
+ * same explicit unknown-id failure `readPresentationFile` would — both go
+ * through `workspace.ts`'s `resolveWorkDir`, the one id-to-path lookup in
+ * the codebase (ticket #5 fix round: this module used to keep its own
+ * private copy of that lookup, which quietly regressed to reporting every
+ * registry failure — a corrupt entry, an unreadable file — as "this
+ * presentation does not exist"; ticket #11 fixed that distinction in
+ * `workspace.ts` and this module now inherits it instead of drifting away
+ * from it again).
+ *
+ * `onError`, if given, is called at most once if the underlying `fs.watch`
+ * handle itself fails after startup (its target vanished, an OS watch
+ * limit was hit, ...) — a condition live reload can never recover from on
+ * its own, since no future filesystem change will ever be observed again.
+ * The watcher closes itself first, so it stops looking like a live watcher
+ * before the caller is even told; no further `onChange` call can follow.
+ * A caller that omits `onError` gets the previous, blunter behaviour: the
+ * failure surfaces as an uncaught exception. Callers that can inform the
+ * author in-band (packages/server's SSE broadcaster) should always pass
+ * one — see changes.ts.
  */
-export async function watchPresentation(id: string, onChange: () => void): Promise<PresentationWatcher> {
-  const workDir = await lookupWorkDir(id);
+export async function watchPresentation(
+  id: string,
+  onChange: () => void,
+  onError?: (error: Error) => void,
+): Promise<PresentationWatcher> {
+  const workDir = await resolveWorkDir(id);
 
   let closed = false;
   let debounceTimer: NodeJS.Timeout | null = null;
@@ -102,17 +81,24 @@ export async function watchPresentation(id: string, onChange: () => void): Promi
   });
 
   watcher.on("error", () => {
+    if (closed) return;
+    // Stop first: no further `onChange` must ever fire from a watcher that
+    // has already failed — a died watcher must never look like a working
+    // one, whether or not anything is listening for `onError`.
+    closed = true;
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    watcher.close();
     // The underlying error object very likely embeds the real work
     // directory path (ADR-0004) — it is never logged or rethrown verbatim.
-    //
-    // A watcher failure (its target directory vanished, the OS watch
-    // descriptor limit was hit, ...) means live reload can never recover
-    // on its own: no future filesystem change will ever be observed again,
-    // silently. That is worse than a loud crash, so this is treated as
-    // fatal rather than degraded-but-quiet — it surfaces as an uncaught
-    // exception, which is this process's existing behaviour for a bug it
-    // cannot recover from on its own.
-    throw new CoMotionError("監看簡報檔案時發生錯誤");
+    const error = new CoMotionError("監看簡報檔案時發生錯誤");
+    if (onError) {
+      onError(error);
+    } else {
+      throw error;
+    }
   });
 
   return {

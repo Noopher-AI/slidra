@@ -4,6 +4,7 @@ export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./pre
 export type { ProjectJson, MinimalPresentationFiles } from "./presentation.js";
 export {
   resolveCoMotionHome,
+  resolveWorkDir,
   createNewPresentation,
   openPresentation,
   packPresentation,

@@ -57,6 +57,46 @@ describe("startLiveReload", () => {
     expect(created?.url).toBe("/api/events");
   });
 
+  it("calls onChange when the stream opens, so an initial connection reloads too", () => {
+    let fake: FakeEventSource | undefined;
+    const onChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("open");
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onChange again on every reconnection, recovering an edit made during the gap", () => {
+    // EventSource reconnects automatically after any network interruption
+    // — the normal case, not an exotic one — and openEventStream has no
+    // replay, so the client must treat every re-open as "something may
+    // have been missed" rather than only reacting to a change event that
+    // happens to arrive after reconnecting.
+    let fake: FakeEventSource | undefined;
+    const onChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("open"); // initial connection
+    // An edit happens while disconnected — the client never sees it as an
+    // event, only as the reconnection itself.
+    fake!.emit("open"); // EventSource's automatic reconnect
+
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
   it("calls onChange when a presentation-changed event arrives", () => {
     let fake: FakeEventSource | undefined;
     const onChange = vi.fn();

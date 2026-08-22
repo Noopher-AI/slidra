@@ -1,10 +1,29 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { createChangeBroadcaster } from "../src/changes.js";
+
+/**
+ * Minimal stand-in for `http.ServerResponse`, used only for the
+ * dispose()-race test below, where the point under test is promise
+ * ordering inside `changes.ts` itself — not the wire format `openEventStream`
+ * writes, which sse.test.ts and the Seam B tests above already cover
+ * against a real socket. Implements exactly what `openEventStream` touches:
+ * `writeHead`/`flushHeaders`/`write`/`end`, plus `once("close", ...)` /
+ * `removeListener` via EventEmitter.
+ */
+class FakeResponse extends EventEmitter {
+  writeHead(): void {}
+  flushHeaders(): void {}
+  write(): void {}
+  end(): void {}
+}
 
 // Seam B: start the real server, drive /api/events over HTTP with a real
 // fetch(), never open a browser. Always bind port 0 and read the assigned
@@ -154,6 +173,33 @@ describe("GET /api/events", () => {
     // Prevent afterEach from calling close() again on an already-closed
     // server.
     servers = servers.filter((s) => s !== server);
+  });
+
+  it("dispose() concludes a connection that resumes from the lazy watcher start after shutdown already began", async () => {
+    // Ticket #5 fix 3: if shutdown starts while a /api/events request is
+    // still awaiting the lazy watcher start, dispose() must not tear the
+    // watcher down and then let that same request open a stream anyway —
+    // server.close() waits for established connections, so a late stream
+    // would hang shutdown forever.
+    //
+    // handleConnection() and dispose() are called back-to-back, with
+    // neither awaited first: handleConnection's `await ensureWatcher()`
+    // and dispose()'s `await watcherPromise...` both end up awaiting the
+    // exact same underlying promise, and JS guarantees continuations on
+    // one promise run in the order they were attached — handleConnection
+    // attached first, so this reproduces "resumes after shutdown already
+    // began" deterministically rather than by chance timing.
+    const { id } = await openFreshPresentation();
+    const broadcaster = createChangeBroadcaster(id);
+    const res = new FakeResponse() as unknown as ServerResponse;
+
+    const connectionPromise = broadcaster.handleConnection(res);
+    const disposePromise = broadcaster.dispose();
+
+    await expect(disposePromise).resolves.toBeUndefined();
+    // The resumed connection must be concluded — rejected — never left
+    // open as a stream nobody will ever close.
+    await expect(connectionPromise).rejects.toThrow();
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
