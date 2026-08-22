@@ -23,11 +23,12 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const nameFlagIndex = rest.indexOf("--name");
       let presentationName: string | undefined;
       if (nameFlagIndex >= 0) {
-        // --name is present: it must be followed by a value. Silently
-        // falling back to the default name here would hide a typo'd
-        // command from the caller (no fallbacks).
+        // --name is present: it must be followed by a value that is not
+        // itself flag-shaped. `--name --foo` almost certainly means --name
+        // was left without a value — silently taking "--foo" as the name
+        // would hide that typo instead of reporting it (no fallbacks).
         presentationName = rest[nameFlagIndex + 1];
-        if (presentationName === undefined) {
+        if (presentationName === undefined || isFlagLike(presentationName)) {
           throw new CoMotionError("--name 缺少值");
         }
       }
@@ -62,8 +63,16 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
 function requirePositional(rest: string[], index: number, command: string, argName: string): string {
   const value = rest[index];
-  if (!value) {
+  // A flag-shaped value (starts with "--") in a positional slot means the
+  // positional argument itself was omitted — e.g. `new --name Foo` must
+  // not silently create a file literally named "--name". Reporting a
+  // missing positional here is more accurate than accepting a flag as data.
+  if (!value || isFlagLike(value)) {
     throw new CoMotionError(`命令 ${command} 缺少參數：${argName}`);
   }
   return value;
+}
+
+function isFlagLike(value: string): boolean {
+  return value.startsWith("--");
 }

@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
@@ -102,13 +102,24 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
     for (const dir of REQUIRED_DIRS) {
       await mkdir(path.join(targetDir, dir), { recursive: true });
     }
-  } catch {
+
+    // Validate before this function is considered to have succeeded: an
+    // archive that unzips fine but lacks a usable project.json is still a
+    // failed unpack, and must not leave targetDir behind (see catch below).
+    await validateProjectJson(targetDir, comotPath);
+  } catch (error) {
+    // targetDir is a fresh directory created solely for this unpack (the
+    // hidden work directory, ADR-0004). On any failure past this point —
+    // I/O error or a bad project.json — remove it so repeatedly opening an
+    // invalid container never accumulates orphan directories on disk.
+    await rm(targetDir, { recursive: true, force: true }).catch(() => {});
+    if (error instanceof CoMotionError) {
+      throw error;
+    }
     // targetDir is the hidden work directory (ADR-0004) — never quote it,
     // even when the failure is a plain permission/I-O error.
     throw new CoMotionError(`無法解壓縮簡報檔案：${comotPath}`);
   }
-
-  await validateProjectJson(targetDir, comotPath);
 }
 
 /**

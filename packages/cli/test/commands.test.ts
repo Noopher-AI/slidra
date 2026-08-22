@@ -7,6 +7,13 @@ import type { CommandRegistry } from "../src/registry.js";
 import { renderCat } from "../src/commands/cat.js";
 import { renderLs } from "../src/commands/ls.js";
 
+// root ignores permission bits, so the two chmod(0o000)-based tests below
+// can never observe the EACCES they are provoking when this process runs
+// as root (as CI containers commonly do) — the expected error simply never
+// happens. Skip them cleanly in that case rather than have them fail for a
+// reason unrelated to what they are testing.
+const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
 // Every test points CO_MOTION_HOME at its own temp directory so we never
 // touch the real ~/.comotion (ADR-0004, ticket #9 testing convention).
 let coMotionHome: string;
@@ -79,7 +86,7 @@ describe("open", () => {
     expect(result.message.length).toBeGreaterThan(0);
   });
 
-  it("fails with a CoMotionError, not a raw filesystem error, when the file is unreadable", async () => {
+  it.skipIf(isRunningAsRoot)("fails with a CoMotionError, not a raw filesystem error, when the file is unreadable", async () => {
     const { writeFile, chmod } = await import("node:fs/promises");
     const unreadablePath = path.join(comotDir, "unreadable.comot");
     await writeFile(unreadablePath, "irrelevant content");
@@ -232,7 +239,7 @@ describe("ls", () => {
     expect(result.data!.entries).toEqual(["001.svg"]);
   });
 
-  it("fails with a CoMotionError, not a raw filesystem error, when a directory in the work tree is unreadable", async () => {
+  it.skipIf(isRunningAsRoot)("fails with a CoMotionError, not a raw filesystem error, when a directory in the work tree is unreadable", async () => {
     const comotPath = path.join(comotDir, "deck.comot");
     await registry.dispatch("new", { path: comotPath });
     const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });

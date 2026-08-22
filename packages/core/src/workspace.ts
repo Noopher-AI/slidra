@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import { CoMotionError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
@@ -62,7 +63,29 @@ async function readRegistry(home: string): Promise<Registry> {
     throw new CoMotionError("簡報登記資料已損毀");
   }
 
-  return new Map(Object.entries(parsed as Record<string, RegistryEntry>));
+  // Validate every entry's shape individually. A malformed entry (missing
+  // workDir, wrong type, ...) must fail loudly here — leaving it in the
+  // registry would surface as `undefined` deep inside whatever command
+  // happens to look it up next, instead of at the point of the real
+  // problem (no fallbacks).
+  const registry: Registry = new Map();
+  for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!isRegistryEntry(value)) {
+      throw new CoMotionError(`簡報登記資料已損毀：${id}`);
+    }
+    registry.set(id, value);
+  }
+
+  return registry;
+}
+
+function isRegistryEntry(value: unknown): value is RegistryEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "workDir" in value &&
+    typeof (value as { workDir: unknown }).workDir === "string"
+  );
 }
 
 function isEnoent(error: unknown): boolean {
@@ -74,10 +97,25 @@ function isEnoent(error: unknown): boolean {
   );
 }
 
+/**
+ * Writes the registry atomically: the full content is written to a private
+ * temp file first, and only a successful write is `rename`d over the real
+ * `projects.json`. `rename` on the same filesystem is atomic, so a crash or
+ * a full disk mid-write can never leave `projects.json` truncated or
+ * half-written — the existing file is either replaced whole or untouched.
+ */
 async function writeRegistry(home: string, registry: Registry): Promise<void> {
   await mkdir(home, { recursive: true });
   const serialized = Object.fromEntries(registry);
-  await writeFile(registryPath(home), `${JSON.stringify(serialized, null, 2)}\n`);
+  const finalPath = registryPath(home);
+  const tempPath = path.join(home, `.projects.json.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    await writeFile(tempPath, `${JSON.stringify(serialized, null, 2)}\n`);
+    await rename(tempPath, finalPath);
+  } catch {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw new CoMotionError("無法寫入簡報登記資料");
+  }
 }
 
 async function lookupWorkDir(home: string, id: string): Promise<string> {
@@ -121,9 +159,18 @@ export async function openPresentation(comotPath: string): Promise<{ id: string 
 
   await unpackContainer(comotPath, workDir);
 
-  const registry = await readRegistry(home);
-  registry.set(id, { workDir });
-  await writeRegistry(home, registry);
+  // unpackContainer succeeded, so workDir now holds real content on disk.
+  // If registering it fails for any reason (corrupt registry, failed
+  // write, ...), that content must not become an orphan directory nobody
+  // can reach — roll the unpack back out.
+  try {
+    const registry = await readRegistry(home);
+    registry.set(id, { workDir });
+    await writeRegistry(home, registry);
+  } catch (error) {
+    await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
 
   return { id };
 }
