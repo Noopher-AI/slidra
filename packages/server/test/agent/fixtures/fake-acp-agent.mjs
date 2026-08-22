@@ -67,6 +67,21 @@
 //                            read at every prompt index from this one
 //                            onward — used to prove a change made between
 //                            two turns is visible on the second read.
+//                            toolCallOnPromptIndex: at this prompt index,
+//                            stream a command tool call's whole life cycle
+//                            as session/update notifications (ticket #17):
+//                            a `tool_call` carrying
+//                            rawInput.command = toolCallCommand (default
+//                            "co-motion text set ..."), then a
+//                            `tool_call_update` moving it to in_progress,
+//                            then a final `tool_call_update` whose status is
+//                            toolCallOutcome ("completed" by default,
+//                            "failed" to script a command that died) and
+//                            whose content carries toolCallOutput, if given.
+//                            toolCallOmitCommand: the same life cycle but
+//                            with no `command` key in rawInput at all — a
+//                            tool call that is not a shell command, which
+//                            must never reach the author's screen.
 //                            writeTextFileOnPromptIndex / writeTextFilePath /
 //                            writeTextFileContent: at this prompt index,
 //                            call fs/write_text_file (ticket #7 — this must
@@ -208,6 +223,39 @@ class FakeAgent {
       } catch (error) {
         log({ readTextFileError: { code: error.code, message: error.message } });
       }
+    }
+
+    if (config.toolCallOnPromptIndex === index) {
+      const toolCallId = "fake-command-call";
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title: "執行命令",
+          kind: "execute",
+          status: "pending",
+          rawInput: config.toolCallOmitCommand
+            ? { description: "not a shell command" }
+            : { command: config.toolCallCommand ?? "co-motion text set --id p1 --element-id el-1 --text 新標題" },
+        },
+      });
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: { sessionUpdate: "tool_call_update", toolCallId, status: "in_progress" },
+      });
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: config.toolCallOutcome ?? "completed",
+          content:
+            config.toolCallOutput === undefined
+              ? undefined
+              : [{ type: "content", content: { type: "text", text: config.toolCallOutput } }],
+        },
+      });
     }
 
     if (config.writeTextFileOnPromptIndex === index) {

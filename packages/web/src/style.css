@@ -79,6 +79,61 @@ body,
   background: #f0f0f0;
 }
 
+/* A command is neither the author speaking nor the agent speaking — it is
+   the work itself, so it sits full width between them rather than taking
+   either side's bubble. */
+.chat-command {
+  align-self: stretch;
+  border-left: 3px solid #999;
+  padding: 0.35rem 0.6rem;
+  background: #f7f7f7;
+  font-size: 0.85rem;
+}
+
+.chat-command-in_progress {
+  border-left-color: #2a6fb0;
+}
+
+.chat-command-completed {
+  border-left-color: #2e7d32;
+}
+
+.chat-command-failed {
+  border-left-color: #b00020;
+  background: #fdf0f2;
+}
+
+.chat-command-line {
+  margin: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.chat-command-status {
+  color: #666;
+  white-space: nowrap;
+}
+
+.chat-command-failed .chat-command-status {
+  color: #b00020;
+}
+
+.chat-command-text {
+  word-break: break-all;
+}
+
+.chat-command-output {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.5rem;
+  background: #fff;
+  border-radius: 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
 .chat-working {
   margin: 0;
   color: #888;

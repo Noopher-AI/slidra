@@ -1036,3 +1036,82 @@ describe("chat: the whole loop — read via the file method, request permission,
     expect(readResults[1].readTextFileResult).not.toContain("測試簡報");
   });
 });
+
+describe("chat: the author can see the command run (ticket #17)", () => {
+  /** Runs one scripted command life cycle and returns every SSE event seen up to chat-done. */
+  async function commandEventsFor(
+    scenario: Record<string, unknown>,
+  ): Promise<Array<{ event: string; data: unknown }>> {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["現在來修改文字："]],
+        toolCallOnPromptIndex: 1,
+        ...scenario,
+      }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const events = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "把標題改成新標題");
+    const collected = await events;
+    await sse.close();
+    return collected;
+  }
+
+  it("relays the command and its successful ending, with the command text verbatim from rawInput.command", async () => {
+    const events = await commandEventsFor({ toolCallCommand: "co-motion ls p1" });
+
+    const started = events.find((e) => e.event === "chat-command");
+    expect(started?.data).toEqual({
+      toolCallId: "fake-command-call",
+      command: "co-motion ls p1",
+      status: "pending",
+    });
+
+    const updates = events.filter((e) => e.event === "chat-command-update").map((e) => e.data);
+    expect(updates).toEqual([
+      { toolCallId: "fake-command-call", status: "in_progress" },
+      { toolCallId: "fake-command-call", status: "completed" },
+    ]);
+  });
+
+  it("relays a failed command together with its output, so the author never has to open a terminal", async () => {
+    const events = await commandEventsFor({
+      toolCallCommand: "co-motion text set p1 slides/001.svg el-1 '新標題'",
+      toolCallOutcome: "failed",
+      toolCallOutput: "zsh: command not found: co-motion\nexit code 127",
+    });
+
+    const failure = events
+      .filter((e) => e.event === "chat-command-update")
+      .map((e) => e.data as { status: string })
+      .find((data) => data.status === "failed");
+    expect(failure).toEqual({
+      toolCallId: "fake-command-call",
+      status: "failed",
+      output: "zsh: command not found: co-motion\nexit code 127",
+    });
+  });
+
+  it("never relays a tool call that is not a shell command", async () => {
+    const events = await commandEventsFor({ toolCallOmitCommand: true });
+
+    expect(events.filter((e) => e.event.startsWith("chat-command"))).toEqual([]);
+  });
+
+  it("never relays commands from the 編輯規約 turn", async () => {
+    const server = await serve(
+      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "co-motion ls p1" }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const events = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "你好");
+    const collected = await events;
+    await sse.close();
+
+    expect(collected.filter((e) => e.event.startsWith("chat-command"))).toEqual([]);
+  });
+});
