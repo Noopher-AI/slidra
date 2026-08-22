@@ -53,14 +53,16 @@ export function openEventStream(
   // exiting on Ctrl-C.
   heartbeat.unref();
 
-  // The client going away is only observable on the request, not the
-  // response — this is what stops us writing to a dead socket.
+  // `res` is the documented place to observe a client going away: it does
+  // not depend on IncomingMessage's close-timing semantics, which have
+  // shifted across Node versions. This is what stops us writing to a dead
+  // socket.
   const handleDisconnect = (): void => {
     if (closed) return;
     closed = true;
     clearInterval(heartbeat);
   };
-  req.once("close", handleDisconnect);
+  res.once("close", handleDisconnect);
 
   return {
     get closed() {
@@ -76,18 +78,21 @@ export function openEventStream(
       if (event === "" || event.includes("\n") || event.includes("\r")) {
         throw new TypeError(`invalid SSE event name: ${JSON.stringify(event)}`);
       }
-      if (data === undefined) {
-        // JSON.stringify(undefined) returns the value undefined, not a
-        // string, so there is no line to write. Treated as a programmer
-        // error rather than silently omitting the data: line.
-        throw new TypeError("SSE data must not be undefined");
-      }
-
       // JSON.stringify guarantees a single line, so the SSE multi-line
       // data: rule never applies here. Anything it cannot serialise
       // (BigInt, a circular reference) throws and propagates to the
       // caller unmodified — no placeholder is written in its place.
       const payload = JSON.stringify(data);
+      // JSON.stringify returns the value undefined — not a string — not
+      // only for `data === undefined`, but also for a function, a symbol,
+      // or any object whose toJSON() returns undefined. Checking the
+      // result (not just the input) is the one rule that covers all of
+      // those: writing the literal bytes `data: undefined` would be a
+      // fabricated, non-JSON payload on the wire, so this is a programmer
+      // error rather than a value to write.
+      if (payload === undefined) {
+        throw new TypeError(`SSE data must serialise to JSON, got a value of type: ${typeof data}`);
+      }
       res.write(`event: ${event}\ndata: ${payload}\n\n`);
     },
 
@@ -95,7 +100,7 @@ export function openEventStream(
       if (closed) return;
       closed = true;
       clearInterval(heartbeat);
-      req.removeListener("close", handleDisconnect);
+      res.removeListener("close", handleDisconnect);
       res.end();
     },
   };

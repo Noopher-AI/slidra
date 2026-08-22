@@ -138,6 +138,22 @@ describe("openEventStream", () => {
     stream!.close();
   });
 
+  it("throws instead of writing `data: undefined` when data serialises to undefined", async () => {
+    let stream: EventStream;
+    const { url } = await startServer((req, res) => {
+      stream = openEventStream(req, res);
+    });
+    await fetch(url).then((r) => r.body?.cancel());
+
+    // A function: JSON.stringify(fn) === undefined.
+    expect(() => stream!.send("evt", () => {})).toThrow(TypeError);
+    // A symbol: JSON.stringify(symbol) === undefined.
+    expect(() => stream!.send("evt", Symbol("x"))).toThrow(TypeError);
+    // An object whose toJSON() itself returns undefined.
+    expect(() => stream!.send("evt", { toJSON: () => undefined })).toThrow(TypeError);
+    stream!.close();
+  });
+
   it("close() ends the HTTP response and marks the stream closed", async () => {
     let stream: EventStream;
     const { url } = await startServer((req, res) => {
@@ -200,5 +216,31 @@ describe("openEventStream", () => {
     expect(stream!.closed).toBe(true);
     // send() after a disconnect must not attempt a write to the dead socket.
     expect(() => stream!.send("late", { x: 1 })).not.toThrow();
+  });
+
+  it("delivers an event sent asynchronously, after the route handler has already returned, to a connected client", async () => {
+    // This is the primitive's entire reason to exist: a caller opens the
+    // stream, returns from the request handler immediately, and pushes
+    // events later from unrelated async work (e.g. a file watcher).
+    let stream: EventStream;
+    const { url } = await startServer((req, res) => {
+      stream = openEventStream(req, res);
+      // Handler returns here; nothing is written synchronously.
+    });
+
+    const response = await fetch(url);
+    const reader = response.body!.getReader();
+
+    // Give the response a moment to actually be in-flight before sending,
+    // proving the client is already connected and waiting.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    stream!.send("later", { pushed: true });
+
+    const { value } = await reader.read();
+    const text = new TextDecoder().decode(value);
+
+    expect(text).toBe('event: later\ndata: {"pushed":true}\n\n');
+    await reader.cancel();
+    stream!.close();
   });
 });
