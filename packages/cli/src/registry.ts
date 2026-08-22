@@ -1,4 +1,18 @@
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError } from "@co-motion/core";
+
+/**
+ * Why a command failed, in the only distinction any caller is allowed to
+ * act on: `"not-found"` means the thing asked for was positively proven
+ * absent (a `CoMotionNotFoundError`); `"failed"` means anything else went
+ * wrong — an I/O error, a corrupt registry, or an error subtype invented
+ * after this line was written.
+ *
+ * This exists so callers never pattern-match on `message`. The messages
+ * are human copy in Traditional Chinese and may be reworded at any time;
+ * turning them into a contract would break classification silently the
+ * first time someone improves the wording (ticket #14).
+ */
+export type CommandFailureKind = "not-found" | "failed";
 
 /**
  * The outcome of running one command. This is the only thing a handler ever
@@ -12,6 +26,14 @@ export interface CommandResult<Data = unknown> {
   data?: Data;
   /** Traditional-Chinese, human-readable summary. Never contains a real filesystem path. */
   message: string;
+  /**
+   * Set by `dispatch` on every failure it converts, and absent on success.
+   * It is optional rather than required-when-failed so a handler can keep
+   * returning a bare `{ ok: false, message }`; a caller that maps this onto
+   * an HTTP status must therefore read a missing value as "not proven
+   * absent" and answer 500, never 404 (see `/api/files/` in serve.ts).
+   */
+  failureKind?: CommandFailureKind;
 }
 
 /**
@@ -66,7 +88,8 @@ export class CommandRegistry {
 
   /**
    * Dispatches a command by name with structured input. Expected failures
-   * (CoMotionError) are converted into a `{ ok: false }` result; anything
+   * (CoMotionError) are converted into a `{ ok: false }` result carrying a
+   * `failureKind` so the error's subtype survives this boundary; anything
    * else propagates as a thrown error (a bug, not a user-facing failure).
    *
    * Returns only the structured `CommandResult` — never anything
@@ -80,8 +103,17 @@ export class CommandRegistry {
     try {
       return (await definition.handler(input)) as CommandResult<Data>;
     } catch (error) {
+      // Order matters: CoMotionNotFoundError is a CoMotionError, and it is
+      // the narrow case that must be checked first. Only it earns
+      // "not-found" — every other CoMotionError, including subtypes added
+      // later that this code has never heard of, is "failed", because
+      // "not an instance of CoMotionNotFoundError" is not evidence that
+      // anything is absent (ticket #11's classification, ticket #14).
+      if (error instanceof CoMotionNotFoundError) {
+        return { ok: false, message: error.message, failureKind: "not-found" };
+      }
       if (error instanceof CoMotionError) {
-        return { ok: false, message: error.message };
+        return { ok: false, message: error.message, failureKind: "failed" };
       }
       throw error;
     }
