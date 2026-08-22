@@ -1,18 +1,15 @@
 {
-  "name": "@co-motion/cli",
+  "name": "@co-motion/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "co-motion": "./bin/co-motion.js"
-  },
   "scripts": {
     "build": "tsc -b"
   },
   "dependencies": {
-    "@co-motion/core": "*",
-    "@co-motion/server": "*"
+    "@co-motion/cli": "*",
+    "@co-motion/core": "*"
   }
 }
