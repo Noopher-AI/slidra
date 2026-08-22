@@ -5,9 +5,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as acp from "@zed-industries/agent-client-protocol";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError, readPresentationFile } from "@co-motion/core";
 import type { AgentKind } from "./adapters.js";
 import { EDITORIAL_BRIEF } from "./brief.js";
+import { isCoMotionCommand } from "./command-allowlist.js";
+
+/**
+ * `fs/write_text_file` is always refused (ADR-0004, first layer). The
+ * message names the one command that exists for editing text today, so an
+ * agent that tries to write directly can correct itself on the very next
+ * turn (user story 32) instead of merely learning that it failed.
+ */
+const WRITE_REFUSED_MESSAGE =
+  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
 
 /**
  * Everything needed to spawn one ACP adapter subprocess. Real production
@@ -40,6 +50,20 @@ export interface AgentAdapterConfig {
  */
 const AUTH_REQUIRED_CODE = -32000;
 
+/**
+ * JSON-RPC error codes for the file methods. The SDK's own factories
+ * (`RequestError.resourceNotFound()`, `.internalError()`) hardcode English
+ * messages, but ADR-0004 requires the existing Traditional-Chinese wording
+ * to survive verbatim — so these codes are used with the plain
+ * `RequestError` constructor instead. `resourceNotFound`'s own code
+ * (-32002) is reused for "genuinely absent" to stay consistent with the
+ * SDK's own convention for that case; internal errors reuse JSON-RPC's
+ * generic internal-error code (-32603).
+ */
+const READ_NOT_FOUND_CODE = -32002;
+const READ_FAILED_CODE = -32603;
+const WRITE_REFUSED_CODE = -32603;
+
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
   "chat-chunk": (payload: { text: string }) => void;
@@ -57,6 +81,8 @@ interface ChatEvents {
  */
 export class AgentChatSession extends EventEmitter {
   private readonly config: AgentAdapterConfig;
+  /** Opaque id of the presentation this session serves (ADR-0004: the agent itself never sees it). */
+  private readonly presentationId: string;
   private child: ChildProcess | undefined;
   private connection: acp.ClientSideConnection | undefined;
   private sessionId: string | undefined;
@@ -95,9 +121,10 @@ export class AgentChatSession extends EventEmitter {
    */
   private generation = 0;
 
-  constructor(config: AgentAdapterConfig) {
+  constructor(config: AgentAdapterConfig, presentationId: string) {
     super();
     this.config = config;
+    this.presentationId = presentationId;
   }
 
   override on<K extends keyof ChatEvents>(event: K, listener: ChatEvents[K]): this {
@@ -271,10 +298,17 @@ export class AgentChatSession extends EventEmitter {
   private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
     await connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
-      // This unit grants no file access at all (ticket #6): declaring the
-      // capability as false up front tells the agent so structurally,
-      // rather than letting it discover the refusal by trying.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      // Both file methods are declared available (ADR-0004). readTextFile
+      // is the obvious one — it serves the virtual file tree. writeTextFile
+      // looks wrong at first glance: it is *always* refused, never once
+      // succeeds. But ADR-0004's first layer depends on the method being
+      // reachable: the refusal is how the agent learns which command to use
+      // instead (user story 32). A capability declared `false` here is
+      // never attempted by a well-behaved agent, so the one mechanism that
+      // redirects it would never fire. `terminal` stays false — command
+      // execution is the agent's own business (ADR-0006), never routed
+      // through this client.
+      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
     });
 
     // A dedicated, empty directory — never the user's project directory
@@ -327,15 +361,71 @@ export class AgentChatSession extends EventEmitter {
         // Other update kinds (thoughts, tool calls, plans) carry no reply
         // text and this tracer-bullet unit has nothing to do with them yet.
       },
-      requestPermission: async () => {
-        // No allowlist here — ADR-0004's `co-motion *` allowlist is ticket
-        // #7's job. This unit grants no access at all, so every permission
-        // request is refused outright.
-        return { outcome: { outcome: "cancelled" } };
+      requestPermission: async (params: acp.RequestPermissionRequest) => {
+        return this.decidePermission(params);
       },
-      // readTextFile / writeTextFile deliberately left unimplemented: the
-      // agent was told via clientCapabilities that neither is available.
+      readTextFile: async (params: acp.ReadTextFileRequest) => {
+        return this.readTextFile(params);
+      },
+      writeTextFile: async () => {
+        // Always refused (ADR-0004, first layer) — see WRITE_REFUSED_MESSAGE
+        // for why the capability is nonetheless advertised as available.
+        throw new acp.RequestError(WRITE_REFUSED_CODE, WRITE_REFUSED_MESSAGE);
+      },
     };
+  }
+
+  /**
+   * `session/request_permission` — the second layer of ADR-0004. Allows a
+   * request only when the command it names is structurally guaranteed to
+   * invoke the `co-motion` program and nothing else (see
+   * `command-allowlist.ts`); refuses everything else, including any request
+   * the command cannot be extracted from at all. The rule is hard-coded —
+   * the author is never asked (user story 12).
+   */
+  private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
+    const command = extractCommand(params.toolCall);
+    const allow = command !== undefined && isCoMotionCommand(command);
+    const wantedKinds = allow ? (["allow_once", "allow_always"] as const) : (["reject_once", "reject_always"] as const);
+    const option = params.options.find((candidate) => candidate.kind === wantedKinds[0]) ??
+      params.options.find((candidate) => candidate.kind === wantedKinds[1]);
+    if (!option) {
+      // Cannot express the decision through any offered option — including
+      // the case where we mean to allow but the agent offered no allow
+      // option. Fail closed: `cancelled` grants nothing.
+      return { outcome: { outcome: "cancelled" } };
+    }
+    return { outcome: { outcome: "selected", optionId: option.optionId } };
+  }
+
+  /**
+   * `fs/read_text_file` — third layer of ADR-0004. `params.path` is a
+   * virtual path (e.g. "slides/001.svg"), never a real filesystem path: the
+   * agent was never given one, so there is nothing else it could send. This
+   * resolves through the exact same structural lookup every other read
+   * uses (`readPresentationFile`) — no `path.resolve`, no "looks absolute"
+   * special-casing, because there is no real path space to fall back to.
+   */
+  private async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
+    let content: string;
+    try {
+      content = await readPresentationFile(this.presentationId, params.path);
+    } catch (error) {
+      // Preserve the existing Traditional-Chinese wording verbatim — these
+      // messages already never contain a real path (ADR-0004, third layer).
+      // The NotFound/other split mirrors the one the HTTP layer already
+      // makes (readVirtualFile / raw.ts): only a positively-absent path
+      // gets the "not found" JSON-RPC code, everything else is a generic
+      // internal error.
+      if (error instanceof CoMotionNotFoundError) {
+        throw new acp.RequestError(READ_NOT_FOUND_CODE, error.message);
+      }
+      if (error instanceof CoMotionError) {
+        throw new acp.RequestError(READ_FAILED_CODE, error.message);
+      }
+      throw error;
+    }
+    return { content: applyLineWindow(content, params.line, params.limit) };
   }
 
   /** Attaches one SSE stream to this session's events; returns a detach function. */
@@ -360,6 +450,38 @@ export class AgentChatSession extends EventEmitter {
     this.removeAllListeners();
     await this.teardownSession();
   }
+}
+
+/**
+ * Pulls the shell command string a permission request is asking to run out
+ * of `toolCall.rawInput`. ACP does not standardize this field's shape — it
+ * is passed through verbatim from whatever tool the agent itself defined
+ * (`rawInput` is untyped in the schema) — so this only recognizes the one
+ * shape Claude Code's own Bash tool uses (`{ command: string, ... }`).
+ * Anything else — a missing rawInput, a non-object, a non-string `command`
+ * — returns undefined, which `decidePermission` treats as "cannot
+ * determine the command" and refuses (fail closed).
+ */
+function extractCommand(toolCall: acp.ToolCallUpdate): string | undefined {
+  const rawInput = toolCall.rawInput;
+  if (typeof rawInput !== "object" || rawInput === null) return undefined;
+  const command = (rawInput as Record<string, unknown>).command;
+  return typeof command === "string" ? command : undefined;
+}
+
+/**
+ * Applies ACP's `line`/`limit` windowing to a file's full text content.
+ * Per the SDK's schema: `line` is the 1-based line number to start from,
+ * `limit` is the maximum number of lines to return. Neither given returns
+ * the content untouched — the common case, and the one the behaviour
+ * contract requires to be byte-for-byte identical to `cat`.
+ */
+function applyLineWindow(content: string, line?: number | null, limit?: number | null): string {
+  if (line == null && limit == null) return content;
+  const lines = content.split("\n");
+  const startIndex = line != null ? Math.max(line - 1, 0) : 0;
+  const endIndex = limit != null ? startIndex + limit : lines.length;
+  return lines.slice(startIndex, endIndex).join("\n");
 }
 
 /** Pulls a JSON-RPC error code off either a real `Error` or the plain `{code, message}" object the SDK rejects requests with. */

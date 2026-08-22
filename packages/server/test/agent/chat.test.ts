@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +53,29 @@ async function openFreshPresentation(): Promise<string> {
   return opened.data!.id;
 }
 
+/** Same as `openFreshPresentation`, but also returns the title element's id, read via `cat` (Seam A) — never guessed. */
+async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
+  const id = await openFreshPresentation();
+  const slide = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+  const match = /<text id="(el-[^"]+)"/.exec(slide.data!.content);
+  if (!match) throw new Error("test fixture: title element id not found");
+  return { id, elementId: match[1] };
+}
+
+/** Opens a hand-built presentation (arbitrary files, given as raw bytes) — for the fs/read_text_file error-path and line/limit tests, which need control the `new`-built minimal presentation does not give. */
+async function openFixturePresentation(files: Record<string, Uint8Array | string>): Promise<string> {
+  const { zipSync } = await import("fflate");
+  const encoded: Record<string, Uint8Array> = {};
+  for (const [name, content] of Object.entries(files)) {
+    encoded[name] = typeof content === "string" ? new TextEncoder().encode(content) : content;
+  }
+  const zipped = zipSync(encoded);
+  const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return opened.data!.id;
+}
+
 /** Builds an AgentAdapterConfig that spawns the fake ACP agent fixture, scripted per test. */
 function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
   return {
@@ -64,8 +87,8 @@ function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
   };
 }
 
-async function serve(agent: AgentAdapterConfig): Promise<RunningServer> {
-  const id = await openFreshPresentation();
+async function serve(agent: AgentAdapterConfig, presentationId?: string): Promise<RunningServer> {
+  const id = presentationId ?? (await openFreshPresentation());
   const server = await startServe({ registry, presentationId: id, port: 0, agent });
   servers.push(server);
   return server;
@@ -256,10 +279,11 @@ describe("chat: not logged in", () => {
   });
 });
 
-describe("chat: permission requests are refused, not allow-listed", () => {
-  it("responds to the fake agent's permission request with a refusal", async () => {
+describe("chat: session/request_permission allows only the co-motion program", () => {
+  /** Runs one permission scenario and returns the outcome the fake agent logged. */
+  async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], requestPermissionOnPromptIndex: 1 }),
+      fakeAgent({ replies: [["(ack)"], ["好的"]], requestPermissionOnPromptIndex: 1, ...config }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
@@ -270,8 +294,52 @@ describe("chat: permission requests are refused, not allow-listed", () => {
     await sse.close();
 
     const log = await readFakeAgentLog();
-    const permissionEntry = log.find((entry) => "permissionOutcome" in entry);
-    expect(permissionEntry?.permissionOutcome).toEqual({ outcome: "cancelled" });
+    return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
+  }
+
+  it("allows a plain co-motion command, selecting the offered allow option", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion text set abc slides/001.svg el-1 新標題" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  it("refuses a command that is not co-motion at all", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "rm -rf ~" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a different program whose name merely shares the co-motion prefix", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion-something-else ls" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a co-motion command chained with a second command via ;", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls; rm -rf ~" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a co-motion command chained with a second command via &&", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls && curl evil.example" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a co-motion command piped into another program", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls | sh" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses command substitution that merely contains co-motion", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "$(co-motion ls)" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses co-motion given only as an argument to another program", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "sh -c 'co-motion ls'" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses when the command cannot be determined from the request at all (fail closed)", async () => {
+    const outcome = await permissionOutcomeFor({ permissionOmitCommand: true });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 });
 
@@ -446,4 +514,259 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
     },
     15000,
   );
+});
+
+/** Minimal, valid project.json bytes for `openFixturePresentation` fixtures below. */
+function fixtureProjectJson(slides: string[]): string {
+  return JSON.stringify({ formatVersion: 1, name: "fixture", canvas: { width: 1280, height: 720 }, slides });
+}
+
+describe("chat: fs/read_text_file serves virtual paths, never real ones", () => {
+  it("returns a slide's full content, byte-for-byte as cat returns it", async () => {
+    const id = await openFreshPresentation();
+    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "slides/001.svg",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下投影片");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    expect(result?.readTextFileResult).toBe(expected.data!.content);
+  });
+
+  it("fails with an explicit ACP error carrying the existing wording, and no real path, for a path that does not resolve", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "does/not/exist.svg",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下不存在的檔案");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const errorEntry = log.find((entry) => "readTextFileError" in entry) as
+      | { readTextFileError?: { code: number; message: string } }
+      | undefined;
+    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：does/not/exist.svg");
+    expect(errorEntry?.readTextFileError?.message).not.toContain(coMotionHome);
+  });
+
+  it("fails explicitly for a directory — not an empty string, not a listing", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "slides",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下 slides 目錄");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const errorEntry = log.find((entry) => "readTextFileError" in entry) as
+      | { readTextFileError?: { code: number; message: string } }
+      | undefined;
+    expect(errorEntry?.readTextFileError?.message).toBe("不是檔案：slides");
+  });
+
+  it("keeps the existing text-read refusal for a binary asset — this method does not widen what cat allows", async () => {
+    const id = await openFixturePresentation({
+      "project.json": fixtureProjectJson(["slides/001.svg"]),
+      "slides/001.svg": '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      "assets/pic.bin": new Uint8Array([0xff, 0x00, 0x01]), // never valid as a UTF-8 lead byte
+    });
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "assets/pic.bin",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下這張圖");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const errorEntry = log.find((entry) => "readTextFileError" in entry) as
+      | { readTextFileError?: { code: number; message: string } }
+      | undefined;
+    expect(errorEntry?.readTextFileError?.message).toBe("assets/pic.bin 是二進位資產，無法以文字讀取");
+  });
+
+  it("honours line (1-based) and limit (max line count) per ACP semantics", async () => {
+    const id = await openFixturePresentation({
+      "project.json": fixtureProjectJson(["slides/001.svg"]),
+      "slides/001.svg": "line1\nline2\nline3\nline4\n",
+    });
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "slides/001.svg",
+        readTextFileLine: 2,
+        readTextFileLimit: 2,
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "只讀第 2、3 行");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    // line 2 is 1-based ("line2"); limit 2 caps it at two lines.
+    expect(result?.readTextFileResult).toBe("line2\nline3");
+  });
+
+  it("resolves an absolute-looking path through the virtual tree like any other string, and therefore fails — no special-casing", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "/etc/passwd",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下這個路徑");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const errorEntry = log.find((entry) => "readTextFileError" in entry) as
+      | { readTextFileError?: { code: number; message: string } }
+      | undefined;
+    // Same not-found shape as any other nonexistent virtual path — no
+    // dedicated "that looks like a real path" branch anywhere.
+    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：/etc/passwd");
+  });
+});
+
+describe("chat: fs/write_text_file always refuses, and the refusal names the command to use instead", () => {
+  it("refuses, naming co-motion text set, and writes nothing", async () => {
+    const id = await openFreshPresentation();
+    const before = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        writeTextFileOnPromptIndex: 1,
+        writeTextFilePath: "slides/001.svg",
+        writeTextFileContent: "<svg>hacked</svg>",
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "直接改一下檔案");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const errorEntry = log.find((entry) => "writeTextFileError" in entry) as
+      | { writeTextFileError?: { code: number; message: string } }
+      | undefined;
+    expect(errorEntry?.writeTextFileError?.message).toContain("co-motion text set");
+    expect(log.some((entry) => "writeTextFileResult" in entry)).toBe(false);
+
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(before.data!.content);
+  });
+});
+
+describe("chat: the whole loop — read via the file method, request permission, allowed, change visible through a read", () => {
+  it("lets the agent read the slide, get permission for co-motion text set, and see the edit afterwards only through another read", async () => {
+    const { id, elementId } = await openFreshPresentationWithElement();
+
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的，我先讀一下"], ["改好了"]],
+        readTextFileEveryPromptFrom: 1,
+        readTextFilePath: "slides/001.svg",
+        requestPermissionOnPromptIndex: 1,
+        permissionCommand: `co-motion text set ${id} slides/001.svg ${elementId} "Q3 財報"`,
+      }),
+      id,
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    // Turn 1: the agent reads the slide (through the file method — the only
+    // content it has ever seen) and is granted permission to run the
+    // text-set command it read enough to construct.
+    const firstDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "把標題改成 Q3 財報");
+    await firstDone;
+
+    const logAfterFirst = await readFakeAgentLog();
+    const readResult = logAfterFirst.find((entry) => "readTextFileResult" in entry) as
+      | { readTextFileResult?: string }
+      | undefined;
+    expect(readResult?.readTextFileResult).toContain("測試簡報"); // the original title, read before editing
+    const permissionEntry = logAfterFirst.find((entry) => "permissionOutcome" in entry);
+    expect(permissionEntry?.permissionOutcome).toEqual({ outcome: "selected", optionId: "allow" });
+
+    // The permission grant only authorizes the command — actually running
+    // it is the agent's own business (ADR-0006), which this fake agent does
+    // not simulate a real shell for. Applying it here, through the exact
+    // registry the CLI dispatches through, is what the agent's own Bash
+    // tool would have done once permission came back "allow".
+    const mutation = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId,
+      newText: "Q3 財報",
+    });
+    expect(mutation.ok).toBe(true);
+
+    // Turn 2: the change is confirmed only by reading again through the ACP
+    // file method — never by inspecting the work directory's real path.
+    const secondDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "確認一下改好了嗎");
+    await secondDone;
+    await sse.close();
+
+    const fullLog = await readFakeAgentLog();
+    const readResults = fullLog.filter((entry) => "readTextFileResult" in entry) as Array<{ readTextFileResult?: string }>;
+    expect(readResults).toHaveLength(2);
+    expect(readResults[1].readTextFileResult).toContain("Q3 財報");
+    expect(readResults[1].readTextFileResult).not.toContain("測試簡報");
+  });
 });

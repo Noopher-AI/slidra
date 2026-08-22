@@ -78,7 +78,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
 
-  const chatSession = new AgentChatSession(options.agent);
+  const chatSession = new AgentChatSession(options.agent, presentationId);
   // Every SSE stream `/api/chat/stream` has ever opened, still connected.
   // `server.close()` waits for established connections rather than
   // closing them, and an SSE stream never ends on its own — so these must

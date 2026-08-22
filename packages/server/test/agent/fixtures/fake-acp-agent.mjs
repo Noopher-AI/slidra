@@ -44,6 +44,32 @@
 //                            path) to see the marker absent creates it and
 //                            exits; every later spawn finds the marker
 //                            present and replies normally instead.
+//                            requestPermissionOnPromptIndex: at this prompt
+//                            index, call session/request_permission before
+//                            streaming replies. permissionCommand (string,
+//                            default "co-motion ls") becomes
+//                            toolCall.rawInput.command — this is where
+//                            ticket #7's allowlist reads the shell command
+//                            from. The outcome is logged as
+//                            `{ permissionOutcome }`.
+//                            readTextFileOnPromptIndex / readTextFilePath /
+//                            readTextFileLine / readTextFileLimit: at this
+//                            prompt index, call fs/read_text_file for the
+//                            given virtual path (ticket #7). Logs
+//                            `{ readTextFileResult: content }` on success or
+//                            `{ readTextFileError: { code, message } }` on
+//                            failure. readTextFileEveryPromptFrom: like
+//                            readTextFileOnPromptIndex but repeats the same
+//                            read at every prompt index from this one
+//                            onward — used to prove a change made between
+//                            two turns is visible on the second read.
+//                            writeTextFileOnPromptIndex / writeTextFilePath /
+//                            writeTextFileContent: at this prompt index,
+//                            call fs/write_text_file (ticket #7 — this must
+//                            always fail). Logs
+//                            `{ writeTextFileError: { code, message } }` on
+//                            failure or `{ writeTextFileResult: true }` if
+//                            it unexpectedly succeeds.
 //
 // Every process also logs its own pid as the very first log line, so tests
 // can check with `process.kill(pid, 0)` whether a given spawn is still
@@ -124,13 +150,50 @@ class FakeAgent {
     if (config.requestPermissionOnPromptIndex === index) {
       const response = await this.connection.requestPermission({
         sessionId: params.sessionId,
-        toolCall: { toolCallId: "fake-tool-call", title: "測試工具呼叫" },
+        toolCall: {
+          toolCallId: "fake-tool-call",
+          title: "測試工具呼叫",
+          // permissionOmitCommand scripts a tool call whose rawInput carries
+          // no `command` key at all — the "cannot determine the command"
+          // case the allowlist must fail closed on (ticket #7).
+          rawInput: config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "co-motion ls" },
+        },
         options: [
           { kind: "allow_once", name: "允許", optionId: "allow" },
           { kind: "reject_once", name: "拒絕", optionId: "reject" },
         ],
       });
       log({ permissionOutcome: response.outcome });
+    }
+
+    const shouldReadTextFile =
+      config.readTextFileOnPromptIndex === index ||
+      (config.readTextFileEveryPromptFrom !== undefined && index >= config.readTextFileEveryPromptFrom);
+    if (shouldReadTextFile) {
+      try {
+        const response = await this.connection.readTextFile({
+          sessionId: params.sessionId,
+          path: config.readTextFilePath,
+          line: config.readTextFileLine ?? null,
+          limit: config.readTextFileLimit ?? null,
+        });
+        log({ readTextFileResult: response.content });
+      } catch (error) {
+        log({ readTextFileError: { code: error.code, message: error.message } });
+      }
+    }
+
+    if (config.writeTextFileOnPromptIndex === index) {
+      try {
+        await this.connection.writeTextFile({
+          sessionId: params.sessionId,
+          path: config.writeTextFilePath,
+          content: config.writeTextFileContent ?? "",
+        });
+        log({ writeTextFileResult: true });
+      } catch (error) {
+        log({ writeTextFileError: { code: error.code, message: error.message } });
+      }
     }
 
     for (const chunk of replies) {
