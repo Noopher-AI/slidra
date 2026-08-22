@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
-import { CoMotionError } from "../src/errors.js";
+import { CoMotionError, CoMotionIOError } from "../src/errors.js";
 import { openPresentation, packPresentation } from "../src/workspace.js";
 
 // root ignores permission bits, so the chmod-based failure below can never
@@ -161,6 +161,36 @@ describe("an invalid container opened repeatedly", () => {
       await rm(comotDir, { recursive: true, force: true });
     }
   });
+});
+
+describe("a registry that exists but cannot be read", () => {
+  it.skipIf(isRunningAsRoot)(
+    "raises CoMotionIOError, not a plain CoMotionError, so callers can tell it apart from 'not found'",
+    async () => {
+      const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+      try {
+        const comotPath = path.join(comotDir, "deck.comot");
+        const { createNewPresentation } = await import("../src/workspace.js");
+        await createNewPresentation(comotPath, "測試簡報");
+        const { id } = await openPresentation(comotPath);
+
+        // A real permission failure on projects.json itself — not a mock of
+        // readFile — the same EACCES class of failure ticket #11's
+        // CoMotionIOError distinction exists for, one layer above
+        // virtual-fs.ts's tree walk: every id-to-workDir lookup reads this
+        // file before any virtual path is ever resolved.
+        await chmod(registryPath(), 0o000);
+
+        try {
+          await expect(packPresentation(id, path.join(coMotionHome, "out.comot"))).rejects.toThrow(CoMotionIOError);
+        } finally {
+          await chmod(registryPath(), 0o644);
+        }
+      } finally {
+        await rm(comotDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("a malformed registry entry", () => {

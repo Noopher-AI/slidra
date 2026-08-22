@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionIOError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
@@ -51,7 +51,15 @@ async function readRegistry(home: string): Promise<Registry> {
     if (isEnoent(error)) {
       return new Map();
     }
-    throw new CoMotionError("無法讀取簡報登記資料");
+    // A genuine operational failure (permissions, a failing disk, ...)
+    // reading the registry itself — as opposed to the file simply not
+    // existing yet (handled above). Every id-to-workDir lookup goes through
+    // here before any virtual-path lookup even starts, so a caller that
+    // distinguishes "not found" from "server has a problem" (e.g. the
+    // /api/raw/ route, per CoMotionIOError's contract) needs this
+    // classified the same way virtual-fs.ts's tree walk and file reads are
+    // (ticket #11, third fix round).
+    throw new CoMotionIOError("無法讀取簡報登記資料");
   }
 
   let parsed: unknown;

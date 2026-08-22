@@ -158,6 +158,38 @@ describe("GET /api/raw/<virtual path>", () => {
     },
   );
 
+  it.skipIf(isRunningAsRoot)(
+    "returns 500, not 404, when a directory earlier in the lookup path is unreadable",
+    async () => {
+      const id = await openPresentationWithAssets();
+      const server = await serve(id);
+      // Real filesystem path of the unpacked "assets" directory itself
+      // (not a file inside it). Every virtual-path lookup enumerates this
+      // directory while building the tree (buildVirtualTree -> populate,
+      // packages/core/src/virtual-fs.ts), before ever reaching a file's
+      // own read — so an unreadable directory must be a 500 too, not just
+      // an unreadable file.
+      const realAssetsDir = path.join(coMotionHome, "work", id, "assets");
+      await chmod(realAssetsDir, 0o000);
+
+      try {
+        const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
+        const body = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(body.error).toBeTruthy();
+        // A real I/O failure must never be told back to the browser as
+        // "the file is missing".
+        expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+        // The real filesystem path must never leak into the response.
+        expect(body.error).not.toContain(realAssetsDir);
+        expect(body.error).not.toContain(coMotionHome);
+      } finally {
+        await chmod(realAssetsDir, 0o755);
+      }
+    },
+  );
+
   it("404s with an explicit body when the path does not resolve to anything", async () => {
     const id = await openPresentationWithAssets();
     const server = await serve(id);

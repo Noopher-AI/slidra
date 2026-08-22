@@ -40,7 +40,16 @@ async function populate(realDir: string, node: VirtualDirectory): Promise<void> 
   } catch {
     // realDir is a real filesystem path inside the hidden work directory
     // (ADR-0004) — never quote it, even for a plain permission/I-O error.
-    throw new CoMotionError("讀取簡報內容時發生錯誤");
+    //
+    // Every virtual-path lookup builds the tree first (buildVirtualTree ->
+    // populate, recursively for every nested directory), so a failing
+    // readdir here is the same "genuine operational failure vs. genuinely
+    // not there" distinction readVirtualFileBytes's final read already
+    // makes — just one layer earlier. Without CoMotionIOError, an
+    // unreadable presentation root or an unreadable nested directory would
+    // make every lookup through it look like "not found" instead of "this
+    // server has a problem" (ticket #11, third fix round).
+    throw new CoMotionIOError("讀取簡報內容時發生錯誤");
   }
   for (const entry of entries) {
     const realPath = path.join(realDir, entry.name);
