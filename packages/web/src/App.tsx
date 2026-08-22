@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { mountCanvas } from "./canvas.js";
+import { startLiveReload } from "./live-reload.js";
 
 /**
  * React owns the shell only — chat sidebar and status bar. The div below is
@@ -13,7 +14,16 @@ export function App() {
     const container = canvasRef.current;
     if (!container) return;
     const controller = mountCanvas(container);
-    return () => controller.destroy();
+    // Live reload (ticket #5): the server pushes a `presentation-changed`
+    // event over /api/events whenever a slide is modified externally;
+    // reload() re-fetches and redraws without React re-rendering anything.
+    // Stopped on cleanup — a live EventSource surviving unmount would leak
+    // a connection per React StrictMode double-mount.
+    const liveReload = startLiveReload({ onChange: () => void controller.reload() });
+    return () => {
+      liveReload.stop();
+      controller.destroy();
+    };
   }, []);
 
   return (

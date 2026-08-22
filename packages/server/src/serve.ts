@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
+import { createChangeBroadcaster } from "./changes.js";
+import type { ChangeBroadcaster } from "./changes.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -60,8 +62,18 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
 
   const staticDir = resolveWebDist();
 
+  // Resources started alongside the HTTP server. close() tears them down in
+  // registration order, before the socket itself is closed.
+  const disposers: Array<() => Promise<void>> = [];
+
+  // Starts watching only lazily, on the first /api/events connection (see
+  // changes.ts) — creating the handle itself touches no filesystem, so no
+  // rollback is needed if listen() below fails.
+  const changeBroadcaster = createChangeBroadcaster(presentationId);
+  disposers.push(() => changeBroadcaster.dispose());
+
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, req, res);
+    void handleRequest(registry, presentationId, staticDir, changeBroadcaster, req, res);
   });
 
   await listen(server, port, host);
@@ -70,10 +82,14 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   return {
     port: actualPort,
     url: `http://${host}:${actualPort}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: async () => {
+      for (const dispose of disposers) {
+        await dispose();
+      }
+      await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
-      }),
+      });
+    },
   };
 }
 
@@ -158,6 +174,7 @@ async function handleRequest(
   registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
+  changeBroadcaster: ChangeBroadcaster,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -191,6 +208,14 @@ async function handleRequest(
       }
       res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });
       res.end(result.data!.content);
+      return;
+    }
+
+    if (url.pathname === "/api/events") {
+      // Live reload push (ticket #5): opens a long-lived SSE stream. Never
+      // returns/closes `res` itself — handleConnection hands it to
+      // openEventStream, which owns the response from here on.
+      await changeBroadcaster.handleConnection(res);
       return;
     }
 

@@ -11,3 +11,5 @@ export {
   listPresentationEntries,
   setElementText,
 } from "./workspace.js";
+export { watchPresentation } from "./watch.js";
+export type { PresentationWatcher } from "./watch.js";
