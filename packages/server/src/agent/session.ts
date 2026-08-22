@@ -1,13 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as acp from "@zed-industries/agent-client-protocol";
 import { CoMotionError, CoMotionNotFoundError, readPresentationFile } from "@co-motion/core";
 import type { AgentKind } from "./adapters.js";
-import { EDITORIAL_BRIEF } from "./brief.js";
+import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
 
 /**
@@ -64,6 +64,14 @@ const READ_NOT_FOUND_CODE = -32002;
 const READ_FAILED_CODE = -32603;
 const WRITE_REFUSED_CODE = -32603;
 
+/**
+ * `fs/read_text_file` refusal for an absolute `path` that does not fall
+ * under the session cwd (fix 3). Deliberately names no path at all — the
+ * incoming string is, by definition, a real filesystem path in this branch,
+ * and ADR-0004's third layer requires no real path ever appear in an error.
+ */
+const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個工作階段的範圍內";
+
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
   "chat-chunk": (payload: { text: string }) => void;
@@ -93,6 +101,18 @@ export class AgentChatSession extends EventEmitter {
    * lifetime is scoped to the session, not the OS temp cleanup schedule.
    */
   private sessionCwd: string | undefined;
+  /**
+   * `sessionCwd`, resolved to its real (symlink-free) form (fix 3). A
+   * conforming ACP agent echoes back an *absolute* path rooted at the cwd
+   * it was given — but resolved, not verbatim (confirmed against a real
+   * `claude-code-acp` 0.12.6: the cwd sent to `session/new` was
+   * `/var/folders/...`, the `path` a subsequent `fs/read_text_file` sent
+   * back was `/private/var/folders/...` — macOS resolves that `/var`
+   * symlink). Comparing an absolute `path` against the raw `mkdtemp` string
+   * would therefore fail on every single real read; comparing against this
+   * resolved form is what actually matches.
+   */
+  private sessionCwdReal: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -236,6 +256,7 @@ export class AgentChatSession extends EventEmitter {
     this.connection = undefined;
     this.sessionId = undefined;
     this.sessionCwd = undefined;
+    this.sessionCwdReal = undefined;
     this.readyPromise = undefined;
     if (child && !child.killed) {
       child.kill();
@@ -320,6 +341,11 @@ export class AgentChatSession extends EventEmitter {
     // nothing of the user's.
     const sessionCwd = await mkdtemp(path.join(tmpdir(), "co-motion-agent-cwd-"));
     this.sessionCwd = sessionCwd;
+    // Resolved once, up front, against the directory `mkdtemp` actually
+    // created — not against whatever the agent later sends back — so
+    // `readTextFile`'s prefix comparison (fix 3) is anchored to a real
+    // filesystem fact instead of trusting the agent's own path shape.
+    this.sessionCwdReal = await realpath(sessionCwd);
 
     let session: acp.NewSessionResponse;
     try {
@@ -346,7 +372,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     await connection.prompt({
       sessionId: this.sessionId,
-      prompt: [{ type: "text", text: EDITORIAL_BRIEF }],
+      prompt: [{ type: "text", text: buildEditorialBrief(this.presentationId) }],
     });
   }
 
@@ -399,17 +425,28 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
-   * `fs/read_text_file` — third layer of ADR-0004. `params.path` is a
-   * virtual path (e.g. "slides/001.svg"), never a real filesystem path: the
-   * agent was never given one, so there is nothing else it could send. This
-   * resolves through the exact same structural lookup every other read
-   * uses (`readPresentationFile`) — no `path.resolve`, no "looks absolute"
-   * special-casing, because there is no real path space to fall back to.
+   * `fs/read_text_file` — third layer of ADR-0004. `params.path` is either
+   * the virtual path the brief names directly (e.g. "slides/001.svg") or,
+   * per a real `claude-code-acp` 0.12.6 probe, an *absolute* path rooted at
+   * the session cwd (fix 3 — a conforming agent sends this shape, so
+   * refusing to understand it means a real agent cannot read anything at
+   * all). `toVirtualPath` translates the latter back into the former;
+   * either way the result goes through the exact same structural lookup
+   * every other read uses (`readPresentationFile`) — the virtual tree
+   * remains the only containment, the cwd prefix is only ever a
+   * translation rule.
    */
   private async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
+    const virtualPath = this.toVirtualPath(params.path);
+    if (virtualPath === undefined) {
+      // An absolute path outside the session cwd: refused explicitly and
+      // never resolved against the real filesystem (fix 3). The message
+      // deliberately does not echo the (real filesystem) path back.
+      throw new acp.RequestError(READ_NOT_FOUND_CODE, PATH_OUTSIDE_SESSION_CWD_MESSAGE);
+    }
     let content: string;
     try {
-      content = await readPresentationFile(this.presentationId, params.path);
+      content = await readPresentationFile(this.presentationId, virtualPath);
     } catch (error) {
       // Preserve the existing Traditional-Chinese wording verbatim — these
       // messages already never contain a real path (ADR-0004, third layer).
@@ -426,6 +463,37 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     return { content: applyLineWindow(content, params.line, params.limit) };
+  }
+
+  /**
+   * Translates whatever `fs/read_text_file` sent as `path` into a virtual
+   * path (fix 3). A relative path already *is* a virtual path — passed
+   * through unchanged, exactly as before this fix, since that is both what
+   * the brief itself names and what the existing tests exercise.
+   *
+   * An absolute path is translated by stripping the session cwd's
+   * *resolved* prefix (`sessionCwdReal`) — resolved because a conforming
+   * agent resolves the cwd's symlinks before it ever echoes a path back
+   * (the `/var` vs `/private/var` case on macOS; see `sessionCwdReal`'s own
+   * comment). `path.resolve` only normalizes the string itself (collapsing
+   * `.`/`..` segments) — it never touches the real filesystem, because the
+   * file this path names is virtual and need not exist on disk at all.
+   *
+   * Returns undefined when the absolute path does not fall under the
+   * session cwd — the caller refuses outright rather than falling back to
+   * any real-filesystem lookup; the cwd prefix is a translation rule, not
+   * a containment mechanism, so there is no "resolve it anyway and see" to
+   * fall back to.
+   */
+  private toVirtualPath(rawPath: string): string | undefined {
+    if (!path.isAbsolute(rawPath)) return rawPath;
+    if (this.sessionCwdReal === undefined) return undefined;
+    const normalized = path.resolve(rawPath);
+    const relative = path.relative(this.sessionCwdReal, normalized);
+    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+      return undefined;
+    }
+    return relative;
   }
 
   /** Attaches one SSE stream to this session's events; returns a detach function. */

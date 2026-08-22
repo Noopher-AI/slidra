@@ -77,11 +77,20 @@
 // subprocess".
 
 import * as acp from "@zed-industries/agent-client-protocol";
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
+import path from "node:path";
 
 const config = JSON.parse(process.env.FAKE_AGENT_CONFIG ?? "{}");
 const logPath = process.env.FAKE_AGENT_LOG;
+
+// The cwd the client handed us in `session/new` (see `newSession` below) —
+// kept so `prompt` can build an absolute `fs/read_text_file` path the same
+// way a real, conforming ACP agent does (ticket #7 fix 3): resolve the cwd
+// it was given, then join the relative path onto that resolved form. This
+// is what actually reproduces the `/var` vs `/private/var` mismatch a real
+// `claude-code-acp` 0.12.6 was probed sending on macOS.
+let sessionCwd;
 
 function log(entry) {
   if (!logPath) return;
@@ -114,6 +123,7 @@ class FakeAgent {
     // (ticket #6 fix 1: never a real project path, never under
     // CO_MOTION_HOME).
     log({ newSessionCwd: params.cwd });
+    sessionCwd = params.cwd;
 
     const markerPath = config.failFirstAttemptMarkerPath;
     if (markerPath && !existsSync(markerPath)) {
@@ -171,9 +181,18 @@ class FakeAgent {
       (config.readTextFileEveryPromptFrom !== undefined && index >= config.readTextFileEveryPromptFrom);
     if (shouldReadTextFile) {
       try {
+        // readTextFileAbsoluteUnderCwd: send an *absolute* path built by
+        // resolving the session cwd we were given and joining the relative
+        // virtual path onto it — the shape a real conforming agent sends
+        // (ticket #7 fix 3), as opposed to readTextFilePath, which is sent
+        // verbatim (used for plain relative paths and for absolute paths
+        // that are deliberately outside the session cwd).
+        const requestedPath = config.readTextFileAbsoluteUnderCwd
+          ? path.join(realpathSync(sessionCwd), config.readTextFileAbsoluteUnderCwd)
+          : config.readTextFilePath;
         const response = await this.connection.readTextFile({
           sessionId: params.sessionId,
-          path: config.readTextFilePath,
+          path: requestedPath,
           line: config.readTextFileLine ?? null,
           limit: config.readTextFileLimit ?? null,
         });
