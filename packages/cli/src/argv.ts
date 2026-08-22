@@ -53,6 +53,24 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const path = rest[1];
       return { name, input: { id, path } };
     }
+    case "text": {
+      const sub = rest[0];
+      if (sub !== "set") {
+        throw new CoMotionError(`未知的子命令：text ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "text set", "presentation-id");
+      const slidePath = requirePositional(args, 1, "text set", "slide-path");
+      const elementId = requirePositional(args, 2, "text set", "element-id");
+      // new-text may legitimately be an empty string (clears the element's
+      // text), so it is checked for absence, not falsiness — unlike
+      // requirePositional's other args, which reject empty strings too.
+      const newText = args[3];
+      if (newText === undefined) {
+        throw new CoMotionError("命令 text set 缺少參數：new-text");
+      }
+      return { name: "text set", input: { id, slidePath, elementId, newText } };
+    }
     default:
       // Unknown command: let the registry report it, so the error message
       // stays in one place.

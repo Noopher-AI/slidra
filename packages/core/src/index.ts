@@ -9,4 +9,5 @@ export {
   packPresentation,
   readPresentationFile,
   listPresentationEntries,
+  setElementText,
 } from "./workspace.js";

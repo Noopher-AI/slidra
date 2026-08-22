@@ -6,6 +6,7 @@ import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile } from "./virtual-fs.js";
+import { writeSlideElementText } from "./element-text.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -161,4 +162,22 @@ export async function listPresentationEntries(id: string, virtualPath?: string):
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   return listVirtualEntries(workDir, virtualPath);
+}
+
+/**
+ * Sets the text content of one element on one slide, identified by their
+ * virtual identifiers only (ADR-0004). This is the first write path into a
+ * presentation's content — see element-text.ts for the mutation itself,
+ * which splices the target element's text in place rather than
+ * parsing/re-serializing the SVG, to keep every other byte identical.
+ */
+export async function setElementText(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  newText: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await writeSlideElementText(workDir, slidePath, elementId, newText);
 }

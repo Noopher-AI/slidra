@@ -4,13 +4,15 @@ import { openCommand } from "./commands/open.js";
 import { packCommand } from "./commands/pack.js";
 import { catCommand, renderCat } from "./commands/cat.js";
 import { lsCommand, renderLs } from "./commands/ls.js";
+import { textSetCommand } from "./commands/text-set.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
  * `co-motion serve` dispatch on top of (ADR-0002).
  *
- * `cat`/`ls` are the presentation's only read surface, and there is no
- * write command registered here at all (ADR-0004) — not disabled, absent.
+ * `cat`/`ls` are the presentation's only read surface. `text set` is the
+ * first write command (ticket #3) — every write, like every read, goes
+ * through a semantic command, never raw file access (ADR-0002, ADR-0004).
  *
  * Every registration names its `render` explicitly: `null` for the default
  * status-line-plus-JSON output, or a colocated renderer for commands that
@@ -25,5 +27,6 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("pack", { handler: packCommand, render: null });
   registry.register("cat", { handler: catCommand, render: renderCat });
   registry.register("ls", { handler: lsCommand, render: renderLs });
+  registry.register("text set", { handler: textSetCommand, render: null });
   return registry;
 }
