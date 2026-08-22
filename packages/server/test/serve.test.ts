@@ -1,10 +1,16 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+
+// Resolves the same packages/web/dist directory startServe's own
+// resolveWebDist() computes, so the static-serving tests can populate a
+// real build there without touching serve.ts's internals.
+const webDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
 // Every test points CO_MOTION_HOME at its own temp directory (ADR-0004
@@ -44,6 +50,22 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
   const server = await startServe({ registry, presentationId, port: 0, ...overrides });
   servers.push(server);
   return server;
+}
+
+// Builds a hostile .comot with a literal project.json body (bypassing the
+// server's own JSON.stringify) so the malformed-container tests exercise
+// the exact bytes the review found unhandled — real fflate zips, no mocks.
+async function openMalformedPresentation(projectJsonRaw: string): Promise<string> {
+  const { zipSync } = await import("fflate");
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(projectJsonRaw),
+    "slides/": new Uint8Array(0),
+    "assets/": new Uint8Array(0),
+  });
+  const malformedPath = path.join(comotDir, "malformed.comot");
+  await writeFile(malformedPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: malformedPath });
+  return opened.data!.id;
 }
 
 describe("startServe", () => {
@@ -181,5 +203,134 @@ describe("startServe", () => {
     expect(response.status).toBe(404);
     expect(body.error).toBeTruthy();
     expect(body.error).not.toContain("root:");
+  });
+
+  it("rejects with an explicit Traditional Chinese error and does not start when project.json lacks slides", async () => {
+    const id = await openMalformedPresentation(
+      JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
+    );
+
+    await expect(serve(id)).rejects.toThrow(/project\.json/);
+  });
+
+  it("rejects with an explicit error and does not start when slides is present but not an array", async () => {
+    const id = await openMalformedPresentation(
+      JSON.stringify({
+        formatVersion: 1,
+        name: "壞掉的簡報",
+        canvas: { width: 1280, height: 720 },
+        slides: "slides/001.svg",
+      }),
+    );
+
+    await expect(serve(id)).rejects.toThrow(/project\.json/);
+  });
+
+  it("rejects with an explicit error and does not start when slides contains an invalid entry", async () => {
+    const id = await openMalformedPresentation(
+      JSON.stringify({
+        formatVersion: 1,
+        name: "壞掉的簡報",
+        canvas: { width: 1280, height: 720 },
+        slides: ["slides/001.svg", 42],
+      }),
+    );
+
+    await expect(serve(id)).rejects.toThrow(/project\.json/);
+  });
+
+  it("never leaks a real filesystem path in project.json validation errors", async () => {
+    const id = await openMalformedPresentation(
+      JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
+    );
+
+    try {
+      await serve(id);
+      throw new Error("expected serve() to reject");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).not.toContain(comotDir);
+      expect(message).not.toContain(coMotionHome);
+    }
+  });
+});
+
+describe("static frontend serving", () => {
+  // These tests populate the real packages/web/dist directory startServe's
+  // resolveWebDist() always resolves to (it takes no override), and always
+  // remove it again afterward so the suite leaves no build artifact behind.
+  afterEach(async () => {
+    await rm(webDist, { recursive: true, force: true });
+  });
+
+  it("serves index.html for the root path", async () => {
+    await mkdir(webDist, { recursive: true });
+    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/`);
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(body).toContain("root");
+  });
+
+  it("serves an existing static asset with its correct content type", async () => {
+    await mkdir(webDist, { recursive: true });
+    await writeFile(path.join(webDist, "index.html"), "<html></html>");
+    await writeFile(path.join(webDist, "app.js"), "console.log('hi');");
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/app.js`);
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/javascript");
+    expect(body).toBe("console.log('hi');");
+  });
+
+  it("responds 404 for a static asset that does not exist, without falling back to index.html", async () => {
+    await mkdir(webDist, { recursive: true });
+    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/missing-bundle.js`);
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBeTruthy();
+  });
+
+  it("responds with the existing explicit error when the frontend has not been built at all", async () => {
+    // webDist deliberately left absent by this test.
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/`);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("前端尚未建置，請先執行 build");
+  });
+
+  it("responds 500, not a disguised 200, when a static read fails for a reason other than not-found", async () => {
+    await mkdir(webDist, { recursive: true });
+    await writeFile(path.join(webDist, "index.html"), "<html></html>");
+    const restrictedDir = path.join(webDist, "restricted.js");
+    // A directory where a file is expected: readFile fails with EISDIR,
+    // not ENOENT — the "any other I/O failure" case from the review.
+    await mkdir(restrictedDir);
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/restricted.js`);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBeTruthy();
   });
 });
