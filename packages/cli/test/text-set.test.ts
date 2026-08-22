@@ -24,6 +24,22 @@ afterEach(async () => {
   await rm(comotDir, { recursive: true, force: true });
 });
 
+/** Opens a presentation with a hand-built slides/001.svg, for scanner-hostile fixtures. */
+async function openFixturePresentation(slideSvg: string, registry: CommandRegistry, comotDir: string): Promise<{ id: string }> {
+  const { zipSync } = await import("fflate");
+  const { writeFile } = await import("node:fs/promises");
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(
+      JSON.stringify({ formatVersion: 1, name: "fixture", slides: ["slides/001.svg"] }),
+    ),
+    "slides/001.svg": new TextEncoder().encode(slideSvg),
+  });
+  const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return { id: opened.data!.id };
+}
+
 /** Opens a freshly created presentation and returns its id and title element id. */
 async function openFreshPresentation(): Promise<{ id: string; elementId: string; originalSlide: string }> {
   const comotPath = path.join(comotDir, "deck.comot");
@@ -198,6 +214,105 @@ describe("text set", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("edits the element whose real id is el-a, not an earlier data-id/xml:id carrying the same string", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<rect data-id="el-a" x="0" y="0" width="1" height="1"></rect>' +
+      '<g xml:id="el-a"><rect x="0" y="0" width="1" height="1"></rect></g>' +
+      '<text id="el-a">old</text>' +
+      "</svg>";
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(slideSvg.replace(">old<", ">new<"));
+  });
+
+  it("edits the live element and leaves an earlier comment carrying the same id untouched", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<!-- <text id="el-a">old</text> -->' +
+      '<text id="el-a">live</text>' +
+      "</svg>";
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+        '<!-- <text id="el-a">old</text> -->' +
+        '<text id="el-a">new</text>' +
+        "</svg>",
+    );
+  });
+
+  it("fails with a clear error when the id appears only inside a comment", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><!-- <text id="el-a">old</text> --></svg>';
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+
+    // the untouched slide, including the comment, is byte-identical.
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(slideSvg);
+  });
+
+  it("fails naming the element when the target tag is not text-bearing (rect)", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-a" x="0" y="0" width="1" height="1"></rect></svg>';
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "x",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("el-a");
+  });
+
+  it("fails with a clear error when newText contains an XML-forbidden control character, and writes nothing", async () => {
+    const { id, elementId, originalSlide } = await openFreshPresentation();
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId,
+      newText: "badchar",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(originalSlide);
   });
 
   it("fails with a clear error for an unknown presentation id", async () => {

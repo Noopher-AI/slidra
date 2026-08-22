@@ -22,18 +22,73 @@ interface TagMatch {
 }
 
 /**
+ * Tags whose content the module is willing to treat as editable text. This
+ * is a whitelist, not a "not self-closing" heuristic: syntax alone (an
+ * element happens to have a closing tag) does not imply it carries text —
+ * `<rect>` and `<g>` are perfectly valid non-self-closing elements with no
+ * text content. Only add a tag here once the app actually renders text
+ * runs on it.
+ */
+const TEXT_BEARING_TAGS = new Set(["text"]);
+
+/**
+ * Finds the terminator of a `<!...>` / `<?...>` construct starting at `i`
+ * (comment, CDATA section, processing instruction, or a declaration such as
+ * `<!DOCTYPE ...>`) and returns the index right after it. Returns -1 if the
+ * construct is never terminated, so the caller can stop scanning rather
+ * than misreading markup inside it as a real element.
+ */
+function skipNonElementConstruct(svg: string, i: number): number {
+  if (svg.startsWith("<!--", i)) {
+    const end = svg.indexOf("-->", i + 4);
+    return end === -1 ? -1 : end + 3;
+  }
+  if (svg.startsWith("<![CDATA[", i)) {
+    const end = svg.indexOf("]]>", i + 9);
+    return end === -1 ? -1 : end + 3;
+  }
+  if (svg[i + 1] === "?") {
+    const end = svg.indexOf("?>", i + 2);
+    return end === -1 ? -1 : end + 2;
+  }
+  // Any other "<!" construct (e.g. <!DOCTYPE ...>). Track bracket depth so
+  // a ">" inside an internal subset ("[...]") doesn't end it early.
+  let k = i + 2;
+  let depth = 0;
+  while (k < svg.length) {
+    const ch = svg[k];
+    if (ch === "[") depth++;
+    else if (ch === "]") depth--;
+    else if (ch === ">" && depth <= 0) {
+      return k + 1;
+    }
+    k++;
+  }
+  return -1;
+}
+
+/**
  * Scans forward from `fromIndex` for the next start tag (opening or
- * self-closing). Skips closing tags, comments, processing instructions and
- * doctype declarations. Quoted attribute values are tracked so a `>`
- * appearing inside a quoted attribute (e.g. a `d` path string) never
- * mistakenly ends the tag early.
+ * self-closing). Skips closing tags; skips comments, CDATA sections,
+ * processing instructions and doctype declarations to their proper
+ * terminator so markup written inside them is never read as real markup.
+ * Quoted attribute values are tracked so a `>` appearing inside a quoted
+ * attribute (e.g. a `d` path string) never mistakenly ends the tag early.
  */
 function findNextStartTag(svg: string, fromIndex: number): TagMatch | null {
   let i = svg.indexOf("<", fromIndex);
   while (i !== -1) {
     const marker = svg[i + 1];
-    if (marker === "/" || marker === "!" || marker === "?") {
+    if (marker === "/") {
       i = svg.indexOf("<", i + 1);
+      continue;
+    }
+    if (marker === "!" || marker === "?") {
+      const next = skipNonElementConstruct(svg, i);
+      if (next === -1) {
+        return null;
+      }
+      i = svg.indexOf("<", next);
       continue;
     }
 
@@ -72,9 +127,14 @@ function findNextStartTag(svg: string, fromIndex: number): TagMatch | null {
   return null;
 }
 
-/** Extracts the exact value of an `id="..."` / `id='...'` attribute, if present. */
+/**
+ * Extracts the exact value of an `id="..."` / `id='...'` attribute, if
+ * present. The attribute name must begin at the start of the attribute
+ * region or directly after XML whitespace, so `data-id="..."` or
+ * `xml:id="..."` (real, different attributes) are never mistaken for `id`.
+ */
 function extractId(attrsText: string): string | undefined {
-  const match = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(attrsText);
+  const match = /(?:^|[\t\n\r ])id\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(attrsText);
   if (!match) {
     return undefined;
   }
@@ -85,21 +145,40 @@ function escapeXmlText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// The set of code points XML 1.0 permits in character data (spec production
+// [2] Char). Anything outside this — control characters like U+0001 in
+// particular — would make the document invalid SVG if written verbatim.
+const XML_1_0_CHAR = /^[\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]*$/u;
+
+function assertValidXmlText(newText: string): void {
+  if (!XML_1_0_CHAR.test(newText)) {
+    throw new CoMotionError("文字內容包含 XML 不允許的字元");
+  }
+}
+
 /**
  * Replaces the text content of the element identified by `elementId` inside
  * `svgContent` with `newText`, and returns the full document with that one
  * substitution applied. Every other byte of `svgContent` is preserved
  * exactly — no reformatting, no attribute reordering, no re-indentation.
  *
- * Throws when `elementId` does not appear in the document, or when the
- * matched element is self-closing (e.g. `<image/>`) and therefore has no
- * text content to replace.
+ * Throws when `newText` contains a code point XML 1.0 forbids, when
+ * `elementId` does not appear in the document (including when it only
+ * appears inside a comment or CDATA section, which are never scanned as
+ * markup), when the matched element's tag is not on the text-bearing
+ * whitelist (e.g. `<rect>`, `<g>`, `<image>`), or when the matched element
+ * is self-closing and therefore has no text content to replace.
  */
 export function replaceElementText(svgContent: string, elementId: string, newText: string): string {
+  assertValidXmlText(newText);
+
   let searchFrom = 0;
   let match = findNextStartTag(svgContent, searchFrom);
   while (match) {
     if (extractId(match.attrsText) === elementId) {
+      if (!TEXT_BEARING_TAGS.has(match.tagName)) {
+        throw new CoMotionError(`元素不是文字元素：${elementId}`);
+      }
       if (match.selfClosing) {
         throw new CoMotionError(`元素沒有文字內容：${elementId}`);
       }
