@@ -45,7 +45,7 @@ describe("a downstream pipe that closes early", () => {
       const bigContent = "x".repeat(8 * 1024 * 1024);
       const zipped = zipSync({
         "project.json": new TextEncoder().encode(
-          JSON.stringify({ formatVersion: 1, name: "epipe test", slides: ["slides/001.svg"] }),
+          JSON.stringify({ formatVersion: 1, name: "epipe test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
         ),
         "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
         "assets/big.txt": new TextEncoder().encode(bigContent),

@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path";
 import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
+import { validateProjectJson as validateProjectJsonStructure } from "./project-json.js";
 
 const REQUIRED_DIRS = ["slides", "assets"];
 
@@ -52,7 +53,10 @@ async function collectFiles(root: string, currentDir: string, zippable: Zippable
 
 /**
  * Unzips a `.comot` container into `targetDir`. Validates that the container
- * has a readable project.json with a formatVersion before trusting it.
+ * has a readable, structurally valid project.json before trusting it — the
+ * same structural check `serve` runs on its own copy of project.json, so a
+ * container missing e.g. `slides` fails here, at open time, instead of
+ * surviving to explode inside `serve` (ticket #12).
  */
 export async function unpackContainer(comotPath: string, targetDir: string): Promise<void> {
   let comotStats;
@@ -153,12 +157,10 @@ async function validateProjectJson(workDir: string, comotPath: string): Promise<
     throw new CoMotionError(`project.json 不是合法的 JSON：${comotPath}`);
   }
 
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("formatVersion" in parsed) ||
-    typeof (parsed as { formatVersion: unknown }).formatVersion !== "number"
-  ) {
-    throw new CoMotionError(`project.json 缺少 formatVersion：${comotPath}`);
-  }
+  // The structural check itself never mentions comotPath (ADR-0004: the
+  // shared validator in packages/core/src/project-json.ts is used verbatim
+  // by both open and serve, and serve has no .comot path to echo). Kept
+  // path-free here too rather than appended, so both callers report the
+  // exact same wording for the exact same malformed field.
+  validateProjectJsonStructure(parsed);
 }

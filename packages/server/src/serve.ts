@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError, validateProjectJson, type ProjectJson } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
@@ -49,13 +49,6 @@ export interface RunningServer {
 
 const DEFAULT_PORT = 5173;
 const DEFAULT_HOST = "127.0.0.1";
-
-interface ProjectJson {
-  formatVersion: number;
-  name: string;
-  canvas: { width: number; height: number };
-  slides: string[];
-}
 
 /**
  * Validates the presentation and starts the HTTP server. Validation
@@ -132,46 +125,12 @@ async function loadProject(registry: CommandRegistry, id: string): Promise<Proje
   } catch {
     throw new CoMotionError("簡報的 project.json 無法解析");
   }
+  // Structural validation is @co-motion/core's, not serve's own copy
+  // (ticket #12) — the same check `open` already ran when the container
+  // was first unpacked. Running it again here catches a work directory
+  // whose project.json was mutated after `open` (e.g. by a future write
+  // command) rather than trusting a shape that was only ever true once.
   return validateProjectJson(parsed);
-}
-
-/**
- * Structural validation of a parsed `project.json`, staged here rather than
- * in `packages/core`'s container module because that module is mid-edit on
- * another branch right now — this is a temporary home, not the intended
- * one. The container format only guarantees `formatVersion`; every other
- * field the server relies on is checked explicitly here, with no defaults
- * and no guessing, so a corrupt or schema-drifted project.json fails with a
- * named cause instead of a raw TypeError downstream.
- */
-function validateProjectJson(value: unknown): ProjectJson {
-  if (typeof value !== "object" || value === null) {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：內容不是物件");
-  }
-  const record = value as Record<string, unknown>;
-
-  if (typeof record.formatVersion !== "number") {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：缺少或型別錯誤的 formatVersion");
-  }
-  if (typeof record.name !== "string") {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：缺少或型別錯誤的 name");
-  }
-  if (
-    typeof record.canvas !== "object" ||
-    record.canvas === null ||
-    typeof (record.canvas as Record<string, unknown>).width !== "number" ||
-    typeof (record.canvas as Record<string, unknown>).height !== "number"
-  ) {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：缺少或型別錯誤的 canvas");
-  }
-  if (!Array.isArray(record.slides)) {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：slides 不是陣列");
-  }
-  if (!record.slides.every((slide) => typeof slide === "string")) {
-    throw new CoMotionError("簡報的 project.json 格式錯誤：slides 內含無效項目");
-  }
-
-  return record as unknown as ProjectJson;
 }
 
 function listen(server: http.Server, port: number, host: string): Promise<void> {

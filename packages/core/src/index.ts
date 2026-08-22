@@ -1,7 +1,9 @@
 export { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 export { generateOpaqueId, generateElementId } from "./id.js";
 export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./presentation.js";
-export type { ProjectJson, MinimalPresentationFiles } from "./presentation.js";
+export type { MinimalPresentationFiles } from "./presentation.js";
+export { validateProjectJson } from "./project-json.js";
+export type { ProjectJson } from "./project-json.js";
 export {
   resolveCoMotionHome,
   resolveWorkDir,

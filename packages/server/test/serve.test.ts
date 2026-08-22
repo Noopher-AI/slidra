@@ -71,6 +71,12 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
 // Builds a hostile .comot with a literal project.json body (bypassing the
 // server's own JSON.stringify) so the malformed-container tests exercise
 // the exact bytes the review found unhandled — real fflate zips, no mocks.
+//
+// Ticket #12: `open` now runs the same structural validation `serve` used
+// to run on its own, so a structurally invalid project.json is rejected
+// right here, before any id or work directory exists for it — it never
+// reaches `serve()` at all. This returns `open`'s own rejection message
+// (and asserts the dispatch failed) instead of an id.
 async function openMalformedPresentation(projectJsonRaw: string): Promise<string> {
   const { zipSync } = await import("fflate");
   const zipped = zipSync({
@@ -81,7 +87,8 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
   const malformedPath = path.join(comotDir, "malformed.comot");
   await writeFile(malformedPath, zipped);
   const opened = await registry.dispatch<{ id: string }>("open", { path: malformedPath });
-  return opened.data!.id;
+  expect(opened.ok).toBe(false);
+  return opened.message;
 }
 
 describe("startServe", () => {
@@ -221,16 +228,17 @@ describe("startServe", () => {
     expect(body.error).not.toContain("root:");
   });
 
-  it("rejects with an explicit Traditional Chinese error and does not start when project.json lacks slides", async () => {
-    const id = await openMalformedPresentation(
+  it("rejects with an explicit Traditional Chinese error at open time when project.json lacks slides", async () => {
+    const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );
 
-    await expect(serve(id)).rejects.toThrow(/project\.json/);
+    expect(message).toMatch(/project\.json/);
+    expect(message).toMatch(/slides/);
   });
 
-  it("rejects with an explicit error and does not start when slides is present but not an array", async () => {
-    const id = await openMalformedPresentation(
+  it("rejects at open time when slides is present but not an array", async () => {
+    const message = await openMalformedPresentation(
       JSON.stringify({
         formatVersion: 1,
         name: "壞掉的簡報",
@@ -239,11 +247,12 @@ describe("startServe", () => {
       }),
     );
 
-    await expect(serve(id)).rejects.toThrow(/project\.json/);
+    expect(message).toMatch(/project\.json/);
+    expect(message).toMatch(/slides/);
   });
 
-  it("rejects with an explicit error and does not start when slides contains an invalid entry", async () => {
-    const id = await openMalformedPresentation(
+  it("rejects at open time when slides contains an invalid entry", async () => {
+    const message = await openMalformedPresentation(
       JSON.stringify({
         formatVersion: 1,
         name: "壞掉的簡報",
@@ -252,22 +261,31 @@ describe("startServe", () => {
       }),
     );
 
-    await expect(serve(id)).rejects.toThrow(/project\.json/);
+    expect(message).toMatch(/project\.json/);
+    expect(message).toMatch(/slides/);
   });
 
-  it("never leaks a real filesystem path in project.json validation errors", async () => {
-    const id = await openMalformedPresentation(
+  it("never leaks the hidden work directory's path in project.json validation errors", async () => {
+    // Echoing back the .comot path the caller supplied is legitimate
+    // (ADR-0004) — it's the user's own argument, not the work directory.
+    // What must never appear is CO_MOTION_HOME's hidden work directory.
+    const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );
 
-    try {
-      await serve(id);
-      throw new Error("expected serve() to reject");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      expect(message).not.toContain(comotDir);
-      expect(message).not.toContain(coMotionHome);
-    }
+    expect(message).not.toContain(coMotionHome);
+  });
+
+  // The exact ticket #12 scenario: a container whose project.json is only
+  // `{"formatVersion":1}` used to pass `open`'s formatVersion-only check
+  // and then explode inside `serve` as a raw TypeError on `slides` being
+  // undefined. It must now be rejected by `open` itself, with a named
+  // cause, and never reach `serve` at all.
+  it("rejects {\"formatVersion\":1} at open time, naming the missing field, never reaching serve", async () => {
+    const message = await openMalformedPresentation(JSON.stringify({ formatVersion: 1 }));
+
+    expect(message).toMatch(/project\.json/);
+    expect(message).toMatch(/name/);
   });
 });
 
