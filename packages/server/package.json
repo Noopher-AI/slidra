@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@co-motion/cli": "*",
-    "@co-motion/core": "*"
+    "@co-motion/core": "*",
+    "@zed-industries/agent-client-protocol": "^0.4.5"
   }
 }

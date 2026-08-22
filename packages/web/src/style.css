@@ -43,8 +43,62 @@ body,
   border-left: 1px solid #ddd;
   padding: 1rem;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .chat-placeholder {
   color: #888;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-message {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message-author {
+  align-self: flex-end;
+  background: #dceeff;
+}
+
+.chat-message-agent {
+  align-self: flex-start;
+  background: #f0f0f0;
+}
+
+.chat-working {
+  margin: 0;
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.chat-error {
+  margin: 0;
+  color: #b00020;
+  font-size: 0.85rem;
+}
+
+.chat-input {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  box-sizing: border-box;
 }

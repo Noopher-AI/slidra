@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
+import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
+import { openEventStream } from "./sse.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -25,6 +27,14 @@ export interface ServeOptions {
    */
   port?: number;
   host?: string;
+  /**
+   * The already-selected ACP adapter to spawn on the first chat message.
+   * Optional here only because pre-chat tests in this suite construct a
+   * server that never touches `/api/chat*`; production `co-motion serve`
+   * always resolves one via `selectAdapter()` before calling `startServe`
+   * (§3 — no fallback, no degraded mode) and always passes it.
+   */
+  agent?: AgentAdapterConfig;
 }
 
 export interface RunningServer {
@@ -60,8 +70,21 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
 
   const staticDir = resolveWebDist();
 
+  // Resources started alongside the HTTP server. close() tears them down in
+  // registration order, before the socket itself is closed.
+  const disposers: Array<() => Promise<void>> = [];
+
+  const chatSession = options.agent ? new AgentChatSession(options.agent) : undefined;
+  if (chatSession) {
+    // `server.close()` waits for established connections rather than
+    // closing them — an open SSE stream never ends by itself, and the
+    // adapter subprocess never exits on its own either. Without this the
+    // server hangs on shutdown forever.
+    disposers.push(() => chatSession.dispose());
+  }
+
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, req, res);
+    void handleRequest(registry, presentationId, staticDir, chatSession, req, res);
   });
 
   await listen(server, port, host);
@@ -70,10 +93,14 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   return {
     port: actualPort,
     url: `http://${host}:${actualPort}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: async () => {
+      for (const dispose of disposers) {
+        await dispose();
+      }
+      await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
-      }),
+      });
+    },
   };
 }
 
@@ -158,15 +185,28 @@ async function handleRequest(
   registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
+  chatSession: AgentChatSession | undefined,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
+    // Parsed before the method gate so POST /api/chat can be routed
+    // explicitly — every other POST still gets the same 405 it always did.
+    const url = new URL(req.url ?? "/", "http://localhost");
+
+    if (req.method === "POST") {
+      if (url.pathname === "/api/chat") {
+        await handleChatPost(chatSession, req, res);
+        return;
+      }
+      sendJson(res, 405, { error: "只支援 GET" });
+      return;
+    }
+
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "只支援 GET" });
       return;
     }
-    const url = new URL(req.url ?? "/", "http://localhost");
 
     if (url.pathname === "/api/presentation") {
       const project = await loadProject(registry, presentationId);
@@ -194,6 +234,11 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/chat/stream") {
+      handleChatStream(chatSession, res);
+      return;
+    }
+
     if (url.pathname.startsWith("/api/")) {
       sendJson(res, 404, { error: "找不到端點" });
       return;
@@ -203,6 +248,60 @@ async function handleRequest(
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : "未知錯誤" });
   }
+}
+
+/**
+ * `POST /api/chat` — accepts the author's message and returns immediately;
+ * the reply is never awaited here, it streams separately over
+ * `/api/chat/stream`.
+ */
+async function handleChatPost(
+  chatSession: AgentChatSession | undefined,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (!chatSession) {
+    sendJson(res, 500, { error: "尚未設定 agent，聊天功能無法使用" });
+    return;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    return;
+  }
+  const text = (body as { text?: unknown } | null)?.text;
+  if (typeof text !== "string" || text.trim() === "") {
+    sendJson(res, 400, { error: "訊息內容不可為空" });
+    return;
+  }
+  chatSession.sendMessage(text);
+  sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `GET /api/chat/stream` — an SSE stream of the agent's reply. Event names:
+ * `chat-chunk` (a reply-text delta), `chat-done` (the turn ended, carries
+ * `stopReason`), `chat-error` (a clear-text failure, e.g. not logged in).
+ */
+function handleChatStream(chatSession: AgentChatSession | undefined, res: ServerResponse): void {
+  if (!chatSession) {
+    sendJson(res, 500, { error: "尚未設定 agent，聊天功能無法使用" });
+    return;
+  }
+  const stream = openEventStream(res);
+  const detach = chatSession.attachStream((event, data) => stream.send(event, data));
+  res.once("close", detach);
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
