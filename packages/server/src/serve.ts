@@ -7,6 +7,8 @@ import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
+import { createChangeBroadcaster } from "./changes.js";
+import type { ChangeBroadcaster } from "./changes.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
@@ -90,8 +92,14 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     await chatSession.dispose();
   });
 
+  // Starts watching only lazily, on the first /api/events connection (see
+  // changes.ts) — creating the handle itself touches no filesystem, so no
+  // rollback is needed if listen() below fails.
+  const changeBroadcaster = createChangeBroadcaster(presentationId);
+  disposers.push(() => changeBroadcaster.dispose());
+
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, chatSession, liveChatStreams, req, res);
+    void handleRequest(registry, presentationId, staticDir, chatSession, liveChatStreams, changeBroadcaster, req, res);
   });
 
   await listen(server, port, host);
@@ -194,6 +202,7 @@ async function handleRequest(
   staticDir: string,
   chatSession: AgentChatSession,
   liveChatStreams: Set<EventStream>,
+  changeBroadcaster: ChangeBroadcaster,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -244,6 +253,14 @@ async function handleRequest(
 
     if (url.pathname === "/api/chat/stream") {
       handleChatStream(chatSession, res, liveChatStreams);
+      return;
+    }
+
+    if (url.pathname === "/api/events") {
+      // Live reload push (ticket #5): opens a long-lived SSE stream. Never
+      // returns/closes `res` itself — handleConnection hands it to
+      // openEventStream, which owns the response from here on.
+      await changeBroadcaster.handleConnection(res);
       return;
     }
 

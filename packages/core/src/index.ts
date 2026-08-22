@@ -4,6 +4,7 @@ export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./pre
 export type { ProjectJson, MinimalPresentationFiles } from "./presentation.js";
 export {
   resolveCoMotionHome,
+  resolveWorkDir,
   createNewPresentation,
   openPresentation,
   packPresentation,
@@ -12,3 +13,5 @@ export {
   listPresentationEntries,
   setElementText,
 } from "./workspace.js";
+export { watchPresentation } from "./watch.js";
+export type { PresentationWatcher } from "./watch.js";
