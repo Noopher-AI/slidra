@@ -98,4 +98,43 @@ describe("mountCanvas", () => {
     await expect(controller.reload()).resolves.toBeUndefined();
     expect(container.querySelector("iframe")).toBeNull();
   });
+
+  // Ticket #11: a `srcdoc` document resolves relative URLs against the
+  // *parent* document's URL, not the slide's own virtual location, which is
+  // why `href="../assets/photo.png"` inside `slides/001.svg` would
+  // otherwise resolve to the wrong place. Injecting a `<base>` pointing at
+  // the slide's own directory inside the byte-preserving `/api/raw/` path
+  // space makes the browser's own resolution do the right thing, without
+  // touching the (untrusted, ADR-0003) slide bytes themselves.
+  it("injects a <base> pointing at the slide's own directory inside /api/raw/", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+    const parsed = new DOMParser().parseFromString(iframe.srcdoc, "text/html");
+    const base = parsed.querySelector("base");
+
+    expect(base).not.toBeNull();
+    expect(base!.getAttribute("href")).toBe("/api/raw/slides/");
+  });
+
+  it("leaves the wrapper document unchanged (no <base>) when the presentation has zero slides", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify({ name: "空簡報", slides: [] }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+    expect(iframe.srcdoc).not.toContain("<base");
+    expect(iframe.srcdoc).toContain("此簡報沒有投影片");
+  });
 });
