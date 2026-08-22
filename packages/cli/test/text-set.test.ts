@@ -40,6 +40,26 @@ async function openFixturePresentation(slideSvg: string, registry: CommandRegist
   return { id: opened.data!.id };
 }
 
+/** Opens a presentation with a hand-built slides/001.svg given as raw bytes, for tests that need control over the exact byte sequence (e.g. invalid UTF-8, a BOM). */
+async function openFixturePresentationBytes(
+  slideSvgBytes: Uint8Array,
+  registry: CommandRegistry,
+  comotDir: string,
+): Promise<{ id: string }> {
+  const { zipSync } = await import("fflate");
+  const { writeFile } = await import("node:fs/promises");
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(
+      JSON.stringify({ formatVersion: 1, name: "fixture", slides: ["slides/001.svg"] }),
+    ),
+    "slides/001.svg": slideSvgBytes,
+  });
+  const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return { id: opened.data!.id };
+}
+
 /** Opens a freshly created presentation and returns its id and title element id. */
 async function openFreshPresentation(): Promise<{ id: string; elementId: string; originalSlide: string }> {
   const comotPath = path.join(comotDir, "deck.comot");
@@ -325,6 +345,68 @@ describe("text set", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("fails with a clear error and writes nothing when the slide contains an invalid UTF-8 byte, even far from the target element", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const prefix = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><!-- stray byte: ',
+    );
+    const invalidByte = new Uint8Array([0xff]); // never valid as a UTF-8 lead byte
+    const suffix = new TextEncoder().encode(' --><text id="el-a">old</text></svg>');
+    const slideBytes = new Uint8Array(prefix.length + invalidByte.length + suffix.length);
+    slideBytes.set(prefix, 0);
+    slideBytes.set(invalidByte, prefix.length);
+    slideBytes.set(suffix, prefix.length + invalidByte.length);
+
+    const { id } = await openFixturePresentationBytes(slideBytes, registry, comotDir);
+    const realPath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    const beforeBytes = await readFile(realPath);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+    expect(result.message).not.toContain(coMotionHome);
+
+    const afterBytes = await readFile(realPath);
+    expect(Buffer.compare(afterBytes, beforeBytes)).toBe(0);
+    expect(Buffer.compare(afterBytes, Buffer.from(slideBytes))).toBe(0);
+  });
+
+  it("preserves a leading UTF-8 BOM untouched when editing a slide that starts with one", async () => {
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
+    const rest = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><text id="el-a">old</text></svg>',
+    );
+    const slideBytes = new Uint8Array(bom.length + rest.length);
+    slideBytes.set(bom, 0);
+    slideBytes.set(rest, bom.length);
+
+    const { id } = await openFixturePresentationBytes(slideBytes, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(true);
+    const { readFile } = await import("node:fs/promises");
+    const realPath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    const afterBytes = await readFile(realPath);
+    expect(afterBytes.subarray(0, 3)).toEqual(Buffer.from(bom));
+
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(
+      "\uFEFF<svg xmlns=\"http://www.w3.org/2000/svg\"><text id=\"el-a\">new</text></svg>",
+    );
   });
 
   it("never leaks the real work directory path in success or error messages", async () => {

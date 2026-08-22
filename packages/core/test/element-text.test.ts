@@ -157,4 +157,34 @@ describe("replaceElementText", () => {
 
     expect(result).toBe('<svg><text id="el-a">a\tb\nc\rd</text></svg>');
   });
+
+  it("finds the real closing tag past a comment inside the element that literally contains </text>", () => {
+    const svg = '<svg><text id="el-a">old<!-- </text> --></text></svg>';
+
+    const result = replaceElementText(svg, "el-a", "new");
+
+    expect(result).toBe('<svg><text id="el-a">new</text></svg>');
+  });
+
+  it("finds the real closing tag past a CDATA section inside the element that literally contains </text>", () => {
+    const svg = '<svg><text id="el-a">old<![CDATA[ </text> ]]></text></svg>';
+
+    const result = replaceElementText(svg, "el-a", "new");
+
+    expect(result).toBe('<svg><text id="el-a">new</text></svg>');
+  });
+
+  it("recognises a closing tag with whitespace before the >, e.g. </text >", () => {
+    const svg = '<svg><text id="el-a">old</text ></svg>';
+
+    const result = replaceElementText(svg, "el-a", "new");
+
+    expect(result).toBe('<svg><text id="el-a">new</text ></svg>');
+  });
+
+  it("throws when no genuine closing tag exists (only a comment mentioning it)", () => {
+    const svg = '<svg><text id="el-a">old<!-- </text> --></svg>';
+
+    expect(() => replaceElementText(svg, "el-a", "new")).toThrow();
+  });
 });

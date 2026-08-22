@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { CoMotionError } from "./errors.js";
 import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
 import type { ProjectJson } from "./presentation.js";
@@ -128,6 +128,37 @@ function findNextStartTag(svg: string, fromIndex: number): TagMatch | null {
 }
 
 /**
+ * Finds the matching `</tagName>` closing tag for the element whose content
+ * starts at `fromIndex`. Reuses `skipNonElementConstruct` — the same skip
+ * logic `findNextStartTag` uses for opening tags — so a comment or CDATA
+ * section inside the element that happens to contain the literal text
+ * `</tagName>` is never mistaken for the real closing tag. The regexp
+ * permits XML's optional whitespace before the closing `>` (e.g.
+ * `</text >`). Returns -1 if no genuine closing tag is found.
+ */
+function findMatchingCloseTag(svg: string, tagName: string, fromIndex: number): number {
+  const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const closeTagPattern = new RegExp(`^</${escapedTagName}\\s*>`);
+  let i = svg.indexOf("<", fromIndex);
+  while (i !== -1) {
+    const marker = svg[i + 1];
+    if (marker === "!" || marker === "?") {
+      const next = skipNonElementConstruct(svg, i);
+      if (next === -1) {
+        return -1;
+      }
+      i = svg.indexOf("<", next);
+      continue;
+    }
+    if (marker === "/" && closeTagPattern.test(svg.slice(i))) {
+      return i;
+    }
+    i = svg.indexOf("<", i + 1);
+  }
+  return -1;
+}
+
+/**
  * Extracts the exact value of an `id="..."` / `id='...'` attribute, if
  * present. The attribute name must begin at the start of the attribute
  * region or directly after XML whitespace, so `data-id="..."` or
@@ -182,8 +213,7 @@ export function replaceElementText(svgContent: string, elementId: string, newTex
       if (match.selfClosing) {
         throw new CoMotionError(`元素沒有文字內容：${elementId}`);
       }
-      const closeTag = `</${match.tagName}>`;
-      const closeIndex = svgContent.indexOf(closeTag, match.contentStart);
+      const closeIndex = findMatchingCloseTag(svgContent, match.tagName, match.contentStart);
       if (closeIndex === -1) {
         throw new CoMotionError(`元素沒有文字內容：${elementId}`);
       }
@@ -228,14 +258,11 @@ export async function writeSlideElementText(
   const realPath = await resolveVirtualFilePath(workDir, slideVirtualPath);
   await assertIsSlide(workDir, slideVirtualPath);
 
-  let original: string;
-  try {
-    original = await readFile(realPath, "utf-8");
-  } catch {
-    // realPath is a real filesystem path inside the hidden work directory
-    // (ADR-0004) — never quote it.
-    throw new CoMotionError(`讀取投影片時發生錯誤：${slideVirtualPath}`);
-  }
+  // Strict decoding, reused from the read path (readVirtualFile): any
+  // invalid UTF-8 byte anywhere in the slide throws rather than being
+  // silently replaced with U+FFFD, which would then get persisted by the
+  // write below. readVirtualFile only ever throws CoMotionError.
+  const original = await readVirtualFile(workDir, slideVirtualPath);
 
   const updated = replaceElementText(original, elementId, newText);
 
