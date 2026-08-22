@@ -93,6 +93,26 @@ export async function listVirtualEntries(workDir: string, virtualPath = ""): Pro
 }
 
 /**
+ * Resolves `virtualPath` to its real filesystem path, without reading it.
+ * Used by write primitives (e.g. `text set`'s slide mutation) that need the
+ * real path to modify a file in place, while still going through the same
+ * structural discovery as every read (ADR-0004, third layer): a virtual
+ * path either resolves to a file that was actually found on disk, or it
+ * resolves to nothing.
+ */
+export async function resolveVirtualFilePath(workDir: string, virtualPath: string): Promise<string> {
+  const root = await buildVirtualTree(workDir);
+  const node = navigate(root, splitVirtualPath(virtualPath));
+  if (!node) {
+    throw new CoMotionError(`找不到檔案：${virtualPath}`);
+  }
+  if (node.type !== "file") {
+    throw new CoMotionError(`不是檔案：${virtualPath}`);
+  }
+  return node.realPath;
+}
+
+/**
  * Reads the full original content of the file at `virtualPath`. Throws when
  * the path does not resolve to a file — including when it resolves to a
  * directory, or to nothing at all.
