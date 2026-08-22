@@ -23,6 +23,26 @@ export type CommandHandler<Input = unknown, Data = unknown> = (
   input: Input,
 ) => Promise<CommandResult<Data>> | CommandResult<Data>;
 
+/**
+ * Turns a successful command's structured `data` into the exact bytes a
+ * terminal should see (e.g. `cat`'s raw file content, `ls`'s bare entry
+ * list). Only the CLI bin layer calls this — `co-motion serve` consumes
+ * `data` directly and never touches renderers.
+ */
+export type TerminalRenderer<Data = unknown> = (data: Data) => string;
+
+/**
+ * What gets registered for a command: its handler plus an explicit
+ * decision about terminal rendering. `render` is required (not optional)
+ * so a command cannot be registered without its author confronting the
+ * question — `null` means "no bespoke rendering, use the default
+ * status-line-plus-JSON output".
+ */
+export interface CommandDefinition<Input = unknown, Data = unknown> {
+  handler: CommandHandler<Input, Data>;
+  render: TerminalRenderer<Data> | null;
+}
+
 export class UnknownCommandError extends Error {
   constructor(name: string) {
     super(`未知的命令：${name}`);
@@ -35,27 +55,30 @@ export class UnknownCommandError extends Error {
  * surface shared by the one-shot `co-motion` bin and, later, `co-motion serve`.
  */
 export class CommandRegistry {
-  private readonly handlers = new Map<string, CommandHandler<any, any>>();
+  private readonly definitions = new Map<string, CommandDefinition<any, any>>();
 
-  register<Input, Data>(name: string, handler: CommandHandler<Input, Data>): void {
-    if (this.handlers.has(name)) {
+  register<Input, Data>(name: string, definition: CommandDefinition<Input, Data>): void {
+    if (this.definitions.has(name)) {
       throw new Error(`Command already registered: ${name}`);
     }
-    this.handlers.set(name, handler);
+    this.definitions.set(name, definition);
   }
 
   /**
    * Dispatches a command by name with structured input. Expected failures
    * (CoMotionError) are converted into a `{ ok: false }` result; anything
    * else propagates as a thrown error (a bug, not a user-facing failure).
+   *
+   * Returns only the structured `CommandResult` — never anything
+   * rendering-related. This is the method `co-motion serve` calls.
    */
   async dispatch<Data = unknown>(name: string, input: unknown): Promise<CommandResult<Data>> {
-    const handler = this.handlers.get(name);
-    if (!handler) {
+    const definition = this.definitions.get(name);
+    if (!definition) {
       throw new UnknownCommandError(name);
     }
     try {
-      return (await handler(input)) as CommandResult<Data>;
+      return (await definition.handler(input)) as CommandResult<Data>;
     } catch (error) {
       if (error instanceof CoMotionError) {
         return { ok: false, message: error.message };
@@ -65,6 +88,18 @@ export class CommandRegistry {
   }
 
   has(name: string): boolean {
-    return this.handlers.has(name);
+    return this.definitions.has(name);
+  }
+
+  /**
+   * Looks up a command's terminal renderer, if any. Used only by the CLI
+   * bin layer to decide how to print a successful result.
+   */
+  getRenderer<Data = unknown>(name: string): TerminalRenderer<Data> | undefined {
+    const definition = this.definitions.get(name);
+    if (!definition || definition.render === null) {
+      return undefined;
+    }
+    return definition.render as TerminalRenderer<Data>;
   }
 }

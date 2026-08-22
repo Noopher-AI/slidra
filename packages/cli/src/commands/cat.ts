@@ -1,5 +1,5 @@
 import { readPresentationFile } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, TerminalRenderer } from "../registry.js";
 
 export interface CatInput {
   id: string;
@@ -19,3 +19,10 @@ export const catCommand: CommandHandler<CatInput, CatData> = async (input) => {
     message: `已讀取：${input.path}`,
   };
 };
+
+/**
+ * `cat` mimics the Unix tool: the file's complete original bytes, and
+ * nothing else — no status line, no JSON wrapper, no added or stripped
+ * newline (ADR-0004).
+ */
+export const renderCat: TerminalRenderer<CatData> = (data) => data.content;

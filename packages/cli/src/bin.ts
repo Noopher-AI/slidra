@@ -28,9 +28,17 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (result.ok) {
-    console.log(result.message);
-    if (result.data !== undefined) {
-      console.log(JSON.stringify(result.data, null, 2));
+    // A command with a registered renderer gets its exact bytes written
+    // as-is (no console.log — that would add a newline `cat` never asked
+    // for). Everything else keeps the default status-line-plus-JSON shape.
+    const renderer = registry.getRenderer(parsed.name);
+    if (renderer) {
+      process.stdout.write(renderer(result.data));
+    } else {
+      console.log(result.message);
+      if (result.data !== undefined) {
+        console.log(JSON.stringify(result.data, null, 2));
+      }
     }
     return 0;
   }

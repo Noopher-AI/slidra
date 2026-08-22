@@ -2,8 +2,8 @@ import { CommandRegistry } from "./registry.js";
 import { newCommand } from "./commands/new.js";
 import { openCommand } from "./commands/open.js";
 import { packCommand } from "./commands/pack.js";
-import { catCommand } from "./commands/cat.js";
-import { lsCommand } from "./commands/ls.js";
+import { catCommand, renderCat } from "./commands/cat.js";
+import { lsCommand, renderLs } from "./commands/ls.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -11,13 +11,19 @@ import { lsCommand } from "./commands/ls.js";
  *
  * `cat`/`ls` are the presentation's only read surface, and there is no
  * write command registered here at all (ADR-0004) — not disabled, absent.
+ *
+ * Every registration names its `render` explicitly: `null` for the default
+ * status-line-plus-JSON output, or a colocated renderer for commands that
+ * mimic a Unix tool's raw output. This is the single place a future command
+ * author must confront the rendering question — `register`'s `render`
+ * field is required, not optional.
  */
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  registry.register("new", newCommand);
-  registry.register("open", openCommand);
-  registry.register("pack", packCommand);
-  registry.register("cat", catCommand);
-  registry.register("ls", lsCommand);
+  registry.register("new", { handler: newCommand, render: null });
+  registry.register("open", { handler: openCommand, render: null });
+  registry.register("pack", { handler: packCommand, render: null });
+  registry.register("cat", { handler: catCommand, render: renderCat });
+  registry.register("ls", { handler: lsCommand, render: renderLs });
   return registry;
 }

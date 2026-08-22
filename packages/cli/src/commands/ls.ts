@@ -1,5 +1,5 @@
 import { listPresentationEntries } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, TerminalRenderer } from "../registry.js";
 
 export interface LsInput {
   id: string;
@@ -19,3 +19,10 @@ export const lsCommand: CommandHandler<LsInput, LsData> = async (input) => {
     message: `共 ${entries.length} 個項目`,
   };
 };
+
+/**
+ * `ls` mimics the Unix tool: one entry name per line, nothing else — no
+ * count, no summary, no JSON (ADR-0004).
+ */
+export const renderLs: TerminalRenderer<LsData> = (data) =>
+  data.entries.map((entry) => `${entry}\n`).join("");

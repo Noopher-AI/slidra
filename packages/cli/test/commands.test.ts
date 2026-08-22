@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
+import { renderCat } from "../src/commands/cat.js";
+import { renderLs } from "../src/commands/ls.js";
 
 // Every test points CO_MOTION_HOME at its own temp directory so we never
 // touch the real ~/.comotion (ADR-0004, ticket #9 testing convention).
@@ -384,5 +386,62 @@ describe("no output leaks the real work directory path", () => {
     for (const output of outputs) {
       expect(output).not.toContain(coMotionHome);
     }
+  });
+});
+
+describe("cat renderer", () => {
+  it("emits the content byte-for-byte, with no JSON escaping and no status line", () => {
+    // Every character class JSON.stringify would mangle: a quote, a
+    // newline, `<`, and non-ASCII text.
+    const tricky = 'quote"newline\n<tag>非ASCII字';
+
+    const rendered = renderCat({ content: tricky });
+
+    expect(rendered).toBe(tricky);
+    expect(rendered).not.toContain("\\n");
+    expect(rendered).not.toContain("\\\"");
+    expect(rendered).not.toContain("已讀取");
+  });
+
+  it("round-trips a real file's stored content through the full dispatch pipeline", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    const trickyName = 'quote"newline\n<tag>非ASCII名稱';
+    await registry.dispatch("new", { path: comotPath, name: trickyName });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
+    const render = registry.getRenderer<{ content: string }>("cat")!;
+    const rendered = render(result.data!);
+
+    // Rendered output is the raw stored file — parsing it back yields the
+    // exact original name, and none of the default wrapper survives.
+    expect(JSON.parse(rendered).name).toBe(trickyName);
+    expect(rendered).not.toContain("已讀取");
+    expect(rendered).not.toMatch(/^\s*\{\s*"content"/);
+  });
+});
+
+describe("ls renderer", () => {
+  it("emits exactly the entry names, one per line, and nothing else", () => {
+    const rendered = renderLs({ entries: ["assets", "project.json", "slides"] });
+
+    expect(rendered).toBe("assets\nproject.json\nslides\n");
+    expect(rendered).not.toContain("共");
+    expect(rendered).not.toContain("{");
+  });
+
+  it("emits an empty string for an empty directory", () => {
+    expect(renderLs({ entries: [] })).toBe("");
+  });
+});
+
+describe("new, open and pack have no terminal renderer — unchanged output", () => {
+  it("registry.getRenderer returns undefined so the bin falls back to the default format", () => {
+    expect(registry.getRenderer("new")).toBeUndefined();
+    expect(registry.getRenderer("open")).toBeUndefined();
+    expect(registry.getRenderer("pack")).toBeUndefined();
+    expect(registry.getRenderer("cat")).toBeDefined();
+    expect(registry.getRenderer("ls")).toBeDefined();
   });
 });
