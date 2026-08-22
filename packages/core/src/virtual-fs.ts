@@ -106,10 +106,19 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
   if (node.type !== "file") {
     throw new CoMotionError(`不是檔案：${virtualPath}`);
   }
+  let buffer: Buffer;
   try {
-    return await readFile(node.realPath, "utf-8");
+    buffer = await readFile(node.realPath);
   } catch {
     // node.realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`讀取檔案時發生錯誤：${virtualPath}`);
+  }
+  try {
+    // Strict decoding: any invalid UTF-8 byte sequence throws. This is a
+    // structural test on the bytes themselves — not a filename guess — so a
+    // mislabelled file can never slip through as corrupted text.
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    throw new CoMotionError(`${virtualPath} 是二進位資產，無法以文字讀取`);
   }
 }

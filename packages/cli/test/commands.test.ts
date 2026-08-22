@@ -321,6 +321,67 @@ describe("cat", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it("rejects a binary asset with an explicit error instead of silently corrupting it", async () => {
+    // `new` only ever produces text files, so the only honest way to get a
+    // real binary asset into a presentation is to build the container
+    // directly (the same technique the "open" tests use for malicious
+    // archives) and load it through `open`.
+    const { zipSync } = await import("fflate");
+    const { writeFile } = await import("node:fs/promises");
+    // Real invalid UTF-8 bytes, not a string standing in for them: 0xFF and
+    // 0xFE are not valid anywhere in UTF-8, and 0xC3 0x28 is a two-byte
+    // lead byte followed by a continuation byte that doesn't fit the form.
+    const binaryBytes = new Uint8Array([0xff, 0xfe, 0x00, 0x01, 0xc3, 0x28, 0x80]);
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(
+        JSON.stringify({ formatVersion: 1, name: "binary asset test", slides: ["slides/001.svg"] }),
+      ),
+      "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
+      "assets/intro.mp4": binaryBytes,
+    });
+    const comotPath = path.join(comotDir, "binary-fixture.comot");
+    await writeFile(comotPath, zipped);
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch("cat", { id, path: "assets/intro.mp4" });
+
+    // ok: false is what drives main()'s non-zero exit code (see bin.ts).
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("assets/intro.mp4");
+    expect(result.message).toContain("二進位");
+    // No real filesystem path leaks into the refusal (ADR-0004).
+    expect(result.message).not.toContain(coMotionHome);
+  });
+
+  it("keeps a UTF-8 text file with Traditional Chinese and emoji byte-identical", async () => {
+    // The boundary this guards: non-ASCII text is not binary. Only content
+    // that fails strict UTF-8 decoding should ever be rejected.
+    const { zipSync } = await import("fflate");
+    const { writeFile } = await import("node:fs/promises");
+    const text = "繁體中文測試：投影片與資產 🎉🚀📽️";
+    const originalBytes = new TextEncoder().encode(text);
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(
+        JSON.stringify({ formatVersion: 1, name: "emoji test", slides: ["slides/001.svg"] }),
+      ),
+      "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
+      "assets/note.txt": originalBytes,
+    });
+    const comotPath = path.join(comotDir, "text-fixture.comot");
+    await writeFile(comotPath, zipped);
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "assets/note.txt" });
+
+    expect(result.ok).toBe(true);
+    expect(result.data!.content).toBe(text);
+    // Byte-identical, not just string-equal: re-encoding the returned
+    // content must reproduce the exact original bytes.
+    expect(new TextEncoder().encode(result.data!.content)).toEqual(originalBytes);
+  });
 });
 
 describe("no write entry point exists", () => {
