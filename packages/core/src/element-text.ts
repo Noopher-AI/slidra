@@ -158,18 +158,79 @@ function findMatchingCloseTag(svg: string, tagName: string, fromIndex: number): 
   return -1;
 }
 
+const XML_WHITESPACE = /[\t\n\r ]/;
+
 /**
- * Extracts the exact value of an `id="..."` / `id='...'` attribute, if
- * present. The attribute name must begin at the start of the attribute
- * region or directly after XML whitespace, so `data-id="..."` or
- * `xml:id="..."` (real, different attributes) are never mistaken for `id`.
+ * Walks a tag's attribute region (the text between the tag name and its
+ * closing `>`, as already isolated by `findNextStartTag`) character by
+ * character and returns the actual name/value pairs it contains, keyed by
+ * exact attribute name.
+ *
+ * This replaces searching the region as text: once name and value are
+ * tokenised, text sitting inside a quoted value is structurally a value and
+ * can never again be mistaken for an attribute name, no matter what it
+ * looks like (e.g. `data-note=' id="el-a"'` — the `id="el-a"` there is part
+ * of `data-note`'s value, never a candidate for a real `id` match).
+ *
+ * `findNextStartTag` already tracks quote state to find where a tag ends
+ * (so a `>` inside a quoted value doesn't end it early); that guarantee
+ * means every quote opened within `attrsText` is already known to close
+ * before the tag does. This scanner does its own, separate quote tracking
+ * to split the region into name/value pairs — a different job (tokenising
+ * attributes, not finding a tag boundary) that reuses the same underlying
+ * rule rather than re-deriving it.
+ *
+ * Throws on attribute syntax it cannot make sense of (a name with no `=`,
+ * a value that isn't quoted, an unterminated quote) rather than guessing —
+ * this scanner only understands the attribute syntax SVG actually emits.
+ */
+function scanAttributes(attrsText: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const n = attrsText.length;
+  let i = 0;
+  while (i < n) {
+    while (i < n && XML_WHITESPACE.test(attrsText[i])) i++;
+    if (i >= n) break;
+
+    const nameStart = i;
+    while (i < n && !XML_WHITESPACE.test(attrsText[i]) && attrsText[i] !== "=") i++;
+    const name = attrsText.slice(nameStart, i);
+    if (!name) {
+      throw new CoMotionError("屬性語法錯誤：無法解析屬性名稱");
+    }
+
+    while (i < n && XML_WHITESPACE.test(attrsText[i])) i++;
+    if (attrsText[i] !== "=") {
+      throw new CoMotionError(`屬性語法錯誤：屬性 ${name} 缺少 =`);
+    }
+    i++;
+
+    while (i < n && XML_WHITESPACE.test(attrsText[i])) i++;
+    const quote = attrsText[i];
+    if (quote !== '"' && quote !== "'") {
+      throw new CoMotionError(`屬性語法錯誤：屬性 ${name} 的值未以引號括住`);
+    }
+    i++;
+
+    const valueStart = i;
+    while (i < n && attrsText[i] !== quote) i++;
+    if (i >= n) {
+      throw new CoMotionError(`屬性語法錯誤：屬性 ${name} 的引號未封閉`);
+    }
+    attrs.set(name, attrsText.slice(valueStart, i));
+    i++;
+  }
+  return attrs;
+}
+
+/**
+ * Extracts the exact value of an `id` attribute, if present, by scanning
+ * the attribute region into structured name/value pairs and looking up
+ * `id` as an exact attribute name. `data-id="..."` or `xml:id="..."` are
+ * different names entirely and are never matched.
  */
 function extractId(attrsText: string): string | undefined {
-  const match = /(?:^|[\t\n\r ])id\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(attrsText);
-  if (!match) {
-    return undefined;
-  }
-  return match[1] ?? match[2];
+  return scanAttributes(attrsText).get("id");
 }
 
 function escapeXmlText(text: string): string {

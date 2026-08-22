@@ -302,6 +302,26 @@ describe("text set", () => {
     expect(after.data!.content).toBe(slideSvg);
   });
 
+  it("does not select an element whose id attribute value is embedded inside another attribute's quoted value", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      "<text data-note=' id=\"el-a\"' id=\"el-b\">wrong</text>" +
+      '<text id="el-a">right</text>' +
+      "</svg>";
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-a",
+      newText: "new",
+    });
+
+    expect(result.ok).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(slideSvg.replace(">right<", ">new<"));
+  });
+
   it("fails naming the element when the target tag is not text-bearing (rect)", async () => {
     const slideSvg =
       '<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-a" x="0" y="0" width="1" height="1"></rect></svg>';

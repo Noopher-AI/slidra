@@ -187,4 +187,67 @@ describe("replaceElementText", () => {
 
     expect(() => replaceElementText(svg, "el-a", "new")).toThrow();
   });
+
+  // The attribute scanner closes a whole class of "id lookalike" defects
+  // (three rounds of review each found a different way to fool a
+  // text-searching match). These are the tricks found so far, plus the
+  // obvious neighbours, proving there is no lookalike left to defend
+  // against once the region is tokenised rather than searched.
+  describe("attribute scanner closes the id-lookalike class", () => {
+    it("does not select an element whose id attribute value is embedded inside another attribute's quoted value (double-quoted outer, id in single quotes)", () => {
+      const svg = "<svg><text data-note=' id=\"el-a\"' id=\"el-b\">wrong</text><text id=\"el-a\">right</text></svg>";
+
+      const result = replaceElementText(svg, "el-a", "new");
+
+      expect(result).toBe(
+        "<svg><text data-note=' id=\"el-a\"' id=\"el-b\">wrong</text><text id=\"el-a\">new</text></svg>",
+      );
+    });
+
+    it("does not select an element whose id attribute value is embedded inside another attribute's quoted value (single-quoted outer, id in double quotes)", () => {
+      const svg = '<svg><text data-note=" id=\'el-a\'" id="el-b">wrong</text><text id="el-a">right</text></svg>';
+
+      const result = replaceElementText(svg, "el-a", "new");
+
+      expect(result).toBe(
+        '<svg><text data-note=" id=\'el-a\'" id="el-b">wrong</text><text id="el-a">new</text></svg>',
+      );
+    });
+
+    it("still finds the tag end correctly when an attribute value contains a literal >", () => {
+      const svg = '<svg><text data-note="a > b" id="el-a">old</text></svg>';
+
+      const result = replaceElementText(svg, "el-a", "new");
+
+      expect(result).toBe('<svg><text data-note="a > b" id="el-a">new</text></svg>');
+    });
+
+    it("matches id with whitespace around the =", () => {
+      const svg = '<svg><text id = "el-a">old</text></svg>';
+
+      const result = replaceElementText(svg, "el-a", "new");
+
+      expect(result).toBe('<svg><text id = "el-a">new</text></svg>');
+    });
+
+    it("matches a single-quoted id attribute", () => {
+      const svg = "<svg><text id='el-a'>old</text></svg>";
+
+      const result = replaceElementText(svg, "el-a", "new");
+
+      expect(result).toBe("<svg><text id='el-a'>new</text></svg>");
+    });
+
+    it("throws when the id appears only inside a CDATA section (never scanned as markup)", () => {
+      const svg = '<svg><![CDATA[<text id="el-a">old</text>]]></svg>';
+
+      expect(() => replaceElementText(svg, "el-a", "new")).toThrow();
+    });
+
+    it("throws an explicit error on malformed attribute syntax rather than guessing (unquoted value)", () => {
+      const svg = '<svg><text id=el-a>old</text></svg>';
+
+      expect(() => replaceElementText(svg, "el-a", "new")).toThrow();
+    });
+  });
 });
