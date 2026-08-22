@@ -1,4 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import { CoMotionError } from "./errors.js";
 
@@ -33,7 +34,14 @@ export async function buildVirtualTree(workDir: string): Promise<VirtualDirector
 }
 
 async function populate(realDir: string, node: VirtualDirectory): Promise<void> {
-  const entries = await readdir(realDir, { withFileTypes: true });
+  let entries: Dirent[];
+  try {
+    entries = await readdir(realDir, { withFileTypes: true });
+  } catch {
+    // realDir is a real filesystem path inside the hidden work directory
+    // (ADR-0004) — never quote it, even for a plain permission/I-O error.
+    throw new CoMotionError("讀取簡報內容時發生錯誤");
+  }
   for (const entry of entries) {
     const realPath = path.join(realDir, entry.name);
     if (entry.isDirectory()) {

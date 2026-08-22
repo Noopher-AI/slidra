@@ -230,6 +230,36 @@ describe("ls", () => {
     expect(result.data!.entries).toEqual(["001.svg"]);
   });
 
+  it("fails with a CoMotionError, not a raw filesystem error, when a directory in the work tree is unreadable", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    // Make the "slides" subdirectory of the hidden work tree unreadable so
+    // that buildVirtualTree's enumeration hits a real EACCES while walking
+    // it (see virtual-fs.ts's populate). This must never leak the hidden
+    // work directory's real path back to the caller (ADR-0004, third layer).
+    const { chmod } = await import("node:fs/promises");
+    const unreadableDir = path.join(coMotionHome, "work", id, "slides");
+    await chmod(unreadableDir, 0o000);
+
+    try {
+      const result = await registry.dispatch("ls", { id });
+
+      expect(result.ok).toBe(false);
+      expect(result.message).not.toContain(coMotionHome);
+      expect(result.message).not.toContain(unreadableDir);
+      expect(result.message).not.toContain("EACCES");
+      expect(result.message).not.toContain("permission denied");
+      expect(result.message).not.toContain("errno");
+      expect(result.message).not.toMatch(/\//);
+    } finally {
+      // Restore permissions so the temp directory can be removed in afterEach.
+      await chmod(unreadableDir, 0o755);
+    }
+  });
+
   it("fails with a clear error and non-zero exit for a path that does not exist", async () => {
     const comotPath = path.join(comotDir, "deck.comot");
     await registry.dispatch("new", { path: comotPath });
