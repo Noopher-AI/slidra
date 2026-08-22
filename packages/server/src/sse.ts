@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ServerResponse } from "node:http";
 
 /**
  * A single open Server-Sent Events connection. Shared primitive for ticket
@@ -13,19 +13,21 @@ export interface EventStream {
 }
 
 const DEFAULT_HEARTBEAT_MS = 15000;
+// Node's timer implementation stores the delay in a 32-bit signed int and
+// silently clamps anything above this to a 1ms interval instead of erroring
+// (see Node's lib/internal/timers.js). A caller asking for a heartbeat
+// beyond this would silently get a continuous write loop instead — so this
+// is rejected too, not clamped away.
+const MAX_HEARTBEAT_MS = 2147483647;
 
 /**
  * Writes SSE response headers on `res` and returns a handle to push events
- * over it. `req`/`res` must already be matched to the SSE route by the
- * caller — this function only frames the protocol, it does no routing.
+ * over it. `res` must already be matched to the SSE route by the caller —
+ * this function only frames the protocol, it does no routing.
  */
-export function openEventStream(
-  req: IncomingMessage,
-  res: ServerResponse,
-  options?: { heartbeatMs?: number },
-): EventStream {
+export function openEventStream(res: ServerResponse, options?: { heartbeatMs?: number }): EventStream {
   const heartbeatMs = options?.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
-  if (!Number.isInteger(heartbeatMs) || heartbeatMs <= 0) {
+  if (!Number.isInteger(heartbeatMs) || heartbeatMs <= 0 || heartbeatMs > MAX_HEARTBEAT_MS) {
     // A caller-supplied bad interval is a programmer error, not a runtime
     // condition to clamp away — no "sensible default" is invented here.
     throw new TypeError(`heartbeatMs must be a positive integer, got: ${heartbeatMs}`);
