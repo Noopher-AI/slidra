@@ -51,7 +51,11 @@
 //                            toolCall.rawInput.command — this is where
 //                            ticket #7's allowlist reads the shell command
 //                            from. The outcome is logged as
-//                            `{ permissionOutcome }`.
+//                            `{ permissionOutcome }`. permissionOptions
+//                            (array, default [allow_once, reject_once]):
+//                            overrides the offered option list, used to
+//                            script an adapter that offers only
+//                            `allow_always` (ticket #7 fix 2).
 //                            readTextFileOnPromptIndex / readTextFilePath /
 //                            readTextFileLine / readTextFileLimit: at this
 //                            prompt index, call fs/read_text_file for the
@@ -168,7 +172,11 @@ class FakeAgent {
           // case the allowlist must fail closed on (ticket #7).
           rawInput: config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "co-motion ls" },
         },
-        options: [
+        // permissionOptions: overrides the default option list below (ticket
+        // #7 fix 2) — used to script an adapter that offers only
+        // `allow_always` (no `allow_once`), which the client must refuse
+        // rather than accept as a persistent grant.
+        options: config.permissionOptions ?? [
           { kind: "allow_once", name: "允許", optionId: "allow" },
           { kind: "reject_once", name: "拒絕", optionId: "reject" },
         ],

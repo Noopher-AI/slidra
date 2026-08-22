@@ -408,17 +408,32 @@ export class AgentChatSession extends EventEmitter {
    * `command-allowlist.ts`); refuses everything else, including any request
    * the command cannot be extracted from at all. The rule is hard-coded —
    * the author is never asked (user story 12).
+   *
+   * When allowing, only `allow_once` is ever selected — never
+   * `allow_always`. Some adapters stop calling `session/request_permission`
+   * for a tool entirely once a persistent grant has been given, which would
+   * silently disable this whole gate for every later command in the
+   * session, including ones that are not `co-motion` at all. If the
+   * adapter does not offer `allow_once`, the request is refused rather than
+   * falling back to a permanent grant — a visible, recoverable refusal
+   * beats a permission layer that quietly stops running. (The real
+   * `claude-code-acp` 0.12.6 offers `allow_once`, so this does not affect
+   * that path.) Rejecting has no equivalent risk, so `reject_once` and
+   * `reject_always` are both acceptable there.
    */
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
     const command = extractCommand(params.toolCall);
     const allow = command !== undefined && isCoMotionCommand(command);
-    const wantedKinds = allow ? (["allow_once", "allow_always"] as const) : (["reject_once", "reject_always"] as const);
-    const option = params.options.find((candidate) => candidate.kind === wantedKinds[0]) ??
-      params.options.find((candidate) => candidate.kind === wantedKinds[1]);
+    const option = allow
+      ? params.options.find((candidate) => candidate.kind === "allow_once")
+      : params.options.find((candidate) => candidate.kind === "reject_once") ??
+        params.options.find((candidate) => candidate.kind === "reject_always");
     if (!option) {
       // Cannot express the decision through any offered option — including
-      // the case where we mean to allow but the agent offered no allow
-      // option. Fail closed: `cancelled` grants nothing.
+      // the case where we mean to allow but the agent offered no
+      // `allow_once` option (and, deliberately, no fallback to
+      // `allow_always` — see docstring above). Fail closed: `cancelled`
+      // grants nothing.
       return { outcome: { outcome: "cancelled" } };
     }
     return { outcome: { outcome: "selected", optionId: option.optionId } };

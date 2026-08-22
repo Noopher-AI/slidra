@@ -380,6 +380,95 @@ describe("chat: session/request_permission allows only the co-motion program", (
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
+
+  // Fix 1, round 3 (ticket #7): the allowlist stopped trying to model shell
+  // grammar (quoting, substitution, and now escapes were three successive
+  // rounds of the same losing game) and instead accepts only a narrow,
+  // provably safe character shape — see command-allowlist.ts's docstring.
+  // Double quotes and backslashes are now refused outright, unconditionally,
+  // rather than case-by-case.
+
+  it("refuses the escaped-quote bypass: a backslash-escaped double quote that closes early for bash but not for a naive tokenizer", async () => {
+    // Under bash this argument's quoted region ends at `\"`, leaving the
+    // `;` unquoted — `printf PWNED` would run as a second command. The old
+    // tokenizer (which understood single/double quoting but not escapes)
+    // disagreed with bash about where the quote closed and allowed this
+    // through; the new character-shape allowlist refuses it outright the
+    // moment it sees the double quote.
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: 'co-motion "foo\\"bar"; printf PWNED \\"',
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a double-quoted argument outright, even one with no special characters inside", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: 'co-motion text set abc slides/001.svg el-1 "plain text"',
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a bare backslash anywhere in the command", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: "co-motion text set abc slides/001.svg el-1 foo\\bar",
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("allows a single-quoted Chinese argument containing spaces", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: "co-motion text set abc slides/001.svg el-1 '第三季 財報 標題'",
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+});
+
+describe("chat: session/request_permission never accepts a persistent grant", () => {
+  /** Runs one permission scenario and returns the outcome the fake agent logged. */
+  async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
+    const server = await serve(
+      fakeAgent({ replies: [["(ack)"], ["好的"]], requestPermissionOnPromptIndex: 1, ...config }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "幫我執行一個工具");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
+  }
+
+  // Fix 2 (ticket #7): some adapters stop calling session/request_permission
+  // for a tool once a persistent grant (allow_always) has been given —
+  // accepting it once would silently disable this gate for every later
+  // command in the session, including non-co-motion ones. Only allow_once
+  // may ever be selected for an allow decision.
+
+  it("allows a valid co-motion command when allow_once is offered", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: "co-motion ls abc",
+      permissionOptions: [
+        { kind: "allow_once", name: "允許一次", optionId: "allow-once" },
+        { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
+        { kind: "reject_once", name: "拒絕", optionId: "reject" },
+      ],
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow-once" });
+  });
+
+  it("refuses a valid co-motion command when only allow_always is offered, rather than accepting a persistent grant", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: "co-motion ls abc",
+      permissionOptions: [
+        { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
+        { kind: "reject_once", name: "拒絕", optionId: "reject" },
+      ],
+    });
+    expect(outcome).toEqual({ outcome: "cancelled" });
+  });
 });
 
 describe("chat: HTTP method gate", () => {
@@ -895,7 +984,10 @@ describe("chat: the whole loop — read via the file method, request permission,
         readTextFileEveryPromptFrom: 1,
         readTextFilePath: "slides/001.svg",
         requestPermissionOnPromptIndex: 1,
-        permissionCommand: `co-motion text set ${idFromBrief} slides/001.svg ${elementId} "Q3 財報"`,
+        // Single-quoted, per the 編輯規約's quoting rule (ticket #7 fix 1):
+        // double quotes are refused outright by the new allowlist grammar,
+        // so a real agent following the brief would quote this way.
+        permissionCommand: `co-motion text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
       }),
       id,
     );
