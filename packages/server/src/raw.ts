@@ -84,6 +84,14 @@ export async function handleRawRequest(
   res.writeHead(200, {
     "Content-Type": rawContentTypeFor(virtualPath),
     "Content-Length": bytes.length,
+    // The virtual path is not a content-addressed URL: the same
+    // `/api/raw/<path>` can legitimately serve different bytes over time,
+    // since the file on disk — not the URL — is the source of truth
+    // (live reload exists precisely because the file can change under the
+    // browser's feet). No response carries an ETag or Last-Modified for the
+    // browser to revalidate against, so caching is not merely stale-prone
+    // here, it is unconditionally wrong: treat every response as one-shot.
+    "Cache-Control": "no-store",
   });
   res.end(bytes);
 }

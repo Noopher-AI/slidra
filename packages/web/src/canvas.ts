@@ -31,6 +31,17 @@ interface ProjectJson {
 
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
+  // Bumped on every reload() call and captured by each call's own closure.
+  // mountCanvas fires an initial reload() and live reload fires another on
+  // the stream's `open`, plus one per subsequent change — nothing orders
+  // those requests against each other, so a slower earlier fetch can
+  // resolve after a faster later one and paint stale content that then
+  // sits wrong until the next edit happens to arrive. Comparing the
+  // captured generation against the current one right before each await's
+  // result is applied discards a superseded call's result instead of
+  // applying it, so the newest reload() call always wins regardless of
+  // how long any of them take.
+  let generation = 0;
 
   const iframe = document.createElement("iframe");
   iframe.className = "slide-frame";
@@ -54,8 +65,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
+    // Claim this call's generation before the first await, then compare
+    // against the live counter after every await: if another reload() call
+    // started after this one, it already bumped `generation` past what
+    // this call captured, so this call's result is stale and must be
+    // discarded rather than applied — no matter how much later it settles.
+    const thisGeneration = ++generation;
+
     const project = await fetchJson<ProjectJson>("/api/presentation");
-    if (destroyed) return;
+    if (destroyed || thisGeneration !== generation) return;
 
     if (project.slides.length === 0) {
       iframe.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
@@ -66,7 +84,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // navigation is out of scope for this ticket.
     const [firstSlidePath] = project.slides;
     const svgMarkup = await fetchText(`/api/files/${firstSlidePath}`);
-    if (destroyed) return;
+    if (destroyed || thisGeneration !== generation) return;
 
     iframe.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(firstSlidePath)}`);
   }

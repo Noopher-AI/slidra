@@ -136,6 +136,20 @@ async function lookupWorkDir(home: string, id: string): Promise<string> {
 }
 
 /**
+ * Resolves an opaque presentation id to its real work directory — the one
+ * place in the codebase that does this. Every id-to-path lookup (`cat`,
+ * `ls`, `text set`, the raw/file HTTP routes, and the filesystem watcher)
+ * goes through this, so an unreadable registry, malformed JSON, or a
+ * corrupt entry always surfaces as the same `CoMotionError` /
+ * `CoMotionNotFoundError` split with the same wording, never a second,
+ * independently-drifting implementation of the same rule.
+ */
+export async function resolveWorkDir(id: string): Promise<string> {
+  const home = resolveCoMotionHome();
+  return lookupWorkDir(home, id);
+}
+
+/**
  * Creates a minimal presentation and packs it directly to `outputPath`.
  * Does not register or open the presentation.
  */

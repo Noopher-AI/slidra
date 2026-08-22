@@ -118,6 +118,66 @@ describe("mountCanvas", () => {
     expect(base!.getAttribute("href")).toBe("/api/raw/slides/");
   });
 
+  // Fix 2 (ticket #5, final round): mountCanvas fires a reload() on mount,
+  // and live reload fires another on the stream's `open` — those two
+  // overlap immediately, and nothing orders them. A slower earlier request
+  // resolving after a faster later one must not be allowed to paint stale
+  // content over what the later, authoritative request already applied.
+  it("discards an earlier, slower reload's result once a later reload has already applied its own", async () => {
+    const staleMarkup = '<svg data-testid="stale"></svg>';
+    const freshMarkup = '<svg data-testid="fresh"></svg>';
+    let slideFetchCount = 0;
+    // Left unresolved until the test explicitly settles it, after the
+    // later (faster) reload below has already completed and painted —
+    // this is what lets the earlier call still be genuinely in flight at
+    // that point, rather than having already bailed out at an earlier
+    // await for unrelated reasons.
+    let resolveStaleFetch!: (response: Response) => void;
+    const staleFetchPromise = new Promise<Response>((resolve) => {
+      resolveStaleFetch = resolve;
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          slideFetchCount += 1;
+          // mountCanvas's own `void reload()` on mount is the earlier
+          // call, so it is always the first to reach this fetch.
+          return slideFetchCount === 1 ? staleFetchPromise : new Response(freshMarkup, { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    // The earlier call: let it run far enough that it has already issued
+    // its (now pending) slide fetch before the later call starts.
+    controller = mountCanvas(container);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(slideFetchCount).toBe(1);
+
+    // The later call: its own fetches resolve immediately, so it finishes
+    // and paints while the earlier call above is still awaiting
+    // staleFetchPromise — exactly mount's reload() racing live reload's
+    // `open`-triggered reload().
+    await controller.reload();
+    expect(slideFetchCount).toBe(2);
+
+    // Only now does the earlier, slower call's fetch resolve. Its result
+    // must be discarded, not painted over what the later call already
+    // applied.
+    resolveStaleFetch(new Response(staleMarkup, { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+    expect(iframe.srcdoc).toContain(freshMarkup);
+    expect(iframe.srcdoc).not.toContain(staleMarkup);
+  });
+
   it("leaves the wrapper document unchanged (no <base>) when the presentation has zero slides", async () => {
     vi.stubGlobal(
       "fetch",
