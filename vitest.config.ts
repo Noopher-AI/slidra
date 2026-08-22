@@ -7,6 +7,11 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     include: ["packages/*/test/**/*.test.ts"],
+    // packages/web's canvas module manipulates real DOM nodes (iframe,
+    // srcdoc), so its tests need a document. Every other package is
+    // Node-only server/CLI code and stays on vitest's default "node"
+    // environment.
+    environmentMatchGlobs: [["packages/web/test/**/*.test.ts", "jsdom"]],
   },
   resolve: {
     alias: {
