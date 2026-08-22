@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,12 @@ const fakeAgent: AgentAdapterConfig = {
   command: process.execPath,
   args: [fakeAgentFixture],
 };
+
+// root ignores permission bits, so the chmod(0o000)-based I/O-failure test
+// below can never observe a real EACCES there. Same detection ticket #10's
+// and #11's tests already established (packages/cli/test/commands.test.ts,
+// packages/server/test/raw.test.ts) — reused rather than reinvented.
+const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
 // Every test points CO_MOTION_HOME at its own temp directory (ADR-0004
@@ -226,6 +232,54 @@ describe("startServe", () => {
     expect(response.status).toBe(404);
     expect(body.error).toBeTruthy();
     expect(body.error).not.toContain("root:");
+  });
+
+  // Ticket #14: `/api/files/` used to turn every dispatch failure into a
+  // 404, so a permission problem, a failing disk or a corrupt registry all
+  // told the author "your file is missing" and sent them looking in
+  // completely the wrong place. Same classification as `/api/raw/`
+  // (ticket #11): only a positively proven absence is a 404.
+  it.skipIf(isRunningAsRoot)("responds 500, not 404, when the slide exists but the underlying read fails", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+    // Real filesystem path of the unpacked slide, per workspace.ts's
+    // workDirFor(home, id) = path.join(home, "work", id). Only used to
+    // break the read (chmod) — never asserted against the response.
+    const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    await chmod(realSlidePath, 0o000);
+
+    try {
+      const response = await fetch(`${server.url}/api/files/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toBeTruthy();
+      // A real I/O failure must never be told back as "the file is missing".
+      expect(body.error).not.toBe("找不到檔案：slides/001.svg");
+      // The real filesystem path must never leak (ADR-0004, third layer).
+      expect(body.error).not.toContain(realSlidePath);
+      expect(body.error).not.toContain(coMotionHome);
+      expect(body.error).not.toContain("EACCES");
+    } finally {
+      await chmod(realSlidePath, 0o644);
+    }
+  });
+
+  it("responds 500, not 404, when the presentation registry itself is corrupt", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+    // Corrupted for real (malformed JSON on disk, no mocking), per
+    // workspace.ts's registryPath(home) = path.join(home, "projects.json").
+    // A damaged registry is a server-side failure, not evidence the
+    // requested slide is missing.
+    await writeFile(path.join(coMotionHome, "projects.json"), "{ not valid json");
+
+    const response = await fetch(`${server.url}/api/files/slides/001.svg`);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("簡報登記資料已損毀");
+    expect(body.error).not.toContain(coMotionHome);
   });
 
   it("rejects with an explicit Traditional Chinese error at open time when project.json lacks slides", async () => {
