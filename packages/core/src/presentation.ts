@@ -1,15 +1,14 @@
 import { generateElementId } from "./id.js";
+import type { ProjectJson } from "./project-json.js";
 
 export const FORMAT_VERSION = 1;
 
 export const SLIDE_FILE_NAME = "slides/001.svg";
 
-export interface ProjectJson {
-  formatVersion: number;
-  name: string;
-  canvas: { width: number; height: number };
-  slides: string[];
-}
+// project-json.ts owns the type now (single source of truth alongside its
+// structural validator); re-exported here so existing callers importing it
+// from this module keep working.
+export type { ProjectJson } from "./project-json.js";
 
 export interface MinimalPresentationFiles {
   /** Relative path -> file content, ready to be written under a container root. */

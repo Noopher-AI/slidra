@@ -150,7 +150,7 @@ describe("open", () => {
     const traversalEntryName = `${"../".repeat(30)}${comotDir.slice(1)}/escaped-marker.txt`;
     const zipped = zipSync({
       "project.json": new TextEncoder().encode(
-        JSON.stringify({ formatVersion: 1, name: "escape", slides: ["slides/001.svg"] }),
+        JSON.stringify({ formatVersion: 1, name: "escape", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
       ),
       "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
       "assets/": new Uint8Array(0),
@@ -342,7 +342,7 @@ describe("cat", () => {
     const binaryBytes = new Uint8Array([0xff, 0xfe, 0x00, 0x01, 0xc3, 0x28, 0x80]);
     const zipped = zipSync({
       "project.json": new TextEncoder().encode(
-        JSON.stringify({ formatVersion: 1, name: "binary asset test", slides: ["slides/001.svg"] }),
+        JSON.stringify({ formatVersion: 1, name: "binary asset test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
       ),
       "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
       "assets/intro.mp4": binaryBytes,
@@ -371,7 +371,7 @@ describe("cat", () => {
     const originalBytes = new TextEncoder().encode(text);
     const zipped = zipSync({
       "project.json": new TextEncoder().encode(
-        JSON.stringify({ formatVersion: 1, name: "emoji test", slides: ["slides/001.svg"] }),
+        JSON.stringify({ formatVersion: 1, name: "emoji test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
       ),
       "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
       "assets/note.txt": originalBytes,
@@ -400,7 +400,7 @@ describe("cat", () => {
     const originalBytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("hello")]);
     const zipped = zipSync({
       "project.json": new TextEncoder().encode(
-        JSON.stringify({ formatVersion: 1, name: "bom test", slides: ["slides/001.svg"] }),
+        JSON.stringify({ formatVersion: 1, name: "bom test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
       ),
       "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
       "assets/bom.txt": originalBytes,

@@ -30,7 +30,7 @@ async function openFixturePresentation(slideSvg: string, registry: CommandRegist
   const { writeFile } = await import("node:fs/promises");
   const zipped = zipSync({
     "project.json": new TextEncoder().encode(
-      JSON.stringify({ formatVersion: 1, name: "fixture", slides: ["slides/001.svg"] }),
+      JSON.stringify({ formatVersion: 1, name: "fixture", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
     ),
     "slides/001.svg": new TextEncoder().encode(slideSvg),
   });
@@ -50,7 +50,7 @@ async function openFixturePresentationBytes(
   const { writeFile } = await import("node:fs/promises");
   const zipped = zipSync({
     "project.json": new TextEncoder().encode(
-      JSON.stringify({ formatVersion: 1, name: "fixture", slides: ["slides/001.svg"] }),
+      JSON.stringify({ formatVersion: 1, name: "fixture", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
     ),
     "slides/001.svg": slideSvgBytes,
   });
@@ -213,7 +213,7 @@ describe("text set", () => {
     const { writeFile } = await import("node:fs/promises");
     const zipped = zipSync({
       "project.json": new TextEncoder().encode(
-        JSON.stringify({ formatVersion: 1, name: "image test", slides: ["slides/001.svg"] }),
+        JSON.stringify({ formatVersion: 1, name: "image test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
       ),
       "slides/001.svg": new TextEncoder().encode(
         '<svg xmlns="http://www.w3.org/2000/svg"><image id="el-img1" href="assets/pic.png" x="0" y="0" width="10" height="10"/></svg>',
