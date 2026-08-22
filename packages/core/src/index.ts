@@ -8,5 +8,5 @@ export {
   openPresentation,
   packPresentation,
   readPresentationFile,
-  listPresentationFiles,
+  listPresentationEntries,
 } from "./workspace.js";

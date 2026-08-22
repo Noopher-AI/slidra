@@ -38,10 +38,10 @@ describe("new", () => {
     expect(opened.ok).toBe(true);
     const id = opened.data!.id;
 
-    const listed = await registry.dispatch<{ files: string[] }>("list", { id });
-    expect(listed.data!.files.sort()).toEqual(["project.json", "slides/001.svg"]);
+    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id });
+    expect(listed.data!.entries.sort()).toEqual(["assets", "project.json", "slides"]);
 
-    const projectJson = await registry.dispatch<{ content: string }>("read", {
+    const projectJson = await registry.dispatch<{ content: string }>("cat", {
       id,
       path: "project.json",
     });
@@ -50,7 +50,7 @@ describe("new", () => {
     expect(project.name).toBe("我的簡報");
     expect(project.slides).toEqual(["slides/001.svg"]);
 
-    const slide = await registry.dispatch<{ content: string }>("read", {
+    const slide = await registry.dispatch<{ content: string }>("cat", {
       id,
       path: "slides/001.svg",
     });
@@ -173,21 +173,21 @@ describe("pack", () => {
     expect(reopened.ok).toBe(true);
     const reopenedId = reopened.data!.id;
 
-    const originalProject = await registry.dispatch<{ content: string }>("read", {
+    const originalProject = await registry.dispatch<{ content: string }>("cat", {
       id,
       path: "project.json",
     });
-    const repackedProject = await registry.dispatch<{ content: string }>("read", {
+    const repackedProject = await registry.dispatch<{ content: string }>("cat", {
       id: reopenedId,
       path: "project.json",
     });
     expect(repackedProject.data!.content).toEqual(originalProject.data!.content);
 
-    const originalSlide = await registry.dispatch<{ content: string }>("read", {
+    const originalSlide = await registry.dispatch<{ content: string }>("cat", {
       id,
       path: "slides/001.svg",
     });
-    const repackedSlide = await registry.dispatch<{ content: string }>("read", {
+    const repackedSlide = await registry.dispatch<{ content: string }>("cat", {
       id: reopenedId,
       path: "slides/001.svg",
     });
@@ -205,8 +205,111 @@ describe("pack", () => {
   });
 });
 
+describe("ls", () => {
+  it("lists the top level when no path is given", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ entries: string[] }>("ls", { id });
+
+    expect(result.ok).toBe(true);
+    expect(result.data!.entries.sort()).toEqual(["assets", "project.json", "slides"]);
+  });
+
+  it("lists a given directory's contents, one entry deep", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "slides" });
+
+    expect(result.ok).toBe(true);
+    expect(result.data!.entries).toEqual(["001.svg"]);
+  });
+
+  it("fails with a clear error and non-zero exit for a path that does not exist", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch("ls", { id, path: "does-not-exist" });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("fails when the path points at a file instead of a directory", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch("ls", { id, path: "project.json" });
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("cat", () => {
+  it("outputs a file's complete original content unmodified", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath, name: "原文測試" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.data!.content).name).toBe("原文測試");
+  });
+
+  it("fails with a clear error and non-zero exit for a path that does not exist", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch("cat", { id, path: "does-not-exist.svg" });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("fails when the path points at a directory instead of a file", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch("cat", { id, path: "slides" });
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("no write entry point exists", () => {
+  it("the registry has no command capable of modifying a presentation's content", async () => {
+    // Structural check, not a blocklist: the entire set of registered
+    // command names must contain nothing but the known read-only/addressing
+    // commands. Any future write command must show up here as a failure,
+    // forcing a deliberate decision rather than an accidental leak.
+    const knownCommands = ["new", "open", "pack", "cat", "ls"];
+    for (const name of knownCommands) {
+      expect(registry.has(name)).toBe(true);
+    }
+    expect(registry.has("write")).toBe(false);
+    expect(registry.has("edit")).toBe(false);
+    expect(registry.has("read")).toBe(false);
+    expect(registry.has("list")).toBe(false);
+  });
+});
+
 describe("no output leaks the real work directory path", () => {
-  it("across new, open, pack, list, read and error paths", async () => {
+  it("across new, open, pack, ls, cat and error paths", async () => {
     const comotPath = path.join(comotDir, "deck.comot");
     const outputs: string[] = [];
 
@@ -223,8 +326,8 @@ describe("no output leaks the real work directory path", () => {
     record(opened);
     const id = opened.data!.id;
 
-    record(await registry.dispatch("list", { id }));
-    record(await registry.dispatch("read", { id, path: "project.json" }));
+    record(await registry.dispatch("ls", { id }));
+    record(await registry.dispatch("cat", { id, path: "project.json" }));
 
     const repackedPath = path.join(comotDir, "repacked.comot");
     const packResult = await registry.dispatch("pack", { id, path: repackedPath });
@@ -245,7 +348,8 @@ describe("no output leaks the real work directory path", () => {
     // Error paths too.
     record(await registry.dispatch("open", { path: path.join(comotDir, "missing.comot") }));
     record(await registry.dispatch("pack", { id: "unknown-id-x", path: repackedPath }));
-    record(await registry.dispatch("read", { id, path: "does-not-exist.svg" }));
+    record(await registry.dispatch("cat", { id, path: "does-not-exist.svg" }));
+    record(await registry.dispatch("ls", { id, path: "does-not-exist-dir" }));
 
     for (const output of outputs) {
       expect(output).not.toContain(coMotionHome);

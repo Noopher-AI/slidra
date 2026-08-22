@@ -42,14 +42,16 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const path = requirePositional(rest, 1, "pack", "path");
       return { name, input: { id, path } };
     }
-    case "read": {
-      const id = requirePositional(rest, 0, "read", "id");
-      const path = requirePositional(rest, 1, "read", "path");
+    case "cat": {
+      const id = requirePositional(rest, 0, "cat", "id");
+      const path = requirePositional(rest, 1, "cat", "path");
       return { name, input: { id, path } };
     }
-    case "list": {
-      const id = requirePositional(rest, 0, "list", "id");
-      return { name, input: { id } };
+    case "ls": {
+      const id = requirePositional(rest, 0, "ls", "id");
+      // path is optional: `ls <id>` lists the top level.
+      const path = rest[1];
+      return { name, input: { id, path } };
     }
     default:
       // Unknown command: let the registry report it, so the error message

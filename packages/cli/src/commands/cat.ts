@@ -1,17 +1,17 @@
 import { readPresentationFile } from "@co-motion/core";
 import type { CommandHandler } from "../registry.js";
 
-export interface ReadInput {
+export interface CatInput {
   id: string;
-  /** Container-relative virtual path, e.g. "project.json" or "slides/001.svg". */
+  /** Virtual path, e.g. "project.json" or "slides/001.svg". */
   path: string;
 }
 
-export interface ReadData {
+export interface CatData {
   content: string;
 }
 
-export const readCommand: CommandHandler<ReadInput, ReadData> = async (input) => {
+export const catCommand: CommandHandler<CatInput, CatData> = async (input) => {
   const content = await readPresentationFile(input.id, input.path);
   return {
     ok: true,
