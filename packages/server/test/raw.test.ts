@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,12 @@ import { rawContentTypeFor } from "../src/raw.js";
 // binary); browsers need the byte-preserving `/api/raw/` route instead.
 // These tests hit the real HTTP server (Seam B), never CO_MOTION_HOME's
 // real path, and always bind port 0.
+
+// root ignores permission bits, so the chmod(0o000)-based I/O-failure test
+// below can never observe a real EACCES there. Same detection ticket #10's
+// tests already established (packages/cli/test/commands.test.ts,
+// packages/core/test/workspace.test.ts) — reused rather than reinvented.
+const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // A hand-constructed minimal PNG: real PNG magic bytes followed by a few
 // arbitrary high bytes. It is never decoded as an image by these tests —
@@ -122,6 +128,35 @@ describe("GET /api/raw/<virtual path>", () => {
     expect(response.status).toBe(200);
     expect(body).toBe("純文字資產");
   });
+
+  it.skipIf(isRunningAsRoot)(
+    "returns 500 with an explicit body, not a 404, when the file exists but the underlying read fails",
+    async () => {
+      const id = await openPresentationWithAssets();
+      const server = await serve(id);
+      // Real filesystem path of the unpacked asset, per workspace.ts's
+      // workDirFor(home, id) = path.join(home, "work", id). Only used to
+      // break the read (chmod) — never asserted against the response.
+      const realAssetPath = path.join(coMotionHome, "work", id, "assets", "photo.png");
+      await chmod(realAssetPath, 0o000);
+
+      try {
+        const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
+        const body = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(body.error).toBeTruthy();
+        // A real I/O failure must never be told back to the browser as
+        // "the file is missing".
+        expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+        // The real filesystem path must never leak into the response.
+        expect(body.error).not.toContain(realAssetPath);
+        expect(body.error).not.toContain(coMotionHome);
+      } finally {
+        await chmod(realAssetPath, 0o644);
+      }
+    },
+  );
 
   it("404s with an explicit body when the path does not resolve to anything", async () => {
     const id = await openPresentationWithAssets();

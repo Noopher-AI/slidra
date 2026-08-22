@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionIOError } from "./errors.js";
 
 /**
  * A virtual directory tree, built once per call by enumerating a real work
@@ -155,6 +155,16 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
  * either resolves to a file that was actually discovered on disk or it
  * resolves to nothing — same structural containment, same rule that a real
  * filesystem path never appears in an error message.
+ *
+ * Two distinct failure causes both surface as a thrown error here, and
+ * callers (raw.ts in particular) need to tell them apart to answer with
+ * the right HTTP status: the path may simply not resolve to a file (a
+ * genuine 404), or it may resolve to a file that was actually discovered
+ * on disk but whose `readFile` then failed — a permissions problem, a
+ * failing disk, any other I/O error, which is a 500, not a 404. The first
+ * case throws a plain `CoMotionError`; the second throws the
+ * `CoMotionIOError` subtype so callers can distinguish with `instanceof`
+ * without ever needing (or getting) the real filesystem path itself.
  */
 export async function readVirtualFileBytes(workDir: string, virtualPath: string): Promise<Buffer> {
   const root = await buildVirtualTree(workDir);
@@ -169,6 +179,6 @@ export async function readVirtualFileBytes(workDir: string, virtualPath: string)
     return await readFile(node.realPath);
   } catch {
     // node.realPath is a real filesystem path (ADR-0004) — never quote it.
-    throw new CoMotionError(`讀取檔案時發生錯誤：${virtualPath}`);
+    throw new CoMotionIOError(`讀取檔案時發生錯誤：${virtualPath}`);
   }
 }
