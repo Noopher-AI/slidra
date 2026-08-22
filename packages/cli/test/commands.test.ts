@@ -382,6 +382,34 @@ describe("cat", () => {
     // content must reproduce the exact original bytes.
     expect(new TextEncoder().encode(result.data!.content)).toEqual(originalBytes);
   });
+
+  it("keeps a leading UTF-8 BOM byte-identical instead of silently stripping it", async () => {
+    // A leading EF BB BF is valid UTF-8 content, not just a signature. The
+    // default TextDecoder treats it as a BOM and strips it, which would make
+    // cat return altered bytes while claiming success — the same class of
+    // silent corruption as the binary-asset bug, just narrower.
+    const { zipSync } = await import("fflate");
+    const { writeFile } = await import("node:fs/promises");
+    const originalBytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("hello")]);
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(
+        JSON.stringify({ formatVersion: 1, name: "bom test", slides: ["slides/001.svg"] }),
+      ),
+      "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
+      "assets/bom.txt": originalBytes,
+    });
+    const comotPath = path.join(comotDir, "bom-fixture.comot");
+    await writeFile(comotPath, zipped);
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "assets/bom.txt" });
+
+    expect(result.ok).toBe(true);
+    // Byte-identical, not just string-equal: re-encoding the returned
+    // content must reproduce the exact original bytes, BOM included.
+    expect(new TextEncoder().encode(result.data!.content)).toEqual(originalBytes);
+  });
 });
 
 describe("no write entry point exists", () => {

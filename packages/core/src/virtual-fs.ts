@@ -117,7 +117,9 @@ export async function readVirtualFile(workDir: string, virtualPath: string): Pro
     // Strict decoding: any invalid UTF-8 byte sequence throws. This is a
     // structural test on the bytes themselves — not a filename guess — so a
     // mislabelled file can never slip through as corrupted text.
-    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    // ignoreBOM: true keeps a leading BOM as ordinary content instead of
+    // stripping it, so cat never silently alters bytes it claims to return.
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
     throw new CoMotionError(`${virtualPath} 是二進位資產，無法以文字讀取`);
   }
