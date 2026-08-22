@@ -1,0 +1,58 @@
+import { CoMotionError } from "@co-motion/core";
+
+export interface ParsedCommand {
+  name: string;
+  input: unknown;
+}
+
+/**
+ * Thin argv layer for the `co-motion` bin. It only turns argv into
+ * structured input — it does not dispatch, does not print, does not exit.
+ * A later caller (e.g. `co-motion serve`) builds structured input its own
+ * way and calls the same registry directly.
+ */
+export function parseArgv(argv: string[]): ParsedCommand {
+  const [name, ...rest] = argv;
+  if (!name) {
+    throw new CoMotionError("缺少命令名稱");
+  }
+
+  switch (name) {
+    case "new": {
+      const path = requirePositional(rest, 0, "new", "path");
+      const nameFlagIndex = rest.indexOf("--name");
+      const presentationName = nameFlagIndex >= 0 ? rest[nameFlagIndex + 1] : undefined;
+      return { name, input: { path, name: presentationName } };
+    }
+    case "open": {
+      const path = requirePositional(rest, 0, "open", "path");
+      return { name, input: { path } };
+    }
+    case "pack": {
+      const id = requirePositional(rest, 0, "pack", "id");
+      const path = requirePositional(rest, 1, "pack", "path");
+      return { name, input: { id, path } };
+    }
+    case "read": {
+      const id = requirePositional(rest, 0, "read", "id");
+      const path = requirePositional(rest, 1, "read", "path");
+      return { name, input: { id, path } };
+    }
+    case "list": {
+      const id = requirePositional(rest, 0, "list", "id");
+      return { name, input: { id } };
+    }
+    default:
+      // Unknown command: let the registry report it, so the error message
+      // stays in one place.
+      return { name, input: {} };
+  }
+}
+
+function requirePositional(rest: string[], index: number, command: string, argName: string): string {
+  const value = rest[index];
+  if (!value) {
+    throw new CoMotionError(`命令 ${command} 缺少參數：${argName}`);
+  }
+  return value;
+}

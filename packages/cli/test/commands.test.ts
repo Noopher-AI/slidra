@@ -1,0 +1,188 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createDefaultRegistry } from "../src/commands.js";
+import type { CommandRegistry } from "../src/registry.js";
+
+// Every test points CO_MOTION_HOME at its own temp directory so we never
+// touch the real ~/.comotion (ADR-0004, ticket #9 testing convention).
+let coMotionHome: string;
+let comotDir: string;
+let registry: CommandRegistry;
+
+beforeEach(async () => {
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+  registry = createDefaultRegistry();
+});
+
+afterEach(async () => {
+  delete process.env.CO_MOTION_HOME;
+  await rm(coMotionHome, { recursive: true, force: true });
+  await rm(comotDir, { recursive: true, force: true });
+});
+
+describe("new", () => {
+  it("creates a .comot file containing a minimal presentation", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+
+    const result = await registry.dispatch("new", { path: comotPath, name: "我的簡報" });
+
+    expect(result.ok).toBe(true);
+
+    // Verify state by opening the file we just created and reading it back
+    // through commands, never by inspecting the filesystem directly.
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    expect(opened.ok).toBe(true);
+    const id = opened.data!.id;
+
+    const listed = await registry.dispatch<{ files: string[] }>("list", { id });
+    expect(listed.data!.files.sort()).toEqual(["project.json", "slides/001.svg"]);
+
+    const projectJson = await registry.dispatch<{ content: string }>("read", {
+      id,
+      path: "project.json",
+    });
+    const project = JSON.parse(projectJson.data!.content);
+    expect(project.formatVersion).toBe(1);
+    expect(project.name).toBe("我的簡報");
+    expect(project.slides).toEqual(["slides/001.svg"]);
+
+    const slide = await registry.dispatch<{ content: string }>("read", {
+      id,
+      path: "slides/001.svg",
+    });
+    expect(slide.data!.content).toContain("data-comot-name=\"標題\"");
+    expect(slide.data!.content).toContain("<svg");
+  });
+});
+
+describe("open", () => {
+  it("returns an opaque id that later commands can use to address the presentation", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+
+    const result = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+
+    expect(result.ok).toBe(true);
+    expect(result.data!.id).toMatch(/^[A-Za-z0-9_-]{12}$/);
+  });
+
+  it("fails with a clear error and does not throw when the file does not exist", async () => {
+    const result = await registry.dispatch("open", { path: path.join(comotDir, "missing.comot") });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("fails with a clear error when the file is not a valid container", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const brokenPath = path.join(comotDir, "broken.comot");
+    await writeFile(brokenPath, "this is not a zip file");
+
+    const result = await registry.dispatch("open", { path: brokenPath });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+
+  it("fails with a clear error when project.json is missing formatVersion", async () => {
+    const { zipSync } = await import("fflate");
+    const { writeFile } = await import("node:fs/promises");
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(JSON.stringify({ name: "no version" })),
+      "slides/": new Uint8Array(0),
+      "assets/": new Uint8Array(0),
+    });
+    const badPath = path.join(comotDir, "no-format-version.comot");
+    await writeFile(badPath, zipped);
+
+    const result = await registry.dispatch("open", { path: badPath });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("formatVersion");
+  });
+});
+
+describe("pack", () => {
+  it("round-trips: pack then open the result again has the same content", async () => {
+    const originalPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: originalPath, name: "Round Trip" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: originalPath });
+    const id = opened.data!.id;
+
+    const repackedPath = path.join(comotDir, "repacked.comot");
+    const packResult = await registry.dispatch("pack", { id, path: repackedPath });
+    expect(packResult.ok).toBe(true);
+
+    const reopened = await registry.dispatch<{ id: string }>("open", { path: repackedPath });
+    expect(reopened.ok).toBe(true);
+    const reopenedId = reopened.data!.id;
+
+    const originalProject = await registry.dispatch<{ content: string }>("read", {
+      id,
+      path: "project.json",
+    });
+    const repackedProject = await registry.dispatch<{ content: string }>("read", {
+      id: reopenedId,
+      path: "project.json",
+    });
+    expect(repackedProject.data!.content).toEqual(originalProject.data!.content);
+
+    const originalSlide = await registry.dispatch<{ content: string }>("read", {
+      id,
+      path: "slides/001.svg",
+    });
+    const repackedSlide = await registry.dispatch<{ content: string }>("read", {
+      id: reopenedId,
+      path: "slides/001.svg",
+    });
+    expect(repackedSlide.data!.content).toEqual(originalSlide.data!.content);
+  });
+
+  it("fails with a clear error for an unknown id", async () => {
+    const result = await registry.dispatch("pack", {
+      id: "does-not-exist",
+      path: path.join(comotDir, "out.comot"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe("no output leaks the real work directory path", () => {
+  it("across new, open, pack, list, read and error paths", async () => {
+    const comotPath = path.join(comotDir, "deck.comot");
+    const outputs: string[] = [];
+
+    const record = (result: { message: string; data?: unknown }) => {
+      outputs.push(result.message);
+      if (result.data !== undefined) {
+        outputs.push(JSON.stringify(result.data));
+      }
+    };
+
+    record(await registry.dispatch("new", { path: comotPath }));
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    record(opened);
+    const id = opened.data!.id;
+
+    record(await registry.dispatch("list", { id }));
+    record(await registry.dispatch("read", { id, path: "project.json" }));
+
+    const repackedPath = path.join(comotDir, "repacked.comot");
+    record(await registry.dispatch("pack", { id, path: repackedPath }));
+
+    // Error paths too.
+    record(await registry.dispatch("open", { path: path.join(comotDir, "missing.comot") }));
+    record(await registry.dispatch("pack", { id: "unknown-id-x", path: repackedPath }));
+    record(await registry.dispatch("read", { id, path: "does-not-exist.svg" }));
+
+    for (const output of outputs) {
+      expect(output).not.toContain(coMotionHome);
+    }
+  });
+});
