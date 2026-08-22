@@ -79,12 +79,52 @@ async function postChat(server: RunningServer, text: string): Promise<Response> 
   });
 }
 
-async function readFakeAgentLog(): Promise<Array<{ sessionId: string; prompt?: unknown[]; permissionOutcome?: unknown }>> {
+async function readFakeAgentLog(): Promise<
+  Array<{
+    sessionId?: string;
+    prompt?: unknown[];
+    permissionOutcome?: unknown;
+    newSessionCwd?: string;
+    pid?: number;
+  }>
+> {
   const raw = await readFile(logPath, "utf8");
   return raw
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line));
+}
+
+/** `process.kill(pid, 0)` sends no signal — it only checks the process still exists (POSIX). */
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Polls `check` until it returns true or `timeoutMs` elapses, so a test never races an async process exit. */
+async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/**
+ * Narrows the fake agent's log to only the `session/prompt` entries, in
+ * order. The log also carries one `pid` line per spawn and one
+ * `newSessionCwd` line per `session/new` call (fixes 1 and 4's own tests
+ * use those); prompt-shape assertions must filter those out rather than
+ * assume fixed indices.
+ */
+function promptEntries(
+  log: Awaited<ReturnType<typeof readFakeAgentLog>>,
+): Array<{ sessionId: string; prompt: unknown[] }> {
+  return log.filter((entry): entry is { sessionId: string; prompt: unknown[] } => entry.prompt !== undefined);
 }
 
 /**
@@ -149,10 +189,10 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     await done;
     await sse.close();
 
-    const log = await readFakeAgentLog();
-    expect(log.length).toBeGreaterThanOrEqual(2);
-    expect(log[0].prompt).toEqual([{ type: "text", text: EDITORIAL_BRIEF }]);
-    expect(log[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
+    const prompts = promptEntries(await readFakeAgentLog());
+    expect(prompts.length).toBeGreaterThanOrEqual(2);
+    expect(prompts[0].prompt).toEqual([{ type: "text", text: EDITORIAL_BRIEF }]);
+    expect(prompts[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
   });
 
   it("reuses the same sessionId across two separate messages", async () => {
@@ -167,9 +207,9 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     await sse.readUntil((e) => e.event === "chat-done");
     await sse.close();
 
-    const log = await readFakeAgentLog();
-    expect(log).toHaveLength(3); // 編輯規約 + 2 user messages
-    const sessionIds = new Set(log.map((entry) => entry.sessionId));
+    const prompts = promptEntries(await readFakeAgentLog());
+    expect(prompts).toHaveLength(3); // 編輯規約 + 2 user messages
+    const sessionIds = new Set(prompts.map((entry) => entry.sessionId));
     expect(sessionIds.size).toBe(1);
   });
 });
@@ -252,5 +292,99 @@ describe("chat: HTTP method gate", () => {
 
     const stillGet = await fetch(`${server.url}/api/presentation`);
     expect(stillGet.status).toBe(200);
+  });
+});
+
+describe("chat: shutdown does not hang on an open stream", () => {
+  it("closes a live /api/chat/stream connection so close() resolves instead of hanging", async () => {
+    const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
+    // A real, still-open client connection — the exact shape "someone left
+    // a browser tab open" takes. server.close() (Node's http.Server.close)
+    // waits for established connections rather than closing them, and an
+    // SSE stream never ends on its own, so before the fix this hung
+    // forever.
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    expect(stream.status).toBe(200);
+
+    // Remove this server from the shared `servers` array so afterEach does
+    // not also try to close it — this test owns the close/assert itself.
+    servers = servers.filter((running) => running !== server);
+
+    // Races close() against a short timeout so a regression fails with a
+    // clear message instead of just eating the whole test-suite timeout.
+    const timedOut = Symbol("timed out");
+    const result = await Promise.race([
+      server.close().then(() => "closed" as const),
+      new Promise((resolve) => setTimeout(() => resolve(timedOut), 3000)),
+    ]);
+    expect(result).toBe("closed");
+
+    await stream.body?.cancel().catch(() => {});
+  });
+});
+
+describe("chat: session cwd", () => {
+  it("hands the agent a fresh empty temp directory, never the real process cwd or a path under CO_MOTION_HOME", async () => {
+    const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "你好");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const newSessionEntry = log.find((entry) => entry.newSessionCwd !== undefined);
+    expect(newSessionEntry).toBeDefined();
+    const sentCwd = newSessionEntry!.newSessionCwd!;
+
+    // Never the real project directory the CLI was launched from.
+    expect(sentCwd).not.toBe(process.cwd());
+    // Never anywhere under CO_MOTION_HOME — that would disclose where the
+    // home is, and `..` from there reaches `work/<id>`, the presentation's
+    // real work directory (ADR-0004).
+    const relativeToHome = path.relative(coMotionHome, sentCwd);
+    expect(relativeToHome.startsWith("..") || path.isAbsolute(relativeToHome)).toBe(true);
+  });
+});
+
+describe("chat: a failed start must not leak its subprocess", () => {
+  it("tears down the failed attempt's child so a retry leaves exactly one live child process", async () => {
+    const markerDir = await mkdtemp(path.join(tmpdir(), "co-motion-chat-marker-"));
+    const markerPath = path.join(markerDir, "attempted");
+    try {
+      const server = await serve(
+        fakeAgent({ replies: [["(ack)"], ["好的"]], failFirstAttemptMarkerPath: markerPath }),
+      );
+      const stream = await fetch(`${server.url}/api/chat/stream`);
+      const sse = new SseReader(stream);
+
+      // First attempt: the fake agent fails newSession (scripted via the
+      // marker file), simulating the not-logged-in path.
+      const firstError = sse.readUntil((e) => e.event === "chat-error");
+      await postChat(server, "第一次嘗試");
+      await firstError;
+
+      // Second attempt: a fresh subprocess spawn, this time succeeding.
+      const secondDone = sse.readUntil((e) => e.event === "chat-done");
+      await postChat(server, "第二次嘗試");
+      await secondDone;
+      await sse.close();
+
+      const log = await readFakeAgentLog();
+      const pids = log.filter((entry) => entry.pid !== undefined).map((entry) => entry.pid!);
+      expect(pids).toHaveLength(2);
+      const [firstPid, secondPid] = pids;
+
+      // Before the fix, the first (failed) child was never killed — only
+      // `dispose()`'s `this.child` (by then overwritten to the second
+      // child) ever got a kill signal, so the first child leaked forever.
+      await waitFor(() => !isAlive(firstPid));
+      expect(isAlive(firstPid)).toBe(false);
+      expect(isAlive(secondPid)).toBe(true);
+    } finally {
+      await rm(markerDir, { recursive: true, force: true });
+    }
   });
 });

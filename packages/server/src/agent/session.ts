@@ -1,6 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import * as acp from "@zed-industries/agent-client-protocol";
 import { CoMotionError } from "@co-motion/core";
 import type { AgentKind } from "./adapters.js";
@@ -57,6 +60,13 @@ export class AgentChatSession extends EventEmitter {
   private child: ChildProcess | undefined;
   private connection: acp.ClientSideConnection | undefined;
   private sessionId: string | undefined;
+  /**
+   * The empty `mkdtemp` directory handed to the agent as its session `cwd`
+   * (fix 1). Tracked here so `dispose()` (and a failed-start teardown) can
+   * remove it — nothing in this directory belongs to the user, so its
+   * lifetime is scoped to the session, not the OS temp cleanup schedule.
+   */
+  private sessionCwd: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -121,14 +131,32 @@ export class AgentChatSession extends EventEmitter {
    */
   private ensureSession(): Promise<void> {
     if (!this.readyPromise) {
-      this.readyPromise = this.establishSession().catch((error) => {
-        // A failed setup must be retried on the next message, not stuck
-        // forever on a rejected promise.
+      this.readyPromise = this.establishSession().catch(async (error) => {
+        // A failed setup must be retried on the next message — but retrying
+        // must spawn a genuinely fresh session, not leave the failed
+        // child/connection/temp dir dangling while `this.child` etc. get
+        // silently overwritten by the next attempt (fix 4: that made the
+        // original child unreachable, even to dispose()).
+        await this.teardownFailedSession();
         this.readyPromise = undefined;
         throw error;
       });
     }
     return this.readyPromise;
+  }
+
+  /** Tears down everything a failed `establishSession()` attempt may have left running. */
+  private async teardownFailedSession(): Promise<void> {
+    if (this.child && !this.child.killed) {
+      this.child.kill();
+    }
+    this.child = undefined;
+    this.connection = undefined;
+    this.sessionId = undefined;
+    if (this.sessionCwd) {
+      await rm(this.sessionCwd, { recursive: true, force: true }).catch(() => {});
+      this.sessionCwd = undefined;
+    }
   }
 
   private async establishSession(): Promise<void> {
@@ -156,9 +184,19 @@ export class AgentChatSession extends EventEmitter {
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
     });
 
+    // A dedicated, empty directory — never the user's project directory
+    // (ADR-0004: a real path is a map the agent will use) and never under
+    // CO_MOTION_HOME (that would disclose the home, and `..` from there
+    // reaches `work/<id>`, the presentation's real work directory). The
+    // system temp directory is unrelated to both, so this is the right
+    // neighbourhood for a cwd the protocol requires but which must hold
+    // nothing of the user's.
+    const sessionCwd = await mkdtemp(path.join(tmpdir(), "co-motion-agent-cwd-"));
+    this.sessionCwd = sessionCwd;
+
     let session: acp.NewSessionResponse;
     try {
-      session = await connection.newSession({ cwd: process.cwd(), mcpServers: [] });
+      session = await connection.newSession({ cwd: sessionCwd, mcpServers: [] });
     } catch (error) {
       // Errors that cross the JSON-RPC wire arrive as a plain
       // `{ code, message, data }` object (see the SDK's own
@@ -229,6 +267,10 @@ export class AgentChatSession extends EventEmitter {
     this.removeAllListeners();
     if (this.child && !this.child.killed) {
       this.child.kill();
+    }
+    if (this.sessionCwd) {
+      await rm(this.sessionCwd, { recursive: true, force: true }).catch(() => {});
+      this.sessionCwd = undefined;
     }
   }
 }

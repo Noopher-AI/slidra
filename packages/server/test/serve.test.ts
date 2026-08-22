@@ -6,11 +6,27 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 // Resolves the same packages/web/dist directory startServe's own
 // resolveWebDist() computes, so the static-serving tests can populate a
 // real build there without touching serve.ts's internals.
 const webDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+
+// None of the tests in this file touch /api/chat*, and spawning is lazy
+// (first sendMessage), so this fixture is never actually spawned here —
+// it exists only to satisfy the now-required `agent` field on ServeOptions
+// (ticket #6, fix 6: "serve without an agent" is unrepresentable).
+const fakeAgentFixture = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "agent/fixtures/fake-acp-agent.mjs",
+);
+const fakeAgent: AgentAdapterConfig = {
+  kind: "claude",
+  label: "Claude Code",
+  command: process.execPath,
+  args: [fakeAgentFixture],
+};
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
 // Every test points CO_MOTION_HOME at its own temp directory (ADR-0004
@@ -47,7 +63,7 @@ async function openFreshPresentation(name = "測試簡報"): Promise<string> {
 }
 
 async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
-  const server = await startServe({ registry, presentationId, port: 0, ...overrides });
+  const server = await startServe({ registry, presentationId, port: 0, agent: fakeAgent, ...overrides });
   servers.push(server);
   return server;
 }

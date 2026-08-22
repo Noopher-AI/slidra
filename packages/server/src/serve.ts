@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
-import { openEventStream } from "./sse.js";
+import { openEventStream, type EventStream } from "./sse.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
@@ -30,12 +30,13 @@ export interface ServeOptions {
   host?: string;
   /**
    * The already-selected ACP adapter to spawn on the first chat message.
-   * Optional here only because pre-chat tests in this suite construct a
-   * server that never touches `/api/chat*`; production `co-motion serve`
-   * always resolves one via `selectAdapter()` before calling `startServe`
-   * (§3 — no fallback, no degraded mode) and always passes it.
+   * Required: `cli.ts` always resolves one via `selectAdapter()` before
+   * calling `startServe` (§3 — no fallback, no degraded mode), so "serve
+   * without an agent" is not a state production ever reaches. Making this
+   * required (rather than optional with a 500 fallback) makes that state
+   * unrepresentable instead of merely unreached.
    */
-  agent?: AgentAdapterConfig;
+  agent: AgentAdapterConfig;
 }
 
 export interface RunningServer {
@@ -75,17 +76,22 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
 
-  const chatSession = options.agent ? new AgentChatSession(options.agent) : undefined;
-  if (chatSession) {
-    // `server.close()` waits for established connections rather than
-    // closing them — an open SSE stream never ends by itself, and the
-    // adapter subprocess never exits on its own either. Without this the
-    // server hangs on shutdown forever.
-    disposers.push(() => chatSession.dispose());
-  }
+  const chatSession = new AgentChatSession(options.agent);
+  // Every SSE stream `/api/chat/stream` has ever opened, still connected.
+  // `server.close()` waits for established connections rather than
+  // closing them, and an SSE stream never ends on its own — so these must
+  // be closed explicitly, before the socket itself is closed, or shutdown
+  // hangs forever with a browser tab open.
+  const liveChatStreams = new Set<EventStream>();
+  disposers.push(async () => {
+    for (const stream of liveChatStreams) {
+      stream.close();
+    }
+    await chatSession.dispose();
+  });
 
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, chatSession, req, res);
+    void handleRequest(registry, presentationId, staticDir, chatSession, liveChatStreams, req, res);
   });
 
   await listen(server, port, host);
@@ -186,7 +192,8 @@ async function handleRequest(
   registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
-  chatSession: AgentChatSession | undefined,
+  chatSession: AgentChatSession,
+  liveChatStreams: Set<EventStream>,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -236,7 +243,7 @@ async function handleRequest(
     }
 
     if (url.pathname === "/api/chat/stream") {
-      handleChatStream(chatSession, res);
+      handleChatStream(chatSession, res, liveChatStreams);
       return;
     }
 
@@ -280,14 +287,10 @@ async function handleRequest(
  * `/api/chat/stream`.
  */
 async function handleChatPost(
-  chatSession: AgentChatSession | undefined,
+  chatSession: AgentChatSession,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  if (!chatSession) {
-    sendJson(res, 500, { error: "尚未設定 agent，聊天功能無法使用" });
-    return;
-  }
   let body: unknown;
   try {
     body = JSON.parse(await readBody(req));
@@ -309,14 +312,14 @@ async function handleChatPost(
  * `chat-chunk` (a reply-text delta), `chat-done` (the turn ended, carries
  * `stopReason`), `chat-error` (a clear-text failure, e.g. not logged in).
  */
-function handleChatStream(chatSession: AgentChatSession | undefined, res: ServerResponse): void {
-  if (!chatSession) {
-    sendJson(res, 500, { error: "尚未設定 agent，聊天功能無法使用" });
-    return;
-  }
+function handleChatStream(chatSession: AgentChatSession, res: ServerResponse, liveStreams: Set<EventStream>): void {
   const stream = openEventStream(res);
+  liveStreams.add(stream);
   const detach = chatSession.attachStream((event, data) => stream.send(event, data));
-  res.once("close", detach);
+  res.once("close", () => {
+    detach();
+    liveStreams.delete(stream);
+  });
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
