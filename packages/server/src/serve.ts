@@ -7,6 +7,7 @@ import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream } from "./sse.js";
+import { handleRawRequest } from "./raw.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -236,6 +237,29 @@ async function handleRequest(
 
     if (url.pathname === "/api/chat/stream") {
       handleChatStream(chatSession, res);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/raw/")) {
+      // Deliberately NOT `registry.dispatch`, unlike every other read in
+      // this file. `dispatch` runs a registered CLI command, and every
+      // registered command is reachable by the agent (ADR-0004's
+      // permission hook allows `co-motion *`). A byte-preserving read
+      // registered as a command would hand the agent the exact capability
+      // ticket #2 closed off — dozens of MB of raw video/image bytes
+      // dumped into its context. Browsers, not agents, need this route, so
+      // it calls the core byte-read directly. It still goes through the
+      // same virtual-path tree lookup as every other read
+      // (readPresentationFileBytes -> readVirtualFileBytes), so
+      // containment stays structural even though dispatch is bypassed.
+      let virtualPath: string;
+      try {
+        virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
+      } catch {
+        sendJson(res, 400, { error: "路徑編碼無效" });
+        return;
+      }
+      await handleRawRequest(presentationId, virtualPath, res);
       return;
     }
 

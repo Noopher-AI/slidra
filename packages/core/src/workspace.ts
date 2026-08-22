@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
-import { listVirtualEntries, readVirtualFile } from "./virtual-fs.js";
+import { listVirtualEntries, readVirtualFile, readVirtualFileBytes } from "./virtual-fs.js";
 import { writeSlideElementText } from "./element-text.js";
 
 /**
@@ -51,6 +51,13 @@ async function readRegistry(home: string): Promise<Registry> {
     if (isEnoent(error)) {
       return new Map();
     }
+    // A genuine operational failure (permissions, a failing disk, a
+    // corrupt file, ...) reading the registry itself — as opposed to the
+    // file simply not existing yet (handled above). This is not evidence
+    // that anything the caller asked for is absent, so it stays a plain
+    // CoMotionError: only CoMotionNotFoundError is granted a 404 by
+    // callers such as the /api/raw/ route, and every other CoMotionError —
+    // this included — is a 500 (ticket #11, fourth fix round).
     throw new CoMotionError("無法讀取簡報登記資料");
   }
 
@@ -123,7 +130,7 @@ async function lookupWorkDir(home: string, id: string): Promise<string> {
   const registry = await readRegistry(home);
   const entry = registry.get(id);
   if (!entry) {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
+    throw new CoMotionNotFoundError(`找不到識別碼對應的簡報：${id}`);
   }
   return entry.workDir;
 }
@@ -199,6 +206,20 @@ export async function readPresentationFile(id: string, virtualPath: string): Pro
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   return readVirtualFile(workDir, virtualPath);
+}
+
+/**
+ * Reads a file's raw bytes inside the presentation identified by `id`,
+ * addressed by its virtual path — the byte-preserving sibling of
+ * `readPresentationFile` (ticket #11). This is what the browser needs for
+ * `assets/` content (images, video, audio); agent-facing reads stay on
+ * `readPresentationFile`'s decoded text. Same lookup, same id-to-workDir
+ * resolution, so it inherits the same structural containment.
+ */
+export async function readPresentationFileBytes(id: string, virtualPath: string): Promise<Buffer> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  return readVirtualFileBytes(workDir, virtualPath);
 }
 
 /**
