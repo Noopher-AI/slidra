@@ -73,6 +73,27 @@ export class AgentChatSession extends EventEmitter {
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
   private disposed = false;
+  /**
+   * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
+   * currently awaited, set for the duration of that one call by
+   * `withInterrupt`. The ACP SDK never settles a pending call on its own
+   * when stdio hits EOF or a write fails (fix 1) — this is the only thing
+   * that can unblock it, so the child's `error`/`exit` handlers reach for
+   * it directly instead of hoping the SDK notices.
+   */
+  private activeReject: ((error: Error) => void) | undefined;
+  /**
+   * Bumped once per spawned child, in `establishSession`. A killed child's
+   * OS-level `exit` event fires asynchronously, at some indeterminate later
+   * time — it is not bound by `turnQueue`'s serialization at all. Without
+   * this guard, a *stale* child from an already-superseded attempt could
+   * fire `exit` while a brand-new, perfectly healthy attempt is mid-flight
+   * and steal its `activeReject`/teardown, poisoning a session that never
+   * actually failed. Each child's handlers close over the generation it was
+   * spawned for and `handleChildDown` ignores any generation that is no
+   * longer current.
+   */
+  private generation = 0;
 
   constructor(config: AgentAdapterConfig) {
     super();
@@ -112,16 +133,42 @@ export class AgentChatSession extends EventEmitter {
 
     this.relayingCurrentTurn = true;
     try {
-      const response = await this.connection!.prompt({
-        sessionId: this.sessionId!,
-        prompt: [{ type: "text", text }],
-      });
+      const response = await this.withInterrupt(
+        this.connection!.prompt({
+          sessionId: this.sessionId!,
+          prompt: [{ type: "text", text }],
+        }),
+      );
       this.emitTyped("chat-done", { stopReason: response.stopReason });
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
       this.relayingCurrentTurn = false;
     }
+  }
+
+  /**
+   * Races `operation` against whatever `activeReject` gets called with —
+   * the child's `error`/`exit` handlers call it directly when stdio dies,
+   * which is otherwise invisible to a pending ACP call (fix 1). Only one
+   * ACP call is ever in flight at a time (turns are serialized by
+   * `turnQueue`, and setup always completes before a prompt is sent), so a
+   * single slot is enough.
+   */
+  private withInterrupt<T>(operation: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.activeReject = reject;
+      operation.then(
+        (value) => {
+          this.activeReject = undefined;
+          resolve(value);
+        },
+        (error) => {
+          this.activeReject = undefined;
+          reject(error);
+        },
+      );
+    });
   }
 
   /**
@@ -136,37 +183,78 @@ export class AgentChatSession extends EventEmitter {
         // must spawn a genuinely fresh session, not leave the failed
         // child/connection/temp dir dangling while `this.child` etc. get
         // silently overwritten by the next attempt (fix 4: that made the
-        // original child unreachable, even to dispose()).
-        await this.teardownFailedSession();
-        this.readyPromise = undefined;
+        // original child unreachable, even to dispose()). teardownSession()
+        // is idempotent, so this is safe even when the dying child's own
+        // handler already tore things down and rejected us here (fix 1).
+        await this.teardownSession();
         throw error;
       });
     }
     return this.readyPromise;
   }
 
-  /** Tears down everything a failed `establishSession()` attempt may have left running. */
-  private async teardownFailedSession(): Promise<void> {
-    if (this.child && !this.child.killed) {
-      this.child.kill();
-    }
+  /**
+   * Tears down everything a live or failed session may have running: kills
+   * the child, drops the connection/session id, and removes the temp cwd.
+   * Field-clearing happens synchronously, before any `await`, so a session
+   * that dies mid-request is never *remembered* as live — the very next
+   * `ensureSession()` call always sees a clean slate and spawns a
+   * genuinely fresh attempt, with nothing left for later code to remember
+   * to check (fix 1). Safe to call more than once for the same attempt.
+   */
+  private async teardownSession(): Promise<void> {
+    const child = this.child;
+    const sessionCwd = this.sessionCwd;
     this.child = undefined;
     this.connection = undefined;
     this.sessionId = undefined;
-    if (this.sessionCwd) {
-      await rm(this.sessionCwd, { recursive: true, force: true }).catch(() => {});
-      this.sessionCwd = undefined;
+    this.sessionCwd = undefined;
+    this.readyPromise = undefined;
+    if (child && !child.killed) {
+      child.kill();
+    }
+    if (sessionCwd) {
+      await rm(sessionCwd, { recursive: true, force: true }).catch(() => {});
     }
   }
 
+  /**
+   * The child (belonging to `generation`) exited or failed to spawn.
+   * Whatever ACP call is currently awaited (setup or a turn) would
+   * otherwise hang forever — the ACP SDK never settles a pending call on
+   * its own once stdio is dead — so this rejects it directly via
+   * `activeReject`, then tears the session down completely so the next
+   * message starts fresh instead of reusing a dead child (fix 1).
+   *
+   * Ignored when `generation` is no longer `this.generation`: a stale
+   * child's `exit` can fire well after a newer attempt has already taken
+   * over (see the `generation` field's comment) and must not touch that
+   * newer, healthy attempt's state.
+   */
+  private handleChildDown(generation: number, reason: string): void {
+    if (generation !== this.generation) return;
+    const reject = this.activeReject;
+    this.activeReject = undefined;
+    reject?.(new CoMotionError(`${this.config.label} 的連線已中斷（${reason}），請重新發送訊息`));
+    void this.teardownSession();
+  }
+
   private async establishSession(): Promise<void> {
+    const generation = ++this.generation;
     const child = spawn(this.config.command, this.config.args ?? [], {
       stdio: ["pipe", "pipe", "ignore"],
       env: this.config.env ? { ...process.env, ...this.config.env } : process.env,
     });
     this.child = child;
+    // `error` fires when the process never spawns at all (e.g. the command
+    // does not exist); `exit` fires whenever it stops running afterwards,
+    // mid-setup or mid-turn. Both leave stdio dead, so both must reach for
+    // `activeReject` directly — nothing else notices on its own (fix 1).
     child.once("error", (error) => {
-      this.emitTyped("chat-error", { message: `啟動 ${this.config.label} 失敗：${error.message}` });
+      this.handleChildDown(generation, `啟動失敗：${error.message}`);
+    });
+    child.once("exit", (code, signal) => {
+      this.handleChildDown(generation, signal ? `收到訊號 ${signal}` : `結束代碼 ${code}`);
     });
 
     const stream = acp.ndJsonStream(
@@ -176,6 +264,11 @@ export class AgentChatSession extends EventEmitter {
     const connection = new acp.ClientSideConnection((_agent) => this.buildClient(), stream);
     this.connection = connection;
 
+    await this.withInterrupt(this.performHandshake(connection));
+  }
+
+  /** The actual initialize/newSession/編輯規約-prompt sequence, wrapped by `establishSession` with `withInterrupt`. */
+  private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
     await connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
       // This unit grants no file access at all (ticket #6): declaring the
@@ -265,13 +358,7 @@ export class AgentChatSession extends EventEmitter {
     if (this.disposed) return;
     this.disposed = true;
     this.removeAllListeners();
-    if (this.child && !this.child.killed) {
-      this.child.kill();
-    }
-    if (this.sessionCwd) {
-      await rm(this.sessionCwd, { recursive: true, force: true }).catch(() => {});
-      this.sessionCwd = undefined;
-    }
+    await this.teardownSession();
   }
 }
 

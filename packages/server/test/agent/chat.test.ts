@@ -388,3 +388,62 @@ describe("chat: a failed start must not leak its subprocess", () => {
     }
   });
 });
+
+describe("chat: an exited adapter must not deadlock the chat forever", () => {
+  it(
+    "errors out the pending turn instead of hanging, and a later message starts a fresh, working session",
+    async () => {
+      const markerDir = await mkdtemp(path.join(tmpdir(), "co-motion-chat-exit-marker-"));
+      const markerPath = path.join(markerDir, "exited-once");
+      try {
+        // exitDuringPromptIndex: 1 is the author's first message (index 0 is
+        // the 編輯規約) — the fake agent exits instead of replying, exactly
+        // once (exitOnceMarkerPath), simulating the adapter dying mid-turn.
+        const server = await serve(
+          fakeAgent({
+            replies: [["(ack)"], ["好的"]],
+            exitDuringPromptIndex: 1,
+            exitOnceMarkerPath: markerPath,
+          }),
+        );
+        const stream = await fetch(`${server.url}/api/chat/stream`);
+        const sse = new SseReader(stream);
+
+        // First message: the child dies mid-turn. Before the fix, the SDK
+        // never settles the pending `session/prompt` call on EOF, so this
+        // would hang forever instead of ever reaching chat-error.
+        const wedgedTurnError = sse.readUntil((e) => e.event === "chat-error");
+        const raced = Promise.race([
+          wedgedTurnError.then(() => "errored" as const),
+          new Promise((resolve) => setTimeout(() => resolve("timed-out" as const), 5000)),
+        ]);
+        await postChat(server, "第一則訊息，agent 會在這裡掛掉");
+        expect(await raced).toBe("errored");
+        const collected = await wedgedTurnError;
+        const errorEvent = collected.find((e) => e.event === "chat-error");
+        expect(errorEvent).toBeDefined();
+        const message = (errorEvent!.data as { message: string }).message;
+        expect(message).toContain("Claude Code");
+        expect(message).toMatch(/重新發送訊息/);
+
+        // Second message: a fresh subprocess spawn (the marker means it
+        // will not exit again this time) must start a genuinely working
+        // session, not reuse the dead one.
+        const secondDone = sse.readUntil((e) => e.event === "chat-done");
+        await postChat(server, "第二則訊息，這次應該要正常運作");
+        await secondDone;
+        await sse.close();
+
+        const pids = (await readFakeAgentLog())
+          .filter((entry) => entry.pid !== undefined)
+          .map((entry) => entry.pid!);
+        expect(pids).toHaveLength(2);
+        await waitFor(() => !isAlive(pids[0]));
+        expect(isAlive(pids[0])).toBe(false);
+      } finally {
+        await rm(markerDir, { recursive: true, force: true });
+      }
+    },
+    15000,
+  );
+});

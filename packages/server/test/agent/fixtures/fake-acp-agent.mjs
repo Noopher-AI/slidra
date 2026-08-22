@@ -29,6 +29,21 @@
 //                            normally. Used to script "first start fails,
 //                            retry succeeds" across a real subprocess
 //                            respawn, which is what ticket #6 fix 4 is about.
+//                            exitDuringPromptIndex: when the `session/prompt`
+//                            call at this index arrives, the process exits
+//                            immediately (process.exit(1)) instead of
+//                            replying — no response, no further stdio. Used
+//                            to script "the adapter dies mid-turn", which is
+//                            what fix 1 (round 2) must not let deadlock the
+//                            chat forever. Paired with exitOnceMarkerPath so
+//                            a respawned process (the session recovering on
+//                            the next message) does not exit again.
+//                            exitOnceMarkerPath: when set together with
+//                            exitDuringPromptIndex, only the first process
+//                            (across however many spawns share this marker
+//                            path) to see the marker absent creates it and
+//                            exits; every later spawn finds the marker
+//                            present and replies normally instead.
 //
 // Every process also logs its own pid as the very first log line, so tests
 // can check with `process.kill(pid, 0)` whether a given spawn is still
@@ -90,6 +105,20 @@ class FakeAgent {
     log({ sessionId: params.sessionId, prompt: params.prompt });
 
     const index = promptCount++;
+
+    if (config.exitDuringPromptIndex === index) {
+      const markerPath = config.exitOnceMarkerPath;
+      const alreadyExited = markerPath && existsSync(markerPath);
+      if (!markerPath || !alreadyExited) {
+        if (markerPath) writeFileSync(markerPath, String(process.pid));
+        // Simulates the adapter dying mid-request: no response is ever
+        // sent, stdio just goes away. process.exit() rather than a thrown
+        // error, so this matches a real crash/kill, not a clean JSON-RPC
+        // error reply.
+        process.exit(1);
+      }
+    }
+
     const replies = config.replies?.[index] ?? [`回覆第 ${index} 則訊息`];
 
     if (config.requestPermissionOnPromptIndex === index) {

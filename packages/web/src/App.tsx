@@ -111,14 +111,26 @@ export function App() {
     setMessages((prev) => appendMessage(prev, id, "author", text));
     setDraft("");
     setError(null);
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(body.error ?? "傳送訊息失敗");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "傳送訊息失敗");
+      }
+    } catch {
+      // `fetch` rejects (rather than resolving with a non-OK response) when
+      // the connection drops entirely — e.g. the server going away between
+      // `streamReady` and this call. The draft is already cleared and the
+      // message already rendered above by this point, so without this catch
+      // the author would see their message sitting in the conversation as
+      // if it had been delivered, when it was not — fabricating success is
+      // forbidden here. Reuses the same `error` state the non-OK branch
+      // above uses, naming the message so it is clear which one failed.
+      setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
   }
 
