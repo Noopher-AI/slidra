@@ -104,6 +104,33 @@ describe("open", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain("formatVersion");
   });
+
+  it("rejects a container whose entry path escapes the work directory, before writing anything", async () => {
+    const { zipSync } = await import("fflate");
+    const { writeFile, access } = await import("node:fs/promises");
+
+    // A real malicious archive: one entry tries to climb out of the target
+    // directory entirely and land inside comotDir, a location the unpacker
+    // has no business writing to.
+    const escapeTargetPath = path.join(comotDir, "escaped-marker.txt");
+    const traversalEntryName = `${"../".repeat(30)}${comotDir.slice(1)}/escaped-marker.txt`;
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(
+        JSON.stringify({ formatVersion: 1, name: "escape", slides: ["slides/001.svg"] }),
+      ),
+      "slides/001.svg": new TextEncoder().encode("<svg></svg>"),
+      "assets/": new Uint8Array(0),
+      [traversalEntryName]: new TextEncoder().encode("PWNED"),
+    });
+    const maliciousPath = path.join(comotDir, "malicious.comot");
+    await writeFile(maliciousPath, zipped);
+
+    const result = await registry.dispatch("open", { path: maliciousPath });
+
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+    await expect(access(escapeTargetPath)).rejects.toThrow();
+  });
 });
 
 describe("pack", () => {
@@ -165,7 +192,8 @@ describe("no output leaks the real work directory path", () => {
       }
     };
 
-    record(await registry.dispatch("new", { path: comotPath }));
+    const newResult = await registry.dispatch("new", { path: comotPath });
+    record(newResult);
     const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
     record(opened);
     const id = opened.data!.id;
@@ -174,7 +202,20 @@ describe("no output leaks the real work directory path", () => {
     record(await registry.dispatch("read", { id, path: "project.json" }));
 
     const repackedPath = path.join(comotDir, "repacked.comot");
-    record(await registry.dispatch("pack", { id, path: repackedPath }));
+    const packResult = await registry.dispatch("pack", { id, path: repackedPath });
+    record(packResult);
+
+    // Success messages must contain no filesystem path at all — not merely
+    // omit the hidden work directory. The caller already supplied `comotPath`
+    // / `repackedPath`; echoing it back earns nothing and, once
+    // `co-motion serve` exists, would leak the human's directory layout to
+    // an agent that never supplied it.
+    expect(newResult.ok).toBe(true);
+    expect(newResult.message).not.toContain(comotPath);
+    expect(newResult.message).not.toContain(comotDir);
+    expect(packResult.ok).toBe(true);
+    expect(packResult.message).not.toContain(repackedPath);
+    expect(packResult.message).not.toContain(comotDir);
 
     // Error paths too.
     record(await registry.dispatch("open", { path: path.join(comotDir, "missing.comot") }));

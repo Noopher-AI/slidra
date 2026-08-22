@@ -14,6 +14,6 @@ export const newCommand: CommandHandler<NewInput, NewData> = async (input) => {
   return {
     ok: true,
     data: {},
-    message: `已建立簡報：${input.path}`,
+    message: `已建立簡報「${name}」`,
   };
 };

@@ -64,12 +64,21 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
   }
 
   await mkdir(targetDir, { recursive: true });
+
+  // Validate every entry before writing anything: a partially-unpacked
+  // malicious archive is still a breach, so a bad entry must fail the whole
+  // unpack rather than being skipped or silently sanitised.
+  const resolvedTargetDir = path.resolve(targetDir);
+  for (const relativePath of Object.keys(unzipped)) {
+    assertEntryWithinTarget(relativePath, resolvedTargetDir, comotPath);
+  }
+
   for (const [relativePath, content] of Object.entries(unzipped)) {
+    const destPath = path.join(targetDir, relativePath);
     if (relativePath.endsWith("/")) {
-      await mkdir(path.join(targetDir, relativePath), { recursive: true });
+      await mkdir(destPath, { recursive: true });
       continue;
     }
-    const destPath = path.join(targetDir, relativePath);
     await mkdir(path.dirname(destPath), { recursive: true });
     await writeFile(destPath, content);
   }
@@ -79,6 +88,21 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
   }
 
   await validateProjectJson(targetDir, comotPath);
+}
+
+/**
+ * Rejects an archive entry that is absolute or whose resolved destination
+ * falls outside `resolvedTargetDir`. This is the unpack-side counterpart of
+ * the traversal guard `readPresentationFile` applies on the read side.
+ */
+function assertEntryWithinTarget(entryPath: string, resolvedTargetDir: string, comotPath: string): void {
+  if (path.isAbsolute(entryPath)) {
+    throw new CoMotionError(`簡報檔案內含不合法的路徑：${comotPath}`);
+  }
+  const resolvedDest = path.resolve(resolvedTargetDir, entryPath);
+  if (resolvedDest !== resolvedTargetDir && !resolvedDest.startsWith(resolvedTargetDir + path.sep)) {
+    throw new CoMotionError(`簡報檔案內含不合法的路徑：${comotPath}`);
+  }
 }
 
 async function validateProjectJson(workDir: string, comotPath: string): Promise<void> {

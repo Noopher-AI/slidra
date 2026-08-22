@@ -21,7 +21,16 @@ export function parseArgv(argv: string[]): ParsedCommand {
     case "new": {
       const path = requirePositional(rest, 0, "new", "path");
       const nameFlagIndex = rest.indexOf("--name");
-      const presentationName = nameFlagIndex >= 0 ? rest[nameFlagIndex + 1] : undefined;
+      let presentationName: string | undefined;
+      if (nameFlagIndex >= 0) {
+        // --name is present: it must be followed by a value. Silently
+        // falling back to the default name here would hide a typo'd
+        // command from the caller (no fallbacks).
+        presentationName = rest[nameFlagIndex + 1];
+        if (presentationName === undefined) {
+          throw new CoMotionError("--name 缺少值");
+        }
+      }
       return { name, input: { path, name: presentationName } };
     }
     case "open": {

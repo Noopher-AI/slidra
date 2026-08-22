@@ -13,6 +13,6 @@ export const packCommand: CommandHandler<PackInput, PackData> = async (input) =>
   return {
     ok: true,
     data: {},
-    message: `已將簡報打包為：${input.path}`,
+    message: "已完成打包",
   };
 };
