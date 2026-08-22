@@ -33,8 +33,12 @@ afterEach(async () => {
   await rm(comotDir, { recursive: true, force: true });
 });
 
-async function watch(id: string, onChange: () => void): Promise<PresentationWatcher> {
-  const watcher = await watchPresentation(id, onChange);
+async function watch(
+  id: string,
+  onChange: () => void,
+  onError: (error: Error) => void = () => {},
+): Promise<PresentationWatcher> {
+  const watcher = await watchPresentation(id, onChange, onError);
   watchers.push(watcher);
   return watcher;
 }
@@ -82,10 +86,36 @@ describe("watchPresentation", () => {
   });
 
   it("rejects with the same wording an unknown presentation id already produces on a real read", async () => {
-    await expect(watchPresentation("does-not-exist", () => {})).rejects.toThrow(/找不到識別碼對應的簡報/);
+    await expect(watchPresentation("does-not-exist", () => {}, () => {})).rejects.toThrow(
+      /找不到識別碼對應的簡報/,
+    );
     await expect(readPresentationFile("does-not-exist", SLIDE_FILE_NAME)).rejects.toThrow(
       /找不到識別碼對應的簡報/,
     );
+  });
+
+  it("rejects without leaking the real work directory path when fs.watch fails synchronously at startup", async () => {
+    // fs.watch throws synchronously (not just via its async `error` event)
+    // when its target has vanished between id resolution and the watch
+    // call — the natural way to reproduce this is for the work directory
+    // to disappear between opening the presentation and starting to watch
+    // it, e.g. the gap between server startup and the first /api/events
+    // connection.
+    const { id } = await openFreshPresentation();
+    const { resolveWorkDir } = await import("../src/workspace.js");
+    const workDir = await resolveWorkDir(id);
+    await rm(workDir, { recursive: true, force: true });
+
+    let caught: Error | undefined;
+    try {
+      await watchPresentation(id, () => {}, () => {});
+    } catch (error) {
+      caught = error as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught!.message).not.toContain(workDir);
+    expect(caught!.message).not.toContain(coMotionHome);
   });
 
   it("close() stops further notifications", async () => {

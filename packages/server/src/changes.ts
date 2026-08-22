@@ -114,6 +114,14 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
       }
       const stream = openEventStream(res);
       streams.add(stream);
+      // Tie removal to the disconnect itself rather than to some later,
+      // unrelated filesystem change: a client that reconnects repeatedly
+      // (EventSource does this by design on any network blip) would
+      // otherwise pile up dead EventStream objects until the next edit
+      // happened to prune them via onChange's `stream.closed` sweep.
+      res.once("close", () => {
+        streams.delete(stream);
+      });
     },
 
     dispose: async () => {

@@ -5,9 +5,17 @@ import type { LiveReload } from "../src/live-reload.js";
 // jsdom has no EventSource, so every test drives a fake constructor
 // injected via `eventSourceFactory` rather than stubbing a global.
 
+// Mirrors the standard EventSource readyState values this fake needs.
+const CONNECTING = 0;
+const CLOSED = 2;
+
 class FakeEventSource {
   url: string;
   closed = false;
+  // Real EventSource starts CONNECTING and moves to OPEN on `open`; tests
+  // that care about the CLOSED transition set this directly to simulate
+  // the browser giving up permanently.
+  readyState = CONNECTING;
   private listeners = new Map<string, Array<(event: MessageEvent) => void>>();
 
   constructor(url: string) {
@@ -22,6 +30,7 @@ class FakeEventSource {
 
   close(): void {
     this.closed = true;
+    this.readyState = CLOSED;
     // A real EventSource stops delivering events once closed; clearing
     // listeners here makes the fake behave the same way instead of only
     // flipping a flag nothing else checks.
@@ -33,6 +42,19 @@ class FakeEventSource {
     for (const listener of this.listeners.get(type) ?? []) {
       listener({ data: JSON.stringify(data) } as MessageEvent);
     }
+  }
+
+  /** Test helper: simulate a bare `error` event without ending the stream. */
+  emitError(): void {
+    for (const listener of this.listeners.get("error") ?? []) {
+      listener({} as MessageEvent);
+    }
+  }
+
+  /** Test helper: simulate the browser permanently giving up, then firing `error`. */
+  emitPermanentError(): void {
+    this.readyState = CLOSED;
+    this.emitError();
   }
 }
 
@@ -177,5 +199,74 @@ describe("startLiveReload", () => {
     fake!.emit("presentation-changed");
 
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("calls onError with the server's message when the watcher dies", () => {
+    let fake: FakeEventSource | undefined;
+    const onError = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onError,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("presentation-watch-error", { message: "監看簡報檔案時發生錯誤" });
+
+    expect(onError).toHaveBeenCalledWith("監看簡報檔案時發生錯誤");
+  });
+
+  it("closes the connection once the watcher has died, instead of retrying against a server that will only ever refuse", () => {
+    let fake: FakeEventSource | undefined;
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onError: () => {},
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("presentation-watch-error", { message: "監看簡報檔案時發生錯誤" });
+
+    expect(fake?.closed).toBe(true);
+  });
+
+  it("calls onError when the connection fails permanently (EventSource readyState CLOSED)", () => {
+    let fake: FakeEventSource | undefined;
+    const onError = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onError,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    (fake as unknown as { emitPermanentError: () => void }).emitPermanentError();
+
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call onError for an ordinary error while EventSource is still retrying", () => {
+    let fake: FakeEventSource | undefined;
+    const onError = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onError,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    // readyState stays CONNECTING (the fake's default) — this mirrors the
+    // ordinary reconnect blip EventSource handles on its own.
+    (fake as unknown as { emitError: () => void }).emitError();
+
+    expect(onError).not.toHaveBeenCalled();
   });
 });

@@ -40,21 +40,26 @@ const DEBOUNCE_MS = 100;
  * `workspace.ts` and this module now inherits it instead of drifting away
  * from it again).
  *
- * `onError`, if given, is called at most once if the underlying `fs.watch`
- * handle itself fails after startup (its target vanished, an OS watch
- * limit was hit, ...) — a condition live reload can never recover from on
- * its own, since no future filesystem change will ever be observed again.
- * The watcher closes itself first, so it stops looking like a live watcher
+ * `onError` is called at most once if the underlying `fs.watch` handle
+ * itself fails after startup (its target vanished, an OS watch limit was
+ * hit, ...) — a condition live reload can never recover from on its own,
+ * since no future filesystem change will ever be observed again. The
+ * watcher closes itself first, so it stops looking like a live watcher
  * before the caller is even told; no further `onChange` call can follow.
- * A caller that omits `onError` gets the previous, blunter behaviour: the
- * failure surfaces as an uncaught exception. Callers that can inform the
- * author in-band (packages/server's SSE broadcaster) should always pass
- * one — see changes.ts.
+ *
+ * Required, not optional: there is exactly one production caller
+ * (packages/server's SSE broadcaster, see changes.ts) and it must always
+ * be able to inform the author in-band when the watcher dies. Making this
+ * parameter optional would let a caller compile while silently forgetting
+ * to handle that failure — the previous "throw and kill the process if
+ * omitted" fallback existed only to cover that gap, and traded a loud
+ * crash for the risk of an author never being told at all. A required
+ * parameter makes that gap unrepresentable instead of merely documented.
  */
 export async function watchPresentation(
   id: string,
   onChange: () => void,
-  onError?: (error: Error) => void,
+  onError: (error: Error) => void,
 ): Promise<PresentationWatcher> {
   const workDir = await resolveWorkDir(id);
 
@@ -76,9 +81,22 @@ export async function watchPresentation(
     debounceTimer.unref();
   };
 
-  const watcher = fsWatch(workDir, { recursive: true }, () => {
-    scheduleNotify();
-  });
+  let watcher: ReturnType<typeof fsWatch>;
+  try {
+    watcher = fsWatch(workDir, { recursive: true }, () => {
+      scheduleNotify();
+    });
+  } catch {
+    // `fs.watch` throws synchronously (not just via its `error` event) when
+    // the target has vanished or become unreadable between id resolution
+    // above and this call — e.g. the work directory was removed after
+    // server startup but before the first `/api/events` connection. That
+    // raw error's message very likely embeds the real work directory path
+    // (ADR-0004), exactly like the asynchronous `error` event handled
+    // below, so it gets the same sanitised treatment rather than being
+    // allowed to propagate to the caller unmodified.
+    throw new CoMotionError("監看簡報檔案時發生錯誤");
+  }
 
   watcher.on("error", () => {
     if (closed) return;
@@ -93,12 +111,7 @@ export async function watchPresentation(
     watcher.close();
     // The underlying error object very likely embeds the real work
     // directory path (ADR-0004) — it is never logged or rethrown verbatim.
-    const error = new CoMotionError("監看簡報檔案時發生錯誤");
-    if (onError) {
-      onError(error);
-    } else {
-      throw error;
-    }
+    onError(new CoMotionError("監看簡報檔案時發生錯誤"));
   });
 
   return {

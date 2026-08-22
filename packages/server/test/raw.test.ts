@@ -97,6 +97,22 @@ describe("GET /api/raw/<virtual path>", () => {
     expect(body.equals(PNG_BYTES)).toBe(true);
   });
 
+  it("sends Cache-Control: no-store, since the same virtual path can serve different bytes over time", async () => {
+    // Ticket #5 fix round, fix 4: the canvas rebuilds the iframe with the
+    // same /api/raw/ URLs on every reload, and without this header the
+    // browser may keep serving old bytes from cache after the underlying
+    // file changes — despite live reload having fired correctly. No
+    // response here carries an ETag/Last-Modified either, so there is
+    // nothing for the browser to revalidate against; caching would be
+    // unconditionally wrong, not merely stale-prone.
+    const id = await openPresentationWithAssets();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
+
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("resolves a percent-encoded non-ASCII filename to the correct asset", async () => {
     const id = await openPresentationWithAssets();
     const server = await serve(id);

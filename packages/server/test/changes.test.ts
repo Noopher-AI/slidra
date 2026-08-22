@@ -5,6 +5,7 @@ import path from "node:path";
 import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
+import { resolveWorkDir } from "@co-motion/core";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { createChangeBroadcaster } from "../src/changes.js";
@@ -239,5 +240,51 @@ describe("GET /api/events", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toMatch(/找不到識別碼對應的簡報/);
+  });
+
+  it("registers stream cleanup at connection time, so a disconnect is pruned immediately rather than waiting on the next file change", async () => {
+    // Ticket #5 fix round, fix 3: a long-running server whose clients
+    // reconnect repeatedly (EventSource does this by design on any network
+    // blip) must not accumulate dead EventStream objects until something
+    // unrelated happens to prune them. The cleanup listener must be
+    // attached alongside `streams.add(stream)`, not left to the lazy sweep
+    // inside the change handler.
+    const { id } = await openFreshPresentation();
+    const broadcaster = createChangeBroadcaster(id);
+    const res = new FakeResponse() as unknown as ServerResponse;
+
+    await broadcaster.handleConnection(res);
+    // openEventStream (sse.ts) registers its own `once("close", ...)`
+    // disconnect listener; changes.ts must register a second one at the
+    // same moment the stream is added to the fan-out set.
+    expect((res as unknown as EventEmitter).listenerCount("close")).toBe(2);
+
+    (res as unknown as EventEmitter).emit("close");
+
+    // Both `once` listeners fire on the same disconnect and remove
+    // themselves — this only happens if the cleanup was already wired up
+    // by the time the client disconnected, not deferred to some later
+    // event.
+    expect((res as unknown as EventEmitter).listenerCount("close")).toBe(0);
+
+    await broadcaster.dispose();
+  });
+
+  it("responds without the real work directory path when fs.watch fails synchronously at startup", async () => {
+    // ADR-0004's third layer failing exactly where it matters: `fs.watch`
+    // throws synchronously (not only via its async `error` event) when the
+    // work directory has vanished between server startup and the first
+    // /api/events request — removing it here reproduces exactly that gap.
+    const { id } = await openFreshPresentation();
+    const server = await serve(id);
+    const workDir = await resolveWorkDir(id);
+    await rm(workDir, { recursive: true, force: true });
+
+    const response = await fetch(`${server.url}/api/events`);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).not.toContain(workDir);
+    expect(body.error).not.toContain(coMotionHome);
   });
 });
