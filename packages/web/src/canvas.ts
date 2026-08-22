@@ -49,6 +49,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   container.appendChild(iframe);
 
   async function reload(): Promise<void> {
+    // A no-op after destroy(): the iframe this closure owns is gone from
+    // the DOM, so there is nothing left to redraw, and re-fetching would
+    // just race the next mount for no benefit.
+    if (destroyed) return;
+
     const project = await fetchJson<ProjectJson>("/api/presentation");
     if (destroyed) return;
 
@@ -72,6 +77,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     reload,
     destroy: () => {
       destroyed = true;
+      // Remove exactly the element this call created — never the
+      // container's other children. The container belongs to React
+      // (ADR-0001); this module has no business deciding what else lives
+      // in it. `.remove()` is also a no-op if the iframe is already
+      // detached, so double-destroy stays safe.
+      iframe.remove();
     },
   };
 }
