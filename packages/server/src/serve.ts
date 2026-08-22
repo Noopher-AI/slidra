@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
+import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
+import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleRawRequest } from "./raw.js";
@@ -28,6 +30,15 @@ export interface ServeOptions {
    */
   port?: number;
   host?: string;
+  /**
+   * The already-selected ACP adapter to spawn on the first chat message.
+   * Required: `cli.ts` always resolves one via `selectAdapter()` before
+   * calling `startServe` (§3 — no fallback, no degraded mode), so "serve
+   * without an agent" is not a state production ever reaches. Making this
+   * required (rather than optional with a 500 fallback) makes that state
+   * unrepresentable instead of merely unreached.
+   */
+  agent: AgentAdapterConfig;
 }
 
 export interface RunningServer {
@@ -67,6 +78,20 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
 
+  const chatSession = new AgentChatSession(options.agent);
+  // Every SSE stream `/api/chat/stream` has ever opened, still connected.
+  // `server.close()` waits for established connections rather than
+  // closing them, and an SSE stream never ends on its own — so these must
+  // be closed explicitly, before the socket itself is closed, or shutdown
+  // hangs forever with a browser tab open.
+  const liveChatStreams = new Set<EventStream>();
+  disposers.push(async () => {
+    for (const stream of liveChatStreams) {
+      stream.close();
+    }
+    await chatSession.dispose();
+  });
+
   // Starts watching only lazily, on the first /api/events connection (see
   // changes.ts) — creating the handle itself touches no filesystem, so no
   // rollback is needed if listen() below fails.
@@ -74,7 +99,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   disposers.push(() => changeBroadcaster.dispose());
 
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, changeBroadcaster, req, res);
+    void handleRequest(registry, presentationId, staticDir, chatSession, liveChatStreams, changeBroadcaster, req, res);
   });
 
   await listen(server, port, host);
@@ -175,16 +200,30 @@ async function handleRequest(
   registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
+  chatSession: AgentChatSession,
+  liveChatStreams: Set<EventStream>,
   changeBroadcaster: ChangeBroadcaster,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
+    // Parsed before the method gate so POST /api/chat can be routed
+    // explicitly — every other POST still gets the same 405 it always did.
+    const url = new URL(req.url ?? "/", "http://localhost");
+
+    if (req.method === "POST") {
+      if (url.pathname === "/api/chat") {
+        await handleChatPost(chatSession, req, res);
+        return;
+      }
+      sendJson(res, 405, { error: "只支援 GET" });
+      return;
+    }
+
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "只支援 GET" });
       return;
     }
-    const url = new URL(req.url ?? "/", "http://localhost");
 
     if (url.pathname === "/api/presentation") {
       const project = await loadProject(registry, presentationId);
@@ -209,6 +248,11 @@ async function handleRequest(
       }
       res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });
       res.end(result.data!.content);
+      return;
+    }
+
+    if (url.pathname === "/api/chat/stream") {
+      handleChatStream(chatSession, res, liveChatStreams);
       return;
     }
 
@@ -252,6 +296,56 @@ async function handleRequest(
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : "未知錯誤" });
   }
+}
+
+/**
+ * `POST /api/chat` — accepts the author's message and returns immediately;
+ * the reply is never awaited here, it streams separately over
+ * `/api/chat/stream`.
+ */
+async function handleChatPost(
+  chatSession: AgentChatSession,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    return;
+  }
+  const text = (body as { text?: unknown } | null)?.text;
+  if (typeof text !== "string" || text.trim() === "") {
+    sendJson(res, 400, { error: "訊息內容不可為空" });
+    return;
+  }
+  chatSession.sendMessage(text);
+  sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `GET /api/chat/stream` — an SSE stream of the agent's reply. Event names:
+ * `chat-chunk` (a reply-text delta), `chat-done` (the turn ended, carries
+ * `stopReason`), `chat-error` (a clear-text failure, e.g. not logged in).
+ */
+function handleChatStream(chatSession: AgentChatSession, res: ServerResponse, liveStreams: Set<EventStream>): void {
+  const stream = openEventStream(res);
+  liveStreams.add(stream);
+  const detach = chatSession.attachStream((event, data) => stream.send(event, data));
+  res.once("close", () => {
+    detach();
+    liveStreams.delete(stream);
+  });
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
