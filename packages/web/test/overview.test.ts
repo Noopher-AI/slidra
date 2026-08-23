@@ -228,6 +228,52 @@ describe("mountOverview", () => {
     expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1"');
   });
 
+  it("refresh() refetches already-loaded thumbnails but leaves unloaded ones empty", async () => {
+    let slide1Markup = '<svg data-testid="s1-old"></svg>';
+    const fetchCalls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        fetchCalls.push(url);
+        if (url === "/api/files/slides/001.svg") {
+          return new Response(slide1Markup, { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    // Slides array is unchanged across the refresh — this is the live-reload
+    // case an external edit to a slide's SVG produces: project.json's
+    // `slides` list never moves, only the markup a slide path serves does.
+    const { controller } = fakeCanvas({
+      slides: ["slides/001.svg", "slides/002.svg"],
+      currentIndex: 0,
+    });
+
+    const overview = mountOverview(container, controller);
+    const items = container.querySelectorAll("li.overview-item");
+    const observer = FakeIntersectionObserver.instances.at(-1)!;
+
+    // Only slide 1's thumbnail is materialised; slide 2's is not.
+    observer.triggerIntersect(items[0]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1-old"');
+    expect((items[1].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+
+    // The external editor changes slide 1's markup without touching
+    // project.json's slides list.
+    slide1Markup = '<svg data-testid="s1-new"></svg>';
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1-new"');
+    // Slide 2 was never materialised, so refresh() must not fetch it either
+    // — that would defeat lazy loading.
+    expect((items[1].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+    expect(fetchCalls.filter((url) => url === "/api/files/slides/002.svg")).toEqual([]);
+  });
+
   it("destroy() removes the list from the container and stops responding to further canvas updates", () => {
     const { controller, setState } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
     const overview = mountOverview(container, controller);

@@ -13,6 +13,17 @@ import type { CanvasController } from "./canvas.js";
 
 export interface OverviewController {
   destroy(): void;
+  /**
+   * A slide's markup may change without project.json's `slides` list
+   * moving at all — the ordinary shape of an external edit, which is what
+   * live reload reacts to. `canvas.subscribe()`'s state can't distinguish
+   * that from "only currentIndex changed" (both look like the same slides
+   * array), so the caller (App.tsx's live-reload handler) calls this
+   * explicitly instead. Re-fetches every thumbnail that has already been
+   * materialised; thumbnails that were never observed stay untouched, so a
+   * refresh never pulls in the whole deck and defeats lazy loading.
+   */
+  refresh(): void;
 }
 
 export function mountOverview(container: HTMLElement, canvas: CanvasController): OverviewController {
@@ -42,14 +53,18 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       const li = entry.target as HTMLLIElement;
       observer.unobserve(li);
       const index = Number(li.dataset.index);
-      void loadThumbnail(index);
+      loadThumbnail(index);
     }
   }
 
-  async function loadThumbnail(index: number): Promise<void> {
+  function loadThumbnail(index: number): void {
     if (requested[index]) return;
     requested[index] = true;
+    void fetchAndFillThumbnail(index);
+  }
 
+  /** Always fetches and fills, regardless of the `requested` flag — the part refresh() also uses. */
+  async function fetchAndFillThumbnail(index: number): Promise<void> {
     const slidePath = slides[index];
     const frame = frames[index];
     try {
@@ -119,6 +134,11 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
   });
 
   return {
+    refresh() {
+      requested.forEach((isRequested, index) => {
+        if (isRequested) void fetchAndFillThumbnail(index);
+      });
+    },
     destroy() {
       unsubscribe();
       observer.disconnect();
