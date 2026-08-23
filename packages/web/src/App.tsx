@@ -396,40 +396,62 @@ export function App() {
             )}
           </div>
         )}
-        {hasSlides && (
+        {/* review gate round 4, P2: live reload can empty `slides` (e.g. an
+            external edit removes the last one) while `mode` stays "play" —
+            canvas.ts never resets mode on its own. The pagination trio
+            below has nothing to page through then, so it stays gated on
+            hasSlides, but 離開播放/全螢幕開關 must not disappear with it:
+            they are about the play *session*, not the deck's slide count.
+            Losing them here used to leave the author on a blank, silently
+            fullscreen page with no in-app way out at all — only the
+            browser's own Esc. The nav itself now renders whenever there is
+            something to page through OR the author is still mid-play. */}
+        {(hasSlides || canvasState.mode === "play") && (
           <nav className="slide-nav">
-            <button
-              type="button"
-              className="slide-nav-button"
-              aria-label="上一頁"
-              disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
-              onClick={() => void controllerRef.current?.previous()}
-            >
-              ‹
-            </button>
-            <span className="slide-nav-position">
-              {canvasState.currentIndex + 1} / {slideCount}
-            </span>
-            <button
-              type="button"
-              className="slide-nav-button"
-              aria-label="下一頁"
-              disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
-              onClick={() => void controllerRef.current?.next()}
-            >
-              ›
-            </button>
+            {hasSlides && (
+              <>
+                <button
+                  type="button"
+                  className="slide-nav-button"
+                  aria-label="上一頁"
+                  disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
+                  onClick={() => void controllerRef.current?.previous()}
+                >
+                  ‹
+                </button>
+                <span className="slide-nav-position">
+                  {canvasState.currentIndex + 1} / {slideCount}
+                </span>
+                <button
+                  type="button"
+                  className="slide-nav-button"
+                  aria-label="下一頁"
+                  disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
+                  onClick={() => void controllerRef.current?.next()}
+                >
+                  ›
+                </button>
+              </>
+            )}
             {canvasState.mode === "view" ? (
-              <button type="button" className="play-toggle-button" onClick={() => void controllerRef.current?.play()}>
-                播放
-              </button>
+              hasSlides && (
+                <button
+                  type="button"
+                  className="play-toggle-button"
+                  onClick={() => void controllerRef.current?.play()}
+                >
+                  播放
+                </button>
+              )
             ) : (
               <button type="button" className="play-toggle-button" onClick={() => void handleExitPlay()}>
                 離開播放
               </button>
             )}
             {/* 全螢幕開關 (ticket #29): only meaningful in 播放模式 — 是否全螢幕
-                由作者決定，工具不預設強制 (settled decision #6). */}
+                由作者決定，工具不預設強制 (settled decision #6). Deliberately
+                not additionally gated on hasSlides — see the comment above
+                the nav's own outer condition. */}
             {canvasState.mode === "play" && (
               <button
                 type="button"

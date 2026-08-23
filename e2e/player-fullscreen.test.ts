@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -757,4 +757,64 @@ it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的�
   }
 
   await expect.poll(() => page.locator('button:has-text("播放")').count()).toBe(1);
+});
+
+it("即時重載把最後一張投影片移除時，離開播放與全螢幕開關仍然看得到、點得到（review gate round 4, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  await page.locator(".fullscreen-toggle-button").click();
+  await expect
+    .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
+    .toBe(true);
+
+  // 真實的外部編輯：直接改寫這個 presentation 在磁碟上真正的工作目錄
+  // （`open` 指令解壓縮出來的那份，`packages/core/src/workspace.ts` 的
+  // `workDirFor()` 命名慣例——不是 e2e/fixtures/play-deck 那份唯讀共用
+  // fixture），把 slides 清空，這樣才會真的走過 server 的檔案監看 → SSE
+  // presentation-changed → canvas.ts 的 reload() 這整條即時重載路徑，
+  // 不是模擬出來的.
+  const workDir = path.join(coMotionHome, "work", presentationId);
+  const projectJsonPath = path.join(workDir, "project.json");
+  const original = await readFile(projectJsonPath, "utf-8");
+  const emptied = JSON.parse(original) as { slides: string[] };
+  emptied.slides = [];
+  await writeFile(projectJsonPath, JSON.stringify(emptied, null, 2), "utf-8");
+
+  // 等重載真的落地，不是猜一個時間就開始斷言（round 5 的教訓）：
+  // canvas.ts 的 renderPlay() 在 currentIndex === -1（slides 真的變空）
+  // 時會畫出這段固定文字，是可觀察、非猜測的落地訊號.
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("body").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toContain("此簡報沒有投影片");
+
+  // 修好之前：hasSlides 變 false，整條 <nav> 消失，離開播放與全螢幕開關
+  // 都不在畫面上了，而且沒有人主動退出全螢幕——作者被留在一個沒有 App
+  // 內建出口的全螢幕空白畫面，只剩瀏覽器自己的 Esc。修好之後：這兩顆
+  // 按鈕仍然在.
+  await expect.poll(() => page.locator('button:has-text("離開播放")').count()).toBe(1);
+  await expect.poll(() => page.locator(".fullscreen-toggle-button").count()).toBe(1);
+
+  // 全螢幕本身沒有被靜默、未經作者同意地強制退出——是否離開全螢幕仍然由
+  // 作者決定 (settled decision #6)，投影片數量不替他做這個決定.
+  expect((await fullscreenSnapshot(page)).isContainerFullscreen).toBe(true);
+
+  // 真實點擊離開播放，證明它不只是存在於 DOM 裡，是真的能點的——同時也
+  // 走一次 handleExitPlay() 的既有邏輯，確認全螢幕會一併退出.
+  await page.locator('button:has-text("離開播放")').click();
+  await expect
+    .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
+    .toBe(false);
+  await expect.poll(() => page.locator('button:has-text("離開播放")').count()).toBe(0);
 });
