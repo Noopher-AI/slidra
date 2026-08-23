@@ -42,19 +42,33 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
   // against it). Until the response lands, style.css's `var()` fallback
   // keeps the boxes at 16:9 so the scrollbar is honest from the first
   // paint; a failed or malformed response throws instead of silently
-  // keeping the fallback.
-  void (async () => {
+  // keeping the fallback. Called again from refresh(): an external edit
+  // can change the canvas size too, and live reload's refresh() is the
+  // only signal this module gets about it.
+  // Same generation-guard shape as fetchAndFillThumbnail below: two
+  // overlapping refresh() calls must not let the older call's slower
+  // response re-apply a stale ratio after the newer one already landed.
+  let aspectGeneration = 0;
+  async function applyAspectRatio(): Promise<void> {
+    const thisGeneration = ++aspectGeneration;
     const project = await fetchJson<{ canvas: { width: number; height: number } }>("/api/presentation");
+    if (aspectGeneration !== thisGeneration) return;
     const { width, height } = project.canvas ?? {};
     if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
       throw new Error("project.json 的 canvas 尺寸無效，無法決定縮圖長寬比");
     }
     list.style.setProperty("--overview-aspect-ratio", `${width} / ${height}`);
-  })();
+  }
+  void applyAspectRatio();
 
   let slides: string[] = [];
   const items: HTMLLIElement[] = [];
-  const frames: HTMLIFrameElement[] = [];
+  // Sparse on purpose: a slot only gets an iframe once its <li> has been
+  // observed to intersect (see loadThumbnail). Before that the slot is
+  // undefined — an iframe created eagerly would cost a browsing context
+  // per slide even with an empty srcdoc, which is exactly what #27's
+  // "only thumbnails near the viewport are materialised" rules out.
+  const frames: (HTMLIFrameElement | undefined)[] = [];
   // Guards against re-fetching a thumbnail that is already loaded or in
   // flight — the observer can report the same <li> intersecting more than
   // once before its unobserve() call has taken effect.
@@ -89,6 +103,14 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
   function loadThumbnail(index: number): void {
     if (requested[index]) return;
     requested[index] = true;
+    // The iframe is only born here, on first intersection — rebuildList()
+    // deliberately leaves the <li> with just its placeholder button. The
+    // zero-token sandbox is set before the element ever enters the DOM.
+    const iframe = document.createElement("iframe");
+    iframe.className = "overview-frame";
+    iframe.setAttribute("sandbox", "");
+    items[index].querySelector("button")!.appendChild(iframe);
+    frames[index] = iframe;
     void fetchAndFillThumbnail(index);
   }
 
@@ -105,7 +127,10 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
     generations[index] = thisGeneration;
 
     const slidePath = slides[index];
-    const frame = frames[index];
+    // Only ever called with a materialised slot: loadThumbnail() creates
+    // the iframe before the first call, and refresh() only revisits
+    // indexes whose `requested` flag is set.
+    const frame = frames[index]!;
     try {
       const markup = await fetchText(`/api/files/${slidePath}`);
       if (generations[index] !== thisGeneration) return;
@@ -134,22 +159,21 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       li.className = "overview-item";
       li.dataset.index = String(index);
 
+      // The button doubles as the placeholder: the <li>'s aspect-ratio box
+      // (style.css) gives it its size, so the scrollbar is honest and the
+      // current-page highlight works before any iframe exists. The iframe
+      // itself is created lazily in loadThumbnail().
       const button = document.createElement("button");
       button.type = "button";
       button.className = "overview-thumb";
       button.setAttribute("aria-label", `第 ${index + 1} 頁`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
-      const iframe = document.createElement("iframe");
-      iframe.className = "overview-frame";
-      iframe.setAttribute("sandbox", "");
-
-      button.appendChild(iframe);
       li.appendChild(button);
       list.appendChild(li);
 
       items.push(li);
-      frames.push(iframe);
+      frames.push(undefined);
       requested.push(false);
       observer.observe(li);
     });
@@ -177,6 +201,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
 
   return {
     refresh() {
+      void applyAspectRatio();
       requested.forEach((isRequested, index) => {
         if (isRequested) void fetchAndFillThumbnail(index);
       });

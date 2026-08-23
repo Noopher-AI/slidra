@@ -125,7 +125,43 @@ describe("mountOverview", () => {
     expect(list.style.getPropertyValue("--overview-aspect-ratio")).toBe("1024 / 768");
   });
 
-  it("renders one overview-item per slide, in slides order, with a sandboxed thumbnail iframe", () => {
+  it("refresh() re-reads the canvas size, so an external edit to project.json's canvas re-shapes the thumbnails", async () => {
+    // The live-reload path: an external edit can change canvas.width/height
+    // without touching the slides list. refresh() is the hook live reload
+    // already calls, so it must re-apply the ratio too — not leave the one
+    // read at mount frozen until a full page reload.
+    let canvasSize = { width: 1280, height: 720 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") {
+          return new Response(
+            JSON.stringify({ formatVersion: 1, name: "測試", canvas: canvasSize, slides: [] }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    const overview = mountOverview(container, controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const list = container.querySelector("ol.overview-list") as HTMLElement;
+    expect(list.style.getPropertyValue("--overview-aspect-ratio")).toBe("1280 / 720");
+
+    // The external edit flips the presentation to portrait; live reload
+    // fires refresh().
+    canvasSize = { width: 720, height: 1280 };
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(list.style.getPropertyValue("--overview-aspect-ratio")).toBe("720 / 1280");
+  });
+
+  it("renders one overview-item per slide, in slides order, with a placeholder button and no iframe yet", () => {
     const { controller } = fakeCanvas({ slides: ["slides/001.svg", "slides/002.svg"], currentIndex: 0 });
 
     mountOverview(container, controller);
@@ -142,9 +178,13 @@ describe("mountOverview", () => {
     expect(firstButton).not.toBeNull();
     expect(firstButton!.getAttribute("aria-label")).toBe("第 1 頁");
 
-    const firstFrame = items[0].querySelector("iframe.overview-frame");
-    expect(firstFrame).not.toBeNull();
-    expect(firstFrame!.getAttribute("sandbox")).toBe("");
+    // No iframe until the <li> intersects — the acceptance criterion is
+    // that far-away thumbnails are not materialised at all, and a browsing
+    // context per slide at mount would defeat that even with empty srcdoc.
+    // (The sandbox="" posture at creation time is asserted in the
+    // materialisation test below.)
+    expect(items[0].querySelector("iframe")).toBeNull();
+    expect(items[1].querySelector("iframe")).toBeNull();
   });
 
   it("marks only the current slide's <li> and <button>, and moves the mark when the index changes", () => {
@@ -182,7 +222,7 @@ describe("mountOverview", () => {
     expect(showSlideCalls).toEqual([1]);
   });
 
-  it("only fetches and fills a thumbnail once its <li> is observed to intersect", async () => {
+  it("only materialises a thumbnail's iframe (and fetches its slide) once its <li> is observed to intersect", async () => {
     const fetchCalls: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -204,19 +244,28 @@ describe("mountOverview", () => {
 
     mountOverview(container, controller);
 
-    // Nothing fetched yet: no <li> has been reported as intersecting.
+    // Nothing fetched yet, and — the actual acceptance criterion (#27) — no
+    // iframe exists yet either: an already-created iframe with an empty
+    // srcdoc still costs a browsing context per slide, which is exactly
+    // what lazy loading is supposed to avoid.
     expect(fetchCalls).toEqual([]);
     const items = container.querySelectorAll("li.overview-item");
-    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+    expect(items[0].querySelector("iframe")).toBeNull();
+    expect(items[1].querySelector("iframe")).toBeNull();
 
     const observer = FakeIntersectionObserver.instances.at(-1)!;
     observer.triggerIntersect(items[0]);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(fetchCalls).toEqual(["/api/files/slides/001.svg"]);
-    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1"');
-    // The second slide was never observed intersecting, so it stays empty.
-    expect((items[1].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+    const frame = items[0].querySelector("iframe.overview-frame") as HTMLIFrameElement;
+    expect(frame).not.toBeNull();
+    // The zero-token sandbox posture applies from the moment the iframe
+    // exists, not as a later touch-up.
+    expect(frame.getAttribute("sandbox")).toBe("");
+    expect(frame.srcdoc).toContain('data-testid="s1"');
+    // The second slide was never observed intersecting: still no iframe.
+    expect(items[1].querySelector("iframe")).toBeNull();
   });
 
   it("shows an explicit Traditional Chinese message in the thumbnail when the slide fails to fetch", async () => {
@@ -301,7 +350,7 @@ describe("mountOverview", () => {
     observer.triggerIntersect(items[0]);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1-old"');
-    expect((items[1].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+    expect(items[1].querySelector("iframe")).toBeNull();
 
     // The external editor changes slide 1's markup without touching
     // project.json's slides list.
@@ -310,9 +359,9 @@ describe("mountOverview", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="s1-new"');
-    // Slide 2 was never materialised, so refresh() must not fetch it either
-    // — that would defeat lazy loading.
-    expect((items[1].querySelector("iframe") as HTMLIFrameElement).srcdoc).toBe("");
+    // Slide 2 was never materialised, so refresh() must neither fetch it
+    // nor conjure its iframe — that would defeat lazy loading.
+    expect(items[1].querySelector("iframe")).toBeNull();
     expect(fetchCalls.filter((url) => url === "/api/files/slides/002.svg")).toEqual([]);
   });
 

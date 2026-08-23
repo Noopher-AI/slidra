@@ -241,6 +241,10 @@ it("縮圖 iframe 維持零 token sandbox", async () => {
 
     await expect.poll(() => page.locator("li.overview-item").count(), { timeout: 30_000 }).toBe(3);
 
+    // Materialisation is lazy (an iframe only exists once its <li> has
+    // intersected), so wait for all three near-viewport thumbnails' iframes
+    // to exist before reading their sandbox attribute.
+    await expect.poll(() => page.locator("iframe.overview-frame").count(), { timeout: 30_000 }).toBe(3);
     const sandboxValues = await page.locator("iframe.overview-frame").evaluateAll((frames) =>
       frames.map((frame) => frame.getAttribute("sandbox")),
     );
@@ -265,19 +269,26 @@ it("幾十頁的簡報：只有視窗附近的縮圖被實體化，捲動後才�
     await expect.poll(() => items.count(), { timeout: 30_000 }).toBe(24);
 
     // All 24 <li> exist immediately (the scrollbar must be honest), but
-    // only the ones near the top of the viewport get a real srcdoc at
-    // first — the far-away ones stay empty until scrolled into range.
+    // only the ones near the top of the viewport are materialised at
+    // first. "Materialised" means the iframe ELEMENT exists at all — an
+    // eagerly-created iframe with an empty srcdoc would still cost a
+    // browsing context per slide, which is the very thing #27's lazy
+    // loading criterion forbids (P1, review gate round 3).
+    const frameCountOf = (index: number) =>
+      page.locator(`li.overview-item[data-index="${index}"] iframe.overview-frame`).count();
     const srcdocOf = (index: number) =>
       page.locator(`li.overview-item[data-index="${index}"] iframe.overview-frame`).evaluate(
         (frame) => (frame as HTMLIFrameElement).srcdoc,
       );
 
+    await expect.poll(() => frameCountOf(0), { timeout: 30_000 }).toBe(1);
     await expect.poll(() => srcdocOf(0), { timeout: 30_000 }).not.toBe("");
-    // The very last slide is far below the fold on first load and must not
-    // have been materialised yet.
-    expect(await srcdocOf(23)).toBe("");
+    // The very last slide is far below the fold on first load: not only no
+    // srcdoc — no iframe element at all.
+    expect(await frameCountOf(23)).toBe(0);
 
     await items.nth(23).scrollIntoViewIfNeeded();
+    await expect.poll(() => frameCountOf(23), { timeout: 30_000 }).toBe(1);
     await expect.poll(() => srcdocOf(23), { timeout: 30_000 }).not.toBe("");
 
     // Clicking the now-visible last thumbnail still jumps the main canvas.
