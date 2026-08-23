@@ -46,6 +46,23 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *      renderPlay catch branch falls back to wrapSlideDocument — the
  *      static, no-runtime render used in view mode) rather than leaving
  *      the frame blank.
+ *
+ * Every `page.close()` below matters, not just tidiness: diagnosed via
+ * timestamped instrumentation across ~30 repeated runs that this file used
+ * to hang for the full 120s test timeout roughly 1 time in 5-8, on
+ * whichever `it()` happened to call `cleanup()` (→ `server.close()`) while
+ * its own page's live-reload/chat SSE connections (opened eagerly on
+ * mount — see App.tsx) were still open. `startServe`'s `close()` explicitly
+ * closes streams it tracks itself but, like any plain `http.Server.close()`,
+ * still waits on any other connection still open on the socket; an
+ * unclosed Playwright page's connections only died once the *shared*
+ * `browser` finally closed in `afterAll`, unblocking every hung
+ * `server.close()` call at once — which is exactly what the instrumented
+ * logs showed. Closing the page here, before `cleanup()`, removes that
+ * wait entirely (16/16 clean repeats afterward). The underlying
+ * `server.close()` fragility is a `packages/server` behavior this file
+ * cannot fix (out of this ticket's file ownership) — reported to the
+ * coordinator instead.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -121,8 +138,9 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 
 it("進入播放時效果清單解析失敗：畫面上出現指名問題所在的錯誤說明，投影片仍以靜態方式顯示原本的內容", async () => {
   const { server, cleanup } = await startServerFor();
+  let page: import("playwright").Page | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.goto(server.url);
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
@@ -171,14 +189,25 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     await expect.poll(() => opacityOf("#el-broken-title-2")).toBe("1");
     await expect.poll(() => opacityOf("#el-real")).toBe("1");
   } finally {
+    // The page (and its live SSE connections to /api/events and
+    // /api/chat/stream, opened eagerly on mount — see App.tsx) must be
+    // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
+    // waits for every currently open connection to end, and an unclosed
+    // page's SSE streams never end on their own. Diagnosed while chasing
+    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
+    // ticket's report) — closing the page here made 16/16 repeated runs
+    // pass cleanly where the un-fixed version reproduced the hang twice
+    // in 16 runs.
+    await page?.close();
     await cleanup();
   }
 });
 
 it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯誤說明", async () => {
   const { server, cleanup } = await startServerFor();
+  let page: import("playwright").Page | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.goto(server.url);
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
@@ -204,14 +233,25 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
     await expect.poll(() => opacityOf("#el-broken-title-3")).toBe("1");
     await expect.poll(() => opacityOf("#el-emphasis-target")).toBe("1");
   } finally {
+    // The page (and its live SSE connections to /api/events and
+    // /api/chat/stream, opened eagerly on mount — see App.tsx) must be
+    // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
+    // waits for every currently open connection to end, and an unclosed
+    // page's SSE streams never end on their own. Diagnosed while chasing
+    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
+    // ticket's report) — closing the page here made 16/16 repeated runs
+    // pass cleanly where the un-fixed version reproduced the hang twice
+    // in 16 runs.
+    await page?.close();
     await cleanup();
   }
 });
 
 it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯誤說明", async () => {
   const { server, cleanup } = await startServerFor();
+  let page: import("playwright").Page | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.goto(server.url);
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
@@ -237,14 +277,25 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
     await expect.poll(() => opacityOf("#el-broken-title-4")).toBe("1");
     await expect.poll(() => opacityOf("#el-wipe-target")).toBe("1");
   } finally {
+    // The page (and its live SSE connections to /api/events and
+    // /api/chat/stream, opened eagerly on mount — see App.tsx) must be
+    // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
+    // waits for every currently open connection to end, and an unclosed
+    // page's SSE streams never end on their own. Diagnosed while chasing
+    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
+    // ticket's report) — closing the page here made 16/16 repeated runs
+    // pass cleanly where the un-fixed version reproduced the hang twice
+    // in 16 runs.
+    await page?.close();
     await cleanup();
   }
 });
 
 it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯誤說明", async () => {
   const { server, cleanup } = await startServerFor();
+  let page: import("playwright").Page | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.goto(server.url);
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
@@ -270,6 +321,16 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
     await expect.poll(() => opacityOf("#el-broken-title-5")).toBe("1");
     await expect.poll(() => opacityOf("#el-with-previous-target")).toBe("1");
   } finally {
+    // The page (and its live SSE connections to /api/events and
+    // /api/chat/stream, opened eagerly on mount — see App.tsx) must be
+    // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
+    // waits for every currently open connection to end, and an unclosed
+    // page's SSE streams never end on their own. Diagnosed while chasing
+    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
+    // ticket's report) — closing the page here made 16/16 repeated runs
+    // pass cleanly where the un-fixed version reproduced the hang twice
+    // in 16 runs.
+    await page?.close();
     await cleanup();
   }
 });
