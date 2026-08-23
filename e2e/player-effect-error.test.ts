@@ -47,22 +47,37 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *      static, no-runtime render used in view mode) rather than leaving
  *      the frame blank.
  *
- * Every `page.close()` below matters, not just tidiness: diagnosed via
- * timestamped instrumentation across ~30 repeated runs that this file used
- * to hang for the full 120s test timeout roughly 1 time in 5-8, on
- * whichever `it()` happened to call `cleanup()` (→ `server.close()`) while
- * its own page's live-reload/chat SSE connections (opened eagerly on
- * mount — see App.tsx) were still open. `startServe`'s `close()` explicitly
- * closes streams it tracks itself but, like any plain `http.Server.close()`,
- * still waits on any other connection still open on the socket; an
- * unclosed Playwright page's connections only died once the *shared*
- * `browser` finally closed in `afterAll`, unblocking every hung
- * `server.close()` call at once — which is exactly what the instrumented
- * logs showed. Closing the page here, before `cleanup()`, removes that
- * wait entirely (16/16 clean repeats afterward). The underlying
- * `server.close()` fragility is a `packages/server` behavior this file
- * cannot fix (out of this ticket's file ownership) — reported to the
- * coordinator instead.
+ * 下面每個 `page.close()` 當初是這樣被診斷出來的：透過加時間戳記的觀測，
+ * 重複跑了約 30 次，發現這個檔案大約每 5-8 次就會有 1 次整個卡到 120 秒
+ * 的測試逾時上限，卡點是某個 `it()` 呼叫 `cleanup()`（→ `server.close()`）
+ * 時，該次測試自己開的那個 page 上，live-reload／chat 的 SSE 連線
+ * （在掛載時就急切地開啟——見 App.tsx）還沒關閉。`startServe` 的
+ * `close()` 雖然會主動關掉它自己追蹤的串流，但跟任何普通的
+ * `http.Server.close()` 一樣，仍然會等待 socket 上其他還開著的連線；
+ * 一個沒關閉的 Playwright page，它的連線要一直等到 `afterAll` 裡共用的
+ * `browser` 整個關閉才會死掉，於是所有卡住的 `server.close()` 會在那一刻
+ * 同時被解除——這正是當初加時間戳觀測時看到的現象。
+ *
+ * 這個根因後來在 #37 修好了：`packages/server/src/serve.ts` 的
+ * `close()` 現在會在 `server.close(cb)` 之後緊接著呼叫
+ * `server.closeAllConnections()`，所以即使還有連線開著也不會再卡住關閉。
+ * 這一點針對本檔案有實際測量過：把下面每個 `page.close()` 都拿掉後，
+ * 單獨連續跑這個檔案 10 次，全部通過、沒有任何一次卡住（每次跑完約
+ * 2 秒左右，離會咬人的 120 秒逾時還很遠）。10 次是一個小樣本，對照當初
+ * 大約 5-8 次會中一次的機率型 bug 來說，這只能說「這個樣本裡沒有再重
+ * 現」，不能證明這個 hang 從此不會再發生。
+ *
+ * 這個對照組也另外跑過：把同一份拿掉 page.close() 的檔案，搭配還沒套用
+ * #37 修復的舊版 `serve.ts`（沒有 `closeAllConnections()`），在同一台機器、
+ * 同一個 Node 版本上跑。結果第 3 次就整個卡到 120 秒逾時上限，1 個測試
+ * 失敗、3 個通過——也就是說這個 hang 在這台機器、這個 Node 版本上依然會
+ * 重現，不是「這台機器現在剛好測不出來了」。因此上面那 10 次乾淨的結果，
+ * 是對照一個真的還會發作的失敗模式而得到的，不只是單純沒觀察到失敗而已。
+ *
+ * 即便如此，這裡仍然刻意保留 `page.close()`：關閉 page 本身就是良好的
+ * 收尾習慣，跟伺服器端修好與否無關；而且留著它，將來如果 `close()` 又
+ * 出現類似的退化，會在這裡直接變成一個清楚可歸因的失敗，而不是一次
+ * 神秘的 120 秒逾時。
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
