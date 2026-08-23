@@ -229,6 +229,31 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(1);
   });
 
+  // Codex review gate round 1, P2: element ids come straight from
+  // untrusted slide content (ADR-0010) — nothing stops a legal id from
+  // being "constructor". A plain `{}` for mediaElements already has an
+  // inherited, truthy `constructor` property (Object.prototype's own)
+  // *before this target was ever reached the first time* — so the
+  // idempotence guard `if (mediaElements[target]) return;` short-circuits
+  // on the very first press, and playMedia() returns immediately without
+  // creating any element and without posting any error. The step silently
+  // does nothing, which is exactly the failure shape this project forbids
+  // (design doc's settled decision #12: errors must surface, never fail
+  // silently) — and this is not a contrived edge case, "constructor" is a
+  // perfectly legal SVG id an author could genuinely pick.
+  it('target id 恰好是 "constructor" 時，media 仍正確建立並播放（不是被繼承屬性誤判成已存在而靜默跳過）', () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("constructor")] }],
+      hidden: [],
+      media: { constructor: { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["constructor"]);
+
+    press(win, "ArrowRight");
+
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+  });
+
   it("plan.media 沒有該目標的設定時，送出 error 事件而不是拋例外", async () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }],

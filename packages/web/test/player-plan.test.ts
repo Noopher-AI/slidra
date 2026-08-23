@@ -148,6 +148,49 @@ describe("computePlayerPlan：media", () => {
     const svg = slide("");
     expect(computePlayerPlan(svg).media).toEqual({});
   });
+
+  // Codex review gate round 1, P2: SVG element ids are author-controlled,
+  // untrusted strings (ADR-0010) — nothing stops a legal id from being
+  // "__proto__". A plain `{}` built up via `media[target] = cue` does not
+  // create an own property for that key: assigning to "__proto__" on an
+  // object whose prototype chain still has Object.prototype's __proto__
+  // accessor instead reassigns the object's own [[Prototype]], so the cue
+  // silently never becomes a real, enumerable, own "media" entry — even
+  // though later code might still happen to read the right value back via
+  // that same accessor (a coincidence this test does not rely on).
+  // hasOwnProperty is the direct, unambiguous check for "was this actually
+  // stored as data".
+  it('target id 恰好是 "__proto__" 時，仍正確產生對應的 media cue（不是被原型污染吃掉的空物件）', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="__proto__" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
+</svg>`;
+
+    const plan = computePlayerPlan(svg);
+
+    expect(Object.prototype.hasOwnProperty.call(plan.media, "__proto__")).toBe(true);
+    expect(plan.media["__proto__"]).toEqual({ src: "assets/clip.mp4", kind: "video" });
+  });
+
+  it('target id 恰好是 "constructor" 時，也正確產生對應的 media cue', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="constructor" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="constructor" data-comot-media="assets/narration.oga"/>
+</svg>`;
+
+    const plan = computePlayerPlan(svg);
+
+    expect(Object.prototype.hasOwnProperty.call(plan.media, "constructor")).toBe(true);
+    expect(plan.media["constructor"]).toEqual({ src: "assets/narration.oga", kind: "audio" });
+  });
 });
 
 describe("允許清單與 server 的 MIME 表必須一致（ticket #30 review round 2）", () => {

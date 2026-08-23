@@ -68,10 +68,21 @@ export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"
  */
 function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, MediaCue> {
   const mediaEffects = effects.filter((effect) => effect.family === "media");
-  if (mediaEffects.length === 0) return {};
+  // Object.create(null) throughout this function, never {}: `target` comes
+  // straight from untrusted slide content (ADR-0010), and a legal SVG id
+  // can be "__proto__". Building this table via plain-object assignment
+  // (`media[target] = cue`) does not create an own property for that
+  // specific key — assigning to "__proto__" on an object that still has
+  // Object.prototype's own __proto__ accessor in its chain reassigns the
+  // object's [[Prototype]] instead, so the cue never becomes real,
+  // enumerable, own data (Codex review gate round 1, P2; see
+  // player-plan.test.ts's "__proto__" id test, which fails against a plain
+  // {} here). Object.create(null) has no such accessor, so every
+  // assignment — however the key is spelled — is an ordinary own property.
+  if (mediaEffects.length === 0) return Object.create(null);
 
   const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
-  const media: Record<string, MediaCue> = {};
+  const media: Record<string, MediaCue> = Object.create(null);
   for (const effect of mediaEffects) {
     const target = effect.target;
     // parseEffects already verified `target` resolves to an element in this

@@ -22,7 +22,19 @@
   // Target id -> the <video>/<audio> element already created for it.
   // Idempotence (ticket #30): reaching the same media target twice must
   // reuse this element rather than creating (and playing) a second one.
-  var mediaElements = {};
+  //
+  // Object.create(null), not {}: element ids come straight from untrusted
+  // slide content (ADR-0010), and a legal SVG id can be "constructor",
+  // "toString", "__proto__", or any other name Object.prototype happens to
+  // carry. A plain {} already has a truthy `mediaElements["constructor"]`
+  // before this target is ever reached the first time, so the idempotence
+  // guard below (`if (mediaElements[target]) return;`) would short-circuit
+  // immediately and playMedia() would silently do nothing — no element,
+  // no error — exactly the failure shape this project forbids (Codex
+  // review gate round 1, P2; see player-runtime.test.ts's "constructor" id
+  // test). Object.create(null) has no inherited properties at all, so
+  // every key — however it is spelled — starts out genuinely absent.
+  var mediaElements = Object.create(null);
 
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
