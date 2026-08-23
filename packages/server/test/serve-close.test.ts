@@ -117,6 +117,31 @@ function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
+// close() resolving is not itself evidence the connection was actually
+// released: a Promise.race/setTimeout-based "fix" (forbidden approach #1)
+// would resolve close() on a deadline while leaving the socket held open,
+// and closeWithinDeadline alone would not catch that. Asserting the client
+// observes the server's end of the connection close (an EOF) is what would.
+const SOCKET_RELEASE_DEADLINE_MS = 500;
+
+/** Asserts the socket's remote end actually closed, under its own deadline. */
+function assertSocketReleased(socket: Socket): Promise<void> {
+  if (socket.destroyed) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `socket never observed the server closing its end within ${SOCKET_RELEASE_DEADLINE_MS}ms after close() resolved`,
+        ),
+      );
+    }, SOCKET_RELEASE_DEADLINE_MS);
+    socket.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 describe("RunningServer.close()", () => {
   it("resolves promptly while a request is still in flight (headers begun, never terminated) on the socket", async () => {
     const id = await openFreshPresentation();
@@ -136,6 +161,7 @@ describe("RunningServer.close()", () => {
 
     try {
       await closeWithinDeadline(server, "a request was still in flight on the socket");
+      await assertSocketReleased(socket);
     } finally {
       socket.destroy();
     }
