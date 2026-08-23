@@ -4,6 +4,7 @@ import { mountCanvas, type CanvasController, type CanvasState } from "./canvas.j
 import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
+import { mountOverview, type OverviewController } from "./overview.js";
 
 /**
  * React owns the shell only — chat sidebar and status bar. The div below is
@@ -12,6 +13,8 @@ import { startLiveReload } from "./live-reload.js";
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const overviewRef = useRef<HTMLElement | null>(null);
+  const overviewControllerRef = useRef<OverviewController | null>(null);
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
   // only mirrors it here so the paging chrome can render, and issues
   // commands back through the controller.
@@ -42,7 +45,14 @@ export function App() {
     // Stopped on cleanup — a live EventSource surviving unmount would leak
     // a connection per React StrictMode double-mount.
     const liveReload = startLiveReload({
-      onChange: () => void controller.reload(),
+      onChange: () => {
+        void controller.reload();
+        // 總覽 (ticket #27, P1 fix): an external edit can change a slide's
+        // markup without project.json's `slides` list moving at all —
+        // canvas.subscribe() can't tell that apart from a plain index
+        // change, so the overview needs telling explicitly here.
+        overviewControllerRef.current?.refresh();
+      },
       onError: setLiveReloadError,
     });
     return () => {
@@ -50,6 +60,20 @@ export function App() {
       unsubscribe();
       controller.destroy();
       controllerRef.current = null;
+    };
+  }, []);
+
+  // 總覽 (ticket #27): mounted once against the canvas controller — it
+  // subscribes on its own and needs no React state mirrored back here.
+  useEffect(() => {
+    const container = overviewRef.current;
+    const controller = controllerRef.current;
+    if (!container || !controller) return;
+    const overview = mountOverview(container, controller);
+    overviewControllerRef.current = overview;
+    return () => {
+      overview.destroy();
+      overviewControllerRef.current = null;
     };
   }, []);
 
@@ -154,6 +178,7 @@ export function App() {
 
   return (
     <div className="app">
+      <aside className="overview" ref={overviewRef} />
       <main className="canvas-area">
         <div ref={canvasRef} className="canvas" />
         {liveReloadError && (

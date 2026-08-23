@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "name": "總覽捲動測試簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": [
+    "slides/001.svg",
+    "slides/002.svg",
+    "slides/003.svg",
+    "slides/004.svg",
+    "slides/005.svg",
+    "slides/006.svg",
+    "slides/007.svg",
+    "slides/008.svg",
+    "slides/009.svg",
+    "slides/010.svg",
+    "slides/011.svg",
+    "slides/012.svg",
+    "slides/013.svg",
+    "slides/014.svg",
+    "slides/015.svg",
+    "slides/016.svg",
+    "slides/017.svg",
+    "slides/018.svg",
+    "slides/019.svg",
+    "slides/020.svg",
+    "slides/021.svg",
+    "slides/022.svg",
+    "slides/023.svg",
+    "slides/024.svg"
+  ]
+}
