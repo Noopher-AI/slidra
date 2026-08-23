@@ -537,18 +537,37 @@ it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會�
   // window, so it remains a real, successful fullscreen request — just a
   // late one, exactly the in-flight window review gate round 2's P2
   // describes.
+  //
+  // A handle to the delayed call's own settlement is stashed on the
+  // container (`__delayedFullscreenSettled`) — review gate round 5 found
+  // that the first version of this test polled for "not fullscreen"
+  // starting immediately after the two clicks. At that instant the delayed
+  // native call has not fired yet, so `fullscreenElement` is still null
+  // for the same reason it would be null before any bug existed —
+  // `expect.poll(...).toBe(false)` accepts the very first sample and
+  // returns instantly, never actually observing the moment (t≈300ms) the
+  // race is about. That made the test pass unconditionally, with or
+  // without the fix. Waiting on this handle first guarantees the check
+  // below only starts once the real transition has already happened.
   await page.evaluate(() => {
     const container = document.querySelector(".canvas-area") as HTMLElement & {
       __originalRequestFullscreen?: () => Promise<void>;
+      __delayedFullscreenSettled?: Promise<unknown>;
     };
     const original = container.requestFullscreen.bind(container);
     container.__originalRequestFullscreen = original;
-    container.requestFullscreen = () =>
-      new Promise<void>((resolve, reject) => {
+    container.requestFullscreen = () => {
+      const delayed = new Promise<void>((resolve, reject) => {
         setTimeout(() => {
           original().then(resolve, reject);
         }, 300);
       });
+      // .catch() so a rejection here cannot make the awaited handle below
+      // reject and abort the test — only the timing matters to this test,
+      // not whether the delayed request itself succeeds.
+      container.__delayedFullscreenSettled = delayed.catch(() => {});
+      return delayed;
+    };
   });
 
   // A real click starts the (now delayed) fullscreen request.
@@ -559,24 +578,47 @@ it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會�
   // reviewer's finding describes — a real click on 離開播放.
   await page.locator('button:has-text("離開播放")').click();
 
+  // Wait until the delayed native requestFullscreen() call has actually
+  // landed (t ≥ 300ms) before checking anything at all. This is the fix
+  // for round 5's finding: only after this await do we know the race's
+  // critical moment has genuinely passed, so a poll started from here on
+  // is measuring the real aftermath, not a pre-race snapshot.
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __delayedFullscreenSettled?: Promise<unknown>;
+    };
+    return container.__delayedFullscreenSettled;
+  });
+
+  function readFullscreen(): Promise<boolean> {
+    return page.evaluate(() => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
+    });
+  }
+
   // Before the fix: handleExitPlay() trusted the still-false isFullscreen
-  // state, skipped exiting fullscreen, and returned to view mode; 300ms
-  // later the delayed request still landed for real, leaving the document
-  // genuinely stuck fullscreen with no play chrome left to click out of
-  // it. After the fix: handleExitPlay() waits for the in-flight request to
-  // settle, then asks the browser's own (by-then genuinely updated)
-  // fullscreenElement before deciding — so the document must end up NOT
-  // fullscreen.
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const doc = document as Document & { webkitFullscreenElement?: Element | null };
-          return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
-        }),
-      { timeout: 5_000 },
-    )
-    .toBe(false);
+  // state at click time, skipped exiting fullscreen, and returned to view
+  // mode; the delayed request then landed for real (confirmed above), and
+  // nothing in the buggy code path ever exits it again — the document
+  // stays genuinely stuck fullscreen forever, with no play chrome left to
+  // click out of it. After the fix: handleExitPlay() itself awaits the
+  // same in-flight request, then asks the browser's own fullscreenElement
+  // and exits it if still fullscreen — so this app's own async cleanup
+  // (a further, fast exitFullscreen() call) may still be finishing exactly
+  // as this test's independent await above resolves, which is why this is
+  // still a poll rather than one immediate read.
+  await expect.poll(() => readFullscreen(), { timeout: 5_000 }).toBe(false);
+
+  // Stability, not just "eventually false once" (round 5's ask): sample a
+  // few more times over a short window to make sure it does not flip back
+  // to fullscreen. A genuinely fixed run never does; this only guards
+  // against asserting on a value that happens to be false for one instant
+  // mid-transition.
+  for (let i = 0; i < 3; i++) {
+    await page.waitForTimeout(100);
+    expect(await readFullscreen()).toBe(false);
+  }
 
   // 離開播放本身也必須真的完成，不是卡住半途：畫面回到檢視模式的「播放」按鈕.
   await expect.poll(() => page.locator('button:has-text("播放")').count()).toBe(1);
