@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <!-- 損壞之處：target 指向一個這張投影片裡不存在的元素 id。這是另一種
+           作者真的可能打錯的情況——複製效果項時忘了同步改 target，或元素
+           改名後忘了同步效果清單。 -->
+      <comot:effect target="el-does-not-exist" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
+  <text id="el-broken-title-2" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 2 頁：指向不存在的元素</text>
+  <text id="el-real" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>
+</svg>
