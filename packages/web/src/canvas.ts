@@ -437,13 +437,23 @@ function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
 function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
   const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
   // planScript is built from parsed slide attributes (target ids, effect
-  // names) — untrusted content (ADR-0010). Escaping a literal "</script"
-  // inside it stops the HTML parser from closing this <script> element
-  // early, which would otherwise let attacker-controlled markup run ahead
-  // of (or instead of) setting window.__COMOT_PLAN__. playerRuntimeSource
-  // is this project's own static file, not slide content, so it needs no
-  // such escaping.
-  const safePlanScript = planScript.replace(/<\/script/gi, "<\\/script");
+  // names) — untrusted content (ADR-0010), and it lands inside a raw
+  // <script> element, not an HTML text node, so HTML-entity escaping
+  // (escapeAttribute's job, above) does not apply here at all. Escaping
+  // only a literal "</script" (an earlier version of this function) is
+  // not enough: a target containing "<!--<script>" drives the HTML
+  // tokenizer into "script data double escaped" state, where the very
+  // "</script>" text this function writes to close the tag no longer
+  // counts as a real closing tag — the parser keeps consuming straight
+  // through the runtime's own <script> below, and play mode never starts
+  // (found in gate review round 3). Every `<` inside planScript can only
+  // ever occur inside a quoted JSON string value (JSON's own structural
+  // characters never include "<"), so replacing all of them with the
+  // equivalent JSON/JS string escape `\u003C` is unconditionally safe —
+  // it cannot land outside a string literal — and removes every foothold
+  // for a tokenizer state change, not just the one this function used to
+  // special-case.
+  const safePlanScript = planScript.replace(/</g, "\\u003C");
   return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${hideStyle}</head><body style="margin:0">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 

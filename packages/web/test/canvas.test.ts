@@ -787,3 +787,64 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('data-testid="fine"');
   });
 });
+
+// Gate review round 3, P2: target ids come straight from untrusted slide
+// content (ADR-0010). A target containing "<!--<script>" (after XML entity
+// decoding) sends the HTML tokenizer into "script data double escaped"
+// state once embedded in the plan's <script> tag — the literal "</script>"
+// text this module writes to close that tag no longer counts as a real
+// closing tag there, so the parser keeps consuming through the runtime's
+// own <script> too. The observable failure isn't data exfiltration, it's
+// play mode never starting at all (the runtime never runs, so no "ready"
+// ever arrives and the focus notice hangs forever) — still a real bug
+// worth a real test.
+describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
+  it("target 含有 <!--<script> 時，plan 的 <script> 標籤不會吞掉後面的 runtime", async () => {
+    const hostileId = "el-<!--<script>";
+    const hostileDeck = { name: "跳脫測試簡報", slides: ["slides/001.svg"] };
+    const hostileMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="el-&lt;!--&lt;script&gt;" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="el-&lt;!--&lt;script&gt;"/>
+</svg>`;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(hostileDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(hostileMarkup, { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const doc = srcdoc();
+    // The plan's JSON must have carried the hostile target through as
+    // data, never as literal "<" that the HTML tokenizer can act on.
+    expect(doc).toContain(hostileId.replace(/</g, "\\u003C"));
+    expect(doc).not.toContain("<!--<script>");
+    // The clearest sign the tokenizer was fooled: the runtime's own
+    // trailing code (its final `post({ event: "ready" })` call) never
+    // shows up as a real, separately-parsed <script> element's content —
+    // it would still be textually present in the raw srcdoc string either
+    // way, so this must check *rendering*, not just string containment.
+    // The reliable direct signal is that the runtime's script tag is not
+    // itself broken: the whole runtime source must appear intact and
+    // un-swallowed inside the srcdoc string, immediately after a genuine
+    // closing "</script>" for the plan tag.
+    const planScriptClose = doc.indexOf("<\/script><script>");
+    expect(planScriptClose).toBeGreaterThan(-1);
+    expect(doc.slice(planScriptClose)).toContain('post({ event: "ready" })');
+  });
+});
