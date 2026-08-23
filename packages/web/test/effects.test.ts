@@ -65,6 +65,28 @@ describe("parseEffects", () => {
     ).toEqual([]);
   });
 
+  it("<metadata> 之外的效果清單不被採用", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <comot:effects ${NS}>
+    ${enterFade}
+  </comot:effects>
+  <rect id="el-a3f2c1"/>
+</svg>`;
+    expect(parseEffects(svg)).toEqual([]);
+  });
+
+  it("<metadata> 內出現兩組效果清單時拋錯", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>${enterFade}</comot:effects>
+    <comot:effects ${NS}>${mediaPlay}</comot:effects>
+  </metadata>
+  <rect id="el-a3f2c1"/>
+  <image id="el-7b91de"/>
+</svg>`;
+    expect(() => parseEffects(svg)).toThrow(/2 組.*只能有一份效果清單/);
+  });
+
   it("效果清單是空的，得到空清單", () => {
     expect(parseEffects(slideWithEffects(""))).toEqual([]);
   });

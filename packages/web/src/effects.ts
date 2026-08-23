@@ -16,6 +16,7 @@ export interface Step {
 
 /** Custom namespace the effect list lives in (ADR-0009). */
 const EFFECTS_NS = "https://co-motion.dev/ns";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** What this round of the player can actually run. Anything else throws. */
 const SUPPORTED_EFFECTS: Record<EffectFamily, EffectName[]> = {
@@ -42,11 +43,18 @@ export function parseEffects(svgMarkup: string): Effect[] {
     throw new Error("投影片不是合法的 XML，無法讀取效果清單。");
   }
 
-  // Match by namespace URI — the "comot:" prefix is a convention, not a
-  // guarantee.
-  const lists = doc.getElementsByTagNameNS(EFFECTS_NS, "effects");
+  // ADR-0009 puts the list inside <metadata>, so only look there — a
+  // comot:effects sitting anywhere else is not the slide's effect list.
+  // Match by namespace URI throughout: the "comot:" prefix is a convention,
+  // not a guarantee.
+  const lists = Array.from(doc.getElementsByTagNameNS(SVG_NS, "metadata")).flatMap((metadata) =>
+    Array.from(metadata.getElementsByTagNameNS(EFFECTS_NS, "effects")),
+  );
   if (lists.length === 0) {
     return [];
+  }
+  if (lists.length > 1) {
+    throw new Error(`這張投影片的 metadata 裡有 ${lists.length} 組效果清單，但一張投影片只能有一份效果清單，簡報已損毀。`);
   }
 
   const nodes = Array.from(lists[0].getElementsByTagNameNS(EFFECTS_NS, "effect"));
