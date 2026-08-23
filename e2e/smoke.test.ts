@@ -88,8 +88,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await server?.close();
+  // Browser first, server second — the order is load-bearing. The page's
+  // EventSource reconnects on its own whenever a stream ends, so closing
+  // the server while a tab is still open lets a fresh /api/chat/stream
+  // request arrive *after* close()'s disposers have already drained the
+  // set of live streams. That stream is then never closed, and
+  // `server.close()` waits on it forever (it waits for established
+  // connections rather than severing them). Killing the browser first
+  // removes the thing that can reconnect. Running this file on its own
+  // happened not to hit it; running it after other e2e files did.
   await browser?.close();
+  await server?.close();
   delete process.env.CO_MOTION_HOME;
   // Guarded: beforeAll can fail before these exist (e.g. no build output),
   // and an unguarded rm(undefined) here would bury that error under its own.
