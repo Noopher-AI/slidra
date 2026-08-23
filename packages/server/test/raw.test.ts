@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
-import { rawContentTypeFor } from "../src/raw.js";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
 
 // Ticket #11: agents read text through `cat` (strict UTF-8, rejects
 // binary); browsers need the byte-preserving `/api/raw/` route instead.
@@ -28,10 +30,16 @@ const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0xff, 0xd8, 0xfe,
 ]);
 
+// A 256-byte ramp (0x00..0xff): every byte differs from every other, so a
+// sliced range can be asserted byte-for-byte and an off-by-one offset can
+// never accidentally look correct.
+const PATTERN_BYTES = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
+
 let coMotionHome: string;
 let comotDir: string;
 let registry: CommandRegistry;
 let servers: RunningServer[];
+let rawServers: Server[];
 
 beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-raw-home-"));
@@ -39,10 +47,14 @@ beforeEach(async () => {
   process.env.CO_MOTION_HOME = coMotionHome;
   registry = createDefaultRegistry();
   servers = [];
+  rawServers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
+  await Promise.all(
+    rawServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
   delete process.env.CO_MOTION_HOME;
   await rm(coMotionHome, { recursive: true, force: true });
   await rm(comotDir, { recursive: true, force: true });
@@ -76,6 +88,8 @@ async function openPresentationWithAssets(): Promise<string> {
     "assets/照片.png": PNG_BYTES,
     "assets/notes.txt": new TextEncoder().encode("純文字資產"),
     "assets/data.bin": PNG_BYTES,
+    "assets/clip.mp4": PATTERN_BYTES,
+    "assets/empty.mp4": new Uint8Array(0),
   });
   const comotPath = path.join(comotDir, "with-assets.comot");
   await writeFile(comotPath, zipped);
@@ -313,5 +327,179 @@ describe("rawContentTypeFor", () => {
     expect(rawContentTypeFor("assets/a.json")).toBe("application/json");
     expect(rawContentTypeFor("assets/a.unknownext")).toBe("application/octet-stream");
     expect(rawContentTypeFor("assets/no-extension")).toBe("application/octet-stream");
+  });
+});
+
+/**
+ * A real HTTP server whose only route is `handleRawRequest` — the same
+ * shape serve.ts's `/api/raw/` branch has, minus everything else serve.ts
+ * does. Range tests need the request's `Range` header to reach
+ * `handleRawRequest`, and serve.ts's call site does not pass it yet
+ * (ticket #13 integration), so these tests drive the handler directly over
+ * real HTTP rather than editing serve.ts. Nothing is mocked: real sockets,
+ * real presentation, real bytes on disk.
+ */
+async function serveRawDirectly(presentationId: string): Promise<string> {
+  const server = createServer((req, res) => {
+    let virtualPath: string;
+    try {
+      virtualPath = decodeURIComponent(new URL(req.url!, "http://127.0.0.1").pathname.slice(1));
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "路徑編碼無效" }));
+      return;
+    }
+    void handleRawRequest(presentationId, virtualPath, res, req.headers.range);
+  });
+  rawServers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+async function fetchRaw(baseUrl: string, virtualPath: string, range?: string): Promise<Response> {
+  return fetch(`${baseUrl}/${virtualPath}`, range === undefined ? undefined : { headers: { Range: range } });
+}
+
+describe("GET /api/raw/<virtual path> 的 HTTP Range 支援", () => {
+  it("沒有 Range 標頭時，回 200 完整檔案並宣告 Accept-Ranges: bytes", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(response.headers.get("content-length")).toBe("256");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(body.equals(PATTERN_BYTES)).toBe(true);
+  });
+
+  it("明確區間 bytes=0-9 回 206 與確切的 10 個位元組", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=0-9");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 0-9/256");
+    expect(response.headers.get("content-length")).toBe("10");
+    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(body.equals(PATTERN_BYTES.subarray(0, 10))).toBe(true);
+  });
+
+  it("開放結尾 bytes=100- 回 206，從第 100 個位元組到檔尾", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=100-");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 100-255/256");
+    expect(response.headers.get("content-length")).toBe("156");
+    expect(body.equals(PATTERN_BYTES.subarray(100))).toBe(true);
+  });
+
+  it("後綴區間 bytes=-50 回 206，取最後 50 個位元組", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=-50");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 206-255/256");
+    expect(response.headers.get("content-length")).toBe("50");
+    expect(body.equals(PATTERN_BYTES.subarray(206))).toBe(true);
+  });
+
+  it("結尾超出檔尾的 bytes=0-999999 夾到檔尾，仍是 206", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=0-999999");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 0-255/256");
+    expect(response.headers.get("content-length")).toBe("256");
+    expect(body.equals(PATTERN_BYTES)).toBe(true);
+  });
+
+  it("多重區間明確拒絕為 416，不會悄悄只回第一段", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=0-9,20-29");
+    const body = await response.json();
+
+    expect(response.status).toBe(416);
+    expect(response.headers.get("content-range")).toBe("bytes */256");
+    expect(body.error).toContain("多重區間");
+  });
+
+  it("完全落在檔尾之外的區間回 416，且不回整份檔案", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=300-400");
+    const body = await response.json();
+
+    expect(response.status).toBe(416);
+    expect(response.headers.get("content-range")).toBe("bytes */256");
+    expect(body.error).toBeTruthy();
+  });
+
+  it("空檔案遇到任何區間都回 416，Content-Range 為 bytes */0", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/empty.mp4", "bytes=0-9");
+    const body = await response.json();
+
+    expect(response.status).toBe(416);
+    expect(response.headers.get("content-range")).toBe("bytes */0");
+    expect(body.error).toBeTruthy();
+  });
+
+  it("語法無效的 Range 依 RFC 忽略，回 200 完整檔案", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "bytes=abc");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(body.equals(PATTERN_BYTES)).toBe(true);
+  });
+
+  it("非 bytes 單位當作不理解，回 200 完整檔案", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/clip.mp4", "items=0-9");
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(body.equals(PATTERN_BYTES)).toBe(true);
+  });
+
+  it("帶 Range 的請求，錯誤分類仍然不變：找不到的路徑還是 404", async () => {
+    const id = await openPresentationWithAssets();
+    const baseUrl = await serveRawDirectly(id);
+
+    const response = await fetchRaw(baseUrl, "assets/missing.mp4", "bytes=0-9");
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBeTruthy();
   });
 });
