@@ -19,8 +19,23 @@
  * that has nowhere to reach the app from. See the comment on the iframe's
  * `sandbox` attribute below before changing it.
  */
+export interface CanvasState {
+  /** Slide virtual paths, in project.json's own order. */
+  slides: string[];
+  /** Currently selected index; -1 when the presentation has no slides. */
+  currentIndex: number;
+}
+
 export interface CanvasController {
   reload: () => Promise<void>;
+  /** Throws when the index is out of range — that is a programming error, not user input. */
+  showSlide: (index: number) => Promise<void>;
+  /** No-op (and no throw) when already on the last slide. */
+  next: () => Promise<void>;
+  /** No-op (and no throw) when already on the first slide. */
+  previous: () => Promise<void>;
+  /** Returns an unsubscribe function. The listener is called once immediately with the current state. */
+  subscribe: (listener: (state: CanvasState) => void) => () => void;
   destroy: () => void;
 }
 
@@ -31,6 +46,12 @@ interface ProjectJson {
 
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
+  // The selected slide lives here, not in React (ADR-0001/ADR-0002): the
+  // 投影片 on screen is the artifact, not something React computes from
+  // state. React subscribes to read it and issues commands to change it.
+  let slides: string[] = [];
+  let currentIndex = -1;
+  const listeners = new Set<(state: CanvasState) => void>();
   // Bumped on every reload() call and captured by each call's own closure.
   // mountCanvas fires an initial reload() and live reload fires another on
   // the stream's `open`, plus one per subsequent change — nothing orders
@@ -75,26 +96,86 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const project = await fetchJson<ProjectJson>("/api/presentation");
     if (destroyed || thisGeneration !== generation) return;
 
-    if (project.slides.length === 0) {
+    slides = project.slides;
+    // Live reload calls reload() on every external edit. Staying on the
+    // slide the author is looking at is the whole point — jumping back to
+    // the first one because an agent changed a word elsewhere is a bug.
+    // Only a presentation that got shorter forces a move, and then only as
+    // far as the new last slide.
+    currentIndex = slides.length === 0 ? -1 : Math.min(Math.max(currentIndex, 0), slides.length - 1);
+    notify();
+
+    await render(thisGeneration);
+  }
+
+  /**
+   * Paints the currently selected slide. Takes the caller's captured
+   * generation so navigation shares reload()'s race guard: rapid arrow
+   * presses issue overlapping slide fetches, and a slower earlier one must
+   * never paint over the newer page the author actually asked for.
+   */
+  async function render(thisGeneration: number): Promise<void> {
+    if (currentIndex === -1) {
       iframe.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
       return;
     }
 
-    // Tracer bullet scope: render the first 投影片 only. Multi-slide
-    // navigation is out of scope for this ticket.
-    const [firstSlidePath] = project.slides;
-    const svgMarkup = await fetchText(`/api/files/${firstSlidePath}`);
+    const slidePath = slides[currentIndex];
+    const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
 
-    iframe.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(firstSlidePath)}`);
+    iframe.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+  }
+
+  async function showSlide(index: number): Promise<void> {
+    if (destroyed) return;
+    if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
+      throw new Error(`投影片索引超出範圍：${index}`);
+    }
+
+    const thisGeneration = ++generation;
+    currentIndex = index;
+    notify();
+    await render(thisGeneration);
+  }
+
+  async function next(): Promise<void> {
+    if (currentIndex === -1 || currentIndex >= slides.length - 1) return;
+    await showSlide(currentIndex + 1);
+  }
+
+  async function previous(): Promise<void> {
+    if (currentIndex <= 0) return;
+    await showSlide(currentIndex - 1);
+  }
+
+  function notify(): void {
+    // A fresh object per notification: listeners keep it as React state,
+    // and handing out a mutable reference to internal arrays would let a
+    // later reload silently rewrite what a listener already read.
+    const state: CanvasState = { slides: [...slides], currentIndex };
+    for (const listener of listeners) listener(state);
+  }
+
+  function subscribe(listener: (state: CanvasState) => void): () => void {
+    listeners.add(listener);
+    listener({ slides: [...slides], currentIndex });
+    return () => {
+      listeners.delete(listener);
+    };
   }
 
   void reload();
 
   return {
     reload,
+    showSlide,
+    next,
+    previous,
+    subscribe,
     destroy: () => {
       destroyed = true;
+      listeners.clear();
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React
       // (ADR-0001); this module has no business deciding what else lives
