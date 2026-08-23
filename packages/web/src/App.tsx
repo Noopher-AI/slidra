@@ -230,18 +230,28 @@ export function App() {
       controllerRef.current?.focusPlayer();
       return;
     }
+    // A real click (this function is only ever called from an onClick
+    // handler) carries the transient activation requestFullscreen() needs;
+    // never fabricate a fullscreen UI state the promise did not actually
+    // grant (behaviour contract row 1). Declared before the try block (not
+    // inside it) so the finally below — a separate block scope — can still
+    // see this specific call's own promise to compare against.
+    const requestPromise = request();
+    fullscreenRequestRef.current = requestPromise;
     try {
-      // A real click (this function is only ever called from an onClick
-      // handler) carries the transient activation requestFullscreen()
-      // needs; never fabricate a fullscreen UI state the promise did not
-      // actually grant (behaviour contract row 1).
-      const requestPromise = request();
-      fullscreenRequestRef.current = requestPromise;
       await requestPromise;
     } catch (error) {
       setFullscreenError(error instanceof Error ? error.message : "進入全螢幕失敗");
     } finally {
-      fullscreenRequestRef.current = null;
+      // Only clear the ref if it still points at *this* call's own promise
+      // (same guard the exit branch above already uses). Two clicks in
+      // quick succession each capture their own promise in this closure;
+      // an unconditional clear here would let an earlier call's `finally`
+      // wipe out a later, still in-flight call's promise the moment the
+      // earlier one settles — handleExitPlay() would then have nothing to
+      // await for the request that is actually still pending (review gate
+      // round 3, P2).
+      if (fullscreenRequestRef.current === requestPromise) fullscreenRequestRef.current = null;
     }
     controllerRef.current?.focusPlayer();
   }

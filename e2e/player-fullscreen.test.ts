@@ -666,3 +666,95 @@ it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播�
   // 焦點提示會一直留著。修好之後：即使全螢幕不支援，焦點還是要交回播放器.
   await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
 });
+
+it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的較晚請求（review gate round 3, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  // 兩次呼叫各給不同的延遲：第一次 100ms 先落地，第二次 600ms 後落地——
+  // 造出「較早的請求先 settle，較晚的還在飛行中」這個順序。每次呼叫都留
+  // 一個可等待的 handle（settled[0]/settled[1]），測試才能不靠猜時間點就
+  // 精確等到「第一個已經落地、第二個還沒」的那個窗口。
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __settled?: Array<Promise<unknown>>;
+    };
+    const original = container.requestFullscreen.bind(container);
+    const delays = [100, 600];
+    let callCount = 0;
+    const settled: Array<Promise<unknown>> = [];
+    container.__settled = settled;
+    container.requestFullscreen = () => {
+      const index = callCount++;
+      const delayed = new Promise<void>((resolve, reject) => {
+        setTimeout(
+          () => {
+            original().then(resolve, reject);
+          },
+          delays[index] ?? 600,
+        );
+      });
+      settled[index] = delayed.catch(() => {});
+      return delayed;
+    };
+  });
+
+  // 兩次真實點擊，都在 isFullscreen 還是 false 的窗口內（真實瀏覽器狀態要
+  // 到延遲呼叫落地才會變），所以兩次都會進 toggleFullscreen() 的「進入」
+  // 分支，各自捕捉自己的 promise 存進 fullscreenRequestRef.
+  await page.locator(".fullscreen-toggle-button").click();
+  await page.locator(".fullscreen-toggle-button").click();
+
+  // 等第一個（較早的）請求真的落地（t≈100ms）——這正是舊版無條件清除
+  // 會把 fullscreenRequestRef 錯誤地清成 null 的那個時刻，即使第二個
+  // 請求（t≈600ms 才會落地）根本還沒完成.
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __settled?: Array<Promise<unknown>>;
+    };
+    return container.__settled?.[0];
+  });
+
+  // 修好之前：第一個請求的 finally 無條件把 fullscreenRequestRef 清成
+  // null，這裡點「離開播放」時 handleExitPlay() 找不到任何 pending 的
+  // 請求可等，會立刻用（尚未反映第二個請求的）當下真實 fullscreenElement
+  // 判斷，這時多半還不是全螢幕，於是直接離開播放、不退出全螢幕；等第二個
+  // 請求在 t≈600ms 真的落地，文件會卡在全螢幕，而且已經沒有播放 chrome
+  // 可以點出去。修好之後：第一個請求 settle 時不會動到已經指向第二個
+  // 請求的 ref，離開播放時仍然找得到（第二個）pending 的請求可以等.
+  await page.locator('button:has-text("離開播放")').click();
+
+  // 等第二個（較晚的）請求也真的落地，才開始檢查最終狀態——同樣是 round 5
+  // 修掉的那個原則：不能在轉場真正發生之前就取樣.
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __settled?: Array<Promise<unknown>>;
+    };
+    return container.__settled?.[1];
+  });
+
+  function readFullscreen(): Promise<boolean> {
+    return page.evaluate(() => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
+    });
+  }
+
+  await expect.poll(() => readFullscreen(), { timeout: 5_000 }).toBe(false);
+  // 穩定狀態，不是抓到單一時間點恰好是 false 的樣本.
+  for (let i = 0; i < 3; i++) {
+    await page.waitForTimeout(100);
+    expect(await readFullscreen()).toBe(false);
+  }
+
+  await expect.poll(() => page.locator('button:has-text("播放")').count()).toBe(1);
+});

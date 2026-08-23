@@ -63,9 +63,15 @@ export interface CanvasController {
   /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
-   * element), so a caller holding onto a stale reference would be a bug —
-   * #29's requestFullscreen() target must always be the iframe that
-   * currently exists.
+   * element), so a caller holding onto a stale reference would be a bug.
+   * #29's fullscreen target is the play chrome container in App.tsx (which
+   * holds both this iframe and the play controls), not this getter —
+   * fullscreening the iframe itself left the parent document's own
+   * controls unreachable to a real click once the iframe sat alone in the
+   * browser's fullscreen top layer (see
+   * docs/adr/0010-slide-content-is-untrusted.md). This getter remains the
+   * live reference to the current iframe for whatever else needs one, and
+   * the "never cache it" rule above still applies to any such caller.
    */
   readonly frameElement: HTMLIFrameElement;
 }
