@@ -1,0 +1,310 @@
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { chromium, type Browser, type Response as PWResponse } from "playwright";
+import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
+import { packDirectory } from "@co-motion/core";
+import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+
+/**
+ * 媒體播放效果 end to end (issue #30): advancing to a video step starts the
+ * video, advancing to an audio step starts the audio, both align to their
+ * SVG placeholder, both are served with real HTTP Range support, and both
+ * stop when the author leaves the slide. Real binaries throughout — no
+ * mocks (design doc's Testing Decisions) — `fixtures/media-deck/assets/`
+ * holds a tiny hand-produced WebM (VP8/Opus) clip and a tiny Ogg/Vorbis
+ * clip, made with ffmpeg. WebM/Ogg, not MP4/AAC, because Playwright's
+ * bundled Chromium is an open-source build that may lack H.264/AAC (design
+ * doc's "codec trap").
+ *
+ * Never launches Chromium with an autoplay-policy override — the real
+ * keyboard press below is the real user gesture play() relies on, and that
+ * is the entire point of the "播放帶聲音成功，不被自動播放政策擋下"
+ * acceptance criterion.
+ */
+
+const e2eDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.join(e2eDir, "..");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
+const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
+const deckDir = path.join(e2eDir, "fixtures/media-deck");
+const binDir = path.join(rootDir, "node_modules/.bin");
+
+let browser: Browser;
+
+beforeAll(async () => {
+  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
+
+  browser = await chromium.launch();
+  console.log(`瀏覽器：Chromium ${browser.version()}`);
+});
+
+afterAll(async () => {
+  await browser?.close();
+});
+
+async function startServerFor(): Promise<{
+  server: RunningServer;
+  registry: CommandRegistry;
+  presentationId: string;
+  cleanup: () => Promise<void>;
+}> {
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-media-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-media-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+
+  const registry: CommandRegistry = createDefaultRegistry();
+  const comotPath = path.join(comotDir, "media-deck.comot");
+  await packDirectory(deckDir, comotPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const presentationId = opened.data!.id;
+
+  const agent: AgentAdapterConfig = {
+    kind: "claude",
+    label: "Claude Code",
+    command: process.execPath,
+    args: [agentFixture],
+    env: {
+      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      E2E_PRESENTATION_ID: presentationId,
+      E2E_NEW_TITLE: "此測試不會送出訊息",
+    },
+  };
+
+  const server = await startServe({ registry, presentationId, port: 0, agent });
+
+  return {
+    server,
+    registry,
+    presentationId,
+    cleanup: async () => {
+      await server.close();
+      delete process.env.CO_MOTION_HOME;
+      await rm(coMotionHome, { recursive: true, force: true });
+      await rm(comotDir, { recursive: true, force: true });
+    },
+  };
+}
+
+async function requireBuilt(filePath: string, message: string): Promise<void> {
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error(message);
+  }
+}
+
+/**
+ * Clicking 播放 rebuilds the iframe with `allow-scripts` immediately, but
+ * the sandbox attribute lands before the fresh document has fetched,
+ * parsed, run the runtime, and posted "ready" — the point at which
+ * canvas.ts actually hands focus to the player (see canvas.ts's
+ * `onWindowMessage` "ready" branch). An ArrowRight fired before that lands
+ * has no listener to reach: the key event goes nowhere, and the very next
+ * assertion becomes an intermittent failure race, not a real bug (found
+ * while building this test — see the report). Waiting for the
+ * `.player-focus-notice` element to be gone is the same signal
+ * player-mode.test.ts's own focus test already relies on.
+ */
+async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
+}
+
+it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放時該位置不是一個洞", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${server.url}/api/raw/slides/001.svg`);
+
+    const opacityOf = (selector: string) =>
+      page.evaluate((sel) => {
+        const el = document.querySelector(sel) as SVGElement | null;
+        if (!el) return null;
+        return getComputedStyle(el).opacity;
+      }, selector);
+
+    await expect.poll(() => opacityOf("#el-video-placeholder")).toBe("1");
+    await expect.poll(() => opacityOf("#el-audio-icon")).toBe("1");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且伺服器以 206 Partial Content 回應", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    const videoResponses: PWResponse[] = [];
+    page.on("response", (response) => {
+      if (response.url().includes("/api/raw/") && response.url().endsWith("clip.webm")) {
+        videoResponses.push(response);
+      }
+    });
+
+    await page.goto(server.url);
+
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    await expect
+      .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+
+    // Alignment expectation comes from the placeholder's own on-screen box
+    // in the play iframe, measured before the video is created — not
+    // recomputed the way the runtime computes it.
+    const placeholderRect = await playFrame()
+      .locator("#el-video-placeholder")
+      .evaluate((el) => el.getBoundingClientRect().toJSON());
+
+    await page.locator('button:has-text("播放")').click();
+    await waitForPlayerFocus(page);
+
+    await page.keyboard.press("ArrowRight");
+
+    const video = playFrame().locator("video");
+    await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
+
+    // Real decode proof, not just "play() resolved": readyState indicates
+    // actual media data, and currentTime must genuinely advance over time.
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState), { timeout: 10_000 }).toBeGreaterThan(0);
+    const t0 = await video.evaluate((el: HTMLVideoElement) => el.currentTime);
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime), { timeout: 10_000 })
+      .toBeGreaterThan(t0);
+    expect(await video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
+
+    const videoRect = await video.evaluate((el) => el.getBoundingClientRect().toJSON());
+    expect(videoRect.left).toBeCloseTo(placeholderRect.left, 0);
+    expect(videoRect.top).toBeCloseTo(placeholderRect.top, 0);
+    expect(videoRect.width).toBeCloseTo(placeholderRect.width, 0);
+    expect(videoRect.height).toBeCloseTo(placeholderRect.height, 0);
+
+    // "大型影片不必整份下載即可開始播放" — observed from the browser's own
+    // network events, not a fetch this test writes itself.
+    await expect.poll(() => videoResponses.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    const videoResponse = videoResponses[0];
+    expect(videoResponse.status()).toBe(206);
+    expect(await videoResponse.headerValue("accept-ranges")).toBe("bytes");
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回應", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    const audioResponses: PWResponse[] = [];
+    page.on("response", (response) => {
+      if (response.url().includes("/api/raw/") && response.url().endsWith("narration.oga")) {
+        audioResponses.push(response);
+      }
+    });
+
+    await page.goto(server.url);
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    await expect
+      .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+
+    await page.locator('button:has-text("播放")').click();
+    await waitForPlayerFocus(page);
+
+    await page.keyboard.press("ArrowRight"); // video step
+    await expect.poll(() => playFrame().locator("video").count(), { timeout: 10_000 }).toBe(1);
+    await page.keyboard.press("ArrowRight"); // audio step
+
+    const audio = playFrame().locator("audio");
+    await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(1);
+
+    await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.readyState), { timeout: 10_000 }).toBeGreaterThan(0);
+    const t0 = await audio.evaluate((el: HTMLAudioElement) => el.currentTime);
+    await expect
+      .poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime), { timeout: 10_000 })
+      .toBeGreaterThan(t0);
+    expect(await audio.evaluate((el: HTMLAudioElement) => el.paused)).toBe(false);
+
+    await expect.poll(() => audioResponses.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    expect(audioResponses[0].status()).toBe(206);
+    expect(await audioResponses[0].headerValue("accept-ranges")).toBe("bytes");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("離開投影片時，正在播放的影片與音訊全部停止；回到投影片時不出現兩份媒體同時播放", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    await expect
+      .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+
+    await page.locator('button:has-text("播放")').click();
+    await waitForPlayerFocus(page);
+
+    await page.keyboard.press("ArrowRight"); // video step
+    await expect.poll(() => playFrame().locator("video").count(), { timeout: 10_000 }).toBe(1);
+    await page.keyboard.press("ArrowRight"); // audio step
+    await expect.poll(() => playFrame().locator("audio").count(), { timeout: 10_000 }).toBe(1);
+
+    const audioHandle = await playFrame().locator("audio").elementHandle();
+    if (!audioHandle) throw new Error("找不到音訊元素");
+    await expect
+      .poll(() => audioHandle.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 })
+      .toBe(false);
+
+    // Advance past slide 1's last step: the runtime sends advance-past-end,
+    // canvas.ts reassigns the iframe's srcdoc, which — per ADR-0010 — is a
+    // full navigation of the play document, not an in-place DOM update.
+    await page.keyboard.press("ArrowRight");
+    await expect
+      .poll(() => playFrame().locator("#el-title2").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第二頁：離開第一頁後，媒體應已停止");
+
+    // The old document's own execution context is gone along with it — a
+    // handle from before the navigation can no longer be evaluated. That is
+    // the measurement that decides assumption 11 (see the report): the
+    // navigation itself tore the whole previous document down, audio
+    // included, rather than leaving it detached-but-still-playing.
+    await expect(audioHandle.evaluate((el: HTMLAudioElement) => el.paused)).rejects.toThrow();
+
+    // The fresh slide-2 document never had any media in the first place.
+    expect(await playFrame().locator("video").count()).toBe(0);
+    expect(await playFrame().locator("audio").count()).toBe(0);
+
+    // Idempotence across a genuine "leave and come back": go back to slide
+    // 1 via the overview (showSlide() works regardless of mode), replay
+    // both steps, and confirm exactly one of each media element exists —
+    // never two stacked from an old and a new document.
+    await page.locator('button[aria-label="第 1 頁"]').click();
+    await expect
+      .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+    // showSlide() while still in play mode reassigns srcdoc just like
+    // entering play the first time did, so the fresh runtime's own "ready"
+    // message re-triggers canvas.ts's focusPlayer() automatically — no
+    // manual click needed here, only the same wait for it to land.
+    await waitForPlayerFocus(page);
+
+    await page.keyboard.press("ArrowRight"); // video step
+    await expect.poll(() => playFrame().locator("video").count(), { timeout: 10_000 }).toBe(1);
+    await page.keyboard.press("ArrowRight"); // audio step
+    await expect.poll(() => playFrame().locator("audio").count(), { timeout: 10_000 }).toBe(1);
+  } finally {
+    await cleanup();
+  }
+});

@@ -9,6 +9,12 @@
 import { deriveSteps, parseEffects } from "./effects.js";
 import type { Effect, Step } from "./effects.js";
 
+export interface MediaCue {
+  /** The raw `data-comot-media` value, unmodified — the play document's <base> resolves it. */
+  src: string;
+  kind: "video" | "audio";
+}
+
 export interface PlayerPlan {
   steps: Step[];
   /**
@@ -18,13 +24,15 @@ export interface PlayerPlan {
    * state with all effects already run).
    */
   hidden: string[];
+  /** Keyed by the `family="media"` effect's target id — see mediaCuesFor below. */
+  media: Record<string, MediaCue>;
 }
 
 /** Throws whatever parseEffects/deriveSteps throw — see effects.ts for the (Traditional Chinese) messages. */
 export function computePlayerPlan(svgMarkup: string): PlayerPlan {
   const effects = parseEffects(svgMarkup);
   const steps = deriveSteps(effects);
-  return { steps, hidden: enterTargets(effects) };
+  return { steps, hidden: enterTargets(effects), media: mediaCuesFor(svgMarkup, effects) };
 }
 
 function enterTargets(effects: Effect[]): string[] {
@@ -37,6 +45,51 @@ function enterTargets(effects: Effect[]): string[] {
     result.push(effect.target);
   }
   return result;
+}
+
+/** Unambiguous allow-list (settled decision, not guessed from MIME sniffing): anything else, including `.ogg`, throws. */
+const VIDEO_EXTENSIONS = [".mp4", ".m4v", ".mov", ".webm", ".ogv"];
+const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"];
+
+/**
+ * Builds `plan.media`, keyed by each `family="media"` effect's target. This
+ * re-parses `svgMarkup` (parseEffects already parsed it once, but discards
+ * its DOM) because the only new thing this ticket needs from the markup is
+ * one attribute lookup per media target — not worth widening effects.ts's
+ * return shape for.
+ */
+function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, MediaCue> {
+  const mediaEffects = effects.filter((effect) => effect.family === "media");
+  if (mediaEffects.length === 0) return {};
+
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  const media: Record<string, MediaCue> = {};
+  for (const effect of mediaEffects) {
+    const target = effect.target;
+    // parseEffects already verified `target` resolves to an element in this
+    // document — that check ran against the same markup, so it holds here too.
+    const el = doc.getElementById(target) as Element;
+    const src = el.getAttribute("data-comot-media");
+    if (!src) {
+      // ADR-0009: every effect points at an element, and a media effect's
+      // element must carry data-comot-media (ADR-0005) — its absence is a
+      // damaged presentation, not a silently-skipped effect.
+      throw new Error(`元素「${target}」的效果是 family="media"，但沒有 data-comot-media，簡報已損毀。`);
+    }
+    media[target] = { src, kind: mediaKindFor(src, target) };
+  }
+  return media;
+}
+
+/** Derives video/audio purely from the file extension — never MIME sniffing (would need an async HEAD, and the user gesture cannot survive that). */
+function mediaKindFor(src: string, target: string): "video" | "audio" {
+  const dot = src.lastIndexOf(".");
+  const extension = dot === -1 ? "" : src.slice(dot).toLowerCase();
+  if (VIDEO_EXTENSIONS.includes(extension)) return "video";
+  if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
+  throw new Error(
+    `元素「${target}」的 data-comot-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
+  );
 }
 
 /**

@@ -15,9 +15,14 @@
 
   var plan = window.__COMOT_PLAN__;
   var steps = (plan && plan.steps) || [];
+  var media = (plan && plan.media) || {};
   // -1 means "no step applied yet" — everything the plan marked hidden is
   // still hidden, which is the slide's opening state.
   var currentStep = -1;
+  // Target id -> the <video>/<audio> element already created for it.
+  // Idempotence (ticket #30): reaching the same media target twice must
+  // reuse this element rather than creating (and playing) a second one.
+  var mediaElements = {};
 
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
@@ -34,13 +39,90 @@
     parent.postMessage(payload, "*");
   }
 
+  /**
+   * Positions an overlay element exactly over its placeholder's current
+   * on-screen box (ADR-0005: align to the SVG placeholder's geometry, never
+   * <foreignObject>). Document coordinates, not viewport coordinates —
+   * getBoundingClientRect() is viewport-relative, and this element is
+   * appended to document.body as position:absolute, which is positioned
+   * against the initial containing block in document coordinates — hence
+   * the scrollX/scrollY correction. Called again on resize (see the
+   * listener below): #29's fullscreen toggle resizes this frame without
+   * reloading the document, so a once-positioned overlay would otherwise be
+   * wrong after the viewport changes size mid-presentation.
+   */
+  function positionOverlay(el, placeholder) {
+    var rect = placeholder.getBoundingClientRect();
+    el.style.position = "absolute";
+    el.style.left = rect.left + window.scrollX + "px";
+    el.style.top = rect.top + window.scrollY + "px";
+    el.style.width = rect.width + "px";
+    el.style.height = rect.height + "px";
+  }
+
+  /**
+   * Creates (or reuses) the HTML media element for a `family: "media"`
+   * effect and plays it. `.play()` here is on the synchronous path from the
+   * ArrowRight keydown handler all the way down — no await, no setTimeout,
+   * nothing async before it — because the browser's transient activation
+   * from that key press is only good for the current task; anything async
+   * in between and playback-with-sound is refused (design doc, settled
+   * decision #6).
+   */
+  function playMedia(target) {
+    // Idempotence (#30 acceptance criterion): reaching the same target
+    // twice must never produce a second media element playing alongside
+    // the first.
+    if (mediaElements[target]) return;
+
+    var cue = media[target];
+    if (!cue) {
+      // The parent's plan builder (player-plan.ts) already verified every
+      // media effect's target carries a cue before this plan was built, so
+      // this should not happen — reported rather than silently skipped, in
+      // case it ever does.
+      post({ event: "error", message: "找不到媒體效果的設定：" + target });
+      return;
+    }
+    var placeholder = document.getElementById(target);
+    if (!placeholder) {
+      post({ event: "error", message: "找不到媒體效果指向的元素：" + target });
+      return;
+    }
+
+    var el = document.createElement(cue.kind === "video" ? "video" : "audio");
+    // The raw data-comot-media value, unmodified (settled decision #3): the
+    // play document already carries a <base href="/api/raw/<slide dir>">
+    // (see wrapPlayDocument in canvas.ts), so the browser's own relative-URL
+    // resolution turns this into the right /api/raw/ request — no URL
+    // rewriting here.
+    el.src = cue.src;
+    positionOverlay(el, placeholder);
+    document.body.appendChild(el);
+    mediaElements[target] = el;
+
+    var playResult = el.play();
+    if (playResult && typeof playResult.catch === "function") {
+      playResult.catch(function (err) {
+        // A rejected play() (autoplay refusal, decode failure, missing
+        // file, …) must surface, never fail silently (design doc, settled
+        // decision #12).
+        post({
+          event: "error",
+          message: "媒體播放失敗（" + target + "）：" + (err && err.message ? err.message : String(err)),
+        });
+      });
+    }
+  }
+
   function applyStep(step) {
     var effects = step.effects;
     for (var i = 0; i < effects.length; i++) {
       var effect = effects[i];
-      // Media playback (family "media") is #30's ticket, not this one — a
-      // media effect in the plan is simply not acted on yet. It stays
-      // exactly as visible as its poster placeholder already is.
+      if (effect.family === "media") {
+        playMedia(effect.target);
+        continue;
+      }
       if (effect.family !== "enter") continue;
 
       var el = document.getElementById(effect.target);
@@ -88,6 +170,18 @@
     }
     // ArrowLeft is deliberately ignored — stepping backwards is Out of
     // Scope (see #23). No other key does anything here.
+  });
+
+  window.addEventListener("resize", function () {
+    // See positionOverlay's comment: the frame can be resized in place
+    // (e.g. #29's requestFullscreen() on the iframe element) without this
+    // document ever reloading, so every already-created media overlay must
+    // be re-aligned to its placeholder's new box.
+    for (var target in mediaElements) {
+      if (!Object.prototype.hasOwnProperty.call(mediaElements, target)) continue;
+      var placeholder = document.getElementById(target);
+      if (placeholder) positionOverlay(mediaElements[target], placeholder);
+    }
   });
 
   window.addEventListener("focus", function () {

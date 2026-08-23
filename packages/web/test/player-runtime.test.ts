@@ -37,13 +37,21 @@ interface StubEffect {
   effect: string;
   start: "on-click";
 }
+interface StubMediaCue {
+  src: string;
+  kind: "video" | "audio";
+}
 interface StubPlan {
   steps: { effects: StubEffect[] }[];
   hidden: string[];
+  media?: Record<string, StubMediaCue>;
 }
 
 function enter(target: string, effect: "fade" | "appear"): StubEffect {
   return { target, family: "enter", effect, start: "on-click" };
+}
+function media(target: string): StubEffect {
+  return { target, family: "media", effect: "play", start: "on-click" };
 }
 
 /** Boots the runtime inside `iframe`'s own window/document with the given plan. */
@@ -176,6 +184,67 @@ describe("player-runtime.js", () => {
     stop();
 
     expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
+  });
+
+  it("推進到 media 效果的步驟時，建立對齊佔位元素的 <video>，src 是原始 data-comot-media 值", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }],
+      hidden: [],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-video"]);
+
+    press(win, "ArrowRight");
+
+    const created = doc.body.querySelectorAll("video");
+    expect(created).toHaveLength(1);
+    expect(created[0].getAttribute("src")).toBe("assets/intro.webm");
+  });
+
+  it("推進到 media 效果的步驟時，建立 <audio>（不是 <video>）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-audio")] }],
+      hidden: [],
+      media: { "el-audio": { src: "assets/narration.oga", kind: "audio" } },
+    };
+    const { win, doc } = boot(plan, ["el-audio"]);
+
+    press(win, "ArrowRight");
+
+    expect(doc.body.querySelectorAll("audio")).toHaveLength(1);
+    expect(doc.body.querySelectorAll("video")).toHaveLength(0);
+  });
+
+  it("同一 media 目標被推進兩次時，不建立第二個媒體元素（idempotence）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [media("el-video")] }],
+      hidden: [],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-video"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+  });
+
+  it("plan.media 沒有該目標的設定時，送出 error 事件而不是拋例外", async () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }],
+      hidden: [],
+      media: {},
+    };
+    const { win } = boot(plan, ["el-video"]);
+    const { messages, stop } = collectMessages();
+
+    press(win, "ArrowRight");
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual(
+      expect.objectContaining({ source: "comot-player", event: "error", message: expect.stringContaining("el-video") }),
+    );
   });
 
   it("收到 host 的 focus 指令時，把焦點拿回自己的 window", async () => {

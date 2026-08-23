@@ -37,6 +37,7 @@ describe("computePlayerPlan", () => {
         { effects: [{ target: "el-b", family: "enter", effect: "appear", start: "on-click" }] },
       ],
       hidden: ["el-a", "el-b"],
+      media: {},
     });
   });
 
@@ -56,6 +57,7 @@ describe("computePlayerPlan", () => {
     expect(computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>')).toEqual({
       steps: [],
       hidden: [],
+      media: {},
     });
   });
 
@@ -90,6 +92,49 @@ describe("renderHideStyle", () => {
 
   it("id 就是單一個連字號時，跳脫成 \\-", () => {
     expect(renderHideStyle(["-"])).toBe("<style>#\\-{opacity:0 !important}</style>");
+  });
+});
+
+describe("computePlayerPlan：media", () => {
+  function slideWithMedia(mediaAttr: string): string {
+    return `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="el-video" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <image id="el-video"${mediaAttr}/>
+</svg>`;
+  }
+
+  it("影片副檔名 .mp4 得到 kind: video，src 是 data-comot-media 原始值", () => {
+    const svg = slideWithMedia(' data-comot-media="assets/intro.mp4"');
+    expect(computePlayerPlan(svg).media).toEqual({
+      "el-video": { src: "assets/intro.mp4", kind: "video" },
+    });
+  });
+
+  it("音訊副檔名 .oga 得到 kind: audio", () => {
+    const svg = slideWithMedia(' data-comot-media="assets/narration.oga"');
+    expect(computePlayerPlan(svg).media).toEqual({
+      "el-video": { src: "assets/narration.oga", kind: "audio" },
+    });
+  });
+
+  it("media 效果的目標沒有 data-comot-media 時拋錯，訊息點名該目標", () => {
+    const svg = slideWithMedia("");
+    expect(() => computePlayerPlan(svg)).toThrow(/el-video/);
+  });
+
+  it(".ogg 不在允許清單中，拋錯並指出該用 .oga 或 .ogv", () => {
+    const svg = slideWithMedia(' data-comot-media="assets/clip.ogg"');
+    expect(() => computePlayerPlan(svg)).toThrow(/\.oga/);
+    expect(() => computePlayerPlan(svg)).toThrow(/\.ogv/);
+  });
+
+  it("沒有 media 效果的投影片得到空的 media 物件", () => {
+    const svg = slide("");
+    expect(computePlayerPlan(svg).media).toEqual({});
   });
 });
 
