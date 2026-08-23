@@ -266,7 +266,11 @@ async function handleRequest(
         sendJson(res, 400, { error: "路徑編碼無效" });
         return;
       }
-      await handleRawRequest(presentationId, virtualPath, res);
+      // The Range header is read here, at the one place that has `req`, and
+      // handed on as a plain value: handleRawRequest stays a function of
+      // (path, response, range) rather than growing a dependency on the
+      // whole request object it has no other use for (ticket #13).
+      await handleRawRequest(presentationId, virtualPath, res, req.headers.range);
       return;
     }
 

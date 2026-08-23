@@ -119,6 +119,33 @@ async function openFreshPresentation(name = "測試簡報"): Promise<string> {
   return opened.data!.id;
 }
 
+/**
+ * A presentation carrying one binary asset whose bytes are a 0x00..0xff
+ * ramp, so a byte range can be asserted by value rather than by length
+ * alone. Real fflate zip, real `open`, no mocks.
+ */
+const RAMP_BYTES = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
+
+async function openPresentationWithRampAsset(): Promise<string> {
+  const { zipSync } = await import("fflate");
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(
+      JSON.stringify({
+        formatVersion: 1,
+        name: "有資產的簡報",
+        canvas: { width: 1280, height: 720 },
+        slides: ["slides/001.svg"],
+      }),
+    ),
+    "slides/001.svg": new TextEncoder().encode("<svg/>"),
+    "assets/clip.mp4": RAMP_BYTES,
+  });
+  const comotPath = path.join(comotDir, "with-ramp-asset.comot");
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return opened.data!.id;
+}
+
 async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
   // staticDir is passed unconditionally, before ...overrides: no test in
   // this file can reach the real packages/web/dist by forgetting to opt out.
@@ -158,6 +185,37 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
 }
 
 describe("startServe", () => {
+  // The `/api/raw/` route reads the request's Range header and hands it to
+  // handleRawRequest (ticket #13). raw.test.ts calls that function directly,
+  // which deliberately proves the range logic without serve.ts — so nothing
+  // there would notice if this route stopped passing the header along. These
+  // two tests cover exactly that wiring, over a real socket.
+  it("/api/raw/ 把請求的 Range 標頭一路帶到位元組切片，回 206 與確切的區間", async () => {
+    const id = await openPresentationWithRampAsset();
+
+    const server = await serve(id);
+    const response = await fetch(`${server.url}/api/raw/assets/clip.mp4`, {
+      headers: { Range: "bytes=10-19" },
+    });
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 10-19/256");
+    expect(body.equals(RAMP_BYTES.subarray(10, 20))).toBe(true);
+  });
+
+  it("/api/raw/ 沒有 Range 標頭時仍回 200 完整檔案，並宣告 Accept-Ranges", async () => {
+    const id = await openPresentationWithRampAsset();
+
+    const server = await serve(id);
+    const response = await fetch(`${server.url}/api/raw/assets/clip.mp4`);
+    const body = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("accept-ranges")).toBe("bytes");
+    expect(body.equals(RAMP_BYTES)).toBe(true);
+  });
+
   it("binds port 0 and reports back the actual assigned port", async () => {
     const id = await openFreshPresentation();
 
