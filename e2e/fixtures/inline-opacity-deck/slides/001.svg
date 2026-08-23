@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <comot:effect target="el-stubborn" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <!--
+    gate review round 2, P2: this element carries its own inline
+    style="opacity:1" — a legal thing for authored (or agent-edited) SVG
+    to do. Without !important on the injected hide rule, inline style wins
+    the cascade and this element flashes fully visible at the start of
+    play, defeating the whole point of pre-hiding.
+  -->
+  <text id="el-stubborn" style="opacity:1" x="640" y="360" text-anchor="middle" font-size="56">固執的文字</text>
+</svg>

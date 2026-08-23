@@ -462,7 +462,7 @@ describe("mountCanvas 的播放模式", () => {
     await controller.play();
 
     const doc = srcdoc();
-    expect(doc).toContain("#el-a{opacity:0}");
+    expect(doc).toContain("#el-a{opacity:0 !important}");
     expect(doc).toContain("window.__COMOT_PLAN__");
     expect(doc).toContain('"target":"el-a"');
     // The runtime's own listeners prove it was actually inlined, not just referenced.
@@ -671,5 +671,119 @@ describe("mountCanvas 的播放模式", () => {
     // view-mode wrapper for slides/001.svg.
     expect(controller.frameElement).toBe(playFrame);
     expect(playFrame.srcdoc).toContain("window.__COMOT_PLAN__");
+  });
+
+  // Gate review round 2, P1: pressing forward fast enough sends a second
+  // advance-past-end before the first page change's renderPlay() has
+  // finished fetching. Without its own generation guard, both renderPlay()
+  // calls shared the same (never-bumped) generation, so whichever fetch
+  // happened to resolve last would win regardless of which slide the
+  // author is actually supposed to be on — the earlier call's slow slide 2
+  // could paint over the later call's already-current slide 3.
+  it("連續收到兩則 advance-past-end 時，較慢的舊換頁不會蓋過較新的那一頁", async () => {
+    const raceDeck = { name: "三頁播放測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
+    let resolveSlide2!: () => void;
+    const slide2Gate = new Promise<void>((resolve) => {
+      resolveSlide2 = resolve;
+    });
+    const raceMarkup: Record<string, string> = {
+      "slides/001.svg": playDeckMarkup["slides/001.svg"],
+      "slides/002.svg": '<svg data-testid="s2"><rect id="el-b"/></svg>',
+      "slides/003.svg": '<svg data-testid="s3"><rect id="el-c"/></svg>',
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(raceDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/002.svg")) {
+          // Slide 2's fetch is the slow, superseded one: it only resolves
+          // after slide 3 (below) has already been requested and painted.
+          await slide2Gate;
+          return new Response(raceMarkup["slides/002.svg"], { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && raceMarkup[match[1]]) {
+          return new Response(raceMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    // First ArrowRight-equivalent: currentIndex 0 -> 1, renderPlay() starts
+    // fetching slide 2 and gets stuck on slide2Gate.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Second ArrowRight-equivalent, fired before the first has painted
+    // anything: currentIndex 1 -> 2, renderPlay() fetches slide 3, which
+    // resolves immediately and paints.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(srcdoc()).toContain('data-testid="s3"');
+
+    // Only now does the slow, superseded slide-2 fetch resolve. It must be
+    // discarded, not painted over the already-current slide 3.
+    resolveSlide2();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s3"');
+    expect(srcdoc()).not.toContain('data-testid="s2"');
+  });
+
+  // Gate review round 2, P2: a broken slide's error must actually clear
+  // once the author moves to a slide that plays fine — `error = null`
+  // being assigned is not enough if nothing tells React about it.
+  it("換到效果清單正常的投影片時，先前的 error 會被清掉並通知訂閱者", async () => {
+    const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
+    const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
+      <metadata><comot:effects ${NS}><comot:effect target="el-a" family="exit" effect="fade" start="on-click"/></comot:effects></metadata>
+      <rect id="el-a"/>
+    </svg>`;
+    const fineMarkup = '<svg data-testid="fine"><rect id="el-b"/></svg>';
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(brokenThenFineDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) return new Response(brokenMarkup, { status: 200 });
+        if (url.endsWith("/api/files/slides/002.svg")) return new Response(fineMarkup, { status: 200 });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const seenErrors: (string | null)[] = [];
+    controller.subscribe((state) => seenErrors.push(state.error));
+    expect(seenErrors.at(-1)).toMatch(/family.*exit/);
+
+    await controller.showSlide(1);
+
+    expect(seenErrors.at(-1)).toBeNull();
+    expect(srcdoc()).toContain('data-testid="fine"');
   });
 });

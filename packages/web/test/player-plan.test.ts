@@ -70,8 +70,26 @@ describe("renderHideStyle", () => {
     expect(renderHideStyle([])).toBe("");
   });
 
-  it("把隱藏目標接成一條 CSS 規則，opacity 設為 0", () => {
-    expect(renderHideStyle(["el-a", "el-b"])).toBe("<style>#el-a,#el-b{opacity:0}</style>");
+  it("把隱藏目標接成一條 CSS 規則，opacity 設為 0 且帶 !important", () => {
+    // !important is load-bearing (gate review round 2, P2): a slide
+    // element can carry its own inline opacity, which normally beats an
+    // injected stylesheet rule regardless of that rule's specificity —
+    // without !important here, such an element would flash fully visible
+    // at the very start of play, exactly the bug this rule exists to stop.
+    expect(renderHideStyle(["el-a", "el-b"])).toBe("<style>#el-a,#el-b{opacity:0 !important}</style>");
+  });
+
+  it("id 以數字開頭時，跳脫成合法的 CSS 識別碼", () => {
+    // A naive "escape every non-alphanumeric character" regex leaves a
+    // leading digit untouched, producing the syntactically invalid
+    // selector `#1-title` — the browser drops the whole rule, and that
+    // element starts visible (gate review round 2, P2). CSS identifiers
+    // cannot start with an unescaped digit; it must be hex-escaped.
+    expect(renderHideStyle(["1-title"])).toBe("<style>#\\31 -title{opacity:0 !important}</style>");
+  });
+
+  it("id 就是單一個連字號時，跳脫成 \\-", () => {
+    expect(renderHideStyle(["-"])).toBe("<style>#\\-{opacity:0 !important}</style>");
   });
 });
 

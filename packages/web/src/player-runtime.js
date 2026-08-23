@@ -56,7 +56,16 @@
       // "appear" must be instant, "fade" must transition — both are driven
       // by setting inline opacity, per the design doc.
       el.style.transition = effect.effect === "fade" ? "opacity 0.4s" : "none";
-      el.style.opacity = "1";
+      // !important: the hide stylesheet in player-plan.ts's renderHideStyle
+      // also had to become !important, because a legal slide element can
+      // carry its own inline opacity (e.g. style="opacity:1"), and inline
+      // style normally wins the cascade over an injected stylesheet rule
+      // regardless of that rule's specificity. Once the hide rule is
+      // !important, a plain `el.style.opacity = "1"` here can no longer
+      // beat it — inline !important is required on both sides, or a step
+      // could set opacity:1 and have it silently overridden by the hide
+      // rule that was supposed to have already been superseded.
+      el.style.setProperty("opacity", "1", "important");
     }
   }
 

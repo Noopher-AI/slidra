@@ -161,9 +161,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // On the last slide of the presentation, advancing past the end does
     // nothing — there is nowhere further to go, and this must not throw.
     if (currentIndex === -1 || currentIndex >= slides.length - 1) return;
+    // A stale runtime can still be alive in the old play iframe for a
+    // moment after a page change (the iframe is only rebuilt once
+    // renderPlay() below actually finishes), so repeated ArrowRight
+    // presses before that finishes can fire several advance-past-end
+    // messages back to back. Bumping generation here — the same guard
+    // play()/exitPlay()/showSlide() already use — makes an earlier one of
+    // these calls' renderPlay() discard its own result instead of racing
+    // a later one to paint last.
+    const thisGeneration = ++generation;
     currentIndex += 1;
     notify();
-    await renderPlay();
+    await renderPlay(thisGeneration);
   }
 
   async function reload(): Promise<void> {
@@ -239,7 +248,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const plan = computePlayerPlan(svgMarkup);
       planScript = renderPlanScript(plan);
       hideStyle = renderHideStyle(plan.hidden);
-      error = null;
+      // Must notify here, not just assign: a prior slide's parse failure
+      // may have left `error` set, and without this call React never
+      // learns this render cleared it — the error banner from the
+      // previous, broken slide would keep showing on top of a page that
+      // is in fact playing fine (found in gate review round 2).
+      if (error !== null) {
+        error = null;
+        notify();
+      }
     } catch (planError) {
       // Surfaced, never silently swallowed (design doc). Play the static
       // slide with no runtime rather than leaving the frame blank — the

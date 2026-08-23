@@ -46,21 +46,73 @@ function enterTargets(effects: Effect[]): string[] {
  * painted before hiding takes effect (the "flash of full content" this
  * ticket must avoid). Returns "" when nothing needs hiding, rather than an
  * empty selector list, which would be invalid CSS.
+ *
+ * `!important`: a legal slide element is free to carry its own inline
+ * `style="opacity:1"` (ADR-0010 — slide content is untrusted, but even
+ * honestly-authored markup can do this). Inline style normally wins the
+ * cascade over any external/injected stylesheet rule, which would let that
+ * one element flash fully visible at the very start of play regardless of
+ * this rule — exactly the "flash of full content" bug this ticket exists
+ * to prevent. `!important` is what lets an injected stylesheet rule beat
+ * an element's own inline style. The runtime's side of this same fix is in
+ * player-runtime.js: it must set opacity back with `!important` too, or
+ * this rule would simply never let a step's elements become visible again.
  */
 export function renderHideStyle(hidden: string[]): string {
   if (hidden.length === 0) return "";
   const selector = hidden.map((id) => `#${cssEscapeId(id)}`).join(",");
-  return `<style>${selector}{opacity:0}</style>`;
+  return `<style>${selector}{opacity:0 !important}</style>`;
 }
 
 /**
  * Element ids in this project come from a fixed generator (`el-<hex>`), but
  * this function does not assume that — it escapes any character CSS would
  * otherwise treat specially in an id selector, defensively, since the id
- * ultimately comes from untrusted slide markup (ADR-0010).
+ * ultimately comes from untrusted slide markup (ADR-0010). A hand-rolled,
+ * CSS.escape()-equivalent implementation, not a call to the real
+ * `CSS.escape` — that function is not guaranteed present in every runtime
+ * this module's tests run under (jsdom does not ship it). Handles the two
+ * cases a naive "escape every non-alphanumeric character" miss: CSS
+ * identifiers cannot start with an unescaped digit (so `id="1-title"` must
+ * become `\31 -title`, not the syntactically-invalid `#1-title`), and a
+ * standalone `-` must be escaped outright.
  */
 function cssEscapeId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+  let result = "";
+  for (let i = 0; i < id.length; i++) {
+    const ch = id[i];
+    const code = id.codePointAt(i)!;
+
+    if (code === 0x0000) {
+      result += "\uFFFD";
+      continue;
+    }
+    if ((code >= 0x0001 && code <= 0x001f) || code === 0x007f) {
+      result += `\\${code.toString(16)} `;
+      continue;
+    }
+    const isDigit = code >= 0x30 && code <= 0x39;
+    if (i === 0 && isDigit) {
+      result += `\\${code.toString(16)} `;
+      continue;
+    }
+    if (i === 1 && isDigit && id[0] === "-") {
+      result += `\\${code.toString(16)} `;
+      continue;
+    }
+    if (i === 0 && id.length === 1 && ch === "-") {
+      result += "\\-";
+      continue;
+    }
+
+    const isAsciiAlpha = (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+    if (code >= 0x0080 || ch === "-" || ch === "_" || isDigit || isAsciiAlpha) {
+      result += ch;
+      continue;
+    }
+    result += `\\${ch}`;
+  }
+  return result;
 }
 
 /** The `<script>` line that hands the plan to the runtime as `window.__COMOT_PLAN__`. */
