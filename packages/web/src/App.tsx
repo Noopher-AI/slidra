@@ -26,6 +26,17 @@ function exitFullscreenIfActive(): Promise<void> {
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // 全螢幕開關 (ticket #29 第二輪): the fullscreen target. Reuses the
+  // existing <main className="canvas-area"> element rather than adding a
+  // new wrapper div — it already contains the iframe (via canvasRef),
+  // every play-mode notice, and the play chrome <nav>, and it already
+  // excludes the overview sidebar and chat sidebar (siblings, not
+  // descendants). Coordinator's revised settled decision #1: the target
+  // must be a container that also holds the play chrome, because a real
+  // click cannot reach anything outside the fullscreen element once the
+  // browser puts it in the top layer (measured while building the first
+  // version of this ticket — see the final report).
+  const playChromeRef = useRef<HTMLElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const overviewControllerRef = useRef<OverviewController | null>(null);
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
@@ -133,10 +144,9 @@ export function App() {
   // names, matching e2e/fullscreen-spike.test.ts.
   useEffect(() => {
     function onFullscreenChange(): void {
-      const frame = controllerRef.current?.frameElement;
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
       const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
-      setIsFullscreen(fullscreenElement !== null && fullscreenElement === frame);
+      setIsFullscreen(fullscreenElement !== null && fullscreenElement === playChromeRef.current);
       // Every fullscreen transition must hand focus back to the player, or
       // arrow-key advance silently dies (settled decision #5).
       controllerRef.current?.focusPlayer();
@@ -171,12 +181,14 @@ export function App() {
       controllerRef.current?.focusPlayer();
       return;
     }
-    // Read frameElement fresh at call time (settled decision #3) — it is a
-    // live getter and must never be cached across a play()/exitPlay() cycle.
-    const frame = controllerRef.current?.frameElement;
-    if (!frame) return;
-    const webkitFrame = frame as HTMLIFrameElement & { webkitRequestFullscreen?: () => Promise<void> };
-    const request = (frame.requestFullscreen ?? webkitFrame.webkitRequestFullscreen)?.bind(frame);
+    // The play chrome container, not the iframe (frameElement) — see the
+    // ref comment above. Read fresh at call time regardless: React refs are
+    // stable across renders here, but this keeps the same discipline as
+    // frameElement's own "never cache" rule.
+    const container = playChromeRef.current;
+    if (!container) return;
+    const webkitContainer = container as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+    const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
     if (!request) {
       setFullscreenError("這個瀏覽器不支援全螢幕");
       return;
@@ -281,7 +293,7 @@ export function App() {
   return (
     <div className="app">
       <aside className="overview" ref={overviewRef} />
-      <main className="canvas-area">
+      <main className="canvas-area" ref={playChromeRef}>
         <div ref={canvasRef} className="canvas" />
         {liveReloadError && (
           <div role="alert" style={liveReloadBannerStyle}>

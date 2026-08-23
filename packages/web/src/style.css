@@ -317,3 +317,16 @@ body,
   color: #fff;
   font-size: 0.85rem;
 }
+
+/* 全螢幕開關 (ticket #29 第二輪): the fullscreen target is .canvas-area
+   itself (see the playChromeRef comment in App.tsx), not the iframe, so
+   the play chrome's real buttons stay inside the fullscreen element and
+   stay clickable. `:fullscreen` sizes it explicitly rather than trusting
+   the UA default box, and gives it an opaque background so nothing behind
+   it (the app's normal page background) shows through. */
+.canvas-area:fullscreen,
+.canvas-area:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
