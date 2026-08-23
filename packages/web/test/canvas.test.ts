@@ -463,8 +463,11 @@ describe("mountCanvas 的播放模式", () => {
 
     const doc = srcdoc();
     expect(doc).toContain("#el-a{opacity:0 !important}");
-    expect(doc).toContain("window.__COMOT_PLAN__");
-    expect(doc).toContain('"target":"el-a"');
+    expect(doc).toContain("window.__COMOT_PLAN__ = JSON.parse(");
+    // The plan is injected as a JSON *string* literal now (renderPlanScript,
+    // ticket #30 prototype-pollution follow-up), not a bare object literal,
+    // so the target id shows up JSON-escaped inside that outer string.
+    expect(doc).toContain('\\"target\\":\\"el-a\\"');
     // The runtime's own listeners prove it was actually inlined, not just referenced.
     expect(doc).toContain('addEventListener("keydown"');
   });

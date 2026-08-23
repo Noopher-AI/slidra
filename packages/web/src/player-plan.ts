@@ -187,7 +187,43 @@ function cssEscapeId(id: string): string {
   return result;
 }
 
-/** The `<script>` line that hands the plan to the runtime as `window.__COMOT_PLAN__`. */
+/**
+ * The `<script>` line that hands the plan to the runtime as
+ * `window.__COMOT_PLAN__`.
+ *
+ * Reconstructed via `JSON.parse(...)`, never a bare object-literal
+ * assignment (`window.__COMOT_PLAN__ = ${JSON.stringify(plan)}`, this
+ * function's previous shape) — that distinction is load-bearing, not
+ * stylistic. `plan.media` is keyed by untrusted SVG element ids
+ * (ADR-0010), and a legal id can be "__proto__". ECMAScript object-literal
+ * syntax gives a non-computed `"__proto__": value` property key special
+ * treatment at the *syntax* level: it sets the object's `[[Prototype]]`
+ * instead of creating an own property — this is true no matter how the
+ * value was built on the parent side (Object.create(null) or otherwise;
+ * see the fix in mediaCuesFor above, which only protects construction on
+ * this side of the wire, not reconstruction on the iframe side). The
+ * result: `plan.media["__proto__"]`'s cue would still happen to read back
+ * correctly (the `__proto__` accessor's getter returns the very
+ * `[[Prototype]]` that was just set — a syntax coincidence, not a
+ * guarantee), but `Object.keys()`, a `{...media}` spread, or
+ * `structuredClone()` would all silently lose that entry, since it was
+ * never a real own property to begin with. `JSON.parse` has no such
+ * special case for any key, `__proto__` included — every key becomes a
+ * genuine own, enumerable data property via `CreateDataProperty`, not the
+ * `[[Set]]` that an object literal's `__proto__` key triggers. The plan is
+ * therefore round-tripped through a JSON *string* literal (double
+ * `JSON.stringify`) instead of a bare object literal.
+ *
+ * This does not touch canvas.ts's `wrapPlayDocument`, which still escapes
+ * every literal `<` in this function's output to `\u003C` (gate review
+ * round 3): that protection guards the *HTML tokenizer* reading the
+ * `<script>` block's raw text, a concern one level below where JS or JSON
+ * parsing even begins, and the invariant it relies on — every `<` in this
+ * output sits inside a quoted string — still holds here (now inside the
+ * outer JS string literal wrapping the escaped JSON text, instead of
+ * directly inside a JSON string value).
+ */
 export function renderPlanScript(plan: PlayerPlan): string {
-  return `window.__COMOT_PLAN__ = ${JSON.stringify(plan)};`;
+  const json = JSON.stringify(plan);
+  return `window.__COMOT_PLAN__ = JSON.parse(${JSON.stringify(json)});`;
 }

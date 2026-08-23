@@ -212,8 +212,63 @@ describe("允許清單與 server 的 MIME 表必須一致（ticket #30 review ro
 });
 
 describe("renderPlanScript", () => {
-  it("把 plan 序列化成指定給 window.__COMOT_PLAN__ 的一行 script", () => {
+  it("把 plan 序列化成指定給 window.__COMOT_PLAN__ 的一行 script，透過 JSON.parse 重建，不是物件字面量", () => {
+    // Not a bare object-literal assignment: see the "完整走過注入鏈路"
+    // block below for why. This expected string is a known-good literal
+    // (double JSON.stringify of the same plan, computed independently of
+    // renderPlanScript's own implementation), not a value recomputed the
+    // way the code computes it.
     const plan = { steps: [], hidden: ["el-a"] };
-    expect(renderPlanScript(plan)).toBe('window.__COMOT_PLAN__ = {"steps":[],"hidden":["el-a"]};');
+    expect(renderPlanScript(plan)).toBe(
+      "window.__COMOT_PLAN__ = JSON.parse(\"{\\\"steps\\\":[],\\\"hidden\\\":[\\\"el-a\\\"]}\");",
+    );
+  });
+});
+
+// Codex review gate round 1 follow-up: computePlayerPlan()'s own return
+// value already round-trips "__proto__" as a real own property (see the
+// "computePlayerPlan：media" tests above, fixed by Object.create(null) in
+// mediaCuesFor) — but that is only the parent side of the wire.
+// renderPlanScript()'s output is injected into the play iframe as raw
+// script text and evaluated there; if that text reconstructs the plan via
+// a bare object-literal assignment, ECMAScript's own object-literal syntax
+// gives a non-computed `"__proto__": value` key special treatment — it
+// sets [[Prototype]] instead of creating an own property — regardless of
+// how carefully the value was built on this side. These tests exercise
+// the *whole* chain: computePlayerPlan() -> renderPlanScript() -> a real
+// JS engine evaluating that exact text against a window stand-in (not a
+// mock of what evaluation "should" do) -> reading the reconstructed plan
+// back.
+describe("renderPlanScript：完整走過注入鏈路的重建（不只是 computePlayerPlan 的回傳值）", () => {
+  function evalInjectedScript(script: string): { steps: unknown; hidden: unknown; media: Record<string, unknown> } {
+    const fakeWindow: { __COMOT_PLAN__?: unknown } = {};
+    // eslint-disable-next-line no-new-func -- deliberately evaluating the
+    // exact production script text with a real JS engine, the same thing
+    // the play iframe does.
+    new Function("window", script)(fakeWindow);
+    return fakeWindow.__COMOT_PLAN__ as { steps: unknown; hidden: unknown; media: Record<string, unknown> };
+  }
+
+  it('target id 恰好是 "__proto__" 時，注入鏈路重建後的 plan.media 仍是真正的 own property', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="__proto__" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
+</svg>`;
+    const plan = computePlayerPlan(svg);
+    const script = renderPlanScript(plan);
+
+    const reconstructed = evalInjectedScript(script);
+
+    expect(Object.prototype.hasOwnProperty.call(reconstructed.media, "__proto__")).toBe(true);
+    expect(reconstructed.media["__proto__"]).toEqual({ src: "assets/clip.mp4", kind: "video" });
+    // hidden/steps are never keyed by untrusted ids (hidden is a plain
+    // string[], steps is an array of {effects: Effect[]} with fixed
+    // property names) — confirmed unaffected, not just assumed.
+    expect(reconstructed.hidden).toEqual(plan.hidden);
+    expect(reconstructed.steps).toEqual(plan.steps);
   });
 });
