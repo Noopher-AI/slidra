@@ -20,6 +20,22 @@ function exitFullscreenIfActive(): Promise<void> {
 }
 
 /**
+ * Reads the browser's own fullscreen state directly — never the React
+ * `isFullscreen` state, which can be stale while a requestFullscreen() call
+ * is still pending (review gate round 2, P2: 離開播放 clicked while a
+ * request was in flight used to trust the not-yet-updated React state,
+ * skip exiting fullscreen, and leave the document genuinely stuck
+ * fullscreen once the pending request settled after play mode's chrome was
+ * already gone). Shared by the fullscreenchange listener and
+ * handleExitPlay() so both ask the same real question the same way.
+ */
+function isPlayChromeFullscreen(container: Element | null): boolean {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null };
+  const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+  return fullscreenElement !== null && fullscreenElement === container;
+}
+
+/**
  * React owns the shell only — chat sidebar and status bar. The div below is
  * handed to the vanilla `mountCanvas` module exactly once; React never
  * re-renders into it again (ADR-0001, ADR-0002).
@@ -63,6 +79,11 @@ export function App() {
   // button all funnel through one place.
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  // Tracks an in-flight requestFullscreen()/exitFullscreen() call so
+  // handleExitPlay() can wait for it to settle before asking the browser's
+  // real fullscreenElement — see isPlayChromeFullscreen()'s comment above
+  // for the race this closes (review gate round 2, P2).
+  const fullscreenRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -144,9 +165,7 @@ export function App() {
   // names, matching e2e/fullscreen-spike.test.ts.
   useEffect(() => {
     function onFullscreenChange(): void {
-      const doc = document as Document & { webkitFullscreenElement?: Element | null };
-      const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
-      setIsFullscreen(fullscreenElement !== null && fullscreenElement === playChromeRef.current);
+      setIsFullscreen(isPlayChromeFullscreen(playChromeRef.current));
       // This event firing at all means the browser's real fullscreen state
       // just genuinely changed — by Esc, by browser chrome, or by our own
       // button — which makes any earlier "a fullscreen request failed"
@@ -179,11 +198,15 @@ export function App() {
   async function toggleFullscreen(): Promise<void> {
     setFullscreenError(null);
     if (isFullscreen) {
+      const exitPromise = exitFullscreenIfActive();
+      fullscreenRequestRef.current = exitPromise;
       try {
-        await exitFullscreenIfActive();
+        await exitPromise;
       } catch (error) {
         // Surfaced, never swallowed (behaviour contract row 1).
         setFullscreenError(error instanceof Error ? error.message : "退出全螢幕失敗");
+      } finally {
+        if (fullscreenRequestRef.current === exitPromise) fullscreenRequestRef.current = null;
       }
       controllerRef.current?.focusPlayer();
       return;
@@ -198,6 +221,13 @@ export function App() {
     const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
     if (!request) {
       setFullscreenError("這個瀏覽器不支援全螢幕");
+      // P2 (review gate round 2): this early-return path used to skip
+      // focusPlayer() — the click that got here already moved DOM focus
+      // onto this button, so without this call the arrow keys silently die
+      // just like every other fullscreen transition would if it skipped
+      // this (settled decision #5 applies here too, not just the two paths
+      // that actually touch the Fullscreen API).
+      controllerRef.current?.focusPlayer();
       return;
     }
     try {
@@ -205,23 +235,42 @@ export function App() {
       // handler) carries the transient activation requestFullscreen()
       // needs; never fabricate a fullscreen UI state the promise did not
       // actually grant (behaviour contract row 1).
-      await request();
+      const requestPromise = request();
+      fullscreenRequestRef.current = requestPromise;
+      await requestPromise;
     } catch (error) {
       setFullscreenError(error instanceof Error ? error.message : "進入全螢幕失敗");
+    } finally {
+      fullscreenRequestRef.current = null;
     }
     controllerRef.current?.focusPlayer();
   }
 
   async function handleExitPlay(): Promise<void> {
     // 離開播放時若還在全螢幕，必須先退出全螢幕，否則文件會卡在全螢幕狀態
-    // 但畫面底下已經沒有播放器了（behaviour contract 表格第四列）。Best
-    // effort: exiting play mode must proceed either way, a stuck fullscreen
-    // toggle should not also trap the author in play mode.
-    if (isFullscreen) {
+    // 但畫面底下已經沒有播放器了（behaviour contract 表格第四列）。A
+    // requestFullscreen() call started just before this click can still be
+    // pending here — isFullscreen (React state) has not been updated yet,
+    // so trusting it would skip exiting, and the pending request would
+    // still land after play mode's chrome (including 退出全螢幕) is already
+    // gone, leaving the document genuinely stuck fullscreen (review gate
+    // round 2, P2). Wait for any in-flight request to settle first, then
+    // ask the browser's own fullscreenElement — not the stale React state
+    // — right before deciding.
+    if (fullscreenRequestRef.current) {
+      try {
+        await fullscreenRequestRef.current;
+      } catch {
+        // A rejected request needs no exit.
+      }
+    }
+    if (isPlayChromeFullscreen(playChromeRef.current)) {
       try {
         await exitFullscreenIfActive();
       } catch {
-        // Ignored on purpose — see comment above.
+        // Ignored on purpose — exiting play mode must proceed either way, a
+        // stuck fullscreen toggle should not also trap the author in play
+        // mode.
       }
     }
     await controllerRef.current?.exitPlay();

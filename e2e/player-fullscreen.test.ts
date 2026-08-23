@@ -511,3 +511,116 @@ it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清�
     .toBe(false);
   await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(0);
 });
+
+it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會卡在全螢幕（review gate round 2, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  // Delays the real underlying requestFullscreen() call itself, not just
+  // the promise wrapping it — it really does enter fullscreen, only later
+  // (coordinator's own phrasing: 真的會進全螢幕，只是晚一點). Only
+  // artificially delaying the returned promise while letting the real call
+  // fire immediately would not reproduce this race at all: the real
+  // fullscreenchange event (and this app's isFullscreen state) would still
+  // land right away, regardless of how long our own promise is stalled.
+  // The setTimeout here defers the actual native call itself by 300ms; it
+  // still runs soon enough to be within the click's transient activation
+  // window, so it remains a real, successful fullscreen request — just a
+  // late one, exactly the in-flight window review gate round 2's P2
+  // describes.
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __originalRequestFullscreen?: () => Promise<void>;
+    };
+    const original = container.requestFullscreen.bind(container);
+    container.__originalRequestFullscreen = original;
+    container.requestFullscreen = () =>
+      new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          original().then(resolve, reject);
+        }, 300);
+      });
+  });
+
+  // A real click starts the (now delayed) fullscreen request.
+  await page.locator(".fullscreen-toggle-button").click();
+
+  // Within the 300ms window before the real native call has even fired —
+  // isFullscreen (React state) is still false here, exactly the moment the
+  // reviewer's finding describes — a real click on 離開播放.
+  await page.locator('button:has-text("離開播放")').click();
+
+  // Before the fix: handleExitPlay() trusted the still-false isFullscreen
+  // state, skipped exiting fullscreen, and returned to view mode; 300ms
+  // later the delayed request still landed for real, leaving the document
+  // genuinely stuck fullscreen with no play chrome left to click out of
+  // it. After the fix: handleExitPlay() waits for the in-flight request to
+  // settle, then asks the browser's own (by-then genuinely updated)
+  // fullscreenElement before deciding — so the document must end up NOT
+  // fullscreen.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const doc = document as Document & { webkitFullscreenElement?: Element | null };
+          return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
+        }),
+      { timeout: 5_000 },
+    )
+    .toBe(false);
+
+  // 離開播放本身也必須真的完成，不是卡住半途：畫面回到檢視模式的「播放」按鈕.
+  await expect.poll(() => page.locator('button:has-text("播放")').count()).toBe(1);
+});
+
+it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播放器（review gate round 2, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  const focusNotice = page.locator(".player-focus-notice");
+  // 等初次自動 focus 先穩定下來（理由同前面幾個測試），再自己偷走焦點.
+  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
+  await page.locator('button:has-text("離開播放")').focus();
+  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+  // 一次性量測：把兩個全螢幕 API 都從容器上拿掉，證明「不支援全螢幕」這條
+  // early-return 路徑真的走得到，而不是永遠不會發生的死路——這是
+  // toggleFullscreen() 裡 `if (!request) { ...; return; }` 那個分支唯一
+  // 會被進入的方式.
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      requestFullscreen?: unknown;
+      webkitRequestFullscreen?: unknown;
+    };
+    Object.defineProperty(container, "requestFullscreen", { value: undefined, configurable: true });
+    Object.defineProperty(container, "webkitRequestFullscreen", { value: undefined, configurable: true });
+  });
+
+  await page.locator(".fullscreen-toggle-button").click();
+
+  // 這條路徑走到了：全螢幕錯誤通知顯示「這個瀏覽器不支援全螢幕」.
+  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "這個瀏覽器不支援全螢幕" });
+  await expect.poll(() => unsupportedNotice.count(), { timeout: 10_000 }).toBe(1);
+
+  // 修好之前：這個 early return 從不呼叫 focusPlayer()，焦點停在按鈕上，
+  // 焦點提示會一直留著。修好之後：即使全螢幕不支援，焦點還是要交回播放器.
+  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
+});
