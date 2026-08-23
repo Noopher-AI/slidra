@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { mountCanvas } from "./canvas.js";
-import {
-  appendChunkToMessage,
-  appendCommandMessage,
-  appendMessage,
-  updateCommandMessage,
-  type ChatMessage,
-  type CommandStatus,
-} from "./chat-messages.js";
+import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
+import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
 
 /**
@@ -59,80 +53,19 @@ export function App() {
   // read and written from both the SSE listeners and sendMessage, and
   // must never itself trigger a re-render.
   const nextMessageIdRef = useRef(0);
-  // The id of the agent message the *current* turn's chunks belong to, or
-  // null when no reply is in flight. A chat-chunk updates this specific
-  // message by id — never "whichever message happens to be last" — so a
-  // message the author sends mid-turn is never mistaken for the reply
-  // (fix 3).
-  const activeReplyIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const source = new EventSource("/api/chat/stream");
-
-    source.addEventListener("open", () => setStreamReady(true));
-    // EventSource retries on its own; "error" fires both for a drop that
-    // is about to reconnect and for a terminal failure. Either way the
-    // stream cannot currently hear a reply, so sending must be gated off
-    // again until the next "open".
-    source.addEventListener("error", () => setStreamReady(false));
-
-    source.addEventListener("chat-chunk", (event) => {
-      const { text } = JSON.parse((event as MessageEvent).data) as { text: string };
-      setMessages((prev) => {
-        if (activeReplyIdRef.current !== null) {
-          return appendChunkToMessage(prev, activeReplyIdRef.current, text);
-        }
-        const id = nextMessageIdRef.current++;
-        activeReplyIdRef.current = id;
-        return appendMessage(prev, id, "agent", text);
-      });
-      setWorking(true);
+    // All of the turn bookkeeping — including what happens to a turn whose
+    // ending is lost to a dropped connection — lives in chat-stream.ts so
+    // it can be tested without rendering React (ticket #19).
+    const stream = startChatStream({
+      updateMessages: setMessages,
+      setWorking,
+      setStreamReady,
+      setError,
+      nextMessageId: () => nextMessageIdRef.current++,
     });
-
-    // Ticket #17: the agent is about to run a command. It becomes its own
-    // message in the conversation, in the order it actually happened.
-    source.addEventListener("chat-command", (event) => {
-      const { toolCallId, command, status } = JSON.parse((event as MessageEvent).data) as {
-        toolCallId: string;
-        command: string;
-        status: CommandStatus;
-      };
-      setMessages((prev) => appendCommandMessage(prev, nextMessageIdRef.current++, toolCallId, command, status));
-      // Whatever the agent was saying ended where the command began ("現在
-      // 來修改文字："). Anything it says after the command is a new
-      // paragraph, not a continuation of the sentence the command
-      // interrupted — so the next chunk starts a fresh agent message
-      // rather than being glued onto text that is now further up.
-      activeReplyIdRef.current = null;
-      setWorking(true);
-    });
-
-    source.addEventListener("chat-command-update", (event) => {
-      const { toolCallId, status, output } = JSON.parse((event as MessageEvent).data) as {
-        toolCallId: string;
-        status: CommandStatus;
-        output?: string;
-      };
-      // `output` is only ever sent with a failure; passing it through as an
-      // explicit `undefined` would erase output already shown.
-      setMessages((prev) =>
-        updateCommandMessage(prev, toolCallId, output === undefined ? { status } : { status, output }),
-      );
-    });
-
-    source.addEventListener("chat-done", () => {
-      activeReplyIdRef.current = null;
-      setWorking(false);
-    });
-
-    source.addEventListener("chat-error", (event) => {
-      const { message } = JSON.parse((event as MessageEvent).data) as { message: string };
-      activeReplyIdRef.current = null;
-      setWorking(false);
-      setError(message);
-    });
-
-    return () => source.close();
+    return () => stream.stop();
   }, []);
 
   async function sendMessage(): Promise<void> {
@@ -188,14 +121,20 @@ export function App() {
         <div className="chat-messages">
           {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
           {messages.map((message) =>
-            message.role === "command" ? (
+            message.role === "notice" ? (
+              <p key={message.id} className="chat-notice" role="alert">
+                {message.text}
+              </p>
+            ) : message.role === "command" ? (
               <div
                 key={message.id}
-                className={`chat-command chat-command-${message.status}`}
+                className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
                 role={message.status === "failed" ? "alert" : undefined}
               >
                 <p className="chat-command-line">
-                  <span className="chat-command-status">{COMMAND_STATUS_LABEL[message.status]}</span>
+                  <span className="chat-command-status">
+                    {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
+                  </span>
                   <code className="chat-command-text">{message.command}</code>
                 </p>
                 {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
@@ -236,6 +175,14 @@ export function App() {
  * stays ACP's own string all the way from the agent to here — this map is
  * the single place it becomes something a person reads.
  */
+/**
+ * Shown instead of the status label when the stream died before the
+ * command's outcome arrived (ticket #19). Not a `CommandStatus` value: we
+ * do not know whether it worked, and "執行失敗" would be a made-up answer
+ * to a question nobody ever answered.
+ */
+const COMMAND_INTERRUPTED_LABEL = "結果不明";
+
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
   pending: "準備執行",
   in_progress: "執行中",

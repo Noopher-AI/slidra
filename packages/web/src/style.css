@@ -103,6 +103,17 @@ body,
   background: #fdf0f2;
 }
 
+/* Outcome unknown, not failed (ticket #19): amber, deliberately not the
+   failure red — the command may well have succeeded. */
+.chat-command-interrupted {
+  border-left-color: #b26a00;
+  background: #fdf6ec;
+}
+
+.chat-command-interrupted .chat-command-status {
+  color: #b26a00;
+}
+
 .chat-command-line {
   margin: 0;
   display: flex;
@@ -132,6 +143,18 @@ body,
   word-break: break-word;
   max-height: 12rem;
   overflow-y: auto;
+}
+
+/* A break in the conversation itself (ticket #19) — said by nobody, so it
+   reads as neither the author's nor the agent's speech. */
+.chat-notice {
+  align-self: stretch;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border-left: 3px solid #b26a00;
+  background: #fdf6ec;
+  color: #7a4a00;
+  font-size: 0.85rem;
 }
 
 .chat-working {
