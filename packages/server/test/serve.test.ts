@@ -225,6 +225,39 @@ describe("startServe", () => {
     expect(server.url).toBe(`http://127.0.0.1:${server.port}`);
   });
 
+  // ADR-0010 / ticket #28: an opaque-origin document (the play iframe, once
+  // it has `allow-scripts`) sends the literal header value "Origin: null"
+  // on a cross-origin request. Rejecting it closes the write-blind gap that
+  // opening `allow-scripts` creates — the two are one gate, checked ahead
+  // of routing so every endpoint gets it, not just the ones written today.
+  it("rejects a request carrying Origin: null, on a GET route and on the POST route alike", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const getResponse = await fetch(`${server.url}/api/presentation`, { headers: { Origin: "null" } });
+    expect(getResponse.status).toBe(403);
+    const getBody = (await getResponse.json()) as { error: string };
+    expect(getBody.error).toMatch(/[一-鿿]/);
+
+    const postResponse = await fetch(`${server.url}/api/chat`, {
+      method: "POST",
+      headers: { Origin: "null", "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "hi" }),
+    });
+    expect(postResponse.status).toBe(403);
+  });
+
+  it("does not reject a normal request with no Origin header, or a same-origin Origin", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const noOrigin = await fetch(`${server.url}/api/presentation`);
+    expect(noOrigin.status).toBe(200);
+
+    const sameOrigin = await fetch(`${server.url}/api/presentation`, { headers: { Origin: server.url } });
+    expect(sameOrigin.status).toBe(200);
+  });
+
   it("serves the presentation's metadata reached only through registry.dispatch", async () => {
     const id = await openFreshPresentation("我的簡報");
 

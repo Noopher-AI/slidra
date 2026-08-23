@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
-import type { CanvasController } from "../src/canvas.js";
+import type { CanvasController, CanvasState } from "../src/canvas.js";
 
 // Finding P1: slide markup must render inside a sandboxed, opaque-origin
 // iframe rather than being injected into this document with innerHTML.
@@ -399,5 +399,452 @@ describe("mountCanvas 的多頁換頁", () => {
 
     expect(srcdoc()).toContain('data-testid="s3"');
     expect(srcdoc()).not.toContain('data-testid="s2"');
+  });
+});
+
+// Ticket #28: play mode (C2/C3/C4 in the design doc). The runtime itself
+// only really runs in a real browser (jsdom does not execute `srcdoc`
+// scripts), so these tests stay at the seam this module owns: what goes
+// into the play iframe's sandbox and srcdoc, and how canvas.ts reacts to
+// postMessage events the runtime would send.
+
+const NS = 'xmlns:comot="https://co-motion.dev/ns"';
+const playDeck = { name: "播放測試簡報", slides: ["slides/001.svg", "slides/002.svg"] };
+const playDeckMarkup: Record<string, string> = {
+  "slides/001.svg": `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="el-a"/>
+  <rect id="el-bg"/>
+</svg>`,
+  "slides/002.svg": '<svg data-testid="s2"><rect id="el-b"/></svg>',
+};
+
+function stubPlayDeck(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/presentation")) {
+        return new Response(JSON.stringify(playDeck), { status: 200 });
+      }
+      const match = /\/api\/files\/(.+)$/.exec(url);
+      if (match && playDeckMarkup[match[1]]) {
+        return new Response(playDeckMarkup[match[1]], { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+}
+
+describe("mountCanvas 的播放模式", () => {
+  it("play() 重建 iframe，加上 allow-scripts，不含 allow-same-origin", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    await controller.play();
+
+    const iframe = container.querySelector("iframe")!;
+    const sandbox = iframe.getAttribute("sandbox");
+    expect(sandbox).toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin");
+  });
+
+  it("play() 的 srcdoc 帶著隱藏樣式、plan 與 runtime", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    await controller.play();
+
+    const doc = srcdoc();
+    expect(doc).toContain("#el-a{opacity:0 !important}");
+    expect(doc).toContain("window.__COMOT_PLAN__");
+    expect(doc).toContain('"target":"el-a"');
+    // The runtime's own listeners prove it was actually inlined, not just referenced.
+    expect(doc).toContain('addEventListener("keydown"');
+  });
+
+  it("exitPlay() 回到零 token sandbox，且不再帶 runtime", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    await controller.exitPlay();
+
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.getAttribute("sandbox")).toBe("");
+    expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
+  });
+
+  it("play() 後 frameElement 回傳的是重建後的新元素，不是舊的參照", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    const viewFrame = controller.frameElement;
+
+    await controller.play();
+
+    expect(controller.frameElement).not.toBe(viewFrame);
+    expect(controller.frameElement).toBe(container.querySelector("iframe"));
+  });
+
+  it("效果清單無法解析時，state.error 被設定，畫面仍顯示投影片但不含 runtime", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify({ name: "壞掉的簡報", slides: ["slides/001.svg"] }), {
+            status: 200,
+          });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(
+            `<svg xmlns="http://www.w3.org/2000/svg">
+              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="exit" effect="fade" start="on-click"/></comot:effects></metadata>
+              <rect id="el-a"/>
+            </svg>`,
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.play();
+
+    expect(state?.error).toMatch(/family.*exit/);
+    expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
+    expect(srcdoc()).toContain('id="el-a"');
+  });
+
+  it("收到 runtime 的 focus 事件時更新 playerHasFocus", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "focus", hasFocus: true },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+
+    expect(state?.playerHasFocus).toBe(true);
+  });
+
+  it("收到 runtime 的 advance-past-end 時換到下一頁；已在最後一頁時不動也不拋錯", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s2"');
+
+    // Already on the last slide now: another advance-past-end does nothing.
+    const secondFrameWindow = controller.frameElement.contentWindow as unknown as Window;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: secondFrameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s2"');
+  });
+
+  it("收到 runtime 的 error 事件時設定 state.error", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "error", message: "找不到步驟中要顯示的元素：el-x" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+
+    expect(state?.error).toBe("找不到步驟中要顯示的元素：el-x");
+  });
+
+  it("忽略不是來自目前 iframe 的訊息（即使 source 欄位宣稱是 comot-player）", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    // Not from `controller.frameElement.contentWindow` — an impostor.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "focus", hasFocus: true },
+      }),
+    );
+
+    expect(state?.playerHasFocus).toBe(false);
+  });
+
+  it("重建 iframe 時，較慢的舊 render() 不會寫進剛建好的新 iframe（generation 也隨模式切換遞增）", async () => {
+    let resolveSlowView!: () => void;
+    const slowView = new Promise<void>((resolve) => {
+      resolveSlowView = resolve;
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(playDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          // Each call gets its own Response instance (a Body can only be
+          // read once) but they all wait on the same gate, so the mount's
+          // own in-flight reload() genuinely races play()'s render below.
+          await slowView;
+          return new Response(playDeckMarkup["slides/001.svg"], { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && playDeckMarkup[match[1]]) {
+          return new Response(playDeckMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    // mountCanvas's own reload() is now in flight, stuck awaiting slowView.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // play() bumps generation and rebuilds the iframe before the slow
+    // view-mode fetch above ever resolves.
+    const playPromise = controller.play();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const playFrame = controller.frameElement;
+
+    resolveSlowView();
+    await playPromise;
+
+    // The stale view-mode render must not have painted into the play
+    // iframe: it is still the play document (has the plan), not the bare
+    // view-mode wrapper for slides/001.svg.
+    expect(controller.frameElement).toBe(playFrame);
+    expect(playFrame.srcdoc).toContain("window.__COMOT_PLAN__");
+  });
+
+  // Gate review round 2, P1: pressing forward fast enough sends a second
+  // advance-past-end before the first page change's renderPlay() has
+  // finished fetching. Without its own generation guard, both renderPlay()
+  // calls shared the same (never-bumped) generation, so whichever fetch
+  // happened to resolve last would win regardless of which slide the
+  // author is actually supposed to be on — the earlier call's slow slide 2
+  // could paint over the later call's already-current slide 3.
+  it("連續收到兩則 advance-past-end 時，較慢的舊換頁不會蓋過較新的那一頁", async () => {
+    const raceDeck = { name: "三頁播放測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
+    let resolveSlide2!: () => void;
+    const slide2Gate = new Promise<void>((resolve) => {
+      resolveSlide2 = resolve;
+    });
+    const raceMarkup: Record<string, string> = {
+      "slides/001.svg": playDeckMarkup["slides/001.svg"],
+      "slides/002.svg": '<svg data-testid="s2"><rect id="el-b"/></svg>',
+      "slides/003.svg": '<svg data-testid="s3"><rect id="el-c"/></svg>',
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(raceDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/002.svg")) {
+          // Slide 2's fetch is the slow, superseded one: it only resolves
+          // after slide 3 (below) has already been requested and painted.
+          await slide2Gate;
+          return new Response(raceMarkup["slides/002.svg"], { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && raceMarkup[match[1]]) {
+          return new Response(raceMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    // First ArrowRight-equivalent: currentIndex 0 -> 1, renderPlay() starts
+    // fetching slide 2 and gets stuck on slide2Gate.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Second ArrowRight-equivalent, fired before the first has painted
+    // anything: currentIndex 1 -> 2, renderPlay() fetches slide 3, which
+    // resolves immediately and paints.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(srcdoc()).toContain('data-testid="s3"');
+
+    // Only now does the slow, superseded slide-2 fetch resolve. It must be
+    // discarded, not painted over the already-current slide 3.
+    resolveSlide2();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s3"');
+    expect(srcdoc()).not.toContain('data-testid="s2"');
+  });
+
+  // Gate review round 2, P2: a broken slide's error must actually clear
+  // once the author moves to a slide that plays fine — `error = null`
+  // being assigned is not enough if nothing tells React about it.
+  it("換到效果清單正常的投影片時，先前的 error 會被清掉並通知訂閱者", async () => {
+    const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
+    const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
+      <metadata><comot:effects ${NS}><comot:effect target="el-a" family="exit" effect="fade" start="on-click"/></comot:effects></metadata>
+      <rect id="el-a"/>
+    </svg>`;
+    const fineMarkup = '<svg data-testid="fine"><rect id="el-b"/></svg>';
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(brokenThenFineDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) return new Response(brokenMarkup, { status: 200 });
+        if (url.endsWith("/api/files/slides/002.svg")) return new Response(fineMarkup, { status: 200 });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const seenErrors: (string | null)[] = [];
+    controller.subscribe((state) => seenErrors.push(state.error));
+    expect(seenErrors.at(-1)).toMatch(/family.*exit/);
+
+    await controller.showSlide(1);
+
+    expect(seenErrors.at(-1)).toBeNull();
+    expect(srcdoc()).toContain('data-testid="fine"');
+  });
+});
+
+// Gate review round 3, P2: target ids come straight from untrusted slide
+// content (ADR-0010). A target containing "<!--<script>" (after XML entity
+// decoding) sends the HTML tokenizer into "script data double escaped"
+// state once embedded in the plan's <script> tag — the literal "</script>"
+// text this module writes to close that tag no longer counts as a real
+// closing tag there, so the parser keeps consuming through the runtime's
+// own <script> too. The observable failure isn't data exfiltration, it's
+// play mode never starting at all (the runtime never runs, so no "ready"
+// ever arrives and the focus notice hangs forever) — still a real bug
+// worth a real test.
+describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
+  it("target 含有 <!--<script> 時，plan 的 <script> 標籤不會吞掉後面的 runtime", async () => {
+    const hostileId = "el-<!--<script>";
+    const hostileDeck = { name: "跳脫測試簡報", slides: ["slides/001.svg"] };
+    const hostileMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="el-&lt;!--&lt;script&gt;" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="el-&lt;!--&lt;script&gt;"/>
+</svg>`;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(hostileDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(hostileMarkup, { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const doc = srcdoc();
+    // The plan's JSON must have carried the hostile target through as
+    // data, never as literal "<" that the HTML tokenizer can act on.
+    expect(doc).toContain(hostileId.replace(/</g, "\\u003C"));
+    expect(doc).not.toContain("<!--<script>");
+    // The clearest sign the tokenizer was fooled: the runtime's own
+    // trailing code (its final `post({ event: "ready" })` call) never
+    // shows up as a real, separately-parsed <script> element's content —
+    // it would still be textually present in the raw srcdoc string either
+    // way, so this must check *rendering*, not just string containment.
+    // The reliable direct signal is that the runtime's script tag is not
+    // itself broken: the whole runtime source must appear intact and
+    // un-swallowed inside the srcdoc string, immediately after a genuine
+    // closing "</script>" for the plan tag.
+    const planScriptClose = doc.indexOf("<\/script><script>");
+    expect(planScriptClose).toBeGreaterThan(-1);
+    expect(doc.slice(planScriptClose)).toContain('post({ event: "ready" })');
   });
 });

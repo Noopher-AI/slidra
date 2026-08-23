@@ -178,6 +178,26 @@ async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    // ADR-0010: 播放模式 gives the (untrusted, ADR-0003) slide's iframe
+    // `allow-scripts`, which puts it in an opaque origin. An opaque origin
+    // can still send cross-origin *simple* requests — it cannot read the
+    // response, but it can write — so a hostile slide could otherwise fire
+    // requests at this same-origin API and mutate the presentation blind.
+    // Every browser sends the literal string "null" as `Origin` for a
+    // request from an opaque origin, so rejecting exactly that value closes
+    // the gap. Checked ahead of every route, including static asset
+    // serving, so the next new route gets the protection for free instead
+    // of by remembering to add it again.
+    //
+    // No-CORS subresource loads (<img>, <video>, <audio> — what the play
+    // iframe's own slide markup uses to fetch assets through /api/raw/)
+    // send no Origin header at all, confirmed empirically against a real
+    // browser in e2e/player.test.ts, so this gate does not touch them.
+    if (req.headers.origin === "null") {
+      sendJson(res, 403, { error: "不接受來自不透明來源（Origin: null）的請求" });
+      return;
+    }
+
     // Parsed before the method gate so POST /api/chat can be routed
     // explicitly — every other POST still gets the same 405 it always did.
     const url = new URL(req.url ?? "/", "http://localhost");
