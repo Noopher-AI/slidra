@@ -274,6 +274,69 @@ describe("mountOverview", () => {
     expect(fetchCalls.filter((url) => url === "/api/files/slides/002.svg")).toEqual([]);
   });
 
+  it("a newer refresh()'s result always wins over an older one still in flight, regardless of resolve order", async () => {
+    // Two overlapping refresh() calls on the same index (back-to-back live
+    // reload events, e.g. an agent editing twice in quick succession). The
+    // older refresh's fetch is held open with its own dedicated promise
+    // (never reused — a settled promise can't go back to pending) and only
+    // resolves after the newer refresh's fetch has already settled.
+    let resolveOlderRefreshFetch!: (response: Response) => void;
+    const olderRefreshFetchPromise = new Promise<Response>((resolve) => {
+      resolveOlderRefreshFetch = resolve;
+    });
+    let refreshFetchCount = 0;
+    let holdRefreshFetches = false;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url !== "/api/files/slides/001.svg") throw new Error(`unexpected fetch: ${url}`);
+        if (!holdRefreshFetches) {
+          // The initial materialisation fetch, before the race under test
+          // even starts — resolves immediately, no part of the race.
+          return new Response('<svg data-testid="initial"></svg>', { status: 200 });
+        }
+        refreshFetchCount += 1;
+        // The first refresh() call below is the older one; hold its fetch
+        // open. The second refresh() call's fetch resolves immediately,
+        // so it settles and paints first.
+        return refreshFetchCount === 1
+          ? olderRefreshFetchPromise
+          : new Response('<svg data-testid="newer"></svg>', { status: 200 });
+      }),
+    );
+
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    const overview = mountOverview(container, controller);
+    const items = container.querySelectorAll("li.overview-item");
+    const observer = FakeIntersectionObserver.instances.at(-1)!;
+
+    // Materialise the thumbnail first so refresh() has something to refetch.
+    observer.triggerIntersect(items[0]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="initial"');
+
+    // Now start the race: the older refresh() call's fetch is held open by
+    // olderRefreshFetchPromise above; the newer one resolves immediately.
+    holdRefreshFetches = true;
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="newer"');
+
+    // Only now does the older, slower refresh's fetch resolve. Its result
+    // must be discarded — it must not overwrite what the newer refresh
+    // already painted.
+    resolveOlderRefreshFetch(new Response('<svg data-testid="older"></svg>', { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).toContain('data-testid="newer"');
+    expect((items[0].querySelector("iframe") as HTMLIFrameElement).srcdoc).not.toContain('data-testid="older"');
+  });
+
   it("destroy() removes the list from the container and stops responding to further canvas updates", () => {
     const { controller, setState } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
     const overview = mountOverview(container, controller);

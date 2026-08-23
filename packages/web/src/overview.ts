@@ -38,6 +38,14 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
   // flight — the observer can report the same <li> intersecting more than
   // once before its unobserve() call has taken effect.
   const requested: boolean[] = [];
+  // Same generation-guard shape as canvas.ts's own `generation` counter
+  // (see its comment), but one counter per thumbnail rather than one for
+  // the whole module: two overlapping refresh() calls on the *same* index
+  // (e.g. an agent editing a slide twice in quick succession) must not let
+  // the earlier fetch's slower response paint over the later one's result
+  // once it lands, no matter which settles first. A per-index counter also
+  // means a race on slide 3 never has to reason about slide 7's fetches.
+  const generations: number[] = [];
 
   // A small view distance (a few slides' worth of scroll either side), the
   // same shape as reveal.js's own viewDistance: enough to keep scrolling
@@ -63,14 +71,26 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
     void fetchAndFillThumbnail(index);
   }
 
-  /** Always fetches and fills, regardless of the `requested` flag — the part refresh() also uses. */
+  /**
+   * Always fetches and fills, regardless of the `requested` flag — the
+   * part refresh() also uses. Claims this call's generation for `index`
+   * before the first await, then checks it against the live counter after
+   * every await: if a later call for the same index has started since,
+   * this call's result — success or failure — is stale and must be
+   * dropped instead of overwriting what the newer call already applied.
+   */
   async function fetchAndFillThumbnail(index: number): Promise<void> {
+    const thisGeneration = (generations[index] ?? 0) + 1;
+    generations[index] = thisGeneration;
+
     const slidePath = slides[index];
     const frame = frames[index];
     try {
       const markup = await fetchText(`/api/files/${slidePath}`);
+      if (generations[index] !== thisGeneration) return;
       frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
     } catch {
+      if (generations[index] !== thisGeneration) return;
       frame.srcdoc = wrapSlideDocument(`<p>縮圖載入失敗</p>`);
     }
   }
@@ -85,6 +105,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
     items.length = 0;
     frames.length = 0;
     requested.length = 0;
+    generations.length = 0;
     slides = nextSlides;
 
     slides.forEach((_slidePath, index) => {

@@ -55,7 +55,9 @@ afterAll(async () => {
  * gets its own isolated CO_MOTION_HOME and presentation, the same isolation
  * player.test.ts's single shared deck gets from running as the only test.
  */
-async function startServerFor(deckDir: string): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
+async function startServerFor(
+  deckDir: string,
+): Promise<{ server: RunningServer; registry: CommandRegistry; presentationId: string; cleanup: () => Promise<void> }> {
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
@@ -82,6 +84,8 @@ async function startServerFor(deckDir: string): Promise<{ server: RunningServer;
 
   return {
     server,
+    registry,
+    presentationId,
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
@@ -175,6 +179,53 @@ it("引用圖片資產的投影片，總覽縮圖裡真的畫出那張圖", asyn
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThan(0);
     expect(box!.height).toBeGreaterThan(0);
+
+    await page.close();
+  } finally {
+    await cleanup();
+  }
+});
+
+it("外部編輯改了某頁的文字（slides 順序不變），總覽的縮圖也跟著換新", async () => {
+  // P1 fix (review gate round 1): canvas.subscribe() cannot tell "the
+  // slides list moved" apart from "an external edit changed a slide's
+  // markup but project.json's slides order stayed the same" — the ordinary
+  // shape of a live-reload edit. This proves the whole real path: a real
+  // `text set` write to the packed-and-opened work directory (the same one
+  // `watchPresentation` in packages/core/src/watch.ts is watching) →
+  // fs.watch → the server's SSE broadcast → the browser's live-reload
+  // handler → overviewControllerRef.refresh() → the already-materialised
+  // thumbnail's iframe getting a new srcdoc. No mocks anywhere in this
+  // chain.
+  const { server, registry, presentationId, cleanup } = await startServerFor(playerDeckDir);
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    // Slide 1 (index 0) is on screen from the start, so its thumbnail is
+    // already materialised — the same state the P1 report described.
+    const firstThumbText = page
+      .frameLocator('li.overview-item[data-index="0"] iframe.overview-frame')
+      .locator("svg text");
+    await expect.poll(() => firstThumbText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第一頁");
+
+    // A real write through the CLI's text-mutation primitive, into the
+    // exact work directory `open` extracted the .comot into — the same one
+    // the server's watcher is watching. slides/001.svg's element carries
+    // id="el-first-title" (see e2e/fixtures/player-deck/slides/001.svg).
+    const result = await registry.dispatch("text set", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      elementId: "el-first-title",
+      newText: "外部編輯過的標題",
+    });
+    expect(result.ok).toBe(true);
+
+    // The main canvas is showing slide 1 too, so this also proves reload()
+    // still fires — but the point of this test is the thumbnail catching up.
+    await expect.poll(() => firstThumbText.textContent().catch(() => null), { timeout: 30_000 }).toBe(
+      "外部編輯過的標題",
+    );
 
     await page.close();
   } finally {
