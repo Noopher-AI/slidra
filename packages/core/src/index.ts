@@ -15,5 +15,6 @@ export {
   listPresentationEntries,
   setElementText,
 } from "./workspace.js";
+export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";

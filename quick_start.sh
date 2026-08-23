@@ -5,8 +5,11 @@
 # 它做的事：
 #   1. 安裝相依套件（node_modules 不存在時）
 #   2. 建置 core / cli / server（tsc -b）與 web（vite build）
-#   3. 準備一份示範簡報（.comot），取得簡報識別碼
+#   3. 把 demo/ 打包成示範簡報（.comot），取得簡報識別碼
 #   4. 執行 co-motion serve，開瀏覽器看畫面
+#
+# 示範簡報的內容就是 repo 裡的 demo/：三頁投影片、一個資產、一張帶效果清單的
+# 頁面。想改驗收素材就改那裡，然後用 --fresh 重跑。
 #
 # 用法：
 #   ./quick_start.sh                      # 全自動
@@ -40,6 +43,7 @@ while [ $# -gt 0 ]; do
 done
 
 CLI="$ROOT/node_modules/.bin/co-motion"
+DEMO_SOURCE="$ROOT/demo"
 DEMO_DIR="$ROOT/.quickstart"
 DEMO_COMOT="$DEMO_DIR/demo.comot"
 DEMO_ID_FILE="$DEMO_DIR/presentation-id"
@@ -71,9 +75,19 @@ if [ "$FRESH" -eq 1 ]; then
 fi
 mkdir -p "$DEMO_DIR"
 
+# demo/ 比打包出來的 .comot 新，代表素材改過了。這裡不自動重打包——重打包就得
+# 重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令都作廢。
+if [ -f "$DEMO_COMOT" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_COMOT" -type f -print -quit)" ]; then
+  echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+fi
+
 if [ ! -f "$DEMO_COMOT" ]; then
-  step "建立示範簡報"
-  "$CLI" new "$DEMO_COMOT" --name "驗收用簡報"
+  step "打包示範簡報（demo/ → .comot）"
+  # packDirectory 只在 core 有，還沒有對應的 CLI 命令，所以直接呼叫它。
+  node --input-type=module -e '
+    import { packDirectory } from "@co-motion/core";
+    await packDirectory(process.argv[1], process.argv[2]);
+  ' "$DEMO_SOURCE" "$DEMO_COMOT"
 fi
 
 if [ ! -s "$DEMO_ID_FILE" ]; then
@@ -109,11 +123,31 @@ cat <<INFO
 示範簡報檔：$DEMO_COMOT
 網址：      $URL
 
-驗收提示：
-  - 畫面上應該看到一張標題為「驗收用簡報」的投影片。
-  - 在聊天框輸入「把標題改成 Q3 財報」，agent 會經 CLI 改檔，畫面自動更新。
-  - agent 執行命令時畫面不會顯示工具進度，看起來像停住是正常的，等它回話即可。
-  - 想從終端機驗證同一份內容：
+驗收清單（這一輪做完的部分）：
+  換頁 #25
+    - 畫面上是第 1 頁「驗收用簡報」，右下角顯示 1 / 3。
+    - 按 › 或方向鍵右到第 2、3 頁；到底時按鈕變灰、再按不動也不當機。
+    - 游標在聊天輸入框裡時按方向鍵，應該是移動游標，不會翻頁。
+  資產 #11 / #13
+    - 第 2 頁的藍色方塊圖有畫出來（相對路徑經 <base> 轉到 /api/raw/）。
+    - Range 請求要回 206 與 Content-Range：
+        curl -si -H 'Range: bytes=0-9' $URL/api/raw/assets/photo.svg | head -5
+    - 壞掉的 Range 要回 416：
+        curl -si -H 'Range: bytes=99999999-' $URL/api/raw/assets/photo.svg | head -3
+  即時預覽 #5
+    - 另開一個終端機改內容，畫面應該不重整就更新，且停在你正在看的那一頁：
+        node_modules/.bin/co-motion text set $PRESENTATION_ID slides/001.svg el-title "Q3 財報"
+  agent 對話 #6
+    - 在聊天框輸入「把第一頁標題改成 Q3 財報」，agent 會經 CLI 改檔，畫面自動更新。
+    - agent 執行命令時畫面不會顯示工具進度，看起來像停住是正常的，等它回話即可。
+
+還沒有 UI、只能用測試查驗的部分：
+  - 效果清單與步驟推導 #26：剖析器已完成但尚未接上畫面，第 3 頁的效果清單目前
+    不會有任何動畫。查驗方式：npm test -- packages/web/test/effects.test.ts
+  - 全螢幕 #24：只做了可行性實測，沒有按鈕。查驗方式：npm run test:e2e
+
+其他：
+  - 從終端機看同一份內容：
       node_modules/.bin/co-motion cat $PRESENTATION_ID slides/001.svg
   - 按 Ctrl+C 結束。
 
