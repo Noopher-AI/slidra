@@ -276,6 +276,14 @@ body,
   cursor: pointer;
 }
 
+/* 全螢幕開關 (ticket #29): only rendered in 播放模式, next to 離開播放. */
+.fullscreen-toggle-button {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 /* 焦點不在播放器上時的明確說明 — never a silent no-op. */
 .player-focus-notice {
   position: absolute;

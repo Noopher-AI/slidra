@@ -7,6 +7,19 @@ import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 
 /**
+ * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
+ * e2e/fullscreen-spike.test.ts). Shared by toggleFullscreen() and
+ * handleExitPlay() below rather than duplicated — exitFullscreen() needs no
+ * transient activation, unlike requestFullscreen(), so it is safe to call
+ * from either place without a fresh click.
+ */
+function exitFullscreenIfActive(): Promise<void> {
+  const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> };
+  const exit = doc.exitFullscreen ?? doc.webkitExitFullscreen;
+  return exit ? exit.call(doc) : Promise.resolve();
+}
+
+/**
  * React owns the shell only — chat sidebar and status bar. The div below is
  * handed to the vanilla `mountCanvas` module exactly once; React never
  * re-renders into it again (ADR-0001, ADR-0002).
@@ -32,6 +45,13 @@ export function App() {
   // `onError` now closes that loop; this state is what actually puts the
   // message on screen instead of leaving it as an unhandled event.
   const [liveReloadError, setLiveReloadError] = useState<string | null>(null);
+
+  // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
+  // assumed from "the promise resolved". Synced only from fullscreenchange
+  // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
+  // button all funnel through one place.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -105,6 +125,88 @@ export function App() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // 全螢幕開關 (ticket #29): fullscreenchange only syncs UI state here — it
+  // must never call exitPlay(). Leaving fullscreen (including Esc) returns
+  // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是
+  // 另一種模式). Registers both the unprefixed and WebKit-prefixed event
+  // names, matching e2e/fullscreen-spike.test.ts.
+  useEffect(() => {
+    function onFullscreenChange(): void {
+      const frame = controllerRef.current?.frameElement;
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+      setIsFullscreen(fullscreenElement !== null && fullscreenElement === frame);
+      // Every fullscreen transition must hand focus back to the player, or
+      // arrow-key advance silently dies (settled decision #5).
+      controllerRef.current?.focusPlayer();
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  // Leaving 播放模式 by any route (離開播放 button, live reload emptying the
+  // deck, ...) must not leave stale fullscreen UI state behind even though
+  // handleExitPlay() below already asks the document to exit fullscreen.
+  useEffect(() => {
+    if (canvasState.mode !== "play") {
+      setIsFullscreen(false);
+      setFullscreenError(null);
+    }
+  }, [canvasState.mode]);
+
+  async function toggleFullscreen(): Promise<void> {
+    setFullscreenError(null);
+    if (isFullscreen) {
+      try {
+        await exitFullscreenIfActive();
+      } catch (error) {
+        // Surfaced, never swallowed (behaviour contract row 1).
+        setFullscreenError(error instanceof Error ? error.message : "退出全螢幕失敗");
+      }
+      controllerRef.current?.focusPlayer();
+      return;
+    }
+    // Read frameElement fresh at call time (settled decision #3) — it is a
+    // live getter and must never be cached across a play()/exitPlay() cycle.
+    const frame = controllerRef.current?.frameElement;
+    if (!frame) return;
+    const webkitFrame = frame as HTMLIFrameElement & { webkitRequestFullscreen?: () => Promise<void> };
+    const request = (frame.requestFullscreen ?? webkitFrame.webkitRequestFullscreen)?.bind(frame);
+    if (!request) {
+      setFullscreenError("這個瀏覽器不支援全螢幕");
+      return;
+    }
+    try {
+      // A real click (this function is only ever called from an onClick
+      // handler) carries the transient activation requestFullscreen()
+      // needs; never fabricate a fullscreen UI state the promise did not
+      // actually grant (behaviour contract row 1).
+      await request();
+    } catch (error) {
+      setFullscreenError(error instanceof Error ? error.message : "進入全螢幕失敗");
+    }
+    controllerRef.current?.focusPlayer();
+  }
+
+  async function handleExitPlay(): Promise<void> {
+    // 離開播放時若還在全螢幕，必須先退出全螢幕，否則文件會卡在全螢幕狀態
+    // 但畫面底下已經沒有播放器了（behaviour contract 表格第四列）。Best
+    // effort: exiting play mode must proceed either way, a stuck fullscreen
+    // toggle should not also trap the author in play mode.
+    if (isFullscreen) {
+      try {
+        await exitFullscreenIfActive();
+      } catch {
+        // Ignored on purpose — see comment above.
+      }
+    }
+    await controllerRef.current?.exitPlay();
+  }
 
   const slideCount = canvasState.slides.length;
   const hasSlides = slideCount > 0;
@@ -201,6 +303,11 @@ export function App() {
             這一頁的效果清單無法播放：{canvasState.error}
           </div>
         )}
+        {canvasState.mode === "play" && fullscreenError && (
+          <div className="player-error-notice" role="alert">
+            全螢幕切換失敗：{fullscreenError}
+          </div>
+        )}
         {hasSlides && (
           <nav className="slide-nav">
             <button
@@ -229,12 +336,19 @@ export function App() {
                 播放
               </button>
             ) : (
+              <button type="button" className="play-toggle-button" onClick={() => void handleExitPlay()}>
+                離開播放
+              </button>
+            )}
+            {/* 全螢幕開關 (ticket #29): only meaningful in 播放模式 — 是否全螢幕
+                由作者決定，工具不預設強制 (settled decision #6). */}
+            {canvasState.mode === "play" && (
               <button
                 type="button"
-                className="play-toggle-button"
-                onClick={() => void controllerRef.current?.exitPlay()}
+                className="fullscreen-toggle-button"
+                onClick={() => void toggleFullscreen()}
               >
-                離開播放
+                {isFullscreen ? "退出全螢幕" : "全螢幕"}
               </button>
             )}
           </nav>
