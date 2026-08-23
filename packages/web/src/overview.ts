@@ -4,10 +4,13 @@
  * renders into it again.
  *
  * `wrapSlideDocument`/`slideDirectory` below deliberately duplicate
- * canvas.ts's private helpers of the same purpose rather than importing
- * them — canvas.ts does not export them, and this ticket must not edit
- * canvas.ts (another unit is rewriting it concurrently). See the fleet's
- * gap ledger.
+ * canvas.ts's helpers of the same purpose rather than importing them.
+ * Originally forced by concurrent units owning the two files; kept after
+ * the `<base>`-vs-fragment-references review because the measurement
+ * (e2e/base-fragment-spike.test.ts) required no behaviour change in either
+ * copy — extracting a shared module for its own sake would only flatten
+ * the one deliberate difference (the thumbnail-sizing `<style>` this
+ * copy injects, see wrapSlideDocument below).
  */
 import type { CanvasController } from "./canvas.js";
 
@@ -30,6 +33,24 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
   const list = document.createElement("ol");
   list.className = "overview-list";
   container.appendChild(list);
+
+  // The thumbnail box's aspect ratio comes from the presentation's real
+  // canvas (project.json's `canvas.width`/`canvas.height`), not a
+  // hardcoded 16:9 — a 4:3 or portrait presentation must get 4:3 or
+  // portrait boxes. Fetched here rather than read off CanvasState because
+  // that contract deliberately carries only `slides` (#29/#30 build
+  // against it). Until the response lands, style.css's `var()` fallback
+  // keeps the boxes at 16:9 so the scrollbar is honest from the first
+  // paint; a failed or malformed response throws instead of silently
+  // keeping the fallback.
+  void (async () => {
+    const project = await fetchJson<{ canvas: { width: number; height: number } }>("/api/presentation");
+    const { width, height } = project.canvas ?? {};
+    if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
+      throw new Error("project.json 的 canvas 尺寸無效，無法決定縮圖長寬比");
+    }
+    list.style.setProperty("--overview-aspect-ratio", `${width} / ${height}`);
+  })();
 
   let slides: string[] = [];
   const items: HTMLLIElement[] = [];
@@ -176,8 +197,12 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
  * injected style forces it to fill the iframe's viewport while keeping
  * `preserveAspectRatio`'s default `xMidYMid meet`, which is what keeps the
  * aspect ratio correct and the whole slide visible instead of cropped.
+ *
+ * Exported for e2e/base-fragment-spike.test.ts, which measures (on all
+ * three engines) that the injected `<base>` leaves same-document fragment
+ * references intact in this wrapper too.
  */
-function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
+export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   return `<!doctype html><html><head><meta charset="utf-8">${baseTag}<style>html,body{margin:0;height:100%}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
@@ -203,4 +228,12 @@ async function fetchText(path: string): Promise<string> {
     throw new Error(`載入失敗：${path}`);
   }
   return response.text();
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    throw new Error(`載入失敗：${path}`);
+  }
+  return (await response.json()) as T;
 }

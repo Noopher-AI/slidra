@@ -68,6 +68,16 @@ class FakeIntersectionObserver {
   }
 }
 
+// mountOverview now always asks /api/presentation for the canvas size
+// (thumbnail aspect ratio); every stub answers it so that fetch never
+// rejects unhandled in tests that are about something else.
+function presentationResponse(): Response {
+  return new Response(
+    JSON.stringify({ formatVersion: 1, name: "測試", canvas: { width: 1280, height: 720 }, slides: [] }),
+    { status: 200 },
+  );
+}
+
 let container: HTMLElement;
 
 beforeEach(() => {
@@ -78,6 +88,7 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL) => {
+      if (String(input) === "/api/presentation") return presentationResponse();
       throw new Error(`unexpected fetch in this test: ${String(input)}`);
     }),
   );
@@ -89,6 +100,31 @@ afterEach(() => {
 });
 
 describe("mountOverview", () => {
+  it("reads the presentation's canvas size and drives the thumbnail box's aspect ratio from it (not a hardcoded 16:9)", async () => {
+    // A 4:3 presentation — the shape style.css's old hardcoded 16:9 got
+    // wrong. Expected value comes from project.json's own canvas numbers.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") {
+          return new Response(
+            JSON.stringify({ formatVersion: 1, name: "測試", canvas: { width: 1024, height: 768 }, slides: [] }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    mountOverview(container, controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const list = container.querySelector("ol.overview-list") as HTMLElement;
+    expect(list.style.getPropertyValue("--overview-aspect-ratio")).toBe("1024 / 768");
+  });
+
   it("renders one overview-item per slide, in slides order, with a sandboxed thumbnail iframe", () => {
     const { controller } = fakeCanvas({ slides: ["slides/001.svg", "slides/002.svg"], currentIndex: 0 });
 
@@ -152,6 +188,7 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
         fetchCalls.push(url);
         if (url === "/api/files/slides/001.svg") {
           return new Response('<svg data-testid="s1"></svg>', { status: 200 });
@@ -185,7 +222,10 @@ describe("mountOverview", () => {
   it("shows an explicit Traditional Chinese message in the thumbnail when the slide fails to fetch", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("not found", { status: 404 })),
+      vi.fn(async (input: string | URL) => {
+        if (String(input) === "/api/presentation") return presentationResponse();
+        return new Response("not found", { status: 404 });
+      }),
     );
 
     const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
@@ -205,6 +245,7 @@ describe("mountOverview", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
+        if (String(input) === "/api/presentation") return presentationResponse();
         fetchCalls.push(String(input));
         return new Response('<svg data-testid="s1"></svg>', { status: 200 });
       }),
@@ -235,6 +276,7 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
         fetchCalls.push(url);
         if (url === "/api/files/slides/001.svg") {
           return new Response(slide1Markup, { status: 200 });
@@ -291,6 +333,7 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
         if (url !== "/api/files/slides/001.svg") throw new Error(`unexpected fetch: ${url}`);
         if (!holdRefreshFetches) {
           // The initial materialisation fetch, before the race under test

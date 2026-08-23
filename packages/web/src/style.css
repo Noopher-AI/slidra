@@ -44,9 +44,11 @@ body,
 }
 
 .overview-item {
-  /* Fixed 16:9 box so the scrollbar reflects the real slide count even
-     before a thumbnail's iframe has finished loading. */
-  aspect-ratio: 16 / 9;
+  /* The box's real ratio comes from project.json's canvas via the custom
+     property overview.ts sets on the list; 16:9 is only the pre-data
+     placeholder so the scrollbar reflects the real slide count even
+     before /api/presentation has answered. */
+  aspect-ratio: var(--overview-aspect-ratio, 16 / 9);
 }
 
 .overview-thumb {

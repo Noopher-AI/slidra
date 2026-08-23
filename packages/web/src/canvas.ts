@@ -420,8 +420,13 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
  * relative asset reference needs this at all. `<base>` alone needs no
  * sandbox token: subresource loads (`<img>`, `<video>`) from an
  * opaque-origin document to this origin are not blocked by `sandbox`.
+ *
+ * The `<base>` does NOT disturb same-document fragment references
+ * (`url(#grad)`, `<use href="#sym">` and friends) — measured, not assumed,
+ * on all three engines by e2e/base-fragment-spike.test.ts, which is why
+ * this and wrapPlayDocument/slideDirectory are exported.
  */
-function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
+export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0">${bodyMarkup}</body></html>`;
 }
@@ -434,7 +439,7 @@ function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
  * `<body>`, after the slide markup, so `document.getElementById` inside it
  * can find every element immediately without waiting for an event.
  */
-function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
+export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
   const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
   // planScript is built from parsed slide attributes (target ids, effect
   // names) — untrusted content (ADR-0010), and it lands inside a raw
@@ -458,7 +463,7 @@ function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: strin
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */
-function slideDirectory(slidePath: string): string {
+export function slideDirectory(slidePath: string): string {
   const lastSlash = slidePath.lastIndexOf("/");
   if (lastSlash === -1) return "";
   return slidePath

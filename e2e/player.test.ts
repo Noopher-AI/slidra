@@ -122,13 +122,19 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
 
 it("第二頁的相對路徑圖片真的載入了", async () => {
   const page = await browser.newPage();
-  const rawResponses: { url: string; status: number; contentType: string | undefined }[] = [];
+  // Each response is recorded with the frame that issued it: since the 總覽
+  // (issue #27) renders real thumbnails, the same photo is legitimately
+  // fetched by a thumbnail iframe too, and only frame attribution can keep
+  // this test proving what it was written to prove — that the MAIN
+  // canvas's slide loaded the image, not merely that somebody did.
+  const rawResponses: { url: string; status: number; contentType: string | undefined; frame: unknown }[] = [];
   page.on("response", (response) => {
     if (!response.url().includes("/api/raw/")) return;
     rawResponses.push({
       url: response.url(),
       status: response.status(),
       contentType: response.headers()["content-type"],
+      frame: response.frame(),
     });
   });
 
@@ -140,14 +146,28 @@ it("第二頁的相對路徑圖片真的載入了", async () => {
   await page.locator('.slide-nav-button[aria-label="下一頁"]').click();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第二頁");
 
+  // The frame the main canvas renders into. Its identity is stable across
+  // srcdoc navigations (only play mode rebuilds the element, and this test
+  // never enters play mode), so responses recorded earlier compare equal.
+  const slideFrames = [];
+  for (const frame of page.frames()) {
+    const element = await frame.frameElement().catch(() => null);
+    if (element && (await element.getAttribute("class")) === "slide-frame") slideFrames.push(frame);
+  }
+  expect(slideFrames).toHaveLength(1);
+  const slideFrame = slideFrames[0];
+
   // A missing image leaves the <image> element in the DOM exactly as a
   // loaded one does, so the element's presence proves nothing. Two
   // independent checks that it really arrived: the bytes came back 200 as
-  // a PNG, and the browser painted it with a non-zero box.
-  await expect
-    .poll(() => rawResponses.filter((r) => r.url.endsWith("/assets/photo.png")), { timeout: 30_000 })
-    .toHaveLength(1);
-  const photoResponse = rawResponses.find((r) => r.url.endsWith("/assets/photo.png"))!;
+  // a PNG, and the browser painted it with a non-zero box. The filter is
+  // pinned to the main canvas's own frame — a thumbnail's load of the same
+  // asset (legitimate since the 總覽 exists) must neither satisfy nor
+  // break this assertion.
+  const photoFromCanvas = () =>
+    rawResponses.filter((r) => r.url.endsWith("/assets/photo.png") && r.frame === slideFrame);
+  await expect.poll(photoFromCanvas, { timeout: 30_000 }).toHaveLength(1);
+  const photoResponse = photoFromCanvas()[0];
   expect(photoResponse.status).toBe(200);
   expect(photoResponse.contentType).toContain("image/png");
 
