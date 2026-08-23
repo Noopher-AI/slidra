@@ -1,5 +1,13 @@
-.DS_Store
-node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+build/
 dist/
-*.tsbuildinfo
-.quickstart/
+
+# Fleet plan records — local working notes, not part of the product
+.fleet/
+
+# macOS
+.DS_Store
