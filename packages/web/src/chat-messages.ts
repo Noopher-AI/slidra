@@ -38,9 +38,32 @@ export interface CommandMessage {
   status: CommandStatus;
   /** Present only when the command failed — its own output, shown to the author as-is. */
   output?: string;
+  /**
+   * The stream died before this command's outcome arrived (ticket #19).
+   * Deliberately a separate field rather than another `CommandStatus`
+   * value: `status` is ACP's own vocabulary, passed through verbatim from
+   * the agent, and when the connection drops we do not know whether the
+   * command succeeded or failed. Writing "failed" here would be inventing
+   * a result. This says only what we actually know — that we stopped
+   * hearing — and leaves `status` at the last thing ACP really told us.
+   */
+  interrupted?: true;
 }
 
-export type ChatMessage = SpeechMessage | CommandMessage;
+/**
+ * Something that happened to the conversation itself, said by nobody
+ * (ticket #19). It lives in the message list rather than in a banner
+ * because *where* the stream broke is the whole point: it marks the turn
+ * whose ending was lost, and stays put once later turns are appended
+ * below it.
+ */
+export interface NoticeMessage {
+  id: number;
+  role: "notice";
+  text: string;
+}
+
+export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage;
 
 /** Appends a brand-new message (author or agent) with the given id. */
 export function appendMessage(
@@ -60,7 +83,27 @@ export function appendMessage(
  */
 export function appendChunkToMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
   return messages.map((message) =>
-    message.id === id && message.role !== "command" ? { ...message, text: message.text + text } : message,
+    message.id === id && message.role === "agent" ? { ...message, text: message.text + text } : message,
+  );
+}
+
+/** Appends a notice about the conversation itself — a lost turn, not speech. */
+export function appendNoticeMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
+  return [...messages, { id, role: "notice", text }];
+}
+
+/**
+ * Flags every command whose outcome never arrived, because the stream
+ * ended before it did. Selected by what ACP last said about them
+ * (`pending`/`in_progress` are the non-final statuses), never by position
+ * — the interrupted commands are not necessarily the last ones in the
+ * list.
+ */
+export function markUnfinishedCommandsInterrupted(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message) =>
+    message.role === "command" && (message.status === "pending" || message.status === "in_progress")
+      ? { ...message, interrupted: true as const }
+      : message,
   );
 }
 
