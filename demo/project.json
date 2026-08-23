@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "name": "驗收用簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": [
+    "slides/001.svg",
+    "slides/002.svg",
+    "slides/003.svg"
+  ]
+}
