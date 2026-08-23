@@ -39,6 +39,7 @@ co-motion serve          ← CLI 的常駐模式
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
 - 動態以 `data-comot-step`、`data-comot-enter` 等屬性表達，由 CoMotion 的 runtime 依步驟驅動。
+- 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
 決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
@@ -73,4 +74,4 @@ co-motion serve          ← CLI 的常駐模式
 - CLI 命令集合的具體設計：動詞、參數與定址寫法。
 - 是否讓 agent 看得到渲染後的畫面（`co-motion screenshot`）。目前延後。
 - Agent 一次執行多條命令後，使用者要如何一次退回整個回合。目前只有逐條 undo。
-- `co-motion export --html` 的時機。架構上已留門，MVP 不做。
+- 匯出成可分享格式（HTML、PDF 等）的時機。那是 server 端的功能，MVP 不做。
