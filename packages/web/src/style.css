@@ -209,3 +209,53 @@ body,
   color: #555;
   font-variant-numeric: tabular-nums;
 }
+
+/* 播放模式 (ticket #28). Appended at the end of the file per the wave's
+   shared-file convention — the concurrently-edited overview block sits
+   right after .canvas, above here. Only a new property on an existing
+   selector, never touching the original rule above, so as not to disturb
+   that other unit's territory. */
+.canvas-area {
+  position: relative;
+}
+
+.play-toggle-button {
+  margin-left: 1rem;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* 焦點不在播放器上時的明確說明 — never a silent no-op. */
+.player-focus-notice {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.4rem;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+.player-focus-notice button {
+  cursor: pointer;
+}
+
+.player-error-notice {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.4rem;
+  background: #5c1a1a;
+  color: #fff;
+  font-size: 0.85rem;
+}

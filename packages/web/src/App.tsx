@@ -16,7 +16,13 @@ export function App() {
   // only mirrors it here so the paging chrome can render, and issues
   // commands back through the controller.
   const controllerRef = useRef<CanvasController | null>(null);
-  const [canvasState, setCanvasState] = useState<CanvasState>({ slides: [], currentIndex: -1 });
+  const [canvasState, setCanvasState] = useState<CanvasState>({
+    slides: [],
+    currentIndex: -1,
+    mode: "view",
+    playerHasFocus: false,
+    error: null,
+  });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
   // only ever refuse, and the author never saw anything. `startLiveReload`'s
@@ -47,12 +53,21 @@ export function App() {
     };
   }, []);
 
-  // Arrow keys page the deck in 檢視模式. Legitimate on the parent
-  // document here: the slide iframe is sandboxed with no scripts, so the
-  // author's keystrokes never reach it. (播放模式's keyboard is a
-  // different problem and belongs inside the iframe — not this ticket.)
+  // Arrow keys page the deck, but only in 檢視模式 (ticket #28). Legitimate
+  // on the parent document here: the view-mode iframe is sandboxed with no
+  // scripts, so the author's keystrokes never reach it. In 播放模式 the
+  // keyboard belongs entirely to the runtime inside the play iframe — a
+  // parent-side arrow-key listener would fight it (both would react to the
+  // same ArrowRight) and cannot honour media steps at all (transient
+  // activation does not survive postMessage), so this handler must stand
+  // down the moment play mode starts. `canvasStateRef` (not `canvasState`
+  // itself) is read inside the listener so this effect never needs to
+  // re-subscribe on every state change just to see the current mode.
+  const canvasStateRef = useRef(canvasState);
+  canvasStateRef.current = canvasState;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      if (canvasStateRef.current.mode !== "view") return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       // Never steal an arrow key from a text field — the author is moving
       // the caret in the chat box, not paging the deck.
@@ -146,13 +161,28 @@ export function App() {
             即時預覽已停止：{liveReloadError}，請重新整理頁面
           </div>
         )}
+        {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
+            silently (design doc's keyboard-and-focus section). */}
+        {canvasState.mode === "play" && !canvasState.playerHasFocus && (
+          <div className="player-focus-notice" role="alert">
+            <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
+            <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
+              點這裡把焦點交回播放器
+            </button>
+          </div>
+        )}
+        {canvasState.mode === "play" && canvasState.error && (
+          <div className="player-error-notice" role="alert">
+            這一頁的效果清單無法播放：{canvasState.error}
+          </div>
+        )}
         {hasSlides && (
           <nav className="slide-nav">
             <button
               type="button"
               className="slide-nav-button"
               aria-label="上一頁"
-              disabled={canvasState.currentIndex <= 0}
+              disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
               onClick={() => void controllerRef.current?.previous()}
             >
               ‹
@@ -164,11 +194,24 @@ export function App() {
               type="button"
               className="slide-nav-button"
               aria-label="下一頁"
-              disabled={canvasState.currentIndex >= slideCount - 1}
+              disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
               onClick={() => void controllerRef.current?.next()}
             >
               ›
             </button>
+            {canvasState.mode === "view" ? (
+              <button type="button" className="play-toggle-button" onClick={() => void controllerRef.current?.play()}>
+                播放
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="play-toggle-button"
+                onClick={() => void controllerRef.current?.exitPlay()}
+              >
+                離開播放
+              </button>
+            )}
           </nav>
         )}
         <footer className="status-bar">CoMotion</footer>
