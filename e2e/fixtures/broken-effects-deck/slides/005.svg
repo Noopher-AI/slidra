@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <!-- 損壞之處：family/effect 都合法，但 start="with-previous" 不在
+           SUPPORTED_STARTS（本輪只實作 on-click）。這是作者想讓元素跟前一
+           項同時出現時最可能誤用的屬性值。 -->
+      <comot:effect target="el-with-previous-target" family="enter" effect="fade" start="with-previous"/>
+    </comot:effects>
+  </metadata>
+  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
+  <text id="el-broken-title-5" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 5 頁：未實作的 start</text>
+  <text id="el-with-previous-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <comot:effect target="el-media-caption" family="enter" effect="fade" start="on-click"/>
+      <comot:effect target="el-video-placeholder" family="media" effect="play" start="on-click"/>
+      <comot:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
+  <text id="el-media-title" data-comot-name="標題" x="640" y="90" text-anchor="middle" font-size="56" fill="#f4f6f8">第 4 頁：影音</text>
+  <text id="el-media-caption" data-comot-name="說明文字" x="640" y="150" text-anchor="middle" font-size="30" fill="#9aa7b4">重點說明</text>
+
+  <!-- 影片佔位元素：播放前顯示這個色塊，這個位置不是一個洞 (ADR-0005). -->
+  <rect id="el-video-placeholder" data-comot-name="影片" data-comot-media="../assets/intro.webm"
+        x="240" y="220" width="400" height="300" fill="#3a4550"/>
+
+  <!-- 音訊掛在一個可見元素上：這裡畫一顆喇叭圖形 (ADR-0009). -->
+  <g id="el-audio-icon" data-comot-name="旁白" data-comot-media="../assets/narration.oga">
+    <circle cx="960" cy="370" r="70" fill="#c66"/>
+    <path d="M935 340 L935 400 L955 400 L985 425 L985 315 L955 340 Z" fill="#101418"/>
+  </g>
+  <text x="960" y="470" text-anchor="middle" font-size="26" fill="#9aa7b4">旁白</text>
+</svg>
