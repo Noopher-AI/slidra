@@ -532,6 +532,69 @@ describe("ls renderer", () => {
   });
 });
 
+// Ticket #14: `dispatch` used to flatten every CoMotionError into a bare
+// `{ ok: false, message }`, throwing away the subtype. Callers needing an
+// HTTP-shaped answer (`/api/files/`) then had nothing to tell "genuinely
+// absent" apart from "the read blew up", and reported both as 404.
+// `failureKind` carries that distinction across the dispatch boundary as a
+// type, never as a message the caller has to pattern-match on.
+describe("dispatch failure classification", () => {
+  async function openedId(): Promise<string> {
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    return opened.data!.id;
+  }
+
+  it("classifies a file that genuinely does not exist as not-found", async () => {
+    const id = await openedId();
+
+    const result = await registry.dispatch("cat", { id, path: "slides/999.svg" });
+
+    expect(result.ok).toBe(false);
+    expect(result.failureKind).toBe("not-found");
+    // `cat`'s wording is a verbatim acceptance point of ticket #14 — this
+    // change adds a field, it does not touch what anyone reads.
+    expect(result.message).toBe("找不到檔案：slides/999.svg");
+  });
+
+  it("classifies an unknown presentation id as not-found", async () => {
+    const result = await registry.dispatch("cat", { id: "no-such-id", path: "project.json" });
+
+    expect(result.ok).toBe(false);
+    expect(result.failureKind).toBe("not-found");
+  });
+
+  it.skipIf(isRunningAsRoot)("classifies a real I/O failure as failed, never as not-found", async () => {
+    const id = await openedId();
+    const { chmod } = await import("node:fs/promises");
+    // Break the real read (EACCES) instead of mocking it. The real path is
+    // only used to provoke the failure, never asserted against the message.
+    const realFile = path.join(coMotionHome, "work", id, "project.json");
+    await chmod(realFile, 0o000);
+
+    try {
+      const result = await registry.dispatch("cat", { id, path: "project.json" });
+
+      expect(result.ok).toBe(false);
+      expect(result.failureKind).toBe("failed");
+      expect(result.message).not.toContain(coMotionHome);
+    } finally {
+      await chmod(realFile, 0o644);
+    }
+  });
+
+  it("leaves a successful result untouched — no failureKind, same message", async () => {
+    const id = await openedId();
+
+    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
+
+    expect(result.ok).toBe(true);
+    expect(result.failureKind).toBeUndefined();
+    expect(result.message).toBe("已讀取：project.json");
+  });
+});
+
 describe("new, open and pack have no terminal renderer — unchanged output", () => {
   it("registry.getRenderer returns undefined so the bin falls back to the default format", () => {
     expect(registry.getRenderer("new")).toBeUndefined();

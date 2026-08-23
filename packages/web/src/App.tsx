@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { mountCanvas } from "./canvas.js";
-import { appendChunkToMessage, appendMessage, type ChatMessage } from "./chat-messages.js";
+import {
+  appendChunkToMessage,
+  appendCommandMessage,
+  appendMessage,
+  updateCommandMessage,
+  type ChatMessage,
+  type CommandStatus,
+} from "./chat-messages.js";
 import { startLiveReload } from "./live-reload.js";
 
 /**
@@ -82,6 +89,37 @@ export function App() {
       setWorking(true);
     });
 
+    // Ticket #17: the agent is about to run a command. It becomes its own
+    // message in the conversation, in the order it actually happened.
+    source.addEventListener("chat-command", (event) => {
+      const { toolCallId, command, status } = JSON.parse((event as MessageEvent).data) as {
+        toolCallId: string;
+        command: string;
+        status: CommandStatus;
+      };
+      setMessages((prev) => appendCommandMessage(prev, nextMessageIdRef.current++, toolCallId, command, status));
+      // Whatever the agent was saying ended where the command began ("現在
+      // 來修改文字："). Anything it says after the command is a new
+      // paragraph, not a continuation of the sentence the command
+      // interrupted — so the next chunk starts a fresh agent message
+      // rather than being glued onto text that is now further up.
+      activeReplyIdRef.current = null;
+      setWorking(true);
+    });
+
+    source.addEventListener("chat-command-update", (event) => {
+      const { toolCallId, status, output } = JSON.parse((event as MessageEvent).data) as {
+        toolCallId: string;
+        status: CommandStatus;
+        output?: string;
+      };
+      // `output` is only ever sent with a failure; passing it through as an
+      // explicit `undefined` would erase output already shown.
+      setMessages((prev) =>
+        updateCommandMessage(prev, toolCallId, output === undefined ? { status } : { status, output }),
+      );
+    });
+
     source.addEventListener("chat-done", () => {
       activeReplyIdRef.current = null;
       setWorking(false);
@@ -149,11 +187,25 @@ export function App() {
         <h2>對話</h2>
         <div className="chat-messages">
           {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
-          {messages.map((message) => (
-            <p key={message.id} className={`chat-message chat-message-${message.role}`}>
-              {message.text}
-            </p>
-          ))}
+          {messages.map((message) =>
+            message.role === "command" ? (
+              <div
+                key={message.id}
+                className={`chat-command chat-command-${message.status}`}
+                role={message.status === "failed" ? "alert" : undefined}
+              >
+                <p className="chat-command-line">
+                  <span className="chat-command-status">{COMMAND_STATUS_LABEL[message.status]}</span>
+                  <code className="chat-command-text">{message.command}</code>
+                </p>
+                {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
+              </div>
+            ) : (
+              <p key={message.id} className={`chat-message chat-message-${message.role}`}>
+                {message.text}
+              </p>
+            ),
+          )}
           {working && <p className="chat-working">agent 正在工作中…</p>}
           {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
           {error && <p className="chat-error">{error}</p>}
@@ -178,6 +230,18 @@ export function App() {
     </div>
   );
 }
+
+/**
+ * What each ACP tool-call status means to the author. The status itself
+ * stays ACP's own string all the way from the agent to here — this map is
+ * the single place it becomes something a person reads.
+ */
+const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
+  pending: "準備執行",
+  in_progress: "執行中",
+  completed: "已完成",
+  failed: "執行失敗",
+};
 
 // Inline, not in style.css: that file is ticket #6's concurrently-edited
 // territory for this fix round. A dead watcher is an error state, so this

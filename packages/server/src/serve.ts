@@ -202,7 +202,19 @@ async function handleRequest(
         path: virtualPath,
       });
       if (!result.ok) {
-        sendJson(res, 404, { error: result.message });
+        // Same narrow classification `/api/raw/` uses (ticket #11): only a
+        // failure that positively proves absence is a 404. Everything else
+        // — an unreadable file, a corrupt registry, a failure kind nobody
+        // has taught this route about yet, or a handler that returned
+        // `{ ok: false }` with no kind at all — is a 500, because "not
+        // classified as not-found" is not evidence the file is missing.
+        // Telling the author "找不到檔案" when the real problem is a
+        // permission bit sends them looking in entirely the wrong place
+        // (ticket #14). The body stays `result.message` either way, which
+        // like every CoMotionError message never contains a real
+        // filesystem path (ADR-0004) — only the virtual path may appear.
+        const status = result.failureKind === "not-found" ? 404 : 500;
+        sendJson(res, status, { error: result.message });
         return;
       }
       res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });

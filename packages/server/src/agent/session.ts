@@ -72,11 +72,29 @@ const WRITE_REFUSED_CODE = -32603;
  */
 const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個工作階段的範圍內";
 
+/**
+ * Upper bound on how much of a failed command's own output is relayed to
+ * the author (ticket #17). The chat sidebar is a place to see *that* a
+ * command failed and why; a command that prints a megabyte of output on
+ * the way down would otherwise push the whole conversation off screen.
+ * Truncation is announced in the text itself — never silent.
+ */
+const MAX_COMMAND_OUTPUT_CHARS = 2000;
+const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
+
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
   "chat-chunk": (payload: { text: string }) => void;
   "chat-done": (payload: { stopReason: string }) => void;
   "chat-error": (payload: { message: string }) => void;
+  /** A command the agent has started running — `command` verbatim from ACP's `rawInput.command`. */
+  "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus }) => void;
+  /** A status change on a command already relayed by `chat-command`. `output` only ever accompanies a failure. */
+  "chat-command-update": (payload: {
+    toolCallId: string;
+    status: acp.ToolCallStatus;
+    output?: string;
+  }) => void;
 }
 
 /**
@@ -118,6 +136,15 @@ export class AgentChatSession extends EventEmitter {
   private turnQueue: Promise<void> = Promise.resolve();
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
+  /**
+   * `toolCallId`s already relayed to the author as commands (ticket #17).
+   * A `tool_call_update` carries only the id — never `rawInput` again — so
+   * without this there is no way to tell an update about a command the
+   * author is watching from an update about a tool call that was never
+   * shown (a file read, a plan). Cleared at the end of every turn: ids are
+   * scoped to the turn that showed them.
+   */
+  private readonly relayedToolCalls = new Set<string>();
   private disposed = false;
   /**
    * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
@@ -191,6 +218,7 @@ export class AgentChatSession extends EventEmitter {
       this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
       this.relayingCurrentTurn = false;
+      this.relayedToolCalls.clear();
     }
   }
 
@@ -383,9 +411,19 @@ export class AgentChatSession extends EventEmitter {
         const update = params.update;
         if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
           this.emitTyped("chat-chunk", { text: update.content.text });
+          return;
         }
-        // Other update kinds (thoughts, tool calls, plans) carry no reply
-        // text and this tracer-bullet unit has nothing to do with them yet.
+        if (update.sessionUpdate === "tool_call") {
+          this.relayCommandStart(update);
+          return;
+        }
+        if (update.sessionUpdate === "tool_call_update") {
+          this.relayCommandUpdate(update);
+          return;
+        }
+        // Remaining update kinds (thoughts, plans, available commands) are
+        // the agent's own bookkeeping, not something the author asked to
+        // see — this sidebar is a view of the work, not a debug log.
       },
       requestPermission: async (params: acp.RequestPermissionRequest) => {
         return this.decidePermission(params);
@@ -399,6 +437,62 @@ export class AgentChatSession extends EventEmitter {
         throw new acp.RequestError(WRITE_REFUSED_CODE, WRITE_REFUSED_MESSAGE);
       },
     };
+  }
+
+  /**
+   * A `tool_call` update announcing that the agent is about to run
+   * something (ticket #17). Only tool calls that actually name a shell
+   * command are relayed — the command text comes straight out of ACP's
+   * `rawInput.command`, exactly as `decidePermission` reads it, and is
+   * never reassembled from anything else. Tool calls with no command (a
+   * file read, an agent-internal tool) are the agent's own business and
+   * stay off the author's screen.
+   *
+   * The command string is shown to the author verbatim, real paths and
+   * all. ADR-0004's third layer governs what the *agent* is allowed to
+   * see; this event travels the other way, to the person who owns the
+   * machine ("擋的是 agent，不是人").
+   */
+  private relayCommandStart(update: { toolCallId: string; rawInput?: Record<string, unknown>; status?: acp.ToolCallStatus }): void {
+    const command = extractCommand(update);
+    if (command === undefined) return;
+    this.relayedToolCalls.add(update.toolCallId);
+    this.emitTyped("chat-command", {
+      toolCallId: update.toolCallId,
+      // ACP declares `status` optional on `tool_call` and specifies
+      // `pending` as its meaning when absent — this is the protocol's own
+      // default, not a guess standing in for missing information.
+      command,
+      status: update.status ?? "pending",
+    });
+  }
+
+  /**
+   * A `tool_call_update` for a command already on the author's screen.
+   * Ignored for any tool call `relayCommandStart` did not relay — an
+   * update whose `toolCallId` was never shown has nothing to update.
+   *
+   * The command's own output is attached only when the command failed:
+   * that is the case the author cannot otherwise diagnose without opening
+   * a terminal (a `command not found` exit 127 is exactly the failure this
+   * ticket exists for). Successful output is left to the agent to
+   * summarize in its own words.
+   */
+  private relayCommandUpdate(update: {
+    toolCallId: string;
+    status?: acp.ToolCallStatus | null;
+    content?: acp.ToolCallContent[] | null;
+  }): void {
+    if (!this.relayedToolCalls.has(update.toolCallId)) return;
+    // An update carrying no status is a content/location-only update —
+    // nothing the author's view of "running / done / failed" reacts to.
+    if (update.status == null) return;
+    const output = update.status === "failed" ? extractCommandOutput(update.content) : undefined;
+    this.emitTyped("chat-command-update", {
+      toolCallId: update.toolCallId,
+      status: update.status,
+      ...(output === undefined ? {} : { output }),
+    });
   }
 
   /**
@@ -512,17 +606,23 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /** Attaches one SSE stream to this session's events; returns a detach function. */
-  attachStream(send: (event: "chat-chunk" | "chat-done" | "chat-error", data: unknown) => void): () => void {
+  attachStream(send: (event: keyof ChatEvents, data: unknown) => void): () => void {
     const onChunk: ChatEvents["chat-chunk"] = (payload) => send("chat-chunk", payload);
     const onDone: ChatEvents["chat-done"] = (payload) => send("chat-done", payload);
     const onError: ChatEvents["chat-error"] = (payload) => send("chat-error", payload);
+    const onCommand: ChatEvents["chat-command"] = (payload) => send("chat-command", payload);
+    const onCommandUpdate: ChatEvents["chat-command-update"] = (payload) => send("chat-command-update", payload);
     this.on("chat-chunk", onChunk);
     this.on("chat-done", onDone);
     this.on("chat-error", onError);
+    this.on("chat-command", onCommand);
+    this.on("chat-command-update", onCommandUpdate);
     return () => {
       this.off("chat-chunk", onChunk);
       this.off("chat-done", onDone);
       this.off("chat-error", onError);
+      this.off("chat-command", onCommand);
+      this.off("chat-command-update", onCommandUpdate);
     };
   }
 
@@ -545,11 +645,33 @@ export class AgentChatSession extends EventEmitter {
  * — returns undefined, which `decidePermission` treats as "cannot
  * determine the command" and refuses (fail closed).
  */
-function extractCommand(toolCall: acp.ToolCallUpdate): string | undefined {
+function extractCommand(toolCall: { rawInput?: Record<string, unknown> }): string | undefined {
   const rawInput = toolCall.rawInput;
   if (typeof rawInput !== "object" || rawInput === null) return undefined;
   const command = (rawInput as Record<string, unknown>).command;
   return typeof command === "string" ? command : undefined;
+}
+
+/**
+ * Pulls a failed command's own output out of a `tool_call_update`'s
+ * content blocks (ticket #17). Only plain-text blocks are taken — an image
+ * or an embedded resource is not what "the command printed this" means.
+ * Returns undefined when there is nothing to show, so the event simply
+ * carries no `output` field rather than an empty string pretending to be
+ * output.
+ */
+function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined): string | undefined {
+  if (!content) return undefined;
+  const texts: string[] = [];
+  for (const block of content) {
+    if (block.type === "content" && block.content.type === "text") {
+      texts.push(block.content.text);
+    }
+  }
+  if (texts.length === 0) return undefined;
+  const joined = texts.join("\n");
+  if (joined.length <= MAX_COMMAND_OUTPUT_CHARS) return joined;
+  return joined.slice(0, MAX_COMMAND_OUTPUT_CHARS) + COMMAND_OUTPUT_TRUNCATED_SUFFIX;
 }
 
 /**
