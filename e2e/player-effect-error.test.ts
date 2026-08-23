@@ -17,17 +17,31 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * whether an author actually SEES a message, with enough detail to find
  * the broken line, was never checked end to end. This file closes that
  * gap with a hand-written broken fixture
- * (`e2e/fixtures/broken-effects-deck/`): two slides, two different kinds
- * of damage — one is the exact mistake made while hand-authoring
- * `demo/slides/004.svg` for this same ticket (a `family="media"` effect
- * target missing `data-comot-media`), the other is a `target` that does
- * not resolve to any element on the slide (a very plausible typo: an id
- * renamed without updating the effect list that points at it).
+ * (`e2e/fixtures/broken-effects-deck/`): five slides, five different
+ * kinds of damage —
+ *   1. a `family="media"` effect target missing `data-comot-media` (the
+ *      exact mistake made while hand-authoring `demo/slides/004.svg` for
+ *      this same ticket)
+ *   2. a `target` that does not resolve to any element on the slide (a
+ *      very plausible typo: an id renamed without updating the effect
+ *      list that points at it)
+ *   3. an unimplemented `family` value (`emphasis` — a real family this
+ *      round's spec structurally supports but deliberately does not
+ *      implement)
+ *   4. an unimplemented `effect` value under an otherwise-valid family
+ *      (`enter`/`wipe` — plausible if an author assumes PowerPoint-style
+ *      transition names just work)
+ *   5. an unimplemented `start` value (`with-previous` — plausible if an
+ *      author wants two effects to land in the same step)
+ * Round 1 of the Codex review gate on this ticket found #3–#5 missing:
+ * the suite only proved the DOM banner exists for damage it happens to
+ * be good at catching, not for the "未實作" half of the spec sentence —
+ * exactly the gap this kind of e2e test exists to close.
  *
  * Two things this test insists on, per the coordinator's review:
  *   1. The banner text must name the actual broken thing (element id /
- *      attribute name), not just say "something went wrong" — otherwise
- *      "說明" is not satisfied, only "拋錯" is.
+ *      attribute name / unsupported value), not just say "something went
+ *      wrong" — otherwise "說明" is not satisfied, only "拋錯" is.
  *   2. The degraded slide must still render its real content (canvas.ts's
  *      renderPlay catch branch falls back to wrapSlideDocument — the
  *      static, no-runtime render used in view mode) rather than leaving
@@ -156,6 +170,105 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
 
     await expect.poll(() => opacityOf("#el-broken-title-2")).toBe("1");
     await expect.poll(() => opacityOf("#el-real")).toBe("1");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯誤說明", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 1 頁：缺少 data-comot-media");
+
+    await page.locator('button:has-text("播放")').click();
+    await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+    await page.locator('button[aria-label="第 3 頁"]').click();
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title-3").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 3 頁：未實作的 family");
+
+    const noticeText = await page.locator(".player-error-notice").first().textContent();
+    expect(noticeText).toContain("emphasis");
+    expect(noticeText).toContain("尚未實作");
+
+    const opacityOf = (selector: string) =>
+      playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
+    await expect.poll(() => opacityOf("#el-broken-title-3")).toBe("1");
+    await expect.poll(() => opacityOf("#el-emphasis-target")).toBe("1");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯誤說明", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 1 頁：缺少 data-comot-media");
+
+    await page.locator('button:has-text("播放")').click();
+    await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+    await page.locator('button[aria-label="第 4 頁"]').click();
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title-4").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 4 頁：未實作的 effect");
+
+    const noticeText = await page.locator(".player-error-notice").first().textContent();
+    expect(noticeText).toContain("wipe");
+    expect(noticeText).toContain("尚未實作");
+
+    const opacityOf = (selector: string) =>
+      playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
+    await expect.poll(() => opacityOf("#el-broken-title-4")).toBe("1");
+    await expect.poll(() => opacityOf("#el-wipe-target")).toBe("1");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯誤說明", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 1 頁：缺少 data-comot-media");
+
+    await page.locator('button:has-text("播放")').click();
+    await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+    await page.locator('button[aria-label="第 5 頁"]').click();
+    await expect
+      .poll(() => playFrame().locator("#el-broken-title-5").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("第 5 頁：未實作的 start");
+
+    const noticeText = await page.locator(".player-error-notice").first().textContent();
+    expect(noticeText).toContain("with-previous");
+    expect(noticeText).toContain("尚未實作");
+
+    const opacityOf = (selector: string) =>
+      playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
+    await expect.poll(() => opacityOf("#el-broken-title-5")).toBe("1");
+    await expect.poll(() => opacityOf("#el-with-previous-target")).toBe("1");
   } finally {
     await cleanup();
   }
