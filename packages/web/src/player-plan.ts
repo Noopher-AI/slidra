@@ -9,6 +9,12 @@
 import { deriveSteps, parseEffects } from "./effects.js";
 import type { Effect, Step } from "./effects.js";
 
+export interface MediaCue {
+  /** The raw `data-comot-media` value, unmodified — the play document's <base> resolves it. */
+  src: string;
+  kind: "video" | "audio";
+}
+
 export interface PlayerPlan {
   steps: Step[];
   /**
@@ -18,13 +24,15 @@ export interface PlayerPlan {
    * state with all effects already run).
    */
   hidden: string[];
+  /** Keyed by the `family="media"` effect's target id — see mediaCuesFor below. */
+  media: Record<string, MediaCue>;
 }
 
 /** Throws whatever parseEffects/deriveSteps throw — see effects.ts for the (Traditional Chinese) messages. */
 export function computePlayerPlan(svgMarkup: string): PlayerPlan {
   const effects = parseEffects(svgMarkup);
   const steps = deriveSteps(effects);
-  return { steps, hidden: enterTargets(effects) };
+  return { steps, hidden: enterTargets(effects), media: mediaCuesFor(svgMarkup, effects) };
 }
 
 function enterTargets(effects: Effect[]): string[] {
@@ -37,6 +45,70 @@ function enterTargets(effects: Effect[]): string[] {
     result.push(effect.target);
   }
   return result;
+}
+
+/**
+ * Unambiguous allow-list (settled decision, not guessed from MIME
+ * sniffing): anything else, including `.ogg`, throws. Exported so
+ * packages/web/test/player-plan.test.ts can assert every entry here also
+ * resolves to a real Content-Type in packages/server/src/raw.ts's
+ * MIME_TYPES — the two lists must stay in lockstep, or an extension this
+ * player accepts gets served as application/octet-stream, which some
+ * browsers refuse to decode as media even though the bytes are fine.
+ */
+export const VIDEO_EXTENSIONS = [".mp4", ".m4v", ".mov", ".webm", ".ogv"];
+export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"];
+
+/**
+ * Builds `plan.media`, keyed by each `family="media"` effect's target. This
+ * re-parses `svgMarkup` (parseEffects already parsed it once, but discards
+ * its DOM) because the only new thing this ticket needs from the markup is
+ * one attribute lookup per media target — not worth widening effects.ts's
+ * return shape for.
+ */
+function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, MediaCue> {
+  const mediaEffects = effects.filter((effect) => effect.family === "media");
+  // Object.create(null) throughout this function, never {}: `target` comes
+  // straight from untrusted slide content (ADR-0010), and a legal SVG id
+  // can be "__proto__". Building this table via plain-object assignment
+  // (`media[target] = cue`) does not create an own property for that
+  // specific key — assigning to "__proto__" on an object that still has
+  // Object.prototype's own __proto__ accessor in its chain reassigns the
+  // object's [[Prototype]] instead, so the cue never becomes real,
+  // enumerable, own data (Codex review gate round 1, P2; see
+  // player-plan.test.ts's "__proto__" id test, which fails against a plain
+  // {} here). Object.create(null) has no such accessor, so every
+  // assignment — however the key is spelled — is an ordinary own property.
+  if (mediaEffects.length === 0) return Object.create(null);
+
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  const media: Record<string, MediaCue> = Object.create(null);
+  for (const effect of mediaEffects) {
+    const target = effect.target;
+    // parseEffects already verified `target` resolves to an element in this
+    // document — that check ran against the same markup, so it holds here too.
+    const el = doc.getElementById(target) as Element;
+    const src = el.getAttribute("data-comot-media");
+    if (!src) {
+      // ADR-0009: every effect points at an element, and a media effect's
+      // element must carry data-comot-media (ADR-0005) — its absence is a
+      // damaged presentation, not a silently-skipped effect.
+      throw new Error(`元素「${target}」的效果是 family="media"，但沒有 data-comot-media，簡報已損毀。`);
+    }
+    media[target] = { src, kind: mediaKindFor(src, target) };
+  }
+  return media;
+}
+
+/** Derives video/audio purely from the file extension — never MIME sniffing (would need an async HEAD, and the user gesture cannot survive that). */
+function mediaKindFor(src: string, target: string): "video" | "audio" {
+  const dot = src.lastIndexOf(".");
+  const extension = dot === -1 ? "" : src.slice(dot).toLowerCase();
+  if (VIDEO_EXTENSIONS.includes(extension)) return "video";
+  if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
+  throw new Error(
+    `元素「${target}」的 data-comot-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
+  );
 }
 
 /**
@@ -115,7 +187,43 @@ function cssEscapeId(id: string): string {
   return result;
 }
 
-/** The `<script>` line that hands the plan to the runtime as `window.__COMOT_PLAN__`. */
+/**
+ * The `<script>` line that hands the plan to the runtime as
+ * `window.__COMOT_PLAN__`.
+ *
+ * Reconstructed via `JSON.parse(...)`, never a bare object-literal
+ * assignment (`window.__COMOT_PLAN__ = ${JSON.stringify(plan)}`, this
+ * function's previous shape) — that distinction is load-bearing, not
+ * stylistic. `plan.media` is keyed by untrusted SVG element ids
+ * (ADR-0010), and a legal id can be "__proto__". ECMAScript object-literal
+ * syntax gives a non-computed `"__proto__": value` property key special
+ * treatment at the *syntax* level: it sets the object's `[[Prototype]]`
+ * instead of creating an own property — this is true no matter how the
+ * value was built on the parent side (Object.create(null) or otherwise;
+ * see the fix in mediaCuesFor above, which only protects construction on
+ * this side of the wire, not reconstruction on the iframe side). The
+ * result: `plan.media["__proto__"]`'s cue would still happen to read back
+ * correctly (the `__proto__` accessor's getter returns the very
+ * `[[Prototype]]` that was just set — a syntax coincidence, not a
+ * guarantee), but `Object.keys()`, a `{...media}` spread, or
+ * `structuredClone()` would all silently lose that entry, since it was
+ * never a real own property to begin with. `JSON.parse` has no such
+ * special case for any key, `__proto__` included — every key becomes a
+ * genuine own, enumerable data property via `CreateDataProperty`, not the
+ * `[[Set]]` that an object literal's `__proto__` key triggers. The plan is
+ * therefore round-tripped through a JSON *string* literal (double
+ * `JSON.stringify`) instead of a bare object literal.
+ *
+ * This does not touch canvas.ts's `wrapPlayDocument`, which still escapes
+ * every literal `<` in this function's output to `\u003C` (gate review
+ * round 3): that protection guards the *HTML tokenizer* reading the
+ * `<script>` block's raw text, a concern one level below where JS or JSON
+ * parsing even begins, and the invariant it relies on — every `<` in this
+ * output sits inside a quoted string — still holds here (now inside the
+ * outer JS string literal wrapping the escaped JSON text, instead of
+ * directly inside a JSON string value).
+ */
 export function renderPlanScript(plan: PlayerPlan): string {
-  return `window.__COMOT_PLAN__ = ${JSON.stringify(plan)};`;
+  const json = JSON.stringify(plan);
+  return `window.__COMOT_PLAN__ = JSON.parse(${JSON.stringify(json)});`;
 }

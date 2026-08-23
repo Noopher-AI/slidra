@@ -10,6 +10,14 @@ import { CoMotionError, CoMotionNotFoundError, readPresentationFileBytes } from 
  * serve.ts for why.
  */
 
+// Video/audio extensions here must stay in lockstep with the player's own
+// extension allow-list (packages/web/src/player-plan.ts's VIDEO_EXTENSIONS/
+// AUDIO_EXTENSIONS, ticket #30) — an extension the player accepts but this
+// table does not falls back to application/octet-stream below, which some
+// browsers refuse to decode as media even though the bytes are fine. A web
+// test (packages/web/test/player-plan.test.ts) asserts every entry in the
+// player's allow-list resolves to a non-octet-stream type here, specifically
+// to keep the two lists from drifting apart again.
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -19,8 +27,28 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  // .m4v is essentially an MP4 container with an Apple-assigned extension;
+  // there is no IANA-registered video/x-m4v, and nginx's own mime.types
+  // maps m4v to video/mp4 alongside .mp4 itself — reused here rather than
+  // inventing a less-portable type.
+  ".m4v": "video/mp4",
+  // video/quicktime is the IANA-registered type for the QuickTime container (.mov).
+  ".mov": "video/quicktime",
+  // video/ogg is the Xiph/IANA-registered type for Ogg video (.ogv).
+  ".ogv": "video/ogg",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
+  // audio/mp4 is the IANA-registered type for an MPEG-4 audio container (.m4a).
+  ".m4a": "audio/mp4",
+  // .opus and .oga files produced by this project are Ogg containers (see
+  // e2e/fixtures/media-deck/assets/narration.oga, muxed with `ffmpeg -f
+  // ogg`) — audio/ogg is the correct container type for both; "audio/opus"
+  // exists as a registered type but names the raw codec/RTP payload, not an
+  // Ogg-muxed file, so it is not used here.
+  ".opus": "audio/ogg",
+  ".oga": "audio/ogg",
+  // audio/aac is the IANA-registered type for a raw ADTS AAC stream.
+  ".aac": "audio/aac",
   ".json": "application/json",
 };
 

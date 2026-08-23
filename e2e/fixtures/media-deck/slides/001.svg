@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <comot:effect target="el-video-placeholder" family="media" effect="play" start="on-click"/>
+      <comot:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="el-bg" x="0" y="0" width="1280" height="720" fill="#eef"/>
+  <text id="el-title" x="640" y="100" text-anchor="middle" font-size="56">媒體播放測試</text>
+
+  <!-- 影片佔位元素：播放前顯示這個矩形色塊，這個位置不是一個洞 (ADR-0005). -->
+  <rect id="el-video-placeholder" data-comot-media="../assets/clip.webm"
+        x="140" y="200" width="400" height="300" fill="#889" />
+
+  <!-- 音訊掛在一個可見元素上：這裡用一顆喇叭圖形代表 (ADR-0009). -->
+  <circle id="el-audio-icon" data-comot-media="../assets/narration.oga"
+          cx="900" cy="350" r="60" fill="#c66" />
+  <text x="900" y="440" text-anchor="middle" font-size="28">旁白</text>
+</svg>
