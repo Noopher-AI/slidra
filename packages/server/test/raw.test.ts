@@ -328,6 +328,31 @@ describe("rawContentTypeFor", () => {
     expect(rawContentTypeFor("assets/a.unknownext")).toBe("application/octet-stream");
     expect(rawContentTypeFor("assets/no-extension")).toBe("application/octet-stream");
   });
+
+  // Ticket #30, review round 2: these extensions are the player's own
+  // media-effect allow-list (packages/web/src/player-plan.ts's
+  // VIDEO_EXTENSIONS/AUDIO_EXTENSIONS) — they must resolve to a real
+  // Content-Type here, or the player accepts a file the server serves as
+  // application/octet-stream, which some browsers refuse to decode as
+  // media (the exact "green on one machine, red on another" failure #23
+  // named #13 to prevent for .mp4/Safari). packages/web/test/player-plan.test.ts
+  // asserts this from the other direction, reading both allow-lists live.
+  it("derives a Content-Type for every extension the player's media allow-list accepts", () => {
+    expect(rawContentTypeFor("assets/a.m4v")).toBe("video/mp4");
+    expect(rawContentTypeFor("assets/a.mov")).toBe("video/quicktime");
+    expect(rawContentTypeFor("assets/a.ogv")).toBe("video/ogg");
+    expect(rawContentTypeFor("assets/a.m4a")).toBe("audio/mp4");
+    expect(rawContentTypeFor("assets/a.opus")).toBe("audio/ogg");
+    expect(rawContentTypeFor("assets/a.oga")).toBe("audio/ogg");
+    expect(rawContentTypeFor("assets/a.aac")).toBe("audio/aac");
+  });
+
+  it("仍然不做內容嗅探 — 一個播放器允許清單裡沒有的未知副檔名，依然是 application/octet-stream", () => {
+    // Same posture as the very first test in this block, re-asserted here
+    // so this ticket's addition cannot be read as having loosened it: an
+    // unknown extension is still never guessed from bytes.
+    expect(rawContentTypeFor("assets/a.ogg")).toBe("application/octet-stream");
+  });
 });
 
 /**

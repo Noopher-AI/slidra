@@ -47,9 +47,17 @@ function enterTargets(effects: Effect[]): string[] {
   return result;
 }
 
-/** Unambiguous allow-list (settled decision, not guessed from MIME sniffing): anything else, including `.ogg`, throws. */
-const VIDEO_EXTENSIONS = [".mp4", ".m4v", ".mov", ".webm", ".ogv"];
-const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"];
+/**
+ * Unambiguous allow-list (settled decision, not guessed from MIME
+ * sniffing): anything else, including `.ogg`, throws. Exported so
+ * packages/web/test/player-plan.test.ts can assert every entry here also
+ * resolves to a real Content-Type in packages/server/src/raw.ts's
+ * MIME_TYPES — the two lists must stay in lockstep, or an extension this
+ * player accepts gets served as application/octet-stream, which some
+ * browsers refuse to decode as media even though the bytes are fine.
+ */
+export const VIDEO_EXTENSIONS = [".mp4", ".m4v", ".mov", ".webm", ".ogv"];
+export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"];
 
 /**
  * Builds `plan.media`, keyed by each `family="media"` effect's target. This

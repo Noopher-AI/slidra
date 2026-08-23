@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { computePlayerPlan, renderHideStyle, renderPlanScript } from "../src/player-plan.js";
+import {
+  AUDIO_EXTENSIONS,
+  computePlayerPlan,
+  renderHideStyle,
+  renderPlanScript,
+  VIDEO_EXTENSIONS,
+} from "../src/player-plan.js";
+// Cross-package: the server's own MIME table must agree with this player's
+// extension allow-list, or an extension the player accepts silently falls
+// back to application/octet-stream on the wire (see the describe block
+// below). Not aliased in vitest.config.ts, so imported by relative path —
+// same convention this project already uses for other .ts-as-.js imports.
+import { rawContentTypeFor } from "../../server/src/raw.js";
 
 // Seam C's parent half (C3): markup in, plan out. All derivation reuses
 // #26's parseEffects/deriveSteps — this module only shapes their output
@@ -136,6 +148,24 @@ describe("computePlayerPlan：media", () => {
     const svg = slide("");
     expect(computePlayerPlan(svg).media).toEqual({});
   });
+});
+
+describe("允許清單與 server 的 MIME 表必須一致（ticket #30 review round 2）", () => {
+  // Both extensions this module hard-codes into VIDEO_EXTENSIONS/
+  // AUDIO_EXTENSIONS must resolve to a real Content-Type on the server side
+  // — an extension the player is willing to play but the server serves as
+  // application/octet-stream is exactly the failure mode #23 worried about
+  // (some browsers refuse to decode media without a real Content-Type,
+  // some sniff bytes and decode anyway — "green on one machine, red on
+  // another"). This test reads both allow-lists live, not a copy of either,
+  // so it actually catches the next person adding an extension to one side
+  // and forgetting the other.
+  it.each([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS])(
+    "player 允許的副檔名 %s 在 server 端得到非 application/octet-stream 的 Content-Type",
+    (extension) => {
+      expect(rawContentTypeFor(`assets/clip${extension}`)).not.toBe("application/octet-stream");
+    },
+  );
 });
 
 describe("renderPlanScript", () => {

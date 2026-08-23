@@ -193,6 +193,12 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
     const videoResponse = videoResponses[0];
     expect(videoResponse.status()).toBe(206);
     expect(await videoResponse.headerValue("accept-ranges")).toBe("bytes");
+    // Ticket #30, review round 2: a real Content-Type, not
+    // application/octet-stream — the e2e test was passing before this fix
+    // only because Chromium sniffs bytes when the header is generic, which
+    // masked the server-side MIME table gap. Asserting it here keeps that
+    // gap from silently coming back.
+    expect(await videoResponse.headerValue("content-type")).toBe("video/webm");
 
     expect(pageErrors).toEqual([]);
   } finally {
@@ -237,6 +243,7 @@ it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回�
     await expect.poll(() => audioResponses.length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(audioResponses[0].status()).toBe(206);
     expect(await audioResponses[0].headerValue("accept-ranges")).toBe("bytes");
+    expect(await audioResponses[0].headerValue("content-type")).toBe("audio/ogg");
   } finally {
     await cleanup();
   }
