@@ -39,6 +39,18 @@ export interface ServeOptions {
    * unrepresentable instead of merely unreached.
    */
   agent: AgentAdapterConfig;
+  /**
+   * Directory the built frontend is served from. Omitted everywhere in
+   * production (`cli.ts`, the e2e smoke test), where it resolves to the
+   * real `packages/web/dist` exactly as before.
+   *
+   * It exists so tests have somewhere else to write. Without it the
+   * static-serving tests had no choice but to populate the real build
+   * output and then delete it, which is why `npm test` used to destroy
+   * what `npm run test:e2e` needs (ticket #20). A per-test temp directory
+   * makes that collision impossible rather than merely discouraged.
+   */
+  staticDir?: string;
 }
 
 export interface RunningServer {
@@ -65,7 +77,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     throw new CoMotionError("簡報沒有投影片");
   }
 
-  const staticDir = resolveWebDist();
+  const staticDir = options.staticDir ?? resolveWebDist();
 
   // Resources started alongside the HTTP server. close() tears them down in
   // registration order, before the socket itself is closed.

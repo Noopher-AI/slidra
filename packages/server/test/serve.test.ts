@@ -1,17 +1,59 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
-// Resolves the same packages/web/dist directory startServe's own
-// resolveWebDist() computes, so the static-serving tests can populate a
-// real build there without touching serve.ts's internals.
-const webDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+// The real build output `resolveWebDist()` defaults to. `npm run test:e2e`
+// runs a browser against exactly these bytes, so this suite must never
+// write to or delete from here (ticket #20). Referenced only by the
+// isolation guard at the bottom of this file, never by a test's fixtures.
+const realWebDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
+
+/**
+ * Content fingerprint of the real build output: every entry's path and hash,
+ * or "<absent>" when the frontend has not been built. Comparing this before
+ * and after the suite proves no test touched it, rather than trusting that
+ * none of them meant to.
+ */
+async function fingerprintRealWebDist(): Promise<string> {
+  let names: string[];
+  try {
+    names = await readdir(realWebDist, { recursive: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "<absent>";
+    throw error;
+  }
+  const lines: string[] = [];
+  for (const name of names.sort()) {
+    const full = path.join(realWebDist, name);
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(full);
+    } catch (error) {
+      // Directories read as EISDIR: record the entry anyway, it is still
+      // part of the tree's shape.
+      if ((error as NodeJS.ErrnoException).code === "EISDIR") {
+        lines.push(`${name} <dir>`);
+        continue;
+      }
+      throw error;
+    }
+    lines.push(`${name} ${createHash("sha256").update(bytes).digest("hex")}`);
+  }
+  return lines.join("\n");
+}
+
+let realWebDistFingerprint: string;
+
+beforeAll(async () => {
+  realWebDistFingerprint = await fingerprintRealWebDist();
+});
 
 // None of the tests in this file touch /api/chat*, and spawning is lazy
 // (first sendMessage), so this fixture is never actually spawned here —
@@ -41,12 +83,20 @@ const isRunningAsRoot = typeof process.getuid === "function" && process.getuid()
 
 let coMotionHome: string;
 let comotDir: string;
+// Where this test's server serves static files from — a throwaway stand-in
+// for packages/web/dist, injected via ServeOptions.staticDir. Deliberately
+// NOT created here: the "frontend was never built" test needs it absent,
+// and every other static test creates it itself.
+let webDist: string;
+let staticRoot: string;
 let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-serve-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-static-"));
+  webDist = path.join(staticRoot, "dist");
   process.env.CO_MOTION_HOME = coMotionHome;
   registry = createDefaultRegistry();
   servers = [];
@@ -59,6 +109,7 @@ afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
   await rm(coMotionHome, { recursive: true, force: true });
   await rm(comotDir, { recursive: true, force: true });
+  await rm(staticRoot, { recursive: true, force: true });
 });
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
@@ -69,7 +120,16 @@ async function openFreshPresentation(name = "測試簡報"): Promise<string> {
 }
 
 async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
-  const server = await startServe({ registry, presentationId, port: 0, agent: fakeAgent, ...overrides });
+  // staticDir is passed unconditionally, before ...overrides: no test in
+  // this file can reach the real packages/web/dist by forgetting to opt out.
+  const server = await startServe({
+    registry,
+    presentationId,
+    port: 0,
+    agent: fakeAgent,
+    staticDir: webDist,
+    ...overrides,
+  });
   servers.push(server);
   return server;
 }
@@ -344,12 +404,10 @@ describe("startServe", () => {
 });
 
 describe("static frontend serving", () => {
-  // These tests populate the real packages/web/dist directory startServe's
-  // resolveWebDist() always resolves to (it takes no override), and always
-  // remove it again afterward so the suite leaves no build artifact behind.
-  afterEach(async () => {
-    await rm(webDist, { recursive: true, force: true });
-  });
+  // These tests populate `webDist`, a fresh temp directory per test that
+  // the shared `serve()` helper injects as ServeOptions.staticDir. The
+  // outer afterEach removes its whole root — no cleanup of the real build
+  // output is needed, because nothing here ever writes there.
 
   it("serves index.html for the root path", async () => {
     await mkdir(webDist, { recursive: true });
@@ -420,5 +478,15 @@ describe("static frontend serving", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toBeTruthy();
+  });
+});
+
+// Ticket #20: declared last, so it runs after every test above. This is
+// what makes "tests never touch the real build output" a checked property
+// instead of a convention — point the static tests back at the real
+// packages/web/dist and this goes red.
+describe("real build output isolation", () => {
+  it("leaves packages/web/dist exactly as the suite found it", async () => {
+    expect(await fingerprintRealWebDist()).toBe(realWebDistFingerprint);
   });
 });
