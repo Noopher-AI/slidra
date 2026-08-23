@@ -7,12 +7,52 @@ import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 
 /**
+ * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
+ * e2e/fullscreen-spike.test.ts). Shared by toggleFullscreen() and
+ * handleExitPlay() below rather than duplicated — exitFullscreen() needs no
+ * transient activation, unlike requestFullscreen(), so it is safe to call
+ * from either place without a fresh click.
+ */
+function exitFullscreenIfActive(): Promise<void> {
+  const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> };
+  const exit = doc.exitFullscreen ?? doc.webkitExitFullscreen;
+  return exit ? exit.call(doc) : Promise.resolve();
+}
+
+/**
+ * Reads the browser's own fullscreen state directly — never the React
+ * `isFullscreen` state, which can be stale while a requestFullscreen() call
+ * is still pending (review gate round 2, P2: 離開播放 clicked while a
+ * request was in flight used to trust the not-yet-updated React state,
+ * skip exiting fullscreen, and leave the document genuinely stuck
+ * fullscreen once the pending request settled after play mode's chrome was
+ * already gone). Shared by the fullscreenchange listener and
+ * handleExitPlay() so both ask the same real question the same way.
+ */
+function isPlayChromeFullscreen(container: Element | null): boolean {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null };
+  const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+  return fullscreenElement !== null && fullscreenElement === container;
+}
+
+/**
  * React owns the shell only — chat sidebar and status bar. The div below is
  * handed to the vanilla `mountCanvas` module exactly once; React never
  * re-renders into it again (ADR-0001, ADR-0002).
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // 全螢幕開關 (ticket #29 第二輪): the fullscreen target. Reuses the
+  // existing <main className="canvas-area"> element rather than adding a
+  // new wrapper div — it already contains the iframe (via canvasRef),
+  // every play-mode notice, and the play chrome <nav>, and it already
+  // excludes the overview sidebar and chat sidebar (siblings, not
+  // descendants). Coordinator's revised settled decision #1: the target
+  // must be a container that also holds the play chrome, because a real
+  // click cannot reach anything outside the fullscreen element once the
+  // browser puts it in the top layer (measured while building the first
+  // version of this ticket — see the final report).
+  const playChromeRef = useRef<HTMLElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const overviewControllerRef = useRef<OverviewController | null>(null);
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
@@ -32,6 +72,18 @@ export function App() {
   // `onError` now closes that loop; this state is what actually puts the
   // message on screen instead of leaving it as an unhandled event.
   const [liveReloadError, setLiveReloadError] = useState<string | null>(null);
+
+  // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
+  // assumed from "the promise resolved". Synced only from fullscreenchange
+  // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
+  // button all funnel through one place.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  // Tracks an in-flight requestFullscreen()/exitFullscreen() call so
+  // handleExitPlay() can wait for it to settle before asking the browser's
+  // real fullscreenElement — see isPlayChromeFullscreen()'s comment above
+  // for the race this closes (review gate round 2, P2).
+  const fullscreenRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -106,6 +158,134 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // 全螢幕開關 (ticket #29): fullscreenchange only syncs UI state here — it
+  // must never call exitPlay(). Leaving fullscreen (including Esc) returns
+  // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是
+  // 另一種模式). Registers both the unprefixed and WebKit-prefixed event
+  // names, matching e2e/fullscreen-spike.test.ts.
+  useEffect(() => {
+    function onFullscreenChange(): void {
+      setIsFullscreen(isPlayChromeFullscreen(playChromeRef.current));
+      // This event firing at all means the browser's real fullscreen state
+      // just genuinely changed — by Esc, by browser chrome, or by our own
+      // button — which makes any earlier "a fullscreen request failed"
+      // message stale no matter how it got there (review gate round 1, P2:
+      // a stale fullscreenError used to sit on screen after a later,
+      // successful exit/enter until the next click cleared it by hand).
+      setFullscreenError(null);
+      // Every fullscreen transition must hand focus back to the player, or
+      // arrow-key advance silently dies (settled decision #5).
+      controllerRef.current?.focusPlayer();
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  // Leaving 播放模式 by any route (離開播放 button, live reload emptying the
+  // deck, ...) must not leave stale fullscreen UI state behind even though
+  // handleExitPlay() below already asks the document to exit fullscreen.
+  useEffect(() => {
+    if (canvasState.mode !== "play") {
+      setIsFullscreen(false);
+      setFullscreenError(null);
+    }
+  }, [canvasState.mode]);
+
+  async function toggleFullscreen(): Promise<void> {
+    setFullscreenError(null);
+    if (isFullscreen) {
+      const exitPromise = exitFullscreenIfActive();
+      fullscreenRequestRef.current = exitPromise;
+      try {
+        await exitPromise;
+      } catch (error) {
+        // Surfaced, never swallowed (behaviour contract row 1).
+        setFullscreenError(error instanceof Error ? error.message : "退出全螢幕失敗");
+      } finally {
+        if (fullscreenRequestRef.current === exitPromise) fullscreenRequestRef.current = null;
+      }
+      controllerRef.current?.focusPlayer();
+      return;
+    }
+    // The play chrome container, not the iframe (frameElement) — see the
+    // ref comment above. Read fresh at call time regardless: React refs are
+    // stable across renders here, but this keeps the same discipline as
+    // frameElement's own "never cache" rule.
+    const container = playChromeRef.current;
+    if (!container) return;
+    const webkitContainer = container as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+    const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
+    if (!request) {
+      setFullscreenError("這個瀏覽器不支援全螢幕");
+      // P2 (review gate round 2): this early-return path used to skip
+      // focusPlayer() — the click that got here already moved DOM focus
+      // onto this button, so without this call the arrow keys silently die
+      // just like every other fullscreen transition would if it skipped
+      // this (settled decision #5 applies here too, not just the two paths
+      // that actually touch the Fullscreen API).
+      controllerRef.current?.focusPlayer();
+      return;
+    }
+    // A real click (this function is only ever called from an onClick
+    // handler) carries the transient activation requestFullscreen() needs;
+    // never fabricate a fullscreen UI state the promise did not actually
+    // grant (behaviour contract row 1). Declared before the try block (not
+    // inside it) so the finally below — a separate block scope — can still
+    // see this specific call's own promise to compare against.
+    const requestPromise = request();
+    fullscreenRequestRef.current = requestPromise;
+    try {
+      await requestPromise;
+    } catch (error) {
+      setFullscreenError(error instanceof Error ? error.message : "進入全螢幕失敗");
+    } finally {
+      // Only clear the ref if it still points at *this* call's own promise
+      // (same guard the exit branch above already uses). Two clicks in
+      // quick succession each capture their own promise in this closure;
+      // an unconditional clear here would let an earlier call's `finally`
+      // wipe out a later, still in-flight call's promise the moment the
+      // earlier one settles — handleExitPlay() would then have nothing to
+      // await for the request that is actually still pending (review gate
+      // round 3, P2).
+      if (fullscreenRequestRef.current === requestPromise) fullscreenRequestRef.current = null;
+    }
+    controllerRef.current?.focusPlayer();
+  }
+
+  async function handleExitPlay(): Promise<void> {
+    // 離開播放時若還在全螢幕，必須先退出全螢幕，否則文件會卡在全螢幕狀態
+    // 但畫面底下已經沒有播放器了（behaviour contract 表格第四列）。A
+    // requestFullscreen() call started just before this click can still be
+    // pending here — isFullscreen (React state) has not been updated yet,
+    // so trusting it would skip exiting, and the pending request would
+    // still land after play mode's chrome (including 退出全螢幕) is already
+    // gone, leaving the document genuinely stuck fullscreen (review gate
+    // round 2, P2). Wait for any in-flight request to settle first, then
+    // ask the browser's own fullscreenElement — not the stale React state
+    // — right before deciding.
+    if (fullscreenRequestRef.current) {
+      try {
+        await fullscreenRequestRef.current;
+      } catch {
+        // A rejected request needs no exit.
+      }
+    }
+    if (isPlayChromeFullscreen(playChromeRef.current)) {
+      try {
+        await exitFullscreenIfActive();
+      } catch {
+        // Ignored on purpose — exiting play mode must proceed either way, a
+        // stuck fullscreen toggle should not also trap the author in play
+        // mode.
+      }
+    }
+    await controllerRef.current?.exitPlay();
+  }
+
   const slideCount = canvasState.slides.length;
   const hasSlides = slideCount > 0;
 
@@ -179,62 +359,106 @@ export function App() {
   return (
     <div className="app">
       <aside className="overview" ref={overviewRef} />
-      <main className="canvas-area">
+      <main className="canvas-area" ref={playChromeRef}>
         <div ref={canvasRef} className="canvas" />
         {liveReloadError && (
           <div role="alert" style={liveReloadBannerStyle}>
             即時預覽已停止：{liveReloadError}，請重新整理頁面
           </div>
         )}
-        {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
-            silently (design doc's keyboard-and-focus section). */}
-        {canvasState.mode === "play" && !canvasState.playerHasFocus && (
-          <div className="player-focus-notice" role="alert">
-            <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
-            <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
-              點這裡把焦點交回播放器
-            </button>
+        {/* 播放模式的浮動通知：焦點提示、播放錯誤、全螢幕錯誤都可能同時成立
+            （例如效果清單解析失敗又剛好全螢幕請求也失敗），過去三者各自用
+            同一組絕對定位互相疊在一起，後渲染的會蓋住先渲染的（review gate
+            round 1, P2）。這個 wrapper 把它們收進同一個 flex column，各自的
+            樣式只留背景／文字，定位與間距交給 wrapper，讓它們並排堆疊而不
+            互相覆蓋. */}
+        {canvasState.mode === "play" && (!canvasState.playerHasFocus || canvasState.error || fullscreenError) && (
+          <div className="player-notices">
+            {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
+                silently (design doc's keyboard-and-focus section). */}
+            {!canvasState.playerHasFocus && (
+              <div className="player-focus-notice" role="alert">
+                <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
+                <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
+                  點這裡把焦點交回播放器
+                </button>
+              </div>
+            )}
+            {canvasState.error && (
+              <div className="player-error-notice" role="alert">
+                這一頁的效果清單無法播放：{canvasState.error}
+              </div>
+            )}
+            {fullscreenError && (
+              <div className="player-error-notice" role="alert">
+                全螢幕切換失敗：{fullscreenError}
+              </div>
+            )}
           </div>
         )}
-        {canvasState.mode === "play" && canvasState.error && (
-          <div className="player-error-notice" role="alert">
-            這一頁的效果清單無法播放：{canvasState.error}
-          </div>
-        )}
-        {hasSlides && (
+        {/* review gate round 4, P2: live reload can empty `slides` (e.g. an
+            external edit removes the last one) while `mode` stays "play" —
+            canvas.ts never resets mode on its own. The pagination trio
+            below has nothing to page through then, so it stays gated on
+            hasSlides, but 離開播放/全螢幕開關 must not disappear with it:
+            they are about the play *session*, not the deck's slide count.
+            Losing them here used to leave the author on a blank, silently
+            fullscreen page with no in-app way out at all — only the
+            browser's own Esc. The nav itself now renders whenever there is
+            something to page through OR the author is still mid-play. */}
+        {(hasSlides || canvasState.mode === "play") && (
           <nav className="slide-nav">
-            <button
-              type="button"
-              className="slide-nav-button"
-              aria-label="上一頁"
-              disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
-              onClick={() => void controllerRef.current?.previous()}
-            >
-              ‹
-            </button>
-            <span className="slide-nav-position">
-              {canvasState.currentIndex + 1} / {slideCount}
-            </span>
-            <button
-              type="button"
-              className="slide-nav-button"
-              aria-label="下一頁"
-              disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
-              onClick={() => void controllerRef.current?.next()}
-            >
-              ›
-            </button>
+            {hasSlides && (
+              <>
+                <button
+                  type="button"
+                  className="slide-nav-button"
+                  aria-label="上一頁"
+                  disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
+                  onClick={() => void controllerRef.current?.previous()}
+                >
+                  ‹
+                </button>
+                <span className="slide-nav-position">
+                  {canvasState.currentIndex + 1} / {slideCount}
+                </span>
+                <button
+                  type="button"
+                  className="slide-nav-button"
+                  aria-label="下一頁"
+                  disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
+                  onClick={() => void controllerRef.current?.next()}
+                >
+                  ›
+                </button>
+              </>
+            )}
             {canvasState.mode === "view" ? (
-              <button type="button" className="play-toggle-button" onClick={() => void controllerRef.current?.play()}>
-                播放
-              </button>
+              hasSlides && (
+                <button
+                  type="button"
+                  className="play-toggle-button"
+                  onClick={() => void controllerRef.current?.play()}
+                >
+                  播放
+                </button>
+              )
             ) : (
+              <button type="button" className="play-toggle-button" onClick={() => void handleExitPlay()}>
+                離開播放
+              </button>
+            )}
+            {/* 全螢幕開關 (ticket #29): only meaningful in 播放模式 — 是否全螢幕
+                由作者決定，工具不預設強制 (settled decision #6). Deliberately
+                not additionally gated on hasSlides — see the comment above
+                the nav's own outer condition. */}
+            {canvasState.mode === "play" && (
               <button
                 type="button"
-                className="play-toggle-button"
-                onClick={() => void controllerRef.current?.exitPlay()}
+                className="fullscreen-toggle-button"
+                onClick={() => void toggleFullscreen()}
               >
-                離開播放
+                {isFullscreen ? "退出全螢幕" : "全螢幕"}
               </button>
             )}
           </nav>
