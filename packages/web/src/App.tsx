@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { mountCanvas } from "./canvas.js";
+import { mountCanvas, type CanvasController, type CanvasState } from "./canvas.js";
 import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
@@ -12,6 +12,11 @@ import { startLiveReload } from "./live-reload.js";
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
+  // only mirrors it here so the paging chrome can render, and issues
+  // commands back through the controller.
+  const controllerRef = useRef<CanvasController | null>(null);
+  const [canvasState, setCanvasState] = useState<CanvasState>({ slides: [], currentIndex: -1 });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
   // only ever refuse, and the author never saw anything. `startLiveReload`'s
@@ -23,6 +28,8 @@ export function App() {
     const container = canvasRef.current;
     if (!container) return;
     const controller = mountCanvas(container);
+    controllerRef.current = controller;
+    const unsubscribe = controller.subscribe(setCanvasState);
     // Live reload (ticket #5): the server pushes a `presentation-changed`
     // event over /api/events whenever a slide is modified externally;
     // reload() re-fetches and redraws without React re-rendering anything.
@@ -34,9 +41,34 @@ export function App() {
     });
     return () => {
       liveReload.stop();
+      unsubscribe();
       controller.destroy();
+      controllerRef.current = null;
     };
   }, []);
+
+  // Arrow keys page the deck in 檢視模式. Legitimate on the parent
+  // document here: the slide iframe is sandboxed with no scripts, so the
+  // author's keystrokes never reach it. (播放模式's keyboard is a
+  // different problem and belongs inside the iframe — not this ticket.)
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // Never steal an arrow key from a text field — the author is moving
+      // the caret in the chat box, not paging the deck.
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const controller = controllerRef.current;
+      if (!controller) return;
+      event.preventDefault();
+      void (event.key === "ArrowRight" ? controller.next() : controller.previous());
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const slideCount = canvasState.slides.length;
+  const hasSlides = slideCount > 0;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -113,6 +145,31 @@ export function App() {
           <div role="alert" style={liveReloadBannerStyle}>
             即時預覽已停止：{liveReloadError}，請重新整理頁面
           </div>
+        )}
+        {hasSlides && (
+          <nav className="slide-nav">
+            <button
+              type="button"
+              className="slide-nav-button"
+              aria-label="上一頁"
+              disabled={canvasState.currentIndex <= 0}
+              onClick={() => void controllerRef.current?.previous()}
+            >
+              ‹
+            </button>
+            <span className="slide-nav-position">
+              {canvasState.currentIndex + 1} / {slideCount}
+            </span>
+            <button
+              type="button"
+              className="slide-nav-button"
+              aria-label="下一頁"
+              disabled={canvasState.currentIndex >= slideCount - 1}
+              onClick={() => void controllerRef.current?.next()}
+            >
+              ›
+            </button>
+          </nav>
         )}
         <footer className="status-bar">CoMotion</footer>
       </main>
