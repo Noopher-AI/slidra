@@ -364,3 +364,150 @@ it("全螢幕狀態下離開播放：真的點按鈕就能退出，文件不會�
     .toBe(false);
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
 });
+
+it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、不互相覆蓋（review gate round 1, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  // canvas.ts (not owned by this ticket) cannot be edited to fabricate a
+  // 播放錯誤 (canvasState.error) on demand, so this test proves the P2 fix
+  // — "notices must stack, not overlap" — with the two notices this
+  // ticket's own code genuinely produces together: the player-focus-notice
+  // (焦點被搶走) and a real 全螢幕錯誤 notice (a genuinely rejected
+  // requestFullscreen() call, not a fabricated success). That is the same
+  // shared-wrapper CSS/DOM layout bug the reviewer flagged; it does not
+  // depend on which two player-notices children happen to be present.
+  const focusNotice = page.locator(".player-focus-notice");
+  // Entering play mode hands focus to the player asynchronously (the
+  // runtime posts "ready" once its own listeners are attached); racing
+  // that with "steal focus" below before it has settled made this flicker
+  // during development (same race player-mode.test.ts already documents),
+  // so wait for the initial auto-focus to land first.
+  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
+  await page.locator('button:has-text("離開播放")').focus();
+  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+  // 用一個一定會拒絕的 requestFullscreen 替身製造真實的全螢幕錯誤
+  // 通知：這是 toggleFullscreen() 的 catch 分支真的會走到的路徑（引擎
+  // 拒絕請求），不是假造成功又謊報失敗。
+  await page.evaluate(() => {
+    const container = document.querySelector(".canvas-area") as HTMLElement & {
+      __originalRequestFullscreen?: () => Promise<void>;
+    };
+    container.__originalRequestFullscreen = container.requestFullscreen.bind(container);
+    container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
+  });
+  await page.locator(".fullscreen-toggle-button").click();
+  const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+  await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
+
+  // 兩則通知現在應該同時看得見——都在 DOM 裡，opacity 都不是 0（它們不是
+  // 用 opacity 隱藏的播放器元素，而是一般的 React 條件渲染，所以看的是
+  // Playwright 自己的 isVisible()，這裡是恰當的，因為它們沒有 fade 的語意）。
+  // 這個檔案跑在單純的 vitest 上，不是 @playwright/test，所以沒有
+  // expect(locator).toBeVisible() 這個 matcher（player-mode.test.ts 已經
+  // 有相同的說明）；改用 Locator.isVisible() 本身回傳的布林值.
+  expect(await focusNotice.isVisible()).toBe(true);
+  expect(await fullscreenErrorNotice.isVisible()).toBe(true);
+
+  // 不只是「都在畫面上」，而是彼此的矩形沒有重疊——這才是 P2 real bug 的
+  // 反面證據：先前兩者用同一組 position:absolute 疊在同一個位置，第二個
+  // 會蓋住第一個，isVisible() 仍然會回報 true（Playwright 的可見性判斷不看
+  // z-order 疊加），所以額外量真實座標矩形是否相交.
+  // A single point-in-time pair of boundingBox() reads can race the
+  // browser's own layout pass right after the second notice mounts,
+  // so this polls instead of asserting once: a genuine CSS regression
+  // (the two notices sharing one position:absolute spot, as in review gate
+  // round 1's P2) never resolves — the poll times out and fails — while a
+  // one-off measurement race resolves within the next frame or two.
+  await expect
+    .poll(
+      async () => {
+        const focusBox = await focusNotice.boundingBox();
+        const errorBox = await fullscreenErrorNotice.boundingBox();
+        if (!focusBox || !errorBox) return "missing";
+        const overlaps =
+          focusBox.x < errorBox.x + errorBox.width &&
+          focusBox.x + focusBox.width > errorBox.x &&
+          focusBox.y < errorBox.y + errorBox.height &&
+          focusBox.y + focusBox.height > errorBox.y;
+        return overlaps;
+      },
+      { timeout: 5_000 },
+    )
+    .toBe(false);
+});
+
+it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清掉（review gate round 1, P2）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  await expect
+    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
+      timeout: 30_000,
+    })
+    .toBe("播放第一頁");
+
+  await page.locator('button:has-text("播放")').click();
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+
+  // 進到真正的全螢幕狀態，這樣「退出」才有真實意義（不是憑空捏造 isFullscreen）。
+  await page.locator(".fullscreen-toggle-button").click();
+  await expect
+    .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
+    .toBe(true);
+
+  // 逼出 exitFullscreen() 失敗這個前置狀態，在真實引擎裡很難用純手勢
+  // 逼出來而不造假（headless Chromium 沒有任何合法操作序列會讓
+  // document.exitFullscreen() 在「文件確實是全螢幕」時拒絕——這是規格保證
+  // 會成功的情況）。這裡改用一個誠實的替代做法：monkey-patch
+  // document.exitFullscreen 讓它回傳一次性的 rejected promise，藉此讓
+  // toggleFullscreen() 的 catch 分支真的執行到（那段程式碼本身是真的，
+  // 被替換的只是瀏覽器 API 的回傳值，模擬「引擎拒絕退出」這個規格上允許
+  // 但這個測試環境裡逼不出來的情況）。真實的瀏覽器全螢幕狀態這時候完全
+  // 沒被動到——因為呼叫從未真的傳到底層，文件仍然貨真價實地是全螢幕。
+  await page.evaluate(() => {
+    const doc = document as Document & {
+      __originalExitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => Promise<void>;
+    };
+    doc.__originalExitFullscreen = (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.bind(doc);
+    doc.exitFullscreen = () => Promise.reject(new Error("模擬測試：退出全螢幕被拒絕"));
+  });
+
+  // 真實點擊「退出全螢幕」按鈕，因為此時 isFullscreen 為 true，這顆按鈕的
+  // onClick 真的會呼叫（被替換過的）exitFullscreen()，走到 catch 分支。
+  await page.locator(".fullscreen-toggle-button").click();
+  const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+  await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
+  // 錯誤發生時不能假造成功：畫面必須仍然回報全螢幕（真實瀏覽器狀態也
+  // 確實還是全螢幕——上面那次呼叫從未真的觸及底層 API）。
+  await expect
+    .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 5_000 })
+    .toBe(true);
+
+  // 還原成真正的 exitFullscreen，然後用它觸發一次「真實、會成功」的離開
+  // 全螢幕——等同於本檔案其他測試裡代表 Esc 的既有手法。這次呼叫真的會
+  // 讓瀏覽器離開全螢幕，也真的會發出 fullscreenchange 事件。
+  await page.evaluate(() => {
+    const doc = document as Document & { __originalExitFullscreen?: () => Promise<void> };
+    if (doc.__originalExitFullscreen) doc.exitFullscreen = doc.__originalExitFullscreen;
+    return doc.exitFullscreen();
+  });
+
+  // 修好之前：fullscreenchange 處理器只更新 isFullscreen，舊的失敗訊息會
+  // 留在畫面上。修好之後：這次真實、成功的 fullscreenchange 必須把它清掉。
+  await expect
+    .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
+    .toBe(false);
+  await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(0);
+});

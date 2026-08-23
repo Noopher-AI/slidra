@@ -147,6 +147,13 @@ export function App() {
       const doc = document as Document & { webkitFullscreenElement?: Element | null };
       const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
       setIsFullscreen(fullscreenElement !== null && fullscreenElement === playChromeRef.current);
+      // This event firing at all means the browser's real fullscreen state
+      // just genuinely changed — by Esc, by browser chrome, or by our own
+      // button — which makes any earlier "a fullscreen request failed"
+      // message stale no matter how it got there (review gate round 1, P2:
+      // a stale fullscreenError used to sit on screen after a later,
+      // successful exit/enter until the next click cleared it by hand).
+      setFullscreenError(null);
       // Every fullscreen transition must hand focus back to the player, or
       // arrow-key advance silently dies (settled decision #5).
       controllerRef.current?.focusPlayer();
@@ -300,24 +307,34 @@ export function App() {
             即時預覽已停止：{liveReloadError}，請重新整理頁面
           </div>
         )}
-        {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
-            silently (design doc's keyboard-and-focus section). */}
-        {canvasState.mode === "play" && !canvasState.playerHasFocus && (
-          <div className="player-focus-notice" role="alert">
-            <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
-            <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
-              點這裡把焦點交回播放器
-            </button>
-          </div>
-        )}
-        {canvasState.mode === "play" && canvasState.error && (
-          <div className="player-error-notice" role="alert">
-            這一頁的效果清單無法播放：{canvasState.error}
-          </div>
-        )}
-        {canvasState.mode === "play" && fullscreenError && (
-          <div className="player-error-notice" role="alert">
-            全螢幕切換失敗：{fullscreenError}
+        {/* 播放模式的浮動通知：焦點提示、播放錯誤、全螢幕錯誤都可能同時成立
+            （例如效果清單解析失敗又剛好全螢幕請求也失敗），過去三者各自用
+            同一組絕對定位互相疊在一起，後渲染的會蓋住先渲染的（review gate
+            round 1, P2）。這個 wrapper 把它們收進同一個 flex column，各自的
+            樣式只留背景／文字，定位與間距交給 wrapper，讓它們並排堆疊而不
+            互相覆蓋. */}
+        {canvasState.mode === "play" && (!canvasState.playerHasFocus || canvasState.error || fullscreenError) && (
+          <div className="player-notices">
+            {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
+                silently (design doc's keyboard-and-focus section). */}
+            {!canvasState.playerHasFocus && (
+              <div className="player-focus-notice" role="alert">
+                <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
+                <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
+                  點這裡把焦點交回播放器
+                </button>
+              </div>
+            )}
+            {canvasState.error && (
+              <div className="player-error-notice" role="alert">
+                這一頁的效果清單無法播放：{canvasState.error}
+              </div>
+            )}
+            {fullscreenError && (
+              <div className="player-error-notice" role="alert">
+                全螢幕切換失敗：{fullscreenError}
+              </div>
+            )}
           </div>
         )}
         {hasSlides && (
