@@ -220,8 +220,23 @@ describe("renderPlanScript", () => {
     // way the code computes it.
     const plan = { steps: [], hidden: ["el-a"] };
     expect(renderPlanScript(plan)).toBe(
-      "window.__COMOT_PLAN__ = JSON.parse(\"{\\\"steps\\\":[],\\\"hidden\\\":[\\\"el-a\\\"]}\");",
+      "window.__COMOT_PLAN__ = JSON.parse(\"{\\\"steps\\\":[],\\\"hidden\\\":[\\\"el-a\\\"],\\\"startStep\\\":-1}\");",
     );
+  });
+
+  // #46 decision 一: startStep defaults to -1 ("this slide has not been
+  // advanced yet") when the caller passes nothing — today's behaviour,
+  // unchanged for every existing call site.
+  it("不帶第二個參數時，startStep 預設為 -1", () => {
+    const plan = { steps: [], hidden: [] };
+    expect(renderPlanScript(plan)).toContain('\\"startStep\\":-1');
+  });
+
+  // #46 decision 一/二: a caller wanting play to start mid-slide (retreat
+  // landing on the last step) passes an explicit startStep.
+  it("帶入 startStep 時，序列化結果帶著該值", () => {
+    const plan = { steps: [], hidden: [] };
+    expect(renderPlanScript(plan, 2)).toContain('\\"startStep\\":2');
   });
 });
 
