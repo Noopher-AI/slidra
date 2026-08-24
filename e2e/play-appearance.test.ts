@@ -169,6 +169,37 @@ it("控制列的上一步／下一步換的是投影片本身，不是效果清�
   }
 });
 
+it("控制列子節點順序與樣板一致（上一步／下一步／頁碼／分隔線／全螢幕／離開播放）", async () => {
+  // gate round 2 (2026-08-25), medium finding：全螢幕/離開播放這兩顆一度
+  // 順序反了（樣板是「全螢幕、離開播放」），而現有 e2e 對 `.play-bar` 的
+  // 每一個選擇器都是 aria-label 或 class（見這個檔案與
+  // player-effect-error.test.ts/player-media.test.ts 裡所有
+  // `.play-bar ...` 用法），沒有任何一條在守子節點的實際順序——這正是
+  // 這個偏差能一路走到 round 2 才被抓到的原因。這裡直接讀
+  // `.play-bar` 的 DOM children、依序轉成可辨識的名字，跟樣板
+  // （base-shell.html:419-426，波指揮官在 1440×900 用 Playwright 量過的
+  // 順序）逐一比對，把順序變成一個真的被斷言守住的契約，而不是只靠人眼
+  // 讀 JSX。
+  const { page, cleanup } = await openApp(demoDir, "play-appearance-order");
+  try {
+    await enterPlay(page);
+
+    const order = await page.locator(".play-bar").evaluate((el) =>
+      Array.from(el.children).map((child) => {
+        if (child.classList.contains("play-bar-position")) return "pos";
+        if (child.classList.contains("play-bar-divider")) return "divider";
+        const ariaLabel = child.getAttribute("aria-label");
+        if (ariaLabel) return ariaLabel;
+        return child.textContent?.trim() ?? child.tagName;
+      }),
+    );
+    expect(order).toEqual(["上一步", "下一步", "pos", "divider", "全螢幕", "離開播放"]);
+  } finally {
+    await page.close();
+    await cleanup();
+  }
+});
+
 it("閒置 2.5 秒後游標與控制列一起隱去，在投影片區域內移動滑鼠也能同時再現", async () => {
   // gate round 1 (2026-08-25), high finding：投影片 iframe 佔了播放畫面
   // 絕大部分面積，是作者最自然會把滑鼠移過去的地方。這裡原本的版本繞去
