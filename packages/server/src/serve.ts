@@ -119,6 +119,16 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       }
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
+        // server.close() stops accepting new connections and closes idle
+        // ones on its own (Node >=18.19), but still waits indefinitely for
+        // any connection that is genuinely active — a request still
+        // arriving, or a response that has been opened and never ended.
+        // `disposers` above only closes the SSE streams this server itself
+        // tracks; anything else still active at this moment (e.g. a request
+        // that never finished arriving) would otherwise block shutdown
+        // forever. This forcibly severs whatever is left, right after
+        // close() has already stopped accepting new connections.
+        server.closeAllConnections();
       });
     },
   };
