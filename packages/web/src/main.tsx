@@ -1,6 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
+// Tokens first (ticket #49): style.css references --s-well/--ink/etc.,
+// so the :root custom properties and the bundled @font-face must already
+// exist by the time style.css's rules are parsed.
+import "./styles/tokens.css";
 import "./style.css";
 
 const rootElement = document.getElementById("root");
