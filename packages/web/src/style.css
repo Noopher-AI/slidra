@@ -5,6 +5,20 @@ body,
   margin: 0;
 }
 
+/* Global button reset, copied verbatim from docs/design/base-shell.html
+   line 62 (review gate finding, 08-25): without it, every <button> keeps
+   the UA's own light ButtonFace behind whatever `color` a rule sets, so a
+   near-white --ink label on that light face renders as an unreadable
+   blank box. This is part of the visual baseline itself, not an invented
+   value. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
 .app {
   display: flex;
   height: 100vh;
@@ -307,13 +321,24 @@ body,
   color: var(--ink-dim);
 }
 
+/* Resting/hover treatment follows the template's own .view-btn pattern
+   (base-shell.html:284-290, review gate finding 08-25): transparent at
+   rest with the dimmer --ink-dim label, --s-raised background plus the
+   brighter --ink label on hover — the template's only precedent for how
+   an unlabelled icon-ish control should read as pressable against these
+   surfaces, so no new value is invented. */
 .slide-nav-button {
   padding: calc(var(--u) * 1) calc(var(--u) * 4);
   font-size: var(--fs-lead);
   line-height: 1.2;
   cursor: pointer;
-  color: var(--ink);
+  color: var(--ink-dim);
   border-radius: var(--r);
+}
+
+.slide-nav-button:hover:not(:disabled) {
+  background: var(--s-raised);
+  color: var(--ink);
 }
 
 .slide-nav-button:disabled {
@@ -336,23 +361,35 @@ body,
   position: relative;
 }
 
+/* Same .view-btn resting/hover pattern as .slide-nav-button above. */
 .play-toggle-button {
   margin-left: calc(var(--u) * 4);
   padding: calc(var(--u) * 1) calc(var(--u) * 4);
   font-size: var(--fs-ui);
   cursor: pointer;
-  color: var(--ink);
+  color: var(--ink-dim);
   border-radius: var(--r);
 }
 
-/* 全螢幕開關 (ticket #29): only rendered in 播放模式, next to 離開播放. */
+.play-toggle-button:hover {
+  background: var(--s-raised);
+  color: var(--ink);
+}
+
+/* 全螢幕開關 (ticket #29): only rendered in 播放模式, next to 離開播放.
+   Same .view-btn resting/hover pattern as .slide-nav-button above. */
 .fullscreen-toggle-button {
   margin-left: calc(var(--u) * 2);
   padding: calc(var(--u) * 1) calc(var(--u) * 4);
   font-size: var(--fs-ui);
   cursor: pointer;
-  color: var(--ink);
+  color: var(--ink-dim);
   border-radius: var(--r);
+}
+
+.fullscreen-toggle-button:hover {
+  background: var(--s-raised);
+  color: var(--ink);
 }
 
 /* 播放模式的浮動通知堆疊區 (review gate round 1, P2 修正)：焦點提示、播放
@@ -383,6 +420,10 @@ body,
   font-size: var(--fs-small);
 }
 
+/* Sits on .player-focus-notice's own --s-raised background above, so once
+   the global button reset removes the UA's ButtonFace (review gate
+   finding 08-25), --accent-hi is legible with no extra background rule
+   needed here. */
 .player-focus-notice button {
   cursor: pointer;
   color: var(--accent-hi);
