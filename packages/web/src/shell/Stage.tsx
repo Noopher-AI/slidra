@@ -12,7 +12,7 @@ export interface StageProps {
   /** 整包傳：#50/#56 在 CanvasState 上加欄位時，App.tsx 不必打開。 */
   state: CanvasState;
   controller: CanvasController | null;
-  /** #55 在這裡加 `view === "grid"` 分支渲染 GridView，App.tsx 不必打開。 */
+  /** #55 用 `view` 決定 GridView 是否顯示；GridView 疊在這個子樹旁邊、絕不能取代它（見下方 render 內的說明），App.tsx 不必打開。 */
   view: ShellView;
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
   children?: ReactNode;
@@ -40,9 +40,18 @@ export interface StageProps {
  * the ratio frame under fullscreen, not this component.
  */
 export function Stage({ canvasRef, wellRef, canvasSize, children }: StageProps) {
-  // #55 (wave 4) branches on `view` here — e.g. `if (view === "grid") return
-  // <GridView ... />;` before the JSX below — without reopening App.tsx.
-  // #50 leaves it unused: this ticket only builds the standard-view stage.
+  // #55 (wave 4) reads `view` here, but must NOT branch on it with an early
+  // `return <GridView ... />` before the JSX below: that swaps out the
+  // unconditional JSX, which gives `canvasRef`'s div a new node identity.
+  // canvas.ts's `mountCanvas` runs once and holds that node forever, and
+  // App.tsx mounts it from an effect with a `[]` dependency array, so a
+  // fresh `.canvas` div created by leaving and re-entering grid never gets
+  // an iframe mounted into it — the centre goes white, nothing throws.
+  // The safe shape: keep `.canvas-area`/`.stage`/`.canvas` mounted
+  // unconditionally here and render GridView alongside them, hidden/overlaid
+  // when `view !== "grid"` — the same posture App.tsx already uses for
+  // `<Notes hidden={view === "grid"} />` — without reopening App.tsx.
+  // #50 leaves `view` unused: this ticket only builds the standard-view stage.
 
   // `canvasSize` starts `null` until App.tsx's own `/api/presentation`
   // fetch resolves. stage.css's `.stage` carries a literal 16/9

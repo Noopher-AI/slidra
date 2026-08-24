@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,14 +90,66 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 /** Loads the app and waits for the first slide to actually be painted before returning the page. */
-async function openApp(viewport = VIEWPORT): Promise<Page> {
+async function openApp(viewport = VIEWPORT, targetServer: RunningServer = server): Promise<Page> {
   const page = await browser.newPage({ viewport });
   openPages.push(page);
-  await page.goto(server.url);
+  await page.goto(targetServer.url);
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   await page.evaluate(() => document.fonts.ready);
   return page;
+}
+
+/**
+ * Builds a copy of `demo/` whose `project.json`'s canvas is deliberately
+ * NOT 16:9 (4:3), then serves it on its own server. `demo/`'s own canvas is
+ * 1280×720 — exactly 16:9, the same ratio as stage.css's CSS fallback — so
+ * a stage measured against `demo/` alone can't tell "reads canvasSize" apart
+ * from "silently uses the CSS fallback". A 4:3 canvas can.
+ */
+async function startNonWidescreenServer(): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
+  const deckDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-deck-"));
+  await cp(demoDir, deckDir, { recursive: true });
+  const projectPath = path.join(deckDir, "project.json");
+  const project = JSON.parse(await readFile(projectPath, "utf-8"));
+  project.canvas = { width: 4, height: 3 };
+  await writeFile(projectPath, JSON.stringify(project, null, 2));
+
+  const savedHome = process.env.CO_MOTION_HOME;
+  const altHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-home-"));
+  const altFilesDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-files-"));
+  process.env.CO_MOTION_HOME = altHome;
+
+  const registry: CommandRegistry = createDefaultRegistry();
+  const comotPath = path.join(altFilesDir, "deck.comot");
+  await packDirectory(deckDir, comotPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const presentationId = opened.data!.id;
+
+  const agent: AgentAdapterConfig = {
+    kind: "claude",
+    label: "Claude Code",
+    command: process.execPath,
+    args: [agentFixture],
+    env: {
+      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      E2E_PRESENTATION_ID: presentationId,
+      E2E_NEW_TITLE: "此測試不會送出訊息",
+    },
+  };
+
+  const altServer = await startServe({ registry, presentationId, port: 0, agent });
+
+  return {
+    server: altServer,
+    cleanup: async () => {
+      await altServer.close();
+      process.env.CO_MOTION_HOME = savedHome;
+      await rm(deckDir, { recursive: true, force: true });
+      await rm(altHome, { recursive: true, force: true });
+      await rm(altFilesDir, { recursive: true, force: true });
+    },
+  };
 }
 
 /** Measures the rendered `.stage` box and the `.canvas-area` (well) it sits in. */
@@ -126,6 +178,18 @@ it("舞台的實測寬高比等於 project.json 的 canvas.width/height", async 
   const { stage } = await measureStage(page);
   const ratio = stage.width / stage.height;
   expect(Math.abs(ratio - CANVAS_RATIO)).toBeLessThan(0.02);
+});
+
+it("非 16:9 畫布：舞台的實測寬高比仍等於 project.json 的 canvas.width/height，而非 CSS 的 16/9 fallback", async () => {
+  const { server: altServer, cleanup } = await startNonWidescreenServer();
+  try {
+    const page = await openApp(VIEWPORT, altServer);
+    const { stage } = await measureStage(page);
+    const ratio = stage.width / stage.height;
+    expect(Math.abs(ratio - 4 / 3)).toBeLessThan(0.02);
+  } finally {
+    await cleanup();
+  }
 });
 
 it("投影片永遠完整可見：舞台不超出留白區，留白區不出現捲軸", async () => {
