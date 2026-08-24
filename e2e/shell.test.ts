@@ -341,13 +341,15 @@ it("#53 狀態列：不再顯示「CoMotion」字樣，顯示「第 N 頁，共 
   }
 });
 
-it("#53 檢視切換鈕：只有 normal/play 兩顆，點播放鈕進播放，離開播放回到標準且鈕狀態正確", async () => {
+it("#53/#55 檢視切換鈕：normal/grid/play 三顆，點播放鈕進播放，離開播放回到標準且鈕狀態正確", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
     const viewBtns = page.locator(".view-btn");
-    expect(await viewBtns.count()).toBe(2);
+    expect(await viewBtns.count()).toBe(3);
     expect(await page.locator('.view-btn[data-view="normal"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator('.view-btn[data-view="grid"]').getAttribute("aria-pressed")).toBe("false");
+    expect(await page.locator('.view-btn[data-view="grid"]').getAttribute("title")).toBe("總覽網格");
     expect(await page.locator('.view-btn[data-view="play"]').count()).toBe(1);
 
     await page.locator('.view-btn[data-view="play"]').click();

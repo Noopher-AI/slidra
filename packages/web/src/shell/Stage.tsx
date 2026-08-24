@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode, RefObject } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
+import { GridView } from "./GridView.js";
 
 export interface StageProps {
   /** canvas.ts 掛載 iframe 的容器。這個 DOM 節點的身分與位置永遠不能變。 */
@@ -39,19 +40,28 @@ export interface StageProps {
  * `.canvas-area:fullscreen`/`.stage` in the two stylesheets above neutralise
  * the ratio frame under fullscreen, not this component.
  */
-export function Stage({ canvasRef, wellRef, canvasSize, children }: StageProps) {
-  // #55 (wave 4) reads `view` here, but must NOT branch on it with an early
-  // `return <GridView ... />` before the JSX below: that swaps out the
+export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view, children }: StageProps) {
+  // #55 (wave 4) reads `view` here, but does NOT branch on it with an early
+  // `return <GridView ... />` before the JSX below: that would swap out the
   // unconditional JSX, which gives `canvasRef`'s div a new node identity.
   // canvas.ts's `mountCanvas` runs once and holds that node forever, and
   // App.tsx mounts it from an effect with a `[]` dependency array, so a
   // fresh `.canvas` div created by leaving and re-entering grid never gets
   // an iframe mounted into it — the centre goes white, nothing throws.
   // The safe shape: keep `.canvas-area`/`.stage`/`.canvas` mounted
-  // unconditionally here and render GridView alongside them, hidden/overlaid
-  // when `view !== "grid"` — the same posture App.tsx already uses for
-  // `<Notes hidden={view === "grid"} />` — without reopening App.tsx.
-  // #50 leaves `view` unused: this ticket only builds the standard-view stage.
+  // unconditionally here and render GridView alongside them, overlaid
+  // when the render condition below holds — the same posture App.tsx
+  // already uses for `<Notes hidden={view === "grid"} />` — without
+  // reopening App.tsx.
+  //
+  // 裁決 5 (wave 4 commander ruling): the condition is
+  // `view === "grid" && state.mode !== "play"`, not just `view === "grid"`
+  // — unit play (running concurrently, #54) blacks out the stage in play
+  // mode while `view` can still be "grid" from before the author pressed
+  // play; gating on `state` (already a prop here) instead of adding a new
+  // prop keeps that seam closed inside this branch without reopening
+  // App.tsx.
+  const showGrid = view === "grid" && state.mode !== "play";
 
   // `canvasSize` starts `null` until App.tsx's own `/api/presentation`
   // fetch resolves. stage.css's `.stage` carries a literal 16/9
@@ -70,6 +80,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, children }: StageProps) 
       <div className="stage" style={stageStyle}>
         <div ref={canvasRef} className="canvas" />
       </div>
+      {showGrid && <GridView controller={controller} />}
       {children}
     </div>
   );
