@@ -122,7 +122,7 @@ async function waitForPlayerFocus(page: import("playwright").Page): Promise<void
   await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
 }
 
-it("驗收簡報：一次連續的方向鍵推進走完四頁——換頁、appear、淡入、影片開始播放、音檔開始播放，作者沒有離開過畫面", async () => {
+it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回第 1 頁的起點——換頁、appear、淡入、影片開始播放、音檔開始播放、逐步倒退、跨頁倒退，作者沒有離開過畫面", async () => {
   const page = await browser.newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -225,5 +225,84 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁——換頁、appe
     .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null))
     .toBe("第 4 頁：影音");
 
+  // --- 反向走：issue #46 的驗收條件是這個往前走的鏡像——從第 4 頁最後一步
+  // 一路按方向鍵左退回第 1 頁的起點，全程沒有離開畫面、沒有聲音、沒有錯誤。
+  // 接著往前走的狀態繼續（此時仍在第 4 頁、影片與音檔都在播放），而不是另開
+  // 一個 it 重新正向走一次：這樣可以驗證retreat 是接續 currentStep 的狀態
+  // 退，不是從頭來過，也讓這個檔案維持一條連續、可讀的驗收故事。
+
+  // 退一步：只退回第 4 頁的「淡入」那一步，還在第 4 頁，不是整頁換走。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe("第 4 頁：影音");
+  await expectVisible(caption);
+  // 退一步的重播不重播媒體（design doc 的既定決策）：影片、音檔的 overlay
+  // 元素被整個拆除，不是暫停——沒有殘留的播放中媒體。
+  await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
+
+  // 再退一步：回到第 4 頁的第一步（caption 淡入那一步本身），還在第 4 頁。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe("第 4 頁：影音");
+  await expectVisible(caption);
+  await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
+
+  // 第 4 頁已經退到第一步，再退一步跨頁：回到第 3 頁，且第 3 頁以「整頁跑完」
+  // 的樣子呈現——三個步驟全部已經套用，不是它的開頭。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-effects-title").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe("第 3 頁：效果清單");
+  await waitForPlayerFocus(page);
+  const stepOneBack = playFrame().locator("#el-step-one");
+  const stepTwoBack = playFrame().locator("#el-step-two");
+  const stepThreeBack = playFrame().locator("#el-step-three");
+  await expectVisible(stepOneBack);
+  await expectVisible(stepTwoBack);
+  await expectVisible(stepThreeBack);
+
+  // 「只退一步」的關鍵斷言：退一步只讓第三行消失，前兩行仍然可見。
+  await page.keyboard.press("ArrowLeft");
+  await expectVisible(stepOneBack);
+  await expectVisible(stepTwoBack);
+  await expectHidden(stepThreeBack);
+
+  // 再退一步：只剩第一行可見。
+  await page.keyboard.press("ArrowLeft");
+  await expectVisible(stepOneBack);
+  await expectHidden(stepTwoBack);
+
+  // 第 3 頁退到開頭，再退一步跨頁：回到第 2 頁（這頁沒有效果，整頁跑完等於
+  // 它平常的樣子）。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-asset-title").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe("第 2 頁：資產");
+  await waitForPlayerFocus(page);
+
+  // 第 2 頁沒有任何效果步驟：一按就直接跨頁退回第 1 頁。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe("第 1 頁：換頁、即時預覽");
+  await waitForPlayerFocus(page);
+
+  // 已經是整份簡報最開頭：再按一次不動、不當機。
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
+    .toBe("第 1 頁：換頁、即時預覽");
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
+    .toBe("第 1 頁：換頁、即時預覽");
+
+  // 全程沒有任何一則錯誤浮出來，也沒有任何媒體還在播放。
   expect(pageErrors).toEqual([]);
+  await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
 });
