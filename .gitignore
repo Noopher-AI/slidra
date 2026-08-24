@@ -11,3 +11,10 @@ dist/
 
 # macOS
 .DS_Store
+
+# Dependencies and build caches
+node_modules/
+*.tsbuildinfo
+
+# Local quick-start scratch
+.quickstart/
