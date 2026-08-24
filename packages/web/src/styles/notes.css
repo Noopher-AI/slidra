@@ -1,0 +1,20 @@
+/* 備忘稿 (#52). No ticket in this fleet wires real note content yet — this
+   pane always shows the same honest placeholder (Notes.tsx). */
+.notes {
+  background: var(--s-panel);
+  border-top: 1px solid var(--line-soft);
+  padding: calc(var(--u) * 2) calc(var(--u) * 5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--u);
+  box-sizing: border-box;
+}
+.notes-label {
+  color: var(--ink-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+}
+.notes-empty {
+  color: var(--ink-faint);
+  font-size: var(--fs-ui);
+}

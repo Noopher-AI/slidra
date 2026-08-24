@@ -6,6 +6,11 @@ import { App } from "./App.js";
 // exist by the time style.css's rules are parsed.
 import "./styles/tokens.css";
 import "./style.css";
+import "./styles/shell.css";
+import "./styles/rail.css";
+import "./styles/notes.css";
+import "./styles/chat.css";
+import "./styles/play.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

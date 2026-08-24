@@ -80,7 +80,7 @@ it('元素自帶 inline style="opacity:1" 時，進場前仍被藏起來，推�
   const stubborn = page.frameLocator("iframe.slide-frame").locator("#el-stubborn");
   await expect.poll(() => stubborn.textContent().catch(() => null), { timeout: 30_000 }).toBe("固執的文字");
 
-  await page.locator('button:has-text("播放")').click();
+  await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
 
   const opacityOf = () => stubborn.evaluate((el) => getComputedStyle(el).opacity);

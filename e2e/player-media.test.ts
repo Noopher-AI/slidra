@@ -164,7 +164,7 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
       .locator("#el-video-placeholder")
       .evaluate((el) => el.getBoundingClientRect().toJSON());
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await waitForPlayerFocus(page);
 
     await page.keyboard.press("ArrowRight");
@@ -223,7 +223,7 @@ it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回�
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await waitForPlayerFocus(page);
 
     await page.keyboard.press("ArrowRight"); // video step
@@ -260,7 +260,7 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await waitForPlayerFocus(page);
 
     await page.keyboard.press("ArrowRight"); // video step
