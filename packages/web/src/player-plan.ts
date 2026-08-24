@@ -222,8 +222,15 @@ function cssEscapeId(id: string): string {
  * output sits inside a quoted string — still holds here (now inside the
  * outer JS string literal wrapping the escaped JSON text, instead of
  * directly inside a JSON string value).
+ *
+ * `startStep` (#46): a render-time argument, not part of `PlayerPlan`
+ * itself — only the parent knows, at render time, whether this is a fresh
+ * slide or a backwards retreat landing on a specific step; the plan's own
+ * derivation from slide markup never changes. Default `-1` means "this
+ * slide has not been advanced yet", today's behaviour, unchanged for every
+ * existing call site that passes only `plan`.
  */
-export function renderPlanScript(plan: PlayerPlan): string {
-  const json = JSON.stringify(plan);
+export function renderPlanScript(plan: PlayerPlan, startStep: number = -1): string {
+  const json = JSON.stringify({ ...plan, startStep });
   return `window.__COMOT_PLAN__ = JSON.parse(${JSON.stringify(json)});`;
 }

@@ -586,6 +586,180 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('data-testid="s2"');
   });
 
+  // #46: the runtime's own reverse-navigation route. currentIndex 0 -> 1
+  // via advance-past-end, then retreat-past-start goes back to slide 1 and
+  // must land on its *last* step (decision 五: "last", computed here since
+  // only the parent knows the step count — never a sentinel over the wire).
+  it("收到 runtime 的 retreat-past-start 時換回上一頁，並帶著該頁最後一步的 startStep", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "advance-past-end" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(srcdoc()).toContain('data-testid="s2"');
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "retreat-past-start" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // slides/001.svg has exactly one on-click effect: one step, last index 0.
+    expect(srcdoc()).toContain('\\"target\\":\\"el-a\\"');
+    expect(srcdoc()).toContain('\\"startStep\\":0');
+  });
+
+  // #46 decision 三: a previous slide with no effect list has
+  // steps.length - 1 === -1, its static look — same code path, no special
+  // case.
+  it("退回沒有效果的上一頁時，startStep 是 -1", async () => {
+    const noEffectDeck = { name: "無效果上一頁", slides: ["slides/001.svg", "slides/002.svg"] };
+    const noEffectMarkup: Record<string, string> = {
+      "slides/001.svg": '<svg data-testid="s1"><rect id="el-a"/></svg>',
+      "slides/002.svg": `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata>
+    <comot:effects ${NS}>
+      <comot:effect target="el-b" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <rect id="el-b"/>
+</svg>`,
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(noEffectDeck), { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && noEffectMarkup[match[1]]) {
+          return new Response(noEffectMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+    await controller.showSlide(1);
+    expect(srcdoc()).toContain('\\"target\\":\\"el-b\\"');
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "retreat-past-start" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s1"');
+    expect(srcdoc()).toContain('\\"startStep\\":-1');
+  });
+
+  // Same race shape as "連續收到兩則 advance-past-end 時..." above, in
+  // reverse: a superseded retreat's slower render must not paint over what
+  // a later, faster navigation already applied.
+  it("較慢的舊 retreat-past-start 換頁不會蓋過較新的那一頁", async () => {
+    const raceDeck = { name: "三頁倒退測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
+    let resolveSlide2!: () => void;
+    const slide2Gate = new Promise<void>((resolve) => {
+      resolveSlide2 = resolve;
+    });
+    const raceMarkup: Record<string, string> = {
+      "slides/001.svg": '<svg data-testid="s1"><rect id="el-a"/></svg>',
+      "slides/002.svg": '<svg data-testid="s2"><rect id="el-b"/></svg>',
+      "slides/003.svg": '<svg data-testid="s3"><rect id="el-c"/></svg>',
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(raceDeck), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/002.svg")) {
+          // Slide 2's retreat fetch is the slow, superseded one: it only
+          // resolves after slide 1 (below) has already painted.
+          await slide2Gate;
+          return new Response(raceMarkup["slides/002.svg"], { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && raceMarkup[match[1]]) {
+          return new Response(raceMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.showSlide(2);
+    await controller.play();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    // First ArrowLeft-equivalent: currentIndex 2 -> 1, renderPlay() starts
+    // fetching slide 2 and gets stuck on slide2Gate.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "retreat-past-start" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Second ArrowLeft-equivalent, fired before the first has painted
+    // anything: currentIndex 1 -> 0, renderPlay() fetches slide 1, which
+    // resolves immediately and paints.
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "retreat-past-start" },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(srcdoc()).toContain('data-testid="s1"');
+
+    // Only now does the slow, superseded slide-2 fetch resolve. It must be
+    // discarded, not painted over the already-current slide 1.
+    resolveSlide2();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('data-testid="s1"');
+    expect(srcdoc()).not.toContain('data-testid="s2"');
+  });
+
+  it("已在第一頁時收到 retreat-past-start 不動也不拋錯", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "retreat-past-start" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(srcdoc()).toContain('\\"target\\":\\"el-a\\"');
+    expect(srcdoc()).toContain('\\"startStep\\":-1');
+  });
+
   it("收到 runtime 的 error 事件時設定 state.error", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
