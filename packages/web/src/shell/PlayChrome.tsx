@@ -104,6 +104,25 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
 
   return (
     <>
+      {/* gate round 1 (2026-08-25), high finding: 投影片 iframe 佔了播放
+          畫面約 87% 面積（指揮官量測，1440×900 下 iframe box 1415×796），
+          滑鼠在 iframe 內移動時瀏覽器把 mousemove 直接派送給 iframe 自己
+          的文件，不會冒泡到上層——這是跨 document/frame 邊界事件的既有
+          限制，不是這裡新引入的 bug，但原本的 e2e 測試繞開了它而不是
+          回報它，這正是被抓到的問題（見 play-appearance.test.ts 的對照
+          表）。這一層透明覆蓋層鋪在 `.canvas`（iframe 所在，z-index
+          auto）之上、`.player-notices`/`.play-bar`（皆 z-index:2，見
+          style.css/shell.css）之下（見 play.css 的 z-index:1），讓
+          mousemove 落在上層文件本身，冒泡到上面 `awake` 那個 effect 已有
+          的 `document` 監聽器——不需要另外接 onMouseMove，冒泡本來就會到。
+
+          攔下 pointer 事件的代價是原生的「點 iframe 給它瀏覽器焦點」不再
+          發生：`player-runtime.js` 全 spec 凍結，已核對它只有
+          keydown/resize/focus/blur/message 五個監聽器，不處理 click，
+          效果清單解析失敗的靜態降級頁更是完全沒有 runtime，所以這裡沒有
+          任何既有的 click 行為要保；用既有的 `controller.focusPlayer()`
+          （全螢幕切換等處已在用的同一支函式）補回鍵盤焦點即可。 */}
+      <div className="play-mousemove-catcher" onClick={() => controller?.focusPlayer()} />
       {/* 播放模式的浮動通知：焦點提示、播放錯誤、全螢幕錯誤都可能同時成立
           （例如效果清單解析失敗又剛好全螢幕請求也失敗），過去三者各自用
           同一組絕對定位互相疊在一起，後渲染的會蓋住先渲染的（review gate
