@@ -486,7 +486,7 @@ export function App() {
               onExitPlay={() => void handleExitPlay()}
             />
           </Stage>
-          {shellVisible && <Notes />}
+          {shellVisible && <Notes hidden={view === "grid"} />}
         </div>
         {/* Always rendered, same reasoning as <Rail> above: the original
             App.tsx never hid the chat sidebar in play mode either, and no
