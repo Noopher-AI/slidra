@@ -188,11 +188,11 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     await expect.poll(() => opacityOf("#el-broken-title")).toBe("1");
     await expect.poll(() => opacityOf("#el-speaker")).toBe("1");
 
-    // 換到第 2 頁（另一種損壞：target 指向不存在的元素）。showSlide()
-    // 在播放模式下也能用（沿用 e2e/player-media.test.ts 的既有做法），
-    // 播放模式下方向鍵推進在解析失敗時沒有 runtime 可監聽，所以這裡改走
-    // 總覽縮圖點擊，而不是按方向鍵。
-    await page.locator('button[aria-label="第 2 頁"]').click();
+    // 換到第 2 頁（另一種損壞：target 指向不存在的元素）。播放模式下方向
+    // 鍵推進在解析失敗時沒有 runtime 可監聽，所以改走 #54 控制列的
+    // 「下一步」——它接的是 controller.next()（＝showSlide(currentIndex+1)，
+    // 換頁不換效果步驟），在播放模式下也能用，不需要任何 runtime 活著。
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title-2").textContent().catch(() => null), { timeout: 30_000 })
@@ -234,7 +234,10 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
     await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    await page.locator('button[aria-label="第 3 頁"]').click();
+    // 從第 1 頁換到第 3 頁：控制列的「下一步」是換頁（±1），不是跳頁，
+    // 所以連按兩次，經過第 2 頁（另一種損壞，見上一個測項）。
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-3").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 3 頁：未實作的 family");
@@ -278,7 +281,10 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
     await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    await page.locator('button[aria-label="第 4 頁"]').click();
+    // 從第 1 頁換到第 4 頁：連按三次「下一步」（見上一個測項的說明）。
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-4").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 4 頁：未實作的 effect");
@@ -322,7 +328,11 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
     await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    await page.locator('button[aria-label="第 5 頁"]').click();
+    // 從第 1 頁換到第 5 頁：連按四次「下一步」（見上一個測項的說明）。
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="下一步"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-5").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 5 頁：未實作的 start");
