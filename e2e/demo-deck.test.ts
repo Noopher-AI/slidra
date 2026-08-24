@@ -113,6 +113,17 @@ async function expectHidden(locator: Locator, timeout = 30_000): Promise<void> {
   await expect.poll(() => opacityOf(locator).catch(() => "0"), { timeout }).toBe("0");
 }
 
+// App.tsx renders the runtime's reported errors as `.player-error-notice`
+// in the *parent* document (not inside the play iframe) — this is what
+// "浮出來" means in issue #46's acceptance wording. `page.on("pageerror")`
+// only catches uncaught exceptions in the page and would never see this
+// banner, since the runtime reports errors to the parent over postMessage.
+// A fresh renderPlay() on a page change clears the banner, so this must be
+// polled after every single reverse key press, not only once at the end.
+async function expectNoErrorBanner(page: import("playwright").Page): Promise<void> {
+  await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBe(0);
+}
+
 // Same reasoning as e2e/player-media.test.ts's waitForPlayerFocus: the
 // sandbox attribute flips to allow-scripts before the fresh play document
 // has fetched, parsed and run the runtime, so an ArrowRight fired before
@@ -231,8 +242,11 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 一個 it 重新正向走一次：這樣可以驗證retreat 是接續 currentStep 的狀態
   // 退，不是從頭來過，也讓這個檔案維持一條連續、可讀的驗收故事。
 
-  // 退一步：只退回第 4 頁的「淡入」那一步，還在第 4 頁，不是整頁換走。
+  // 退一步：只退回第 4 頁的「淡入」那一步，還在第 4 頁，不是整頁換走。這是
+  // 拆除仍在載入中媒體元素的那一步，也是 AbortError 抑制路徑會跑到的地方，
+  // 所以錯誤橫幅的檢查從這一步就要開始，不能只在最後補一次。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
     .toBe("第 4 頁：影音");
@@ -244,6 +258,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 
   // 再退一步：回到第 4 頁的第一步（caption 淡入那一步本身），還在第 4 頁。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
     .toBe("第 4 頁：影音");
@@ -254,6 +269,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 第 4 頁已經退到第一步，再退一步跨頁：回到第 3 頁，且第 3 頁以「整頁跑完」
   // 的樣子呈現——三個步驟全部已經套用，不是它的開頭。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-effects-title").textContent().catch(() => null), { timeout: 30_000 })
     .toBe("第 3 頁：效果清單");
@@ -267,18 +283,29 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 
   // 「只退一步」的關鍵斷言：退一步只讓第三行消失，前兩行仍然可見。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expectVisible(stepOneBack);
   await expectVisible(stepTwoBack);
   await expectHidden(stepThreeBack);
 
+  // 上面 expectHidden 用的是輪詢，會等到 opacity 到 0 為止——就算這一步錯誤地
+  // 播了淡出動畫，輪詢也只是等動畫跑完再通過，並不能證明「瞬間消失」。這裡
+  // 直接讀取瀏覽器算出來的 computed style，不輪詢：resetToStep() 的既定行為
+  // 是把 transition 強制設成 "none"、opacity 直接歸零，兩者都必須「已經」成立，
+  // 不是「終將」成立。這正是 jsdom 狀態測試看不到、只有真實瀏覽器才能看到的地方。
+  expect(await stepThreeBack.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+  expect(await stepThreeBack.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+
   // 再退一步：只剩第一行可見。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expectVisible(stepOneBack);
   await expectHidden(stepTwoBack);
 
   // 第 3 頁退到開頭，再退一步跨頁：回到第 2 頁（這頁沒有效果，整頁跑完等於
   // 它平常的樣子）。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-asset-title").textContent().catch(() => null), { timeout: 30_000 })
     .toBe("第 2 頁：資產");
@@ -286,6 +313,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 
   // 第 2 頁沒有任何效果步驟：一按就直接跨頁退回第 1 頁。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null), { timeout: 30_000 })
     .toBe("第 1 頁：換頁、即時預覽");
@@ -293,10 +321,12 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 
   // 已經是整份簡報最開頭：再按一次不動、不當機。
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
     .toBe("第 1 頁：換頁、即時預覽");
   await page.keyboard.press("ArrowLeft");
+  await expectNoErrorBanner(page);
   await expect
     .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
     .toBe("第 1 頁：換頁、即時預覽");
