@@ -216,12 +216,21 @@
     for (var i = 0; i < plan.hidden.length; i++) {
       var el = document.getElementById(plan.hidden[i]);
       if (el) {
-        // Remove the inline opacity/transition this runtime set, so
-        // renderHideStyle's `opacity:0 !important` stylesheet rule takes
-        // effect again — the same state the element was in before this
-        // runtime ever touched it.
+        // Force the transition off *before* removing the inline opacity, so
+        // the opacity change that follows cannot be animated. Slide markup
+        // is author-written and may legally carry its own CSS transition on
+        // this element (an inline style or a <style> rule in the SVG); if we
+        // removed our inline transition instead of overriding it, that
+        // author transition would apply to the opacity drop below and the
+        // element would fade out instead of vanishing instantly, breaking
+        // the "retreat is instant" guarantee. Leaving `transition: none`
+        // behind afterwards is deliberate, not an oversight: applyStep()
+        // always sets the transition explicitly on every element it touches
+        // (`opacity 0.4s` for a live fade, `none` otherwise), so nothing
+        // downstream depends on this element's original transition value
+        // being restored. Do not "fix" this back to removeProperty.
+        el.style.setProperty("transition", "none");
         el.style.removeProperty("opacity");
-        el.style.removeProperty("transition");
       }
     }
 

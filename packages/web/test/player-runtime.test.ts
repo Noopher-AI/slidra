@@ -181,6 +181,26 @@ describe("player-runtime.js", () => {
     expect(opacityOf(doc, "el-b")).toBe("");
   });
 
+  it("退回時把恢復隱藏的元素之 transition 設為 none，而不是移除（避免作者自訂的 transition 在退回瞬間跑動畫）", () => {
+    // jsdom doesn't run CSS transitions, so this only pins the inline style
+    // state that makes an instant hide possible (transition:none set before
+    // opacity is cleared) — it cannot observe the actual fade/no-fade visual
+    // behaviour of a real browser. That is covered by a later e2e unit.
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+
+    const elB = doc.getElementById("el-b") as HTMLElement;
+    expect(elB.style.transition).toBe("none");
+    expect(elB.style.opacity).toBe("");
+  });
+
   it("plan.startStep 為 -1（預設值）時開機：hidden 目標維持隱藏，與剛抵達投影片時相同", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }],
