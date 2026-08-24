@@ -84,7 +84,7 @@ interface ProjectJson {
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
   source: "comot-player";
-  event: "ready" | "focus" | "advance-past-end" | "error";
+  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error";
   hasFocus?: boolean;
   message?: string;
 }
@@ -161,6 +161,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       void advancePastEnd();
       return;
     }
+    if (message.event === "retreat-past-start") {
+      void retreatPastStart();
+      return;
+    }
   }
 
   async function advancePastEnd(): Promise<void> {
@@ -179,6 +183,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     currentIndex += 1;
     notify();
     await renderPlay(thisGeneration);
+  }
+
+  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六). */
+  async function retreatPastStart(): Promise<void> {
+    // At the very start of the presentation, retreating does nothing —
+    // there is nowhere further back to go, and this must not throw.
+    if (currentIndex <= 0) return;
+    // Same race guard as advancePastEnd(): a stale runtime in the old play
+    // iframe can still fire repeated retreat-past-start messages for a
+    // moment after a page change, and bumping generation here makes an
+    // earlier one of these calls' renderPlay() discard its own result
+    // instead of racing a later one to paint last.
+    const thisGeneration = ++generation;
+    currentIndex -= 1;
+    notify();
+    await renderPlay(thisGeneration, "last");
   }
 
   async function reload(): Promise<void> {
@@ -236,8 +256,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * derives the plan (Seam C's parent half, in player-plan.ts), and injects
    * both the plan and the runtime into the srcdoc. An effect list the
    * parser rejects surfaces through `error` instead of being applied.
+   *
+   * `startAt` (#46, decision 五): "first" is every existing caller's
+   * behaviour, unchanged. "last" is a parent-side intent used only by
+   * retreatPastStart() — the wire integer (`plan.steps.length - 1`, or
+   * `-1` for a slide with no effects at all, decision 三) is computed here,
+   * after computePlayerPlan() has run, because only the parent knows the
+   * slide's step count. The sentinel itself never travels over the wire.
    */
-  async function renderPlay(thisGeneration?: number): Promise<void> {
+  async function renderPlay(thisGeneration?: number, startAt: "first" | "last" = "first"): Promise<void> {
     const captured = thisGeneration ?? generation;
     if (currentIndex === -1) {
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
@@ -252,7 +279,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     let hideStyle: string;
     try {
       const plan = computePlayerPlan(svgMarkup);
-      planScript = renderPlanScript(plan);
+      const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
+      planScript = renderPlanScript(plan, startStep);
       hideStyle = renderHideStyle(plan.hidden);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never

@@ -162,9 +162,13 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => secondTitle.textContent().catch(() => null)).toBe("播放第二頁");
 
-  // ArrowLeft 被忽略：不會偷偷倒退一步。
+  // 目前在第二頁唯一的一步（el-second-fade），已經沒有更早的步驟可退：
+  // ArrowLeft 觸發 retreat-past-start，換回第一頁，且第一頁以「整頁跑完」
+  // 的姿態呈現——兩個步驟（fade、appear）都已經套用，不是回到它的開頭。
   await page.keyboard.press("ArrowLeft");
-  await expectVisible(secondFade);
+  await expect.poll(() => bgText.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第一頁");
+  await expectVisible(fadeText);
+  await expectVisible(appearText);
 
   // 離開播放模式，回到檢視。
   await page.locator('button:has-text("離開播放")').click();

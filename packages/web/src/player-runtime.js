@@ -36,6 +36,15 @@
   // every key — however it is spelled — starts out genuinely absent.
   var mediaElements = Object.create(null);
 
+  // Elements resetToStep() has deliberately torn down (paused + removed).
+  // A WeakSet keyed by element, not by target id, for the same reason
+  // mediaElements above is Object.create(null): element ids are untrusted
+  // slide markup and must never be used as a lookup key. When playMedia()'s
+  // play() promise settles after this teardown, the browser rejects it with
+  // an AbortError — that rejection is *us* cancelling our own playback, not
+  // a real failure, and must not surface as one (see playMedia's catch).
+  var tornDownMedia = new WeakSet();
+
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
     // view (this frame is itself opaque-origin, with no allow-same-origin),
@@ -118,7 +127,13 @@
       playResult.catch(function (err) {
         // A rejected play() (autoplay refusal, decode failure, missing
         // file, …) must surface, never fail silently (design doc, settled
-        // decision #12).
+        // decision #12) — with one exception: if resetToStep() already tore
+        // this exact element down before the browser got around to settling
+        // the promise, an AbortError here is just the browser reporting the
+        // cancellation this runtime itself caused, not a real playback
+        // failure. Anything else — including an AbortError on an element
+        // that was never torn down — still surfaces.
+        if (err && err.name === "AbortError" && tornDownMedia.has(el)) return;
         post({
           event: "error",
           message: "媒體播放失敗（" + target + "）：" + (err && err.message ? err.message : String(err)),
@@ -127,12 +142,20 @@
     }
   }
 
-  function applyStep(step) {
+  /**
+   * Applies one step's effects to the DOM. `duringReplay` is true only when
+   * this call is part of resetToStep's forward replay (settled decision #4):
+   * media effects are skipped entirely there — playMedia is only ever
+   * called from the live forward path (advance) — and every transition is
+   * forced off, `fade` included, so retreating past a fade step never
+   * re-plays it.
+   */
+  function applyStep(step, duringReplay) {
     var effects = step.effects;
     for (var i = 0; i < effects.length; i++) {
       var effect = effects[i];
       if (effect.family === "media") {
-        playMedia(effect.target);
+        if (!duringReplay) playMedia(effect.target);
         continue;
       }
       if (effect.family !== "enter") continue;
@@ -148,8 +171,10 @@
       }
 
       // "appear" must be instant, "fade" must transition — both are driven
-      // by setting inline opacity, per the design doc.
-      el.style.transition = effect.effect === "fade" ? "opacity 0.4s" : "none";
+      // by setting inline opacity, per the design doc. During replay every
+      // transition is off regardless of effect type (settled decision #4):
+      // replaying earlier fades on retreat is exactly what #46 forbids.
+      el.style.transition = !duringReplay && effect.effect === "fade" ? "opacity 0.4s" : "none";
       // !important: the hide stylesheet in player-plan.ts's renderHideStyle
       // also had to become !important, because a legal slide element can
       // carry its own inline opacity (e.g. style="opacity:1"), and inline
@@ -163,14 +188,92 @@
     }
   }
 
+  /**
+   * Resets the slide to its opening state, then replays steps 0..target
+   * (inclusive) forward without animation and without playing media. This
+   * is the retreat approach settled for #46: rather than inverting each
+   * effect family ("un-fade", "un-play"), reuse the runtime's existing
+   * forward-apply capability from a known-clean starting point, so any
+   * effect family — including ones that do not exist yet — retreats
+   * correctly for free. Passing target = -1 replays nothing, landing back
+   * on the slide's untouched opening state.
+   *
+   * Deliberate asymmetry (#46, do not "fix"): media is skipped during
+   * replay (see applyStep), so retreating past a media step and then
+   * advancing onto it again restarts that video from the beginning rather
+   * than resuming it. This is intentional, not a bug to close. A single
+   * key press carries exactly one transient activation (settled decision
+   * #6 in the design doc), but a replay can cross several media steps at
+   * once — calling .play() on more than one of them from that single
+   * activation is not something the browser allows. And a rejected
+   * play() must surface as a visible error, never fail silently (settled
+   * decision #12) — so "fixing" this by replaying media too would turn an
+   * ordinary retreat into a visible error toast whenever it crosses more
+   * than one media step. Restarting instead of resuming is the only
+   * option that stays inside both constraints.
+   */
+  function resetToStep(target) {
+    for (var i = 0; i < plan.hidden.length; i++) {
+      var el = document.getElementById(plan.hidden[i]);
+      if (el) {
+        // Force the transition off *before* removing the inline opacity, so
+        // the opacity change that follows cannot be animated. Slide markup
+        // is author-written and may legally carry its own CSS transition on
+        // this element (an inline style or a <style> rule in the SVG); if we
+        // removed our inline transition instead of overriding it, that
+        // author transition would apply to the opacity drop below and the
+        // element would fade out instead of vanishing instantly, breaking
+        // the "retreat is instant" guarantee. Leaving `transition: none`
+        // behind afterwards is deliberate, not an oversight: applyStep()
+        // always sets the transition explicitly on every element it touches
+        // (`opacity 0.4s` for a live fade, `none` otherwise), so nothing
+        // downstream depends on this element's original transition value
+        // being restored. Do not "fix" this back to removeProperty.
+        el.style.setProperty("transition", "none");
+        el.style.removeProperty("opacity");
+      }
+    }
+
+    // Tear down every media overlay this runtime created: pause it, remove
+    // it from the document, and forget it. Clearing mediaElements here is
+    // load-bearing, not tidiness (settled decision #5): the idempotence
+    // guard in playMedia (`if (mediaElements[target]) return;`, ticket
+    // #30) would otherwise believe a fresh forward advance onto the same
+    // media step had already played it, and silently do nothing.
+    for (var mediaTarget in mediaElements) {
+      if (!Object.prototype.hasOwnProperty.call(mediaElements, mediaTarget)) continue;
+      var mediaEl = mediaElements[mediaTarget];
+      tornDownMedia.add(mediaEl);
+      mediaEl.pause();
+      if (mediaEl.parentNode) mediaEl.parentNode.removeChild(mediaEl);
+    }
+    mediaElements = Object.create(null);
+
+    for (var s = 0; s <= target; s++) {
+      applyStep(steps[s], true);
+    }
+  }
+
   function advance() {
     if (currentStep + 1 < steps.length) {
       currentStep += 1;
-      applyStep(steps[currentStep]);
+      applyStep(steps[currentStep], false);
     } else {
       // Already on the last step (or there were no steps at all): forward
       // is the parent's move now — change slide.
       post({ event: "advance-past-end" });
+    }
+  }
+
+  function retreat() {
+    if (currentStep >= 1) {
+      currentStep -= 1;
+      resetToStep(currentStep);
+    } else {
+      // Already on the slide's first step (or nothing applied yet): back
+      // is the parent's move now — change page. Mirrors advance-past-end
+      // at the far end.
+      post({ event: "retreat-past-start" });
     }
   }
 
@@ -180,8 +283,11 @@
       advance();
       return;
     }
-    // ArrowLeft is deliberately ignored — stepping backwards is Out of
-    // Scope (see #23). No other key does anything here.
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      retreat();
+      return;
+    }
   });
 
   window.addEventListener("resize", function () {
@@ -211,5 +317,20 @@
     }
   });
 
+  // Cross-page retreat (settled decision #6): the parent tells this slide
+  // which step to land on, and this replays there before anything else
+  // happens — the same replay-forward mechanism as ArrowLeft, just seeded
+  // from a different starting point. -1 (the default) means "just arrived
+  // normally", so nothing is replayed.
+  var startStep = (plan && typeof plan.startStep === "number" ? plan.startStep : -1);
+  if (startStep >= 0) {
+    currentStep = startStep;
+    resetToStep(startStep);
+  }
+
+  // "ready" must stay the last message this runtime ever posts on boot,
+  // and its shape must stay exactly `{ source: "comot-player", event:
+  // "ready" }` — packages/web/test/canvas.test.ts:851 asserts on that
+  // literal substring to prove the runtime was injected.
   post({ event: "ready" });
 })();

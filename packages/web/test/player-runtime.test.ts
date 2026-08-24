@@ -45,6 +45,7 @@ interface StubPlan {
   steps: { effects: StubEffect[] }[];
   hidden: string[];
   media?: Record<string, StubMediaCue>;
+  startStep?: number;
 }
 
 function enter(target: string, effect: "fade" | "appear"): StubEffect {
@@ -162,7 +163,235 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
   });
 
-  it("ArrowLeft 完全被忽略：不換步驟，也不送出任何訊息", async () => {
+  it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍可見，第 2 步的元素恢復隱藏", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("1");
+
+    press(win, "ArrowLeft");
+
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("");
+  });
+
+  it("退回時把恢復隱藏的元素之 transition 設為 none，而不是移除（避免作者自訂的 transition 在退回瞬間跑動畫）", () => {
+    // jsdom doesn't run CSS transitions, so this only pins the inline style
+    // state that makes an instant hide possible (transition:none set before
+    // opacity is cleared) — it cannot observe the actual fade/no-fade visual
+    // behaviour of a real browser. That is covered by a later e2e unit.
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+
+    const elB = doc.getElementById("el-b") as HTMLElement;
+    expect(elB.style.transition).toBe("none");
+    expect(elB.style.opacity).toBe("");
+  });
+
+  it("plan.startStep 為 -1（預設值）時開機：hidden 目標維持隱藏，與剛抵達投影片時相同", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      startStep: -1,
+    };
+    const { doc } = boot(plan, ["el-a"]);
+
+    expect(opacityOf(doc, "el-a")).toBe("");
+  });
+
+  it("退回重播的路徑上，media 效果被跳過，不建立媒體元素", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-video", "el-a"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+
+    press(win, "ArrowLeft");
+
+    // Retreating past the media step tears the overlay down and does not
+    // recreate it on replay (media is skipped entirely during replay).
+    expect(doc.body.querySelectorAll("video")).toHaveLength(0);
+  });
+
+  it("退回之後再前進到同一個 media 步驟，media 仍會播放（證明跳過只發生在重播路徑上）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [media("el-video")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-video"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+
+    press(win, "ArrowLeft");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(0);
+
+    press(win, "ArrowRight");
+
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+  });
+
+  it("退回時媒體尚未開始播放：pause() 讓 play() 承諾在拆除之後才以 AbortError 回絕，不誤報成 error", async () => {
+    // Reachability (defect found in review of ae34c98): ArrowRight onto a
+    // media step, ArrowRight onto an ordinary step, then ArrowLeft while the
+    // browser has not yet settled the play() promise. jsdom doesn't
+    // implement media playback, so play()/pause() are stubbed on the
+    // iframe's own HTMLMediaElement.prototype — pause() rejects the pending
+    // play() promise with AbortError, and because rejection only notifies
+    // .catch handlers as a microtask, that rejection genuinely arrives after
+    // resetToStep's synchronous teardown (mark, pause(), removeChild) has
+    // already finished, the same order a real browser delivers it in.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video", "el-a"]);
+
+    let rejectPlay!: (err: unknown) => void;
+    const pendingPlay = new Promise((_resolve, reject) => {
+      rejectPlay = reject;
+    });
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => pendingPlay as unknown as Promise<void>;
+    MediaProto.pause = () => {
+      const err = new Error("The play() request was interrupted by a call to pause().");
+      err.name = "AbortError";
+      rejectPlay(err);
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+    // Two ticks, not one: post() goes through parent.postMessage, which is
+    // itself queued as a task rather than delivered synchronously from the
+    // promise-rejection microtask, so a single setTimeout(0) can resolve
+    // before that delivery task runs. Two ticks give any (wrongly) posted
+    // error time to actually arrive before the assertion below checks for
+    // its absence — otherwise this test could pass for the wrong reason.
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).not.toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
+  it("play() 承諾以非 AbortError 回絕：即使該元素剛被 retreat 拆除，仍要送出 error", async () => {
+    // Complementary to the test above: without this, suppressing AbortError
+    // could quietly degrade into suppressing every rejection.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video", "el-a"]);
+
+    let rejectPlay!: (err: unknown) => void;
+    const pendingPlay = new Promise((_resolve, reject) => {
+      rejectPlay = reject;
+    });
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => pendingPlay as unknown as Promise<void>;
+    MediaProto.pause = () => {
+      rejectPlay(new Error("NotSupportedError: no supported source was found"));
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
+  it("play() 以 AbortError 回絕，但該元素從未被 retreat 拆除過：仍要送出 error", async () => {
+    // The other half of the same complementary guard: an AbortError alone
+    // is not sufficient to suppress — only an AbortError on an element this
+    // runtime itself tore down.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }],
+      hidden: [],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video"]);
+
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => {
+      const err = new Error("aborted for an unrelated reason");
+      err.name = "AbortError";
+      return Promise.reject(err);
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    // Two ticks for the same reason as the tests above: the rejection
+    // settles as a microtask, but the resulting post() only reaches this
+    // window as a separately queued task.
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
+  it("退回 fade 步驟不會重新播放更早的 fade（重播時 transition 一律關閉）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+
+    expect((doc.getElementById("el-a") as HTMLElement).style.transition).toBe("none");
+  });
+
+  it("開機時 plan.startStep 設為最後一步索引：直接落在該步驟已全部套用的狀態", async () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+      startStep: 1,
+    };
+    const { messages, stop } = collectMessages();
+    const { doc } = boot(plan, ["el-a", "el-b"]);
+    await tick();
+    stop();
+
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(messages[messages.length - 1]).toEqual({ source: "comot-player", event: "ready" });
+  });
+
+  it("ArrowLeft 在投影片第一步（尚未按過任何鍵）時，送出 retreat-past-start，畫面不變", async () => {
     const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
     const { win, doc } = boot(plan, ["el-a"]);
     const { messages, stop } = collectMessages();
@@ -172,7 +401,7 @@ describe("player-runtime.js", () => {
     stop();
 
     expect(opacityOf(doc, "el-a")).toBe("");
-    expect(messages.filter((m) => (m as { event?: string }).event !== "ready")).toEqual([]);
+    expect(messages).toContainEqual({ source: "comot-player", event: "retreat-past-start" });
   });
 
   it("沒有步驟的投影片：第一次 ArrowRight 就直接送出 advance-past-end", async () => {
