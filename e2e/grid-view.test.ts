@@ -243,6 +243,52 @@ it("離開網格再回來不會孤立畫布 iframe：切網格、切回標準、
   }
 });
 
+// 裁決 5 的第二半：GridView 的 render 條件是
+// `view === "grid" && state.mode !== "play"`，不是單看 `view`。這條測項
+// 就是守住那個接縫本身——波指揮官的突變測試把 Stage.tsx 那一行放寬成只看
+// `view` 之後，先前七條測項一條都沒有變紅，證明這個接縫先前沒有測試守著。
+// 這裡直接量「網格檢視下按下播放」這個真實場景下的效果（DOM 是否還有
+// .grid-view、播放黑幕是否成立），不是量 `view` 這個 state 本身的值。
+it("網格檢視下按下播放：網格從 DOM 消失、播放黑幕不被網格蓋住（裁決 5 第二半）", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+    await switchToGrid(page);
+    expect(await page.locator(".grid-view").count()).toBe(1);
+
+    await page.locator('.view-btn[data-view="play"]').click();
+    await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("play");
+
+    // 量效果，不是量 state：網格必須真的從 DOM 移除，不是疊在黑幕上面看
+    // 不見。若只看 `view === "grid"`（拿掉 `state.mode !== "play"` 那半），
+    // `.grid-view` 在這裡仍然是 1。
+    expect(await page.locator(".grid-view").count()).toBe(0);
+
+    // 播放黑幕確實成立，順帶證明黑幕沒有被網格蓋住（若網格還在，這個
+    // 顏色量到的會是網格的 --s-well 背景，不是黑）。play.css:26-27
+    // `.app[data-mode="play"] .canvas { background: #000; }` 是黑幕真正
+    // 生效的元素——量過 `.canvas-area`（--s-well 灰）與 `.stage`（尚未套用
+    // 播放樣式的白）都不是黑，只有 `.canvas` 本身是。
+    const canvasBg = await page.locator(".canvas-area .canvas").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(canvasBg).toBe("rgb(0, 0, 0)");
+
+    // 離開播放後回到哪個檢視：實測到的行為是「回到網格」，不是「回到標準」
+    // ——`view` state 全程都沒被 handleExitPlay 動過（它只管 `mode`），
+    // `view === "grid"` 在按下播放前就已經成立，離開播放只是讓
+    // `state.mode !== "play"` 這半重新為真，GridView 的 render 條件兩半
+    // 又同時成立。這是 裁決 5 讓 `view`／`mode` 兩個 state 正交的直接結果，
+    // 不是偶然：作者在網格檢視按下播放，離開播放後應該回到他原本在看的
+    // 網格，而不是被靜悄悄地丟回標準檢視。
+    await page.locator('button:has-text("離開播放")').click();
+    await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
+    expect(await page.locator(".grid-view").count()).toBe(1);
+    expect(await page.locator('.view-btn[data-view="grid"]').getAttribute("aria-pressed")).toBe("true");
+    expect(await page.locator('.view-btn[data-view="normal"]').getAttribute("aria-pressed")).toBe("false");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("基準截圖：總覽網格檢視", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
