@@ -28,3 +28,44 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   }
   return { name: data.name, canvas: { width, height } };
 }
+
+export interface PresentationInfoLoaderCallbacks {
+  onSuccess(info: PresentationInfo): void;
+  onError(message: string): void;
+}
+
+export interface PresentationInfoLoader {
+  load(): void;
+}
+
+/**
+ * Same generation-guard shape as overview.ts's own `applyAspectRatio`
+ * (its `aspectGeneration` counter) — the two share the same root cause:
+ * `App.tsx`'s live-reload handler calls `load()` again on every
+ * `presentation-changed` event, so two rapid saves start two independent,
+ * unguarded fetches. Without this guard, a slower older response can
+ * settle after a newer one and silently overwrite it with stale — or
+ * outright wrong — titlebar metadata, and this held until the next save
+ * or a manual reload (found in code review, #48 gate round 1). Both
+ * outcomes are guarded, not just success: an older *failed* request
+ * settling late must not clear correct metadata with a fabricated error
+ * banner either.
+ */
+export function createPresentationInfoLoader(callbacks: PresentationInfoLoaderCallbacks): PresentationInfoLoader {
+  let generation = 0;
+  return {
+    load() {
+      const thisGeneration = ++generation;
+      void (async () => {
+        try {
+          const info = await fetchPresentationInfo();
+          if (generation !== thisGeneration) return;
+          callbacks.onSuccess(info);
+        } catch (error) {
+          if (generation !== thisGeneration) return;
+          callbacks.onError(error instanceof Error ? error.message : "簡報資訊載入失敗");
+        }
+      })();
+    },
+  };
+}

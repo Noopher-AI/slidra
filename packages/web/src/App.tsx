@@ -4,7 +4,7 @@ import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-mess
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
-import { fetchPresentationInfo, type PresentationInfo } from "./presentation.js";
+import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
 import { Ribbon } from "./shell/Ribbon.js";
 import { Rail } from "./shell/Rail.js";
@@ -91,16 +91,24 @@ export function App() {
   // over with a fabricated name/size — see presentation.ts.
   const [presentationInfo, setPresentationInfo] = useState<PresentationInfo | null>(null);
   const [presentationError, setPresentationError] = useState<string | null>(null);
-
-  async function loadPresentationInfo(): Promise<void> {
-    try {
-      const info = await fetchPresentationInfo();
-      setPresentationInfo(info);
-      setPresentationError(null);
-    } catch (error) {
-      setPresentationInfo(null);
-      setPresentationError(error instanceof Error ? error.message : "簡報資訊載入失敗");
-    }
+  // Race guard against overlapping loads (e.g. two rapid live-reload
+  // presentation-changed events) lives inside the loader itself — see
+  // presentation.ts's createPresentationInfoLoader for the full comment.
+  // One loader instance for the component's whole lifetime (created lazily
+  // via a ref, not on every render) so its internal generation counter
+  // stays continuous across every load() call.
+  const presentationLoaderRef = useRef<ReturnType<typeof createPresentationInfoLoader> | null>(null);
+  if (!presentationLoaderRef.current) {
+    presentationLoaderRef.current = createPresentationInfoLoader({
+      onSuccess: (info) => {
+        setPresentationInfo(info);
+        setPresentationError(null);
+      },
+      onError: (message) => {
+        setPresentationInfo(null);
+        setPresentationError(message);
+      },
+    });
   }
 
   // #55's reserved seam: the centre column's own view (normal/grid),
@@ -152,11 +160,11 @@ export function App() {
         // #51: an external edit can rename the deck or resize its canvas
         // too — re-fetch the same way overview.ts's own refresh() re-reads
         // the aspect ratio.
-        void loadPresentationInfo();
+        presentationLoaderRef.current?.load();
       },
       onError: setLiveReloadError,
     });
-    void loadPresentationInfo();
+    presentationLoaderRef.current?.load();
     return () => {
       liveReload.stop();
       unsubscribe();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchPresentationInfo } from "../src/presentation.js";
+import { createPresentationInfoLoader, fetchPresentationInfo } from "../src/presentation.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -40,5 +40,97 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).rejects.toThrow("canvas 尺寸無效");
+  });
+});
+
+describe("createPresentationInfoLoader", () => {
+  // Same race this file's own overview.ts precedent (aspectGeneration)
+  // guards against: two overlapping load() calls — e.g. two rapid
+  // live-reload presentation-changed events — must not let an older,
+  // slower response (success or failure) settle after a newer one and
+  // overwrite it with stale or outright wrong titlebar metadata.
+
+  it("a newer load()'s success always wins over an older one still in flight, regardless of resolve order", async () => {
+    let resolveOlder!: (response: Response) => void;
+    const olderPromise = new Promise<Response>((resolve) => {
+      resolveOlder = resolve;
+    });
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        // The first load() call's fetch is held open; the second resolves
+        // immediately, so it settles and applies first.
+        return callCount === 1
+          ? olderPromise
+          : new Response(
+              JSON.stringify({ formatVersion: 1, name: "較新", canvas: { width: 1280, height: 720 } }),
+              { status: 200 },
+            );
+      }),
+    );
+
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    const loader = createPresentationInfoLoader({ onSuccess, onError });
+
+    loader.load(); // older, held open
+    loader.load(); // newer, resolves immediately
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onSuccess).toHaveBeenCalledWith({ name: "較新", canvas: { width: 1280, height: 720 } });
+
+    // The older, slower fetch now resolves. Its result must be discarded —
+    // it must not overwrite what the newer call already applied.
+    resolveOlder(
+      new Response(JSON.stringify({ formatVersion: 1, name: "較舊", canvas: { width: 1280, height: 720 } }), {
+        status: 200,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("an older load()'s failure settling after a newer success must not clear the correct metadata with an error banner", async () => {
+    let rejectOlder!: (error: Error) => void;
+    const olderPromise = new Promise<Response>((_resolve, reject) => {
+      rejectOlder = reject;
+    });
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        callCount += 1;
+        return callCount === 1
+          ? olderPromise
+          : new Response(
+              JSON.stringify({ formatVersion: 1, name: "正確資料", canvas: { width: 1280, height: 720 } }),
+              { status: 200 },
+            );
+      }),
+    );
+
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+    const loader = createPresentationInfoLoader({ onSuccess, onError });
+
+    loader.load(); // older, will reject late
+    loader.load(); // newer, resolves immediately with the correct data
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onSuccess).toHaveBeenCalledWith({ name: "正確資料", canvas: { width: 1280, height: 720 } });
+
+    // The older call's fetch now rejects. A stale failure must never fire
+    // onError after a newer success has already landed — that would show
+    // an error banner over metadata that is, in fact, correct.
+    rejectOlder(new Error("較舊的請求失敗"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 });
