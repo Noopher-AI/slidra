@@ -89,11 +89,9 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // closing them, and an SSE stream never ends on its own — so these must
   // be closed explicitly, before the socket itself is closed, or shutdown
   // hangs forever with a browser tab open.
-  const liveChatStreams = new Set<EventStream>();
+  const chatStreams = createChatStreamRegistry();
   disposers.push(async () => {
-    for (const stream of liveChatStreams) {
-      stream.close();
-    }
+    chatStreams.closeAll();
     await chatSession.dispose();
   });
 
@@ -104,7 +102,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   disposers.push(() => changeBroadcaster.dispose());
 
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, chatSession, liveChatStreams, changeBroadcaster, req, res);
+    void handleRequest(registry, presentationId, staticDir, chatSession, chatStreams, changeBroadcaster, req, res);
   });
 
   await listen(server, port, host);
@@ -182,7 +180,7 @@ async function handleRequest(
   presentationId: string,
   staticDir: string,
   chatSession: AgentChatSession,
-  liveChatStreams: Set<EventStream>,
+  chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
   req: IncomingMessage,
   res: ServerResponse,
@@ -265,7 +263,7 @@ async function handleRequest(
     }
 
     if (url.pathname === "/api/chat/stream") {
-      handleChatStream(chatSession, res, liveChatStreams);
+      chatStreams.open(chatSession, res);
       return;
     }
 
@@ -341,19 +339,65 @@ async function handleChatPost(
   sendJson(res, 202, { ok: true });
 }
 
+export type ChatStreamRegistry = ReturnType<typeof createChatStreamRegistry>;
+
 /**
- * `GET /api/chat/stream` — an SSE stream of the agent's reply. Event names:
- * `chat-chunk` (a reply-text delta), `chat-done` (the turn ended, carries
- * `stopReason`), `chat-error` (a clear-text failure, e.g. not logged in).
+ * The `/api/chat/stream` streams this server has open, together with the
+ * shutdown state that guards them.
+ *
+ * The two belong in one place (ticket #40). `server.close()` waits for
+ * established connections rather than closing them, and an SSE stream never
+ * ends on its own — so shutdown must close every stream explicitly, before
+ * the socket closes, or it hangs forever with a browser tab open. But
+ * closing them is not enough on its own: a browser's EventSource treats
+ * that close as a network blip and reconnects by design, and the disposer
+ * loop in `close()` genuinely awaits things afterwards. A reconnect landing
+ * in that window used to open a brand new stream and add it to a set that
+ * had already been iterated — a stream nobody would ever close again, which
+ * is the mechanism behind the 240s shutdown hang observed in ticket #37.
+ *
+ * Keeping `closing` here makes that impossible to reintroduce: `closeAll()`
+ * is the only way to close the streams and it latches the guard in the same
+ * breath, so the flag and the teardown cannot drift apart. `changes.ts`
+ * refuses a connection in exactly this situation; this is the other half of
+ * that symmetry.
  */
-function handleChatStream(chatSession: AgentChatSession, res: ServerResponse, liveStreams: Set<EventStream>): void {
-  const stream = openEventStream(res);
-  liveStreams.add(stream);
-  const detach = chatSession.attachStream((event, data) => stream.send(event, data));
-  res.once("close", () => {
-    detach();
-    liveStreams.delete(stream);
-  });
+export function createChatStreamRegistry() {
+  const streams = new Set<EventStream>();
+  let closing = false;
+
+  return {
+    /**
+     * `GET /api/chat/stream` — an SSE stream of the agent's reply. Event
+     * names: `chat-chunk` (a reply-text delta), `chat-done` (the turn
+     * ended, carries `stopReason`), `chat-error` (a clear-text failure,
+     * e.g. not logged in).
+     *
+     * Throws once shutdown has started, rather than handing the client a
+     * 200 that will never carry a single byte.
+     */
+    open(chatSession: AgentChatSession, res: ServerResponse): void {
+      if (closing) {
+        throw new CoMotionError("伺服器正在關閉");
+      }
+      const stream = openEventStream(res);
+      streams.add(stream);
+      const detach = chatSession.attachStream((event, data) => stream.send(event, data));
+      res.once("close", () => {
+        detach();
+        streams.delete(stream);
+      });
+    },
+
+    /** Closes every live stream and refuses every later one. */
+    closeAll(): void {
+      closing = true;
+      for (const stream of streams) {
+        stream.close();
+      }
+      streams.clear();
+    },
+  };
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
