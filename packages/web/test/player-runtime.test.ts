@@ -45,6 +45,7 @@ interface StubPlan {
   steps: { effects: StubEffect[] }[];
   hidden: string[];
   media?: Record<string, StubMediaCue>;
+  startStep?: number;
 }
 
 function enter(target: string, effect: "fade" | "appear"): StubEffect {
@@ -162,7 +163,105 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
   });
 
-  it("ArrowLeft 完全被忽略：不換步驟，也不送出任何訊息", async () => {
+  it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍可見，第 2 步的元素恢復隱藏", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("1");
+
+    press(win, "ArrowLeft");
+
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("");
+  });
+
+  it("plan.startStep 為 -1（預設值）時開機：hidden 目標維持隱藏，與剛抵達投影片時相同", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      startStep: -1,
+    };
+    const { doc } = boot(plan, ["el-a"]);
+
+    expect(opacityOf(doc, "el-a")).toBe("");
+  });
+
+  it("退回重播的路徑上，media 效果被跳過，不建立媒體元素", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-video", "el-a"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+
+    press(win, "ArrowLeft");
+
+    // Retreating past the media step tears the overlay down and does not
+    // recreate it on replay (media is skipped entirely during replay).
+    expect(doc.body.querySelectorAll("video")).toHaveLength(0);
+  });
+
+  it("退回之後再前進到同一個 media 步驟，media 仍會播放（證明跳過只發生在重播路徑上）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [media("el-video")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-video"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+
+    press(win, "ArrowLeft");
+    expect(doc.body.querySelectorAll("video")).toHaveLength(0);
+
+    press(win, "ArrowRight");
+
+    expect(doc.body.querySelectorAll("video")).toHaveLength(1);
+  });
+
+  it("退回 fade 步驟不會重新播放更早的 fade（重播時 transition 一律關閉）", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+    };
+    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+
+    expect((doc.getElementById("el-a") as HTMLElement).style.transition).toBe("none");
+  });
+
+  it("開機時 plan.startStep 設為最後一步索引：直接落在該步驟已全部套用的狀態", async () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
+      hidden: ["el-a", "el-b"],
+      startStep: 1,
+    };
+    const { messages, stop } = collectMessages();
+    const { doc } = boot(plan, ["el-a", "el-b"]);
+    await tick();
+    stop();
+
+    expect(opacityOf(doc, "el-a")).toBe("1");
+    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(messages[messages.length - 1]).toEqual({ source: "comot-player", event: "ready" });
+  });
+
+  it("ArrowLeft 在投影片第一步（尚未按過任何鍵）時，送出 retreat-past-start，畫面不變", async () => {
     const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
     const { win, doc } = boot(plan, ["el-a"]);
     const { messages, stop } = collectMessages();
@@ -172,7 +271,7 @@ describe("player-runtime.js", () => {
     stop();
 
     expect(opacityOf(doc, "el-a")).toBe("");
-    expect(messages.filter((m) => (m as { event?: string }).event !== "ready")).toEqual([]);
+    expect(messages).toContainEqual({ source: "comot-player", event: "retreat-past-start" });
   });
 
   it("沒有步驟的投影片：第一次 ArrowRight 就直接送出 advance-past-end", async () => {
