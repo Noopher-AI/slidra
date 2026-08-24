@@ -36,6 +36,15 @@
   // every key — however it is spelled — starts out genuinely absent.
   var mediaElements = Object.create(null);
 
+  // Elements resetToStep() has deliberately torn down (paused + removed).
+  // A WeakSet keyed by element, not by target id, for the same reason
+  // mediaElements above is Object.create(null): element ids are untrusted
+  // slide markup and must never be used as a lookup key. When playMedia()'s
+  // play() promise settles after this teardown, the browser rejects it with
+  // an AbortError — that rejection is *us* cancelling our own playback, not
+  // a real failure, and must not surface as one (see playMedia's catch).
+  var tornDownMedia = new WeakSet();
+
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
     // view (this frame is itself opaque-origin, with no allow-same-origin),
@@ -118,7 +127,13 @@
       playResult.catch(function (err) {
         // A rejected play() (autoplay refusal, decode failure, missing
         // file, …) must surface, never fail silently (design doc, settled
-        // decision #12).
+        // decision #12) — with one exception: if resetToStep() already tore
+        // this exact element down before the browser got around to settling
+        // the promise, an AbortError here is just the browser reporting the
+        // cancellation this runtime itself caused, not a real playback
+        // failure. Anything else — including an AbortError on an element
+        // that was never torn down — still surfaces.
+        if (err && err.name === "AbortError" && tornDownMedia.has(el)) return;
         post({
           event: "error",
           message: "媒體播放失敗（" + target + "）：" + (err && err.message ? err.message : String(err)),
@@ -219,6 +234,7 @@
     for (var mediaTarget in mediaElements) {
       if (!Object.prototype.hasOwnProperty.call(mediaElements, mediaTarget)) continue;
       var mediaEl = mediaElements[mediaTarget];
+      tornDownMedia.add(mediaEl);
       mediaEl.pause();
       if (mediaEl.parentNode) mediaEl.parentNode.removeChild(mediaEl);
     }

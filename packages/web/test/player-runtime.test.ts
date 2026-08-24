@@ -231,6 +231,116 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(1);
   });
 
+  it("退回時媒體尚未開始播放：pause() 讓 play() 承諾在拆除之後才以 AbortError 回絕，不誤報成 error", async () => {
+    // Reachability (defect found in review of ae34c98): ArrowRight onto a
+    // media step, ArrowRight onto an ordinary step, then ArrowLeft while the
+    // browser has not yet settled the play() promise. jsdom doesn't
+    // implement media playback, so play()/pause() are stubbed on the
+    // iframe's own HTMLMediaElement.prototype — pause() rejects the pending
+    // play() promise with AbortError, and because rejection only notifies
+    // .catch handlers as a microtask, that rejection genuinely arrives after
+    // resetToStep's synchronous teardown (mark, pause(), removeChild) has
+    // already finished, the same order a real browser delivers it in.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video", "el-a"]);
+
+    let rejectPlay!: (err: unknown) => void;
+    const pendingPlay = new Promise((_resolve, reject) => {
+      rejectPlay = reject;
+    });
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => pendingPlay as unknown as Promise<void>;
+    MediaProto.pause = () => {
+      const err = new Error("The play() request was interrupted by a call to pause().");
+      err.name = "AbortError";
+      rejectPlay(err);
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+    // Two ticks, not one: post() goes through parent.postMessage, which is
+    // itself queued as a task rather than delivered synchronously from the
+    // promise-rejection microtask, so a single setTimeout(0) can resolve
+    // before that delivery task runs. Two ticks give any (wrongly) posted
+    // error time to actually arrive before the assertion below checks for
+    // its absence — otherwise this test could pass for the wrong reason.
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).not.toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
+  it("play() 承諾以非 AbortError 回絕：即使該元素剛被 retreat 拆除，仍要送出 error", async () => {
+    // Complementary to the test above: without this, suppressing AbortError
+    // could quietly degrade into suppressing every rejection.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
+      hidden: ["el-a"],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video", "el-a"]);
+
+    let rejectPlay!: (err: unknown) => void;
+    const pendingPlay = new Promise((_resolve, reject) => {
+      rejectPlay = reject;
+    });
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => pendingPlay as unknown as Promise<void>;
+    MediaProto.pause = () => {
+      rejectPlay(new Error("NotSupportedError: no supported source was found"));
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    press(win, "ArrowRight");
+    press(win, "ArrowLeft");
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
+  it("play() 以 AbortError 回絕，但該元素從未被 retreat 拆除過：仍要送出 error", async () => {
+    // The other half of the same complementary guard: an AbortError alone
+    // is not sufficient to suppress — only an AbortError on an element this
+    // runtime itself tore down.
+    const plan: StubPlan = {
+      steps: [{ effects: [media("el-video")] }],
+      hidden: [],
+      media: { "el-video": { src: "assets/intro.webm", kind: "video" } },
+    };
+    const { win } = boot(plan, ["el-video"]);
+
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => {
+      const err = new Error("aborted for an unrelated reason");
+      err.name = "AbortError";
+      return Promise.reject(err);
+    };
+
+    const { messages, stop } = collectMessages();
+    press(win, "ArrowRight");
+    // Two ticks for the same reason as the tests above: the rejection
+    // settles as a microtask, but the resulting post() only reaches this
+    // window as a separately queued task.
+    await tick();
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
+  });
+
   it("退回 fade 步驟不會重新播放更早的 fade（重播時 transition 一律關閉）", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "appear")] }],
