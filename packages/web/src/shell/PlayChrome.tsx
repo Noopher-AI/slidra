@@ -191,13 +191,19 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           {state.currentIndex >= 0 ? `${state.currentIndex + 1} / ${state.slides.length}` : "– / –"}
         </span>
         <span className="play-bar-divider" />
-        <button type="button" className="play-toggle-button leave" onClick={() => void onExitPlay()}>
-          離開播放
-        </button>
-        {/* 全螢幕開關 (ticket #29): 是否全螢幕由作者決定，工具不預設強制
+        {/* gate round 2 (2026-08-25), medium finding: 樣板
+            (base-shell.html:419-426，波指揮官在 1440×900 用 Playwright
+            量過的順序) 是「全螢幕、離開播放」，這裡原本反了。裁決 2 凍結
+            的是這兩顆的 class 與文字（既有 e2e 用 button:has-text() 這類
+            文字選擇器抓它們），不含順序，所以純粹搬動 JSX 區塊、class 與
+            文字一個字不動，不牴觸 裁決 2。
+            全螢幕開關 (ticket #29): 是否全螢幕由作者決定，工具不預設強制
             (settled decision #6). */}
         <button type="button" className="fullscreen-toggle-button" onClick={() => void onToggleFullscreen()}>
           {isFullscreen ? "退出全螢幕" : "全螢幕"}
+        </button>
+        <button type="button" className="play-toggle-button leave" onClick={() => void onExitPlay()}>
+          離開播放
         </button>
       </nav>
     </>
