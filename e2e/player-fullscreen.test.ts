@@ -157,7 +157,21 @@ async function fullscreenSnapshot(page: Awaited<ReturnType<Browser["newPage"]>>)
 }
 
 it("點按鈕真的進入全螢幕（容器撐滿螢幕、iframe 在容器內），再點一次真的退出", async () => {
-  const page = await browser.newPage();
+  // 這個測項驗證「進入全螢幕真的讓畫面變大」，方法是比較全螢幕前後的
+  // iframe 尺寸——這個比較只有在全螢幕前的尺寸真的比全螢幕後小時才有
+  // 意義。1024×640（比例 1.6）刻意不是 fixtures/play-deck/ 畫布的
+  // 16:9：#54 的播放模式滿版修復落地後，非全螢幕態的舞台已經是真正
+  // 滿版——在 16:9 的 viewport 下滿版尺寸剛好等於整個 viewport，跟
+  // 全螢幕後一模一樣，「成長」這個代理指標就量不出差異了（wave 4 gate
+  // round 1 medium finding 修復後才浮現的真實案例，見 PR body）。這裡
+  // headless Chromium 的 screen 尺寸永遠等於 viewport（已實測），所以
+  // 讓斷言恢復意義的條件不是「viewport 比螢幕小」——那個條件在這個
+  // harness 裡本來就不成立——而是「viewport 長寬比不是 16:9」：非
+  // 16:9 時舞台會照畫布比例 letterbox，全螢幕的 `.canvas-area:fullscreen`
+  // 讓比例框失效、iframe 撐滿容器，前後尺寸才會真的不同。往後如果有人
+  // 把這個值改回任何 16:9 比例（例如 1280×720），這條斷言會無聲變成
+  // 恆真或恆假，改動前請先確認新值不是 16:9。
+  const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
   await page.goto(server.url);
 
   await expect
