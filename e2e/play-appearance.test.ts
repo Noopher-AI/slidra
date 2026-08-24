@@ -32,6 +32,7 @@ const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const brokenEffectsDeckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
+const playDeckDir = path.join(e2eDir, "fixtures/play-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const baselineDir = path.join(e2eDir, "__screenshots__/play");
 
@@ -123,27 +124,44 @@ async function enterPlay(page: Page): Promise<void> {
   await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
 }
 
-it("控制列的上一步／下一步換的是投影片本身（裁決 3：不是效果步驟）", async () => {
-  const { page, cleanup } = await openApp(demoDir, "play-appearance-nav");
+it("控制列的上一步／下一步換的是投影片本身，不是效果清單的步驟（裁決 3）", async () => {
+  // 對照表發現（gate round 1 追加要求）：demo/ 的四頁都沒有效果清單，
+  // 「下一步換的是投影片、不是效果步驟」這句名字，用一個沒有任何效果
+  // 步驟可以推進的 deck 是測不出來的——就算控制列誤接成逐步推進
+  // player-runtime 的效果步驟，demo/ 上量出來的行為也會跟接
+  // controller.next() 一模一樣，測試會在錯的實作下照樣綠燈。改用
+  // fixtures/play-deck/（player-mode.test.ts 已驗證過的 fixture）：
+  // 第 1 頁有兩個 enter 效果步驟（fadeText/appearText）要按兩次方向鍵
+  // 才會套用完、第三次才換頁；控制列的「下一步」只按一次就要直接跳到
+  // 第 2 頁，兩個效果步驟完全沒被套用——這才是「換頁不換效果步驟」
+  // 這句話量得出來的形狀。
+  const { page, cleanup } = await openApp(playDeckDir, "play-appearance-nav");
   try {
     await enterPlay(page);
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
-    const titleText = () => playFrame().locator("svg text").first().textContent().catch(() => null);
+    const fadeOpacity = () =>
+      playFrame().locator("#el-fade-in").evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
+    const titleText = () => playFrame().locator("#el-title").textContent().catch(() => null);
+    const title2Text = () => playFrame().locator("#el-title2").textContent().catch(() => null);
 
-    const firstSlideText = await titleText();
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
+    // 進場時兩個 enter 元素都還沒套用（同 player-mode.test.ts 的既有驗證）。
+    await expect.poll(fadeOpacity).toBe("0");
 
+    // 按一次「下一步」：若真的是 controller.next()（showSlide(+1)），
+    // 會直接跳到第 2 頁，完全跳過第 1 頁剩下的兩個效果步驟。
     await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await expect.poll(titleText, { timeout: 30_000 }).not.toBe(firstSlideText);
-    const secondSlideText = await titleText();
+    await expect.poll(title2Text, { timeout: 30_000 }).toBe("播放第二頁");
+    // 沒有按過方向鍵、也沒有經過任何「套用中」的中間態——第 1 頁的
+    // fade-in 元素本來就已經跟著整份文件一起被換掉了（play iframe 換頁
+    // 是整份 srcdoc 重新指派，不是同文件內局部更新，見 canvas.ts）。
 
+    // 按一次「上一步」：換回第 1 頁，頁碼與 disabled 同步（樣板的
+    // `N / M` 形式；play-deck 只有 2 頁）。
     await page.locator('.play-bar button[aria-label="上一步"]').click();
-    await expect.poll(titleText, { timeout: 30_000 }).toBe(firstSlideText);
-    expect(secondSlideText).not.toBe(firstSlideText);
-
-    // 頁碼同步更新（樣板的 `N / M` 形式），且「上一步」在第 1 頁時停用
-    // （不會繞回最後一頁）。
-    expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 4");
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
+    expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 2");
     expect(await page.locator('.play-bar button[aria-label="上一步"]').isDisabled()).toBe(true);
   } finally {
     await page.close();
@@ -151,7 +169,13 @@ it("控制列的上一步／下一步換的是投影片本身（裁決 3：不�
   }
 });
 
-it("閒置 2.5 秒後游標與控制列一起隱去，滑鼠一動同時再現", async () => {
+it("閒置 2.5 秒後游標與控制列一起隱去，在投影片區域內移動滑鼠也能同時再現", async () => {
+  // gate round 1 (2026-08-25), high finding：投影片 iframe 佔了播放畫面
+  // 絕大部分面積，是作者最自然會把滑鼠移過去的地方。這裡原本的版本繞去
+  // 控制列旁邊的窄邊（`page.mouse.move(60, 850)`），繞開了「跨 frame 邊界
+  // 的 mousemove 不會冒泡到上層文件」這個限制，而不是回報它——測項名字
+  // 說「滑鼠一動」，斷言卻只驗過一小塊安全地帶。這一版把「投影片區域內」
+  // 設為主要路徑，原本的「投影片外」保留在最後當對照組。
   const { page, cleanup } = await openApp(demoDir, "play-appearance-idle");
   try {
     await enterPlay(page);
@@ -160,6 +184,13 @@ it("閒置 2.5 秒後游標與控制列一起隱去，滑鼠一動同時再現",
     const bar = page.locator(".play-bar");
     const opacityOf = (locator: typeof bar) => locator.evaluate((el) => getComputedStyle(el).opacity);
     const cursorOf = () => app.evaluate((el) => getComputedStyle(el).cursor);
+
+    const iframeBox = await page.locator("iframe.slide-frame").boundingBox();
+    if (!iframeBox) throw new Error("找不到播放 iframe 的 bounding box");
+    // 量測寫進報告：1440×900 視窗下量到的 iframe 尺寸（gate 指揮官的量測
+    // 是 1415.11×795.98，這裡各次執行會有次像素差異，數量級一致即可）。
+    console.log(`iframe box: ${JSON.stringify(iframeBox)}`);
+    const iframeCenter = { x: iframeBox.x + iframeBox.width / 2, y: iframeBox.y + iframeBox.height / 2 };
 
     // 剛進入播放：控制列可見，游標正常。
     await expect.poll(() => opacityOf(bar)).toBe("1");
@@ -170,12 +201,58 @@ it("閒置 2.5 秒後游標與控制列一起隱去，滑鼠一動同時再現",
     await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("0");
     expect(await cursorOf()).toBe("none");
 
-    // 滑鼠一動：兩者同時再現。移到控制列附近、避開投影片 iframe——跨
-    // frame 邊界的滑鼠移動不會讓上層文件收到連續的 mousemove 事件，只有
-    // 停在上層文件範圍內移動才算數。
+    // 主要路徑：在投影片區域「內」移動滑鼠。`.play-mousemove-catcher`
+    // （PlayChrome/play.css）鋪在 iframe 之上、接住這次 mousemove，讓它
+    // 冒泡到上層文件，而不是被瀏覽器直接派送進 iframe 自己的文件裡。
+    await page.mouse.move(iframeCenter.x, iframeCenter.y);
+    await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("1");
+    expect(await cursorOf()).toBe("default");
+
+    // 量測委任的取捨：停留在投影片區域內持續移動（不是移出去一次就不再
+    // 動），確認閒置計時器真的每次都被重置、控制列不會在還沒滿 2.5 秒時
+    // 自己先閃一次熄滅——這是覆蓋層是否把「每一次」mousemove 都冒泡出去
+    // 的直接證據，不是只驗第一次。三次、每次間隔 1.2 秒（< 2.5 秒的閒置
+    // 門檻），全部應維持 opacity "1"，不曾中途變回 "0"。
+    for (let i = 0; i < 3; i++) {
+      await page.waitForTimeout(1200);
+      await page.mouse.move(iframeCenter.x + i + 1, iframeCenter.y);
+      expect(await opacityOf(bar)).toBe("1");
+    }
+
+    // 對照組：移到控制列附近、明確在投影片 iframe 之外——上層文件本身的
+    // mousemove 本來就會冒泡到 document，這條路徑從一開始就成立，保留
+    // 下來證明覆蓋層沒有意外擋掉這條原本就通的路。
+    await page.waitForTimeout(2800);
+    await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("0");
     await page.mouse.move(60, 850);
     await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("1");
     expect(await cursorOf()).toBe("default");
+  } finally {
+    await page.close();
+    await cleanup();
+  }
+});
+
+it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 click 後的補償）", async () => {
+  // gate round 1 的量測沒有明講、但改動本身引出的問題：覆蓋層
+  // pointer-events:auto 會攔下投影片區域的 click，原生的「點 iframe 給它
+  // 瀏覽器焦點」因此不再發生。PlayChrome 用 controller.focusPlayer()
+  // 補回——這裡驗證補償真的成立，不只是讀程式碼相信它成立。
+  const { page, cleanup } = await openApp(demoDir, "play-appearance-focus-click");
+  try {
+    await enterPlay(page);
+
+    // 偷走焦點（沿用 e2e/player-fullscreen.test.ts 已驗證過的做法）。
+    await page.locator('button:has-text("離開播放")').focus();
+    await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
+
+    // 在投影片區域中央點一下——這個座標落在 .play-mousemove-catcher 上，
+    // 不是原生落進 iframe 的點擊。
+    const box = await page.locator(".canvas-area").boundingBox();
+    if (!box) throw new Error("找不到 .canvas-area 的 bounding box");
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+    await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
   } finally {
     await page.close();
     await cleanup();
@@ -255,6 +332,39 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
     // 容器 `.canvas-area` 的背景色，確認不是殘留的舞台底表面色。
     const bg = await page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).toBe("rgb(0, 0, 0)");
+
+    // gate round 1 (2026-08-25), medium finding：`.notes` 已離開 DOM
+    // （上面已驗），但 `.main` 的第二條軌道（shell.css 的
+    // `grid-template-rows: 1fr var(--h-notes)`）原本就算沒有 `<Notes>`
+    // 也仍然佔位，留下一條透明、透出 `.app` 背景色（`--s-well`，不是黑）
+    // 的窄條。量測方式沿用指揮官自己的做法：`.canvas-area` 高度應等於
+    // `.body` 高度（收合成功就不會再矮一截），且視窗底部中央那一點的
+    // 實際繪製顏色應該是黑色——不是只信 `.canvas-area` 自己的
+    // background，因為那條規則填不到被 `.main` 軌道多留出來的空間。
+    const bodyHeight = await page.locator(".body").evaluate((el) => el.getBoundingClientRect().height);
+    const canvasAreaHeight = await page.locator(".canvas-area").evaluate((el) => el.getBoundingClientRect().height);
+    expect(canvasAreaHeight).toBe(bodyHeight);
+
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error("找不到 viewport 尺寸");
+    // 用 elementsFromPoint（複數版）取整疊、由上而下找第一個非透明背景：
+    // 這個點最上層是 .play-mousemove-catcher（gate round 1 高風險項的
+    // 修復，本身透明、沒有自己的背景色），單看 elementFromPoint 抓到的
+    // 那一個元素會誤判成「透明」，量不出玻璃底下真正的顏色。人眼在這個
+    // 點看到的其實是透明覆蓋層底下、真正不透明的那一層——這裡照著相同
+    // 邏輯往下找。
+    const bottomCenterColor = await page.evaluate(
+      ([x, y]) => {
+        const stack = document.elementsFromPoint(x, y);
+        for (const el of stack) {
+          const bg = getComputedStyle(el).backgroundColor;
+          if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
+        }
+        return null;
+      },
+      [viewport.width / 2, viewport.height - 1] as const,
+    );
+    expect(bottomCenterColor).toBe("rgb(0, 0, 0)");
   } finally {
     await page.close();
     await cleanup();

@@ -128,3 +128,33 @@
 .app[data-mode="play"] .body {
   grid-template-columns: 1fr;
 }
+
+/* gate round 1 (2026-08-25), medium finding: `.main` 的第二條軌道
+   （shell.css:275 的 `grid-template-rows: 1fr var(--h-notes)`，
+   `--h-notes` = 104px）就算 `<Notes>` 已不在 DOM 裡也仍然佔位——指揮官量
+   到播放模式下 `.main` 底部留了 104px 高、透明、透出 `.app` 背景色
+   `rgb(16,15,15)`（`--s-well`）的窄條，不是黑。`.canvas-area` 的黑幕
+   （上面既有規則）填不到這裡，因為它就活在被留白的第一條軌道裡，够不到
+   軌道本身的邊界。這裡把 `.main` 收成一條軌道，讓 `.canvas-area` 撐滿
+   `.main` 的全部高度。unit B 已有 `.main:has(> .canvas-area >
+   .grid-view) { grid-template-rows: 1fr; }`（總覽網格用）：兩條選擇器
+   互斥——`.grid-view` 只在 `view === "grid" && state.mode !== "play"`
+   時掛進 DOM（裁決 5），播放模式下 `.grid-view` 不存在，unit B 的
+   `:has()` 不會命中；`[data-mode="play"]` 也只在播放模式成立，兩者的
+   命中條件沒有交集，合流後不會互相打架。 */
+.app[data-mode="play"] .main {
+  grid-template-rows: 1fr;
+}
+
+/* gate round 1 (2026-08-25), high finding 的修復：見 PlayChrome.tsx 對
+   `.play-mousemove-catcher` 的完整說明——這裡只放版面。鋪滿
+   `.canvas-area`（`position: relative`，shell.css），z-index 排在
+   `.canvas`（iframe 所在，z-index auto）之上、`.player-notices`/
+   `.play-bar`（皆 z-index:2）之下，讓兩者仍然收得到點擊（例如焦點提示
+   裡「點這裡把焦點交回播放器」按鈕），覆蓋層只擋在它們沒有覆蓋到的
+   舞台區域。 */
+.play-mousemove-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
