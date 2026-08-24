@@ -1,9 +1,13 @@
+import { useEffect, useState } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 
 // No icons in this file: 離開播放/全螢幕 stay text buttons, matching the
 // pre-existing (pre-#48) play chrome verbatim — see the class comment
 // below. base-shell.html's icon-only play-bar buttons are not adopted
 // here to avoid rewriting tested behaviour that isn't broken.
+
+/** 游標與控制列一起隱去前的閒置時間 (#54 AC3)。 */
+const IDLE_MS = 2500;
 
 export interface PlayChromeProps {
   state: CanvasState;
@@ -36,6 +40,33 @@ export interface PlayChromeProps {
  */
 export function PlayChrome({ state, controller, isFullscreen, fullscreenError, onToggleFullscreen, onExitPlay }: PlayChromeProps) {
   const isPlayMode = state.mode === "play";
+
+  // 游標與控制列一起隱去 (#54 AC3/AC4)：`awake` toggles both — this
+  // component's own `.play-bar.awake` class (opacity, styles/play.css) and,
+  // via play.css's `:has(.play-bar.awake)` selector on `.app[data-mode=
+  // "play"]`, the ancestor cursor. App.tsx is frozen beyond two narrow
+  // grants that do not include adding a class up there, so the toggle has
+  // to reach upward through `:has()` instead of downward from a parent
+  // state — see the wave brief's "suggested containment" section.
+  // Declared unconditionally (not after the `!isPlayMode` early return
+  // below) because hooks cannot be conditional; its own effect body no-ops
+  // outside play mode instead.
+  const [awake, setAwake] = useState(true);
+  useEffect(() => {
+    if (!isPlayMode) return;
+    setAwake(true);
+    let timer = window.setTimeout(() => setAwake(false), IDLE_MS);
+    function onMouseMove(): void {
+      setAwake(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setAwake(false), IDLE_MS);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      window.clearTimeout(timer);
+    };
+  }, [isPlayMode]);
 
   if (!isPlayMode) {
     // 檢視模式: only fullscreen (state and/or its error) is this
@@ -98,7 +129,36 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           )}
         </div>
       )}
-      <nav className="play-bar">
+      <nav className={awake ? "play-bar awake" : "play-bar"}>
+        {/* 上一步／下一步是換頁，不是換效果步驟 (裁決 3): 效果清單解析失敗
+            時沒有任何 runtime 活著回應方向鍵，這兩顆鈕是 #54 要求的換頁
+            替代途徑，接的是 controller.previous()/next()（＝
+            showSlide(currentIndex±1)），不是 player-runtime.js 的步驟推進。
+            class 沿用 StatusBar 既有的 `.slide-nav-button`/`.slide-nav-
+            position` 契約 (#25/#29)，同一份樣式在播放列的深色背景上量測
+            起來與樣板的 pos/按鈕視覺一致，不需要另開一組新 class。 */}
+        <button
+          type="button"
+          className="slide-nav-button"
+          aria-label="上一步"
+          disabled={state.currentIndex <= 0}
+          onClick={() => void controller?.previous()}
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          className="slide-nav-button"
+          aria-label="下一步"
+          disabled={state.currentIndex < 0 || state.currentIndex >= state.slides.length - 1}
+          onClick={() => void controller?.next()}
+        >
+          ›
+        </button>
+        <span className="slide-nav-position">
+          {state.currentIndex >= 0 ? `第 ${state.currentIndex + 1} 頁，共 ${state.slides.length} 頁` : "尚無投影片"}
+        </span>
+        <span className="play-bar-divider" />
         <button type="button" className="play-toggle-button leave" onClick={() => void onExitPlay()}>
           離開播放
         </button>

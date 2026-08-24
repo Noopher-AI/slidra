@@ -175,6 +175,21 @@ export function App() {
 
   // 總覽 (ticket #27): mounted once against the canvas controller — it
   // subscribes on its own and needs no React state mirrored back here.
+  //
+  // #54 (wave 4) now unmounts `<Rail>` entirely in 播放模式 (see the
+  // shellVisible-gated render below), which destroys `overviewRef`'s DOM
+  // node. A `[]` dependency array here would only ever run this effect
+  // once at the component's very first mount: on returning to 檢視模式,
+  // `<Rail>` remounts with a *fresh* container, `overviewRef.current`
+  // points at it, but this effect never fires again to mount anything
+  // into it — the overview module never comes back, with nothing thrown
+  // (the exact hazard the wave brief calls out). Keying the effect on
+  // `canvasState.mode !== "play"` makes it re-run each time `<Rail>`
+  // unmounts/remounts: React attaches refs before effects run, so by the
+  // time this body executes after a remount, `overviewRef.current` already
+  // points at the new container. While play mode is active the container
+  // is null (Rail is absent) and the effect body simply skips mounting
+  // anything, matching `<Rail>` being absent from the DOM.
   useEffect(() => {
     const container = overviewRef.current;
     const controller = controllerRef.current;
@@ -185,7 +200,7 @@ export function App() {
       overview.destroy();
       overviewControllerRef.current = null;
     };
-  }, []);
+  }, [canvasState.mode !== "play"]);
 
   // Arrow keys page the deck, but only in 檢視模式 (ticket #28). Legitimate
   // on the parent document here: the view-mode iframe is sandboxed with no
@@ -461,21 +476,18 @@ export function App() {
         </div>
       )}
       <div className="body">
-        {/* Always rendered, including in 播放模式 — unlike TitleBar/Ribbon/
-            StatusBar/Notes, this is not new territory this ticket can
-            freely gate: e2e/player-effect-error.test.ts and
-            e2e/player-media.test.ts click overview thumbnails
+        {/* #54 (wave 4): now absent from the DOM in 播放模式, unlike the
+            wave-2/wave-3 posture recorded in the comment this replaces.
+            That older comment's constraint — e2e/player-effect-error.test.ts
+            and e2e/player-media.test.ts clicking overview thumbnails
             (button[aria-label="第 N 頁"]) *during* play mode as their only
-            way to change slides when an effect-list parse failure leaves
-            no runtime alive to hear arrow keys. A full-viewport blackout
-            covering it (as 1.8 in the plan describes) would make that
-            click unreachable and regress that existing, required
-            behaviour — see styles/play.css's own comment for the measured
-            conflict and the PR body for the reported deviation. This
-            stays visible/clickable during play mode exactly like it
-            always was; the original App.tsx never conditionally removed
-            it either. */}
-        <Rail containerRef={overviewRef} />
+            way to change slides when a broken effect list leaves no
+            runtime alive to hear arrow keys — has been migrated onto
+            #54's own play-bar 上一步/下一步 buttons (controller.previous()/
+            next()), which work the same way with no runtime required. The
+            overview module's mount/unmount survives this: see the
+            overview-mounting effect's own comment above. */}
+        {shellVisible && <Rail containerRef={overviewRef} />}
         <div className="main">
           <Stage
             canvasRef={canvasRef}
@@ -496,11 +508,14 @@ export function App() {
           </Stage>
           {shellVisible && <Notes hidden={view === "grid"} />}
         </div>
-        {/* Always rendered, same reasoning as <Rail> above: the original
-            App.tsx never hid the chat sidebar in play mode either, and no
-            e2e test requires it to disappear there. */}
-        <aside className="chat-sidebar">
-          <h2>對話</h2>
+        {/* #54 (wave 4): now absent from the DOM in 播放模式 — #54's own
+            AC ("功能區、縮圖軌、對話、備忘稿、狀態列都不在 DOM 裡") names
+            對話 explicitly. No e2e test depends on the chat sidebar being
+            present during play mode (unlike <Rail>, which needed the
+            5-site migration above before it could be gated the same way). */}
+        {shellVisible && (
+          <aside className="chat-sidebar">
+            <h2>對話</h2>
             <div className="chat-messages">
               {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
               {messages.map((message) =>
@@ -548,7 +563,8 @@ export function App() {
                 送出
               </button>
             </form>
-        </aside>
+          </aside>
+        )}
       </div>
       {shellVisible && (
         <StatusBar

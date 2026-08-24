@@ -26,3 +26,72 @@
 .app[data-mode="play"] .canvas {
   background: #000;
 }
+
+/* 純黑滿版 (#54 AC1/AC2): 量測 base-shell.html（Playwright 內建
+   Chromium，1440×900，`.view-btn[data-view="play"]` 點下去後）確認
+   `#play` 容器 `padding: 0px`、`background: rgb(0, 0, 0)`；`#play .stage`
+   `background: rgb(0, 0, 0)`、`border: 0px none`、`box-shadow: none`——
+   `.canvas-area`（樣板的 `.well` 對應物）平常的 `padding: calc(var(--u) *
+   7)`（shell.css:260）與 `.stage` 平常的白底/邊框/陰影（stage.css）都只
+   在標準檢視成立，播放模式要覆蓋掉。`.canvas` 已經是 `#000`（上面那條既
+   有規則），這裡補上 `.canvas-area` 與 `.stage` 兩層，讓黑幕從舞台底一路
+   到舞台邊框都是純黑、沒有留白。 */
+.app[data-mode="play"] .canvas-area {
+  background: #000;
+  padding: 0;
+}
+.app[data-mode="play"] .stage {
+  background: #000;
+  border: 0;
+  box-shadow: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   控制列浮現／隱去 (#54). shell.css:365-394 already ships `.play-bar`'s
+   static box — position, translucent background, border, radius, blur —
+   copied verbatim from base-shell.html:314-330 as part of the #53/#54
+   boundary; that file is frozen here. What base-shell.html has and
+   shell.css does not is the idle-fade `opacity`/`transition`
+   (base-shell.html:322-324) and the awake toggle, plus the new paging
+   controls/divider (base-shell.html:331-335) and the cursor-hide/`.body`
+   collapse this ticket's own DOM changes require. All of that lives here.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 閒置淡出 (AC3/AC4)：PlayChrome 用 `awake` state 切換這個 class. */
+.play-bar {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.play-bar.awake {
+  opacity: 1;
+}
+
+/* base-shell.html:335 的分隔線，介於新的換頁控制與既有的 離開播放/全螢幕
+   之間。 */
+.play-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 var(--u);
+}
+
+/* 游標與控制列一起隱去 (AC3/AC4)：`.app[data-mode="play"]` 本身早已存在
+   (App.tsx:432)，這裡只加播放模式的游標規則。App.tsx 在兩個窄授權之外
+   被凍結，加不了 `awake` class 到 `.app` 這一層，所以用 `:has()` 從
+   `.play-bar.awake`（PlayChrome 自己切的 class）往上找 — 見波簡報「閒置
+   /awake 狀態的建議做法」一節。Playwright 綁定的 Chromium 支援
+   `:has()`。 */
+.app[data-mode="play"] {
+  cursor: none;
+}
+.app[data-mode="play"]:has(.play-bar.awake) {
+  cursor: default;
+}
+
+/* 裁決 4：<Rail>/.chat-sidebar 現在真的從播放模式的 DOM 移除了（見
+   App.tsx），`.main` 是 `.body` 唯一剩下的 grid item。沒有這條覆蓋，它
+   會落進第一條軌道（縮圖軌寬，`shell.css:197-201`），舞台縮成一條窄縫。
+   `shell.css` 對本單元凍結，所以覆蓋寫在這裡。 */
+.app[data-mode="play"] .body {
+  grid-template-columns: 1fr;
+}
