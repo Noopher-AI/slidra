@@ -20,9 +20,53 @@ export interface PlayChromeProps {
  * Renders nothing outside 播放模式. Classes and copy are moved verbatim
  * from App.tsx's pre-existing play nav — see the round 1/2/3/4 review-gate
  * comments below, each fixing a real bug this markup used to have.
+ *
+ * gate round 2, medium finding: 全螢幕 is available from the ribbon in
+ * 檢視模式 too (#0.2 item 2's ruling — orthogonal to play mode), but this
+ * component used to return null outright whenever `state.mode !== "play"`.
+ * That left a successful 檢視模式 fullscreen request with no in-app way
+ * back out (only the browser's own Esc), and a *rejected* request with no
+ * visible error at all — a silent failure, which this project's own
+ * posture ("寧可拋錯也不要靜默") forbids. The two blocks below split
+ * cleanly on `isPlayMode`: the 播放模式 block is untouched, byte-for-byte,
+ * from before this fix; the 檢視模式 block is new and only ever renders
+ * the fullscreen exit control and/or its own error notice — never the
+ * play-only focus/error notices or 離開播放, which have no meaning outside
+ * 播放模式.
  */
 export function PlayChrome({ state, controller, isFullscreen, fullscreenError, onToggleFullscreen, onExitPlay }: PlayChromeProps) {
-  if (state.mode !== "play") return null;
+  const isPlayMode = state.mode === "play";
+
+  if (!isPlayMode) {
+    // 檢視模式: only fullscreen (state and/or its error) is this
+    // component's concern here — 離開播放, playerHasFocus, and
+    // state.error (播放中的效果清單錯誤) all only mean something in
+    // 播放模式 and must not render outside it.
+    if (!isFullscreen && !fullscreenError) return null;
+    return (
+      <>
+        {fullscreenError && (
+          <div className="player-notices">
+            <div className="player-error-notice" role="alert">
+              全螢幕切換失敗：{fullscreenError}
+            </div>
+          </div>
+        )}
+        {isFullscreen && (
+          <nav className="view-fullscreen-bar">
+            <button
+              type="button"
+              className="fullscreen-toggle-button"
+              aria-label="退出全螢幕"
+              onClick={() => void onToggleFullscreen()}
+            >
+              退出全螢幕
+            </button>
+          </nav>
+        )}
+      </>
+    );
+  }
 
   return (
     <>

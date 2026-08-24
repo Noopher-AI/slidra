@@ -210,6 +210,54 @@ it("#51 功能區：點「從頭播放」進入播放模式，且回到第一頁
   }
 });
 
+it("#51 功能區：檢視模式點「全螢幕」可以從 app 內離開，失敗時有畫面回饋（gate round 2, medium）", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+
+    await page.locator('.cmd:has-text("全螢幕")').click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const el = document.fullscreenElement;
+          return el ? el.className : null;
+        }),
+      )
+      .toBe("canvas-area");
+
+    // Reachable, not just present: a real Playwright click must actually
+    // land on it (fails if something else intercepts pointer events).
+    const exitButton = page.locator('.view-fullscreen-bar .fullscreen-toggle-button[aria-label="退出全螢幕"]');
+    await exitButton.click();
+
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  } finally {
+    await cleanup();
+  }
+});
+
+it("#51 功能區：檢視模式全螢幕請求被拒絕時，畫面上出現明確的錯誤訊息（不是靜默失敗）", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+
+    // A genuinely rejected requestFullscreen() call — the same technique
+    // e2e/player-fullscreen.test.ts uses for its own play-mode equivalent
+    // of this test.
+    await page.evaluate(() => {
+      const container = document.querySelector(".canvas-area") as HTMLElement;
+      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
+    });
+
+    await page.locator('.cmd:has-text("全螢幕")').click();
+
+    const errorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+    await expect.poll(() => errorNotice.count()).toBe(1);
+  } finally {
+    await cleanup();
+  }
+});
+
 // ─── #52 縮圖軌頁碼與備忘稿區 ───────────────────────────────────────
 
 it("#52 縮圖軌：每張投影片一個頁碼與縮圖，長寬比與目前頁外框沿用 project.json 與 accent token", async () => {
