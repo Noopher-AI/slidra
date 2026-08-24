@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
+import { GRID_EXIT_EVENT } from "./GridView.js";
 
 // Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
 
@@ -30,7 +32,7 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
   const slideCount = state.slides.length;
   const hasSlides = slideCount > 0;
 
-  function handleViewClick(next: "normal" | "play"): void {
+  function handleViewClick(next: ShellView | "play"): void {
     if (next === "play") {
       void controller?.play();
       return;
@@ -41,8 +43,20 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
       onExitPlay();
       return;
     }
-    onViewChange("normal");
+    onViewChange(next);
   }
+
+  // #55: clicking a grid cell has no prop path back to `onViewChange`
+  // (GridView.tsx's own comment on GRID_EXIT_EVENT explains why) — this
+  // component holds the one thing that *can* flip `view` back to
+  // "normal", so it listens for the bridge event here instead.
+  useEffect(() => {
+    function onGridExit(): void {
+      onViewChange("normal");
+    }
+    window.addEventListener(GRID_EXIT_EVENT, onGridExit);
+    return () => window.removeEventListener(GRID_EXIT_EVENT, onGridExit);
+  }, [onViewChange]);
 
   return (
     <footer className="status status-bar">
@@ -81,6 +95,21 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
           <svg viewBox="0 0 16 16">
             <rect x="1.5" y="2.5" width="4" height="11" />
             <rect x="7.5" y="2.5" width="7" height="11" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="view-btn"
+          data-view="grid"
+          aria-pressed={view === "grid"}
+          title="總覽網格"
+          onClick={() => handleViewClick("grid")}
+        >
+          <svg viewBox="0 0 16 16">
+            <rect x="1.5" y="2.5" width="5.5" height="4.5" />
+            <rect x="9" y="2.5" width="5.5" height="4.5" />
+            <rect x="1.5" y="9" width="5.5" height="4.5" />
+            <rect x="9" y="9" width="5.5" height="4.5" />
           </svg>
         </button>
         <button

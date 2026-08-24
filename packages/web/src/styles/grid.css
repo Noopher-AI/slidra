@@ -1,0 +1,107 @@
+/* ═══════════════════════════════════════════════════════════════
+   總覽網格檢視 (#55). Selector names mirror docs/design/base-shell.html's
+   own `.grid-view`/`.grid-cell`/`figcaption` shape (base-shell.html:292-305)
+   directly — unlike overview.ts's rail, which deliberately keeps its own
+   `overview-*` contract (see rail.css's header comment), the grid's own
+   markup (overview.ts's mountGridOverview) is new for this ticket and has
+   no pre-existing name to protect, so it follows the template verbatim.
+
+   `.grid-view` is GridView.tsx's own root element, rendered as an
+   absolutely-positioned overlay inside `.canvas-area` (裁決 5 — the
+   `.stage` subtree beneath it stays mounted, never replaced) rather than
+   the template's sibling-toggled-by-`hidden` shape, because `.main` (where
+   the template puts `.grid-view` as a sibling of `.well`) is JSX inside
+   the frozen App.tsx.
+   ═══════════════════════════════════════════════════════════════ */
+
+.grid-view {
+  position: absolute;
+  inset: 0;
+  /* Below .play-bar/.view-fullscreen-bar (shell.css, z-index: 2) so a
+     fullscreen exit control started from grid view stays reachable. */
+  z-index: 1;
+  background: var(--s-well);
+  overflow-y: auto;
+  padding: calc(var(--u) * 6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: calc(var(--u) * 5);
+  align-content: start;
+}
+
+.grid-cell {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 1.5);
+}
+
+.grid-thumb {
+  /* Same custom property overview.ts's rail thumbnails read (set here on
+     `.grid-view` itself by mountGridOverview, inherited down to every
+     `.grid-thumb` descendant) — the real canvas ratio, not a hardcoded
+     16:9 (see overview.ts's own applyAspectRatio comment). */
+  aspect-ratio: var(--overview-aspect-ratio, 16 / 9);
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: #000;
+  cursor: pointer;
+  overflow: hidden;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+}
+
+.grid-cell[aria-current="true"] .grid-thumb {
+  border-color: var(--accent);
+  outline-color: var(--accent);
+}
+
+.grid-number {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.grid-cell[aria-current="true"] .grid-number {
+  color: var(--ink);
+}
+
+.grid-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  /* #48 spec's own rule for the rail's overview thumbnails, reused here:
+     a real click over the iframe must land on the outer button underneath
+     it, not be captured by the iframe's own (sandboxed, listener-less)
+     browsing context — same reasoning as rail.css's .overview-frame. */
+  pointer-events: none;
+}
+
+/* ── 收掉波指揮官量出來的兩個既有斷線 (見指揮官訊息，非本票退化) ──────
+   1. `Notes.tsx` 用 `hidden` 屬性，但 `notes.css` 的 `.notes { display:
+      flex }` 在串接順序上贏過 UA 的 `[hidden] { display: none }`
+      （origin 勝過 specificity），所以 `<Notes hidden={view === "grid"} />`
+      至今沒有實際效果。`notes.css`／`App.tsx` 對本票凍結，這裡用一條屬性
+      選擇器補上——它的特異度天生高於 notes.css 的樸素 `.notes`，不看
+      import 順序都贏。這只是症狀治療：repo 缺的是全域 `[hidden] {
+      display: none }` 規則（樣板 base-shell.html:338 有，這裡沒有），任何
+      未來元件只要同時有作者 `display` 與 `hidden` 屬性都會再踩一次。全域
+      缺口已開 issue #63 追蹤，屆時規則應搬進 style.css/tokens.css、這條
+      特例移除——不是這裡故意留著不修。
+   2. `.main` 的第二條 grid row 是固定的 `var(--h-notes)`（shell.css，凍
+      結），就算備忘稿真的 `display: none` 了，那條軌道仍然佔著高度，
+      網格因此矮了一截。`shell.css`／`App.tsx` 都凍結，這裡用 `:has()`
+      從外面判斷「`.canvas-area` 底下有 `.grid-view` 在」。 */
+.notes[hidden] {
+  display: none;
+}
+
+.main:has(> .canvas-area > .grid-view) {
+  grid-template-rows: 1fr;
+}
