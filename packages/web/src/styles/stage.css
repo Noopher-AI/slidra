@@ -13,15 +13,33 @@
    「裁決 1」的樣板字面值豁免 — 不算新引入，條件是值一字不改、在此註明
    出處（比照 shell.css 既有的 `.canvas-area:fullscreen`／
    `.agent-dot-connected`／`.play-bar` 三處寫法）。間距（width/height/
-   max-width/max-height）都是尺寸算式，不是這條豁免要管的字面值。 */
+   max-width/max-height）都是尺寸算式，不是這條豁免要管的字面值。
+
+   `width: auto`（gate round 2 finding，取代原本的 `width: 100%`）＋
+   `top/left: 50%; transform: translate(-50%, -50%)`：原本 `width: 100%`
+   把寬度釘死在 `.canvas-area` 的滿版寬，只有高度會被 `max-height: 100%`
+   夾。視窗夠矮時（.canvas-area 的可用高度小於「滿版寬 ÷ 16:9」算出來的
+   高度）夾出來的高就會比寬窄，寬高比跟著跑掉——這正是這一輪 review gate
+   抓到的問題，量測後確認是真的（見 PR body/報告），舊的四個測試從沒測過
+   會咬到這條邊的視窗。`width: auto` 讓寬跟高一起交給 `aspect-ratio` +
+   `max-width`/`max-height` 算，兩軸各自被夾住的那一軸決定實際尺寸，比例
+   任何時候都不跑掉（已用 1024×720〜1600×480 多組視窗量測驗證）。
+   `.canvas-area` 這時是 stretch 對齊（見 shell.css 的說明），舞台盒子的
+   起點會貼齊可用框的左上角，不再自動置中；`top/left:50%` 是相對容器算
+   的百分比，`translate(-50%,-50%)` 是相對舞台盒子自己算的百分比，兩者疊
+   起來剛好把盒子（不論實際尺寸）移到容器正中央，且不影響上面 stretch
+   演算出來的尺寸（transform 是排版之後才套用的視覺位移）。 */
 .stage {
   aspect-ratio: 1280 / 720;
-  width: 100%;
+  width: auto;
   height: auto;
   max-width: 100%;
   max-height: 100%;
   box-sizing: border-box;
   position: relative;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   background: #fff;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:

@@ -235,6 +235,37 @@ it("視窗大小改變時舞台重新計算，仍然置中且完整可見、不�
   expect(Math.abs(topMargin - bottomMargin)).toBeLessThan(1.5);
 });
 
+it("矮視窗（1440×600，高度會夾住舞台）：比例不跑掉、不出現文件捲軸、舞台完整落在視窗內、仍置中", async () => {
+  const page = await openApp({ width: 1440, height: 600 });
+  const { stage, well } = await measureStage(page);
+
+  // 比例仍然是 project.json 的 16:9，不因為高度被夾住而變形（gate round 2
+  // finding：修正前寬釘死在滿版、只有高被夾，比例會跑掉）。
+  const ratio = stage.width / stage.height;
+  expect(Math.abs(ratio - CANVAS_RATIO)).toBeLessThan(0.02);
+
+  // 沒有文件級捲軸（修正前 `.main` 卡在內容高度，撐破可用空間，
+  // `document.documentElement` 因此長出捲軸）。
+  const docScroll = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(docScroll.scrollHeight).toBe(docScroll.clientHeight);
+
+  // 舞台完整落在視窗內（不只是不出捲軸，下緣也真的沒有掉出視窗）。
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  expect(stage.y).toBeGreaterThanOrEqual(0);
+  expect(stage.y + stage.height).toBeLessThanOrEqual(viewportHeight + 0.5);
+
+  // 仍置中於留白區內。
+  const leftMargin = stage.x - well.x;
+  const rightMargin = well.x + well.width - (stage.x + stage.width);
+  expect(Math.abs(leftMargin - rightMargin)).toBeLessThan(1.5);
+  const topMargin = stage.y - well.y;
+  const bottomMargin = well.y + well.height - (stage.y + stage.height);
+  expect(Math.abs(topMargin - bottomMargin)).toBeLessThan(1.5);
+});
+
 it("基準截圖：標準檢視的舞台（深色投影片、可辨的邊界）", async () => {
   const page = await openApp();
   const wellBox = await page.locator(".canvas-area").boundingBox();

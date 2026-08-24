@@ -201,21 +201,42 @@
   grid-template-columns: var(--w-rail) 1fr var(--w-chat);
 }
 
+/* `min-height: 0`（gate round 2 finding, #50）：沒有這行，`.main` 作為
+   `.body` 那顆隱含 grid row 的 item，其自動最小尺寸取決於內容的
+   min-content（`.canvas-area` 裡 `.stage` 靠 aspect-ratio 撐出的高度），
+   使 `.main` 永遠不會縮到比內容矮——視窗變矮時 `.body`（實際可用高度已
+   被上層 flex 夾到 100vh 以內）容不下，`.main` 溢出到文件底部，長出
+   document-level 捲軸，`.stage` 的下緣因此掉出視窗（違反 #50 AC 2）。量測
+   證實：1440×600 時 `.main` 卡在 650.5px 高，`.body` 只給了 422px。加這行
+   後 `.main` 才會真的隨可用空間縮小。 */
 .main {
   display: grid;
   grid-template-rows: 1fr var(--h-notes);
   min-width: 0;
+  min-height: 0;
 }
 
 /* 舞台底＝全螢幕目標＝播放黑幕容器 (#29 契約，見 App.tsx 的 wellRef 註解)。
    #50 起，舞台比例框（`.stage`，見 styles/stage.css）鋪在這裡面；
-   `.canvas-area` 自己等同樣板的 `.well`：置中、留白、裁切溢出，逐字沿用
-   docs/design/base-shell.html:190-196 的 `.well` 版面規則（`display: grid;
-   place-items: center`、`padding: calc(var(--u) * 7)`、
-   `overflow: hidden`）。這些都是版面/間距算式（`--u` 節奏），不是裁決 1
-   要管的顏色／陰影字面值，直接照抄不需要豁免。`background: var(--s-well)`
-   同時滿足「舞台底是全 app 最深的表面」——`--s-well` 就是五階表面裡最深
-   的那一階。
+   `.canvas-area` 自己等同樣板的 `.well`：置中、留白、裁切溢出，版面規則
+   （`padding: calc(var(--u) * 7)`、`overflow: hidden`）逐字沿用
+   docs/design/base-shell.html:190-196。`background: var(--s-well)` 同時
+   滿足「舞台底是全 app 最深的表面」——`--s-well` 就是五階表面裡最深的
+   那一階。
+
+   `grid-template-columns/rows: minmax(0, 1fr)`（gate round 2 finding，取代
+   樣板原本的 `place-items: center`）：沒有明確的軌道，這個隱含的單一
+   grid row 預設用 `auto`，會照 `.stage` 的內容尺寸撐開，而不是縮進
+   `.canvas-area` 自己被夾出來的框（同一個 min-content 溢出問題，往下
+   一層）。`minmax(0, 1fr)` 讓軌道真的等於 `.canvas-area` 的內容框，
+   `.stage` 的 `max-width/max-height: 100%`（見 styles/stage.css）才有
+   確定的基準可以量。改用 `minmax(0,1fr)` 之後 item 預設是 stretch 對齊
+   （不再是 `place-items: center` 的 center），置中改交給 `.stage` 自己的
+   `top/left/transform`（見 styles/stage.css 的說明）——center 對齊會讓
+   `.stage` 這種沒有實際內容、只有 `aspect-ratio` 的空盒子改用
+   fit-content 演算，量到的結果是瀏覽器對「無法決定尺寸」盒子的預設值
+   （約 300×150），完全無視 `max-width/max-height`，box 因此崩塌成一個
+   跟可用空間無關的小方塊。stretch 對齊沒有這個問題。
 
    已知的殘留副作用（回報給指揮官，見 PR body/報告）：這條規則讓
    `.canvas-area` 自己畫出背景並裁切溢出，緊鄰它的 `.overview`（縮圖軌）
@@ -234,7 +255,8 @@
   min-height: 0;
   min-width: 0;
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   padding: calc(var(--u) * 7);
   overflow: hidden;
   background: var(--s-well);
