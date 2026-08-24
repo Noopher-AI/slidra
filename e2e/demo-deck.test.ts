@@ -113,6 +113,19 @@ async function expectHidden(locator: Locator, timeout = 30_000): Promise<void> {
   await expect.poll(() => opacityOf(locator).catch(() => "0"), { timeout }).toBe("0");
 }
 
+// 退回時「保留下來」或「重播出來」的元素該長什麼樣：opacity 剛好是 1（不是
+// 「不等於 0」——淡入動畫途中也會不等於 0），而且沒有任何 transition。
+// resetToStep() 的重播路徑對每個碰到的元素都明確寫死 transition: none 並把
+// opacity 設成 1 !important，所以這兩個值都是「已經」成立，不是「終將」成立；
+// 這個函式刻意不輪詢，輪詢會把一個錯誤地重播的淡入等到跑完再放行。
+async function expectReplayedInstantly(locator: Locator): Promise<void> {
+  const computed = await locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { opacity: style.opacity, transitionDuration: style.transitionDuration };
+  });
+  expect(computed).toEqual({ opacity: "1", transitionDuration: "0s" });
+}
+
 // App.tsx renders the runtime's reported errors as `.player-error-notice`
 // in the *parent* document (not inside the play iframe) — this is what
 // "浮出來" means in issue #46's acceptance wording. `page.on("pageerror")`
@@ -242,6 +255,42 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 一個 it 重新正向走一次：這樣可以驗證retreat 是接續 currentStep 的狀態
   // 退，不是從頭來過，也讓這個檔案維持一條連續、可讀的驗收故事。
 
+  // 在反向走開始「之前」就裝好錯誤橫幅的觀察者。expectNoErrorBanner 用的
+  // expect.poll(...).toBe(0) 一讀到 0 就回傳，並不會盯滿整個 timeout；而 runtime
+  // 是用 postMessage 把錯誤送回父層的（下一個 task 才到），下一次換頁又會重新
+  // renderPlay 把橫幅清掉——真的浮出來過的橫幅完全可能被這種輪詢整個錯過。
+  // MutationObserver 相反：它記下每一次出現，走完之後再一次檢查記錄是空的。
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { __errorBanners: string[] }).__errorBanners = seen;
+    const collect = (node: Node): void => {
+      if (!(node instanceof Element)) return;
+      if (node.matches(".player-error-notice")) seen.push(node.textContent ?? "");
+      node.querySelectorAll(".player-error-notice").forEach((el) => seen.push(el.textContent ?? ""));
+    };
+    collect(document.body);
+    new MutationObserver((records) => {
+      for (const record of records) record.addedNodes.forEach(collect);
+      // 也掃一次當下的 DOM：橫幅節點若已存在、只是文字被改寫，就不會出現在
+      // addedNodes 裡。重複記錄無所謂，最後只斷言這份記錄是空的。
+      collect(document.body);
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  });
+  const recordedErrorBanners = (): Promise<string[]> =>
+    page.evaluate(() => (window as unknown as { __errorBanners: string[] }).__errorBanners);
+
+  // 反向走之前先抓住正在播放的 video/audio 的 element handle。退回時 runtime 會把
+  // overlay 元素整個從文件移除，之後 locator 的 count 會是 0——但「DOM 裡沒有這個
+  // 節點」不等於「沒有聲音」：一個已經脫離文件的媒體元素仍然可能在出聲，而 count
+  // 一樣是 0，測試照樣全綠。抓住 handle 之後就能對元素本身問 paused。
+  // 實測（Chromium 151，本機探針）：單純「移除但不呼叫 pause()」抓不到，因為 HTML
+  // 規格要求瀏覽器在元素離開文件後的 stable state 自己補上暫停；但若有任何程式碼
+  // 在那個自動暫停之後再對這個已脫離的元素呼叫 play()，paused 就會一直是 false，
+  // 這時只有下面這兩行會紅，count 依然是 0。
+  const videoHandle = await video.elementHandle();
+  const audioHandle = await audio.elementHandle();
+  if (!videoHandle || !audioHandle) throw new Error("反向走開始前應該要有正在播放的 video 與 audio");
+
   // 退一步：只退回第 4 頁的「淡入」那一步，還在第 4 頁，不是整頁換走。這是
   // 拆除仍在載入中媒體元素的那一步，也是 AbortError 抑制路徑會跑到的地方，
   // 所以錯誤橫幅的檢查從這一步就要開始，不能只在最後補一次。
@@ -255,6 +304,10 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 元素被整個拆除，不是暫停——沒有殘留的播放中媒體。
   await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
   await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
+  // 上面兩個 count 只證明節點不在文件裡。這兩行才是「沒有聲音」本身：對那兩個
+  // 已經被移除的元素本身問 paused。兩者證明的是不同的事，都要留著。
+  expect(await videoHandle.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true);
+  expect(await audioHandle.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
 
   // 再退一步：回到第 4 頁的第一步（caption 淡入那一步本身），還在第 4 頁。
   await page.keyboard.press("ArrowLeft");
@@ -281,6 +334,15 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await expectVisible(stepTwoBack);
   await expectVisible(stepThreeBack);
 
+  // expectVisible 只證明 opacity 不是 "0"——淡入動畫跑到一半也會通過。跨頁退回
+  // 的重播必須是「已經跑完、而且從來沒有動畫」：runtime 在 post("ready") 之前就
+  // 同步跑完 resetToStep(startStep)（player-runtime.js 的 startStep 區塊），而上面
+  // 的 waitForPlayerFocus 是等 ready 交握才回來的，所以此刻讀到的 computed style
+  // 就是重播的最終狀態，不需要輪詢。
+  await expectReplayedInstantly(stepOneBack);
+  await expectReplayedInstantly(stepTwoBack);
+  await expectReplayedInstantly(stepThreeBack);
+
   // 「只退一步」的關鍵斷言：退一步只讓第三行消失，前兩行仍然可見。
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
@@ -295,6 +357,13 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 不是「終將」成立。這正是 jsdom 狀態測試看不到、只有真實瀏覽器才能看到的地方。
   expect(await stepThreeBack.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
   expect(await stepThreeBack.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+
+  // 留下來的前兩行同樣要「已經」是最終狀態。expectVisible 只要求 opacity !== "0"，
+  // 一個錯誤地重播了淡入的退步會在動畫途中就通過它；這裡不輪詢、直接讀 computed
+  // style，要求 opacity 剛好是 "1" 且完全沒有 transition。上面的 expectHidden
+  // 已經證明 resetToStep() 這一輪（同步執行）跑完了，所以此刻讀到的就是最終值。
+  await expectReplayedInstantly(stepOneBack);
+  await expectReplayedInstantly(stepTwoBack);
 
   // 再退一步：只剩第一行可見。
   await page.keyboard.press("ArrowLeft");
@@ -333,6 +402,13 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 
   // 全程沒有任何一則錯誤浮出來，也沒有任何媒體還在播放。
   expect(pageErrors).toEqual([]);
+  // 整趟反向走裡，錯誤橫幅一次都沒有出現過——包含那些出現後又被下一次換頁清掉、
+  // 逐次輪詢看不到的。這是 issue #46「沒有錯誤浮出來」真正的證據。
+  expect(await recordedErrorBanners()).toEqual([]);
   await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
   await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
+  // 這裡不再對 videoHandle / audioHandle 問一次 paused：反向走已經跨頁離開第 4
+  // 頁，那份 srcdoc 文件連同它的 JS 執行環境整個被換掉了（handle 會直接丟
+  // "Execution context was destroyed"），元素本身已不可能還在出聲。「移除但沒有
+  // pause」這個缺陷會在上面那次同頁退步就被抓到，那時文件還在。
 });
