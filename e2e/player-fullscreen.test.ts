@@ -406,45 +406,56 @@ it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、�
     container.__originalRequestFullscreen = container.requestFullscreen.bind(container);
     container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
   });
+  // 「焦點通知與全螢幕錯誤通知同時存在」依設計只維持約 100 毫秒：全螢幕
+  // 失敗的路徑會呼叫 focusPlayer()（App.tsx 的 settled decision #5），焦點
+  // 一回到播放器，焦點通知就卸載、錯誤通知往上遞補。跨過那個邊界做兩次
+  // 獨立的 boundingBox() round-trip，會拿到「卸載前的焦點框」配「遞補後的
+  // 錯誤框」——兩個從未同時存在的矩形，算出來必然相交。issue #43 追到的
+  // 間歇失敗就是這麼來的，與機器負載無關（負載只決定那兩次讀取會不會被
+  // 切開）。所以改成在頁面內逐幀取樣：每一幀在同一個 layout pass 裡取兩個
+  // 矩形，沒有任何 round-trip 可以插進中間。取樣要在點擊之前裝好，才涵蓋
+  // 得到整個窗口。
+  await page.evaluate(() => {
+    const w = window as unknown as { __noticeOverlaps: boolean[] };
+    w.__noticeOverlaps = [];
+    const sample = () => {
+      const focus = document.querySelector(".player-focus-notice");
+      const error = Array.from(document.querySelectorAll(".player-error-notice")).find((el) =>
+        el.textContent?.includes("全螢幕切換失敗"),
+      );
+      if (focus && error) {
+        const a = focus.getBoundingClientRect();
+        const b = error.getBoundingClientRect();
+        // 兩者都有實際大小才算數，這同時取代了舊的 isVisible() 檢查.
+        if (a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0) {
+          w.__noticeOverlaps.push(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+        }
+      } else if (w.__noticeOverlaps.length > 0) {
+        return; // 窗口已經關上，停止取樣，別留一個 rAF 迴圈空轉
+      }
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
   await page.locator(".fullscreen-toggle-button").click();
   const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
   await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
 
-  // 兩則通知現在應該同時看得見——都在 DOM 裡，opacity 都不是 0（它們不是
-  // 用 opacity 隱藏的播放器元素，而是一般的 React 條件渲染，所以看的是
-  // Playwright 自己的 isVisible()，這裡是恰當的，因為它們沒有 fade 的語意）。
-  // 這個檔案跑在單純的 vitest 上，不是 @playwright/test，所以沒有
-  // expect(locator).toBeVisible() 這個 matcher（player-mode.test.ts 已經
-  // 有相同的說明）；改用 Locator.isVisible() 本身回傳的布林值.
-  expect(await focusNotice.isVisible()).toBe(true);
-  expect(await fullscreenErrorNotice.isVisible()).toBe(true);
+  // 取樣必須真的抓到「兩則同時可見」的幀，否則下面那條斷言是空的——與其
+  // 靜默地什麼都沒驗到，不如讓它明確地失敗.
+  const overlapCount = () =>
+    page.evaluate(() => (window as unknown as { __noticeOverlaps: boolean[] }).__noticeOverlaps.length);
+  await expect.poll(overlapCount, { timeout: 10_000 }).toBeGreaterThan(0);
 
   // 不只是「都在畫面上」，而是彼此的矩形沒有重疊——這才是 P2 real bug 的
-  // 反面證據：先前兩者用同一組 position:absolute 疊在同一個位置，第二個
-  // 會蓋住第一個，isVisible() 仍然會回報 true（Playwright 的可見性判斷不看
-  // z-order 疊加），所以額外量真實座標矩形是否相交.
-  // A single point-in-time pair of boundingBox() reads can race the
-  // browser's own layout pass right after the second notice mounts,
-  // so this polls instead of asserting once: a genuine CSS regression
-  // (the two notices sharing one position:absolute spot, as in review gate
-  // round 1's P2) never resolves — the poll times out and fails — while a
-  // one-off measurement race resolves within the next frame or two.
-  await expect
-    .poll(
-      async () => {
-        const focusBox = await focusNotice.boundingBox();
-        const errorBox = await fullscreenErrorNotice.boundingBox();
-        if (!focusBox || !errorBox) return "missing";
-        const overlaps =
-          focusBox.x < errorBox.x + errorBox.width &&
-          focusBox.x + focusBox.width > errorBox.x &&
-          focusBox.y < errorBox.y + errorBox.height &&
-          focusBox.y + focusBox.height > errorBox.y;
-        return overlaps;
-      },
-      { timeout: 5_000 },
-    )
-    .toBe(false);
+  // 反面證據：先前兩者用同一組 position:absolute 疊在同一個位置，後渲染的
+  // 會蓋住先渲染的，isVisible() 仍然會回報 true（Playwright 的可見性判斷不
+  // 看 z-order 疊加），所以要量真實座標矩形是否相交。共存期間的每一幀都
+  // 不許相交，一幀都不行.
+  const overlapFrames = await page.evaluate(
+    () => (window as unknown as { __noticeOverlaps: boolean[] }).__noticeOverlaps,
+  );
+  expect(overlapFrames.some((overlapped) => overlapped)).toBe(false);
 });
 
 it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清掉（review gate round 1, P2）", async () => {
@@ -486,6 +497,37 @@ it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清�
 
   // 真實點擊「退出全螢幕」按鈕，因為此時 isFullscreen 為 true，這顆按鈕的
   // onClick 真的會呼叫（被替換過的）exitFullscreen()，走到 catch 分支。
+  // 「焦點通知與全螢幕錯誤通知同時存在」依設計只維持約 100 毫秒：全螢幕
+  // 失敗的路徑會呼叫 focusPlayer()（App.tsx 的 settled decision #5），焦點
+  // 一回到播放器，焦點通知就卸載、錯誤通知往上遞補。跨過那個邊界做兩次
+  // 獨立的 boundingBox() round-trip，會拿到「卸載前的焦點框」配「遞補後的
+  // 錯誤框」——兩個從未同時存在的矩形，算出來必然相交。issue #43 追到的
+  // 間歇失敗就是這麼來的，與機器負載無關（負載只決定那兩次讀取會不會被
+  // 切開）。所以改成在頁面內逐幀取樣：每一幀在同一個 layout pass 裡取兩個
+  // 矩形，沒有任何 round-trip 可以插進中間。取樣要在點擊之前裝好，才涵蓋
+  // 得到整個窗口。
+  await page.evaluate(() => {
+    const w = window as unknown as { __noticeOverlaps: boolean[] };
+    w.__noticeOverlaps = [];
+    const sample = () => {
+      const focus = document.querySelector(".player-focus-notice");
+      const error = Array.from(document.querySelectorAll(".player-error-notice")).find((el) =>
+        el.textContent?.includes("全螢幕切換失敗"),
+      );
+      if (focus && error) {
+        const a = focus.getBoundingClientRect();
+        const b = error.getBoundingClientRect();
+        // 兩者都有實際大小才算數，這同時取代了舊的 isVisible() 檢查.
+        if (a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0) {
+          w.__noticeOverlaps.push(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+        }
+      } else if (w.__noticeOverlaps.length > 0) {
+        return; // 窗口已經關上，停止取樣，別留一個 rAF 迴圈空轉
+      }
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
   await page.locator(".fullscreen-toggle-button").click();
   const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
   await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
