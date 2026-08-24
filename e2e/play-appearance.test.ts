@@ -141,8 +141,9 @@ it("控制列的上一步／下一步換的是投影片本身（裁決 3：不�
     await expect.poll(titleText, { timeout: 30_000 }).toBe(firstSlideText);
     expect(secondSlideText).not.toBe(firstSlideText);
 
-    // 頁碼同步更新，且「上一步」在第 1 頁時停用（不會繞回最後一頁）。
-    expect(await page.locator(".play-bar .slide-nav-position").textContent()).toBe("第 1 頁，共 4 頁");
+    // 頁碼同步更新（樣板的 `N / M` 形式），且「上一步」在第 1 頁時停用
+    // （不會繞回最後一頁）。
+    expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 4");
     expect(await page.locator('.play-bar button[aria-label="上一步"]').isDisabled()).toBe(true);
   } finally {
     await page.close();
@@ -185,20 +186,40 @@ it("三種浮動通知（焦點提示／播放錯誤／全螢幕錯誤）在控�
   const { page, cleanup } = await openApp(brokenEffectsDeckDir, "play-appearance-notices");
   try {
     await page.locator('.view-btn[data-view="play"]').click();
-    // 這份 deck 第 1 頁的效果清單解析必定失敗（見
-    // e2e/player-effect-error.test.ts），所以不等 waitForPlayerFocus，
-    // 直接等錯誤通知出現即可。
-    const errorNotice = page.locator(".player-error-notice");
+
+    // 播放錯誤：這份 deck 第 1 頁的效果清單解析必定失敗（見
+    // e2e/player-effect-error.test.ts）。canvas.ts 的解析失敗路徑（見
+    // renderPlay 的 catch 分支）把 srcdoc 換成沒有 player-runtime 的靜態
+    // 版本，所以這一頁永遠不會送出 "ready"——focusPlayer() 因此永遠不會
+    // 被呼叫，playerHasFocus 停在初始值 false。焦點提示與播放錯誤兩者因
+    // 此是同一次失敗、同時、真的成立，不需要另外偷焦點。
+    const errorNotice = page.locator(".player-error-notice", { hasText: "效果清單" });
     await expect.poll(() => errorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+    const focusNotice = page.locator(".player-focus-notice");
+    expect(await focusNotice.count()).toBeGreaterThan(0);
 
-    const opacityOf = (selector: string) =>
-      page.locator(selector).first().evaluate((el) => getComputedStyle(el).opacity);
+    // 全螢幕錯誤：沿用 e2e/player-fullscreen.test.ts 已驗證過的做法——用
+    // 一個一定會拒絕的 requestFullscreen 替身製造真實的錯誤（不是假造
+    // 成功又謊報失敗），再按下全螢幕鈕。
+    await page.evaluate(() => {
+      const container = document.querySelector(".canvas-area") as HTMLElement;
+      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
+    });
+    await page.locator(".play-bar .fullscreen-toggle-button").click();
+    const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+    await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    // 通知本身不在 .play-bar 裡，閒置隱藏規則只作用在 .play-bar，所以
-    // 通知在控制列隱去後仍應可見——它們是錯誤，不是 chrome。
+    const opacityOf = (locator: ReturnType<Page["locator"]>) =>
+      locator.first().evaluate((el) => getComputedStyle(el).opacity);
+
+    // 通知本身不在 .play-bar 裡，閒置隱藏規則只作用在 .play-bar，所以三
+    // 種通知在控制列隱去後仍應可見——它們是錯誤，不是 chrome。這裡不再動
+    // 滑鼠（上面的 evaluate()/click() 已經是最後的互動），單純等待閒置。
     await page.waitForTimeout(2800);
-    await expect.poll(() => opacityOf(".play-bar"), { timeout: 5_000 }).toBe("0");
-    expect(await opacityOf(".player-error-notice")).toBe("1");
+    await expect.poll(() => opacityOf(page.locator(".play-bar")), { timeout: 5_000 }).toBe("0");
+    expect(await opacityOf(focusNotice)).toBe("1");
+    expect(await opacityOf(errorNotice)).toBe("1");
+    expect(await opacityOf(fullscreenErrorNotice)).toBe("1");
   } finally {
     await page.close();
     await cleanup();

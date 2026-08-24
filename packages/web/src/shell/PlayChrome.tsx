@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 
-// No icons in this file: 離開播放/全螢幕 stay text buttons, matching the
-// pre-existing (pre-#48) play chrome verbatim — see the class comment
-// below. base-shell.html's icon-only play-bar buttons are not adopted
-// here to avoid rewriting tested behaviour that isn't broken.
+// 離開播放/全螢幕 stay text buttons, matching the pre-existing (pre-#48)
+// play chrome verbatim — see the class comment below. base-shell.html's
+// icon-only 全螢幕/離開播放 buttons are not adopted for these two: the
+// 裁決 2 freeze (既有 e2e 的文字選擇器，見下方註解) still applies to them.
+// 上一步/下一步 are new elements no existing test depends on the shape
+// of, so *those two* do follow the template's own SVG verbatim (fleet
+// commander's 裁決 A, 2026-08-25) — see the buttons below.
 
 /** 游標與控制列一起隱去前的閒置時間 (#54 AC3)。 */
 const IDLE_MS = 2500;
@@ -134,29 +137,39 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             時沒有任何 runtime 活著回應方向鍵，這兩顆鈕是 #54 要求的換頁
             替代途徑，接的是 controller.previous()/next()（＝
             showSlide(currentIndex±1)），不是 player-runtime.js 的步驟推進。
-            class 沿用 StatusBar 既有的 `.slide-nav-button`/`.slide-nav-
-            position` 契約 (#25/#29)，同一份樣式在播放列的深色背景上量測
-            起來與樣板的 pos/按鈕視覺一致，不需要另開一組新 class。 */}
+            兩顆鈕的 SVG 逐字照抄 base-shell.html:420-421 的 path（fleet
+            指揮官 裁決 A，2026-08-25）：這兩個是本票新增的元素，沒有任何
+            既有測試依賴它們的形狀，裁決 2 的文字選擇器凍結只涵蓋既有的
+            離開播放/全螢幕，不涵蓋這兩顆——不再沿用 StatusBar 的
+            `.slide-nav-button`（那組樣式是給文字 ‹/› 用的，圖示鈕改用
+            `.play-bar` 自己的 button 樣式，見 play.css）。 */}
         <button
           type="button"
-          className="slide-nav-button"
+          className="play-nav-button"
           aria-label="上一步"
           disabled={state.currentIndex <= 0}
           onClick={() => void controller?.previous()}
         >
-          ‹
+          <svg viewBox="0 0 16 16">
+            <path d="M10 3 L5 8 L10 13" />
+          </svg>
         </button>
         <button
           type="button"
-          className="slide-nav-button"
+          className="play-nav-button"
           aria-label="下一步"
           disabled={state.currentIndex < 0 || state.currentIndex >= state.slides.length - 1}
           onClick={() => void controller?.next()}
         >
-          ›
+          <svg viewBox="0 0 16 16">
+            <path d="M6 3 L11 8 L6 13" />
+          </svg>
         </button>
-        <span className="slide-nav-position">
-          {state.currentIndex >= 0 ? `第 ${state.currentIndex + 1} 頁，共 ${state.slides.length} 頁` : "尚無投影片"}
+        {/* 頁碼：樣板的 `N / M` 形式（base-shell.html:422 的 `.pos`），不是
+            狀態列的「第 N 頁，共 M 頁」——那句是 #53 給狀態列的規定，播放
+            時狀態列已不在 DOM 裡，兩者不衝突（fleet 指揮官 裁決 A）。 */}
+        <span className="play-bar-position">
+          {state.currentIndex >= 0 ? `${state.currentIndex + 1} / ${state.slides.length}` : "– / –"}
         </span>
         <span className="play-bar-divider" />
         <button type="button" className="play-toggle-button leave" onClick={() => void onExitPlay()}>
