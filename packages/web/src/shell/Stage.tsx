@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
 
@@ -19,22 +19,48 @@ export interface StageProps {
 }
 
 /**
- * The stage (#50 will replace this wholesale — see the ticket boundary
- * note in the PR body). `canvasSize`/`state`/`controller`/`view` are
- * accepted now (frozen seam) but not yet used to draw anything beyond the
- * pre-existing flex-filled canvas — #29's fullscreen behaviour contract
- * requires the iframe to grow to the *screen's own* dimensions
- * (e2e/player-fullscreen.test.ts asserts `frameSize[0] === screenSize[0]`),
- * which an aspect-ratio-letterboxed `.well`/`.stage` frame would violate;
- * that framing is left for #50, which owns re-deriving the fullscreen
- * behaviour together with the new stage design. `canvasRef`'s own div
- * never moves position across renders (`view === "grid"` has nothing to
- * branch into yet — #55 adds `GridView` here without reopening App.tsx).
+ * The stage (#50): the slide sits centred inside `wellRef`'s element at the
+ * presentation's own canvas ratio, auto-scaled to fit with margin and a
+ * visible boundary (see styles/stage.css for the box itself and
+ * styles/shell.css for `.canvas-area`'s well). This component only decides
+ * the ratio (from `canvasSize`) and the DOM shape — all the fit/centre math
+ * is CSS (`aspect-ratio` + `max-width`/`max-height`), so a window resize
+ * recomputes for free with no JS involved.
+ *
+ * `canvasRef`'s div never moves position across renders, and the JSX below
+ * is unconditional (no ternary/list wrapping it) so React never has reason
+ * to give it a new node identity: canvas.ts's `mountCanvas` runs once and
+ * holds that node forever, and recreating it silently orphans the mounted
+ * iframe — no error, no failed assertion, the screen just goes white (see
+ * the PR body's sabotage-proof evidence).
+ *
+ * #29's fullscreen contract (e2e/player-fullscreen.test.ts asserts
+ * `frameSize[0] === screenSize[0]`) outranks this ticket's letterboxing —
+ * `.canvas-area:fullscreen`/`.stage` in the two stylesheets above neutralise
+ * the ratio frame under fullscreen, not this component.
  */
-export function Stage({ canvasRef, wellRef, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, children }: StageProps) {
+  // #55 (wave 4) branches on `view` here — e.g. `if (view === "grid") return
+  // <GridView ... />;` before the JSX below — without reopening App.tsx.
+  // #50 leaves it unused: this ticket only builds the standard-view stage.
+
+  // `canvasSize` starts `null` until App.tsx's own `/api/presentation`
+  // fetch resolves. stage.css's `.stage` carries a literal 16/9
+  // `aspect-ratio` fallback for that window (docs/design/base-shell.html's
+  // own template value); showing the box at that fallback ratio and then
+  // jumping to the real one a moment later would be a visible flash for
+  // any non-16:9 presentation, so the box is hidden (not `display: none`,
+  // which would touch canvasRef's node's ancestor chain) until the real
+  // ratio is known, then it appears already correct.
+  const stageStyle: CSSProperties = canvasSize
+    ? { aspectRatio: `${canvasSize.width} / ${canvasSize.height}` }
+    : { visibility: "hidden" };
+
   return (
     <div className="canvas-area" ref={wellRef}>
-      <div ref={canvasRef} className="canvas" />
+      <div className="stage" style={stageStyle}>
+        <div ref={canvasRef} className="canvas" />
+      </div>
       {children}
     </div>
   );
