@@ -406,6 +406,44 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
   }
 });
 
+// 裁決 6 (#56): exitPlay() destroys the play iframe and rebuilds it in view
+// mode — that rebuild must re-inject selection-runtime.js, or selection
+// silently stops working with no error and no failed assertion anywhere
+// else. Both the status bar text and the Shadow DOM box are asserted: the
+// status bar alone would not catch a rebuilt frame that lost its box.
+it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取框仍畫在 Shadow DOM 裡", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+
+    await page.locator('.cmd:has-text("從頭播放")').click();
+    // Shell collapsing (titlebar unmounts) is direct evidence play mode
+    // took effect — same signal e2e/shell.test.ts polls after this same
+    // click, chosen over the sandbox attribute because both modes now
+    // carry allow-scripts (ADR-0011).
+    await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
+
+    await page.locator('button:has-text("離開播放")').click();
+    // Symmetric wait for the round trip back to view mode: the titlebar
+    // (and with it the ribbon's 從頭播放 command) reappears.
+    await expect.poll(() => page.locator(".titlebar").count()).toBe(1);
+
+    const selName = page.locator(".status .sel-name");
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：標題");
+
+    const frame = await canvasFrame(page);
+    const boxDisplay = await frame.evaluate(() => {
+      const host = document.body.lastElementChild as HTMLElement;
+      const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
+      return sel ? getComputedStyle(sel).display : null;
+    });
+    expect(boxDisplay).toBe("block");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("基準截圖：標準檢視含選取框", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {

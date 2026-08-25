@@ -376,7 +376,10 @@ it("全螢幕狀態下離開播放：真的點按鈕就能退出，文件不會�
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(false);
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
+  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // the sandbox no longer goes back to "" here. What this line pins is
+  // that it carries only allow-scripts — never allow-same-origin.
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 });
 
 it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、不互相覆蓋（review gate round 1, P2）", async () => {

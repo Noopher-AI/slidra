@@ -172,7 +172,10 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
 
   // 離開播放模式，回到檢視。
   await page.locator('button:has-text("離開播放")').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
+  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // the sandbox no longer goes back to "" here. What this line pins is
+  // that it carries only allow-scripts — never allow-same-origin.
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 
   expect(pageErrors).toEqual([]);
 
