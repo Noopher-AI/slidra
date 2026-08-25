@@ -135,6 +135,42 @@ export async function stageBundledFonts(rootDir: string): Promise<void> {
 }
 
 /**
+ * Puts the bundled font into the container rooted at `rootDir` unless it
+ * already has one, and answers whether it had to.
+ *
+ * A presentation acquires its font the first time it actually needs one —
+ * the first measurement, or being packed — never when `co-motion new`
+ * creates an empty deck. So the font is fetched once per presentation, and
+ * because it lands in the work directory, every later measurement and every
+ * later `pack` finds it already there.
+ */
+export async function ensureBundledFonts(rootDir: string): Promise<boolean> {
+  if (await hasBundledFont(rootDir)) {
+    return false;
+  }
+  await stageBundledFonts(rootDir);
+  return true;
+}
+
+async function hasBundledFont(rootDir: string): Promise<boolean> {
+  try {
+    const entries = await readdir(path.join(rootDir, BUNDLED_FONT_DIR));
+    return entries.some((entry) => isFontFile(entry));
+  } catch (error) {
+    if (isEnoent(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+// A font file is one with a font extension. OFL.txt is not omitted, it
+// simply is not a font — that is a definition, not a skip.
+function isFontFile(entry: string): boolean {
+  return /\.(ttf|otf)$/i.test(entry);
+}
+
+/**
  * Builds the font book for the container rooted at `workDir`. A container
  * with no font directory yields an empty book — every presentation created
  * before this feature is one, and opening those must keep working; the
@@ -152,9 +188,7 @@ export async function loadFontBook(workDir: string): Promise<FontBook> {
     }
     throw error;
   }
-  // A font file is one with a font extension. OFL.txt is not omitted, it
-  // simply is not a font — that is a definition, not a skip.
-  const fontFiles = entries.filter((entry) => /\.(ttf|otf)$/i.test(entry)).sort();
+  const fontFiles = entries.filter(isFontFile).sort();
   const fonts = await Promise.all(
     fontFiles.map(async (entry) => new Uint8Array(await readFile(path.join(fontDir, entry)))),
   );

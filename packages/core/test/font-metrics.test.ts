@@ -3,6 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CoMotionError } from "../src/errors.js";
+import {
+  createNewPresentation,
+  listPresentationEntries,
+  openPresentation,
+  packPresentation,
+  readPresentationFontBook,
+} from "../src/workspace.js";
 import { createFontBook, MEASURED_TEXT_CSS } from "../src/font/metrics.js";
 import {
   BUNDLED_FONT_DIR,
@@ -256,5 +263,62 @@ describe("a container carries the font and its licence", () => {
     expect(book.faces).toEqual([]);
     expect(() => book.measureText("x", NOTO)).toThrow("這份簡報沒有打包字型");
     await rm(root, { recursive: true, force: true });
+  });
+});
+
+describe("a presentation picks up its font the first time it really needs one", () => {
+  // Each test gets its own CO_MOTION_HOME so nothing touches the real
+  // ~/.comotion (ADR-0004, ticket #9 testing convention).
+  async function newDeck(): Promise<{ id: string; comotDir: string }> {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    ENV.CO_MOTION_HOME = await mkdtemp(path.join(tmpdir(), "co-motion-home-"));
+    const comotPath = path.join(comotDir, "deck.comot");
+    await createNewPresentation(comotPath, "字型驗收");
+    const { id } = await openPresentation(comotPath);
+    return { id, comotDir };
+  }
+
+  it("a brand-new deck carries no font at all", async () => {
+    const { id } = await newDeck();
+    expect(await listPresentationEntries(id)).toEqual(["assets", "project.json", "slides"]);
+    expect(await listPresentationEntries(id, "assets")).toEqual([]);
+    delete ENV.CO_MOTION_HOME;
+  });
+
+  it("the first measurement puts the font and its licence into the deck", async () => {
+    const { id } = await newDeck();
+    const book = await readPresentationFontBook(id);
+    expect(book.measureText("驗收用簡報", NOTO)).toBe(500);
+    expect(await listPresentationEntries(id, "assets/fonts")).toEqual([
+      "NotoSansTC-Regular.ttf",
+      "OFL.txt",
+    ]);
+    delete ENV.CO_MOTION_HOME;
+  });
+
+  it("a second measurement needs no network — the deck already has the font", async () => {
+    const { id } = await newDeck();
+    await readPresentationFontBook(id);
+    await withoutNetwork(async () => {
+      const emptyCache = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+      await withFontCache(emptyCache, async () => {
+        const book = await readPresentationFontBook(id);
+        expect(book.measureText("驗收用簡報", NOTO)).toBe(500);
+      });
+      await rm(emptyCache, { recursive: true, force: true });
+    });
+    delete ENV.CO_MOTION_HOME;
+  });
+
+  it("packing puts the font into the .comot, so it opens without an installed font", async () => {
+    const { id, comotDir } = await newDeck();
+    const packedPath = path.join(comotDir, "packed.comot");
+    await packPresentation(id, packedPath);
+    const reopened = await openPresentation(packedPath);
+    expect(await listPresentationEntries(reopened.id, "assets/fonts")).toEqual([
+      "NotoSansTC-Regular.ttf",
+      "OFL.txt",
+    ]);
+    delete ENV.CO_MOTION_HOME;
   });
 });
