@@ -1,0 +1,260 @@
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { CoMotionError } from "../src/errors.js";
+import { createFontBook, MEASURED_TEXT_CSS } from "../src/font/metrics.js";
+import {
+  BUNDLED_FONT_DIR,
+  loadFontBook,
+  readBundledFontBytes,
+  resolveFontCacheDir,
+  stageBundledFonts,
+} from "../src/font/bundle.js";
+
+const ENV = process.env;
+
+/** Runs `body` with the font cache pointed at `dir`. */
+async function withFontCache(dir: string, body: () => Promise<void>): Promise<void> {
+  const previous = ENV.CO_MOTION_FONT_CACHE;
+  ENV.CO_MOTION_FONT_CACHE = dir;
+  try {
+    await body();
+  } finally {
+    if (previous === undefined) {
+      delete ENV.CO_MOTION_FONT_CACHE;
+    } else {
+      ENV.CO_MOTION_FONT_CACHE = previous;
+    }
+  }
+}
+
+/** Runs `body` with every outgoing fetch failing, the way being offline does. */
+async function withoutNetwork(body: () => Promise<void>): Promise<void> {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.reject(new TypeError("fetch failed"));
+  try {
+    await body();
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// The real bundled font, from the on-disk cache (downloaded once on first
+// use). Every expectation below is about this specific font file.
+const notoSansTC = readBundledFontBytes;
+
+describe("createFontBook reads a face's metadata straight out of the sfnt tables", () => {
+  it("reports the family name from the name table", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.faces.map((face) => face.family)).toEqual(["Noto Sans TC"]);
+  });
+
+  // Noto Sans TC Regular's published design values: 1000 units per em,
+  // usWeightClass 400. hhea ascender/descender/lineGap are the vertical
+  // metrics the same file declares.
+  it("reports units per em, weight and the vertical metrics", async () => {
+    const [face] = createFontBook([await notoSansTC()]).faces;
+    expect(face.unitsPerEm).toBe(1000);
+    expect(face.weight).toBe(400);
+    expect(face.ascender).toBeGreaterThan(0);
+    expect(face.descender).toBeLessThan(0);
+  });
+});
+
+const NOTO = { fontFamily: "Noto Sans TC", fontSize: 100 } as const;
+
+describe("measureText sums the glyph advances out of hmtx", () => {
+  it("gives a full-width CJK run exactly one em per character", async () => {
+    // Noto Sans TC is a CJK font: its ideographs are designed on the em
+    // square, so five of them at 100px is exactly 500px by construction.
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("驗收用簡報", NOTO)).toBe(500);
+  });
+
+  it("gives an empty string zero width", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("", NOTO)).toBe(0);
+  });
+
+  it("scales linearly with the font size", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("驗收用簡報", { ...NOTO, fontSize: 41.5 })).toBeCloseTo(207.5, 10);
+  });
+});
+
+describe("the style has to name exactly one bundled face", () => {
+  it("rejects a CSS font-family list rather than falling back down it", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText("x", { ...NOTO, fontFamily: '"Noto Sans TC", sans-serif' })).toThrow(
+      /字型名稱不可以是清單/,
+    );
+  });
+
+  it("matches the family name case-insensitively and ignores surrounding space", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("驗收用簡報", { ...NOTO, fontFamily: "  noto sans tc " })).toBe(500);
+  });
+
+  it("names the bundled families when the requested one is not among them", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText("x", { ...NOTO, fontFamily: "Helvetica" })).toThrow(
+      "這份簡報沒有打包字型「Helvetica」；已打包：Noto Sans TC",
+    );
+  });
+
+  it("names the available weights when the requested weight is not bundled", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText("x", { ...NOTO, fontWeight: 700 })).toThrow(
+      "這份簡報沒有打包字重 700 的「Noto Sans TC」；可用字重：400",
+    );
+  });
+
+  it("says so plainly when the presentation bundles no font at all", () => {
+    const book = createFontBook([]);
+    expect(() => book.measureText("x", NOTO)).toThrow("這份簡報沒有打包字型");
+  });
+
+  it("refuses two bundled files claiming the same family and weight", async () => {
+    const ttf = await notoSansTC();
+    expect(() => createFontBook([ttf, ttf])).toThrow(/無法決定用哪一份/);
+  });
+});
+
+describe("font size", () => {
+  it("accepts a fractional size", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("驗", { ...NOTO, fontSize: 41.5 })).toBeCloseTo(41.5, 10);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])("rejects %s", async (fontSize) => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText("驗", { ...NOTO, fontSize })).toThrow(
+      "字級必須是大於 0 的數字",
+    );
+  });
+});
+
+describe("characters the browser lays out differently are rejected, never guessed", () => {
+  // Each entry was measured against Chromium: core and browser disagree, so
+  // measuring these would return a silently wrong number.
+  it.each([
+    ["U+0009 TAB", "a\u0009b", "文字不可包含控制字元"],
+    ["U+200D ZERO WIDTH JOINER", "a\u200Db", "文字不可包含零寬或格式字元"],
+    ["U+00AD SOFT HYPHEN", "x\u00ADy", "文字不可包含零寬或格式字元"],
+    ["U+FE00 VARIATION SELECTOR-1", "\u4E00\uFE00", "不支援變體選擇符"],
+    ["U+0301/U+0302 COMBINING ACCENTS", "a\u0301\u0302b", "不支援組合字元，請改用預組合字元"],
+  ])("rejects %s", async (_name, text, message) => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText(text, NOTO)).toThrow(message);
+  });
+
+  it("accepts the precomposed form of the same accented letter", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.measureText("\u00E9", NOTO)).toBeGreaterThan(0);
+  });
+});
+
+describe("a character the font does not have is an error naming it", () => {
+  it("names every missing code point once, with its font", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(() => book.measureText("\u{1F642}a\u{1F642}", NOTO)).toThrow(
+      "字型「Noto Sans TC」不支援下列字元：\u{1F642} (U+1F642)",
+    );
+  });
+});
+
+describe("advanceOf", () => {
+  it("agrees with measureText on a single character", async () => {
+    const book = createFontBook([await notoSansTC()]);
+    expect(book.advanceOf(0x9a57, NOTO)).toBe(book.measureText("\u9A57", NOTO));
+  });
+});
+
+describe("MEASURED_TEXT_CSS", () => {
+  it("switches off exactly the three behaviours core does not model", () => {
+    expect(MEASURED_TEXT_CSS).toBe(
+      "font-kerning:none;font-variant-ligatures:none;text-spacing-trim:space-all",
+    );
+  });
+});
+
+describe("a corrupt font file is an error, never a skipped face", () => {
+  it("rejects bytes that are not an sfnt", () => {
+    expect(() => createFontBook([new Uint8Array(64)])).toThrow(CoMotionError);
+  });
+});
+
+describe("the master font is cached on disk, not kept in version control", () => {
+  it("takes its cache directory from CO_MOTION_FONT_CACHE, never from CO_MOTION_HOME", () => {
+    // Ten test files point CO_MOTION_HOME at a fresh temp directory; a cache
+    // underneath it would re-download 7 MB for each of them.
+    const cacheDir = resolveFontCacheDir();
+    ENV.CO_MOTION_HOME = "/tmp/some-other-home";
+    try {
+      expect(resolveFontCacheDir()).toBe(cacheDir);
+    } finally {
+      delete ENV.CO_MOTION_HOME;
+    }
+  });
+
+  it("reads the cached file without going to the network", async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+    await writeFile(path.join(cacheDir, "NotoSansTC-Regular.ttf"), await readBundledFontBytes());
+    await withFontCache(cacheDir, async () => {
+      await withoutNetwork(async () => {
+        expect((await readBundledFontBytes()).byteLength).toBe(7_090_820);
+      });
+    });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it("says what to do when the cache is cold and the network is unreachable", async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+    await withFontCache(cacheDir, async () => {
+      await withoutNetwork(async () => {
+        await expect(readBundledFontBytes()).rejects.toThrow(
+          /取不到內建字型 Noto Sans TC，而且本機快取是空的/,
+        );
+      });
+    });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe("a container carries the font and its licence", () => {
+  it("stages both files under assets/fonts", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-container-"));
+    await stageBundledFonts(root);
+    expect((await readdir(path.join(root, BUNDLED_FONT_DIR))).sort()).toEqual([
+      "NotoSansTC-Regular.ttf",
+      "OFL.txt",
+    ]);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("keeps the licence text intact, so it travels with every copy", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-container-"));
+    await stageBundledFonts(root);
+    const licence = await readFile(path.join(root, BUNDLED_FONT_DIR, "OFL.txt"), "utf-8");
+    expect(licence).toContain("SIL Open Font License");
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("measures text from the container's own font, not the OS's", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-container-"));
+    await stageBundledFonts(root);
+    const book = await loadFontBook(root);
+    expect(book.faces.map((face) => face.family)).toEqual(["Noto Sans TC"]);
+    expect(book.measureText("驗收用簡報", NOTO)).toBe(500);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("gives a presentation with no bundled font an empty book that fails loudly", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-container-"));
+    const book = await loadFontBook(root);
+    expect(book.faces).toEqual([]);
+    expect(() => book.measureText("x", NOTO)).toThrow("這份簡報沒有打包字型");
+    await rm(root, { recursive: true, force: true });
+  });
+});
