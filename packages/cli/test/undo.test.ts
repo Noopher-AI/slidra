@@ -357,6 +357,60 @@ describe("finding 1 (high) — clearing the redo stack deletes its snapshot file
   });
 });
 
+describe("gate round 2 finding — a failed stack write never dangles a snapshot reference", () => {
+  it("history dir unwritable at commit time: old stack.json survives intact, every snapshot it references still exists", async () => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+    const { id, elementId } = await openFreshPresentation();
+    // Build a redo entry first, so the failing commit below has something
+    // it would (wrongly, pre-fix) delete before the write it depends on.
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第一版" });
+    await registry.dispatch("undo", { id });
+
+    const historyDir = path.join(coMotionHome, "history", id);
+    const { readFile: readFileFs, readdir, chmod } = await import("node:fs/promises");
+    const stackPath = path.join(historyDir, "stack.json");
+    const beforeStack = await readFileFs(stackPath, "utf-8");
+
+    // Read + execute but no write on the history dir itself (snapshots/ is
+    // untouched): stack.json can still be read, but writeStack's temp-file
+    // write inside historyDir must fail.
+    await chmod(historyDir, 0o555);
+    try {
+      const result = await registry.dispatch("text set", {
+        id,
+        slidePath: "slides/001.svg",
+        elementId,
+        newText: "第二版",
+      });
+      expect(result.ok).toBe(false);
+      expect(result.message).toBe("無法寫入復原歷史");
+    } finally {
+      await chmod(historyDir, 0o755);
+    }
+
+    // The old stack.json — the one from before the failed commit — must be
+    // untouched, and every snapshot id it references must still be on disk.
+    const afterStack = await readFileFs(stackPath, "utf-8");
+    expect(afterStack).toBe(beforeStack);
+    const parsed = JSON.parse(afterStack) as {
+      undo: { entries: { snapshotId: string }[] }[];
+      redo: { entries: { snapshotId: string }[] }[];
+      openGroup: { entries: { snapshotId: string }[] } | null;
+    };
+    const referenced = new Set<string>();
+    for (const group of [...parsed.undo, ...parsed.redo, ...(parsed.openGroup ? [parsed.openGroup] : [])]) {
+      for (const entry of group.entries) referenced.add(entry.snapshotId);
+    }
+    expect(referenced.size).toBeGreaterThan(0);
+
+    const onDisk = new Set(await readdir(path.join(historyDir, "snapshots")));
+    for (const snapshotId of referenced) {
+      expect(onDisk.has(snapshotId)).toBe(true);
+    }
+  });
+});
+
 describe("finding 2 (high) — a failed content write never consumes an undo slot", () => {
   it("a permission-denied slide file: text set fails, undo reports nothing to undo, and no orphan snapshot is left", async () => {
     if (typeof process.getuid === "function" && process.getuid() === 0) return;

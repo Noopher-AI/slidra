@@ -189,20 +189,25 @@ async function deleteSnapshot(home: string, id: string, snapshotId: string): Pro
   }
 }
 
-/** Pushes a group onto the undo stack, then enforces UNDO_STACK_CAP by evicting the oldest. */
-async function pushGroupToUndoStack(
-  home: string,
-  id: string,
-  stack: StackFile,
-  group: HistoryGroup,
-): Promise<void> {
+/**
+ * Pushes a group onto the undo stack and enforces UNDO_STACK_CAP by evicting
+ * the oldest group once it is exceeded. Returns the evicted group's
+ * snapshot ids rather than deleting them here: the caller must not delete a
+ * snapshot file until the `writeStack` that drops the last reference to it
+ * has actually succeeded — deleting first would leave the *old* stack.json
+ * (still on disk if that write fails) pointing at a file that is already
+ * gone (#73 gate round 2 finding).
+ */
+function pushGroupToUndoStack(stack: StackFile, group: HistoryGroup): string[] {
   stack.undo.push(group);
+  const evictedSnapshotIds: string[] = [];
   while (stack.undo.length > UNDO_STACK_CAP) {
     const evicted = stack.undo.shift()!;
     for (const entry of evicted.entries) {
-      await deleteSnapshot(home, id, entry.snapshotId);
+      evictedSnapshotIds.push(entry.snapshotId);
     }
   }
+  return evictedSnapshotIds;
 }
 
 /**
@@ -236,14 +241,22 @@ export async function stageSnapshotEntries(id: string, virtualPaths: string[]): 
  * every cleared redo entry's snapshot file rather than just dropping the
  * stack.json references to it, so an ordinary "set → undo → set" loop does
  * not leave the file on disk with nothing pointing at it (finding 1).
+ *
+ * The snapshot deletions (cleared redo entries, plus any cap-evicted group)
+ * are collected but not performed until *after* `writeStack` has written
+ * the replacement stack durably to disk. Deleting them first would mean a
+ * failed `writeStack` (e.g. disk full) leaves the old stack.json — which
+ * still references those now-deleted files — as the current history,
+ * permanently dangling (#73 gate round 2 finding).
  */
 export async function commitSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
   const home = resolveCoMotionHome();
   const stack = await readStack(home, id);
 
+  const snapshotIdsToDelete: string[] = [];
   for (const group of stack.redo) {
     for (const entry of group.entries) {
-      await deleteSnapshot(home, id, entry.snapshotId);
+      snapshotIdsToDelete.push(entry.snapshotId);
     }
   }
   stack.redo = [];
@@ -251,9 +264,16 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
   if (stack.openGroup) {
     stack.openGroup.entries.push(...entries);
   } else {
-    await pushGroupToUndoStack(home, id, stack, { groupId: generateOpaqueId(), entries });
+    snapshotIdsToDelete.push(...pushGroupToUndoStack(stack, { groupId: generateOpaqueId(), entries }));
   }
+
   await writeStack(home, id, stack);
+
+  // Only now is the new stack durable, so only now is it safe to delete
+  // the snapshot files nothing on disk references any more.
+  for (const snapshotId of snapshotIdsToDelete) {
+    await deleteSnapshot(home, id, snapshotId);
+  }
 }
 
 /**
@@ -316,10 +336,11 @@ export async function endHistoryGroup(id: string): Promise<void> {
     throw new CoMotionError("沒有開啟中的復原群組");
   }
   stack.openGroup = null;
-  if (group.entries.length > 0) {
-    await pushGroupToUndoStack(home, id, stack, group);
-  }
+  const evictedSnapshotIds = group.entries.length > 0 ? pushGroupToUndoStack(stack, group) : [];
   await writeStack(home, id, stack);
+  for (const snapshotId of evictedSnapshotIds) {
+    await deleteSnapshot(home, id, snapshotId);
+  }
 }
 
 /**
@@ -402,7 +423,10 @@ export async function redoLastGroup(id: string): Promise<{ restoredPaths: string
     throw new CoMotionError("沒有可重做的操作");
   }
   const { inverseGroup, restoredPaths } = await applyGroup(home, id, workDir, group);
-  await pushGroupToUndoStack(home, id, stack, inverseGroup);
+  const evictedSnapshotIds = pushGroupToUndoStack(stack, inverseGroup);
   await writeStack(home, id, stack);
+  for (const snapshotId of evictedSnapshotIds) {
+    await deleteSnapshot(home, id, snapshotId);
+  }
   return { restoredPaths };
 }
