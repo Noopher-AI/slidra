@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -124,19 +125,45 @@ async function readBundledLicence(): Promise<string> {
 }
 
 /**
+ * Writes one file into `dir` via a temp file and a rename. `rename` on the
+ * same filesystem is atomic, so a crash, a full disk or an interrupt can
+ * never leave a half-written file sitting under the real name where the
+ * completeness check below would mistake it for a finished one.
+ */
+async function writeFileAtomically(
+  dir: string,
+  name: string,
+  data: Uint8Array | string,
+): Promise<void> {
+  const tempPath = path.join(dir, `.${name}.${randomBytes(6).toString("hex")}.tmp`);
+  try {
+    await writeFile(tempPath, data);
+    await rename(tempPath, path.join(dir, name));
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+/**
  * Copies the bundled font and its licence into `<rootDir>/assets/fonts/`.
  * `rootDir` is a container root — a staging directory or a work directory.
+ *
+ * The licence is written FIRST and the font second, so the only file that
+ * can exist on its own after an interrupted run is the licence — and the
+ * completeness check treats that as incomplete. The reverse order is what
+ * produced a `.comot` carrying a font with no licence (#71 acceptance 4).
  */
 export async function stageBundledFonts(rootDir: string): Promise<void> {
   const fontDir = path.join(rootDir, BUNDLED_FONT_DIR);
   await mkdir(fontDir, { recursive: true });
-  await writeFile(path.join(fontDir, BUNDLED_FONT_FILE), await readBundledFontBytes());
-  await writeFile(path.join(fontDir, BUNDLED_LICENCE_FILE), await readBundledLicence(), "utf-8");
+  await writeFileAtomically(fontDir, BUNDLED_LICENCE_FILE, await readBundledLicence());
+  await writeFileAtomically(fontDir, BUNDLED_FONT_FILE, await readBundledFontBytes());
 }
 
 /**
  * Puts the bundled font into the container rooted at `rootDir` unless it
- * already has one, and answers whether it had to.
+ * already has a complete one, and answers whether it had to.
  *
  * A presentation acquires its font the first time it actually needs one —
  * the first measurement, or being packed — never when `co-motion new`
@@ -145,22 +172,67 @@ export async function stageBundledFonts(rootDir: string): Promise<void> {
  * later `pack` finds it already there.
  */
 export async function ensureBundledFonts(rootDir: string): Promise<boolean> {
-  if (await hasBundledFont(rootDir)) {
+  if (await hasCompleteBundle(rootDir)) {
     return false;
   }
   await stageBundledFonts(rootDir);
   return true;
 }
 
-async function hasBundledFont(rootDir: string): Promise<boolean> {
+/**
+ * "Already bundled" means BOTH files are there and the font is really a
+ * font — not merely "some file with a font extension exists".
+ *
+ * The weaker rule let a leftover from an interrupted run be mistaken for a
+ * finished bundle: a `.ttf` written before a failing `OFL.txt` write made
+ * every retry decide there was nothing to do, and `pack` then shipped a
+ * `.comot` with a font and no licence, which #71 acceptance 4 forbids. Any
+ * incomplete state is completed here rather than skipped.
+ */
+async function hasCompleteBundle(rootDir: string): Promise<boolean> {
+  const fontDir = path.join(rootDir, BUNDLED_FONT_DIR);
+  let entries: string[];
   try {
-    const entries = await readdir(path.join(rootDir, BUNDLED_FONT_DIR));
-    return entries.some((entry) => isFontFile(entry));
+    entries = await readdir(fontDir);
   } catch (error) {
     if (isEnoent(error)) {
       return false;
     }
     throw error;
+  }
+  if (!entries.includes(BUNDLED_FONT_FILE) || !entries.includes(BUNDLED_LICENCE_FILE)) {
+    return false;
+  }
+  return isSfntFile(path.join(fontDir, BUNDLED_FONT_FILE));
+}
+
+/**
+ * Reads only the 4-byte sfnt version, not the 7 MB behind it: this runs on
+ * every `pack`, and the question here is "is this a font file at all",
+ * which the header answers. A file that fails it is replaced, not measured
+ * — a truncated or garbage font must never be packed into a `.comot`.
+ */
+async function isSfntFile(filePath: string): Promise<boolean> {
+  let handle: FileHandle;
+  try {
+    handle = await open(filePath, "r");
+  } catch (error) {
+    if (isEnoent(error)) {
+      return false;
+    }
+    throw error;
+  }
+  try {
+    const header = new Uint8Array(4);
+    const { bytesRead } = await handle.read(header, 0, 4, 0);
+    if (bytesRead < 4) {
+      return false;
+    }
+    const version = new DataView(header.buffer).getUint32(0);
+    // 0x00010000 = TrueType outlines, 0x4F54544F = "OTTO" (CFF outlines).
+    return version === 0x00010000 || version === 0x4f54544f;
+  } finally {
+    await handle.close();
   }
 }
 

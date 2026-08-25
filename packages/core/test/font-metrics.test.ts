@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
 import { createFontBook, MEASURED_TEXT_CSS } from "../src/font/metrics.js";
 import {
   BUNDLED_FONT_DIR,
+  ensureBundledFonts,
   loadFontBook,
   readBundledFontBytes,
   resolveFontCacheDir,
@@ -320,5 +321,74 @@ describe("a presentation picks up its font the first time it really needs one", 
       "OFL.txt",
     ]);
     delete ENV.CO_MOTION_HOME;
+  });
+});
+
+describe("an interrupted staging must never masquerade as a finished bundle", () => {
+  const FONT = "NotoSansTC-Regular.ttf";
+  const LICENCE = "OFL.txt";
+
+  async function fontDirOf(root: string): Promise<string> {
+    const dir = path.join(root, BUNDLED_FONT_DIR);
+    await mkdir(dir, { recursive: true });
+    return dir;
+  }
+
+  it("real failure injection: the font write fails, and the retry completes the bundle", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    const dir = await fontDirOf(root);
+    // A directory sitting where the font file goes makes the rename fail
+    // with real I/O — no stubbing — after the licence has been written.
+    await mkdir(path.join(dir, FONT));
+    await expect(stageBundledFonts(root)).rejects.toThrow();
+    expect((await readdir(dir)).sort()).toEqual([FONT, LICENCE]);
+
+    await rm(path.join(dir, FONT), { recursive: true });
+    expect(await ensureBundledFonts(root)).toBe(true);
+    expect((await readdir(dir)).sort()).toEqual([FONT, LICENCE]);
+    expect((await loadFontBook(root)).measureText("驗收用簡報", NOTO)).toBe(500);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("a leftover font with no licence is completed, not skipped", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    const dir = await fontDirOf(root);
+    await writeFile(path.join(dir, FONT), await readBundledFontBytes());
+    expect(await ensureBundledFonts(root)).toBe(true);
+    expect(await readdir(dir)).toContain(LICENCE);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("a leftover licence with no font is completed, not skipped", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    const dir = await fontDirOf(root);
+    await writeFile(path.join(dir, LICENCE), "leftover");
+    expect(await ensureBundledFonts(root)).toBe(true);
+    expect(await readdir(dir)).toContain(FONT);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("a file that is not really a font is replaced, never packed as one", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    const dir = await fontDirOf(root);
+    await writeFile(path.join(dir, FONT), "NOT A REAL FONT");
+    await writeFile(path.join(dir, LICENCE), "leftover");
+    expect(await ensureBundledFonts(root)).toBe(true);
+    expect((await loadFontBook(root)).faces.map((face) => face.family)).toEqual(["Noto Sans TC"]);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("a complete bundle is left exactly as it is", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    await stageBundledFonts(root);
+    expect(await ensureBundledFonts(root)).toBe(false);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("leaves no temp files behind", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "co-motion-partial-"));
+    await stageBundledFonts(root);
+    expect((await readdir(path.join(root, BUNDLED_FONT_DIR))).sort()).toEqual([FONT, LICENCE]);
+    await rm(root, { recursive: true, force: true });
   });
 });
