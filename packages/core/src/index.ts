@@ -14,6 +14,7 @@ export {
   readPresentationFileBytes,
   listPresentationEntries,
   setElementText,
+  writePresentationFile,
 } from "./workspace.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
@@ -21,3 +22,11 @@ export type { PresentationWatcher } from "./watch.js";
 export * from "./font/index.js";
 export * from "./geometry/index.js";
 export * from "./slide/index.js";
+export {
+  recordSnapshot,
+  beginHistoryGroup,
+  endHistoryGroup,
+  undoLastGroup,
+  redoLastGroup,
+} from "./history.js";
+export type { HistoryEntry, HistoryGroup } from "./history.js";

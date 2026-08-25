@@ -450,6 +450,54 @@ describe("text set", () => {
   });
 });
 
+describe("text set on a converted (#72) slide — id lifted onto the <g> container", () => {
+  it("edits the container's single <text> child; the container's id/data-comot-name/indentation stay byte-identical", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg">\n' +
+      '  <g id="el-title" data-comot-name="標題"><text x="640" y="360" text-anchor="middle" font-size="48">驗收用簡報</text></g>\n' +
+      "</svg>\n";
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: "el-title",
+      newText: "改過的標題",
+    });
+
+    expect(result.ok).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(slideSvg.replace(">驗收用簡報<", ">改過的標題<"));
+  });
+
+  it("end-to-end: convert a slide with a bare primitive, then text set the resulting container", async () => {
+    const slideSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text data-comot-name="標題" x="640" y="360">原始標題</text></svg>';
+    const { id } = await openFixturePresentation(slideSvg, registry, comotDir);
+
+    const converted = await registry.dispatch<{ slides: Array<{ changed: boolean }> }>("convert", { id });
+    expect(converted.ok).toBe(true);
+    expect(converted.data!.slides[0]!.changed).toBe(true);
+
+    const afterConvert = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    // #72's normalisation wrapped the bare <text> in a <g> and lifted the id onto it.
+    const match = /<g id="(el-[^"]+)"/.exec(afterConvert.data!.content);
+    if (!match) throw new Error("test fixture: converted container id not found");
+    const containerId = match[1];
+
+    const result = await registry.dispatch("text set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId: containerId,
+      newText: "改過的標題",
+    });
+
+    expect(result.ok).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    expect(after.data!.content).toContain(">改過的標題</text>");
+  });
+});
+
 describe("text set renderer", () => {
   it("has no bespoke renderer — falls back to the default status-line-plus-JSON output", () => {
     expect(registry.getRenderer("text set")).toBeUndefined();

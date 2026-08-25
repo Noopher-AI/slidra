@@ -79,6 +79,14 @@ export function parseArgv(argv: string[]): ParsedCommand {
       }
       return { name: "text set", input: { id, slidePath, elementId, newText } };
     }
+    case "undo": {
+      const id = requirePositional(rest, 0, "undo", "presentation-id");
+      return { name, input: { id } };
+    }
+    case "redo": {
+      const id = requirePositional(rest, 0, "redo", "presentation-id");
+      return { name, input: { id } };
+    }
     default:
       // Unknown command: let the registry report it, so the error message
       // stays in one place.
