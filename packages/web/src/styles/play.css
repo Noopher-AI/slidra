@@ -26,3 +26,135 @@
 .app[data-mode="play"] .canvas {
   background: #000;
 }
+
+/* 純黑滿版 (#54 AC1/AC2): 量測 base-shell.html（Playwright 內建
+   Chromium，1440×900，`.view-btn[data-view="play"]` 點下去後）確認
+   `#play` 容器 `padding: 0px`、`background: rgb(0, 0, 0)`；`#play .stage`
+   `background: rgb(0, 0, 0)`、`border: 0px none`、`box-shadow: none`——
+   `.canvas-area`（樣板的 `.well` 對應物）平常的 `padding: calc(var(--u) *
+   7)`（shell.css:260）與 `.stage` 平常的白底/邊框/陰影（stage.css）都只
+   在標準檢視成立，播放模式要覆蓋掉。`.canvas` 已經是 `#000`（上面那條既
+   有規則），這裡補上 `.canvas-area` 與 `.stage` 兩層，讓黑幕從舞台底一路
+   到舞台邊框都是純黑、沒有留白。 */
+.app[data-mode="play"] .canvas-area {
+  background: #000;
+  padding: 0;
+}
+.app[data-mode="play"] .stage {
+  background: #000;
+  border: 0;
+  box-shadow: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   控制列浮現／隱去 (#54). shell.css:365-394 already ships `.play-bar`'s
+   static box — position, translucent background, border, radius, blur —
+   copied verbatim from base-shell.html:314-330 as part of the #53/#54
+   boundary; that file is frozen here. What base-shell.html has and
+   shell.css does not is the idle-fade `opacity`/`transition`
+   (base-shell.html:322-324) and the awake toggle, plus the new paging
+   controls/divider (base-shell.html:331-335) and the cursor-hide/`.body`
+   collapse this ticket's own DOM changes require. All of that lives here.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 閒置淡出 (AC3/AC4)：PlayChrome 用 `awake` state 切換這個 class. */
+.play-bar {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.play-bar.awake {
+  opacity: 1;
+}
+
+/* base-shell.html:335 的分隔線，介於新的換頁控制與既有的 離開播放/全螢幕
+   之間。 */
+.play-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 var(--u);
+}
+
+/* 上一步／下一步的 SVG 尺寸與頁碼文字 (fleet 指揮官 裁決 A，2026-08-25):
+   shell.css 只落地了 `.play-bar`/`.play-bar button`/`.play-bar
+   button:hover` 三條（指揮官已 grep 核對），base-shell.html:326 的
+   `.play-bar svg` 與 :332 的 `.pos` 沒有落地，這裡逐字補上樣板的字面值。
+   `.play-nav-button` 沒有另開版面規則——它跟 `.play-toggle-button
+   leave`/`.fullscreen-toggle-button` 共用 shell.css 的 `.play-bar
+   button`/`.play-bar button:hover`（高度、padding、hover 底色），只是
+   內容從文字換成 SVG。 */
+.play-bar svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+}
+/* disabled 狀態（第一頁的上一步／最後一頁的下一步）不是樣板既有的字面
+   值——樣板的按鈕從不 disable（純靜態展示，見 base-shell.html 的
+   `<script>`）——沿用 App 既有的 disabled 慣例
+   （`.slide-nav-button:disabled` 的 `color: var(--ink-faint)`）。 */
+.play-bar button:disabled {
+  cursor: default;
+  color: var(--ink-faint);
+}
+.play-bar button:disabled svg {
+  opacity: 0.55;
+}
+.play-bar-position {
+  padding: 0 calc(var(--u) * 2);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 游標與控制列一起隱去 (AC3/AC4)：`.app[data-mode="play"]` 本身早已存在
+   (App.tsx:432)，這裡只加播放模式的游標規則。App.tsx 在兩個窄授權之外
+   被凍結，加不了 `awake` class 到 `.app` 這一層，所以用 `:has()` 從
+   `.play-bar.awake`（PlayChrome 自己切的 class）往上找 — 見波簡報「閒置
+   /awake 狀態的建議做法」一節。Playwright 綁定的 Chromium 支援
+   `:has()`。 */
+.app[data-mode="play"] {
+  cursor: none;
+}
+.app[data-mode="play"]:has(.play-bar.awake) {
+  cursor: default;
+}
+
+/* 裁決 4：<Rail>/.chat-sidebar 現在真的從播放模式的 DOM 移除了（見
+   App.tsx），`.main` 是 `.body` 唯一剩下的 grid item。沒有這條覆蓋，它
+   會落進第一條軌道（縮圖軌寬，`shell.css:197-201`），舞台縮成一條窄縫。
+   `shell.css` 對本單元凍結，所以覆蓋寫在這裡。 */
+.app[data-mode="play"] .body {
+  grid-template-columns: 1fr;
+}
+
+/* gate round 1 (2026-08-25), medium finding: `.main` 的第二條軌道
+   （shell.css:275 的 `grid-template-rows: 1fr var(--h-notes)`，
+   `--h-notes` = 104px）就算 `<Notes>` 已不在 DOM 裡也仍然佔位——指揮官量
+   到播放模式下 `.main` 底部留了 104px 高、透明、透出 `.app` 背景色
+   `rgb(16,15,15)`（`--s-well`）的窄條，不是黑。`.canvas-area` 的黑幕
+   （上面既有規則）填不到這裡，因為它就活在被留白的第一條軌道裡，够不到
+   軌道本身的邊界。這裡把 `.main` 收成一條軌道，讓 `.canvas-area` 撐滿
+   `.main` 的全部高度。unit B 已有 `.main:has(> .canvas-area >
+   .grid-view) { grid-template-rows: 1fr; }`（總覽網格用）：兩條選擇器
+   互斥——`.grid-view` 只在 `view === "grid" && state.mode !== "play"`
+   時掛進 DOM（裁決 5），播放模式下 `.grid-view` 不存在，unit B 的
+   `:has()` 不會命中；`[data-mode="play"]` 也只在播放模式成立，兩者的
+   命中條件沒有交集，合流後不會互相打架。 */
+.app[data-mode="play"] .main {
+  grid-template-rows: 1fr;
+}
+
+/* gate round 1 (2026-08-25), high finding 的修復：見 PlayChrome.tsx 對
+   `.play-mousemove-catcher` 的完整說明——這裡只放版面。鋪滿
+   `.canvas-area`（`position: relative`，shell.css），z-index 排在
+   `.canvas`（iframe 所在，z-index auto）之上、`.player-notices`/
+   `.play-bar`（皆 z-index:2）之下，讓兩者仍然收得到點擊（例如焦點提示
+   裡「點這裡把焦點交回播放器」按鈕），覆蓋層只擋在它們沒有覆蓋到的
+   舞台區域。 */
+.play-mousemove-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}

@@ -225,6 +225,163 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
 }
 
 /**
+ * #55's grid view. Deliberately duplicates mountOverview's lazy-loading
+ * shape above (same file-header reasoning as wrapSlideDocument/
+ * slideDirectory: two consumers that materialise independently, kept apart
+ * on purpose) rather than sharing state with it — a grid mount must never
+ * eagerly load a thumbnail the rail hasn't, and vice versa. Markup mirrors
+ * docs/design/base-shell.html's `.grid-view`/`.grid-cell`/`figcaption`
+ * shape directly (flat: `container` itself is the grid, no extra `<ol>`
+ * wrapper the rail's `<aside>` container needed), styled by
+ * styles/grid.css.
+ *
+ * `onSelect` is called (with no arguments) after a cell's click has already
+ * issued `canvas.showSlide(index)` — this module has no notion of the
+ * shell's `view` state (App.tsx's `ShellView`), so switching back to
+ * standard view is entirely the caller's business. See GridView.tsx for
+ * why that switch cannot be a normal prop callback threaded through
+ * App.tsx here.
+ */
+export function mountGridOverview(
+  container: HTMLElement,
+  canvas: CanvasController,
+  onSelect: () => void,
+): OverviewController {
+  // Same reasoning as applyAspectRatio in mountOverview above, applied to
+  // this consumer's own container instead of the rail's <ol>.
+  let aspectGeneration = 0;
+  async function applyAspectRatio(): Promise<void> {
+    const thisGeneration = ++aspectGeneration;
+    const project = await fetchJson<{ canvas: { width: number; height: number } }>("/api/presentation");
+    if (aspectGeneration !== thisGeneration) return;
+    const { width, height } = project.canvas ?? {};
+    if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
+      throw new Error("project.json 的 canvas 尺寸無效，無法決定縮圖長寬比");
+    }
+    container.style.setProperty("--overview-aspect-ratio", `${width} / ${height}`);
+  }
+  void applyAspectRatio();
+
+  let slides: string[] = [];
+  const cells: HTMLElement[] = [];
+  const frames: (HTMLIFrameElement | undefined)[] = [];
+  const requested: boolean[] = [];
+  const generations: number[] = [];
+
+  const observer = new IntersectionObserver(handleIntersections, {
+    root: container,
+    rootMargin: "600px 0px",
+  });
+
+  function handleIntersections(entries: IntersectionObserverEntry[]): void {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const cell = entry.target as HTMLElement;
+      observer.unobserve(cell);
+      const index = Number(cell.dataset.index);
+      loadThumbnail(index);
+    }
+  }
+
+  function loadThumbnail(index: number): void {
+    if (requested[index]) return;
+    requested[index] = true;
+    const iframe = document.createElement("iframe");
+    iframe.className = "grid-frame";
+    iframe.setAttribute("sandbox", "");
+    cells[index].querySelector("button")!.appendChild(iframe);
+    frames[index] = iframe;
+    void fetchAndFillThumbnail(index);
+  }
+
+  /** Same generation-guard shape as mountOverview's own fetchAndFillThumbnail. */
+  async function fetchAndFillThumbnail(index: number): Promise<void> {
+    const thisGeneration = (generations[index] ?? 0) + 1;
+    generations[index] = thisGeneration;
+
+    const slidePath = slides[index];
+    const frame = frames[index]!;
+    try {
+      const markup = await fetchText(`/api/files/${slidePath}`);
+      if (generations[index] !== thisGeneration) return;
+      frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
+    } catch {
+      if (generations[index] !== thisGeneration) return;
+      frame.srcdoc = wrapSlideDocument(`<p>縮圖載入失敗</p>`);
+    }
+  }
+
+  function sameSlides(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((path, index) => path === b[index]);
+  }
+
+  function rebuildList(nextSlides: string[]): void {
+    observer.disconnect();
+    container.replaceChildren();
+    cells.length = 0;
+    frames.length = 0;
+    requested.length = 0;
+    generations.length = 0;
+    slides = nextSlides;
+
+    slides.forEach((_slidePath, index) => {
+      const cell = document.createElement("figure");
+      cell.className = "grid-cell";
+      cell.dataset.index = String(index);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "grid-thumb";
+      button.setAttribute("aria-label", `第 ${index + 1} 頁`);
+      button.addEventListener("click", () => {
+        void canvas.showSlide(index);
+        onSelect();
+      });
+
+      const caption = document.createElement("figcaption");
+      caption.className = "grid-number";
+      caption.textContent = `第 ${index + 1} 頁`;
+
+      cell.appendChild(button);
+      cell.appendChild(caption);
+      container.appendChild(cell);
+
+      cells.push(cell);
+      frames.push(undefined);
+      requested.push(false);
+      observer.observe(cell);
+    });
+  }
+
+  function updateHighlight(currentIndex: number): void {
+    cells.forEach((cell, index) => {
+      cell.setAttribute("aria-current", String(index === currentIndex));
+    });
+  }
+
+  const unsubscribe = canvas.subscribe((state) => {
+    if (!sameSlides(slides, state.slides)) {
+      rebuildList(state.slides);
+    }
+    updateHighlight(state.currentIndex);
+  });
+
+  return {
+    refresh() {
+      void applyAspectRatio();
+      requested.forEach((isRequested, index) => {
+        if (isRequested) void fetchAndFillThumbnail(index);
+      });
+    },
+    destroy() {
+      unsubscribe();
+      observer.disconnect();
+      container.replaceChildren();
+    },
+  };
+}
+
+/**
  * Mirrors canvas.ts's own wrapSlideDocument (module-private there; see file
  * header), plus one addition specific to thumbnails: the slide SVG has no
  * width/height of its own (only a viewBox), so left alone it renders at the

@@ -12,6 +12,7 @@ import "./styles/rail.css";
 import "./styles/notes.css";
 import "./styles/chat.css";
 import "./styles/play.css";
+import "./styles/grid.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

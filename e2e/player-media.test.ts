@@ -296,10 +296,13 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
     expect(await playFrame().locator("audio").count()).toBe(0);
 
     // Idempotence across a genuine "leave and come back": go back to slide
-    // 1 via the overview (showSlide() works regardless of mode), replay
+    // 1 via #54's play-bar 上一步 button (controller.previous(), i.e.
+    // showSlide(currentIndex - 1) — currently on slide 2 (index 1), so
+    // this is a byte-for-byte equivalent call to the overview thumbnail
+    // click this line used to make, per the wave brief's 裁決 1), replay
     // both steps, and confirm exactly one of each media element exists —
     // never two stacked from an old and a new document.
-    await page.locator('button[aria-label="第 1 頁"]').click();
+    await page.locator('.play-bar button[aria-label="上一步"]').click();
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");
