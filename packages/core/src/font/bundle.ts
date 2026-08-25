@@ -109,8 +109,9 @@ export async function readBundledFontBytes(): Promise<Uint8Array> {
     const cached = new Uint8Array(await readFile(cachedPath));
     if (!hasSfntSignature(cached)) {
       throw new CoMotionError(
-        `字型快取已損毀：${cachedPath} 開頭的位元組不是任何已知字型格式。` +
-          "請刪除這個檔案後重新執行，讓它重新下載一次。",
+        `字型快取已損毀：${BUNDLED_FONT_FILE} 開頭的位元組不是任何已知字型格式。` +
+          "請刪除 CO_MOTION_FONT_CACHE 指向的目錄（未設定時為預設快取目錄）裡的這個檔案，" +
+          "再重新執行一次，讓它重新下載。",
       );
     }
     return cached;
