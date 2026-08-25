@@ -2,10 +2,34 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
 import type { ConvertReport } from "../src/commands/convert.js";
+
+// A single-shot injection point for the "writeFile fails after it has
+// already truncated the file" test below. Every other call passes straight
+// through to the real implementation, so this has no effect on any other
+// test in this file.
+let truncateThenFailPath: string | null = null;
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    writeFile: async (file: unknown, data: unknown, options: unknown) => {
+      if (typeof file === "string" && file === truncateThenFailPath) {
+        truncateThenFailPath = null; // one-shot: only this call fails
+        // Real writeFile truncates the file before writing the new bytes.
+        // A disk that goes full mid-write leaves exactly this: the file
+        // already emptied, then the call throws.
+        await actual.writeFile(file, "", "utf-8");
+        throw new Error("ENOSPC: simulated disk full mid-write");
+      }
+      return actual.writeFile(file as string, data as string, options as string);
+    },
+  };
+});
 
 // Every test points CO_MOTION_HOME at its own temp directory so we never
 // touch the real ~/.comotion (ADR-0004, ticket #9 testing convention).
@@ -189,5 +213,51 @@ describe("convert 的寫入階段失敗", () => {
     } finally {
       await chmod(readOnlySlide, 0o644);
     }
+  });
+});
+
+/**
+ * The chmod test above proves rollback works when the failing write never
+ * touches the disk (EACCES fires at `open()`, before any bytes move). It
+ * does NOT prove anything about the other half of the defect: `writeFile`
+ * truncates before it writes, so a write that fails partway through can
+ * leave the FAILED slide itself sitting at 0 bytes — and that slide was
+ * never added to the rollback list, because the code only pushed a slide
+ * into `written` *after* its write succeeded.
+ *
+ * This test forces exactly that: the mocked `writeFile` (see the top of
+ * this file) truncates slides/002.svg to empty and only then throws,
+ * mimicking a disk that goes full mid-write. If the failed slide isn't
+ * restored, it stays at 0 bytes forever even though the command claims
+ * nothing was modified.
+ */
+describe("convert 的寫入在截斷之後才失敗", () => {
+  it("失敗的那一張本身也要被還原回原始位元組，不只是它之前寫成功的那幾張", async () => {
+    const secondSlide =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <text id="el-second" x="10" y="20" font-size="30">第二張</text>\n' +
+      "</svg>\n";
+    const id = await openDeck({ "slides/001.svg": bareSlide, "slides/002.svg": secondSlide });
+    const before = {
+      "slides/001.svg": sha256(await catSlide(id, "slides/001.svg")),
+      "slides/002.svg": sha256(await catSlide(id, "slides/002.svg")),
+    };
+
+    const { resolveWorkDir } = await import("@co-motion/core");
+    const workDir = await resolveWorkDir(id);
+    truncateThenFailPath = path.join(workDir, "slides", "002.svg");
+
+    const result = await registry.dispatch("convert", { id });
+
+    expect(result.ok).toBe(false);
+    // The disk first, at byte level (sha256), not just the message string:
+    // slides/002.svg was truncated to 0 bytes by the injected failure and
+    // must have been written back to its exact original bytes.
+    expect({
+      "slides/001.svg": sha256(await catSlide(id, "slides/001.svg")),
+      "slides/002.svg": sha256(await catSlide(id, "slides/002.svg")),
+    }).toEqual(before);
+    expect(result.message).toContain("寫入投影片時發生錯誤：slides/002.svg");
+    expect(result.message).toContain("整份簡報都沒有被修改。");
   });
 });

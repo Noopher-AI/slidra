@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CoMotionError,
@@ -124,7 +124,10 @@ export async function convertPresentationSlides(id: string): Promise<ConvertRepo
         await writeFile(slide.realPath, slide.svg, "utf-8");
       } catch {
         // slide.realPath is a real filesystem path (ADR-0004) — never quote it.
-        throw new CoMotionError(await rollBack(written, slide.slidePath));
+        // The failed write's own bytes need checking too: writeFile
+        // truncates before it writes, so a failure here can leave slide
+        // itself corrupted even though it never made it into `written`.
+        throw new CoMotionError(await rollBack(written, slide));
       }
       written.push(slide);
     }
@@ -145,15 +148,21 @@ export async function convertPresentationSlides(id: string): Promise<ConvertRepo
  * presentation half in the container form and half not. Gate round 1
  * reproduced exactly that with a read-only `slides/004.svg`.
  *
+ * `failed` — the slide whose write just threw — needs the same treatment as
+ * the ones in `written`, and for the same reason `writeFile` is dangerous in
+ * the first place: it truncates before it writes, so a write that fails
+ * partway through can leave `failed` itself holding fewer bytes than it
+ * started with, even though it never made it into `written`.
+ *
  * Restoring is best-effort, because the same disk that just refused a write
  * can refuse the restore too. So the message is assembled from what was
  * actually observed, never from what was intended: only a fully successful
  * rollback is allowed to claim the presentation is untouched, and a partial
- * one names the slides left in the new format. A reassuring message that
- * does not match the disk is worse than no message — it sends the author
- * looking for the problem in the wrong place.
+ * one names the slides left changed. A reassuring message that does not
+ * match the disk is worse than no message — it sends the author looking for
+ * the problem in the wrong place.
  */
-async function rollBack(written: readonly PendingSlide[], failedSlidePath: string): Promise<string> {
+async function rollBack(written: readonly PendingSlide[], failed: PendingSlide): Promise<string> {
   const notRestored: string[] = [];
   for (const slide of written) {
     try {
@@ -162,14 +171,42 @@ async function rollBack(written: readonly PendingSlide[], failedSlidePath: strin
       notRestored.push(slide.slidePath);
     }
   }
-  const failure = `寫入投影片時發生錯誤：${failedSlidePath}。`;
+  if (!(await restoredToOriginal(failed))) {
+    notRestored.push(failed.slidePath);
+  }
+  const failure = `寫入投影片時發生錯誤：${failed.slidePath}。`;
   if (notRestored.length === 0) {
     return `${failure}整份簡報都沒有被修改。`;
   }
   return (
-    `${failure}已改寫的投影片還原失敗，這幾張現在是轉換後的格式，其餘維持原樣：` +
+    `${failure}已改寫的投影片還原失敗，這幾張現在不是原始內容，其餘維持原樣：` +
     `${notRestored.join("、")}。請修復磁碟問題後重新執行 convert。`
   );
+}
+
+/**
+ * Makes sure `slide.realPath` holds exactly `slide.original` on disk,
+ * without ever claiming a write it didn't actually need. A write that fails
+ * at `open()` (e.g. a read-only file) never touches the bytes at all, so
+ * writing the original back over it would just be a second write the disk
+ * is equally likely to refuse — for no reason, since the bytes were already
+ * untouched. Reading first tells the two cases apart.
+ */
+async function restoredToOriginal(slide: PendingSlide): Promise<boolean> {
+  let current: string;
+  try {
+    current = await readFile(slide.realPath, "utf-8");
+  } catch {
+    // Can't even confirm what's on disk — do not claim success.
+    return false;
+  }
+  if (current === slide.original) return true;
+  try {
+    await writeFile(slide.realPath, slide.original, "utf-8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readProject(id: string): Promise<ProjectJson> {
