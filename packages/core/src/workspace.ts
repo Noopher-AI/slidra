@@ -8,7 +8,7 @@ import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
 import { assertSlidePathListed, replaceElementText } from "./element-text.js";
-import { recordSnapshot } from "./history.js";
+import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
 import { ensureBundledFonts, loadFontBook } from "./font/bundle.js";
 import type { FontBook } from "./font/metrics.js";
 
@@ -273,25 +273,30 @@ export async function listPresentationEntries(id: string, virtualPath?: string):
 
 /**
  * The single door every content-writing command must use (ticket #73, AC 4).
- * Snapshots the file's current content into undo history — see
- * `recordSnapshot` in history.ts — before overwriting it, so any command
- * that writes through here gets undo for free without writing its own
- * inverse logic. Order is fixed: resolve the real path, snapshot, then
- * write, so a snapshot failure never leaves a half-written file and a
- * write failure never leaves a snapshot for content that was never
- * actually replaced.
+ * Snapshots the file's current content into undo history before overwriting
+ * it, so any command that writes through here gets undo for free without
+ * writing its own inverse logic.
+ *
+ * The snapshot is *staged* (its file written) before the content write, but
+ * only *committed* onto the undo/redo stacks (history.ts's
+ * `commitSnapshotEntries`) after that write actually succeeds. If the
+ * write fails, the staged snapshot is discarded instead
+ * (`discardSnapshotEntries`) — a failed command must not occupy an undo
+ * slot, and it must not leave an orphan snapshot file either (finding 2).
  */
 export async function writePresentationFile(id: string, virtualPath: string, content: string): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   const realPath = await resolveVirtualFilePath(workDir, virtualPath);
-  await recordSnapshot(id, [virtualPath]);
+  const entries = await stageSnapshotEntries(id, [virtualPath]);
   try {
     await writeFile(realPath, content, "utf-8");
   } catch {
+    await discardSnapshotEntries(id, entries);
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`寫入投影片時發生錯誤：${virtualPath}`);
   }
+  await commitSnapshotEntries(id, entries);
 }
 
 /**

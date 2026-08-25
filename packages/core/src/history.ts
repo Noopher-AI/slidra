@@ -127,13 +127,20 @@ async function readStack(home: string, id: string): Promise<StackFile> {
   return parsed;
 }
 
-/** Atomic write: temp file + rename, the same pattern as workspace.ts's writeRegistry. */
+/**
+ * Atomic write: temp file + rename, the same pattern as workspace.ts's
+ * writeRegistry. Every step — including the directory creation, which the
+ * earlier version left outside the try block — is wrapped so a raw Node
+ * I/O error (e.g. EACCES from a read-only history directory) can never
+ * escape past this module with a real filesystem path in its message
+ * (ADR-0004).
+ */
 async function writeStack(home: string, id: string, stack: StackFile): Promise<void> {
   const dir = historyDirFor(home, id);
-  await mkdir(dir, { recursive: true });
   const finalPath = stackPath(home, id);
   const tempPath = path.join(dir, `.stack.json.${randomBytes(6).toString("hex")}.tmp`);
   try {
+    await mkdir(dir, { recursive: true });
     await writeFile(tempPath, `${JSON.stringify(stack, null, 2)}\n`);
     await rename(tempPath, finalPath);
   } catch {
@@ -142,10 +149,20 @@ async function writeStack(home: string, id: string, stack: StackFile): Promise<v
   }
 }
 
+/**
+ * Writes one snapshot file. Wrapped end to end (directory creation and the
+ * write itself) so a permission failure on `snapshots/` — the exact
+ * reproduction that motivated this — surfaces as a CoMotionError instead of
+ * a raw `EACCES: ... open '<real path>'` reaching the CLI's error printer.
+ */
 async function writeSnapshot(home: string, id: string, snapshotId: string, content: string): Promise<void> {
   const filePath = snapshotPath(home, id, snapshotId);
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, content, "utf-8");
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, content, "utf-8");
+  } catch {
+    throw new CoMotionError("無法寫入復原快照");
+  }
 }
 
 async function readSnapshot(home: string, id: string, snapshotId: string): Promise<string> {
@@ -158,8 +175,18 @@ async function readSnapshot(home: string, id: string, snapshotId: string): Promi
   }
 }
 
+/**
+ * Deletes one snapshot file. `force: true` only suppresses the file already
+ * being gone (ENOENT) — any other failure (e.g. a permission error) is a
+ * real problem and must not be swallowed (errors over fallbacks), so it is
+ * wrapped into a CoMotionError rather than silently ignored.
+ */
 async function deleteSnapshot(home: string, id: string, snapshotId: string): Promise<void> {
-  await rm(snapshotPath(home, id, snapshotId), { force: true }).catch(() => {});
+  try {
+    await rm(snapshotPath(home, id, snapshotId), { force: true });
+  } catch {
+    throw new CoMotionError("無法刪除復原快照");
+  }
 }
 
 /** Pushes a group onto the undo stack, then enforces UNDO_STACK_CAP by evicting the oldest. */
@@ -179,18 +206,17 @@ async function pushGroupToUndoStack(
 }
 
 /**
- * Registers a snapshot of each listed file's *current* content, taken
- * before the caller overwrites it. With an open group (`beginHistoryGroup`),
- * the entries are appended to it; otherwise they become their own
- * single-command undo group immediately. Every call clears the redo stack —
- * undo is a linear timeline, and a new edit after an undo invalidates
- * whatever redo would have replayed.
+ * Writes a snapshot file for each listed path's *current* content, taken
+ * before the caller overwrites it — but does not touch the undo/redo
+ * stacks yet. Split out from the old single-shot `recordSnapshot` so a
+ * caller (`writePresentationFile`) can snapshot first, attempt its actual
+ * content write, and only then decide whether to `commitSnapshotEntries`
+ * (write succeeded) or `discardSnapshotEntries` (write failed) — so a
+ * failed write never occupies an undo slot (ticket #73 finding 2).
  */
-export async function recordSnapshot(id: string, virtualPaths: string[]): Promise<void> {
+export async function stageSnapshotEntries(id: string, virtualPaths: string[]): Promise<HistoryEntry[]> {
   const home = resolveCoMotionHome();
   const workDir = await resolveWorkDir(id);
-  const stack = await readStack(home, id);
-
   const entries: HistoryEntry[] = [];
   for (const virtualPath of virtualPaths) {
     const content = await readVirtualFile(workDir, virtualPath);
@@ -198,14 +224,60 @@ export async function recordSnapshot(id: string, virtualPaths: string[]): Promis
     await writeSnapshot(home, id, snapshotId, content);
     entries.push({ virtualPath, snapshotId });
   }
+  return entries;
+}
 
+/**
+ * Commits previously staged entries onto the undo timeline: with an open
+ * group (`beginHistoryGroup`), the entries are appended to it; otherwise
+ * they become their own single-command undo group immediately. Every call
+ * clears the redo stack — undo is a linear timeline, and a new edit after
+ * an undo invalidates whatever redo would have replayed — and it *deletes*
+ * every cleared redo entry's snapshot file rather than just dropping the
+ * stack.json references to it, so an ordinary "set → undo → set" loop does
+ * not leave the file on disk with nothing pointing at it (finding 1).
+ */
+export async function commitSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const stack = await readStack(home, id);
+
+  for (const group of stack.redo) {
+    for (const entry of group.entries) {
+      await deleteSnapshot(home, id, entry.snapshotId);
+    }
+  }
   stack.redo = [];
+
   if (stack.openGroup) {
     stack.openGroup.entries.push(...entries);
   } else {
     await pushGroupToUndoStack(home, id, stack, { groupId: generateOpaqueId(), entries });
   }
   await writeStack(home, id, stack);
+}
+
+/**
+ * Deletes snapshot files staged by `stageSnapshotEntries` whose write was
+ * never committed — the caller's actual content write failed, so these
+ * would otherwise sit on disk unreferenced by any stack (finding 2).
+ */
+export async function discardSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  for (const entry of entries) {
+    await deleteSnapshot(home, id, entry.snapshotId);
+  }
+}
+
+/**
+ * Registers a snapshot of each listed file's current content and commits it
+ * onto the undo timeline immediately — `stageSnapshotEntries` followed by
+ * `commitSnapshotEntries`. Kept as the simple, single-call entry point for
+ * a caller that has no failure-before-commit case of its own to guard
+ * against.
+ */
+export async function recordSnapshot(id: string, virtualPaths: string[]): Promise<void> {
+  const entries = await stageSnapshotEntries(id, virtualPaths);
+  await commitSnapshotEntries(id, entries);
 }
 
 /**
