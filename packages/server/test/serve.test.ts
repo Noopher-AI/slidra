@@ -247,6 +247,24 @@ describe("startServe", () => {
     expect(postResponse.status).toBe(403);
   });
 
+  // ADR-0011 / #56: view mode's iframe now also carries allow-scripts, so
+  // it is opaque-origin too and can send the same "Origin: null" writes
+  // ADR-0010 already worried about for play mode. The gate above
+  // (`req.headers.origin === "null"`, serve.ts:203) is checked ahead of
+  // every route already — this pins that it holds for the specific route
+  // view mode's own iframe fetches (`/api/files/<slide>`, canvas.ts's
+  // render()), not just the play-mode routes the pre-existing test above
+  // already covers.
+  it("rejects a request carrying Origin: null on /api/files/*, the route view mode's own iframe fetches", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/api/files/slides/001.svg`, { headers: { Origin: "null" } });
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/[一-鿿]/);
+  });
+
   it("does not reject a normal request with no Origin header, or a same-origin Origin", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
