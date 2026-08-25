@@ -96,7 +96,7 @@ export interface CanvasController {
    * fullscreening the iframe itself left the parent document's own
    * controls unreachable to a real click once the iframe sat alone in the
    * browser's fullscreen top layer (see
-   * docs/adr/0010-slide-content-is-untrusted.md). This getter remains the
+   * ADR-0010, docs/adr/). This getter remains the
    * live reference to the current iframe for whatever else needs one, and
    * the "never cache it" rule above still applies to any such caller.
    */
