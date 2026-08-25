@@ -496,6 +496,7 @@ export function App() {
             state={canvasState}
             controller={controllerRef.current}
             view={view}
+            onViewChange={setView}
           >
             <PlayChrome
               state={canvasState}

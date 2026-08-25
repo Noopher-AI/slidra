@@ -1,7 +1,5 @@
-import { useEffect } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
-import { GRID_EXIT_EVENT } from "./GridView.js";
 
 // Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
 
@@ -45,18 +43,6 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
     }
     onViewChange(next);
   }
-
-  // #55: clicking a grid cell has no prop path back to `onViewChange`
-  // (GridView.tsx's own comment on GRID_EXIT_EVENT explains why) — this
-  // component holds the one thing that *can* flip `view` back to
-  // "normal", so it listens for the bridge event here instead.
-  useEffect(() => {
-    function onGridExit(): void {
-      onViewChange("normal");
-    }
-    window.addEventListener(GRID_EXIT_EVENT, onGridExit);
-    return () => window.removeEventListener(GRID_EXIT_EVENT, onGridExit);
-  }, [onViewChange]);
 
   return (
     <footer className="status status-bar">
