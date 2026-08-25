@@ -1,0 +1,5 @@
+# The master font is fetched from Google Fonts on first use and cached
+# outside the repo (see bundle.ts). It must never enter version control:
+# 7 MB of binary in every clone. OFL.txt, being text, stays tracked.
+*.ttf
+*.otf
