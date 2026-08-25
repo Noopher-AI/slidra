@@ -75,3 +75,18 @@ describe("parseArgv text set", () => {
     expect(() => parseArgv(["text", "get", "abc123"])).toThrow();
   });
 });
+
+describe("parseArgv convert", () => {
+  it("parses the presentation id into { name: \"convert\", input: { id } }", () => {
+    expect(parseArgv(["convert", "abc123"])).toEqual({ name: "convert", input: { id: "abc123" } });
+  });
+
+  it("reports the missing presentation id rather than converting something unnamed", () => {
+    expect(() => parseArgv(["convert"])).toThrow(CoMotionError);
+    expect(() => parseArgv(["convert"])).toThrow("命令 convert 缺少參數：presentation-id");
+  });
+
+  it("rejects a flag-shaped value in the id position", () => {
+    expect(() => parseArgv(["convert", "--dry-run"])).toThrow(CoMotionError);
+  });
+});

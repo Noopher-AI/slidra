@@ -5,6 +5,7 @@ import { packCommand } from "./commands/pack.js";
 import { catCommand, renderCat } from "./commands/cat.js";
 import { lsCommand, renderLs } from "./commands/ls.js";
 import { textSetCommand } from "./commands/text-set.js";
+import { convertCommand } from "./commands/convert.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -28,5 +29,6 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("cat", { handler: catCommand, render: renderCat });
   registry.register("ls", { handler: lsCommand, render: renderLs });
   registry.register("text set", { handler: textSetCommand, render: null });
+  registry.register("convert", { handler: convertCommand, render: null });
   return registry;
 }
