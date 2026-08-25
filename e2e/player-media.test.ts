@@ -100,19 +100,18 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 /**
- * Clicking 播放 rebuilds the iframe with `allow-scripts` immediately, but
- * the sandbox attribute lands before the fresh document has fetched,
- * parsed, run the runtime, and posted "ready" — the point at which
- * canvas.ts actually hands focus to the player (see canvas.ts's
- * `onWindowMessage` "ready" branch). An ArrowRight fired before that lands
- * has no listener to reach: the key event goes nowhere, and the very next
- * assertion becomes an intermittent failure race, not a real bug (found
- * while building this test — see the report). Waiting for the
- * `.player-focus-notice` element to be gone is the same signal
- * player-mode.test.ts's own focus test already relies on.
+ * Clicking 播放 rebuilds the iframe with `allow-scripts` immediately, but so
+ * does view mode (ADR-0011) — the sandbox attribute can no longer tell "play
+ * mode has started" from "still viewing". Wait for .titlebar (view mode's
+ * shell chrome) to unmount instead, which is the signal that actually flips
+ * only on entering play — the point at which canvas.ts hands focus to the
+ * player (see canvas.ts's `onWindowMessage` "ready" branch). Only after that
+ * does waiting for the `.player-focus-notice` element to be gone mean
+ * anything; it is the same signal player-mode.test.ts's own focus test
+ * already relies on.
  */
 async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
 }
 

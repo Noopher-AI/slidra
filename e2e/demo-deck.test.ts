@@ -138,11 +138,13 @@ async function expectNoErrorBanner(page: import("playwright").Page): Promise<voi
 }
 
 // Same reasoning as e2e/player-media.test.ts's waitForPlayerFocus: the
-// sandbox attribute flips to allow-scripts before the fresh play document
-// has fetched, parsed and run the runtime, so an ArrowRight fired before
-// canvas.ts's "ready" handshake lands goes nowhere.
+// sandbox attribute is "allow-scripts" in both view and play mode (ADR-0011),
+// so it can no longer distinguish "play mode has started" from "still
+// viewing". Wait for .titlebar (view mode's shell chrome) to unmount instead,
+// which is what actually flips only on entering play. Only once that has
+// happened does waiting on .player-focus-notice mean anything.
 async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
 }
 
