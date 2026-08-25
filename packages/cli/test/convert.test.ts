@@ -140,3 +140,54 @@ describe("convert", () => {
     expect(sha256(await catSlide(id, "slides/001.svg"))).toBe(sha256(bareSlide));
   });
 });
+
+/**
+ * Gate round 1 (#72), [high] "convert can leave a presentation partially
+ * converted after a write failure": reading and normalising every slide up
+ * front only makes an UNCONVERTIBLE slide harmless. It says nothing about a
+ * write that fails partway through, and the write loop originally had no
+ * rollback — three slides were rewritten, the command reported failure, and
+ * the presentation was left half in the container form.
+ *
+ * The injection is the real thing, not a mock: `chmod 0o444` on the second
+ * slide inside the presentation's work directory. Slide 1 converts and is
+ * written; slide 2's write is refused by the operating system; slide 1 must
+ * come back.
+ */
+describe("convert 的寫入階段失敗", () => {
+  it("前面幾張已寫成功、後面某一張寫失敗時，所有投影片都回到原始內容", async () => {
+    const { chmod } = await import("node:fs/promises");
+    const { resolveWorkDir } = await import("@co-motion/core");
+
+    const secondSlide =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <text id="el-second" x="10" y="20" font-size="30">第二張</text>\n' +
+      "</svg>\n";
+    const id = await openDeck({ "slides/001.svg": bareSlide, "slides/002.svg": secondSlide });
+    const before = {
+      "slides/001.svg": sha256(await catSlide(id, "slides/001.svg")),
+      "slides/002.svg": sha256(await catSlide(id, "slides/002.svg")),
+    };
+
+    const workDir = await resolveWorkDir(id);
+    const readOnlySlide = path.join(workDir, "slides", "002.svg");
+    await chmod(readOnlySlide, 0o444);
+    try {
+      const result = await registry.dispatch("convert", { id });
+
+      expect(result.ok).toBe(false);
+      // The disk first: this is the claim that matters, so it is asserted
+      // before anything about the wording, which would otherwise
+      // short-circuit the check that actually proves the rollback happened.
+      expect({
+        "slides/001.svg": sha256(await catSlide(id, "slides/001.svg")),
+        "slides/002.svg": sha256(await catSlide(id, "slides/002.svg")),
+      }).toEqual(before);
+      expect(result.message).toContain("寫入投影片時發生錯誤：slides/002.svg");
+      // And the message has to match that disk state, not paper over it.
+      expect(result.message).toContain("整份簡報都沒有被修改。");
+    } finally {
+      await chmod(readOnlySlide, 0o644);
+    }
+  });
+});

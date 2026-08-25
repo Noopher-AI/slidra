@@ -27,11 +27,16 @@ import type { CommandHandler } from "../registry.js";
  *
  * ## Never half-converted
  *
- * Every slide is read and normalised first, and only then is anything
- * written. One unconvertible slide aborts the whole run with not a single
- * byte written — a presentation where three slides are compliant and the
- * fourth is not is a worse state to be in than the one the author started
- * with.
+ * A presentation where three slides are in the container form and the
+ * fourth is not is a worse state than the one the author started in, so
+ * this command guards both ways it could happen:
+ *
+ * - Every slide is read and normalised BEFORE anything is written, so one
+ *   unconvertible slide aborts the run with not a single byte written.
+ * - The write loop keeps each slide's original bytes and rolls the already-
+ *   written slides back if a later write fails (see `rollBack`), so a disk
+ *   that accepts three writes and refuses the fourth does not leave a
+ *   mixed-format presentation behind either.
  *
  * ## Conversion is not something that happens to you
  *
@@ -58,6 +63,18 @@ export interface ConvertReport {
 
 export type ConvertData = ConvertReport;
 
+/** One slide, read and normalised, waiting for the write phase. */
+interface PendingSlide {
+  slidePath: string;
+  /** Real filesystem path. Internal only — never surfaced in any message (ADR-0004). */
+  realPath: string;
+  /** The normalised document. */
+  svg: string;
+  /** The bytes on disk before this run, kept so a failed write can be rolled back. */
+  original: string;
+  wrapped: number;
+}
+
 export const convertCommand: CommandHandler<ConvertInput, ConvertData> = async (input) => {
   const report = await convertPresentationSlides(input.id);
   const changed = report.slides.filter((slide) => slide.changed).length;
@@ -80,7 +97,7 @@ export async function convertPresentationSlides(id: string): Promise<ConvertRepo
   const workDir = await resolveWorkDir(id);
   const project = await readProject(id);
 
-  const pending: Array<{ slidePath: string; realPath: string; svg: string; original: string; wrapped: number }> = [];
+  const pending: PendingSlide[] = [];
   for (const slidePath of project.slides) {
     const original = await readPresentationFile(id, slidePath);
     const realPath = await resolveRealPath(id, workDir, slidePath);
@@ -97,6 +114,9 @@ export async function convertPresentationSlides(id: string): Promise<ConvertRepo
   }
 
   const slides: ConvertSlideOutcome[] = [];
+  /** Slides already written this run, newest last — the undo log for a mid-write failure. */
+  const written: typeof pending = [];
+
   for (const slide of pending) {
     const changed = slide.svg !== slide.original;
     if (changed) {
@@ -104,12 +124,52 @@ export async function convertPresentationSlides(id: string): Promise<ConvertRepo
         await writeFile(slide.realPath, slide.svg, "utf-8");
       } catch {
         // slide.realPath is a real filesystem path (ADR-0004) — never quote it.
-        throw new CoMotionError(`寫入投影片時發生錯誤：${slide.slidePath}`);
+        throw new CoMotionError(await rollBack(written, slide.slidePath));
       }
+      written.push(slide);
     }
     slides.push({ slidePath: slide.slidePath, changed, wrapped: slide.wrapped });
   }
   return { slides };
+}
+
+/**
+ * Puts back every slide this run had already rewritten before one of them
+ * failed to write, and returns the message describing what actually
+ * happened on disk.
+ *
+ * Reading and normalising every slide up front (the first loop) makes an
+ * unconvertible slide harmless — nothing is written at all. It does NOT
+ * make a failing *write* harmless: the disk is a shared, mutable thing that
+ * can refuse the fourth write after accepting three, which would leave the
+ * presentation half in the container form and half not. Gate round 1
+ * reproduced exactly that with a read-only `slides/004.svg`.
+ *
+ * Restoring is best-effort, because the same disk that just refused a write
+ * can refuse the restore too. So the message is assembled from what was
+ * actually observed, never from what was intended: only a fully successful
+ * rollback is allowed to claim the presentation is untouched, and a partial
+ * one names the slides left in the new format. A reassuring message that
+ * does not match the disk is worse than no message — it sends the author
+ * looking for the problem in the wrong place.
+ */
+async function rollBack(written: readonly PendingSlide[], failedSlidePath: string): Promise<string> {
+  const notRestored: string[] = [];
+  for (const slide of written) {
+    try {
+      await writeFile(slide.realPath, slide.original, "utf-8");
+    } catch {
+      notRestored.push(slide.slidePath);
+    }
+  }
+  const failure = `寫入投影片時發生錯誤：${failedSlidePath}。`;
+  if (notRestored.length === 0) {
+    return `${failure}整份簡報都沒有被修改。`;
+  }
+  return (
+    `${failure}已改寫的投影片還原失敗，這幾張現在是轉換後的格式，其餘維持原樣：` +
+    `${notRestored.join("、")}。請修復磁碟問題後重新執行 convert。`
+  );
 }
 
 async function readProject(id: string): Promise<ProjectJson> {
