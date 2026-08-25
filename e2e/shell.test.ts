@@ -203,7 +203,12 @@ it("#51 功能區：點「從頭播放」進入播放模式，且回到第一頁
     expect(await page.locator(".slide-nav-position").textContent()).toBe("第 2 頁，共 4 頁");
 
     await page.locator('.cmd:has-text("從頭播放")').click();
-    await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+    // ADR-0011 gives both modes allow-scripts, so that attribute can no
+    // longer prove "play mode entered" — wait on .titlebar becoming
+    // invisible instead (the direct evidence the shell collapsed), then
+    // assert its actual removal from the DOM below without re-polling the
+    // same fact twice.
+    await expect.poll(() => page.locator(".titlebar").isVisible()).toBe(false);
     expect(await page.locator(".titlebar").count()).toBe(0);
   } finally {
     await cleanup();
@@ -353,11 +358,18 @@ it("#53/#55 檢視切換鈕：normal/grid/play 三顆，點播放鈕進播放，
     expect(await page.locator('.view-btn[data-view="play"]').count()).toBe(1);
 
     await page.locator('.view-btn[data-view="play"]').click();
-    await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+    // ADR-0011 gives both modes allow-scripts, so that attribute can no
+    // longer prove "play mode entered" — poll the shell collapsing
+    // (.titlebar unmounting) instead, the same direct evidence #54's own
+    // tests already rely on.
+    await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
     expect(await page.locator(".status").count()).toBe(0);
 
     await page.locator('button:has-text("離開播放")').click();
-    await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
+    // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+    // the sandbox no longer goes back to "" here. What this line pins is
+    // that it carries only allow-scripts — never allow-same-origin.
+    await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
     expect(await page.locator('.view-btn[data-view="normal"]').getAttribute("aria-pressed")).toBe("true");
   } finally {
     await cleanup();

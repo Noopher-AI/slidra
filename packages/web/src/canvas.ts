@@ -25,8 +25,19 @@
  * let the iframe script itself free of its own sandbox. Because the
  * `sandbox` attribute cannot be changed on a live iframe, entering or
  * leaving play mode destroys the current iframe and builds a fresh one.
+ *
+ * 元素選取 (ticket #56, ADR-0011) extends the same loosening to view mode:
+ * a zero-token sandbox delivers no clicks to the parent at all (no script,
+ * no `allow-same-origin`, nothing bubbles out), so the view-mode iframe now
+ * also carries `allow-scripts` — with the same `allow-same-origin` ban —
+ * and gets its own injected script (selection-runtime.js) whose only job is
+ * reporting which element was clicked and drawing a selection box over it.
+ * The zero-token posture stays untouched for the overview thumbnails
+ * (overview.ts): this loosening is cut in exactly one place, the main
+ * canvas.
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
+import selectionRuntimeSource from "./selection-runtime.js?raw";
 import { computePlayerPlan, renderHideStyle, renderPlanScript } from "./player-plan.js";
 
 export type CanvasMode = "view" | "play";
@@ -41,6 +52,14 @@ export interface CanvasState {
   playerHasFocus: boolean;
   /** Set when the current slide's effect list cannot be run; cleared on the next successful render. */
   error: string | null;
+  /**
+   * The element the author currently has selected in view mode, or null.
+   * `name` is the element's `data-comot-name` (顯示名稱) when it carries
+   * one, `null` otherwise — the fallback to showing `id` instead lives in
+   * the view layer (StatusBar.tsx), not here. Never written to the
+   * presentation (CONTEXT.md 「選取」).
+   */
+  selection: { id: string; name: string | null } | null;
 }
 
 export interface CanvasController {
@@ -56,7 +75,7 @@ export interface CanvasController {
   destroy: () => void;
   /** Rebuilds the iframe with `allow-scripts` and enters play mode on the current slide. */
   play: () => Promise<void>;
-  /** Rebuilds the iframe back to zero-token sandbox and returns to view mode. */
+  /** Rebuilds the iframe back to view mode's `allow-scripts` sandbox (ADR-0011). */
   exitPlay: () => Promise<void>;
   /** Sends focus to the player iframe. Safe to call outside play mode (no-op). */
   focusPlayer: () => void;
@@ -98,6 +117,23 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
   );
 }
 
+/** Message shapes selection-runtime.js sends (settled seam, ADR-0011/#56). */
+interface SelectionMessage {
+  source: "comot-selection";
+  event: "select" | "clear";
+  id?: string;
+  name?: string | null;
+}
+
+function isSelectionMessage(data: unknown): data is SelectionMessage {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { source?: unknown }).source === "comot-selection" &&
+    typeof (data as { event?: unknown }).event === "string"
+  );
+}
+
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
   // The selected slide lives here, not in React (ADR-0001/ADR-0002): the
@@ -108,6 +144,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
+  // The element the author has selected in view mode (ADR-0011/#56), or
+  // null. Cleared (with notify()) whenever the slide changes, reload()
+  // runs, play() is entered, or exitPlay() returns — a selection surviving
+  // a page change would point at a different slide's DOM entirely.
+  let selection: { id: string; name: string | null } | null = null;
   const listeners = new Set<(state: CanvasState) => void>();
   // Bumped on every reload()/showSlide()/play()/exitPlay() call and
   // captured by each call's own closure. Nothing orders concurrent calls
@@ -122,7 +163,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // still-current `frame` reference (see the mode-switch note below).
   let generation = 0;
 
-  let frame = buildFrame("");
+  let frame = buildFrame("allow-scripts");
   container.appendChild(frame);
 
   // One listener for the whole controller's lifetime, not per-frame: it
@@ -135,9 +176,44 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed) return;
     // Authenticate by sender identity, never by trusting `event.origin` —
     // an opaque-origin document's `event.origin` is literally the string
-    // "null", which proves nothing about who sent it (ADR-0010).
+    // "null", which proves nothing about who sent it (ADR-0010). Sender
+    // identity only proves *which iframe* the message came from, though —
+    // never which script inside that iframe sent it. Any slide markup
+    // running in that iframe (view mode has `allow-scripts` too, since
+    // ADR-0011) can forge either message shape by hand, so the mode gate
+    // below is load-bearing, not defensive: without it a view-mode deck
+    // could self-issue "advance-past-end" and drive the same privileged
+    // path play mode uses, on open, with no click from the author (found
+    // in gate review round 1, #56).
     if (event.source !== frame.contentWindow) return;
+
+    if (isSelectionMessage(event.data)) {
+      // Selection messages are only ever meaningful in view mode —
+      // selection-runtime.js is not even injected into the play-mode
+      // srcdoc (wrapPlayDocument), so a "select"/"clear" arriving while
+      // mode === "play" can only be a forgery from slide script.
+      if (mode !== "view") return;
+      const selectionMessage = event.data;
+      if (selectionMessage.event === "select") {
+        selection = {
+          id: selectionMessage.id ?? "",
+          name: typeof selectionMessage.name === "string" ? selectionMessage.name : null,
+        };
+      } else {
+        selection = null;
+      }
+      notify();
+      return;
+    }
+
     if (!isPlayerMessage(event.data)) return;
+    // Player messages are only legitimate from the player runtime, which
+    // only ever runs while mode === "play" (wrapPlayDocument is the only
+    // place playerRuntimeSource is injected). A view-mode slide has no
+    // business sending any of these — reject the whole message rather
+    // than gating individual events, so a future new event type is safe
+    // by default instead of needing its own opt-in gate.
+    if (mode !== "play") return;
 
     const message = event.data;
     if (message.event === "ready") {
@@ -223,6 +299,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Only a presentation that got shorter forces a move, and then only as
     // far as the new last slide.
     currentIndex = slides.length === 0 ? -1 : Math.min(Math.max(currentIndex, 0), slides.length - 1);
+    // An external edit can rewrite the very element the author had
+    // selected (or remove it entirely) — the id it points at is no longer
+    // trustworthy, so the selection does not survive a reload.
+    selection = null;
     notify();
 
     if (mode === "play") {
@@ -248,7 +328,26 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
 
-    frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+    frame.srcdoc = wrapSelectionDocument(
+      svgMarkup,
+      `/api/raw/${slideDirectory(slidePath)}`,
+      selectionColors(),
+    );
+  }
+
+  /**
+   * Reads the selection box's colours from this document's own tokens.css
+   * (--accent-hi, --s-titlebar) so selection-runtime.js — living in an
+   * opaque-origin document with no access to this document's :root — never
+   * has to hard-code them (ADR-0011). Read fresh on every render() call
+   * rather than cached, so a future token change takes effect immediately.
+   */
+  function selectionColors(): { accent: string; handle: string } {
+    const rootStyle = getComputedStyle(document.documentElement);
+    return {
+      accent: rootStyle.getPropertyValue("--accent-hi").trim(),
+      handle: rootStyle.getPropertyValue("--s-titlebar").trim(),
+    };
   }
 
   /**
@@ -317,6 +416,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     const thisGeneration = ++generation;
     currentIndex = index;
+    // A selection points at an element's id on the slide the author was
+    // looking at; a stale selection surviving onto a different slide's DOM
+    // is a defect, not a convenience.
+    selection = null;
     notify();
     if (mode === "play") {
       await renderPlay(thisGeneration);
@@ -341,6 +444,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     mode = "play";
     playerHasFocus = false;
     error = null;
+    // Entering play mode destroys the view-mode iframe (selection-runtime.js
+    // included), so any selection it reported is gone with it.
+    selection = null;
     rebuildFrame("allow-scripts");
     notify();
     await renderPlay(thisGeneration);
@@ -352,7 +458,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     mode = "view";
     playerHasFocus = false;
     error = null;
-    rebuildFrame("");
+    // Returning to view mode rebuilds the iframe with a fresh
+    // selection-runtime.js instance that has never heard a click yet.
+    selection = null;
+    rebuildFrame("allow-scripts");
     notify();
     await render(thisGeneration);
   }
@@ -387,13 +496,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       mode,
       playerHasFocus,
       error,
+      selection,
     };
     for (const listener of listeners) listener(state);
   }
 
   function subscribe(listener: (state: CanvasState) => void): () => void {
     listeners.add(listener);
-    listener({ slides: [...slides], currentIndex, mode, playerHasFocus, error });
+    listener({ slides: [...slides], currentIndex, mode, playerHasFocus, error, selection });
     return () => {
       listeners.delete(listener);
     };
@@ -463,6 +573,52 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0">${bodyMarkup}</body></html>`;
+}
+
+/**
+ * Wraps the fetched slide markup for view mode's `srcdoc` (ADR-0011/#56):
+ * same shape as wrapSlideDocument, plus selection-runtime.js injected as a
+ * second `<script>`, seeded with the accent/handle colours the parent read
+ * from its own tokens.css (selectionColors() above) — the opaque-origin
+ * document this becomes has no access to that `:root` itself.
+ *
+ * Deliberately a separate function rather than a new parameter on
+ * wrapSlideDocument: that function's signature is depended on by
+ * e2e/base-fragment-spike.test.ts, and — more importantly — it is also
+ * still used for the play-mode fallback path (renderPlay()'s `catch`
+ * branch) and the empty-deck placeholder, neither of which may ever
+ * acquire a selection runtime.
+ *
+ * Colour values are computed CSS strings, never anything an author
+ * controls, but they still get the same `<` escaping wrapPlayDocument's
+ * planScript needs (see that function's own comment for why a bare
+ * `</script` guard is not enough) — cheap insurance against a future
+ * token value that happens to contain one.
+ *
+ * The runtime's two `<script>` tags come BEFORE `bodyMarkup`, not after
+ * (unlike wrapPlayDocument, which deliberately puts its runtime last).
+ * `document.body` already exists by the time an inline script that is
+ * body's first child runs, so `document.body.appendChild(host)` inside
+ * selection-runtime.js still works. What this ordering buys: the
+ * runtime's capturing `window` click listener registers before any slide
+ * script gets a chance to run. A hostile slide can call
+ * `stopImmediatePropagation()` from its own capturing `window` listener,
+ * which kills every other listener on that same target (`window`) — ours
+ * included — regardless of phase. Registering first is the only thing
+ * that makes ours win that race; putting the runtime after `bodyMarkup`
+ * (or leaving the listener on `document`, which capture never even
+ * reaches before `window`) reopens exactly the silent-selection-death
+ * hole this ordering exists to close (gate round 2, #56). Do not
+ * "simplify" this back to matching wrapPlayDocument's order.
+ */
+export function wrapSelectionDocument(
+  bodyMarkup: string,
+  baseHref: string | undefined,
+  colors: { accent: string; handle: string },
+): string {
+  const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
+  const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**

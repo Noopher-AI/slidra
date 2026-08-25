@@ -76,6 +76,7 @@ export function App() {
     mode: "view",
     playerHasFocus: false,
     error: null,
+    selection: null,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -496,6 +497,7 @@ export function App() {
             state={canvasState}
             controller={controllerRef.current}
             view={view}
+            onViewChange={setView}
           >
             <PlayChrome
               state={canvasState}

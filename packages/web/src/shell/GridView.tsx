@@ -1,24 +1,19 @@
 import { useEffect, useRef } from "react";
 import type { CanvasController } from "../canvas.js";
 import { mountGridOverview, type OverviewController } from "../overview.js";
-
-/**
- * Fired on `window` when a grid cell is clicked (#55's 「點一格選到該頁並切
- * 回標準檢視」). GridView has no prop path back to App.tsx's `setView`:
- * `Stage.tsx` receives no `onViewChange` (裁決 5 only settles GridView's
- * render condition, `view === "grid" && state.mode !== "play"`, using the
- * `state` prop Stage already has — it does not add a callback prop), and
- * `App.tsx` is frozen for this ticket, so threading a new prop through it
- * is not an option. StatusBar.tsx already holds the one thing that *can*
- * flip `view` back — the `onViewChange` prop App.tsx wires to `setView` —
- * so this event is a narrow, explicit bridge between these two sibling
- * shell components instead. See StatusBar.tsx's own `window.addEventListener`
- * for the other half.
- */
-export const GRID_EXIT_EVENT = "co-motion:grid-exit";
+import type { ShellView } from "./view.js";
 
 export interface GridViewProps {
   controller: CanvasController | null;
+  /**
+   * Called when a grid cell is clicked, to flip the centre column back to
+   * "normal" (#55's 「點一格選到該頁並切回標準檢視」). Threaded straight
+   * through from App.tsx's `setView`, via Stage.tsx (裁決 1, wave 5) — this
+   * replaces a `window` CustomEvent bridge that only existed because
+   * App.tsx was frozen for wave 4 and this prop path could not be opened
+   * yet. That freeze does not apply to this ticket.
+   */
+  onViewChange: (view: ShellView) => void;
 }
 
 /**
@@ -35,17 +30,17 @@ export interface GridViewProps {
  * rebuilds it from scratch every time, materialising thumbnails lazily
  * again from a clean slate.
  */
-export function GridView({ controller }: GridViewProps) {
+export function GridView({ controller, onViewChange }: GridViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !controller) return;
     const overview: OverviewController = mountGridOverview(container, controller, () => {
-      window.dispatchEvent(new CustomEvent(GRID_EXIT_EVENT));
+      onViewChange("normal");
     });
     return () => overview.destroy();
-  }, [controller]);
+  }, [controller, onViewChange]);
 
   return <div className="grid-view" ref={containerRef} />;
 }

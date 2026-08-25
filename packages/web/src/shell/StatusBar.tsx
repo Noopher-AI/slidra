@@ -1,7 +1,5 @@
-import { useEffect } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
-import { GRID_EXIT_EVENT } from "./GridView.js";
 
 // Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
 
@@ -46,21 +44,14 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
     onViewChange(next);
   }
 
-  // #55: clicking a grid cell has no prop path back to `onViewChange`
-  // (GridView.tsx's own comment on GRID_EXIT_EVENT explains why) — this
-  // component holds the one thing that *can* flip `view` back to
-  // "normal", so it listens for the bridge event here instead.
-  useEffect(() => {
-    function onGridExit(): void {
-      onViewChange("normal");
-    }
-    window.addEventListener(GRID_EXIT_EVENT, onGridExit);
-    return () => window.removeEventListener(GRID_EXIT_EVENT, onGridExit);
-  }, [onViewChange]);
+  // #56 (ADR-0011): 顯示名稱 (data-comot-name) when the selected element
+  // carries one, its 識別碼 (id) otherwise — that fallback mapping is a
+  // view-layer decision, not something canvas.ts's CanvasState encodes.
+  const selectionLabel = state.selection ? (state.selection.name ?? state.selection.id) : null;
 
   return (
     <footer className="status status-bar">
-      <span className="sel-name" />
+      <span className="sel-name">{selectionLabel !== null && <>已選取：<b>{selectionLabel}</b></>}</span>
       <span className="spacer" />
       <span className="slide-nav-position">
         {hasSlides ? `第 ${state.currentIndex + 1} 頁，共 ${slideCount} 頁` : "尚無投影片"}

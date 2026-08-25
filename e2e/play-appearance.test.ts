@@ -120,7 +120,7 @@ async function openApp(deckDir: string, prefix: string): Promise<{ page: Page; c
  */
 async function enterPlay(page: Page): Promise<void> {
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
 }
 

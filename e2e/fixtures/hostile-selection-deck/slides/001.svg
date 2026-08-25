@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!--
+    ADR-0011 / #56: the slide's own <style> tries specifically to hide or
+    cover a selection box drawn as ordinary light-DOM markup. A `*` rule
+    cannot cross a Shadow DOM boundary, which is the whole reason
+    selection-runtime.js draws its box inside one — this fixture exists to
+    prove that boundary actually holds, and that a naive (non-shadow)
+    implementation would not survive it.
+
+    Two selectable subjects, per the dispatch: `el-title` carries a
+    顯示名稱 (data-comot-name), `el-plain` carries only an `id` — the
+    識別碼 fallback needs a real subject too.
+
+    The blanket `*` rule below also matches every ancestor of this markup
+    (this <style> is inside the <svg>, but a document-wide stylesheet
+    reaches the whole document tree regardless of where the tag sits) —
+    including <html>/<body> themselves. A `display: none` on an ancestor
+    hides everything inside it no matter what a descendant's own `display`
+    says, so restoring only `svg, svg *` was not enough (confirmed
+    empirically: the slide rendered with a zero-size bounding box until
+    <html>/<body> were restored too). `html, body, svg, svg *` restores
+    exactly what a real click needs to land on. Each restoring selector has
+    higher specificity than plain `*` ((0,0,1) vs (0,0,0)), so it wins
+    regardless of source order. This restoration does nothing for anything
+    appended to <body> *after* the slide loads (selection-runtime.js's
+    shadow host, or the test's own light-DOM control box) — those still
+    face the full blanket rule, exactly as intended.
+  -->
+  <style>
+    *, *::before, *::after {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      content: none !important;
+    }
+    html, body {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    svg, svg * {
+      display: inline !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    /*
+      pointer-events: none deliberately — the covering attack this element
+      carries out is visual (stacking on top of the selection box), not an
+      input-blocking one. Real content underneath (including el-title/
+      el-plain themselves) must stay clickable, exactly like
+      selection-runtime.js's own box: it also sits on top of everything
+      with pointer-events: none, so real clicks reach the slide, not the
+      decoration. Without this, the overlay would intercept every mouse
+      event on the page and no element could ever be selected at all — a
+      different, more severe attack than the one this fixture is testing.
+    */
+    .overlay {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(255, 0, 0, 0.5) !important;
+      z-index: 999999999 !important;
+      pointer-events: none !important;
+    }
+    foreignObject {
+      pointer-events: none !important;
+    }
+  </style>
+  <text id="el-title" data-comot-name="標題" x="640" y="200" text-anchor="middle" font-size="56">敵意投影片</text>
+  <rect id="el-plain" x="200" y="400" width="200" height="100" fill="#4a8f45"/>
+  <foreignObject x="0" y="0" width="1280" height="720">
+    <div xmlns="http://www.w3.org/1999/xhtml" class="overlay"></div>
+  </foreignObject>
+</svg>

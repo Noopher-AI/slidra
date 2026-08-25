@@ -123,7 +123,7 @@ it("全螢幕開關只在播放模式提供，檢視模式不存在這個控制�
   expect(await page.locator(".fullscreen-toggle-button").count()).toBe(0);
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   await expect.poll(() => page.locator(".fullscreen-toggle-button").count()).toBe(1);
   // 是否全螢幕由作者選擇，播放開始不自動進入全螢幕：按鈕文字是「全螢幕」
@@ -181,7 +181,7 @@ it("點按鈕真的進入全螢幕（容器撐滿螢幕、iframe 在容器內）
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   // Sandbox posture asserted, never just commented (ADR-0010): allow-scripts
   // for the runtime, never allow-same-origin alongside it. Unaffected by
   // this ticket switching its fullscreen target — canvas.ts (untouched)
@@ -376,7 +376,10 @@ it("全螢幕狀態下離開播放：真的點按鈕就能退出，文件不會�
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(false);
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
+  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // the sandbox no longer goes back to "" here. What this line pins is
+  // that it carries only allow-scripts — never allow-same-origin.
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 });
 
 it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、不互相覆蓋（review gate round 1, P2）", async () => {
@@ -390,7 +393,7 @@ it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // canvas.ts (not owned by this ticket) cannot be edited to fabricate a
   // 播放錯誤 (canvasState.error) on demand, so this test proves the P2 fix
@@ -483,7 +486,7 @@ it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // 進到真正的全螢幕狀態，這樣「退出」才有真實意義（不是憑空捏造 isFullscreen）。
   await page.locator(".fullscreen-toggle-button").click();
@@ -579,7 +582,7 @@ it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // Delays the real underlying requestFullscreen() call itself, not just
   // the promise wrapping it — it really does enter fullscreen, only later
@@ -691,7 +694,7 @@ it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   const focusNotice = page.locator(".player-focus-notice");
   // 等初次自動 focus 先穩定下來（理由同前面幾個測試），再自己偷走焦點.
@@ -734,7 +737,7 @@ it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // 兩次呼叫各給不同的延遲：第一次 100ms 先落地，第二次 600ms 後落地——
   // 造出「較早的請求先 settle，較晚的還在飛行中」這個順序。每次呼叫都留
@@ -826,7 +829,7 @@ it("即時重載把最後一張投影片移除時，離開播放與全螢幕開�
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   await page.locator(".fullscreen-toggle-button").click();
   await expect

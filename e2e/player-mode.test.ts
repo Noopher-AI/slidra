@@ -172,7 +172,10 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
 
   // 離開播放模式，回到檢視。
   await page.locator('button:has-text("離開播放")').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("");
+  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // the sandbox no longer goes back to "" here. What this line pins is
+  // that it carries only allow-scripts — never allow-same-origin.
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 
   expect(pageErrors).toEqual([]);
 
@@ -195,7 +198,7 @@ it("焦點不在播放器上時，畫面明確說明並提供點回去的方式"
     .toBe("播放第一頁");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // Unlike the SVG elements above, this notice is not hidden with opacity
   // — it is a plain React-conditional element, mounted only while

@@ -15,6 +15,13 @@ export interface StageProps {
   controller: CanvasController | null;
   /** #55 用 `view` 決定 GridView 是否顯示；GridView 疊在這個子樹旁邊、絕不能取代它（見下方 render 內的說明），App.tsx 不必打開。 */
   view: ShellView;
+  /**
+   * 裁決 1（wave 5）：GridView 點一格選到該頁後要把 `view` 翻回 "normal"。
+   * 這條路徑本來繞道一個 `window` CustomEvent 橋接，因為 App.tsx 對 wave 4
+   * 是凍結的；那道凍結是本波指揮官的裁決拆除的，改成一條直通到 `App.tsx`
+   * 的 `setView` 的 prop，貫穿 Stage → GridView。
+   */
+  onViewChange: (view: ShellView) => void;
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
   children?: ReactNode;
 }
@@ -40,7 +47,7 @@ export interface StageProps {
  * `.canvas-area:fullscreen`/`.stage` in the two stylesheets above neutralise
  * the ratio frame under fullscreen, not this component.
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view, onViewChange, children }: StageProps) {
   // #55 (wave 4) reads `view` here, but does NOT branch on it with an early
   // `return <GridView ... />` before the JSX below: that would swap out the
   // unconditional JSX, which gives `canvasRef`'s div a new node identity.
@@ -80,7 +87,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view,
       <div className="stage" style={stageStyle}>
         <div ref={canvasRef} className="canvas" />
       </div>
-      {showGrid && <GridView controller={controller} />}
+      {showGrid && <GridView controller={controller} onViewChange={onViewChange} />}
       {children}
     </div>
   );

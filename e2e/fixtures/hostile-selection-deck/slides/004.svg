@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!--
+    Gate round 2 (#56): `wrapSelectionDocument()` used to place the
+    injected selection runtime AFTER `bodyMarkup`, so a slide's own script
+    ran first. A capturing `window` click listener that calls
+    `event.stopImmediatePropagation()` reaches every other listener on
+    `window` before capture ever gets to `document` — where the runtime's
+    old bubbling listener lived — so selection silently died: no error,
+    no crash, just a click that does nothing. This slide is exactly that
+    attack: a capturing `window` listener installed the moment the slide's
+    own inline script runs.
+
+    The fix relies on winning a registration race, not a phase/target
+    choice alone (`stopImmediatePropagation()` also kills other listeners
+    on the *same* target, so being on `window`/capture is necessary but
+    not sufficient) — the runtime script must run, and register its
+    listener, before this one does. wrapSelectionDocument() now injects
+    the runtime before `bodyMarkup`, which is what makes that true.
+  -->
+  <text id="el-title" data-comot-name="標題" x="640" y="200" text-anchor="middle" font-size="56">第四頁：搶先攔截點擊</text>
+  <script><![CDATA[
+    window.addEventListener("click", function (event) {
+      event.stopImmediatePropagation();
+    }, true);
+  ]]></script>
+</svg>

@@ -1,0 +1,9 @@
+/* #56 (元素選取): the frozen shell.css:306 already styles `.status .sel-name`
+   itself (`color: var(--ink)`), but the template (base-shell.html:282) also
+   carries a rule for the <b> naming the selected element that shell.css
+   never got — this file's whole job is to add that one missing rule
+   without touching the frozen stylesheet. */
+.status .sel-name b {
+  color: var(--accent-hi);
+  font-weight: 400;
+}

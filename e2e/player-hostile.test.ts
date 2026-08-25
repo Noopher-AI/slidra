@@ -16,7 +16,8 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * not have to change shape to make room for a hostile fourth slide). The
  * hostile payload lives in `fixtures/hostile-deck/slides/001.svg`'s own
  * inline `<script>` and only runs once play mode grants `allow-scripts`;
- * view mode's zero-token sandbox never executes it at all.
+ * view mode also carries `allow-scripts` (ADR-0011), so the boundary this
+ * test defends is the `postMessage` mode gate, not the sandbox token itself.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -109,7 +110,7 @@ it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", as
     .toBe("看起來人畜無害的投影片");
 
   await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // The hostile script fires its fetch immediately on load; wait for its
   // report to arrive rather than guessing a timeout.
