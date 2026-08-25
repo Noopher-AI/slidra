@@ -73,6 +73,8 @@ co-motion serve          ← CLI 的常駐模式
 
 - **Noto Sans TC**（`packages/web/src/assets/fonts/NotoSansTC-subset.woff2`）：Google 的開源中文字型，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC`），這裡收錄的是子集版本——只保留 UI 實際用到的字元，由 `scripts/build-font-subset.mjs` 產生（子集使用 [`subset-font`](https://github.com/papandreou/subset-font)，wasm 版 harfbuzz，不需要 Python 工具鏈）。
 
+- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文 `packages/core/src/font/OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/co-motion/fonts/`（可用 `CO_MOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
+
 ## 尚待決定
 
 - CLI 命令集合的具體設計：動詞、參數與定址寫法。
