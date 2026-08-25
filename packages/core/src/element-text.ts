@@ -1,7 +1,7 @@
-import { writeFile } from "node:fs/promises";
 import { CoMotionError } from "./errors.js";
-import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
+import { readVirtualFile } from "./virtual-fs.js";
 import type { ProjectJson } from "./presentation.js";
+import { attributeOf, scanDocument, type ScannedNode } from "./slide/scan.js";
 
 /**
  * The slide-mutation primitive behind `text set` (ADR-0002: `text set` must
@@ -249,6 +249,59 @@ function assertValidXmlText(newText: string): void {
 }
 
 /**
+ * Finds `elementId` in the pre-parsed document tree (document order,
+ * depth-first) and returns the node it names, or undefined.
+ */
+function findNodeById(nodes: readonly ScannedNode[], elementId: string): ScannedNode | undefined {
+  for (const node of nodes) {
+    if (attributeOf(node, "id")?.value === elementId) {
+      return node;
+    }
+    const found = findNodeById(node.children, elementId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * Handles the case where `elementId` sits on a `<g>` container rather than
+ * directly on a `<text>` (#72's conversion moves `id` up onto the container —
+ * see ADR-0012). Descends into the container's direct children to find the
+ * single `<text>` child that actually carries the text, then splices its
+ * content exactly the way the direct-`<text>` path does.
+ *
+ * Re-locates the container with `scanDocument` (which carries byte offsets,
+ * unlike this module's own attribute-string scanner) rather than adding a
+ * third nested-element scanner — see `slide/scan.ts`'s module doc comment
+ * for why the two scanners are not merged (#92).
+ */
+function replaceContainerText(svgContent: string, elementId: string, newText: string): string {
+  const container = findNodeById(scanDocument(svgContent), elementId);
+  if (!container) {
+    // The cheap scanner above already found a `<g id="elementId">` in the
+    // raw text; scanDocument disagreeing here would mean the two scanners
+    // parse this document differently, not that the element is absent.
+    throw new CoMotionError(`元素不是文字元素：${elementId}`);
+  }
+
+  const groupChildren = container.children.filter((child) => child.tag === "g");
+  const textChildren = container.children.filter((child) => child.tag === "text");
+  if (groupChildren.length > 0 || textChildren.length !== 1) {
+    throw new CoMotionError(`元素不是文字元素：${elementId}`);
+  }
+
+  const textNode = textChildren[0];
+  if (textNode.selfClosing) {
+    throw new CoMotionError(`元素沒有文字內容：${elementId}`);
+  }
+  return (
+    svgContent.slice(0, textNode.contentStart) +
+    escapeXmlText(newText) +
+    svgContent.slice(textNode.contentEnd)
+  );
+}
+
+/**
  * Replaces the text content of the element identified by `elementId` inside
  * `svgContent` with `newText`, and returns the full document with that one
  * substitution applied. Every other byte of `svgContent` is preserved
@@ -258,8 +311,10 @@ function assertValidXmlText(newText: string): void {
  * `elementId` does not appear in the document (including when it only
  * appears inside a comment or CDATA section, which are never scanned as
  * markup), when the matched element's tag is not on the text-bearing
- * whitelist (e.g. `<rect>`, `<g>`, `<image>`), or when the matched element
- * is self-closing and therefore has no text content to replace.
+ * whitelist and is not a `<g>` container wrapping exactly one `<text>`
+ * child (e.g. `<rect>`, `<image>`, a `<g>` with no `<text>` child or more
+ * than one), or when the matched element is self-closing and therefore has
+ * no text content to replace.
  */
 export function replaceElementText(svgContent: string, elementId: string, newText: string): string {
   assertValidXmlText(newText);
@@ -268,6 +323,9 @@ export function replaceElementText(svgContent: string, elementId: string, newTex
   let match = findNextStartTag(svgContent, searchFrom);
   while (match) {
     if (extractId(match.attrsText) === elementId) {
+      if (match.tagName === "g") {
+        return replaceContainerText(svgContent, elementId, newText);
+      }
       if (!TEXT_BEARING_TAGS.has(match.tagName)) {
         throw new CoMotionError(`元素不是文字元素：${elementId}`);
       }
@@ -290,7 +348,14 @@ export function replaceElementText(svgContent: string, elementId: string, newTex
   throw new CoMotionError(`找不到元素：${elementId}`);
 }
 
-async function assertIsSlide(workDir: string, virtualPath: string): Promise<void> {
+/**
+ * Confirms `virtualPath` is one of the presentation's declared slides
+ * (listed in `project.json`'s `slides` array). The write path (`setElementText`
+ * in workspace.ts) calls this before touching the slide file itself, so an
+ * edit aimed at e.g. `project.json` is rejected before any read/write of it
+ * is attempted.
+ */
+export async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<void> {
   const raw = await readVirtualFile(workDir, "project.json");
   let project: ProjectJson;
   try {
@@ -300,36 +365,5 @@ async function assertIsSlide(workDir: string, virtualPath: string): Promise<void
   }
   if (!Array.isArray(project.slides) || !project.slides.includes(virtualPath)) {
     throw new CoMotionError(`不是投影片：${virtualPath}`);
-  }
-}
-
-/**
- * Reads the slide at `slideVirtualPath` inside the presentation's work
- * directory, replaces the named element's text, and writes the result back
- * to the same real file. `slideVirtualPath` must both resolve to a real
- * file (ADR-0004, third layer — no path is trusted until the virtual tree
- * discovers it) and be listed in `project.json`'s `slides` array.
- */
-export async function writeSlideElementText(
-  workDir: string,
-  slideVirtualPath: string,
-  elementId: string,
-  newText: string,
-): Promise<void> {
-  const realPath = await resolveVirtualFilePath(workDir, slideVirtualPath);
-  await assertIsSlide(workDir, slideVirtualPath);
-
-  // Strict decoding, reused from the read path (readVirtualFile): any
-  // invalid UTF-8 byte anywhere in the slide throws rather than being
-  // silently replaced with U+FFFD, which would then get persisted by the
-  // write below. readVirtualFile only ever throws CoMotionError.
-  const original = await readVirtualFile(workDir, slideVirtualPath);
-
-  const updated = replaceElementText(original, elementId, newText);
-
-  try {
-    await writeFile(realPath, updated, "utf-8");
-  } catch {
-    throw new CoMotionError(`寫入投影片時發生錯誤：${slideVirtualPath}`);
   }
 }
