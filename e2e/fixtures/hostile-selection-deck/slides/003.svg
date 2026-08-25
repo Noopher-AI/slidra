@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!--
+    #56 gate review round 1: slide 2's forged `advance-past-end` message
+    targets landing here. This slide carries no script of its own — its
+    only job is being a real, distinct destination so the regression test
+    can prove the forged message did not actually move the presentation
+    here (advancePastEnd() is a no-op on the last slide regardless of the
+    gate, so slide 2 being second-to-last, not last, is load-bearing for
+    the test to mean anything).
+  -->
+  <text id="el-slide-three" x="640" y="360" text-anchor="middle" font-size="56">第三頁：正常內容</text>
+</svg>

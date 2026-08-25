@@ -176,10 +176,23 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed) return;
     // Authenticate by sender identity, never by trusting `event.origin` —
     // an opaque-origin document's `event.origin` is literally the string
-    // "null", which proves nothing about who sent it (ADR-0010).
+    // "null", which proves nothing about who sent it (ADR-0010). Sender
+    // identity only proves *which iframe* the message came from, though —
+    // never which script inside that iframe sent it. Any slide markup
+    // running in that iframe (view mode has `allow-scripts` too, since
+    // ADR-0011) can forge either message shape by hand, so the mode gate
+    // below is load-bearing, not defensive: without it a view-mode deck
+    // could self-issue "advance-past-end" and drive the same privileged
+    // path play mode uses, on open, with no click from the author (found
+    // in gate review round 1, #56).
     if (event.source !== frame.contentWindow) return;
 
     if (isSelectionMessage(event.data)) {
+      // Selection messages are only ever meaningful in view mode —
+      // selection-runtime.js is not even injected into the play-mode
+      // srcdoc (wrapPlayDocument), so a "select"/"clear" arriving while
+      // mode === "play" can only be a forgery from slide script.
+      if (mode !== "view") return;
       const selectionMessage = event.data;
       if (selectionMessage.event === "select") {
         selection = {
@@ -194,6 +207,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
 
     if (!isPlayerMessage(event.data)) return;
+    // Player messages are only legitimate from the player runtime, which
+    // only ever runs while mode === "play" (wrapPlayDocument is the only
+    // place playerRuntimeSource is injected). A view-mode slide has no
+    // business sending any of these — reject the whole message rather
+    // than gating individual events, so a future new event type is safe
+    // by default instead of needing its own opt-in gate.
+    if (mode !== "play") return;
 
     const message = event.data;
     if (message.event === "ready") {

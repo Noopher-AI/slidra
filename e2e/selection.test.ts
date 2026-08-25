@@ -366,6 +366,46 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
   }
 });
 
+// Gate review round 1 (#56): the view-mode iframe has `allow-scripts` too
+// (ADR-0011), so any slide script can forge a `comot-player` message by
+// hand — `event.source === frame.contentWindow` only proves which iframe
+// sent it, never which script inside that iframe did. Before canvas.ts's
+// mode gate, this forged message drove advancePastEnd() and replaced the
+// view-mode srcdoc with the play document (containing
+// `window.__COMOT_PLAN__`) while mode stayed "view" — reproduced directly
+// against this branch's pre-fix canvas.ts. Slide 2 of hostile-selection-deck
+// carries the forging script; slide 1's hostile CSS plays no part here.
+// Slide 2 is deliberately not the deck's last slide (slide 3 is harmless
+// filler after it): advancePastEnd() is a no-op on the last slide even
+// with no gate at all, so landing on the true last slide would make this
+// test pass whether or not the fix is in place.
+it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不會把 iframe 換成播放文件", async () => {
+  const { server, cleanup } = await startServerFor(hostileDeckDir);
+  try {
+    const page = await openApp(server);
+    const pageIndicator = page.locator(".slide-nav-position");
+    const slideFrame = page.locator("iframe.slide-frame");
+
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 1 頁，共 3 頁");
+    await page.locator('button[aria-label="下一頁"]').click();
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 3 頁");
+
+    const sandbox = await slideFrame.getAttribute("sandbox");
+    expect(sandbox).toContain("allow-scripts");
+
+    // Slide 2's script fires its forged message 300ms after load; give it
+    // comfortably longer than that before asserting nothing moved.
+    await page.waitForTimeout(600);
+
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 3 頁");
+    const srcdoc = await slideFrame.getAttribute("srcdoc");
+    expect(srcdoc).not.toBeNull();
+    expect(srcdoc).not.toContain("__COMOT_PLAN__");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("基準截圖：標準檢視含選取框", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
