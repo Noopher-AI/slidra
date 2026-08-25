@@ -52,6 +52,31 @@ async function withoutNetwork(body: () => Promise<void>): Promise<void> {
 // use). Every expectation below is about this specific font file.
 const notoSansTC = readBundledFontBytes;
 
+/**
+ * Runs `body` with fetch answering the Google Fonts CSS request and the
+ * font-file request with fabricated data instead of the network — the way a
+ * captive portal answers both with HTTP 200, or the way a real font server
+ * answers both with real bytes, depending on what the caller passes.
+ */
+async function withMockedDownload(
+  fontResponseBytes: Uint8Array,
+  body: () => Promise<void>,
+): Promise<void> {
+  const realFetch = globalThis.fetch;
+  const css = "url(https://fonts.gstatic.com/s/notosanstc/v1/fake.ttf)";
+  globalThis.fetch = (async (url: string | URL) => {
+    if (String(url).includes("fonts.googleapis.com")) {
+      return { ok: true, text: async () => css } as Response;
+    }
+    return { ok: true, arrayBuffer: async () => fontResponseBytes.slice().buffer } as Response;
+  }) as typeof fetch;
+  try {
+    await body();
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 describe("createFontBook reads a face's metadata straight out of the sfnt tables", () => {
   it("reports the family name from the name table", async () => {
     const book = createFontBook([await notoSansTC()]);
@@ -224,6 +249,57 @@ describe("the master font is cached on disk, not kept in version control", () =>
         await expect(readBundledFontBytes()).rejects.toThrow(
           /取不到內建字型 Noto Sans TC，而且本機快取是空的/,
         );
+      });
+    });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe("a captive portal's HTML must never be trusted as a font (#70)", () => {
+  // A captive portal (a hotel or airport network's login page) answers any
+  // request with HTTP 200 and an HTML body. downloadFont() only checked
+  // `response.ok`, so that page used to be written into the cache as if it
+  // were the font — and because the cache read never checked its own
+  // contents either, every later read handed back that same HTML forever.
+
+  it("rejects a downloaded login page instead of caching it", async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+    const html = new TextEncoder().encode("<html><body>請先登入本網路</body></html>");
+    await withFontCache(cacheDir, async () => {
+      await withMockedDownload(html, async () => {
+        await expect(readBundledFontBytes()).rejects.toThrow(/需要先登入|不是字型檔/);
+      });
+    });
+    // The failed download must never have reached the cache: the file
+    // simply does not exist, not "exists but is being ignored".
+    await expect(readFile(path.join(cacheDir, "NotoSansTC-Regular.ttf"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it("rejects an already-poisoned cache instead of handing its bytes back", async () => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+    const html = new TextEncoder().encode("<html><body>請先登入本網路</body></html>");
+    await writeFile(path.join(cacheDir, "NotoSansTC-Regular.ttf"), html);
+    await withFontCache(cacheDir, async () => {
+      await withoutNetwork(async () => {
+        await expect(readBundledFontBytes()).rejects.toThrow(/快取已損毀/);
+      });
+    });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["TrueType", [0x00, 0x01, 0x00, 0x00]],
+    ["OTTO (CFF)", [0x4f, 0x54, 0x54, 0x4f]],
+    ["ttcf (TrueType Collection)", [0x74, 0x74, 0x63, 0x66]],
+  ])("accepts a download that starts with the %s magic number", async (_name, magic) => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
+    const fakeFont = new Uint8Array([...magic, 1, 2, 3, 4]);
+    await withFontCache(cacheDir, async () => {
+      await withMockedDownload(fakeFont, async () => {
+        await expect(readBundledFontBytes()).resolves.toEqual(fakeFont);
       });
     });
     await rm(cacheDir, { recursive: true, force: true });

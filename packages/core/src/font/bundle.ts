@@ -66,17 +66,54 @@ async function downloadFont(): Promise<Uint8Array> {
   return new Uint8Array(await fontResponse.arrayBuffer());
 }
 
+// The three sfnt magic numbers this reads accept: TrueType outlines
+// (0x00010000), CFF outlines ("OTTO"), and a TrueType Collection ("ttcf").
+// WOFF/WOFF2 are deliberately not in this list — this path wants a raw
+// .ttf, the same thing downloadFont() asks Google Fonts for.
+const SFNT_SIGNATURES: readonly number[][] = [
+  [0x00, 0x01, 0x00, 0x00],
+  [0x4f, 0x54, 0x54, 0x4f], // "OTTO"
+  [0x74, 0x74, 0x63, 0x66], // "ttcf"
+];
+
+/**
+ * Whether `bytes` starts with a recognised sfnt magic number. Used to catch
+ * a captive portal's login page (HTTP 200, HTML body) before it is trusted
+ * as a font — either freshly downloaded or read back out of the cache.
+ */
+function hasSfntSignature(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 4) {
+    return false;
+  }
+  return SFNT_SIGNATURES.some((signature) => signature.every((byte, i) => bytes[i] === byte));
+}
+
 /**
  * Returns the master font's bytes, downloading and caching them on first
  * use. Offline with a cold cache is an explicit error telling the user what
  * to do — never a silent fall back to a system font, which is precisely the
  * failure #71 exists to remove.
+ *
+ * Both the freshly downloaded bytes and the bytes read back out of the
+ * cache are checked against the sfnt magic number before being trusted. A
+ * captive portal (a hotel or airport login page) answers any request with
+ * HTTP 200 and an HTML body; without this check that page gets written into
+ * the cache as if it were the font, and — because the cache read used to
+ * trust its own contents — every later read would hand back that same HTML
+ * forever, with no download ever fixing it.
  */
 export async function readBundledFontBytes(): Promise<Uint8Array> {
   const cacheDir = resolveFontCacheDir();
   const cachedPath = path.join(cacheDir, BUNDLED_FONT_FILE);
   try {
-    return new Uint8Array(await readFile(cachedPath));
+    const cached = new Uint8Array(await readFile(cachedPath));
+    if (!hasSfntSignature(cached)) {
+      throw new CoMotionError(
+        `字型快取已損毀：${cachedPath} 開頭的位元組不是任何已知字型格式。` +
+          "請刪除這個檔案後重新執行，讓它重新下載一次。",
+      );
+    }
+    return cached;
   } catch (error) {
     if (!isEnoent(error)) {
       throw error;
@@ -97,8 +134,18 @@ export async function readBundledFontBytes(): Promise<Uint8Array> {
     );
   }
 
+  if (!hasSfntSignature(bytes)) {
+    throw new CoMotionError(
+      "下載回來的內容不是字型檔（開頭位元組不符合任何已知字型格式）。" +
+        "目前的網路可能需要先登入才能上網（例如旅館或機場的登入頁面），" +
+        "回應的其實是一頁網頁而不是字型。請先完成該網路的登入，或換一個網路後再試一次。",
+    );
+  }
+
   // Written via a temp file and renamed: two commands running at once must
-  // never be able to read a half-written font file out of the cache.
+  // never be able to read a half-written font file out of the cache, and a
+  // download that fails the signature check above never reaches this line
+  // at all — invalid content is never written into the cache.
   await mkdir(cacheDir, { recursive: true });
   const tempPath = path.join(cacheDir, `.${BUNDLED_FONT_FILE}.${randomBytes(6).toString("hex")}`);
   await writeFile(tempPath, bytes);
