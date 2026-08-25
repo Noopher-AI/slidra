@@ -163,12 +163,22 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       // (style.css) gives it its size, so the scrollbar is honest and the
       // current-page highlight works before any iframe exists. The iframe
       // itself is created lazily in loadThumbnail().
+      // Page numbers (#52): generated together with the <li> itself, not by
+      // a separate pass over the rendered list — they must exist for every
+      // slide before any IntersectionObserver callback has fired, which
+      // this element being cheap (plain text, no iframe) is what makes
+      // possible without regressing #27's lazy thumbnail loading.
+      const number = document.createElement("span");
+      number.className = "overview-number";
+      number.textContent = String(index + 1);
+
       const button = document.createElement("button");
       button.type = "button";
       button.className = "overview-thumb";
       button.setAttribute("aria-label", `第 ${index + 1} 頁`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
+      li.appendChild(number);
       li.appendChild(button);
       list.appendChild(li);
 

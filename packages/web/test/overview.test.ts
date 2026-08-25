@@ -187,6 +187,26 @@ describe("mountOverview", () => {
     expect(items[1].querySelector("iframe")).toBeNull();
   });
 
+  it("renders a page number in every <li> before any thumbnail is materialised (page numbers are cheap, thumbnails are not — #52 vs #27)", () => {
+    const { controller } = fakeCanvas({
+      slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"],
+      currentIndex: 0,
+    });
+
+    mountOverview(container, controller);
+
+    const numbers = container.querySelectorAll(".overview-number");
+    expect(numbers).toHaveLength(3);
+    expect(Array.from(numbers).map((el) => el.textContent)).toEqual(["1", "2", "3"]);
+
+    // The acceptance point this test exists for: numbers must not be a
+    // side effect of materialising thumbnails. No <li> has intersected
+    // yet (no observer callback has fired), so no iframe exists at all —
+    // if page numbers were ever added by eagerly building every thumbnail,
+    // this count would be 3 instead of 0.
+    expect(container.querySelectorAll("iframe.overview-frame")).toHaveLength(0);
+  });
+
   it("marks only the current slide's <li> and <button>, and moves the mark when the index changes", () => {
     const { controller, setState } = fakeCanvas({
       slides: ["slides/001.svg", "slides/002.svg"],

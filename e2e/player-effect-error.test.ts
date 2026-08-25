@@ -166,7 +166,7 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 1 頁：缺少 data-comot-media");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
 
     // 進入播放：effects.ts 對第 1 頁的效果清單解析會拋錯（media 效果的
     // 目標缺少 data-comot-media），canvas.ts 把它顯示成畫面上的橫幅。
@@ -231,7 +231,7 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 1 頁：缺少 data-comot-media");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     await page.locator('button[aria-label="第 3 頁"]').click();
@@ -275,7 +275,7 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 1 頁：缺少 data-comot-media");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     await page.locator('button[aria-label="第 4 頁"]').click();
@@ -319,7 +319,7 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 1 頁：缺少 data-comot-media");
 
-    await page.locator('button:has-text("播放")').click();
+    await page.locator('.view-btn[data-view="play"]').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     await page.locator('button[aria-label="第 5 頁"]').click();

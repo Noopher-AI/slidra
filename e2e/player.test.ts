@@ -93,17 +93,17 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
   const position = page.locator(".slide-nav-position");
 
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
-  await expect.poll(() => position.textContent(), { timeout: 30_000 }).toBe("1 / 3");
+  await expect.poll(() => position.textContent(), { timeout: 30_000 }).toBe("第 1 頁，共 3 頁");
   // 第一頁再往前不動：the control is there, and it refuses.
   await expect.poll(() => previousButton.isDisabled()).toBe(true);
 
   await nextButton.click();
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
-  await expect.poll(() => position.textContent()).toBe("2 / 3");
+  await expect.poll(() => position.textContent()).toBe("第 2 頁，共 3 頁");
 
   await nextButton.click();
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
-  await expect.poll(() => position.textContent()).toBe("3 / 3");
+  await expect.poll(() => position.textContent()).toBe("第 3 頁，共 3 頁");
 
   // 第三頁再往後不動，也不當機。
   await expect.poll(() => nextButton.isDisabled()).toBe(true);

@@ -1,0 +1,28 @@
+/* ═══════════════════════════════════════════════════════════════
+   播放模式黑幕 (#48). Ownership transfers to #54 (wave 4) — this file
+   holds only [data-mode="play"] blackout/play-specific rules; the
+   fullscreen sizing rule (`.canvas-area:fullscreen`) stays in shell.css
+   because fullscreen now also applies in view mode (#0.2 item 2's ruling),
+   not just play mode.
+
+   Deliberately NOT `position: fixed; inset: 0` covering the whole
+   viewport, even though 1.8 in the plan describes exactly that. Measured
+   while building this ticket: doing so puts the (always-fixed z-index)
+   canvas-area in the top layer above the rail, and
+   e2e/player-effect-error.test.ts / e2e/player-media.test.ts — both part
+   of the required, frozen 57-test baseline — click
+   `button[aria-label="第 N 頁"]` (an 縮圖軌 thumbnail) *while still in 播放
+   模式* as their only way to change slides when a broken effect list
+   leaves no runtime alive to hear arrow keys. A full-viewport overlay
+   makes that click unreachable — a real regression, not a cosmetic one.
+   TitleBar/Ribbon/StatusBar/Notes (this ticket's own new elements — no
+   existing test depends on them appearing during play mode) still leave
+   the DOM entirely in play mode (see App.tsx's shellVisible gate); the
+   rail and chat sidebar stay exactly as visible/clickable as they always
+   were before this ticket, which is genuinely the only behaviour-neutral
+   choice available given the conflict. Flagged in the PR body for the
+   commander — this is a case where the plan's 1.8 and the frozen
+   regression baseline could not both be honoured literally. */
+.app[data-mode="play"] .canvas {
+  background: #000;
+}

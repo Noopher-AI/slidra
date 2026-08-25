@@ -1,0 +1,83 @@
+/* ═══════════════════════════════════════════════════════════════
+   縮圖軌 (#52). Rules moved here from ../style.css, restyled onto tokens;
+   selector names are overview.ts's own contract (li.overview-item,
+   button.overview-thumb, iframe.overview-frame, span.overview-number) and
+   are not renamed to match base-shell.html's .rail/.thumb-row/.thumb —
+   overview.ts owns those class names (see AGENTS/軍令 #3, ADR-0001/0002).
+   ═══════════════════════════════════════════════════════════════ */
+
+.overview {
+  width: var(--w-rail);
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--line-soft);
+  background: var(--s-panel);
+}
+
+.overview-list {
+  list-style: none;
+  margin: 0;
+  padding: calc(var(--u) * 2) 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 1.5);
+}
+
+.overview-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: calc(var(--u) * 2);
+  align-items: start;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+}
+
+.overview-number {
+  text-align: right;
+  padding-top: calc(var(--u) * 1);
+  color: var(--ink-faint);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-item-current .overview-number {
+  color: var(--ink);
+}
+
+.overview-thumb {
+  /* The box's real ratio comes from project.json's canvas via the custom
+     property overview.ts sets on the list (a custom property inherits, so
+     this selector reading it directly needs no property on .overview-item
+     itself); 16:9 is only the pre-data placeholder so the scrollbar
+     reflects the real slide count even before /api/presentation has
+     answered. */
+  aspect-ratio: var(--overview-aspect-ratio, 16 / 9);
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  /* #000 (not a token) is copied verbatim from base-shell.html's own
+     .thumb rule — the placeholder colour before a thumbnail's iframe has
+     painted anything, same literal-copy exception used in shell.css's
+     .stage/.canvas-area:fullscreen comments. */
+  background: #000;
+  cursor: pointer;
+  overflow: hidden;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+}
+
+.overview-item-current .overview-thumb {
+  /* The template's mapping is explicit: 縮圖外框 is one of the accent's two
+     jobs ("現在在哪") — ticket #49's settled mapping for the old #2a6fb0. */
+  border-color: var(--accent);
+  outline-color: var(--accent);
+}
+
+.overview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}

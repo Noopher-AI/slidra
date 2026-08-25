@@ -127,7 +127,7 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
   // view 模式的投影片就是它的靜態最終長相 (ADR-0009)。
   await expectVisible(fadeText);
 
-  await page.locator('button:has-text("播放")').click();
+  await page.locator('.view-btn[data-view="play"]').click();
 
   // 播放模式的 iframe 有 allow-scripts，沒有 allow-same-origin.
   const sandbox = await page.locator("iframe.slide-frame").getAttribute("sandbox");
@@ -194,7 +194,7 @@ it("焦點不在播放器上時，畫面明確說明並提供點回去的方式"
     })
     .toBe("播放第一頁");
 
-  await page.locator('button:has-text("播放")').click();
+  await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toContain("allow-scripts");
 
   // Unlike the SVG elements above, this notice is not hidden with opacity

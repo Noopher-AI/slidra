@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { mountCanvas, type CanvasController, type CanvasState } from "./canvas.js";
 import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
+import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
+import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
+import { Ribbon } from "./shell/Ribbon.js";
+import { Rail } from "./shell/Rail.js";
+import { Stage } from "./shell/Stage.js";
+import { Notes } from "./shell/Notes.js";
+import { StatusBar } from "./shell/StatusBar.js";
+import { PlayChrome } from "./shell/PlayChrome.js";
+import type { ShellView } from "./shell/view.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
@@ -29,30 +37,33 @@ function exitFullscreenIfActive(): Promise<void> {
  * already gone). Shared by the fullscreenchange listener and
  * handleExitPlay() so both ask the same real question the same way.
  */
-function isPlayChromeFullscreen(container: Element | null): boolean {
+function isCanvasAreaFullscreen(container: Element | null): boolean {
   const doc = document as Document & { webkitFullscreenElement?: Element | null };
   const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
   return fullscreenElement !== null && fullscreenElement === container;
 }
 
 /**
- * React owns the shell only — chat sidebar and status bar. The div below is
- * handed to the vanilla `mountCanvas` module exactly once; React never
- * re-renders into it again (ADR-0001, ADR-0002).
+ * React owns the shell only (`shell/*.tsx`, ticket #48/#51/#52/#53) — the
+ * canvas/overview containers below are handed to the vanilla `mountCanvas`/
+ * `mountOverview` modules exactly once; React never re-renders into them
+ * again (ADR-0001, ADR-0002). `<Stage>`'s position in the tree is fixed:
+ * only its siblings are ever conditionally rendered (play mode hides the
+ * rest of the shell), so `canvasRef`'s DOM node identity survives every
+ * mode switch — see the comment on `wellRef` below for why that matters.
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  // 全螢幕開關 (ticket #29 第二輪): the fullscreen target. Reuses the
-  // existing <main className="canvas-area"> element rather than adding a
-  // new wrapper div — it already contains the iframe (via canvasRef),
-  // every play-mode notice, and the play chrome <nav>, and it already
-  // excludes the overview sidebar and chat sidebar (siblings, not
-  // descendants). Coordinator's revised settled decision #1: the target
-  // must be a container that also holds the play chrome, because a real
-  // click cannot reach anything outside the fullscreen element once the
-  // browser puts it in the top layer (measured while building the first
-  // version of this ticket — see the final report).
-  const playChromeRef = useRef<HTMLElement | null>(null);
+  // 全螢幕開關 (ticket #29 第二輪, revised for #48/#51's ruling on §0.2 item 2):
+  // the fullscreen target is `.canvas-area` — the stage floor — reused in
+  // BOTH 檢視模式 (the ribbon's 全螢幕 button) and 播放模式 (PlayChrome's own
+  // button). It already contains the iframe (via canvasRef) and every
+  // play-mode notice/PlayChrome (rendered as Stage's children), and it
+  // already excludes the rail/notes/chat siblings. A real click cannot
+  // reach anything outside the fullscreen element once the browser puts it
+  // in the top layer (measured while building ticket #29 — see its final
+  // report), so PlayChrome must render inside this same element.
+  const wellRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const overviewControllerRef = useRef<OverviewController | null>(null);
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
@@ -73,6 +84,48 @@ export function App() {
   // message on screen instead of leaving it as an unhandled event.
   const [liveReloadError, setLiveReloadError] = useState<string | null>(null);
 
+  // #51's titlebar: the deck's name and canvas size, fetched separately
+  // from canvas.ts's own CanvasState (which deliberately carries only
+  // slides/currentIndex/mode/playerHasFocus/error — #29/#30 build against
+  // that exact contract). A failed or invalid response is never papered
+  // over with a fabricated name/size — see presentation.ts.
+  const [presentationInfo, setPresentationInfo] = useState<PresentationInfo | null>(null);
+  const [presentationError, setPresentationError] = useState<string | null>(null);
+  // Race guard against overlapping loads (e.g. two rapid live-reload
+  // presentation-changed events) lives inside the loader itself — see
+  // presentation.ts's createPresentationInfoLoader for the full comment.
+  // One loader instance for the component's whole lifetime (created lazily
+  // via a ref, not on every render) so its internal generation counter
+  // stays continuous across every load() call.
+  const presentationLoaderRef = useRef<ReturnType<typeof createPresentationInfoLoader> | null>(null);
+  if (!presentationLoaderRef.current) {
+    presentationLoaderRef.current = createPresentationInfoLoader({
+      onSuccess: (info) => {
+        setPresentationInfo(info);
+        setPresentationError(null);
+      },
+      onError: (message) => {
+        setPresentationInfo(null);
+        setPresentationError(message);
+      },
+    });
+  }
+
+  // #55's reserved seam: the centre column's own view (normal/grid),
+  // orthogonal to canvasState.mode (view/play). "grid" is not reachable
+  // yet — no button sets it — but Stage/Notes already accept it so #55 can
+  // land its own button and its own Stage branch without reopening this
+  // file.
+  const [view, setView] = useState<ShellView>("normal");
+
+  // #51's connection indicator: derived from the one real signal this app
+  // has (chat-stream.ts's streamReady), never a fabricated vendor label —
+  // see the PR body for the server-side gap this leaves (adapter label /
+  // real ACP session state need a new server route, out of this unit's
+  // file ownership).
+  const [agentConnection, setAgentConnection] = useState<AgentConnection>("connecting");
+  const everConnectedRef = useRef(false);
+
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
   // assumed from "the promise resolved". Synced only from fullscreenchange
   // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
@@ -81,7 +134,7 @@ export function App() {
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   // Tracks an in-flight requestFullscreen()/exitFullscreen() call so
   // handleExitPlay() can wait for it to settle before asking the browser's
-  // real fullscreenElement — see isPlayChromeFullscreen()'s comment above
+  // real fullscreenElement — see isCanvasAreaFullscreen()'s comment above
   // for the race this closes (review gate round 2, P2).
   const fullscreenRequestRef = useRef<Promise<void> | null>(null);
 
@@ -104,9 +157,14 @@ export function App() {
         // canvas.subscribe() can't tell that apart from a plain index
         // change, so the overview needs telling explicitly here.
         overviewControllerRef.current?.refresh();
+        // #51: an external edit can rename the deck or resize its canvas
+        // too — re-fetch the same way overview.ts's own refresh() re-reads
+        // the aspect ratio.
+        presentationLoaderRef.current?.load();
       },
       onError: setLiveReloadError,
     });
+    presentationLoaderRef.current?.load();
     return () => {
       liveReload.stop();
       unsubscribe();
@@ -165,7 +223,7 @@ export function App() {
   // names, matching e2e/fullscreen-spike.test.ts.
   useEffect(() => {
     function onFullscreenChange(): void {
-      setIsFullscreen(isPlayChromeFullscreen(playChromeRef.current));
+      setIsFullscreen(isCanvasAreaFullscreen(wellRef.current));
       // This event firing at all means the browser's real fullscreen state
       // just genuinely changed — by Esc, by browser chrome, or by our own
       // button — which makes any earlier "a fullscreen request failed"
@@ -174,7 +232,8 @@ export function App() {
       // successful exit/enter until the next click cleared it by hand).
       setFullscreenError(null);
       // Every fullscreen transition must hand focus back to the player, or
-      // arrow-key advance silently dies (settled decision #5).
+      // arrow-key advance silently dies (settled decision #5). A no-op
+      // outside 播放模式 (focusPlayer() itself gates on mode === "play").
       controllerRef.current?.focusPlayer();
     }
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -211,11 +270,11 @@ export function App() {
       controllerRef.current?.focusPlayer();
       return;
     }
-    // The play chrome container, not the iframe (frameElement) — see the
-    // ref comment above. Read fresh at call time regardless: React refs are
-    // stable across renders here, but this keeps the same discipline as
+    // The stage floor, not the iframe (frameElement) — see the ref comment
+    // above. Read fresh at call time regardless: React refs are stable
+    // across renders here, but this keeps the same discipline as
     // frameElement's own "never cache" rule.
-    const container = playChromeRef.current;
+    const container = wellRef.current;
     if (!container) return;
     const webkitContainer = container as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
     const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
@@ -274,7 +333,7 @@ export function App() {
         // A rejected request needs no exit.
       }
     }
-    if (isPlayChromeFullscreen(playChromeRef.current)) {
+    if (isCanvasAreaFullscreen(wellRef.current)) {
       try {
         await exitFullscreenIfActive();
       } catch {
@@ -286,8 +345,7 @@ export function App() {
     await controllerRef.current?.exitPlay();
   }
 
-  const slideCount = canvasState.slides.length;
-  const hasSlides = slideCount > 0;
+  const hasSlides = canvasState.slides.length > 0;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -318,6 +376,18 @@ export function App() {
     });
     return () => stream.stop();
   }, []);
+
+  // #51's connection indicator: three states derived purely from
+  // streamReady, never a vendor label this app cannot honestly claim (see
+  // the comment on the state above).
+  useEffect(() => {
+    if (streamReady) {
+      everConnectedRef.current = true;
+      setAgentConnection("connected");
+    } else if (everConnectedRef.current) {
+      setAgentConnection("disconnected");
+    }
+  }, [streamReady]);
 
   async function sendMessage(): Promise<void> {
     const text = draft.trim();
@@ -356,165 +426,139 @@ export function App() {
     }
   }
 
+  const shellVisible = canvasState.mode !== "play";
+
   return (
-    <div className="app">
-      <aside className="overview" ref={overviewRef} />
-      <main className="canvas-area" ref={playChromeRef}>
-        <div ref={canvasRef} className="canvas" />
-        {liveReloadError && (
-          <div role="alert" style={liveReloadBannerStyle}>
-            即時預覽已停止：{liveReloadError}，請重新整理頁面
-          </div>
-        )}
-        {/* 播放模式的浮動通知：焦點提示、播放錯誤、全螢幕錯誤都可能同時成立
-            （例如效果清單解析失敗又剛好全螢幕請求也失敗），過去三者各自用
-            同一組絕對定位互相疊在一起，後渲染的會蓋住先渲染的（review gate
-            round 1, P2）。這個 wrapper 把它們收進同一個 flex column，各自的
-            樣式只留背景／文字，定位與間距交給 wrapper，讓它們並排堆疊而不
-            互相覆蓋. */}
-        {canvasState.mode === "play" && (!canvasState.playerHasFocus || canvasState.error || fullscreenError) && (
-          <div className="player-notices">
-            {/* 焦點不在播放器上時明確說明並提供點回去的方式 — never fail
-                silently (design doc's keyboard-and-focus section). */}
-            {!canvasState.playerHasFocus && (
-              <div className="player-focus-notice" role="alert">
-                <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
-                <button type="button" onClick={() => controllerRef.current?.focusPlayer()}>
-                  點這裡把焦點交回播放器
-                </button>
-              </div>
-            )}
-            {canvasState.error && (
-              <div className="player-error-notice" role="alert">
-                這一頁的效果清單無法播放：{canvasState.error}
-              </div>
-            )}
-            {fullscreenError && (
-              <div className="player-error-notice" role="alert">
-                全螢幕切換失敗：{fullscreenError}
-              </div>
-            )}
-          </div>
-        )}
-        {/* review gate round 4, P2: live reload can empty `slides` (e.g. an
-            external edit removes the last one) while `mode` stays "play" —
-            canvas.ts never resets mode on its own. The pagination trio
-            below has nothing to page through then, so it stays gated on
-            hasSlides, but 離開播放/全螢幕開關 must not disappear with it:
-            they are about the play *session*, not the deck's slide count.
-            Losing them here used to leave the author on a blank, silently
-            fullscreen page with no in-app way out at all — only the
-            browser's own Esc. The nav itself now renders whenever there is
-            something to page through OR the author is still mid-play. */}
-        {(hasSlides || canvasState.mode === "play") && (
-          <nav className="slide-nav">
-            {hasSlides && (
-              <>
-                <button
-                  type="button"
-                  className="slide-nav-button"
-                  aria-label="上一頁"
-                  disabled={canvasState.mode !== "view" || canvasState.currentIndex <= 0}
-                  onClick={() => void controllerRef.current?.previous()}
-                >
-                  ‹
-                </button>
-                <span className="slide-nav-position">
-                  {canvasState.currentIndex + 1} / {slideCount}
-                </span>
-                <button
-                  type="button"
-                  className="slide-nav-button"
-                  aria-label="下一頁"
-                  disabled={canvasState.mode !== "view" || canvasState.currentIndex >= slideCount - 1}
-                  onClick={() => void controllerRef.current?.next()}
-                >
-                  ›
-                </button>
-              </>
-            )}
-            {canvasState.mode === "view" ? (
-              hasSlides && (
-                <button
-                  type="button"
-                  className="play-toggle-button"
-                  onClick={() => void controllerRef.current?.play()}
-                >
-                  播放
-                </button>
-              )
-            ) : (
-              <button type="button" className="play-toggle-button" onClick={() => void handleExitPlay()}>
-                離開播放
-              </button>
-            )}
-            {/* 全螢幕開關 (ticket #29): only meaningful in 播放模式 — 是否全螢幕
-                由作者決定，工具不預設強制 (settled decision #6). Deliberately
-                not additionally gated on hasSlides — see the comment above
-                the nav's own outer condition. */}
-            {canvasState.mode === "play" && (
-              <button
-                type="button"
-                className="fullscreen-toggle-button"
-                onClick={() => void toggleFullscreen()}
-              >
-                {isFullscreen ? "退出全螢幕" : "全螢幕"}
-              </button>
-            )}
-          </nav>
-        )}
-        <footer className="status-bar">CoMotion</footer>
-      </main>
-      <aside className="chat-sidebar">
-        <h2>對話</h2>
-        <div className="chat-messages">
-          {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
-          {messages.map((message) =>
-            message.role === "notice" ? (
-              <p key={message.id} className="chat-notice" role="alert">
-                {message.text}
-              </p>
-            ) : message.role === "command" ? (
-              <div
-                key={message.id}
-                className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
-                role={message.status === "failed" ? "alert" : undefined}
-              >
-                <p className="chat-command-line">
-                  <span className="chat-command-status">
-                    {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
-                  </span>
-                  <code className="chat-command-text">{message.command}</code>
-                </p>
-                {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
-              </div>
-            ) : (
-              <p key={message.id} className={`chat-message chat-message-${message.role}`}>
-                {message.text}
-              </p>
-            ),
-          )}
-          {working && <p className="chat-working">agent 正在工作中…</p>}
-          {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
-          {error && <p className="chat-error">{error}</p>}
-        </div>
-        <form
-          className="chat-input"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void sendMessage();
+    <div className="app" data-mode={canvasState.mode}>
+      {shellVisible && (
+        <TitleBar
+          deckName={presentationInfo?.name ?? null}
+          canvasSize={presentationInfo?.canvas ?? null}
+          agentConnection={agentConnection}
+        />
+      )}
+      {shellVisible && (
+        <Ribbon
+          onPlayFromStart={() => {
+            void (async () => {
+              await controllerRef.current?.showSlide(0);
+              await controllerRef.current?.play();
+            })();
           }}
-        >
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
-          />
-          <button type="submit" disabled={!streamReady}>
-            送出
-          </button>
-        </form>
-      </aside>
+          onPlayFromCurrent={() => void controllerRef.current?.play()}
+          onToggleFullscreen={() => void toggleFullscreen()}
+          canPlay={hasSlides}
+        />
+      )}
+      {shellVisible && liveReloadError && (
+        <div role="alert" className="live-reload-banner">
+          即時預覽已停止：{liveReloadError}，請重新整理頁面
+        </div>
+      )}
+      {shellVisible && presentationError && (
+        <div role="alert" className="live-reload-banner">
+          簡報資訊載入失敗：{presentationError}
+        </div>
+      )}
+      <div className="body">
+        {/* Always rendered, including in 播放模式 — unlike TitleBar/Ribbon/
+            StatusBar/Notes, this is not new territory this ticket can
+            freely gate: e2e/player-effect-error.test.ts and
+            e2e/player-media.test.ts click overview thumbnails
+            (button[aria-label="第 N 頁"]) *during* play mode as their only
+            way to change slides when an effect-list parse failure leaves
+            no runtime alive to hear arrow keys. A full-viewport blackout
+            covering it (as 1.8 in the plan describes) would make that
+            click unreachable and regress that existing, required
+            behaviour — see styles/play.css's own comment for the measured
+            conflict and the PR body for the reported deviation. This
+            stays visible/clickable during play mode exactly like it
+            always was; the original App.tsx never conditionally removed
+            it either. */}
+        <Rail containerRef={overviewRef} />
+        <div className="main">
+          <Stage
+            canvasRef={canvasRef}
+            wellRef={wellRef}
+            canvasSize={presentationInfo?.canvas ?? null}
+            state={canvasState}
+            controller={controllerRef.current}
+            view={view}
+          >
+            <PlayChrome
+              state={canvasState}
+              controller={controllerRef.current}
+              isFullscreen={isFullscreen}
+              fullscreenError={fullscreenError}
+              onToggleFullscreen={() => void toggleFullscreen()}
+              onExitPlay={() => void handleExitPlay()}
+            />
+          </Stage>
+          {shellVisible && <Notes hidden={view === "grid"} />}
+        </div>
+        {/* Always rendered, same reasoning as <Rail> above: the original
+            App.tsx never hid the chat sidebar in play mode either, and no
+            e2e test requires it to disappear there. */}
+        <aside className="chat-sidebar">
+          <h2>對話</h2>
+            <div className="chat-messages">
+              {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
+              {messages.map((message) =>
+                message.role === "notice" ? (
+                  <p key={message.id} className="chat-notice" role="alert">
+                    {message.text}
+                  </p>
+                ) : message.role === "command" ? (
+                  <div
+                    key={message.id}
+                    className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
+                    role={message.status === "failed" ? "alert" : undefined}
+                  >
+                    <p className="chat-command-line">
+                      <span className="chat-command-status">
+                        {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
+                      </span>
+                      <code className="chat-command-text">{message.command}</code>
+                    </p>
+                    {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
+                  </div>
+                ) : (
+                  <p key={message.id} className={`chat-message chat-message-${message.role}`}>
+                    {message.text}
+                  </p>
+                ),
+              )}
+              {working && <p className="chat-working">agent 正在工作中…</p>}
+              {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
+              {error && <p className="chat-error">{error}</p>}
+            </div>
+            <form
+              className="chat-input"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendMessage();
+              }}
+            >
+              <input
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
+              />
+              <button type="submit" disabled={!streamReady}>
+                送出
+              </button>
+            </form>
+        </aside>
+      </div>
+      {shellVisible && (
+        <StatusBar
+          state={canvasState}
+          controller={controllerRef.current}
+          view={view}
+          onViewChange={setView}
+          onExitPlay={() => void handleExitPlay()}
+        />
+      )}
     </div>
   );
 }
@@ -537,14 +581,4 @@ const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
   in_progress: "執行中",
   completed: "已完成",
   failed: "執行失敗",
-};
-
-// Inline, not in style.css: that file is ticket #6's concurrently-edited
-// territory for this fix round. A dead watcher is an error state, so this
-// deliberately reads as one rather than blending into the normal chrome.
-const liveReloadBannerStyle: CSSProperties = {
-  padding: "0.5rem 1rem",
-  background: "#5c1a1a",
-  color: "#fff",
-  fontSize: "0.9rem",
 };
