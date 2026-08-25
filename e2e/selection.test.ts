@@ -170,9 +170,11 @@ it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DO
 
     const frame = await canvasFrame(page);
     const corners = await frame.evaluate(() => {
-      // The shadow host is whatever selection-runtime.js appended to
-      // <body> — the last child, appended after the fetched slide markup.
-      const host = document.body.lastElementChild as HTMLElement;
+      // The shadow host carries a stable attribute (selection-runtime.js),
+      // not a DOM-position assumption — the runtime is injected before
+      // the fetched slide markup (#56 fix), so the host is not
+      // document.body's last child.
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
       const root = host.shadowRoot;
       if (!root) return null;
       const sel = root.querySelector(".sel");
@@ -246,7 +248,7 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.body.lastElementChild as HTMLElement;
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -310,7 +312,7 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
     const measurement = await frame.evaluate(() => {
       // The real box selection-runtime.js already drew, inside its shadow
       // root — protected by the host's own inline !important styles.
-      const host = document.body.lastElementChild as HTMLElement;
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
       const realBox = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       if (!realBox) return null;
       const realStyle = getComputedStyle(realBox);
@@ -386,9 +388,9 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     const pageIndicator = page.locator(".slide-nav-position");
     const slideFrame = page.locator("iframe.slide-frame");
 
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 1 頁，共 3 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 1 頁，共 4 頁");
     await page.locator('button[aria-label="下一頁"]').click();
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 3 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 4 頁");
 
     const sandbox = await slideFrame.getAttribute("sandbox");
     expect(sandbox).toContain("allow-scripts");
@@ -397,10 +399,46 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     // comfortably longer than that before asserting nothing moved.
     await page.waitForTimeout(600);
 
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 3 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 4 頁");
     const srcdoc = await slideFrame.getAttribute("srcdoc");
     expect(srcdoc).not.toBeNull();
     expect(srcdoc).not.toContain("__COMOT_PLAN__");
+  } finally {
+    await cleanup();
+  }
+});
+
+// Gate round 2 (#56): slide 4 of hostile-selection-deck installs a
+// capturing `window` click listener that calls
+// `event.stopImmediatePropagation()` the moment its inline script runs.
+// Before the fix, this silently killed selection with no visible error:
+// wrapSelectionDocument() put the runtime AFTER the slide markup, so the
+// slide's script ran (and registered) first, and the runtime's own
+// listener lived on `document`/bubbling, which capture never even
+// reaches. The click below is a real mouse click (Playwright locator
+// click), never `element.click()` in page script, per this file's own
+// posture note above.
+it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）也選不掉：狀態列與選取框仍更新", async () => {
+  const { server, cleanup } = await startServerFor(hostileDeckDir);
+  try {
+    const page = await openApp(server);
+    const pageIndicator = page.locator(".slide-nav-position");
+    for (let i = 0; i < 3; i++) {
+      await page.locator('button[aria-label="下一頁"]').click();
+    }
+    await expect.poll(() => pageIndicator.textContent()).toBe("第 4 頁，共 4 頁");
+
+    const selName = page.locator(".status .sel-name");
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：標題");
+
+    const frame = await canvasFrame(page);
+    const boxDisplay = await frame.evaluate(() => {
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
+      return sel ? getComputedStyle(sel).display : null;
+    });
+    expect(boxDisplay).toBe("block");
   } finally {
     await cleanup();
   }
@@ -434,7 +472,7 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.body.lastElementChild as HTMLElement;
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });

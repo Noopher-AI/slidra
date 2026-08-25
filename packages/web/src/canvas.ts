@@ -594,6 +594,22 @@ export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string
  * planScript needs (see that function's own comment for why a bare
  * `</script` guard is not enough) — cheap insurance against a future
  * token value that happens to contain one.
+ *
+ * The runtime's two `<script>` tags come BEFORE `bodyMarkup`, not after
+ * (unlike wrapPlayDocument, which deliberately puts its runtime last).
+ * `document.body` already exists by the time an inline script that is
+ * body's first child runs, so `document.body.appendChild(host)` inside
+ * selection-runtime.js still works. What this ordering buys: the
+ * runtime's capturing `window` click listener registers before any slide
+ * script gets a chance to run. A hostile slide can call
+ * `stopImmediatePropagation()` from its own capturing `window` listener,
+ * which kills every other listener on that same target (`window`) — ours
+ * included — regardless of phase. Registering first is the only thing
+ * that makes ours win that race; putting the runtime after `bodyMarkup`
+ * (or leaving the listener on `document`, which capture never even
+ * reaches before `window`) reopens exactly the silent-selection-death
+ * hole this ordering exists to close (gate round 2, #56). Do not
+ * "simplify" this back to matching wrapPlayDocument's order.
  */
 export function wrapSelectionDocument(
   bodyMarkup: string,
@@ -602,7 +618,7 @@ export function wrapSelectionDocument(
 ): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0">${bodyMarkup}<script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**

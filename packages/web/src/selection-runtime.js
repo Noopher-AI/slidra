@@ -20,6 +20,14 @@
   // access to the parent's :root at all.
   var colors = window.__COMOT_SELECTION_COLORS__ || {};
 
+  // Captured once, at init, rather than read as `parent` at click time:
+  // `window.parent` is a writable global on this document and a hostile
+  // slide script could reassign it before a click ever fires. This
+  // runtime is injected first (canvas.ts's wrapSelectionDocument), so it
+  // is the first script to run in this document and this is the
+  // earliest-possible capture.
+  var parentWindow = parent;
+
   function post(message) {
     // Same reasoning as player-runtime.js's post(): this frame is
     // opaque-origin, so there is no meaningful target origin to name.
@@ -29,7 +37,7 @@
         payload[key] = message[key];
       }
     }
-    parent.postMessage(payload, "*");
+    parentWindow.postMessage(payload, "*");
   }
 
   // The shadow *host* lives in the light DOM, where the slide's own CSS
@@ -41,6 +49,11 @@
   // does not cross the shadow boundary — which is why the box's actual
   // geometry and corner decorations are built there instead.
   var host = document.createElement("div");
+  // Identifies the shadow host by attribute, not DOM position: this
+  // runtime now runs before `bodyMarkup` is parsed (wrapSelectionDocument,
+  // canvas.ts), so the host is no longer document.body's last child once
+  // the slide markup lands after it.
+  host.setAttribute("data-comot-selection-host", "");
   var important = "important";
   host.style.setProperty("all", "initial", important);
   host.style.setProperty("display", "block", important);
@@ -121,20 +134,38 @@
     return null;
   }
 
-  document.addEventListener("click", function (event) {
-    var target = findSelectable(event.target);
-    if (!target) {
-      hideBox();
-      post({ event: "clear" });
-      return;
-    }
-    showBox(target);
-    post({
-      event: "select",
-      id: target.getAttribute("id"),
-      name: target.getAttribute("data-comot-name"),
-    });
-  });
+  // Registered on `window`, in the capture phase, and as early as
+  // possible (this runtime is injected before `bodyMarkup` — see
+  // canvas.ts's wrapSelectionDocument). Capture on `window` is reached
+  // before capture on `document`, which is reached before any bubbling
+  // listener — so a bubbling `document` listener (the previous shape of
+  // this code) can be silenced by a hostile slide script calling
+  // `event.stopImmediatePropagation()` from anywhere on the way down.
+  // Being on `window` in capture phase is necessary but not sufficient:
+  // `stopImmediatePropagation()` also kills every other listener on the
+  // *same target*, so a hostile capturing `window` listener registered
+  // before ours would still win. Registering first (this script runs
+  // before the slide's own script) is what actually wins that race —
+  // see wrapSelectionDocument's comment. Do not move this back to
+  // `document`/bubbling to "match" wrapPlayDocument's listener shape.
+  window.addEventListener(
+    "click",
+    function (event) {
+      var target = findSelectable(event.target);
+      if (!target) {
+        hideBox();
+        post({ event: "clear" });
+        return;
+      }
+      showBox(target);
+      post({
+        event: "select",
+        id: target.getAttribute("id"),
+        name: target.getAttribute("data-comot-name"),
+      });
+    },
+    true,
+  );
 
   window.addEventListener("resize", positionBox);
 })();
