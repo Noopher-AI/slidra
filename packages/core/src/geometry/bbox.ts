@@ -22,6 +22,14 @@ import {
  * No Node built-in imports.
  */
 
+/**
+ * Nesting limit for a container chain. A guard against a maliciously deep
+ * slide blowing the call stack (ADR-0010: slide content is untrusted).
+ * `slide/format.ts` re-exports this so the compliance check and this walk
+ * can never disagree about the limit.
+ */
+export const MAX_CONTAINER_DEPTH = 64;
+
 export interface Rect {
   x: number;
   y: number;
@@ -375,8 +383,8 @@ export function elementBounds(element: SlideElement, options: ElementBoundsOptio
 }
 
 function boundsWithin(element: SlideElement, ancestorMatrix: Matrix, depth: number): Rect {
-  if (depth > 64) {
-    throw new CoMotionError("容器巢狀超過 64 層，無法計算邊界框");
+  if (depth > MAX_CONTAINER_DEPTH) {
+    throw new CoMotionError(`容器巢狀超過 ${MAX_CONTAINER_DEPTH} 層，無法計算邊界框`);
   }
   const matrix = multiplyMatrix(ancestorMatrix, element.matrix);
   if (element.kind === "group") {

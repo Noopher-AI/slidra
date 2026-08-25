@@ -1,5 +1,6 @@
 import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
+import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 
 /**
@@ -54,8 +55,10 @@ export const CONTAINER_ATTRIBUTES: readonly string[] = [
 /** Appended to the issues `co-motion convert` can actually repair — never to the ones it refuses to touch. */
 const CONVERT_HINT = "請執行 co-motion convert <簡報識別碼> 轉換成合規格式。";
 
-/** Guards against a maliciously deep slide blowing the call stack (ADR-0010: slide content is untrusted). */
-export const MAX_CONTAINER_DEPTH = 64;
+// One source of truth for the nesting limit: the compliance check and the
+// bounding-box walk must agree, or a slide could pass one and blow the
+// other's call stack (ADR-0010: slide content is untrusted).
+export { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
 
 export type SlideElementKind =
   | "group"
@@ -193,13 +196,13 @@ export function checkSlideCompliance(svg: string): ComplianceIssue[] {
     }
   });
 
-  const seenIds = new Map<string, ScannedNode>();
+  const seenIds = new Set<string>();
   const noteId = (element: ScannedNode, id: string): void => {
     if (seenIds.has(id)) {
       report(element, "duplicate-id", `識別碼 ${id} 重複出現，每個元素的識別碼必須唯一。`, id);
       return;
     }
-    seenIds.set(id, element);
+    seenIds.add(id);
   };
 
   const walkContainer = (element: ScannedNode, depth: number): void => {
