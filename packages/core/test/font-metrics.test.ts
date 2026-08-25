@@ -282,11 +282,21 @@ describe("a captive portal's HTML must never be trusted as a font (#70)", () => 
     const cacheDir = await mkdtemp(path.join(tmpdir(), "co-motion-font-cache-"));
     const html = new TextEncoder().encode("<html><body>請先登入本網路</body></html>");
     await writeFile(path.join(cacheDir, "NotoSansTC-Regular.ttf"), html);
+    let error: unknown;
     await withFontCache(cacheDir, async () => {
       await withoutNetwork(async () => {
-        await expect(readBundledFontBytes()).rejects.toThrow(/快取已損毀/);
+        try {
+          await readBundledFontBytes();
+        } catch (caught) {
+          error = caught;
+        }
       });
     });
+    expect(error).toBeInstanceOf(CoMotionError);
+    expect((error as Error).message).toMatch(/快取已損毀/);
+    // CoMotionError must never leak a real filesystem path (ADR-0004): this
+    // message names the bare file and the env var, never the temp dir.
+    expect((error as Error).message).not.toContain(cacheDir);
     await rm(cacheDir, { recursive: true, force: true });
   });
 
