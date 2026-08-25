@@ -359,13 +359,25 @@ export async function endHistoryGroup(id: string): Promise<void> {
  * *before* that edit — applying them in reverse peels the edits off like a
  * stack, so a path touched twice ends up at the state before its first
  * edit, not the state before its second.
+ *
+ * The snapshot files this group *consumes* (each one restored from and now
+ * stale) are returned rather than deleted here, for the same reason the
+ * deletions in `commitSnapshotEntries`/`endHistoryGroup` are deferred: the
+ * caller's `writeStack` has not run yet, so `stack.json` on disk still
+ * lists this group as still referencing them. Deleting them here and then
+ * having that `writeStack` fail would leave the untouched old stack.json
+ * pointing at snapshot files that are already gone — and unlike the other
+ * deferred-deletion sites, this one is reached from the *front* of the
+ * stack, so the dangling reference would break every subsequent undo/redo,
+ * not just the oldest entry (#73 gate round 3 finding). The caller must
+ * delete `consumedSnapshotIds` only after its own `writeStack` succeeds.
  */
 async function applyGroup(
   home: string,
   id: string,
   workDir: string,
   group: HistoryGroup,
-): Promise<{ inverseGroup: HistoryGroup; restoredPaths: string[] }> {
+): Promise<{ inverseGroup: HistoryGroup; restoredPaths: string[]; consumedSnapshotIds: string[] }> {
   const inverseEntries: HistoryEntry[] = [];
   for (const entry of group.entries) {
     const currentContent = await readVirtualFile(workDir, entry.virtualPath);
@@ -374,6 +386,7 @@ async function applyGroup(
     inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: inverseSnapshotId });
   }
 
+  const consumedSnapshotIds: string[] = [];
   for (let i = group.entries.length - 1; i >= 0; i--) {
     const entry = group.entries[i];
     const content = await readSnapshot(home, id, entry.snapshotId);
@@ -383,11 +396,11 @@ async function applyGroup(
     } catch {
       throw new CoMotionError(`寫入投影片時發生錯誤：${entry.virtualPath}`);
     }
-    await deleteSnapshot(home, id, entry.snapshotId);
+    consumedSnapshotIds.push(entry.snapshotId);
   }
 
   const restoredPaths = [...new Set(group.entries.map((entry) => entry.virtualPath))];
-  return { inverseGroup: { groupId: group.groupId, entries: inverseEntries }, restoredPaths };
+  return { inverseGroup: { groupId: group.groupId, entries: inverseEntries }, restoredPaths, consumedSnapshotIds };
 }
 
 /** Undoes the most recent group, moving it onto the redo stack. */
@@ -399,9 +412,14 @@ export async function undoLastGroup(id: string): Promise<{ restoredPaths: string
   if (!group) {
     throw new CoMotionError("沒有可復原的操作");
   }
-  const { inverseGroup, restoredPaths } = await applyGroup(home, id, workDir, group);
+  const { inverseGroup, restoredPaths, consumedSnapshotIds } = await applyGroup(home, id, workDir, group);
   stack.redo.push(inverseGroup);
   await writeStack(home, id, stack);
+  // Only now is the new stack durable, so only now is it safe to delete the
+  // snapshot files this undo consumed.
+  for (const snapshotId of consumedSnapshotIds) {
+    await deleteSnapshot(home, id, snapshotId);
+  }
   return { restoredPaths };
 }
 
@@ -422,10 +440,12 @@ export async function redoLastGroup(id: string): Promise<{ restoredPaths: string
   if (!group) {
     throw new CoMotionError("沒有可重做的操作");
   }
-  const { inverseGroup, restoredPaths } = await applyGroup(home, id, workDir, group);
+  const { inverseGroup, restoredPaths, consumedSnapshotIds } = await applyGroup(home, id, workDir, group);
   const evictedSnapshotIds = pushGroupToUndoStack(stack, inverseGroup);
   await writeStack(home, id, stack);
-  for (const snapshotId of evictedSnapshotIds) {
+  // Only now is the new stack durable, so only now is it safe to delete the
+  // snapshot files this redo consumed, plus any cap-evicted group's.
+  for (const snapshotId of [...consumedSnapshotIds, ...evictedSnapshotIds]) {
     await deleteSnapshot(home, id, snapshotId);
   }
   return { restoredPaths };

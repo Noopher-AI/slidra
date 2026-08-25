@@ -445,3 +445,60 @@ describe("finding 2 (high) — a failed content write never consumes an undo slo
     expect(snapshotFiles).toEqual([]);
   });
 });
+
+describe("gate round 3 finding — applyGroup defers deleting the snapshots it consumes", () => {
+  it("history dir unwritable at undo time: old stack.json survives intact, every snapshot it references still exists, and a later undo still works", async () => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+    const { id, elementId } = await openFreshPresentation();
+    // Two groups on the undo stack, so a still-broken applyGroup (deleting
+    // the consumed snapshot before the caller's writeStack) would strand
+    // every undo below the top, not just the very first one.
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第一版" });
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第二版" });
+
+    const historyDir = path.join(coMotionHome, "history", id);
+    const { readFile: readFileFs, readdir, chmod } = await import("node:fs/promises");
+    const stackPath = path.join(historyDir, "stack.json");
+    const beforeStack = await readFileFs(stackPath, "utf-8");
+
+    // Read + execute but no write on the history dir itself — snapshots/
+    // stays writable, so applyGroup's restore (write + old-style delete)
+    // still succeeds, but the undo's own writeStack (a temp file directly
+    // inside historyDir) must fail.
+    await chmod(historyDir, 0o555);
+    try {
+      const result = await registry.dispatch("undo", { id });
+      expect(result.ok).toBe(false);
+      expect(result.message).toBe("無法寫入復原歷史");
+    } finally {
+      await chmod(historyDir, 0o755);
+    }
+
+    // The old stack.json must be untouched, and every snapshot id it
+    // references must still be on disk — no dangling reference.
+    const afterStack = await readFileFs(stackPath, "utf-8");
+    expect(afterStack).toBe(beforeStack);
+    const parsed = JSON.parse(afterStack) as {
+      undo: { entries: { snapshotId: string }[] }[];
+      redo: { entries: { snapshotId: string }[] }[];
+      openGroup: { entries: { snapshotId: string }[] } | null;
+    };
+    const referenced = new Set<string>();
+    for (const group of [...parsed.undo, ...parsed.redo, ...(parsed.openGroup ? [parsed.openGroup] : [])]) {
+      for (const entry of group.entries) referenced.add(entry.snapshotId);
+    }
+    expect(referenced.size).toBeGreaterThan(0);
+
+    const onDisk = new Set(await readdir(path.join(historyDir, "snapshots")));
+    for (const snapshotId of referenced) {
+      expect(onDisk.has(snapshotId)).toBe(true);
+    }
+
+    // The actual user-visible harm: undo must still work afterwards, not
+    // report a permanently corrupted history.
+    const undone = await registry.dispatch("undo", { id });
+    expect(undone.ok).toBe(true);
+    expect(undone.message).toBe("已復原上一步操作");
+  });
+});
