@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "name": "敵意投影片測試簡報：選取框",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": [
+    "slides/001.svg"
+  ]
+}

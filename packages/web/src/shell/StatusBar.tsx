@@ -44,9 +44,14 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
     onViewChange(next);
   }
 
+  // #56 (ADR-0011): 顯示名稱 (data-comot-name) when the selected element
+  // carries one, its 識別碼 (id) otherwise — that fallback mapping is a
+  // view-layer decision, not something canvas.ts's CanvasState encodes.
+  const selectionLabel = state.selection ? (state.selection.name ?? state.selection.id) : null;
+
   return (
     <footer className="status status-bar">
-      <span className="sel-name" />
+      <span className="sel-name">{selectionLabel !== null && <>已選取：<b>{selectionLabel}</b></>}</span>
       <span className="spacer" />
       <span className="slide-nav-position">
         {hasSlides ? `第 ${state.currentIndex + 1} 頁，共 ${slideCount} 頁` : "尚無投影片"}
