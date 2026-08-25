@@ -1,16 +1,31 @@
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import {
-  createFontBook,
-  readBundledFontBytes,
+  BUNDLED_FONT_DIR,
+  BUNDLED_FONT_FILE,
+  createNewPresentation,
+  openPresentation,
+  readPresentationFileBytes,
+  readPresentationFontBook,
   MEASURED_TEXT_CSS,
   type FontBook,
 } from "@co-motion/core";
 
 /**
  * 驗收條件 3：同一段文字在 Node 與瀏覽器量出的寬度一致。
+ *
+ * Both sides are fed by ONE opened presentation: Node measures through
+ * `readPresentationFontBook(id)`, and the browser is served the bytes of
+ * `assets/fonts/...` read back out of that same presentation with
+ * `readPresentationFileBytes(id, ...)`. Nothing here reads the download
+ * cache, so the container path — the one acceptance 1 is about — is what is
+ * under test. Feeding both sides from the cached master file instead would
+ * leave a broken container path green.
  *
  * Node's number comes from `@co-motion/core`'s sfnt reader; the browser's
  * comes from a real Chromium laying out the very same font file. The two
@@ -69,10 +84,21 @@ let server: Server;
 let browser: Browser;
 let page: Page;
 let book: FontBook;
+let coMotionHome: string;
+let comotDir: string;
 
 beforeAll(async () => {
-  const ttf = await readBundledFontBytes();
-  book = createFontBook([ttf]);
+  // A real presentation, created and opened the way a user's would be, with
+  // its own CO_MOTION_HOME so the real ~/.comotion is never touched.
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+  const comotPath = path.join(comotDir, "deck.comot");
+  await createNewPresentation(comotPath, "字型量測驗收");
+  const { id } = await openPresentation(comotPath);
+
+  book = await readPresentationFontBook(id);
+  const ttf = await readPresentationFileBytes(id, `${BUNDLED_FONT_DIR}/${BUNDLED_FONT_FILE}`);
 
   server = createServer((req, res) => {
     if (req.url === "/font.ttf") {
@@ -100,6 +126,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await new Promise<void>((resolve) => server?.close(() => resolve()));
+  delete process.env.CO_MOTION_HOME;
+  await rm(coMotionHome, { recursive: true, force: true });
+  await rm(comotDir, { recursive: true, force: true });
 });
 
 function core(text: string, fontSize = SIZE): number {
