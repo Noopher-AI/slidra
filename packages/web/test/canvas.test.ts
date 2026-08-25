@@ -52,6 +52,19 @@ describe("mountCanvas", () => {
     expect(sandbox).not.toContain("allow-same-origin");
   });
 
+  // ADR-0011 / #56: view mode now carries allow-scripts (for the selection
+  // runtime's hit reporting) but must never carry allow-same-origin — the
+  // pair together would let the iframe's own script escape its sandbox.
+  it("view-mode iframe 的 sandbox 是 allow-scripts，且不含 allow-same-origin", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const iframe = container.querySelector("iframe")!;
+    const sandbox = iframe.getAttribute("sandbox");
+    expect(sandbox).toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin");
+  });
+
   it("still delivers the fetched slide markup to the canvas", async () => {
     controller = mountCanvas(container);
     await controller.reload();
@@ -472,7 +485,10 @@ describe("mountCanvas 的播放模式", () => {
     expect(doc).toContain('addEventListener("keydown"');
   });
 
-  it("exitPlay() 回到零 token sandbox，且不再帶 runtime", async () => {
+  // ADR-0011/#56: exitPlay() no longer returns to a zero-token sandbox —
+  // view mode itself now carries allow-scripts, for the selection runtime
+  // — but must still shed the play runtime's own plan/window global.
+  it("exitPlay() 回到 view 模式的 allow-scripts sandbox，不再帶播放 plan/runtime", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -481,8 +497,11 @@ describe("mountCanvas 的播放模式", () => {
     await controller.exitPlay();
 
     const iframe = container.querySelector("iframe")!;
-    expect(iframe.getAttribute("sandbox")).toBe("");
+    const sandbox = iframe.getAttribute("sandbox");
+    expect(sandbox).toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin");
     expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
+    expect(srcdoc()).not.toContain("__COMOT_PLAN__");
   });
 
   it("play() 後 frameElement 回傳的是重建後的新元素，不是舊的參照", async () => {
@@ -1023,5 +1042,202 @@ describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
     const planScriptClose = doc.indexOf("<\/script><script>");
     expect(planScriptClose).toBeGreaterThan(-1);
     expect(doc.slice(planScriptClose)).toContain('post({ event: "ready" })');
+  });
+});
+
+// ADR-0011/#56: element selection. The runtime itself only really runs in a
+// real browser (same reasoning as the play-mode block above) — these tests
+// stay at the seam this module owns: the CanvasState.selection field and
+// how canvas.ts reacts to postMessage events selection-runtime.js would
+// send.
+describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
+  it("view 模式的 srcdoc 帶著注入的重點色/handle 色與 selection-runtime 本體", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const doc = srcdoc();
+    expect(doc).toContain("window.__COMOT_SELECTION_COLORS__");
+    // The runtime's own distinctive call proves it was actually inlined,
+    // not just referenced.
+    expect(doc).toContain('source: "comot-selection"');
+  });
+
+  it("一開始 (mountCanvas 剛 reload 完) CanvasState.selection 是 null", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    expect(state?.selection).toBeNull();
+  });
+
+  it("收到 runtime 的 select 訊息會反映到 CanvasState.selection", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: "標題" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+
+    expect(state?.selection).toEqual({ id: "el-a", name: "標題" });
+  });
+
+  it("select 訊息沒有 data-comot-name 時，selection.name 是 null", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-b", name: null },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+
+    expect(state?.selection).toEqual({ id: "el-b", name: null });
+  });
+
+  it("收到 runtime 的 clear 訊息會把 CanvasState.selection 清回 null", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        source: frameWindow,
+      }),
+    );
+    expect(state?.selection).not.toBeNull();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "clear" },
+        source: frameWindow,
+      }),
+    );
+    expect(state?.selection).toBeNull();
+  });
+
+  // Same authentication rule as isPlayerMessage's own tests: identity, never
+  // event.origin (ADR-0010) — an impostor `source` must be ignored outright.
+  it("不是來自目前 iframe 的 selection 訊息會被忽略", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        source: {} as unknown as Window,
+      }),
+    );
+
+    expect(state?.selection).toBeNull();
+  });
+
+  it("換頁 (showSlide) 會清空選取", async () => {
+    stubDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    expect(state?.selection).not.toBeNull();
+
+    await controller.showSlide(1);
+
+    expect(state?.selection).toBeNull();
+  });
+
+  it("reload() 會清空選取", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    expect(state?.selection).not.toBeNull();
+
+    await controller.reload();
+
+    expect(state?.selection).toBeNull();
+  });
+
+  it("play() 會清空選取", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    expect(state?.selection).not.toBeNull();
+
+    await controller.play();
+
+    expect(state?.selection).toBeNull();
+  });
+
+  it("exitPlay() 回到 view 模式時選取是空的", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.exitPlay();
+
+    expect(state?.selection).toBeNull();
   });
 });
