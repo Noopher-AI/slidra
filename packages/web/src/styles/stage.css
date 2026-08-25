@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════════════
+   舞台 (#50). 投影片以簡報畫布比例置中、自動縮放到完整可見、四周留白、
+   有看得出來的邊界 — Stage.tsx 決定比例（canvasSize → 內嵌 aspect-ratio
+   蓋掉下面的 fallback），這裡只放版面與外觀。`.canvas-area`（舞台底、
+   置中留白）在 shell.css，因為它同時也是 #29 的全螢幕目標。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* `aspect-ratio: 1280 / 720` 只是 canvasSize 尚未從 /api/presentation 落地
+   時的 CSS fallback（Stage.tsx 用內嵌 style 蓋掉它）——逐字照抄
+   docs/design/base-shell.html:199-208 的 `.stage` 規則。顏色與陰影字面值
+   （#fff、rgba(255,255,255,.14)、兩個 box-shadow）也逐字照抄同一條樣板
+   規則：tokens.css 沒有對應的 token，且已凍結（wave 1），套用波 3 brief
+   「裁決 1」的樣板字面值豁免 — 不算新引入，條件是值一字不改、在此註明
+   出處（比照 shell.css 既有的 `.canvas-area:fullscreen`／
+   `.agent-dot-connected`／`.play-bar` 三處寫法）。間距（width/height/
+   max-width/max-height）都是尺寸算式，不是這條豁免要管的字面值。
+
+   `width: auto`（gate round 2 finding，取代原本的 `width: 100%`）＋
+   `top/left: 50%; transform: translate(-50%, -50%)`：原本 `width: 100%`
+   把寬度釘死在 `.canvas-area` 的滿版寬，只有高度會被 `max-height: 100%`
+   夾。視窗夠矮時（.canvas-area 的可用高度小於「滿版寬 ÷ 16:9」算出來的
+   高度）夾出來的高就會比寬窄，寬高比跟著跑掉——這正是這一輪 review gate
+   抓到的問題，量測後確認是真的（見 PR body/報告），舊的四個測試從沒測過
+   會咬到這條邊的視窗。`width: auto` 讓寬跟高一起交給 `aspect-ratio` +
+   `max-width`/`max-height` 算，兩軸各自被夾住的那一軸決定實際尺寸，比例
+   任何時候都不跑掉（已用 1024×720〜1600×480 多組視窗量測驗證）。
+   `.canvas-area` 這時是 stretch 對齊（見 shell.css 的說明），舞台盒子的
+   起點會貼齊可用框的左上角，不再自動置中；`top/left:50%` 是相對容器算
+   的百分比，`translate(-50%,-50%)` 是相對舞台盒子自己算的百分比，兩者疊
+   起來剛好把盒子（不論實際尺寸）移到容器正中央，且不影響上面 stretch
+   演算出來的尺寸（transform 是排版之後才套用的視覺位移）。 */
+.stage {
+  aspect-ratio: 1280 / 720;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  position: relative;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 18px 44px -12px rgba(0, 0, 0, 0.8);
+}
+
+/* 全螢幕下比例框必須失效，iframe 照舊撐滿螢幕 — #29 的既有回歸契約優先於
+   #50 的視覺（波 3 brief 裁決 2；e2e/player-fullscreen.test.ts:200-202
+   斷言 frameSize[0] === screenSize[0] 且 frameSize[1] >
+   screenSize[1] * 0.85）。寬高都給明確值（不再是 auto），`aspect-ratio`
+   因此不再有作用（規範規定兩個維度都明確時 aspect-ratio 不生效），不需要
+   額外覆蓋它或用 `!important` 蓋掉 Stage.tsx 的內嵌樣式。邊框與陰影一併
+   移除：全螢幕沒有「舞台立在深色背景上」這件事，螢幕本身就是背景。
+   `.canvas-area:fullscreen` 本身（尺寸、padding、背景）在 shell.css。 */
+.canvas-area:fullscreen .stage,
+.canvas-area:-webkit-full-screen .stage {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: none;
+  box-shadow: none;
+}

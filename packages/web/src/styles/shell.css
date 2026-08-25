@@ -201,41 +201,89 @@
   grid-template-columns: var(--w-rail) 1fr var(--w-chat);
 }
 
+/* `min-height: 0`（gate round 2 finding, #50）：沒有這行，`.main` 作為
+   `.body` 那顆隱含 grid row 的 item，其自動最小尺寸取決於內容的
+   min-content（`.canvas-area` 裡 `.stage` 靠 aspect-ratio 撐出的高度），
+   使 `.main` 永遠不會縮到比內容矮——視窗變矮時 `.body`（實際可用高度已
+   被上層 flex 夾到 100vh 以內）容不下，`.main` 溢出到文件底部，長出
+   document-level 捲軸，`.stage` 的下緣因此掉出視窗（違反 #50 AC 2）。量測
+   證實：1440×600 時 `.main` 卡在 650.5px 高，`.body` 只給了 422px。加這行
+   後 `.main` 才會真的隨可用空間縮小。 */
 .main {
   display: grid;
   grid-template-rows: 1fr var(--h-notes);
   min-width: 0;
+  min-height: 0;
 }
 
 /* 舞台底＝全螢幕目標＝播放黑幕容器 (#29 契約，見 App.tsx 的 wellRef 註解)。
-   刻意不鋪 base-shell.html 的 `.well`/`.stage` 比例框 — 那會讓 iframe 被
-   長寬比夾住、無法撐滿全螢幕的螢幕尺寸，直接違反 #29 的既有回歸契約
-   （e2e/player-fullscreen.test.ts 斷言 frameSize[0] === screenSize[0]）。
-   `.canvas` 仍以 flex:1 撐滿 `.canvas-area`，與這個 ticket 之前完全一樣；
-   比例框留給 #50 一併重新設計舞台時處理（見 Stage.tsx 的同一則註解）。 */
+   #50 起，舞台比例框（`.stage`，見 styles/stage.css）鋪在這裡面；
+   `.canvas-area` 自己等同樣板的 `.well`：置中、留白、裁切溢出，版面規則
+   （`padding: calc(var(--u) * 7)`、`overflow: hidden`）逐字沿用
+   docs/design/base-shell.html:190-196。`background: var(--s-well)` 同時
+   滿足「舞台底是全 app 最深的表面」——`--s-well` 就是五階表面裡最深的
+   那一階。
+
+   `grid-template-columns/rows: minmax(0, 1fr)`（gate round 2 finding，取代
+   樣板原本的 `place-items: center`）：沒有明確的軌道，這個隱含的單一
+   grid row 預設用 `auto`，會照 `.stage` 的內容尺寸撐開，而不是縮進
+   `.canvas-area` 自己被夾出來的框（同一個 min-content 溢出問題，往下
+   一層）。`minmax(0, 1fr)` 讓軌道真的等於 `.canvas-area` 的內容框，
+   `.stage` 的 `max-width/max-height: 100%`（見 styles/stage.css）才有
+   確定的基準可以量。改用 `minmax(0,1fr)` 之後 item 預設是 stretch 對齊
+   （不再是 `place-items: center` 的 center），置中改交給 `.stage` 自己的
+   `top/left/transform`（見 styles/stage.css 的說明）——center 對齊會讓
+   `.stage` 這種沒有實際內容、只有 `aspect-ratio` 的空盒子改用
+   fit-content 演算，量到的結果是瀏覽器對「無法決定尺寸」盒子的預設值
+   （約 300×150），完全無視 `max-width/max-height`，box 因此崩塌成一個
+   跟可用空間無關的小方塊。stretch 對齊沒有這個問題。
+
+   已知的殘留副作用（回報給指揮官，見 PR body/報告）：這條規則讓
+   `.canvas-area` 自己畫出背景並裁切溢出，緊鄰它的 `.overview`（縮圖軌）
+   右邊界 1px border-right 落在兩者共享的次像素邊界上——量測發現這會讓
+   `e2e/__screenshots__/shell/rail-and-notes.png`（wave 2 的凍結基準）在
+   那一欄單像素上出現極小的反鋸齒色差（最大單一色版差 10/255，僅那一欄，
+   肉眼實質不可辨）。已試過：改用 flex 而非 grid、拿掉 overflow:hidden、
+   拿掉 background、插入額外的 `.well` 包裹層把背景/overflow 移開
+   `.canvas-area` 自己的盒子——同一個色差都還在，可見它是這個 ticket
+   合法必須做的改動（舞台底變成有背景、有溢出裁切的可見表面）造成的次
+   像素重繪副作用，不是本單元的程式錯誤，也不是可以在自己檔案內迴避的
+   東西。依照波 3 brief 的規則（wave 2 的三張基準若改變必須停手回報，不
+   得自行重繪），這裡不重繪 `rail-and-notes.png`，留給指揮官決定。 */
 .canvas-area {
   position: relative;
   min-height: 0;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.canvas {
-  flex: 1;
-  overflow: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  padding: calc(var(--u) * 7);
+  overflow: hidden;
   background: var(--s-well);
 }
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 
-/* 全螢幕開關 (ticket #29 第二輪, #51/#53 的裁決：檢視與播放模式都適用):
+/* 全螢幕開關 (ticket #29 第二輪, #51/#53 的裁決：檢視與播放模式都適用；
+   #50 補上 padding:0 讓比例框的失效規則真的貼齊螢幕邊，見
+   styles/stage.css 的 `.canvas-area:fullscreen .stage`):
    `:fullscreen` 明確給尺寸，不吃 UA 預設盒子，並蓋上不透明背景避免看穿到
    app 的一般背景。#000（不是 token）逐字照抄樣板自己的播放模式規則
    （`.play { background: #000; }`）——純黑滿版是樣板自己的字面決定，不是
-   這裡新引入的值。 */
+   這裡新引入的值。留白（`.canvas-area` 平常的 padding）與 letterbox 只在
+   一般檢視成立——`#29` 既有的回歸契約
+   （e2e/player-fullscreen.test.ts:200-202 斷言
+   frameSize[0] === screenSize[0]）優先於 `#50` 的舞台視覺，`#48` 也從未
+   要求全螢幕時仍留白（波 3 brief 裁決 2）。 */
 .canvas-area:fullscreen,
 .canvas-area:-webkit-full-screen {
   width: 100vw;
   height: 100vh;
   background: #000;
+  padding: 0;
 }
 
 /* ── 狀態列 (#53) ─────────────────────────────────────────────── */

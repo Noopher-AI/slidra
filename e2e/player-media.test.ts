@@ -157,15 +157,17 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");
 
+    await page.locator('.view-btn[data-view="play"]').click();
+    await waitForPlayerFocus(page);
+
     // Alignment expectation comes from the placeholder's own on-screen box
     // in the play iframe, measured before the video is created — not
-    // recomputed the way the runtime computes it.
+    // recomputed the way the runtime computes it. Measured here, after
+    // entering play mode, so it shares the same layout state as videoRect
+    // below (entering play mode itself resizes the stage).
     const placeholderRect = await playFrame()
       .locator("#el-video-placeholder")
       .evaluate((el) => el.getBoundingClientRect().toJSON());
-
-    await page.locator('.view-btn[data-view="play"]').click();
-    await waitForPlayerFocus(page);
 
     await page.keyboard.press("ArrowRight");
 

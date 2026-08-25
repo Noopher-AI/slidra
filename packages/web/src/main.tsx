@@ -7,6 +7,7 @@ import { App } from "./App.js";
 import "./styles/tokens.css";
 import "./style.css";
 import "./styles/shell.css";
+import "./styles/stage.css";
 import "./styles/rail.css";
 import "./styles/notes.css";
 import "./styles/chat.css";
