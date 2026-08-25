@@ -54,6 +54,13 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const path = rest[1];
       return { name, input: { id, path } };
     }
+    case "convert": {
+      // One argument only: convert takes the whole presentation or none of
+      // it (#72). No --dry-run and no single-slide form — a half-converted
+      // deck would need its own answer to "is this compliant?".
+      const id = requirePositional(rest, 0, "convert", "presentation-id");
+      return { name, input: { id } };
+    }
     case "text": {
       const sub = rest[0];
       if (sub !== "set") {
