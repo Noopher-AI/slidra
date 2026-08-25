@@ -69,6 +69,10 @@ co-motion serve          ← CLI 的常駐模式
 
 `CoMotion` 表達人與 agent 的共同創作（Co-），以及 SVG 元素、動畫與影音共同形成的動態演出（Motion）。
 
+## 第三方素材授權
+
+- **Noto Sans TC**（`packages/web/src/assets/fonts/NotoSansTC-subset.woff2`）：Google 的開源中文字型，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC`），這裡收錄的是子集版本——只保留 UI 實際用到的字元，由 `scripts/build-font-subset.mjs` 產生（子集使用 [`subset-font`](https://github.com/papandreou/subset-font)，wasm 版 harfbuzz，不需要 Python 工具鏈）。
+
 ## 尚待決定
 
 - CLI 命令集合的具體設計：動詞、參數與定址寫法。

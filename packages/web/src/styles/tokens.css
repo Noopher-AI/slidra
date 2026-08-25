@@ -1,0 +1,67 @@
+/* ═══════════════════════════════════════════════════════════════
+   CoMotion design tokens — reproduces docs/design/base-shell.html's
+   :root exactly, name for name and value for value (ticket #49).
+   Every other stylesheet in this package references these tokens; no
+   selector anywhere introduces a new hard-coded colour or spacing value.
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* Surfaces: outer to inner, shallow to deep. Depth reads through
+     lightness, never through borders. */
+  --s-titlebar: #201f1e;
+  --s-ribbon: #292827;
+  --s-panel: #201f1e; /* thumbnail rail, chat, notes */
+  --s-well: #100f0f; /* stage floor — the deepest surface in the whole app */
+  --s-raised: #323130; /* hover / input fields */
+  --s-sunken: #1b1a19;
+
+  /* Lines: one weight, two strengths. */
+  --line: #3b3a39;
+  --line-soft: #2b2a29;
+
+  /* Text: three tiers, no more. */
+  --ink: #f3f2f1;
+  --ink-dim: #a19f9d;
+  --ink-faint: #6b6968; /* disabled only */
+
+  /* Accent: settled by the user via issue #58 as #c41e3a (2026-08-25),
+     superseding the template's original PowerPoint-brick-red #c43e1c.
+     --accent-hi and --accent-wash are derived from the template's own
+     relationship to its accent (roughly +28 per channel for -hi, the
+     same .16 alpha for -wash), applied to the new base. */
+  --accent: #c41e3a;
+  --accent-hi: #e03a56;
+  --accent-wash: rgba(196, 30, 58, 0.16);
+
+  /* Rhythm: 4px baseline. */
+  --u: 4px;
+  --r: 3px; /* a single radius value — Office is square */
+
+  /* Sizes */
+  --h-titlebar: 36px;
+  --h-tabs: 30px;
+  --h-ribbon: 84px;
+  --h-status: 26px;
+  --w-rail: 196px;
+  --w-chat: 316px;
+  --h-notes: 104px;
+
+  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --fs-ui: 12.5px;
+  --fs-small: 11.5px;
+  --fs-lead: 14px;
+}
+
+/* Bundled Noto Sans TC subset (ticket #49) — loaded from the app's own
+   origin so the UI never falls back to system-ui (which resolves to 蘋方
+   on macOS, 微軟正黑 on Windows, breaking cross-machine screenshot
+   comparison) and never depends on network access at runtime. The subset
+   is built by scripts/build-font-subset.mjs and committed under
+   src/assets/fonts/ — see README.md for the licence (SIL OFL 1.1) and
+   source. */
+@font-face {
+  font-family: "Noto Sans TC";
+  src: url("../assets/fonts/NotoSansTC-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}

@@ -5,10 +5,27 @@ body,
   margin: 0;
 }
 
+/* Global button reset, copied verbatim from docs/design/base-shell.html
+   line 62 (review gate finding, 08-25): without it, every <button> keeps
+   the UA's own light ButtonFace behind whatever `color` a rule sets, so a
+   near-white --ink label on that light face renders as an unreadable
+   blank box. This is part of the visual baseline itself, not an invented
+   value. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
 .app {
   display: flex;
   height: 100vh;
-  font-family: system-ui, sans-serif;
+  font-family: var(--font);
+  font-size: var(--fs-ui);
+  color: var(--ink);
+  background: var(--s-well);
 }
 
 .canvas-area {
@@ -21,26 +38,30 @@ body,
 .canvas {
   flex: 1;
   overflow: auto;
-  background: #f5f5f5;
+  /* Nearest token to the old #f5f5f5 canvas background: the base-shell
+     template's stage floor, --s-well, is deliberately the darkest surface
+     in the whole app ("投影片才浮得起來") — ticket #49's settled mapping. */
+  background: var(--s-well);
 }
 
 /* 總覽 (ticket #27): the sidebar of real thumbnails, first child of .app so
-   it sits to the left of the main canvas. */
+   it sits to the left of the main canvas. Maps onto the template's --w-rail
+   / --s-panel — same role as the thumbnail rail (ticket #49). */
 .overview {
-  width: 180px;
+  width: var(--w-rail);
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #ddd;
-  background: #fafafa;
+  border-right: 1px solid var(--line-soft);
+  background: var(--s-panel);
 }
 
 .overview-list {
   list-style: none;
   margin: 0;
-  padding: 0.75rem;
+  padding: calc(var(--u) * 3);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: calc(var(--u) * 3);
 }
 
 .overview-item {
@@ -56,15 +77,20 @@ body,
   width: 100%;
   height: 100%;
   padding: 0;
-  border: 2px solid transparent;
-  border-radius: 0.25rem;
-  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s-well);
   cursor: pointer;
   overflow: hidden;
+  outline: calc(var(--u) / 2) solid transparent;
+  outline-offset: 1px;
 }
 
 .overview-item-current .overview-thumb {
-  border-color: #2a6fb0;
+  /* The template's mapping is explicit: 縮圖外框 is one of the accent's two
+     jobs ("現在在哪") — ticket #49's settled mapping for the old #2a6fb0. */
+  border-color: var(--accent);
+  outline-color: var(--accent);
 }
 
 .overview-frame {
@@ -81,25 +107,31 @@ body,
 }
 
 .status-bar {
-  padding: 0.5rem 1rem;
-  border-top: 1px solid #ddd;
-  font-size: 0.85rem;
-  color: #555;
+  padding: 0 calc(var(--u) * 3);
+  height: var(--h-status);
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  background: var(--s-titlebar);
+  font-size: var(--fs-small);
+  color: var(--ink-dim);
 }
 
 .chat-sidebar {
-  width: 320px;
+  width: var(--w-chat);
   flex-shrink: 0;
-  border-left: 1px solid #ddd;
-  padding: 1rem;
+  border-left: 1px solid var(--line-soft);
+  background: var(--s-panel);
+  padding: calc(var(--u) * 3);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   height: 100%;
+  color: var(--ink);
 }
 
 .chat-placeholder {
-  color: #888;
+  color: var(--ink-faint);
 }
 
 .chat-messages {
@@ -107,77 +139,90 @@ body,
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: calc(var(--u) * 2);
+  margin-bottom: calc(var(--u) * 3);
 }
 
 .chat-message {
   margin: 0;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.5rem;
+  padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
+  border-radius: var(--r);
   white-space: pre-wrap;
   word-break: break-word;
+  max-width: 88%;
+  line-height: 1.55;
 }
 
 .chat-message-author {
   align-self: flex-end;
-  background: #dceeff;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent);
 }
 
 .chat-message-agent {
   align-self: flex-start;
-  background: #f0f0f0;
+  background: var(--s-sunken);
+  border: 1px solid var(--line-soft);
 }
 
 /* A command is neither the author speaking nor the agent speaking — it is
    the work itself, so it sits full width between them rather than taking
-   either side's bubble. */
+   either side's bubble.
+   The template's token set has no dedicated status colours (success /
+   failure / warning are not among its 五階表面／兩階線／三階字／一個重點
+   色) — its own chat log only ever shows a plain "已完成" text label with
+   no colour coding at all. The four command states below follow that same
+   intent: --accent marks "in progress" (the one state that is genuinely
+   "現在在哪" — accent's stated job), every other state stays neutral
+   (--line / --ink-dim / --ink) and leans on the status text itself
+   ("已完成" / "執行失敗" / "結果不明") plus `role="alert"` for failure,
+   rather than inventing a red/amber/green the template never defined
+   (ticket #49's ambiguous-mapping call — see the final report). */
 .chat-command {
   align-self: stretch;
-  border-left: 3px solid #999;
-  padding: 0.35rem 0.6rem;
-  background: #f7f7f7;
-  font-size: 0.85rem;
+  border-left: calc(var(--u) / 2) solid var(--line);
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  background: var(--s-sunken);
+  font-size: var(--fs-small);
 }
 
 .chat-command-in_progress {
-  border-left-color: #2a6fb0;
+  border-left-color: var(--accent);
 }
 
 .chat-command-completed {
-  border-left-color: #2e7d32;
+  border-left-color: var(--ink-dim);
 }
 
 .chat-command-failed {
-  border-left-color: #b00020;
-  background: #fdf0f2;
+  border-left-color: var(--ink);
 }
 
-/* Outcome unknown, not failed (ticket #19): amber, deliberately not the
-   failure red — the command may well have succeeded. */
+/* Outcome unknown, not failed (ticket #19) — kept visually distinct from
+   both "in progress" (--accent) and "failed" (--ink) by staying at the
+   dimmer --ink-dim, the same neutral the completed state uses. */
 .chat-command-interrupted {
-  border-left-color: #b26a00;
-  background: #fdf6ec;
+  border-left-color: var(--ink-dim);
 }
 
 .chat-command-interrupted .chat-command-status {
-  color: #b26a00;
+  color: var(--ink-dim);
 }
 
 .chat-command-line {
   margin: 0;
   display: flex;
-  gap: 0.5rem;
+  gap: calc(var(--u) * 2);
   align-items: baseline;
 }
 
 .chat-command-status {
-  color: #666;
+  color: var(--ink-dim);
   white-space: nowrap;
 }
 
 .chat-command-failed .chat-command-status {
-  color: #b00020;
+  color: var(--ink);
 }
 
 .chat-command-text {
@@ -185,50 +230,82 @@ body,
 }
 
 .chat-command-output {
-  margin: 0.35rem 0 0;
-  padding: 0.35rem 0.5rem;
-  background: #fff;
-  border-radius: 0.25rem;
+  margin: calc(var(--u) * 1.5) 0 0;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  background: var(--s-well);
+  border-radius: var(--r);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 12rem;
+  max-height: calc(var(--u) * 48);
   overflow-y: auto;
+  color: var(--ink-dim);
 }
 
 /* A break in the conversation itself (ticket #19) — said by nobody, so it
-   reads as neither the author's nor the agent's speech. */
+   reads as neither the author's nor the agent's speech. Same neutral
+   treatment as the command states above — see that block's comment. */
 .chat-notice {
   align-self: stretch;
   margin: 0;
-  padding: 0.35rem 0.6rem;
-  border-left: 3px solid #b26a00;
-  background: #fdf6ec;
-  color: #7a4a00;
-  font-size: 0.85rem;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  border-left: calc(var(--u) / 2) solid var(--ink-dim);
+  background: var(--s-sunken);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
 }
 
 .chat-working {
   margin: 0;
-  color: #888;
-  font-size: 0.85rem;
+  color: var(--ink-faint);
+  font-size: var(--fs-small);
   font-style: italic;
+}
+
+.chat-connecting {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-small);
 }
 
 .chat-error {
   margin: 0;
-  color: #b00020;
-  font-size: 0.85rem;
+  color: var(--ink);
+  font-size: var(--fs-small);
 }
 
 .chat-input {
   display: flex;
-  gap: 0.5rem;
+  gap: calc(var(--u) * 2);
 }
 
 .chat-input input {
   flex: 1;
-  padding: 0.4rem 0.6rem;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
   box-sizing: border-box;
+  background: var(--s-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font: inherit;
+}
+
+.chat-input input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.chat-input button {
+  padding: 0 calc(var(--u) * 3);
+  border-radius: var(--r);
+  background: var(--accent);
+  color: var(--ink);
+  font: inherit;
+}
+
+.chat-input button:disabled {
+  background: var(--s-raised);
+  color: var(--ink-faint);
+  cursor: default;
 }
 
 /* Paging chrome for 檢視模式 (ticket #25). Sits between the canvas and the
@@ -237,26 +314,41 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  padding: 0.4rem 1rem;
-  border-top: 1px solid #ddd;
+  gap: calc(var(--u) * 4);
+  padding: calc(var(--u) * 2) calc(var(--u) * 4);
+  border-top: 1px solid var(--line-soft);
+  background: var(--s-titlebar);
+  color: var(--ink-dim);
 }
 
+/* Resting/hover treatment follows the template's own .view-btn pattern
+   (base-shell.html:284-290, review gate finding 08-25): transparent at
+   rest with the dimmer --ink-dim label, --s-raised background plus the
+   brighter --ink label on hover — the template's only precedent for how
+   an unlabelled icon-ish control should read as pressable against these
+   surfaces, so no new value is invented. */
 .slide-nav-button {
-  padding: 0.2rem 0.8rem;
-  font-size: 1.1rem;
+  padding: calc(var(--u) * 1) calc(var(--u) * 4);
+  font-size: var(--fs-lead);
   line-height: 1.2;
   cursor: pointer;
+  color: var(--ink-dim);
+  border-radius: var(--r);
+}
+
+.slide-nav-button:hover:not(:disabled) {
+  background: var(--s-raised);
+  color: var(--ink);
 }
 
 .slide-nav-button:disabled {
   cursor: default;
-  opacity: 0.4;
+  color: var(--ink-faint);
 }
 
 .slide-nav-position {
-  font-size: 0.9rem;
-  color: #555;
+  font-size: var(--fs-ui);
+  color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
 
@@ -269,19 +361,35 @@ body,
   position: relative;
 }
 
+/* Same .view-btn resting/hover pattern as .slide-nav-button above. */
 .play-toggle-button {
-  margin-left: 1rem;
-  padding: 0.2rem 0.8rem;
-  font-size: 0.9rem;
+  margin-left: calc(var(--u) * 4);
+  padding: calc(var(--u) * 1) calc(var(--u) * 4);
+  font-size: var(--fs-ui);
   cursor: pointer;
+  color: var(--ink-dim);
+  border-radius: var(--r);
 }
 
-/* 全螢幕開關 (ticket #29): only rendered in 播放模式, next to 離開播放. */
+.play-toggle-button:hover {
+  background: var(--s-raised);
+  color: var(--ink);
+}
+
+/* 全螢幕開關 (ticket #29): only rendered in 播放模式, next to 離開播放.
+   Same .view-btn resting/hover pattern as .slide-nav-button above. */
 .fullscreen-toggle-button {
-  margin-left: 0.5rem;
-  padding: 0.2rem 0.8rem;
-  font-size: 0.9rem;
+  margin-left: calc(var(--u) * 2);
+  padding: calc(var(--u) * 1) calc(var(--u) * 4);
+  font-size: var(--fs-ui);
   cursor: pointer;
+  color: var(--ink-dim);
+  border-radius: var(--r);
+}
+
+.fullscreen-toggle-button:hover {
+  background: var(--s-raised);
+  color: var(--ink);
 }
 
 /* 播放模式的浮動通知堆疊區 (review gate round 1, P2 修正)：焦點提示、播放
@@ -290,38 +398,48 @@ body,
    剩外觀樣式，彼此用 flex column + gap 並排，不再互相覆蓋. */
 .player-notices {
   position: absolute;
-  top: 0.75rem;
+  top: calc(var(--u) * 3);
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: calc(var(--u) * 2);
 }
 
 /* 焦點不在播放器上時的明確說明 — never a silent no-op. */
 .player-focus-notice {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.4rem;
-  background: #2a2a2a;
-  color: #fff;
-  font-size: 0.85rem;
+  gap: calc(var(--u) * 2.5);
+  padding: calc(var(--u) * 2) calc(var(--u) * 3.5);
+  border-radius: var(--r);
+  background: var(--s-raised);
+  color: var(--ink);
+  font-size: var(--fs-small);
 }
 
+/* Sits on .player-focus-notice's own --s-raised background above, so once
+   the global button reset removes the UA's ButtonFace (review gate
+   finding 08-25), --accent-hi is legible with no extra background rule
+   needed here. */
 .player-focus-notice button {
   cursor: pointer;
+  color: var(--accent-hi);
 }
 
+/* No dedicated error-red token exists in the base-shell template — see the
+   .chat-command block's comment for the same call applied here: a neutral
+   raised surface plus the notice's own text carries the meaning instead of
+   an invented colour. */
 .player-error-notice {
-  padding: 0.5rem 0.9rem;
-  border-radius: 0.4rem;
-  background: #5c1a1a;
-  color: #fff;
-  font-size: 0.85rem;
+  padding: calc(var(--u) * 2) calc(var(--u) * 3.5);
+  border-radius: var(--r);
+  background: var(--s-raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: var(--fs-small);
 }
 
 /* 全螢幕開關 (ticket #29 第二輪): the fullscreen target is .canvas-area
@@ -329,7 +447,10 @@ body,
    the play chrome's real buttons stay inside the fullscreen element and
    stay clickable. `:fullscreen` sizes it explicitly rather than trusting
    the UA default box, and gives it an opaque background so nothing behind
-   it (the app's normal page background) shows through. */
+   it (the app's normal page background) shows through. #000 (not a token)
+   is copied verbatim from the template's own 播放模式 rule (`.play { background:
+   #000; }`) — pure black is the template's own deliberate literal for
+   "純黑滿版", not a new value introduced here. */
 .canvas-area:fullscreen,
 .canvas-area:-webkit-full-screen {
   width: 100vw;
