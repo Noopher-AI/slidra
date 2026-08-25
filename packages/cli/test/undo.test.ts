@@ -307,3 +307,87 @@ describe("undo stack cap (指揮官裁決 5): 50 groups, oldest evicted with its
     expect(final.data!.content).not.toBe(originalSlide);
   });
 });
+
+describe("finding 3 (critical) — a raw filesystem I/O error never escapes undo (ADR-0004)", () => {
+  it("a permission-denied snapshots directory reports a CoMotionError, never a raw EACCES with a real path", async () => {
+    // chmod cannot deny root a write, so this reproduction is meaningless
+    // (and would leave an unremovable temp dir) when run as root.
+    if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+    const { id, elementId } = await openFreshPresentation();
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第一版" });
+
+    const snapshotsDir = path.join(coMotionHome, "history", id, "snapshots");
+    const { chmod } = await import("node:fs/promises");
+    await chmod(snapshotsDir, 0o555); // read + execute, no write — undo's inverse-snapshot write must fail
+    try {
+      const result = await registry.dispatch("undo", { id });
+      expect(result.ok).toBe(false);
+      expect(result.message).not.toContain(coMotionHome);
+      expect(result.message).not.toContain("EACCES");
+    } finally {
+      // Restore permissions before afterEach's rm, or the temp dir cannot be removed.
+      await chmod(snapshotsDir, 0o755);
+    }
+  });
+});
+
+describe("finding 1 (high) — clearing the redo stack deletes its snapshot files, no orphans", () => {
+  it("text set → undo → text set leaves no snapshot file on disk unreferenced by any stack", async () => {
+    const { id, elementId } = await openFreshPresentation();
+
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第一版" });
+    await registry.dispatch("undo", { id }); // pushes an inverse snapshot onto the redo stack
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "第二版" }); // must clear + delete that redo snapshot
+
+    const historyDir = path.join(coMotionHome, "history", id);
+    const { readFile: readFileFs, readdir } = await import("node:fs/promises");
+    const stack = JSON.parse(await readFileFs(path.join(historyDir, "stack.json"), "utf-8")) as {
+      undo: { entries: { snapshotId: string }[] }[];
+      redo: { entries: { snapshotId: string }[] }[];
+      openGroup: { entries: { snapshotId: string }[] } | null;
+    };
+    const referenced = new Set<string>();
+    for (const group of [...stack.undo, ...stack.redo, ...(stack.openGroup ? [stack.openGroup] : [])]) {
+      for (const entry of group.entries) referenced.add(entry.snapshotId);
+    }
+
+    const onDisk = await readdir(path.join(historyDir, "snapshots"));
+    expect(new Set(onDisk)).toEqual(referenced);
+  });
+});
+
+describe("finding 2 (high) — a failed content write never consumes an undo slot", () => {
+  it("a permission-denied slide file: text set fails, undo reports nothing to undo, and no orphan snapshot is left", async () => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) return;
+
+    const { id, elementId } = await openFreshPresentation();
+    const slidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    const { chmod, readdir } = await import("node:fs/promises");
+    await chmod(slidePath, 0o444); // read-only — the actual content write must fail
+    try {
+      const result = await registry.dispatch("text set", {
+        id,
+        slidePath: "slides/001.svg",
+        elementId,
+        newText: "失敗版",
+      });
+      expect(result.ok).toBe(false);
+    } finally {
+      await chmod(slidePath, 0o644);
+    }
+
+    const undone = await registry.dispatch("undo", { id });
+    expect(undone.ok).toBe(false);
+    expect(undone.message).toBe("沒有可復原的操作");
+
+    const snapshotsDir = path.join(coMotionHome, "history", id, "snapshots");
+    let snapshotFiles: string[] = [];
+    try {
+      snapshotFiles = await readdir(snapshotsDir);
+    } catch {
+      snapshotFiles = []; // directory may not have been created at all — also fine
+    }
+    expect(snapshotFiles).toEqual([]);
+  });
+});
