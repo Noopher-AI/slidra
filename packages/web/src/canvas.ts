@@ -80,6 +80,14 @@ export interface CanvasController {
   /** Sends focus to the player iframe. Safe to call outside play mode (no-op). */
   focusPlayer: () => void;
   /**
+   * Asks the player runtime to advance/retreat one step, for when the
+   * arrow key was pressed while focus sat outside the player iframe and
+   * the runtime's own keydown listener never saw it (#68). Safe to call
+   * outside play mode (no-op). See the runtime's `message` handler for
+   * the transient-activation limit this path carries.
+   */
+  stepPlayer: (direction: "advance" | "retreat") => void;
+  /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
    * element), so a caller holding onto a stale reference would be a bug.
@@ -478,6 +486,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     frame.contentWindow?.postMessage({ source: "comot-host", command: "focus" }, "*");
   }
 
+  function stepPlayer(direction: "advance" | "retreat"): void {
+    if (destroyed || mode !== "play") return;
+    frame.contentWindow?.postMessage({ source: "comot-host", command: direction }, "*");
+  }
+
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
     const old = frame;
@@ -520,6 +533,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     play,
     exitPlay,
     focusPlayer,
+    stepPlayer,
     get frameElement() {
       return frame;
     },

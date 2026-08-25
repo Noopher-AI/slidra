@@ -16,7 +16,7 @@ export interface PlayChromeProps {
   state: CanvasState;
   controller: CanvasController | null;
   isFullscreen: boolean;
-  /** 全螢幕失敗訊息；與焦點提示、播放錯誤同列堆疊，不互相覆蓋。 */
+  /** 全螢幕失敗訊息；與播放錯誤同列堆疊，不互相覆蓋。 */
   fullscreenError: string | null;
   onToggleFullscreen(): void;
   onExitPlay(): void;
@@ -38,7 +38,7 @@ export interface PlayChromeProps {
  * cleanly on `isPlayMode`: the 播放模式 block is untouched, byte-for-byte,
  * from before this fix; the 檢視模式 block is new and only ever renders
  * the fullscreen exit control and/or its own error notice — never the
- * play-only focus/error notices or 離開播放, which have no meaning outside
+ * play-only error notice or 離開播放, which have no meaning outside
  * 播放模式.
  */
 export function PlayChrome({ state, controller, isFullscreen, fullscreenError, onToggleFullscreen, onExitPlay }: PlayChromeProps) {
@@ -73,9 +73,9 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
 
   if (!isPlayMode) {
     // 檢視模式: only fullscreen (state and/or its error) is this
-    // component's concern here — 離開播放, playerHasFocus, and
-    // state.error (播放中的效果清單錯誤) all only mean something in
-    // 播放模式 and must not render outside it.
+    // component's concern here — 離開播放 and state.error (播放中的效果
+    // 清單錯誤) only mean something in 播放模式 and must not render
+    // outside it.
     if (!isFullscreen && !fullscreenError) return null;
     return (
       <>
@@ -123,22 +123,18 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           任何既有的 click 行為要保；用既有的 `controller.focusPlayer()`
           （全螢幕切換等處已在用的同一支函式）補回鍵盤焦點即可。 */}
       <div className="play-mousemove-catcher" onClick={() => controller?.focusPlayer()} />
-      {/* 播放模式的浮動通知：焦點提示、播放錯誤、全螢幕錯誤都可能同時成立
-          （例如效果清單解析失敗又剛好全螢幕請求也失敗），過去三者各自用
-          同一組絕對定位互相疊在一起，後渲染的會蓋住先渲染的（review gate
-          round 1, P2）。這個 wrapper 把它們收進同一個 flex column，各自的
-          樣式只留背景／文字，定位與間距交給 wrapper，讓它們並排堆疊而不
-          互相覆蓋. */}
-      {(!state.playerHasFocus || state.error || fullscreenError) && (
+      {/* 播放模式的浮動通知：播放錯誤與全螢幕錯誤可能同時成立（效果清單
+          解析失敗又剛好全螢幕請求也失敗），過去各自用同一組絕對定位互相
+          疊在一起，後渲染的會蓋住先渲染的（review gate round 1, P2）。這個
+          wrapper 把它們收進同一個 flex column，各自的樣式只留背景／文字，
+          定位與間距交給 wrapper，讓它們並排堆疊而不互相覆蓋。
+
+          焦點提示曾經是這裡的第三則（#54）。#68 撤掉了它：它要求正在播報
+          的人先用滑鼠去點一顆按鈕，才能繼續按方向鍵——而走得到它的路徑
+          （按一次 Tab，實測確認）本身就是純鍵盤操作。現在失焦時方向鍵照樣
+          推進（見 App.tsx 的 keydown 轉發），提示因此無事可報。 */}
+      {(state.error || fullscreenError) && (
         <div className="player-notices">
-          {!state.playerHasFocus && (
-            <div className="player-focus-notice" role="alert">
-              <p>焦點不在播放器上，方向鍵目前不會有反應。</p>
-              <button type="button" onClick={() => controller?.focusPlayer()}>
-                點這裡把焦點交回播放器
-              </button>
-            </div>
-          )}
           {state.error && (
             <div className="player-error-notice" role="alert">
               這一頁的效果清單無法播放：{state.error}
@@ -151,7 +147,11 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           )}
         </div>
       )}
-      <nav className={awake ? "play-bar awake" : "play-bar"}>
+      {/* #68: 播放器是否真的握著鍵盤焦點，過去只能從焦點提示在不在 DOM 裡
+          反推。提示撤掉後這個狀態仍然要看得見——e2e 用它當「焦點已經交出去
+          了」的同步點，否則測試只能睡固定秒數去賭。這是狀態的實話，不是給
+          使用者看的介面，所以是 data 屬性而非任何可見元素。 */}
+      <nav className={awake ? "play-bar awake" : "play-bar"} data-player-focus={state.playerHasFocus}>
         {/* 上一步／下一步是換頁，不是換效果步驟 (裁決 3): 效果清單解析失敗
             時沒有任何 runtime 活著回應方向鍵，這兩顆鈕是 #54 要求的換頁
             替代途徑，接的是 controller.previous()/next()（＝

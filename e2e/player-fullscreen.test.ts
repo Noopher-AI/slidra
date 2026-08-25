@@ -382,98 +382,11 @@ it("全螢幕狀態下離開播放：真的點按鈕就能退出，文件不會�
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 });
 
-it("播放錯誤與全螢幕錯誤同時成立時，兩則通知並列可見、不互相覆蓋（review gate round 1, P2）", async () => {
-  const page = await browser.newPage();
-  await page.goto(server.url);
-
-  await expect
-    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
-      timeout: 30_000,
-    })
-    .toBe("播放第一頁");
-
-  await page.locator('.view-btn[data-view="play"]').click();
-  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
-
-  // canvas.ts (not owned by this ticket) cannot be edited to fabricate a
-  // 播放錯誤 (canvasState.error) on demand, so this test proves the P2 fix
-  // — "notices must stack, not overlap" — with the two notices this
-  // ticket's own code genuinely produces together: the player-focus-notice
-  // (焦點被搶走) and a real 全螢幕錯誤 notice (a genuinely rejected
-  // requestFullscreen() call, not a fabricated success). That is the same
-  // shared-wrapper CSS/DOM layout bug the reviewer flagged; it does not
-  // depend on which two player-notices children happen to be present.
-  const focusNotice = page.locator(".player-focus-notice");
-  // Entering play mode hands focus to the player asynchronously (the
-  // runtime posts "ready" once its own listeners are attached); racing
-  // that with "steal focus" below before it has settled made this flicker
-  // during development (same race player-mode.test.ts already documents),
-  // so wait for the initial auto-focus to land first.
-  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
-  await page.locator('button:has-text("離開播放")').focus();
-  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
-
-  // 用一個一定會拒絕的 requestFullscreen 替身製造真實的全螢幕錯誤
-  // 通知：這是 toggleFullscreen() 的 catch 分支真的會走到的路徑（引擎
-  // 拒絕請求），不是假造成功又謊報失敗。
-  await page.evaluate(() => {
-    const container = document.querySelector(".canvas-area") as HTMLElement & {
-      __originalRequestFullscreen?: () => Promise<void>;
-    };
-    container.__originalRequestFullscreen = container.requestFullscreen.bind(container);
-    container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
-  });
-  // 「焦點通知與全螢幕錯誤通知同時存在」依設計只維持約 100 毫秒：全螢幕
-  // 失敗的路徑會呼叫 focusPlayer()（App.tsx 的 settled decision #5），焦點
-  // 一回到播放器，焦點通知就卸載、錯誤通知往上遞補。跨過那個邊界做兩次
-  // 獨立的 boundingBox() round-trip，會拿到「卸載前的焦點框」配「遞補後的
-  // 錯誤框」——兩個從未同時存在的矩形，算出來必然相交。issue #43 追到的
-  // 間歇失敗就是這麼來的，與機器負載無關（負載只決定那兩次讀取會不會被
-  // 切開）。所以改成在頁面內逐幀取樣：每一幀在同一個 layout pass 裡取兩個
-  // 矩形，沒有任何 round-trip 可以插進中間。取樣要在點擊之前裝好，才涵蓋
-  // 得到整個窗口。
-  await page.evaluate(() => {
-    const w = window as unknown as { __noticeOverlaps: boolean[] };
-    w.__noticeOverlaps = [];
-    const sample = () => {
-      const focus = document.querySelector(".player-focus-notice");
-      const error = Array.from(document.querySelectorAll(".player-error-notice")).find((el) =>
-        el.textContent?.includes("全螢幕切換失敗"),
-      );
-      if (focus && error) {
-        const a = focus.getBoundingClientRect();
-        const b = error.getBoundingClientRect();
-        // 兩者都有實際大小才算數，這同時取代了舊的 isVisible() 檢查.
-        if (a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0) {
-          w.__noticeOverlaps.push(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
-        }
-      } else if (w.__noticeOverlaps.length > 0) {
-        return; // 窗口已經關上，停止取樣，別留一個 rAF 迴圈空轉
-      }
-      requestAnimationFrame(sample);
-    };
-    sample();
-  });
-  await page.locator(".fullscreen-toggle-button").click();
-  const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
-  await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
-
-  // 取樣必須真的抓到「兩則同時可見」的幀，否則下面那條斷言是空的——與其
-  // 靜默地什麼都沒驗到，不如讓它明確地失敗.
-  const overlapCount = () =>
-    page.evaluate(() => (window as unknown as { __noticeOverlaps: boolean[] }).__noticeOverlaps.length);
-  await expect.poll(overlapCount, { timeout: 10_000 }).toBeGreaterThan(0);
-
-  // 不只是「都在畫面上」，而是彼此的矩形沒有重疊——這才是 P2 real bug 的
-  // 反面證據：先前兩者用同一組 position:absolute 疊在同一個位置，後渲染的
-  // 會蓋住先渲染的，isVisible() 仍然會回報 true（Playwright 的可見性判斷不
-  // 看 z-order 疊加），所以要量真實座標矩形是否相交。共存期間的每一幀都
-  // 不許相交，一幀都不行.
-  const overlapFrames = await page.evaluate(
-    () => (window as unknown as { __noticeOverlaps: boolean[] }).__noticeOverlaps,
-  );
-  expect(overlapFrames.some((overlapped) => overlapped)).toBe(false);
-});
+// 「播放錯誤與全螢幕錯誤兩則通知並列可見、不互相覆蓋」（review gate
+// round 1, P2）過去在這裡，但這份 fixture 造不出播放錯誤，所以它其實是拿
+// 焦點提示湊出第二則通知的。#68 撤掉了焦點提示，這條量測因此搬到
+// e2e/play-appearance.test.ts——那裡的 broken-effects deck 能讓真正的那
+// 兩則通知穩定共存，比原本 100 毫秒的共存窗口好量，證的也是同一件事。
 
 it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清掉（review gate round 1, P2）", async () => {
   const page = await browser.newPage();
@@ -514,37 +427,6 @@ it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清�
 
   // 真實點擊「退出全螢幕」按鈕，因為此時 isFullscreen 為 true，這顆按鈕的
   // onClick 真的會呼叫（被替換過的）exitFullscreen()，走到 catch 分支。
-  // 「焦點通知與全螢幕錯誤通知同時存在」依設計只維持約 100 毫秒：全螢幕
-  // 失敗的路徑會呼叫 focusPlayer()（App.tsx 的 settled decision #5），焦點
-  // 一回到播放器，焦點通知就卸載、錯誤通知往上遞補。跨過那個邊界做兩次
-  // 獨立的 boundingBox() round-trip，會拿到「卸載前的焦點框」配「遞補後的
-  // 錯誤框」——兩個從未同時存在的矩形，算出來必然相交。issue #43 追到的
-  // 間歇失敗就是這麼來的，與機器負載無關（負載只決定那兩次讀取會不會被
-  // 切開）。所以改成在頁面內逐幀取樣：每一幀在同一個 layout pass 裡取兩個
-  // 矩形，沒有任何 round-trip 可以插進中間。取樣要在點擊之前裝好，才涵蓋
-  // 得到整個窗口。
-  await page.evaluate(() => {
-    const w = window as unknown as { __noticeOverlaps: boolean[] };
-    w.__noticeOverlaps = [];
-    const sample = () => {
-      const focus = document.querySelector(".player-focus-notice");
-      const error = Array.from(document.querySelectorAll(".player-error-notice")).find((el) =>
-        el.textContent?.includes("全螢幕切換失敗"),
-      );
-      if (focus && error) {
-        const a = focus.getBoundingClientRect();
-        const b = error.getBoundingClientRect();
-        // 兩者都有實際大小才算數，這同時取代了舊的 isVisible() 檢查.
-        if (a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0) {
-          w.__noticeOverlaps.push(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
-        }
-      } else if (w.__noticeOverlaps.length > 0) {
-        return; // 窗口已經關上，停止取樣，別留一個 rAF 迴圈空轉
-      }
-      requestAnimationFrame(sample);
-    };
-    sample();
-  });
   await page.locator(".fullscreen-toggle-button").click();
   const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
   await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
@@ -696,11 +578,13 @@ it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播�
   await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
-  const focusNotice = page.locator(".player-focus-notice");
+  // #68 撤掉焦點提示後，播放器有沒有焦點改讀 .play-bar 的 data-player-focus
+  // ——同一個 playerHasFocus 狀態，只是不再擺到作者面前.
+  const playBar = page.locator(".play-bar");
   // 等初次自動 focus 先穩定下來（理由同前面幾個測試），再自己偷走焦點.
-  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
   await page.locator('button:has-text("離開播放")').focus();
-  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
   // 一次性量測：把兩個全螢幕 API 都從容器上拿掉，證明「不支援全螢幕」這條
   // early-return 路徑真的走得到，而不是永遠不會發生的死路——這是
@@ -722,8 +606,8 @@ it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播�
   await expect.poll(() => unsupportedNotice.count(), { timeout: 10_000 }).toBe(1);
 
   // 修好之前：這個 early return 從不呼叫 focusPlayer()，焦點停在按鈕上，
-  // 焦點提示會一直留著。修好之後：即使全螢幕不支援，焦點還是要交回播放器.
-  await expect.poll(() => focusNotice.count(), { timeout: 10_000 }).toBe(0);
+  // 焦點就停在按鈕上。修好之後：即使全螢幕不支援，焦點還是要交回播放器.
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
 });
 
 it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的較晚請求（review gate round 3, P2）", async () => {

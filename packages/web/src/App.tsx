@@ -203,21 +203,60 @@ export function App() {
     };
   }, [canvasState.mode !== "play"]);
 
-  // Arrow keys page the deck, but only in 檢視模式 (ticket #28). Legitimate
-  // on the parent document here: the view-mode iframe is sandboxed with no
-  // scripts, so the author's keystrokes never reach it. In 播放模式 the
-  // keyboard belongs entirely to the runtime inside the play iframe — a
-  // parent-side arrow-key listener would fight it (both would react to the
-  // same ArrowRight) and cannot honour media steps at all (transient
-  // activation does not survive postMessage), so this handler must stand
-  // down the moment play mode starts. `canvasStateRef` (not `canvasState`
-  // itself) is read inside the listener so this effect never needs to
-  // re-subscribe on every state change just to see the current mode.
+  // Arrow keys in 檢視模式 page the deck (ticket #28). Legitimate on the
+  // parent document: the view-mode iframe is sandboxed with no scripts, so
+  // the author's keystrokes never reach it.
+  //
+  // In 播放模式 the keyboard belongs to the runtime inside the play iframe,
+  // and this handler must not fight it — if both reacted to the same
+  // ArrowRight, one key press would advance two steps. What keeps them
+  // apart is not a state check but the event model itself: a key press is
+  // dispatched in exactly one document, and keyboard events do not cross
+  // the frame boundary. So this listener running at all is already proof
+  // that the runtime did not hear this key.
+  //
+  // It must NOT be gated on `playerHasFocus` instead. That flag arrives
+  // over postMessage and lands in React state, so it lags the browser's
+  // real focus: right after entering play or changing slide there is a
+  // window where focus is genuinely inside the iframe while the flag still
+  // reads false. Forwarding during that window is the double-advance this
+  // paragraph is about — the runtime handles the key press *and* the
+  // parent posts another step. That is not theoretical: it is what an
+  // earlier revision of this handler did, and e2e/demo-deck.test.ts caught
+  // it (the deck ran ahead of where the test thought it was, and the 2s
+  // demo video had finished playing by the time the audio step was
+  // reached).
+  //
+  // The parent takes over only in the case the runtime cannot serve: focus
+  // sat outside the iframe, so no keydown reached the runtime at all and
+  // the deck would otherwise be stuck until the author fixed the focus by
+  // hand — with the mouse, since the keyboard was exactly what stopped
+  // working. One press of Tab is enough to get there (measured, #68);
+  // clicking the control bar is not, because every one of those paths
+  // already hands focus back (the ready handshake after a slide change,
+  // settled decision #5's focusPlayer() on the fullscreen paths, and
+  // .play-mousemove-catcher's own onClick).
+  //
+  // Known limit, deliberate: postMessage does not carry this key press's
+  // transient activation into a sandboxed, non-same-origin frame, so if
+  // the forwarded step happens to be a media effect, the browser refuses
+  // its play(). It is not silent — player-runtime.js's playMedia posts a
+  // visible error — and focusPlayer() below means it can only ever be the
+  // first key press after focus was lost, never a steady state.
+  //
+  // A slide whose effect list failed to parse has no runtime at all to
+  // forward to (canvas.ts's renderPlay catch swaps in a static document),
+  // so the arrow keys stay inert there — unchanged by this, and already
+  // answered by #54's 上一步/下一步 buttons, which page the deck without
+  // needing a runtime.
+  //
+  // `canvasStateRef` (not `canvasState` itself) is read inside the
+  // listener so this effect never needs to re-subscribe on every state
+  // change just to see the current mode.
   const canvasStateRef = useRef(canvasState);
   canvasStateRef.current = canvasState;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if (canvasStateRef.current.mode !== "view") return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       // Never steal an arrow key from a text field — the author is moving
       // the caret in the chat box, not paging the deck.
@@ -225,6 +264,15 @@ export function App() {
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       const controller = controllerRef.current;
       if (!controller) return;
+      const state = canvasStateRef.current;
+      if (state.mode === "play") {
+        event.preventDefault();
+        controller.stepPlayer(event.key === "ArrowRight" ? "advance" : "retreat");
+        // Hand focus back so every following key press takes the runtime's
+        // own path, transient activation and all.
+        controller.focusPlayer();
+        return;
+      }
       event.preventDefault();
       void (event.key === "ArrowRight" ? controller.next() : controller.previous());
     }

@@ -142,10 +142,11 @@ async function expectNoErrorBanner(page: import("playwright").Page): Promise<voi
 // so it can no longer distinguish "play mode has started" from "still
 // viewing". Wait for .titlebar (view mode's shell chrome) to unmount instead,
 // which is what actually flips only on entering play. Only once that has
-// happened does waiting on .player-focus-notice mean anything.
+// happened does waiting on the play bar's `data-player-focus` mean anything
+// (#68 replaced the focus notice this used to wait on with that attribute).
 async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
-  await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => page.locator('.play-bar[data-player-focus="true"]').count(), { timeout: 10_000 }).toBe(1);
 }
 
 it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回第 1 頁的起點——換頁、appear、淡入、影片開始播放、音檔開始播放、逐步倒退、跨頁倒退，作者沒有離開過畫面", async () => {
