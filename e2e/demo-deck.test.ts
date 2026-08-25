@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,6 +100,18 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
   }
 }
 
+// Since #72 every element is a `<g>` container wrapping its primitives, and
+// the `id` lives on that container (ADR-0012). `textContent` on a container
+// therefore includes the indentation between its tags, so every text
+// assertion below reads through this trim rather than comparing raw
+// textContent. The alternative — pointing each locator at the inner
+// `<text>` — would stop the assertions from proving that the id resolves to
+// the element at all, which is the thing conversion changed.
+async function textOf(locator: Locator): Promise<string | null> {
+  const text = await locator.textContent();
+  return text === null ? null : text.trim();
+}
+
 // Same reasoning as e2e/player-mode.test.ts: play mode hides elements with
 // CSS opacity, and Playwright's isVisible() ignores opacity, so the check
 // has to read computed opacity itself.
@@ -159,7 +171,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   const playFrame = () => page.frameLocator("iframe.slide-frame");
 
   await expect
-    .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-title")).catch(() => null), { timeout: 30_000 })
     .toBe("驗收用簡報");
 
   await page.locator('.view-btn[data-view="play"]').click();
@@ -168,13 +180,13 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 第 1 頁沒有效果，按一次方向鍵直接換到第 2 頁。
   await page.keyboard.press("ArrowRight");
   await expect
-    .poll(() => playFrame().locator("#el-asset-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-asset-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 2 頁：資產");
 
   // 第 2 頁也沒有效果，再按一次直接換到第 3 頁（效果清單頁）。
   await page.keyboard.press("ArrowRight");
   await expect
-    .poll(() => playFrame().locator("#el-effects-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-effects-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 3 頁：效果清單");
 
   const stepOne = playFrame().locator("#el-step-one");
@@ -198,7 +210,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 第 3 頁走完，再按一次換到第 4 頁（影音頁）。
   await page.keyboard.press("ArrowRight");
   await expect
-    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 4 頁：影音");
   // 換頁是一次 srcdoc 重新載入 (ADR-0010)：runtime 要重新完成 ready 交握
   // 才會套用隱藏，也才會重新掛上鍵盤監聽。
@@ -249,7 +261,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 已經是整份簡報的最後一步：再按一次不動、不當機。
   await page.keyboard.press("ArrowRight");
   await expect
-    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null))
+    .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null))
     .toBe("第 4 頁：影音");
 
   // --- 反向走：issue #46 的驗收條件是這個往前走的鏡像——從第 4 頁最後一步
@@ -300,7 +312,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 4 頁：影音");
   await expectVisible(caption);
   // 退一步的重播不重播媒體（design doc 的既定決策）：影片、音檔的 overlay
@@ -316,7 +328,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-media-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 4 頁：影音");
   await expectVisible(caption);
   await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
@@ -327,7 +339,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-effects-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-effects-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 3 頁：效果清單");
   await waitForPlayerFocus(page);
   const stepOneBack = playFrame().locator("#el-step-one");
@@ -379,7 +391,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-asset-title").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-asset-title")).catch(() => null), { timeout: 30_000 })
     .toBe("第 2 頁：資產");
   await waitForPlayerFocus(page);
 
@@ -387,7 +399,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null), { timeout: 30_000 })
+    .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null), { timeout: 30_000 })
     .toBe("第 1 頁：換頁、即時預覽");
   await waitForPlayerFocus(page);
 
@@ -395,12 +407,12 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
+    .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null))
     .toBe("第 1 頁：換頁、即時預覽");
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
-    .poll(() => playFrame().locator("#el-subtitle").textContent().catch(() => null))
+    .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null))
     .toBe("第 1 頁：換頁、即時預覽");
 
   // 全程沒有任何一則錯誤浮出來，也沒有任何媒體還在播放。
@@ -414,4 +426,104 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
   // 頁，那份 srcdoc 文件連同它的 JS 執行環境整個被換掉了（handle 會直接丟
   // "Execution context was destroyed"），元素本身已不可能還在出聲。「移除但沒有
   // pause」這個缺陷會在上面那次同頁退步就被抓到，那時文件還在。
+});
+
+// --- #72 -----------------------------------------------------------------
+
+/**
+ * AC 7, 把轉檔後的投影片直接丟進瀏覽器打開: no CoMotion, no server, no
+ * injected runtime — just `file://` and the browser's own SVG renderer.
+ * This is the check that the container form is plain, native SVG and not
+ * something only CoMotion knows how to draw.
+ */
+it("轉檔後的投影片用 file:// 直接開，靜態畫面正確：文字、位置、相對路徑的圖片都對", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    const failedRequests: string[] = [];
+    page.on("requestfailed", (request) => failedRequests.push(request.url()));
+    const requestedUrls: string[] = [];
+    page.on("request", (request) => requestedUrls.push(request.url()));
+
+    await page.goto(`file://${path.join(demoDir, "slides/001.svg")}`);
+
+    // The id resolves to the element, and the element carries the text.
+    expect((await page.locator("#el-title").textContent())?.trim()).toBe("驗收用簡報");
+    expect((await page.locator("#el-subtitle").textContent())?.trim()).toBe("第 1 頁：換頁、即時預覽");
+
+    // Geometry: the title is centred horizontally (text-anchor="middle" at
+    // x=640 on a 1280-wide viewBox) and sits above the subtitle (y=330 vs
+    // y=420). Both are read off the rendered box, not off the file.
+    const titleBox = (await page.locator("#el-title").boundingBox())!;
+    const subtitleBox = (await page.locator("#el-subtitle").boundingBox())!;
+    const viewport = page.viewportSize()!;
+    expect(titleBox.x + titleBox.width / 2).toBeCloseTo(viewport.width / 2, 0);
+    expect(titleBox.y).toBeLessThan(subtitleBox.y);
+    expect(titleBox.height).toBeGreaterThan(0);
+
+    // Slide 2's <image href="../assets/photo.svg"> is a relative path with
+    // no <base> to help it here — under file:// the browser has to resolve
+    // it against the slide's own directory and actually fetch it.
+    await page.goto(`file://${path.join(demoDir, "slides/002.svg")}`);
+    await expect.poll(() => requestedUrls.filter((url) => url.endsWith("/assets/photo.svg")).length).toBeGreaterThan(0);
+    expect(failedRequests).toEqual([]);
+    const photoBox = (await page.locator("#el-photo").boundingBox())!;
+    expect(photoBox.width).toBeGreaterThan(0);
+    expect(photoBox.height).toBeGreaterThan(0);
+  } finally {
+    await page.close();
+  }
+});
+
+/**
+ * AC 5, 轉檔後畫面像素級不變 — the direct form of the evidence.
+ *
+ * The five committed baseline screenshots (appearance/stage/grid/play/
+ * selection) already watch `demo/` from outside this unit's write boundary,
+ * which is what makes them honest. This test proves the same property about
+ * conversion itself rather than about one particular deck: it renders a
+ * hand-written BARE slide and its own converted output in the same browser,
+ * at the same viewport, and compares the two PNGs byte for byte. No new
+ * baseline PNG is committed — the two shots are each other's baseline.
+ */
+it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", async () => {
+  const bare =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+    '  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>\n' +
+    '  <text id="el-title" data-comot-name="標題" x="640" y="200" text-anchor="middle" font-size="86" fill="#f4f6f8">轉檔前後</text>\n' +
+    '  <image id="el-photo" href="assets/photo.svg" x="490" y="260" width="300" height="300"/>\n' +
+    '  <line x1="100" y1="620" x2="1180" y2="620" stroke="#c66" stroke-width="6"/>\n' +
+    '  <path d="M100 660 L200 700 L100 700 Z" fill="#9aa7b4"/>\n' +
+    '  <g id="el-icon" data-comot-name="圖示">\n' +
+    '    <circle cx="1100" cy="670" r="30" fill="#c66"/>\n' +
+    '  </g>\n' +
+    "</svg>\n";
+
+  const { normaliseSlideSvg, generateElementId } = await import("@co-motion/core");
+  const converted = normaliseSlideSvg(bare, { generateId: generateElementId }).svg;
+  // Guard against a tautology: if conversion were a no-op, comparing the
+  // two renders would prove nothing at all.
+  expect(converted).not.toBe(bare);
+  expect(converted).toContain("<g ");
+
+  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pixel-"));
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await mkdir(path.join(dir, "assets"), { recursive: true });
+    await copyFile(path.join(demoDir, "assets/photo.svg"), path.join(dir, "assets/photo.svg"));
+    await writeFile(path.join(dir, "bare.svg"), bare, "utf-8");
+    await writeFile(path.join(dir, "converted.svg"), converted, "utf-8");
+
+    await page.goto(`file://${path.join(dir, "bare.svg")}`);
+    await page.evaluate(() => document.fonts.ready);
+    const before = await page.screenshot();
+
+    await page.goto(`file://${path.join(dir, "converted.svg")}`);
+    await page.evaluate(() => document.fonts.ready);
+    const after = await page.screenshot();
+
+    expect(after.equals(before)).toBe(true);
+  } finally {
+    await page.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
