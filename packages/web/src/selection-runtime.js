@@ -120,18 +120,29 @@
     box.style.display = "none";
   }
 
-  // Hit resolution (settled in the dispatch): walk up from the clicked
-  // element to the nearest ancestor carrying an `id` attribute, stopping
-  // at the `<svg>` root or `<body>` without selecting either of those.
+  // Hit resolution: walk up from the clicked element to the `<svg>` root
+  // and return the OUTERMOST ancestor carrying an `id` — not the nearest
+  // one (#72).
+  //
+  // That one change does three things at once, now that a slide's normal
+  // form is one container per element (ADR-0012):
+  //   (a) the `id` lives on the `<g>` rather than on the primitive inside
+  //       it, so clicking the primitive selects its element;
+  //   (b) a group is a container of containers, so clicking a child inside
+  //       a group selects the WHOLE group — PowerPoint's semantics;
+  //   (c) on a slide nobody has converted yet, behaviour is unchanged,
+  //       because there the `id` already sits on the outermost node. Only
+  //       editing commands require compliance; viewing and selecting never do.
   function findSelectable(el) {
-    var node = el;
-    while (node && node !== document.body) {
-      var tag = node.tagName ? node.tagName.toLowerCase() : "";
-      if (tag === "svg") return null;
-      if (node.hasAttribute && node.hasAttribute("id")) return node;
-      node = node.parentElement;
+    var current = el;
+    var outermost = null;
+    while (current && current !== document.body) {
+      var tag = current.tagName ? current.tagName.toLowerCase() : "";
+      if (tag === "svg") break;
+      if (current.hasAttribute && current.hasAttribute("id")) outermost = current;
+      current = current.parentElement;
     }
-    return null;
+    return outermost;
   }
 
   // Registered on `window`, in the capture phase, and as early as

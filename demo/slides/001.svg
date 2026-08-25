@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
-  <text id="el-title" data-comot-name="標題" x="640" y="330" text-anchor="middle" font-size="86" fill="#f4f6f8">驗收用簡報</text>
-  <text id="el-subtitle" data-comot-name="副標" x="640" y="420" text-anchor="middle" font-size="36" fill="#9aa7b4">第 1 頁：換頁、即時預覽</text>
+  <g id="el-VDJP6MD9hs3N">
+    <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
+  </g>
+  <g id="el-title" data-comot-name="標題">
+    <text x="640" y="330" text-anchor="middle" font-size="86" fill="#f4f6f8">驗收用簡報</text>
+  </g>
+  <g id="el-subtitle" data-comot-name="副標">
+    <text x="640" y="420" text-anchor="middle" font-size="36" fill="#9aa7b4">第 1 頁：換頁、即時預覽</text>
+  </g>
 </svg>
