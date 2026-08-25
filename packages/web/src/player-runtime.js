@@ -314,6 +314,24 @@
     if (!data || data.source !== "comot-host") return;
     if (data.command === "focus") {
       window.focus();
+      return;
+    }
+    // #68: the parent forwards an arrow key when the browser focus has
+    // landed outside this iframe, where this document's own keydown
+    // listener never fires. Same advance()/retreat() the key press itself
+    // would have called — the only difference is what the browser grants
+    // us. postMessage does not carry the sender's transient activation
+    // into a sandboxed, non-same-origin frame, so a media effect reached
+    // this way gets its play() refused by the autoplay policy. That is
+    // not silent: playMedia's catch above posts a visible error. The
+    // parent calls focusPlayer() alongside the forward, so this only ever
+    // applies to the first key press after focus was lost.
+    if (data.command === "advance") {
+      advance();
+      return;
+    }
+    if (data.command === "retreat") {
+      retreat();
     }
   });
 

@@ -106,13 +106,14 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
  * shell chrome) to unmount instead, which is the signal that actually flips
  * only on entering play — the point at which canvas.ts hands focus to the
  * player (see canvas.ts's `onWindowMessage` "ready" branch). Only after that
- * does waiting for the `.player-focus-notice` element to be gone mean
- * anything; it is the same signal player-mode.test.ts's own focus test
- * already relies on.
+ * does waiting on the play bar's own `data-player-focus` mean anything.
+ * That attribute replaced the focus notice this helper used to wait on
+ * (#68 removed the notice); it reports the same `playerHasFocus` state,
+ * just without putting it in the author's face.
  */
 async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
-  await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => page.locator('.play-bar[data-player-focus="true"]').count(), { timeout: 10_000 }).toBe(1);
 }
 
 it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放時該位置不是一個洞", async () => {

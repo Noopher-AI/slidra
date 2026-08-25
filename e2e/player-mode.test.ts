@@ -187,58 +187,72 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
   expect(after002).toBe(before002);
 });
 
-it("焦點不在播放器上時，畫面明確說明並提供點回去的方式", async () => {
+it("焦點被搶到播放器外時，方向鍵照樣推進，不必先去把焦點修好（#68）", async () => {
   const page = await browser.newPage();
   await page.goto(server.url);
 
-  await expect
-    .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
-      timeout: 30_000,
-    })
-    .toBe("播放第一頁");
+  const playFrame = () => page.frameLocator("iframe.slide-frame");
+  const fadeText = playFrame().locator("#el-fade-in");
+  const appearText = playFrame().locator("#el-appear-in");
+
+  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
 
   await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
+  await expectHidden(fadeText);
 
-  // Unlike the SVG elements above, this notice is not hidden with opacity
-  // — it is a plain React-conditional element, mounted only while
-  // `playerHasFocus` is false. "Visible"/"hidden" for it means
-  // present/absent in the DOM, so this checks `.count()`, not opacity
-  // (which would read "1" the whole time regardless, since the mounted
-  // element carries no opacity style at all).
-  const notice = page.locator(".player-focus-notice");
+  // Entering play hands focus to the player asynchronously (the runtime
+  // posts "ready" once its listeners are attached, and only then does
+  // canvas.ts call focusPlayer()). Settle that first, or "steal focus"
+  // below races it and the delayed auto-focus undoes the theft.
+  const playBar = page.locator(".play-bar");
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
 
-  // Entering play mode hands focus to the player asynchronously (the
-  // runtime posts "ready" once its own listeners are attached, and only
-  // then does canvas.ts call focusPlayer() — see the ready handler in
-  // canvas.ts). Racing that with "steal focus" below, before it has had a
-  // chance to land, made this test flicker during development: the notice
-  // would show only for an instant and then get hidden again by the
-  // delayed initial auto-focus, independent of anything this test did.
-  // Waiting for that initial settle first — the notice must be *absent*
-  // once play mode has truly taken focus — makes the rest of this test
-  // deterministic.
-  await expect.poll(() => notice.count(), { timeout: 10_000 }).toBe(0);
+  // Move focus out of the player the way a real author gets there: one
+  // press of Tab. Every mouse path back out of the iframe already hands
+  // focus back on its own (measured on #68), so Tab is not a stand-in for
+  // some other trigger — it *is* the trigger, and it is a keyboard one,
+  // which is what made the old "click this notice" answer unusable.
+  await page.keyboard.press("Tab");
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
-  // Steal focus away from the player onto something else in the parent document.
-  await page.locator('button:has-text("離開播放")').focus();
-  await expect.poll(() => notice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+  // The point of #68: the key press still lands. The parent document sees
+  // this keydown (the runtime never does — focus is not in the iframe) and
+  // forwards it, so the step advances anyway.
+  await page.keyboard.press("ArrowRight");
+  await expectVisible(fadeText, 10_000);
 
-  // `window.focus()` only reliably moves focus in response to a *trusted*
-  // user gesture (browsers deliberately ignore it otherwise, the same
-  // anti-focus-stealing rule that blocks unsolicited popups) — a
-  // programmatic `element.click()` is untrusted and was observed, during
-  // this ticket's work, to leave focus exactly where it started. A real
-  // Playwright `locator.click()` is trusted but its actionability wait can
-  // itself get caught in "element was detached, retrying" here, because
-  // the very click this test is making unmounts the notice mid-action —
-  // so this dispatches a real mouse click at the button's last known
-  // position instead, sidestepping the retry loop while still producing a
-  // trusted event.
-  const box = await page.locator(".player-focus-notice button").boundingBox();
-  if (!box) throw new Error("找不到「點回去」按鈕的座標");
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect.poll(() => notice.count(), { timeout: 10_000 }).toBe(0);
+  // …and the forward hands focus back, so the next key press goes the
+  // runtime's own way rather than needing the parent again.
+  await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
+  await page.keyboard.press("ArrowRight");
+  await expectVisible(appearText, 10_000);
+});
+
+it("播放器握著焦點時，一次方向鍵只推進一步——父文件不會跟 runtime 搶著反應（#68）", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+
+  const playFrame = () => page.frameLocator("iframe.slide-frame");
+  const fadeText = playFrame().locator("#el-fade-in");
+  const appearText = playFrame().locator("#el-appear-in");
+
+  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
+
+  await page.locator('.view-btn[data-view="play"]').click();
+  await expect
+    .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+    .toBe("true");
+  await expectHidden(fadeText);
+  await expectHidden(appearText);
+
+  // One press with focus inside the player: the first step runs and the
+  // second must NOT. If the parent-side handler failed to stand down while
+  // the runtime holds focus, both would react and this single press would
+  // eat two steps.
+  await page.keyboard.press("ArrowRight");
+  await expectVisible(fadeText, 10_000);
+  await expectHidden(appearText);
 });
 
 it("story 20：單張投影片檔案直接用瀏覽器打開，所有元素（含只在播放時才出現的）都看得到", async () => {

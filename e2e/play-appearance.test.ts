@@ -121,7 +121,9 @@ async function openApp(deckDir: string, prefix: string): Promise<{ page: Page; c
 async function enterPlay(page: Page): Promise<void> {
   await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
-  await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
+  await expect
+    .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+    .toBe("true");
 }
 
 it("控制列的上一步／下一步換的是投影片本身，不是效果清單的步驟（裁決 3）", async () => {
@@ -274,8 +276,9 @@ it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 cli
     await enterPlay(page);
 
     // 偷走焦點（沿用 e2e/player-fullscreen.test.ts 已驗證過的做法）。
+    const playBar = page.locator(".play-bar");
     await page.locator('button:has-text("離開播放")').focus();
-    await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
     // 在投影片區域中央點一下——這個座標落在 .play-mousemove-catcher 上，
     // 不是原生落進 iframe 的點擊。
@@ -283,14 +286,14 @@ it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 cli
     if (!box) throw new Error("找不到 .canvas-area 的 bounding box");
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 
-    await expect.poll(() => page.locator(".player-focus-notice").count(), { timeout: 10_000 }).toBe(0);
+    await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
   } finally {
     await page.close();
     await cleanup();
   }
 });
 
-it("三種浮動通知（焦點提示／播放錯誤／全螢幕錯誤）在控制列隱去後依然顯示", async () => {
+it("兩種浮動通知（播放錯誤／全螢幕錯誤）並列可見、不互相覆蓋，且在控制列隱去後依然顯示", async () => {
   const { page, cleanup } = await openApp(brokenEffectsDeckDir, "play-appearance-notices");
   try {
     await page.locator('.view-btn[data-view="play"]').click();
@@ -298,13 +301,14 @@ it("三種浮動通知（焦點提示／播放錯誤／全螢幕錯誤）在控�
     // 播放錯誤：這份 deck 第 1 頁的效果清單解析必定失敗（見
     // e2e/player-effect-error.test.ts）。canvas.ts 的解析失敗路徑（見
     // renderPlay 的 catch 分支）把 srcdoc 換成沒有 player-runtime 的靜態
-    // 版本，所以這一頁永遠不會送出 "ready"——focusPlayer() 因此永遠不會
-    // 被呼叫，playerHasFocus 停在初始值 false。焦點提示與播放錯誤兩者因
-    // 此是同一次失敗、同時、真的成立，不需要另外偷焦點。
+    // 版本，所以這一頁永遠不會送出 "ready"。
+    //
+    // #68 撤掉焦點提示之後，這裡只剩兩種通知。焦點提示原本會跟著這次失敗
+    // 一起成立（playerHasFocus 停在 false），但它從來不是這個測項要證明的
+    // 事——要證明的是「通知不隨控制列一起隱去」，兩種通知同樣證得。
     const errorNotice = page.locator(".player-error-notice", { hasText: "效果清單" });
     await expect.poll(() => errorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
-    const focusNotice = page.locator(".player-focus-notice");
-    expect(await focusNotice.count()).toBeGreaterThan(0);
+    expect(await page.locator(".player-focus-notice").count()).toBe(0);
 
     // 全螢幕錯誤：沿用 e2e/player-fullscreen.test.ts 已驗證過的做法——用
     // 一個一定會拒絕的 requestFullscreen 替身製造真實的錯誤（不是假造
@@ -317,15 +321,35 @@ it("三種浮動通知（焦點提示／播放錯誤／全螢幕錯誤）在控�
     const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
     await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
+    // 兩則通知不互相覆蓋（review gate round 1, P2 的反面證據）：先前兩者
+    // 用同一組 position:absolute 疊在同一個位置，後渲染的會蓋住先渲染的，
+    // 而 isVisible() 仍會回報 true（Playwright 的可見性判斷不看 z-order），
+    // 所以要量真實座標矩形是否相交。
+    //
+    // 這條量測原本在 e2e/player-fullscreen.test.ts，用「焦點提示 ＋ 全螢幕
+    // 錯誤」這一組，因為那裡的 fixture 造不出播放錯誤。那一組只共存約 100
+    // 毫秒（焦點一交回去提示就卸載），得靠頁面內逐幀取樣才量得準（issue
+    // #43）。#68 撤掉焦點提示後，量測搬到這裡——這份 broken deck 讓兩則
+    // 通知穩定共存，不再有會關上的窗口，兩次 boundingBox() 讀取之間沒有
+    // 任何東西會卸載，所以逐幀取樣連同它防的那個 race 一起不需要了。
+    const errorBox = await errorNotice.first().boundingBox();
+    const fullscreenBox = await fullscreenErrorNotice.first().boundingBox();
+    if (!errorBox || !fullscreenBox) throw new Error("兩則通知都要有實際大小才量得到重疊");
+    const overlaps =
+      errorBox.x < fullscreenBox.x + fullscreenBox.width &&
+      errorBox.x + errorBox.width > fullscreenBox.x &&
+      errorBox.y < fullscreenBox.y + fullscreenBox.height &&
+      errorBox.y + errorBox.height > fullscreenBox.y;
+    expect(overlaps).toBe(false);
+
     const opacityOf = (locator: ReturnType<Page["locator"]>) =>
       locator.first().evaluate((el) => getComputedStyle(el).opacity);
 
-    // 通知本身不在 .play-bar 裡，閒置隱藏規則只作用在 .play-bar，所以三
+    // 通知本身不在 .play-bar 裡，閒置隱藏規則只作用在 .play-bar，所以兩
     // 種通知在控制列隱去後仍應可見——它們是錯誤，不是 chrome。這裡不再動
     // 滑鼠（上面的 evaluate()/click() 已經是最後的互動），單純等待閒置。
     await page.waitForTimeout(2800);
     await expect.poll(() => opacityOf(page.locator(".play-bar")), { timeout: 5_000 }).toBe("0");
-    expect(await opacityOf(focusNotice)).toBe("1");
     expect(await opacityOf(errorNotice)).toBe("1");
     expect(await opacityOf(fullscreenErrorNotice)).toBe("1");
   } finally {

@@ -48,27 +48,6 @@ button {
   gap: calc(var(--u) * 2);
 }
 
-/* 焦點不在播放器上時的明確說明 — never a silent no-op. */
-.player-focus-notice {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--u) * 2.5);
-  padding: calc(var(--u) * 2) calc(var(--u) * 3.5);
-  border-radius: var(--r);
-  background: var(--s-raised);
-  color: var(--ink);
-  font-size: var(--fs-small);
-}
-
-/* Sits on .player-focus-notice's own --s-raised background above, so once
-   the global button reset removes the UA's ButtonFace (review gate
-   finding 08-25), --accent-hi is legible with no extra background rule
-   needed here. */
-.player-focus-notice button {
-  cursor: pointer;
-  color: var(--accent-hi);
-}
-
 /* No dedicated error-red token exists in the base-shell template — see
    shell.css's live-reload-banner comment for the same call applied here: a
    neutral raised surface plus the notice's own text carries the meaning
