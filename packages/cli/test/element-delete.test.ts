@@ -147,6 +147,46 @@ describe("element delete (#74)", () => {
     expect(after).toContain("el-keep");
   });
 
+  // W2-R12 regression: `packages/web/src/effects.ts` reads effect entries
+  // with a DESCENDANT search (getElementsByTagNameNS), so an entry nested
+  // one level under a wrapper element inside <comot:effects> is a real
+  // entry to the player. Before this fix, `element delete` only looked at
+  // direct children of <comot:effects> and left this entry — a dangling
+  // reference to a deleted element — on disk (clearedEffects: 0).
+  it("AC3: deleting an element clears an effect entry nested inside a wrapper under <comot:effects>", async () => {
+    const { id } = await openFreshPresentation();
+    const slidePath = "slides/001.svg";
+    await seedSlide(
+      id,
+      slidePath,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <comot:effect target="el-flat" family="enter" effect="fade" start="on-click"/>
+      <comot:group>
+        <comot:effect target="el-nested" family="enter" effect="fade" start="on-click"/>
+      </comot:group>
+    </comot:effects>
+  </metadata>
+  <g id="el-flat" transform="translate(0 0)"><rect width="10" height="10"/></g>
+  <g id="el-nested" transform="translate(0 0)"><rect width="10" height="10"/></g>
+</svg>
+`,
+    );
+
+    const result = await registry.dispatch<{ deleted: string[]; clearedEffects: number }>("element delete", {
+      id,
+      slidePath,
+      elementIds: ["el-nested"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.data!.clearedEffects).toBe(1);
+
+    const after = await readSlide(id, slidePath);
+    expect(after).not.toContain('target="el-nested"');
+    expect(after).toContain('target="el-flat"');
+  });
+
   it("an unknown element id leaves the file byte-identical", async () => {
     const { id } = await openFreshPresentation();
     const slidePath = "slides/001.svg";

@@ -110,6 +110,11 @@ export function buildShapeMarkup(elementId: string, input: AddShapeInput): strin
       // (position lives only on the container).
       const dx = input.x2 - input.x1;
       const dy = input.y2 - input.y1;
+      // x1/y1/x2/y2 are individually finite (checked above), but their
+      // differences can still overflow to Infinity — the SVG number
+      // grammar has no token for that, so refuse before writing anything.
+      assertFinite(dx, "線的座標差過大，無法表示為有限數字");
+      assertFinite(dy, "線的座標差過大，無法表示為有限數字");
       return (
         `<g id="${elementId}" transform="translate(${formatSvgNumber(input.x1)} ${formatSvgNumber(input.y1)})">` +
         `<line x1="0" y1="0" x2="${formatSvgNumber(dx)}" y2="${formatSvgNumber(dy)}" ` +
@@ -167,13 +172,52 @@ function splitNamespacedTag(tag: string): { prefix: string | null; local: string
   return { prefix: tag.slice(0, colon), local: tag.slice(colon + 1) };
 }
 
+/** Resolves `node`'s own `xmlns:` declarations on top of `inherited`, returning the merged map. */
+function resolveNamespaces(
+  node: ScannedNode,
+  inherited: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const namespaces = new Map(inherited);
+  for (const attribute of node.attributes) {
+    if (attribute.name.startsWith("xmlns:")) {
+      namespaces.set(attribute.name.slice("xmlns:".length), attribute.value);
+    }
+  }
+  return namespaces;
+}
+
 /**
- * Walks the whole document collecting every `<PREFIX:effect>` node whose
- * `PREFIX` resolves (via inherited `xmlns:PREFIX` declarations) to
- * `EFFECTS_NAMESPACE_URI`, and whose parent similarly resolves as
- * `PREFIX:effects`. The `comot:` prefix is a convention, not a guarantee
- * (same stance `effects.ts` takes) — this resolves it structurally instead
- * of hard-coding the prefix string.
+ * Walks every descendant of an effect list (at any depth, not just direct
+ * children) collecting `<PREFIX:effect>` nodes whose `PREFIX` resolves to
+ * `EFFECTS_NAMESPACE_URI`. `effects.ts`, the other reader of this same list,
+ * uses `getElementsByTagNameNS` — a descendant search — so a wrapper element
+ * (e.g. a grouping node) between `<*:effects>` and `<*:effect>` is still a
+ * real entry to the player; matching only direct children here would leave
+ * such an entry invisible to `element delete` while the player still reads
+ * it, which is exactly the dangling-reference case ADR-0009 exists to rule
+ * out (wave 2 R12).
+ */
+function collectEffectDescendants(
+  nodes: readonly ScannedNode[],
+  inheritedNamespaces: ReadonlyMap<string, string>,
+  into: ScannedNode[],
+): void {
+  for (const node of nodes) {
+    const namespaces = resolveNamespaces(node, inheritedNamespaces);
+    const { prefix, local } = splitNamespacedTag(node.tag);
+    if (local === "effect" && prefix !== null && namespaces.get(prefix) === EFFECTS_NAMESPACE_URI) {
+      into.push(node);
+    }
+    collectEffectDescendants(node.children, namespaces, into);
+  }
+}
+
+/**
+ * Walks the whole document collecting every effect entry that lives under a
+ * `<PREFIX:effects>` node whose `PREFIX` resolves (via inherited
+ * `xmlns:PREFIX` declarations) to `EFFECTS_NAMESPACE_URI`. The `comot:`
+ * prefix is a convention, not a guarantee (same stance `effects.ts` takes)
+ * — this resolves it structurally instead of hard-coding the prefix string.
  */
 function collectEffectEntryNodes(
   nodes: readonly ScannedNode[],
@@ -181,24 +225,10 @@ function collectEffectEntryNodes(
   into: ScannedNode[],
 ): void {
   for (const node of nodes) {
-    const namespaces = new Map(inheritedNamespaces);
-    for (const attribute of node.attributes) {
-      if (attribute.name.startsWith("xmlns:")) {
-        namespaces.set(attribute.name.slice("xmlns:".length), attribute.value);
-      }
-    }
+    const namespaces = resolveNamespaces(node, inheritedNamespaces);
     const { prefix, local } = splitNamespacedTag(node.tag);
     if (local === "effects" && prefix !== null && namespaces.get(prefix) === EFFECTS_NAMESPACE_URI) {
-      for (const child of node.children) {
-        const childTag = splitNamespacedTag(child.tag);
-        if (
-          childTag.local === "effect" &&
-          childTag.prefix !== null &&
-          namespaces.get(childTag.prefix) === EFFECTS_NAMESPACE_URI
-        ) {
-          into.push(child);
-        }
-      }
+      collectEffectDescendants(node.children, namespaces, into);
     }
     collectEffectEntryNodes(node.children, namespaces, into);
   }

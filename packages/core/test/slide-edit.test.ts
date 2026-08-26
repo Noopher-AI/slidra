@@ -70,6 +70,23 @@ describe("buildShapeMarkup", () => {
     ).toThrow();
   });
 
+  // W2-R13 regression: x1/y1/x2/y2 individually pass Number.isFinite, but
+  // opposite maximum-finite endpoints make x2 - x1 overflow to Infinity —
+  // a value the SVG number grammar cannot express and nothing downstream
+  // rejects.
+  it("rejects a line whose endpoints are each finite but whose derived dx/dy overflows to Infinity", () => {
+    expect(() =>
+      buildShapeMarkup("el-line5", {
+        kind: "line",
+        x1: -Number.MAX_VALUE,
+        y1: 0,
+        x2: Number.MAX_VALUE,
+        y2: 0,
+        stroke: "black",
+      }),
+    ).toThrow("有限數字");
+  });
+
   it("the inserted markup, spliced into a viewBox'd svg, is compliant and parses to the requested kind", () => {
     const markup = buildShapeMarkup("el-rect5", { kind: "rect", x: 0, y: 0, width: 10, height: 10 });
     const svg = wrap(`  <g id="el-existing"><rect x="0" y="0" width="1" height="1"/></g>\n  ${markup}`);
@@ -181,5 +198,31 @@ describe("removeElements — clearing effect entries (ADR-0009)", () => {
     const svg = wrap('  <g id="el-a"><rect width="1" height="1"/></g>');
     const result = removeElements(svg, ["el-a"]);
     expect(result.removedEffects).toBe(0);
+  });
+
+  // W2-R12 regression: `effects.ts` (the web player's own reader of this
+  // list) finds `<comot:effect>` via a DESCENDANT search, so an entry
+  // nested one level under a wrapper element is a real entry to the player
+  // even though it is not a direct child of `<comot:effects>`. Before this
+  // fix, `removeElements` only looked at direct children and left such an
+  // entry on disk after its target was deleted — a dangling reference
+  // ADR-0009 says must never be written.
+  it("clears an effect entry nested inside a wrapper element under <comot:effects>, not just direct children", () => {
+    const svg = wrap(
+      '  <metadata>\n' +
+        '    <comot:effects xmlns:comot="https://co-motion.dev/ns">\n' +
+        '      <comot:effect target="el-flat" family="enter" effect="fade" start="on-click"/>\n' +
+        '      <comot:group>\n' +
+        '        <comot:effect target="el-nested" family="enter" effect="fade" start="on-click"/>\n' +
+        '      </comot:group>\n' +
+        '    </comot:effects>\n' +
+        '  </metadata>\n' +
+        '  <g id="el-flat"><rect width="1" height="1"/></g>\n' +
+        '  <g id="el-nested"><rect width="1" height="1"/></g>',
+    );
+    const result = removeElements(svg, ["el-nested"]);
+    expect(result.removedEffects).toBe(1);
+    expect(result.updated).not.toContain('target="el-nested"');
+    expect(result.updated).toContain('target="el-flat"');
   });
 });

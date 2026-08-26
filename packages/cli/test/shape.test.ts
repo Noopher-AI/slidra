@@ -137,6 +137,27 @@ describe("rect add / ellipse add / line add / path add (#74)", () => {
     expect(before).not.toContain('stroke=""');
   });
 
+  // W2-R13 regression: x1/y1/x2/y2 individually pass a finite check, but
+  // opposite maximum-finite endpoints make the derived dx (x2 - x1)
+  // overflow to Infinity — a value the SVG number grammar cannot express.
+  // Refused before anything reaches the file.
+  it("line add refuses endpoints whose derived dx/dy overflows to Infinity, and writes nothing", async () => {
+    const { id } = await openFreshPresentation();
+    const before = await readSlide(id, "slides/001.svg");
+    const result = await registry.dispatch("line add", {
+      id,
+      slidePath: "slides/001.svg",
+      x1: -Number.MAX_VALUE,
+      y1: 0,
+      x2: Number.MAX_VALUE,
+      y2: 0,
+      stroke: "black",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("有限數字");
+    expect(await readSlide(id, "slides/001.svg")).toBe(before);
+  });
+
   it("path add accepts --d verbatim (AC5), and no node-editing command exists in the registry", async () => {
     const { id } = await openFreshPresentation();
     const result = await registry.dispatch<{ elementId: string }>("path add", {
