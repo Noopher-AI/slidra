@@ -7,7 +7,11 @@ build/
 dist/
 
 # Fleet plan records — local working notes, not part of the product
-.fleet/
+# Fleet working files stay out of the repository -- except the environment file.
+# `.fleet/*` rather than `.fleet/`: git never descends into an excluded directory,
+# so a negation under `.fleet/` would never be reached.
+.fleet/*
+!.fleet/environment.md
 
 # macOS
 .DS_Store
