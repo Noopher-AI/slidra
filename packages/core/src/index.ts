@@ -1,4 +1,4 @@
-export { CoMotionError, CoMotionNotFoundError } from "./errors.js";
+export { CoMotionError, CoMotionHistoryCleanupError, CoMotionNotFoundError } from "./errors.js";
 export { generateOpaqueId, generateElementId } from "./id.js";
 export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./presentation.js";
 export type { MinimalPresentationFiles } from "./presentation.js";

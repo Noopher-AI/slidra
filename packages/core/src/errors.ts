@@ -36,3 +36,27 @@ export class CoMotionNotFoundError extends CoMotionError {
     this.name = "CoMotionNotFoundError";
   }
 }
+
+/**
+ * A CoMotionError subtype for the one failure that happens *after* the new
+ * `stack.json` is already durable on disk (#85 W3-R12): committing an undo
+ * group writes the stack first and only then unlinks the snapshot files
+ * nothing references any more, so a failure in that unlink loop means the
+ * commit itself SUCCEEDED and merely leaked an unreferenced snapshot file.
+ *
+ * A multi-file caller (`applyPresentationChanges`) must not compensate in
+ * that case: the persisted stack already references the staged snapshots,
+ * so reverting the files and discarding those snapshots would corrupt undo
+ * permanently while telling the author the change was reverted.
+ *
+ * It carries the same message as the plain failure it replaces, and it is
+ * still a `CoMotionError` that is still thrown, so every single-file path
+ * that does not catch it (`writePresentationFile` and its callers) behaves
+ * exactly as before.
+ */
+export class CoMotionHistoryCleanupError extends CoMotionError {
+  constructor(message: string) {
+    super(message);
+    this.name = "CoMotionHistoryCleanupError";
+  }
+}

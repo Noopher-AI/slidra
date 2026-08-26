@@ -1,4 +1,5 @@
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -68,6 +69,40 @@ async function undoGroupCount(id: string): Promise<number> {
   const raw = await readFile(stackFile, "utf-8");
   const parsed = JSON.parse(raw) as { undo: unknown[] };
   return parsed.undo.length;
+}
+
+/** Absolute paths of every snapshot file the redo stack currently references. */
+async function redoSnapshotPaths(id: string): Promise<string[]> {
+  const stackFile = path.join(coMotionHome, "history", id, "stack.json");
+  const parsed = JSON.parse(await readFile(stackFile, "utf-8")) as {
+    redo: { entries: { snapshotId: string | null }[] }[];
+  };
+  return parsed.redo
+    .flatMap((group) => group.entries)
+    .filter((entry) => entry.snapshotId !== null)
+    .map((entry) => path.join(coMotionHome, "history", id, "snapshots", entry.snapshotId!));
+}
+
+/** Snapshot ids referenced by stack.json whose file is not on disk. */
+async function danglingSnapshotRefs(id: string): Promise<string[]> {
+  const stackFile = path.join(coMotionHome, "history", id, "stack.json");
+  const parsed = JSON.parse(await readFile(stackFile, "utf-8")) as {
+    undo: { entries: { snapshotId: string | null }[] }[];
+    redo: { entries: { snapshotId: string | null }[] }[];
+  };
+  const ids = [...parsed.undo, ...parsed.redo]
+    .flatMap((group) => group.entries)
+    .map((entry) => entry.snapshotId)
+    .filter((snapshotId): snapshotId is string => snapshotId !== null);
+  const missing: string[] = [];
+  for (const snapshotId of ids) {
+    try {
+      await access(path.join(coMotionHome, "history", id, "snapshots", snapshotId));
+    } catch {
+      missing.push(snapshotId);
+    }
+  }
+  return missing;
 }
 
 describe("slide add (#85, AC1/AC5)", () => {
@@ -191,6 +226,64 @@ describe("slide delete (#85, AC1/AC5)", () => {
       // be byte-identical, not "reported failure but deleted the page anyway".
       expect(await readSlide(id, "slides/001.svg")).toBe(beforeSlideBytes);
       expect(await readSlide(id, "project.json")).toBe(beforeProjectJson);
+    },
+  );
+});
+
+describe("slide delete — partial failure naming (#85, W3-R13)", () => {
+  it("names the slide left orphaned on disk when its removal fails after project.json was written", async () => {
+    const { id } = await openFreshPresentation();
+    await registry.dispatch("slide add", { id }); // two slides, so deleting one is legal
+    const workDir = await resolveWorkDir(id);
+    const slidesDir = path.join(workDir, "slides");
+
+    let result;
+    try {
+      // Read-only slides/ — project.json still writes, the unlink fails.
+      await chmod(slidesDir, 0o500);
+      result = await registry.dispatch("slide delete", { id, slidePath: "slides/002.svg" });
+    } finally {
+      await chmod(slidesDir, 0o700);
+    }
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("slides/002.svg");
+    // The orphan really is still there, which is what the message must name.
+    await stat(path.join(slidesDir, "002.svg"));
+  });
+});
+
+describe("slide add — post-persistence history cleanup (#85, W3-R12)", () => {
+  it(
+    "when only the obsolete-snapshot cleanup fails, the commit already landed: the operation " +
+      "reports success, the deck keeps the change, no stack reference dangles, and undo still works",
+    async () => {
+      const { id } = await openFreshPresentation();
+      // Build an obsolete redo group: add, then undo. The next commit must
+      // clear redo and unlink exactly those snapshot files.
+      await registry.dispatch("slide add", { id });
+      await registry.dispatch("undo", { id });
+      const doomedSnapshots = await redoSnapshotPaths(id);
+      expect(doomedSnapshots.length).toBeGreaterThan(0);
+
+      let result;
+      try {
+        // Immutable only on those files, so staging can still write NEW
+        // snapshots and only the cleanup unlink fails.
+        for (const file of doomedSnapshots) execFileSync("chflags", ["uchg", file]);
+        result = await registry.dispatch("slide add", { id });
+      } finally {
+        for (const file of doomedSnapshots) execFileSync("chflags", ["nouchg", file]);
+      }
+
+      expect(result.ok).toBe(true);
+      const project = JSON.parse(await readSlide(id, "project.json"));
+      expect(project.slides).toEqual(["slides/001.svg", "slides/002.svg"]);
+      expect(await danglingSnapshotRefs(id)).toEqual([]);
+
+      const undo = await registry.dispatch("undo", { id });
+      expect(undo.ok).toBe(true);
+      expect(JSON.parse(await readSlide(id, "project.json")).slides).toEqual(["slides/001.svg"]);
     },
   );
 });

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
+import { CoMotionError, CoMotionHistoryCleanupError, CoMotionNotFoundError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { resolveCoMotionHome, resolveWorkDir } from "./workspace.js";
 import { deleteVirtualFile, readVirtualFile, resolveNewVirtualFilePath } from "./virtual-fs.js";
@@ -298,9 +298,18 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
   await writeStack(home, id, stack);
 
   // Only now is the new stack durable, so only now is it safe to delete
-  // the snapshot files nothing on disk references any more.
-  for (const snapshotId of snapshotIdsToDelete) {
-    await deleteSnapshot(home, id, snapshotId);
+  // the snapshot files nothing on disk references any more. Everything
+  // past this line is cleanup of an ALREADY-COMMITTED group, so a failure
+  // here is reported as CoMotionHistoryCleanupError (#85 W3-R12): same
+  // message, still thrown, still a CoMotionError — single-file callers are
+  // unaffected — but a multi-file caller can now tell "the commit landed
+  // and leaked a snapshot file" apart from "the commit never happened".
+  try {
+    for (const snapshotId of snapshotIdsToDelete) {
+      await deleteSnapshot(home, id, snapshotId);
+    }
+  } catch (error) {
+    throw new CoMotionHistoryCleanupError(error instanceof Error ? error.message : "無法刪除復原快照");
   }
 }
 

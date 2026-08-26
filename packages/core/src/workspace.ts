@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
+import { CoMotionError, CoMotionHistoryCleanupError, CoMotionNotFoundError } from "./errors.js";
 import { generateElementId, generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
 import { validateProjectJson } from "./project-json.js";
@@ -370,6 +370,14 @@ export interface PresentationChange {
  * before discarding the staged snapshots and throwing. If the compensation
  * itself fails for some path, that path is named in the thrown error
  * instead of being silently left inconsistent (W3-R7).
+ *
+ * That compensation is only ever correct BEFORE `stack.json` is written
+ * (round-2 gate finding, W3-R12). `commitSnapshotEntries` writes the new
+ * stack durably and only then unlinks obsolete snapshot files, so a
+ * failure in that cleanup means the commit succeeded; it is reported as
+ * `CoMotionHistoryCleanupError` and this function returns normally,
+ * leaving the deck, the undo timeline and the staged snapshots the stack
+ * now references exactly as they are.
  */
 export async function applyPresentationChanges(id: string, changes: PresentationChange[]): Promise<void> {
   const home = resolveCoMotionHome();
@@ -391,8 +399,15 @@ export async function applyPresentationChanges(id: string, changes: Presentation
     } catch {
       await discardSnapshotEntries(id, entries);
       if (appliedPaths.length > 0) {
+        // W3-R13: name the change that FAILED first — that is the file
+        // left behind. For a delete (project.json first, file removal
+        // last) the failing path is the orphan still on disk; for a
+        // create (slide file first, project.json last) the orphan is the
+        // already-applied slide file. Naming both roles covers both
+        // orderings, and neither is ever a real filesystem path
+        // (ADR-0004).
         throw new CoMotionError(
-          `寫入投影片時發生部分失敗，以下項目與 project.json 可能不同步：${appliedPaths.join("、")}`,
+          `寫入投影片時發生部分失敗：${change.virtualPath} 未完成，已變更 ${appliedPaths.join("、")}，磁碟上可能殘留未被引用的檔案`,
         );
       }
       // Only the virtual path is ever named (ADR-0004) — never a real
@@ -404,7 +419,19 @@ export async function applyPresentationChanges(id: string, changes: Presentation
 
   try {
     await commitSnapshotEntries(id, entries);
-  } catch {
+  } catch (error) {
+    // W3-R12: the new stack.json is already durable and only the
+    // obsolete-snapshot cleanup failed. The commit SUCCEEDED — the
+    // persisted stack references the snapshots staged above, so
+    // compensating here would revert a change the history says happened
+    // and discard snapshots the stack still points at, breaking undo for
+    // good. Nothing is left inconsistent for the author: the deck, the
+    // undo timeline and redo all match. The only residue is one
+    // unreferenced snapshot file, which is disk garbage, not a failed
+    // operation — so the operation is reported as the success it is.
+    if (error instanceof CoMotionHistoryCleanupError) {
+      return;
+    }
     const unrestoredPaths: string[] = [];
     // Reverse order: undo the applied changes last-to-first, mirroring how
     // an undo group would replay them.
