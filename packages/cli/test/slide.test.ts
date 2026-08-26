@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -164,6 +164,35 @@ describe("slide delete (#85, AC1/AC5)", () => {
     expect(result.message).toBe("不是投影片：slides/999.svg");
     expect(await readSlide(id, "project.json")).toBe(before);
   });
+
+  it(
+    "round-1 gate finding (W3-R11): when the undo-history commit fails after both files " +
+      "already changed on disk, the deleted slide is restored and project.json is unchanged",
+    async () => {
+      const { id } = await openFreshPresentation();
+      await registry.dispatch("slide add", { id }); // now two slides, so deleting one is legal
+      const beforeProjectJson = await readSlide(id, "project.json");
+      const beforeSlideBytes = await readSlide(id, "slides/001.svg");
+
+      // Force stageSnapshotEntries' history dir to exist (it does, from the
+      // `slide add` above), then make it unwritable so `commitSnapshotEntries`
+      // -> `writeStack` fails exactly the way the gate reproduced it.
+      const historyDir = path.join(coMotionHome, "history", id);
+      await chmod(historyDir, 0o500);
+      try {
+        const result = await registry.dispatch("slide delete", { id, slidePath: "slides/001.svg" });
+        expect(result.ok).toBe(false);
+        expect(result.message).toBe("寫入復原歷史失敗，變更已還原");
+      } finally {
+        await chmod(historyDir, 0o700);
+      }
+
+      // The finding: the slide must still be on disk and project.json must
+      // be byte-identical, not "reported failure but deleted the page anyway".
+      expect(await readSlide(id, "slides/001.svg")).toBe(beforeSlideBytes);
+      expect(await readSlide(id, "project.json")).toBe(beforeProjectJson);
+    },
+  );
 });
 
 describe("slide duplicate (#85, AC3/AC5)", () => {

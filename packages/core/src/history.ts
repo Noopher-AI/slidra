@@ -305,6 +305,19 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
 }
 
 /**
+ * Reads a staged (not-yet-committed) snapshot's content by id (#85
+ * W3-R11): lets `applyPresentationChanges` (workspace.ts) restore a file it
+ * already wrote for real, from the pre-change content `stageSnapshotEntries`
+ * captured, when `commitSnapshotEntries` fails after that write landed.
+ * Must be called before `discardSnapshotEntries`, which deletes this same
+ * snapshot file. No pre-existing single-file path uses this.
+ */
+export async function readSnapshotContent(id: string, snapshotId: string): Promise<string> {
+  const home = resolveCoMotionHome();
+  return readSnapshot(home, id, snapshotId);
+}
+
+/**
  * Deletes snapshot files staged by `stageSnapshotEntries` whose write was
  * never committed — the caller's actual content write failed, so these
  * would otherwise sit on disk unreferenced by any stack (finding 2).

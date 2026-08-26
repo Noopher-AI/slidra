@@ -16,7 +16,7 @@ import {
   resolveVirtualFilePath,
 } from "./virtual-fs.js";
 import { appendElementToSvg, escapeXmlAttr, replaceElementText, resizeTextBox } from "./element-text.js";
-import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
+import { commitSnapshotEntries, discardSnapshotEntries, readSnapshotContent, stageSnapshotEntries } from "./history.js";
 import { ensureBundledFonts, loadFontBook } from "./font/bundle.js";
 import { MEASURED_TEXT_CSS, type FontBook, type TextStyle } from "./font/metrics.js";
 import { wrapText } from "./text/wrap.js";
@@ -358,6 +358,18 @@ export interface PresentationChange {
  * leftover-unreferenced-file case W3-R9 requires to fail loudly, so it
  * throws a distinct error naming exactly which virtual paths were applied
  * before the failure, never a silent partial success.
+ *
+ * A separate failure mode (round-1 gate finding, W3-R11): every change can
+ * apply cleanly to the filesystem and `commitSnapshotEntries` can still
+ * throw (e.g. `stack.json` unwritable) — at that point real files are
+ * already on disk with nothing recorded to undo them. This function
+ * compensates: it restores every applied change from its already-staged
+ * `HistoryEntry`, in reverse order — writing back the pre-change snapshot
+ * content when one exists, or deleting the file when the staged entry's
+ * `snapshotId` is `null` (meaning this change *created* that file) —
+ * before discarding the staged snapshots and throwing. If the compensation
+ * itself fails for some path, that path is named in the thrown error
+ * instead of being silently left inconsistent (W3-R7).
  */
 export async function applyPresentationChanges(id: string, changes: PresentationChange[]): Promise<void> {
   const home = resolveCoMotionHome();
@@ -390,7 +402,35 @@ export async function applyPresentationChanges(id: string, changes: Presentation
     appliedPaths.push(change.virtualPath);
   }
 
-  await commitSnapshotEntries(id, entries);
+  try {
+    await commitSnapshotEntries(id, entries);
+  } catch {
+    const unrestoredPaths: string[] = [];
+    // Reverse order: undo the applied changes last-to-first, mirroring how
+    // an undo group would replay them.
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      try {
+        if (entry.snapshotId === null) {
+          // This change created the file — compensating means removing it.
+          await deleteVirtualFile(workDir, entry.virtualPath);
+        } else {
+          const content = await readSnapshotContent(id, entry.snapshotId);
+          const realPath = await resolveNewVirtualFilePath(workDir, entry.virtualPath);
+          await writeFile(realPath, content, "utf-8");
+        }
+      } catch {
+        unrestoredPaths.push(entry.virtualPath);
+      }
+    }
+    await discardSnapshotEntries(id, entries);
+    if (unrestoredPaths.length > 0) {
+      throw new CoMotionError(
+        `寫入復原歷史失敗，且下列項目無法還原，與 project.json 可能不同步：${unrestoredPaths.join("、")}`,
+      );
+    }
+    throw new CoMotionError("寫入復原歷史失敗，變更已還原");
+  }
 }
 
 /**
