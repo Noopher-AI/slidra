@@ -1,6 +1,6 @@
 # CoMotion
 
-> An AX- and UX-friendly SVG presentation editor for getting your ideas presented, fast.
+> An AX- and UX-friendly SVG presentation editor. From idea to presented, fast.
 
 ## 專案定位
 
