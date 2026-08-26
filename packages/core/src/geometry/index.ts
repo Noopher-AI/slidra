@@ -10,6 +10,7 @@ export {
   invertMatrix,
   decomposeMatrix,
   formatTransform,
+  formatSvgNumber,
 } from "./transform.js";
 export type { Matrix, Point, TransformParts } from "./transform.js";
 export {

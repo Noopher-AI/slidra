@@ -79,6 +79,33 @@ export function parseArgv(argv: string[]): ParsedCommand {
       }
       return { name: "text set", input: { id, slidePath, elementId, newText } };
     }
+    case "textbox": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "textbox add", "presentation-id");
+        const slidePath = requirePositional(args, 1, "textbox add", "slide-path");
+        const x = requireNumberFlag(args, "--x", "textbox add");
+        const y = requireNumberFlag(args, "--y", "textbox add");
+        const width = requireNumberFlag(args, "--width", "textbox add");
+        const text = requireFlag(args, "--text", "textbox add");
+        const fontSize = optionalNumberFlag(args, "--font-size", "textbox add");
+        const fontFamily = optionalFlag(args, "--font-family");
+        return { name: "textbox add", input: { id, slidePath, x, y, width, text, fontSize, fontFamily } };
+      }
+      if (sub === "width") {
+        const id = requirePositional(args, 0, "textbox width", "presentation-id");
+        const slidePath = requirePositional(args, 1, "textbox width", "slide-path");
+        const elementId = requirePositional(args, 2, "textbox width", "element-id");
+        const widthRaw = requirePositional(args, 3, "textbox width", "width");
+        const width = Number(widthRaw);
+        if (!Number.isFinite(width)) {
+          throw new CoMotionError(`命令 textbox width 的 width 不是合法數字：${widthRaw}`);
+        }
+        return { name: "textbox width", input: { id, slidePath, elementId, width } };
+      }
+      throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
+    }
     case "undo": {
       const id = requirePositional(rest, 0, "undo", "presentation-id");
       return { name, input: { id } };
@@ -108,4 +135,47 @@ function requirePositional(rest: string[], index: number, command: string, argNa
 
 function isFlagLike(value: string): boolean {
   return value.startsWith("--");
+}
+
+/** The value following `flag` in `args`, or throws when the flag is absent or has no value. */
+function requireFlag(args: string[], flag: string, command: string): string {
+  const index = args.indexOf(flag);
+  if (index === -1) {
+    throw new CoMotionError(`命令 ${command} 缺少參數：${flag}`);
+  }
+  const value = args[index + 1];
+  if (value === undefined || isFlagLike(value)) {
+    throw new CoMotionError(`${flag} 缺少值`);
+  }
+  return value;
+}
+
+/** Same as `requireFlag`, but returns `undefined` when the flag is simply absent. */
+function optionalFlag(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || isFlagLike(value)) {
+    throw new CoMotionError(`${flag} 缺少值`);
+  }
+  return value;
+}
+
+function requireNumberFlag(args: string[], flag: string, command: string): number {
+  const raw = requireFlag(args, flag, command);
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new CoMotionError(`${flag} 不是合法數字：${raw}`);
+  }
+  return value;
+}
+
+function optionalNumberFlag(args: string[], flag: string, command: string): number | undefined {
+  const raw = optionalFlag(args, flag);
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new CoMotionError(`${flag} 不是合法數字：${raw}`);
+  }
+  return value;
 }

@@ -3,14 +3,17 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
-import { generateOpaqueId } from "./id.js";
-import { buildMinimalPresentation } from "./presentation.js";
+import { generateElementId, generateOpaqueId } from "./id.js";
+import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
-import { assertSlidePathListed, replaceElementText } from "./element-text.js";
+import { appendElementToSvg, escapeXmlAttr, replaceElementText, resizeTextBox } from "./element-text.js";
 import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
 import { ensureBundledFonts, loadFontBook } from "./font/bundle.js";
-import type { FontBook } from "./font/metrics.js";
+import { MEASURED_TEXT_CSS, type FontBook, type TextStyle } from "./font/metrics.js";
+import { wrapText } from "./text/wrap.js";
+import { renderTextBoxContent } from "./text/render.js";
+import { formatSvgNumber } from "./geometry/transform.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -300,6 +303,32 @@ export async function writePresentationFile(id: string, virtualPath: string, con
 }
 
 /**
+ * Confirms `virtualPath` is one of the presentation's declared slides
+ * (listed in `project.json`'s `slides` array). The write path
+ * (`setElementText`, below) calls this before touching the slide file
+ * itself, so an edit aimed at e.g. `project.json` is rejected before any
+ * read/write of it is attempted.
+ *
+ * Moved here from element-text.ts (#76): that module has to stay free of
+ * Node built-ins, transitively, because `packages/core/src/text/` reuses
+ * its `escapeXmlText` and has to load verbatim in a browser. This check
+ * needs the real filesystem (`readVirtualFile`), so it belongs with the
+ * rest of workspace.ts's id-to-workDir resolution instead.
+ */
+async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<void> {
+  const raw = await readVirtualFile(workDir, "project.json");
+  let project: ProjectJson;
+  try {
+    project = JSON.parse(raw) as ProjectJson;
+  } catch {
+    throw new CoMotionError("簡報設定檔已損毀");
+  }
+  if (!Array.isArray(project.slides) || !project.slides.includes(virtualPath)) {
+    throw new CoMotionError(`不是投影片：${virtualPath}`);
+  }
+}
+
+/**
  * Sets the text content of one element on one slide, identified by their
  * virtual identifiers only (ADR-0004). This is the first write path into a
  * presentation's content — see element-text.ts's `replaceElementText` for
@@ -308,6 +337,13 @@ export async function writePresentationFile(id: string, virtualPath: string, con
  * identical. The mutation is a pure function that throws before any write
  * is attempted (bad element id, wrong element kind, illegal XML text), so a
  * failed `text set` never occupies an undo step.
+ *
+ * The font book is loaded on every call, even for a plain `<text>` element
+ * that needs no measurement at all (#76, W1-R6): `replaceElementText` is
+ * synchronous and has no way to fetch a book lazily only when it turns out
+ * to be a text box, and the alternative — an async `replaceElementText`, or
+ * two entry points — was judged uglier than the cost of one extra font
+ * lookup per `text set` call.
  */
 export async function setElementText(
   id: string,
@@ -322,6 +358,94 @@ export async function setElementText(
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = replaceElementText(original, elementId, newText);
+  const fontBook = await readPresentationFontBook(id);
+  const updated = replaceElementText(original, elementId, newText, { fontBook });
   await writePresentationFile(id, slidePath, updated);
+}
+
+export interface AddTextBoxInput {
+  x: number;
+  y: number;
+  /** Box width in user units. Finite, > 0 — `wrapText` enforces this. */
+  width: number;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  fontWeight?: number;
+  fill?: string;
+}
+
+/**
+ * Creates a new text box on a slide: a `<g>` container carrying
+ * `data-comot-text-width`, appended as the last child of `<svg>`, wrapping
+ * a `<text>` whose content is the wrap of `input.text` at `input.width`
+ * baked into `<tspan>`s (#76, AC1/AC2 — `co-motion textbox add`).
+ *
+ * Does NOT call `assertSlideCompliant`: the design doc's brief claimed
+ * every editing command opens with it, but that does not hold for the
+ * existing write path — `setElementText`/`replaceElementText` call no such
+ * check today, and the default slide `buildMinimalPresentation` writes for
+ * a brand-new presentation is itself non-compliant (a bare `<text>`, not
+ * wrapped in a `<g>`). Gating `textbox add` on compliance would make it
+ * impossible to add a text box to a freshly created deck without running
+ * `convert` first — a regression this unit is not introducing. Appending a
+ * new element only needs a well-formed `<svg>` root, which `appendElementToSvg`
+ * (element-text.ts) already requires by finding it via `scanDocument`.
+ *
+ * Ends at `writePresentationFile` like every other write path, so undo is
+ * free.
+ */
+export async function addTextBox(
+  id: string,
+  slidePath: string,
+  input: AddTextBoxInput,
+): Promise<{ elementId: string; lines: number }> {
+  if (!Number.isFinite(input.x) || !Number.isFinite(input.y)) {
+    throw new CoMotionError("文字框的座標必須是有限數字");
+  }
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+
+  const book = await readPresentationFontBook(id);
+  const style: TextStyle = { fontFamily: input.fontFamily, fontSize: input.fontSize, fontWeight: input.fontWeight };
+  const wrapped = wrapText(input.text, { width: input.width, style, book });
+  const content = renderTextBoxContent(wrapped.lines);
+
+  const elementId = generateElementId();
+  const weightAttr = input.fontWeight === undefined ? "" : ` font-weight="${formatSvgNumber(input.fontWeight)}"`;
+  const fillAttr = input.fill === undefined ? "" : ` fill="${escapeXmlAttr(input.fill)}"`;
+  const markup =
+    `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(input.width)}" ` +
+    `transform="translate(${formatSvgNumber(input.x)} ${formatSvgNumber(input.y)})">` +
+    `<text font-family="${escapeXmlAttr(input.fontFamily)}" font-size="${formatSvgNumber(input.fontSize)}"` +
+    `${weightAttr}${fillAttr} xml:space="preserve" style="${MEASURED_TEXT_CSS}">${content}</text></g>`;
+
+  const updated = appendElementToSvg(original, markup);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId, lines: wrapped.lines.length };
+}
+
+/**
+ * Re-wraps a text box's existing content at a new declared width (#76,
+ * AC3's width half — `co-motion textbox width`). The text itself is
+ * unchanged; only `data-comot-text-width` and the baked-in `<tspan>`s move.
+ */
+export async function setTextBoxWidth(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  width: number,
+): Promise<{ lines: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await readPresentationFontBook(id);
+  const { updated, lines } = resizeTextBox(original, elementId, width, fontBook);
+  await writePresentationFile(id, slidePath, updated);
+  return { lines };
 }

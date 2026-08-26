@@ -11,6 +11,7 @@ export {
   FORBIDDEN_TAGS,
   CONTAINER_ATTRIBUTES,
   MAX_CONTAINER_DEPTH,
+  TEXT_WIDTH_ATTRIBUTE,
   checkSlideCompliance,
   assertSlideCompliant,
   parseSlide,

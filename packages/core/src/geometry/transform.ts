@@ -231,8 +231,12 @@ export function decomposeMatrix(m: Matrix): TransformParts {
  * (軍令): on a 1280-unit canvas it is far below one device pixel, and
  * fixing it in one place is what keeps two commands from writing the same
  * position differently.
+ *
+ * Exported (originally private to this file, formerly `formatNumber`) so
+ * #76's text renderer can format `<tspan>` coordinates with the exact same
+ * rounding rule rather than inventing a second one (軍令).
  */
-function formatNumber(value: number): string {
+export function formatSvgNumber(value: number): string {
   const rounded = Number(value.toFixed(4));
   // `-0` and `0` are the same position; only one of them should ever be written.
   return String(rounded === 0 ? 0 : rounded);
@@ -247,13 +251,13 @@ function formatNumber(value: number): string {
  */
 export function formatTransform(parts: TransformParts): string {
   const segments: string[] = [];
-  const tx = formatNumber(parts.translateX);
-  const ty = formatNumber(parts.translateY);
+  const tx = formatSvgNumber(parts.translateX);
+  const ty = formatSvgNumber(parts.translateY);
   if (tx !== "0" || ty !== "0") segments.push(`translate(${tx} ${ty})`);
-  const rotation = formatNumber(parts.rotation);
+  const rotation = formatSvgNumber(parts.rotation);
   if (rotation !== "0") segments.push(`rotate(${rotation})`);
-  const sx = formatNumber(parts.scaleX);
-  const sy = formatNumber(parts.scaleY);
+  const sx = formatSvgNumber(parts.scaleX);
+  const sy = formatSvgNumber(parts.scaleY);
   if (sx !== "1" || sy !== "1") segments.push(`scale(${sx} ${sy})`);
   return segments.join(" ");
 }
