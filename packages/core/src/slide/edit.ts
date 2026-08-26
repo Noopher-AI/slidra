@@ -172,14 +172,28 @@ function splitNamespacedTag(tag: string): { prefix: string | null; local: string
   return { prefix: tag.slice(0, colon), local: tag.slice(colon + 1) };
 }
 
-/** Resolves `node`'s own `xmlns:` declarations on top of `inherited`, returning the merged map. */
+/**
+ * Key `resolveNamespaces` stores the default (unprefixed) `xmlns="…"`
+ * binding under. Not a legal XML prefix itself (prefixes can't be empty),
+ * so it can never collide with a real `xmlns:PREFIX` declaration.
+ */
+const DEFAULT_NAMESPACE_KEY = "";
+
+/**
+ * Resolves `node`'s own `xmlns:PREFIX` and default `xmlns` declarations on
+ * top of `inherited`, returning the merged map. Real XML namespace scoping:
+ * a deeper element may rebind either the default binding or any prefixed
+ * one, and the rebinding applies to that element and its own descendants.
+ */
 function resolveNamespaces(
   node: ScannedNode,
   inherited: ReadonlyMap<string, string>,
 ): Map<string, string> {
   const namespaces = new Map(inherited);
   for (const attribute of node.attributes) {
-    if (attribute.name.startsWith("xmlns:")) {
+    if (attribute.name === "xmlns") {
+      namespaces.set(DEFAULT_NAMESPACE_KEY, attribute.value);
+    } else if (attribute.name.startsWith("xmlns:")) {
       namespaces.set(attribute.name.slice("xmlns:".length), attribute.value);
     }
   }
@@ -187,15 +201,31 @@ function resolveNamespaces(
 }
 
 /**
+ * Resolves a tag's namespace URI the way real XML does: an unprefixed tag
+ * takes the current default `xmlns` binding (which may be absent, or may be
+ * the SVG namespace inherited from `<svg xmlns="…">`), and a prefixed tag
+ * takes its own `xmlns:PREFIX` binding. A `<comot:effect>` and a default-
+ * namespaced `<effect>` are equally real entries to `effects.ts`, which
+ * matches by `getElementsByTagNameNS` — a real namespace match — not by
+ * prefix string.
+ */
+function resolvedNamespace(node: ScannedNode, namespaces: ReadonlyMap<string, string>): string | undefined {
+  const { prefix } = splitNamespacedTag(node.tag);
+  return namespaces.get(prefix ?? DEFAULT_NAMESPACE_KEY);
+}
+
+/**
  * Walks every descendant of an effect list (at any depth, not just direct
- * children) collecting `<PREFIX:effect>` nodes whose `PREFIX` resolves to
- * `EFFECTS_NAMESPACE_URI`. `effects.ts`, the other reader of this same list,
- * uses `getElementsByTagNameNS` — a descendant search — so a wrapper element
- * (e.g. a grouping node) between `<*:effects>` and `<*:effect>` is still a
- * real entry to the player; matching only direct children here would leave
- * such an entry invisible to `element delete` while the player still reads
- * it, which is exactly the dangling-reference case ADR-0009 exists to rule
- * out (wave 2 R12).
+ * children) collecting `<effect>` nodes — prefixed or default-namespaced —
+ * whose resolved namespace is `EFFECTS_NAMESPACE_URI`. `effects.ts`, the
+ * other reader of this same list, uses `getElementsByTagNameNS` — a real
+ * namespace match, descending through the tree — so a wrapper element (e.g.
+ * a grouping node) between `<effects>` and `<effect>` is still a real entry
+ * to the player, and so is one written under a default `xmlns` binding
+ * rather than a `comot:` prefix; matching only direct children, or only
+ * prefixed tags, here would leave such an entry invisible to `element
+ * delete` while the player still reads it — the dangling-reference case
+ * ADR-0009 exists to rule out (wave 2 R12, R14).
  */
 function collectEffectDescendants(
   nodes: readonly ScannedNode[],
@@ -204,8 +234,8 @@ function collectEffectDescendants(
 ): void {
   for (const node of nodes) {
     const namespaces = resolveNamespaces(node, inheritedNamespaces);
-    const { prefix, local } = splitNamespacedTag(node.tag);
-    if (local === "effect" && prefix !== null && namespaces.get(prefix) === EFFECTS_NAMESPACE_URI) {
+    const { local } = splitNamespacedTag(node.tag);
+    if (local === "effect" && resolvedNamespace(node, namespaces) === EFFECTS_NAMESPACE_URI) {
       into.push(node);
     }
     collectEffectDescendants(node.children, namespaces, into);
@@ -213,11 +243,15 @@ function collectEffectDescendants(
 }
 
 /**
- * Walks the whole document collecting every effect entry that lives under a
- * `<PREFIX:effects>` node whose `PREFIX` resolves (via inherited
- * `xmlns:PREFIX` declarations) to `EFFECTS_NAMESPACE_URI`. The `comot:`
- * prefix is a convention, not a guarantee (same stance `effects.ts` takes)
- * — this resolves it structurally instead of hard-coding the prefix string.
+ * Walks the whole document collecting every effect entry that lives under
+ * an `<effects>` node — prefixed or default-namespaced — whose resolved
+ * namespace (via inherited `xmlns:PREFIX` or default `xmlns` declarations)
+ * is `EFFECTS_NAMESPACE_URI`. The `comot:` prefix is a convention, not a
+ * guarantee (same stance `effects.ts` takes) — this resolves it
+ * structurally instead of hard-coding the prefix string, and treats a
+ * default-namespace binding as equally real: an unprefixed `<effects>`
+ * whose default `xmlns` is still the SVG namespace (e.g. inherited from
+ * `<svg xmlns="…">` with no rebinding of its own) is correctly NOT a match.
  */
 function collectEffectEntryNodes(
   nodes: readonly ScannedNode[],
@@ -226,8 +260,8 @@ function collectEffectEntryNodes(
 ): void {
   for (const node of nodes) {
     const namespaces = resolveNamespaces(node, inheritedNamespaces);
-    const { prefix, local } = splitNamespacedTag(node.tag);
-    if (local === "effects" && prefix !== null && namespaces.get(prefix) === EFFECTS_NAMESPACE_URI) {
+    const { local } = splitNamespacedTag(node.tag);
+    if (local === "effects" && resolvedNamespace(node, namespaces) === EFFECTS_NAMESPACE_URI) {
       collectEffectDescendants(node.children, namespaces, into);
     }
     collectEffectEntryNodes(node.children, namespaces, into);

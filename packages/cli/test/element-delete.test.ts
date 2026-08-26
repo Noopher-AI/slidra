@@ -187,6 +187,120 @@ describe("element delete (#74)", () => {
     expect(after).toContain('target="el-flat"');
   });
 
+  // W2-R14 regression: `effects.ts` matches by namespace URI
+  // (getElementsByTagNameNS), which a default `xmlns="…"` binding satisfies
+  // just as well as a prefixed `xmlns:comot="…"` one. Before this fix, core's
+  // hand-rolled resolver only tracked `xmlns:PREFIX` bindings and required a
+  // non-null prefix on the tag itself, so an effect list written with a
+  // default namespace (no `comot:` prefix at all) was invisible to
+  // `element delete` — leaving a dangling `target` reference on disk.
+  it("AC3: deleting an element clears an effect entry written with a default (unprefixed) namespace", async () => {
+    const { id } = await openFreshPresentation();
+    const slidePath = "slides/001.svg";
+    await seedSlide(
+      id,
+      slidePath,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <effects xmlns="https://co-motion.dev/ns">
+      <effect target="el-flat" family="enter" effect="fade" start="on-click"/>
+      <effect target="el-delete" family="enter" effect="fade" start="on-click"/>
+    </effects>
+  </metadata>
+  <g id="el-flat" transform="translate(0 0)"><rect width="10" height="10"/></g>
+  <g id="el-delete" transform="translate(0 0)"><rect width="10" height="10"/></g>
+</svg>
+`,
+    );
+
+    const result = await registry.dispatch<{ deleted: string[]; clearedEffects: number }>("element delete", {
+      id,
+      slidePath,
+      elementIds: ["el-delete"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.data!.clearedEffects).toBe(1);
+
+    const after = await readSlide(id, slidePath);
+    expect(after).not.toContain('target="el-delete"');
+    expect(after).toContain('target="el-flat"');
+  });
+
+  // Same default-namespace binding as above, but the matching entry is
+  // nested one level under a wrapper element — covers the intersection of
+  // W2-R12 (descendant search) and W2-R14 (default namespace) in one list.
+  it("AC3: deleting an element clears a default-namespace effect entry nested inside a wrapper", async () => {
+    const { id } = await openFreshPresentation();
+    const slidePath = "slides/001.svg";
+    await seedSlide(
+      id,
+      slidePath,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <effects xmlns="https://co-motion.dev/ns">
+      <effect target="el-flat" family="enter" effect="fade" start="on-click"/>
+      <group>
+        <effect target="el-nested" family="enter" effect="fade" start="on-click"/>
+      </group>
+    </effects>
+  </metadata>
+  <g id="el-flat" transform="translate(0 0)"><rect width="10" height="10"/></g>
+  <g id="el-nested" transform="translate(0 0)"><rect width="10" height="10"/></g>
+</svg>
+`,
+    );
+
+    const result = await registry.dispatch<{ deleted: string[]; clearedEffects: number }>("element delete", {
+      id,
+      slidePath,
+      elementIds: ["el-nested"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.data!.clearedEffects).toBe(1);
+
+    const after = await readSlide(id, slidePath);
+    expect(after).not.toContain('target="el-nested"');
+    expect(after).toContain('target="el-flat"');
+  });
+
+  // Negative case: an unprefixed <effects> with no xmlns of its own is in
+  // the SVG namespace (inherited from <svg xmlns="…">), NOT the effects
+  // namespace — it must NOT be treated as an effect list. A careless fix for
+  // the default-namespace case (matching any unprefixed "effects" tag,
+  // regardless of resolved namespace) breaks exactly this.
+  it("AC3: an unprefixed <effects> with no xmlns of its own is NOT an effect list", async () => {
+    const { id } = await openFreshPresentation();
+    const slidePath = "slides/001.svg";
+    await seedSlide(
+      id,
+      slidePath,
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <effects>
+      <effect target="el-delete" family="enter" effect="fade" start="on-click"/>
+    </effects>
+  </metadata>
+  <g id="el-delete" transform="translate(0 0)"><rect width="10" height="10"/></g>
+</svg>
+`,
+    );
+
+    const result = await registry.dispatch<{ deleted: string[]; clearedEffects: number }>("element delete", {
+      id,
+      slidePath,
+      elementIds: ["el-delete"],
+    });
+    expect(result.ok).toBe(true);
+    // Not an effects namespace list, so nothing is cleared — but the
+    // element itself is still removed. The stray SVG-namespace <effect>
+    // markup is left untouched (harmless: the player never reads it, since
+    // it too resolves to the SVG namespace, not the effects one).
+    expect(result.data!.clearedEffects).toBe(0);
+
+    const after = await readSlide(id, slidePath);
+    expect(after).toContain('target="el-delete"');
+  });
+
   it("an unknown element id leaves the file byte-identical", async () => {
     const { id } = await openFreshPresentation();
     const slidePath = "slides/001.svg";

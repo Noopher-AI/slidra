@@ -225,4 +225,67 @@ describe("removeElements — clearing effect entries (ADR-0009)", () => {
     expect(result.updated).not.toContain('target="el-nested"');
     expect(result.updated).toContain('target="el-flat"');
   });
+
+  // W2-R14 regression: `effects.ts` matches by namespace URI
+  // (getElementsByTagNameNS), which a default `xmlns="…"` binding satisfies
+  // just as well as a prefixed `xmlns:comot="…"` one. Before this fix,
+  // `removeElements` only tracked `xmlns:PREFIX` bindings and required a
+  // non-null prefix on the tag, so a default-namespace effect list was
+  // invisible to it — leaving a dangling target reference on disk.
+  it("clears an effect entry written with a default (unprefixed) namespace", () => {
+    const svg = wrap(
+      '  <metadata>\n' +
+        '    <effects xmlns="https://co-motion.dev/ns">\n' +
+        '      <effect target="el-flat" family="enter" effect="fade" start="on-click"/>\n' +
+        '      <effect target="el-delete" family="enter" effect="fade" start="on-click"/>\n' +
+        '    </effects>\n' +
+        '  </metadata>\n' +
+        '  <g id="el-flat"><rect width="1" height="1"/></g>\n' +
+        '  <g id="el-delete"><rect width="1" height="1"/></g>',
+    );
+    const result = removeElements(svg, ["el-delete"]);
+    expect(result.removedEffects).toBe(1);
+    expect(result.updated).not.toContain('target="el-delete"');
+    expect(result.updated).toContain('target="el-flat"');
+  });
+
+  // Same default-namespace binding as above, combined with W2-R12's
+  // descendant-wrapper case in one list.
+  it("clears a default-namespace effect entry nested inside a wrapper element", () => {
+    const svg = wrap(
+      '  <metadata>\n' +
+        '    <effects xmlns="https://co-motion.dev/ns">\n' +
+        '      <effect target="el-flat" family="enter" effect="fade" start="on-click"/>\n' +
+        '      <group>\n' +
+        '        <effect target="el-nested" family="enter" effect="fade" start="on-click"/>\n' +
+        '      </group>\n' +
+        '    </effects>\n' +
+        '  </metadata>\n' +
+        '  <g id="el-flat"><rect width="1" height="1"/></g>\n' +
+        '  <g id="el-nested"><rect width="1" height="1"/></g>',
+    );
+    const result = removeElements(svg, ["el-nested"]);
+    expect(result.removedEffects).toBe(1);
+    expect(result.updated).not.toContain('target="el-nested"');
+    expect(result.updated).toContain('target="el-flat"');
+  });
+
+  // Negative case: an unprefixed <effects> with no xmlns of its own resolves
+  // to the inherited SVG namespace (from <svg xmlns="…">), not the effects
+  // namespace, so it must NOT be treated as an effect list. A fix that
+  // matches any unprefixed "effects" tag regardless of resolved namespace
+  // breaks exactly this.
+  it("does not treat an unprefixed <effects> with no xmlns of its own as an effect list", () => {
+    const svg = wrap(
+      '  <metadata>\n' +
+        '    <effects>\n' +
+        '      <effect target="el-delete" family="enter" effect="fade" start="on-click"/>\n' +
+        '    </effects>\n' +
+        '  </metadata>\n' +
+        '  <g id="el-delete"><rect width="1" height="1"/></g>',
+    );
+    const result = removeElements(svg, ["el-delete"]);
+    expect(result.removedEffects).toBe(0);
+    expect(result.updated).toContain('target="el-delete"');
+  });
 });
