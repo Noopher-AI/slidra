@@ -41,6 +41,14 @@
   觀察者：#76 戰役 comotion-w1-textbox 2026-08-26（`e2e/text-wrap.test.ts` 第一次跑
   6/8 測試都是這個 ReferenceError，換成 `new Function` 寫法後全線變綠）。
 
+- **`fleet-mutation-check.sh` 開的臨時 worktree 也沒有 `node_modules`**，於是 `npm test` 直接
+  `sh: vitest: command not found`，腳本判為「單元本來就不綠」exit 2，**一個字都沒驗到**。
+  **對策**：`--test` 字串前面自己補一次安裝，例如
+  `--test 'npm install --no-audit --no-fund >/dev/null 2>&1; npm test -- <files>'`。
+  不要改成 symlink 主 worktree 的 `node_modules`：npm workspaces 會把 `@co-motion/*` 連回
+  **那一份** worktree 的 `packages/`，於是變異檢查會去測沒被回退的程式碼，永遠是綠的。
+  觀察者：波2 2026-08-26 10:15。
+
 ## 這台機器
 
 - 專案根：`/Users/yi-changchen/Workspace/co-motion`。worktree 一律放同層兄弟目錄
