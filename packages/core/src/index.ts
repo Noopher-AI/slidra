@@ -17,6 +17,8 @@ export {
   writePresentationFile,
   addTextBox,
   setTextBoxWidth,
+  addShape,
+  deleteElements,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
 export { packDirectory } from "./container.js";

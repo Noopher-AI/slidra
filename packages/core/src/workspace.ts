@@ -14,6 +14,12 @@ import { MEASURED_TEXT_CSS, type FontBook, type TextStyle } from "./font/metrics
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import { formatSvgNumber } from "./geometry/transform.js";
+import {
+  assertPositiveAfterRounding,
+  buildShapeMarkup,
+  removeElements,
+  type AddShapeInput,
+} from "./slide/edit.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -376,26 +382,6 @@ export interface AddTextBoxInput {
 }
 
 /**
- * Rounds `value` through the same 4-decimal rule the SVG write path uses
- * (`formatSvgNumber`) and rejects it if that rounding collapses a positive
- * input to zero (or below). `wrapText`/`assertFontSize` already reject
- * `value <= 0` outright; this catches the narrower case they cannot see —
- * a value that is positive on input but would be silently persisted as `0`,
- * producing a text box the write path itself can create but the edit path
- * (`readTextStyle`, `resizeTextBox`) then rejects (#76 finding, W1-R11).
- * Returns the rounded value so callers wrap against exactly what gets
- * written, keeping the declared width/size and the baked tspans in
- * agreement.
- */
-function assertPositiveAfterRounding(value: number, message: string): number {
-  const rounded = Number(formatSvgNumber(value));
-  if (!(rounded > 0)) {
-    throw new CoMotionError(message);
-  }
-  return rounded;
-}
-
-/**
  * Creates a new text box on a slide: a `<g>` container carrying
  * `data-comot-text-width`, appended as the last child of `<svg>`, wrapping
  * a `<text>` whose content is the wrap of `input.text` at `input.width`
@@ -476,4 +462,70 @@ export async function setTextBoxWidth(
   const { updated, lines } = resizeTextBox(original, elementId, width, fontBook);
   await writePresentationFile(id, slidePath, updated);
   return { lines };
+}
+
+export type { AddShapeInput };
+
+/**
+ * Creates a new primitive shape on a slide (#74, `rect add` / `ellipse add`
+ * / `line add` / `path add`): a `<g>` container carrying the id and
+ * position, wrapping the requested primitive, appended as the last child of
+ * `<svg>` — last child means topmost in paint order (wave 2 R8). Follows
+ * `addTextBox`'s shape exactly: `buildShapeMarkup` validates and builds the
+ * markup BEFORE any disk access, so a bad input never touches the
+ * filesystem at all; `appendElementToSvg` splices it in without
+ * re-serializing the document; `writePresentationFile` ends the write so
+ * undo is free.
+ *
+ * Does NOT call `assertSlideCompliant`, for the same reason `addTextBox`
+ * does not (see that function's doc comment): no editing command in this
+ * codebase gates on it today, and `buildMinimalPresentation`'s own slide 2
+ * is non-compliant by construction, so such a gate would make a freshly
+ * created deck impossible to add a shape to.
+ */
+export async function addShape(
+  id: string,
+  slidePath: string,
+  input: AddShapeInput,
+): Promise<{ elementId: string }> {
+  const elementId = generateElementId();
+  const markup = buildShapeMarkup(elementId, input);
+
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+
+  const updated = appendElementToSvg(original, markup);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+/**
+ * Deletes one or more elements from a slide in a single write (#74,
+ * `element delete`): `removeElements` (slide/edit.ts) locates every
+ * requested id, removes each subtree along with every effect entry
+ * targeting it or one of its descendants, and throws before any splice if
+ * an id is missing or a delete would empty a parent group. Exactly one
+ * `writePresentationFile` call, however many ids are named — one file write
+ * is one undo snapshot entry is one undo group (history.ts), so N elements
+ * deleted together cost exactly one `undo` press. No `beginHistoryGroup` is
+ * used or needed (issue #91 will wrap an agent's turn in one, and that call
+ * throws on nesting).
+ */
+export async function deleteElements(
+  id: string,
+  slidePath: string,
+  elementIds: readonly string[],
+): Promise<{ deleted: string[]; clearedEffects: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+
+  const { updated, removedIds, removedEffects } = removeElements(original, elementIds);
+  await writePresentationFile(id, slidePath, updated);
+  return { deleted: removedIds, clearedEffects: removedEffects };
 }

@@ -26,3 +26,5 @@ export type {
 } from "./format.js";
 export { normaliseSlideSvg } from "./normalise.js";
 export type { NormaliseOptions, NormaliseResult } from "./normalise.js";
+export { buildShapeMarkup, removeElements } from "./edit.js";
+export type { AddShapeInput, RemoveElementsResult } from "./edit.js";

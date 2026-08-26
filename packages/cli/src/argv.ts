@@ -106,6 +106,88 @@ export function parseArgv(argv: string[]): ParsedCommand {
       }
       throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
     }
+    case "rect": {
+      const sub = rest[0];
+      if (sub !== "add") {
+        throw new CoMotionError(`未知的子命令：rect ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "rect add", "presentation-id");
+      const slidePath = requirePositional(args, 1, "rect add", "slide-path");
+      const x = requireNumberFlag(args, "--x", "rect add");
+      const y = requireNumberFlag(args, "--y", "rect add");
+      const width = requireNumberFlag(args, "--width", "rect add");
+      const height = requireNumberFlag(args, "--height", "rect add");
+      const fill = optionalFlag(args, "--fill");
+      return { name: "rect add", input: { id, slidePath, x, y, width, height, fill } };
+    }
+    case "ellipse": {
+      const sub = rest[0];
+      if (sub !== "add") {
+        throw new CoMotionError(`未知的子命令：ellipse ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "ellipse add", "presentation-id");
+      const slidePath = requirePositional(args, 1, "ellipse add", "slide-path");
+      const x = requireNumberFlag(args, "--x", "ellipse add");
+      const y = requireNumberFlag(args, "--y", "ellipse add");
+      const rx = requireNumberFlag(args, "--rx", "ellipse add");
+      const ry = requireNumberFlag(args, "--ry", "ellipse add");
+      const fill = optionalFlag(args, "--fill");
+      return { name: "ellipse add", input: { id, slidePath, x, y, rx, ry, fill } };
+    }
+    case "line": {
+      const sub = rest[0];
+      if (sub !== "add") {
+        throw new CoMotionError(`未知的子命令：line ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "line add", "presentation-id");
+      const slidePath = requirePositional(args, 1, "line add", "slide-path");
+      const x1 = requireNumberFlag(args, "--x1", "line add");
+      const y1 = requireNumberFlag(args, "--y1", "line add");
+      const x2 = requireNumberFlag(args, "--x2", "line add");
+      const y2 = requireNumberFlag(args, "--y2", "line add");
+      // --stroke is required (wave 2 R4): SVG has no default stroke colour,
+      // and an un-stroked line renders nothing.
+      const stroke = requireFlag(args, "--stroke", "line add");
+      const strokeWidth = optionalNumberFlag(args, "--stroke-width", "line add");
+      return { name: "line add", input: { id, slidePath, x1, y1, x2, y2, stroke, strokeWidth } };
+    }
+    case "path": {
+      const sub = rest[0];
+      if (sub !== "add") {
+        throw new CoMotionError(`未知的子命令：path ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "path add", "presentation-id");
+      const slidePath = requirePositional(args, 1, "path add", "slide-path");
+      const x = requireNumberFlag(args, "--x", "path add");
+      const y = requireNumberFlag(args, "--y", "path add");
+      const d = requireFlag(args, "--d", "path add");
+      const fill = optionalFlag(args, "--fill");
+      const stroke = optionalFlag(args, "--stroke");
+      const strokeWidth = optionalNumberFlag(args, "--stroke-width", "path add");
+      return { name: "path add", input: { id, slidePath, x, y, d, fill, stroke, strokeWidth } };
+    }
+    case "element": {
+      const sub = rest[0];
+      if (sub !== "delete") {
+        throw new CoMotionError(`未知的子命令：element ${sub ?? ""}`);
+      }
+      const args = rest.slice(1);
+      const id = requirePositional(args, 0, "element delete", "presentation-id");
+      const slidePath = requirePositional(args, 1, "element delete", "slide-path");
+      // Trailing variadic positionals: every remaining argument is an
+      // element id. requirePositional's flag-like guard applies to each one
+      // individually so `element delete <id> <path> --foo` reports a
+      // missing element-id instead of accepting "--foo" as one.
+      const elementIds = args.slice(2);
+      if (elementIds.length === 0 || elementIds.some((value) => isFlagLike(value))) {
+        throw new CoMotionError("命令 element delete 缺少參數：element-id");
+      }
+      return { name: "element delete", input: { id, slidePath, elementIds } };
+    }
     case "undo": {
       const id = requirePositional(rest, 0, "undo", "presentation-id");
       return { name, input: { id } };
