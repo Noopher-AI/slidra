@@ -103,3 +103,75 @@ so expect exit 6 / set CODEX_REVIEW_SANDBOX=workspace-write (needs --adversarial
 `CODEX_REVIEW_SANDBOX=workspace-write /path/to/fleet-codex-review.sh --adversarial --must-execute ...`。
 好消息：exit 6 的回合**不算消耗回合上限**，腳本明講「fix why it could not run and re-run the SAME round」。
 觀察者：波1-fix 2026-08-25 22:5x（`geometry-fix` round 3 第一次嘗試，exit 6，payload 仍寫出但 execution 為 NONE）。
+
+## 派工檔案送不到執行者手上
+
+- **`.fleet/briefs/**` 永遠不會出現在執行者的 worktree**，`.fleet/environment.md` 也只在
+  「該 worktree 的 base commit 之後才被 commit」時才在。根目錄 `.gitignore` 第 13–14 行是
+  `.fleet/*` 加 `!.fleet/environment.md`：**briefs 整個被忽略**，所以它只活在主 checkout 的
+  工作目錄裡，`git worktree add` 不會帶過去；而 `environment.md` 雖然是追蹤檔，卻是在
+  `fef5ba7`（main）才進版控的，任何從 `fef5ba7` 之前的 commit 長出來的分支（本戰役的
+  `fleet/70-*` 全系列都是）checkout 出來就是**沒有這個檔**。
+  **後果**：派工單裡寫「先讀 `.fleet/briefs/<...>.w<N>.md` 和 `.fleet/environment.md`」的執行者，
+  兩個都讀不到，於是它**完全沒學到本檔記的任何陷阱**，而且它「附加到環境檔」的內容會寫進
+  worktree 裡一個新建的同名檔案，隨 worktree 一起消失——沒有人會再讀到。
+  **對策**（波指揮官的責任，派出前做）：(a) 把 brief／rulings／owns 以**主 checkout 的絕對路徑**
+  寫進派工單，或直接 `cp` 進該 worktree；(b) 派工單裡把環境陷阱**內嵌**，不要只給路徑；
+  (c) 執行者交回後，把它回報的環境發現**由波指揮官自己**附加到主 checkout 的本檔。
+  同理，`fleet-codex-review.sh --spec/--rulings` 一律給主 checkout 的絕對路徑。
+  觀察者：波3 2026-08-26 13:3x（執行者 `70-b5w1-slide-ops` 的止步點第 4 條；
+  `git check-ignore`、`git ls-tree ec42b01 -- .fleet` 與 worktree 內實測三者一致）。
+
+## worktree 會在你還在用的時候被回收
+
+- **磁碟一滿，worktree 就可能被人為刪掉**，而且是在波指揮官還在跑驗證、gate 還在讀工作樹的時候。
+  2026-08-26 波3 實際發生：`co-motion__worktree__70-b5w1-slide-ops` 在 gate round 1 進行中被刪除。
+  **commit 沒事**——分支 ref 活在主 repo 的 `.git`，不在 worktree 裡；被刪的只是工作目錄。
+  **復原步驟**：`git worktree prune`（git 多半已自動察覺）→ 確認 `git log -1 <branch>` 還在 →
+  **`git worktree add <sibling-path> <existing-branch>`**（注意：**不能用 `fleet-worktree.sh`**，
+  它對已存在的分支會 `refusing: branch already exists`，它只管開新分支）→ `npm install` →
+  重跑一次驗證。
+- **`fleet-codex-review.sh` 讀的是工作樹**，所以每一輪 gate（含補審）都需要該 worktree 存在。
+  工作樹不見時該輪回 **exit 4（precondition failed，什麼都沒審）**，而 **exit 4 不消耗回合上限**，
+  重跑同一輪即可——不要把它當成一輪用掉。
+- 推論：長時間的波，把執行者的 commit **推上 remote** 就不再怕本地目錄被回收。
+  觀察者：波3 2026-08-26 13:4x。
+
+## 刪掉 worktree 會讓該單元的 gate 永久壞掉（broker 孤兒）
+
+- `fleet-codex-review.sh` → `codex-companion.mjs` **不是每次都新開 codex**，而是重用一個
+  **長駐的 `app-server-broker.mjs` daemon，以 worktree 路徑為鍵**
+  （`ps aux | grep app-server-broker.mjs` 看得到一整排，每個帶 `--cwd <worktree>`）。
+- **一旦該 worktree 被刪除再重建，那個 daemon 的 cwd 就吊在「已刪除的舊 inode」上**，
+  之後每一輪 gate 都會以
+  `failed to load configuration: No such file or directory (os error 2)` → **exit 4** 收場，
+  payload 0 bytes、什麼都沒審。**這是決定性的，不是暫時性的**：重跑幾次都一樣壞。
+  誤判成「暫時性、再試一次」會白白燒掉兩輪與大量時間（波3 就是這樣燒掉兩次）。
+- **判定方法**（不要用路徑字串比對，重建後路徑字串一模一樣，要比 inode）：
+  ```
+  ps aux | grep app-server-broker.mjs | grep <unit>      # 取 pid
+  lsof -a -p <pid> -d cwd -Fin                            # i<inode> 是 daemon 抓著的
+  stat -f "inode=%i" <worktree>                           # 現在這個目錄的
+  ```
+  兩個 inode 不同 → 就是它。
+- **修法**：`kill <broker-pid>`，確認 `ps aux | grep app-server-broker.mjs | grep <unit>` 沒有殘留，
+  companion 下次就會用新目錄開一個新的。**exit 4 不消耗回合上限**，修好後重跑同一輪即可。
+- **預防**：gate 還有回合要跑時不要刪該 worktree；真的刪了，**先殺 broker 再重跑**。
+  觀察者：波3 2026-08-26 14:0x（round 2 連兩次 exit 4；以 PATH shim 逐一攔截 codex 呼叫排除
+  `codex --version`／`app-server --help`／兩個 codex binary 皆正常後，才在 broker 上找到 inode 不符：
+  daemon `168278364` vs 現地 `168554863`，pid 61779，殺掉後解決）。
+
+## `fleet-wave-dispatch.sh` 產出的 brief 可能比派工單內嵌的正文短
+
+- 2026-08-26 波4 實測：`.fleet/briefs/<plan>.w4.brief.md` 磁碟上只有 80 行、內容**停在 R3**，
+  而同一份 brief 在 `.w4.dispatch.md` 的 §3 內嵌正文是完整的（R1–R8＋§2–§8 裁決，290 行）。
+  派工單的 lint（exit 0、no unfilled slots）**不會抓到這件事**——它檢查的是 slot，不是兩份的一致性。
+- **後果**：`--spec` 指向那份短檔就等於拿一份缺了一半、且不含任何裁決的 brief 去開輪，
+  reviewer 會對著已經不適用的規則產出 finding，而它們讀起來像真的。
+- **對策**（開輪前做）：`wc -l` 比對 brief 與派工單 §3 內嵌段落；不一致就以**派工單內嵌正文為準**重建 brief
+  （`sed -n '<start>,<end>p' <dispatch> | sed 's/^###### /### /' … > <brief>`），舊檔留 `.bak`。
+- **`--rulings` 的檔案格式是機器格式，不是散文**：
+  `<id> <ISO-8601-UTC> amends=<ac-label|none> <一行文字>`。指揮官手寫的散文裁決檔會被
+  `fleet-rulings.sh` 判 `malformed ruling line`。要自己轉寫，且 **id 必須在 brief 裡逐字出現**、
+  **brief 的 mtime 必須比最新裁決新**（所以先重建 brief、再寫 rulings，順序反了就 check 失敗）。
+  觀察者：波4 2026-08-26 14:31。
