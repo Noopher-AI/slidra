@@ -164,6 +164,96 @@ describe("textbox add / textbox width / text set / undo (#76)", () => {
     expect(after.tspans.map((t) => t.text).join("")).toBe(newText);
   });
 
+  it("textbox add rejects a width that is positive but rounds to zero, instead of persisting an unrewrappable text box (#76 fix)", async () => {
+    const { id } = await openFreshPresentation();
+
+    const result = await registry.dispatch("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 10,
+      y: 10,
+      width: 0.00004, // rounds to 0 under formatSvgNumber's 4-decimal rule
+      text: "abc",
+      fontSize: 40,
+      fontFamily: "Noto Sans TC",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("寬度");
+    // Nothing was written: the slide is unchanged.
+    const svg = await readSlide(id);
+    expect(svg).not.toContain("data-comot-text-width");
+  });
+
+  it("textbox add rejects a font-size that is positive but rounds to zero, instead of writing invisible text (#76 fix)", async () => {
+    const { id } = await openFreshPresentation();
+
+    const result = await registry.dispatch("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 10,
+      y: 10,
+      width: 400,
+      text: "abc",
+      fontSize: 0.00004, // rounds to 0 under formatSvgNumber's 4-decimal rule
+      fontFamily: "Noto Sans TC",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("font-size");
+    const svg = await readSlide(id);
+    expect(svg).not.toContain("data-comot-text-width");
+  });
+
+  it("textbox width rejects a width that is positive but rounds to zero, leaving the box untouched (#76 fix)", async () => {
+    const { id } = await openFreshPresentation();
+    const added = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440,
+      text: SAMPLE,
+      fontSize: 40,
+      fontFamily: "Noto Sans TC",
+    });
+    const elementId = added.data!.elementId;
+    const before = await readSlide(id);
+
+    const result = await registry.dispatch("textbox width", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId,
+      width: 0.00004,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("寬度");
+    expect(await readSlide(id)).toBe(before);
+  });
+
+  it("textbox add wraps against the width it actually declares, not the un-rounded input (#76 fix)", async () => {
+    const { id } = await openFreshPresentation();
+
+    const result = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440.00007, // rounds to 440.0001 under formatSvgNumber
+      text: SAMPLE,
+      fontSize: 40,
+      fontFamily: "Noto Sans TC",
+    });
+    expect(result.ok).toBe(true);
+    const elementId = result.data!.elementId;
+
+    const svg = await readSlide(id);
+    const box = extractTextBox(svg, elementId);
+    // The declared width is the rounded value: no digit beyond 4 decimals.
+    expect(box.width).toBe("440.0001");
+  });
+
   it("undo after textbox add, textbox width and text set each restores the previous SVG byte for byte", async () => {
     const { id, originalSlide } = await openFreshPresentation();
 
