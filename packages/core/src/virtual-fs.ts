@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, rm } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
@@ -188,5 +188,75 @@ export async function readVirtualFileBytes(workDir: string, virtualPath: string)
   } catch {
     // node.realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`讀取檔案時發生錯誤：${virtualPath}`);
+  }
+}
+
+const VIRTUAL_FILE_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Resolves `virtualPath` to the real filesystem path it WOULD occupy, for
+ * a caller about to create it (#85: `slide add` / `slide duplicate`, and
+ * `history.ts`'s `applyGroup` recreating a file an undo brings back). This
+ * is the only place a caller-supplied path *segment* (the final one) is
+ * ever joined onto a real directory path rather than looked up in the
+ * discovered tree — so it keeps ADR-0004's third layer intact by doing the
+ * two things discovery-based lookup can't do on its own for a path that
+ * doesn't exist yet:
+ *
+ *  1. The parent directory must still be resolved through the existing
+ *     discovery-based tree (`buildVirtualTree`/`navigate`) — it has to be a
+ *     real, previously-discovered directory, never invented from thin air.
+ *  2. The final segment — the only part of the path that is genuinely new —
+ *     is validated against `/^[A-Za-z0-9._-]+$/` and explicitly rejects
+ *     `.` and `..` (which the character class alone would not exclude),
+ *     so it can never smuggle a path separator or a traversal step into
+ *     the join.
+ */
+export async function resolveNewVirtualFilePath(workDir: string, virtualPath: string): Promise<string> {
+  const segments = splitVirtualPath(virtualPath);
+  const finalSegment = segments[segments.length - 1];
+  if (!finalSegment) {
+    throw new CoMotionError(`不合法的路徑：${virtualPath}`);
+  }
+  if (finalSegment === "." || finalSegment === ".." || !VIRTUAL_FILE_SEGMENT_PATTERN.test(finalSegment)) {
+    throw new CoMotionError(`不合法的檔案名稱：${finalSegment}`);
+  }
+  const parentSegments = segments.slice(0, -1);
+  const root = await buildVirtualTree(workDir);
+  const parentNode = navigate(root, parentSegments);
+  if (!parentNode || parentNode.type !== "directory") {
+    throw new CoMotionNotFoundError(`找不到目錄：${parentSegments.join("/") || "/"}`);
+  }
+  // Every segment in parentSegments was discovered by directory walking
+  // (populate() builds each child's realPath as path.join(realDir,
+  // entry.name)), so re-joining the same segments onto workDir reproduces
+  // exactly the real directory populate() would have walked into.
+  return path.join(workDir, ...parentSegments, finalSegment);
+}
+
+/**
+ * Deletes the file at `virtualPath`, built on `resolveVirtualFilePath`'s
+ * discovery-based lookup. Idempotent by design (#85, deleting an already-
+ * absent slide file is a `slide delete` no-op — the "force" semantics
+ * design decided on for a `project.json` entry whose file was already
+ * gone): a path that does not resolve to anything is treated as "already
+ * deleted", not an error. Any other failure (the file resolves but the
+ * real `rm` itself fails) still throws.
+ */
+export async function deleteVirtualFile(workDir: string, virtualPath: string): Promise<void> {
+  let realPath: string;
+  try {
+    realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  } catch (error) {
+    if (error instanceof CoMotionNotFoundError) {
+      return;
+    }
+    throw error;
+  }
+  try {
+    await rm(realPath);
+  } catch {
+    // realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`刪除檔案時發生錯誤：${virtualPath}`);
   }
 }

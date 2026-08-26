@@ -5,8 +5,16 @@ import { randomBytes } from "node:crypto";
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateElementId, generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
+import { validateProjectJson } from "./project-json.js";
 import { packDirectory, unpackContainer } from "./container.js";
-import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
+import {
+  deleteVirtualFile,
+  listVirtualEntries,
+  readVirtualFile,
+  readVirtualFileBytes,
+  resolveNewVirtualFilePath,
+  resolveVirtualFilePath,
+} from "./virtual-fs.js";
 import { appendElementToSvg, escapeXmlAttr, replaceElementText, resizeTextBox } from "./element-text.js";
 import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
 import { ensureBundledFonts, loadFontBook } from "./font/bundle.js";
@@ -20,6 +28,13 @@ import {
   removeElements,
   type AddShapeInput,
 } from "./slide/edit.js";
+import {
+  buildBlankSlideSvg,
+  insertSlidePathAt,
+  moveSlidePath,
+  nextSlideFileName,
+  removeSlidePath,
+} from "./slide/order.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -308,6 +323,76 @@ export async function writePresentationFile(id: string, virtualPath: string, con
   await commitSnapshotEntries(id, entries);
 }
 
+export interface PresentationChange {
+  virtualPath: string;
+  /** `null` deletes the file at `virtualPath`. */
+  content: string | null;
+}
+
+/**
+ * The N-file door (#85): `writePresentationFile`'s single-file shape
+ * generalised so `slide add` / `slide delete` / `slide duplicate` — each of
+ * which must create or remove a slide file *and* rewrite `project.json`,
+ * yet undo as exactly one step — can do so without `beginHistoryGroup`
+ * (forbidden, W3-R10: it throws on nesting and #91 needs the whole-turn
+ * group). `stageSnapshotEntries` already stages an array; one
+ * `commitSnapshotEntries` over that whole array turns however many files
+ * changed into exactly one undo group. `writePresentationFile` stays a
+ * one-element wrapper — untouched — so every existing write path is
+ * unaffected.
+ *
+ * Partial-failure ordering (W3-R9) is the CALLER's responsibility, not
+ * this function's: pass the slide-file change first and the `project.json`
+ * change last for create/duplicate, and `project.json` first and the file
+ * deletion last for delete, so `project.json` is always the transition
+ * point — whichever side of it fails, the deck stays internally consistent
+ * (only an unreferenced file may be left on disk, never a `project.json`
+ * that names a file that isn't there).
+ *
+ * If the very first change fails, nothing durable has happened yet: the
+ * staged snapshots are discarded and this throws the same
+ * `寫入投影片時發生錯誤：<virtualPath>` wording `writePresentationFile`
+ * uses. If a LATER change fails after at least one earlier change already
+ * landed on disk for real, that earlier write cannot be rolled back by
+ * discarding snapshots (they were never applied yet) — this is the
+ * leftover-unreferenced-file case W3-R9 requires to fail loudly, so it
+ * throws a distinct error naming exactly which virtual paths were applied
+ * before the failure, never a silent partial success.
+ */
+export async function applyPresentationChanges(id: string, changes: PresentationChange[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const entries = await stageSnapshotEntries(
+    id,
+    changes.map((change) => change.virtualPath),
+  );
+
+  const appliedPaths: string[] = [];
+  for (const change of changes) {
+    try {
+      if (change.content === null) {
+        await deleteVirtualFile(workDir, change.virtualPath);
+      } else {
+        const realPath = await resolveNewVirtualFilePath(workDir, change.virtualPath);
+        await writeFile(realPath, change.content, "utf-8");
+      }
+    } catch {
+      await discardSnapshotEntries(id, entries);
+      if (appliedPaths.length > 0) {
+        throw new CoMotionError(
+          `寫入投影片時發生部分失敗，以下項目與 project.json 可能不同步：${appliedPaths.join("、")}`,
+        );
+      }
+      // Only the virtual path is ever named (ADR-0004) — never a real
+      // filesystem path.
+      throw new CoMotionError(`寫入投影片時發生錯誤：${change.virtualPath}`);
+    }
+    appliedPaths.push(change.virtualPath);
+  }
+
+  await commitSnapshotEntries(id, entries);
+}
+
 /**
  * Confirms `virtualPath` is one of the presentation's declared slides
  * (listed in `project.json`'s `slides` array). The write path
@@ -528,4 +613,183 @@ export async function deleteElements(
   const { updated, removedIds, removedEffects } = removeElements(original, elementIds);
   await writePresentationFile(id, slidePath, updated);
   return { deleted: removedIds, clearedEffects: removedEffects };
+}
+
+/**
+ * Reads and validates `project.json` (#85). The wording on a malformed file
+ * — "簡報設定檔已損毀" — matches `assertSlidePathListed`'s own JSON.parse
+ * failure below, so both call sites report the exact same problem the
+ * exact same way.
+ */
+async function readProject(workDir: string): Promise<ProjectJson> {
+  const raw = await readVirtualFile(workDir, "project.json");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new CoMotionError("簡報設定檔已損毀");
+  }
+  return validateProjectJson(parsed);
+}
+
+/**
+ * Byte-identical to what `buildMinimalPresentation` writes for a fresh
+ * deck. Mutating the already-validated object (rather than building a new
+ * one from scratch) preserves any unknown forward-compat field
+ * `project-json.ts`'s validator deliberately leaves on it.
+ */
+function serialiseProject(project: ProjectJson): string {
+  return `${JSON.stringify(project, null, 2)}\n`;
+}
+
+/**
+ * None of the four slide operations below calls `assertSlideCompliant` or
+ * `parseSlide` — same reasoning `addTextBox`/`addShape` document for
+ * themselves: `buildMinimalPresentation`'s own `slides/001.svg` is a bare
+ * `<text>`, so gating on compliance would make a freshly created deck
+ * un-editable. `slide duplicate` in particular never parses the source
+ * file at all — it copies bytes — which is also why it is not an
+ * effect-list writer (W3-R9): whatever `<comot:effects>` subtree the
+ * source has rides along unexamined.
+ */
+
+export interface AddSlideOptions {
+  /** 1-based position for the new slide; default is one past the last slide. */
+  at?: number;
+}
+
+/**
+ * `co-motion slide add` (#85, AC1): allocates the next free `slides/NNN.svg`
+ * name (from the directory's actual files, so an orphan left behind by an
+ * undone add is never reused), writes a blank compliant slide there, and
+ * inserts its path into `project.json`'s `slides` at `options.at` (default:
+ * last). One `applyPresentationChanges` call — slide file first,
+ * `project.json` last (W3-R9) — so the write is one undo step.
+ */
+export async function addSlide(id: string, options?: AddSlideOptions): Promise<{ slidePath: string; index: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const project = await readProject(workDir);
+
+  const existingNames = await listVirtualEntries(workDir, "slides");
+  const slidePath = `slides/${nextSlideFileName(existingNames)}`;
+  const at = options?.at ?? project.slides.length + 1;
+  const updatedSlides = insertSlidePathAt(project.slides, slidePath, at);
+
+  const svg = buildBlankSlideSvg(project.canvas);
+  const updatedProject: ProjectJson = { ...project, slides: updatedSlides };
+
+  await applyPresentationChanges(id, [
+    { virtualPath: slidePath, content: svg },
+    { virtualPath: "project.json", content: serialiseProject(updatedProject) },
+  ]);
+
+  return { slidePath, index: at };
+}
+
+/**
+ * `co-motion slide delete` (#85, AC1): removes `slidePath` from
+ * `project.json`'s `slides` and deletes the real file. `project.json`
+ * first, file deletion last (W3-R9) — a partial failure never leaves
+ * `project.json` naming a file that is not there. Deleting the deck's last
+ * remaining slide is refused (`removeSlidePath`) rather than allowed to
+ * create an unopenable deck (`serve.ts` refuses to serve zero slides).
+ */
+export async function deleteSlide(id: string, slidePath: string): Promise<{ slidePath: string; remaining: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const project = await readProject(workDir);
+
+  const updatedSlides = removeSlidePath(project.slides, slidePath);
+  const updatedProject: ProjectJson = { ...project, slides: updatedSlides };
+
+  await applyPresentationChanges(id, [
+    { virtualPath: "project.json", content: serialiseProject(updatedProject) },
+    { virtualPath: slidePath, content: null },
+  ]);
+
+  return { slidePath, remaining: updatedSlides.length };
+}
+
+/**
+ * Asserts `slidePath` is listed in `slides` exactly once — the same
+ * "not found" / "corrupt duplicate" split `slide/order.ts`'s
+ * `removeSlidePath`/`moveSlidePath` enforce internally, needed here too
+ * because `duplicateSlide` neither removes nor moves anything (it has no
+ * `slide/order.ts` function of its own to lean on for this check).
+ */
+function assertSlideListedOnce(slides: readonly string[], slidePath: string): void {
+  const occurrences = slides.filter((entry) => entry === slidePath).length;
+  if (occurrences === 0) {
+    throw new CoMotionError(`不是投影片：${slidePath}`);
+  }
+  if (occurrences > 1) {
+    throw new CoMotionError(`簡報設定檔的投影片順序重複：${slidePath}`);
+  }
+}
+
+/**
+ * `co-motion slide duplicate` (#85, AC3): copies the source slide's bytes
+ * verbatim into a newly allocated `slides/NNN.svg`, inserted immediately
+ * after the source in `project.json`'s `slides`. A byte-for-byte copy
+ * means whatever `<comot:effects>` subtree the source carries rides along
+ * for free, in whatever scope the source used — this function never
+ * parses the slide, so it never becomes an effect-list writer (W3-R9) and
+ * both existing effect readers see the copy exactly as they saw the
+ * original (§1.0b of the design). Slide file first, `project.json` last
+ * (W3-R9), same ordering as `addSlide`.
+ */
+export async function duplicateSlide(id: string, slidePath: string): Promise<{ slidePath: string; index: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const project = await readProject(workDir);
+  assertSlideListedOnce(project.slides, slidePath);
+
+  const sourceContent = await readVirtualFile(workDir, slidePath);
+  const existingNames = await listVirtualEntries(workDir, "slides");
+  const newSlidePath = `slides/${nextSlideFileName(existingNames)}`;
+
+  const sourceIndex = project.slides.indexOf(slidePath); // 0-based
+  const newIndex = sourceIndex + 2; // 1-based position immediately after the source
+  const updatedSlides = insertSlidePathAt(project.slides, newSlidePath, newIndex);
+  const updatedProject: ProjectJson = { ...project, slides: updatedSlides };
+
+  await applyPresentationChanges(id, [
+    { virtualPath: newSlidePath, content: sourceContent },
+    { virtualPath: "project.json", content: serialiseProject(updatedProject) },
+  ]);
+
+  return { slidePath: newSlidePath, index: newIndex };
+}
+
+/**
+ * `co-motion slide move` (#85, AC2 amended — R1: dragging the thumbnail
+ * rail is out of scope, this command is what drag would eventually call):
+ * rewrites `project.json`'s `slides` order only. No slide file is ever
+ * read, written, `stat`ed, or opened — reorder is a one-array, one-file
+ * operation (design §1.0a), which is the whole of AC4's byte-level
+ * guarantee. `--to` equal to the slide's current 1-based position writes
+ * nothing and pushes no undo group (`changed: false`) rather than landing
+ * an undo step that visibly does nothing.
+ */
+export async function moveSlide(
+  id: string,
+  slidePath: string,
+  to: number,
+): Promise<{ from: number; to: number; changed: boolean }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const project = await readProject(workDir);
+
+  const from = project.slides.indexOf(slidePath) + 1; // 1-based; 0 only if moveSlidePath is about to throw
+  const updatedSlides = moveSlidePath(project.slides, slidePath, to);
+  const changed = updatedSlides.some((entry, index) => entry !== project.slides[index]);
+  if (!changed) {
+    return { from, to, changed: false };
+  }
+
+  const updatedProject: ProjectJson = { ...project, slides: updatedSlides };
+  await applyPresentationChanges(id, [{ virtualPath: "project.json", content: serialiseProject(updatedProject) }]);
+
+  return { from, to, changed: true };
 }

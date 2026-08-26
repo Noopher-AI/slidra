@@ -1,10 +1,10 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { resolveCoMotionHome, resolveWorkDir } from "./workspace.js";
-import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
+import { deleteVirtualFile, readVirtualFile, resolveNewVirtualFilePath } from "./virtual-fs.js";
 
 /**
  * Undo/redo for presentation content (ticket #73). Every write a command
@@ -25,8 +25,17 @@ import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
 export interface HistoryEntry {
   /** e.g. "slides/001.svg" */
   virtualPath: string;
-  /** Filename under snapshots/. */
-  snapshotId: string;
+  /**
+   * Filename under snapshots/, or `null` meaning the file did not exist at
+   * snapshot time (#85: absence-aware history, for `slide add` / `slide
+   * delete` / `slide duplicate`, which create or remove whole files rather
+   * than only overwriting one). Applying an entry whose `snapshotId` is
+   * `null` deletes the real file; applying one with a snapshot writes it,
+   * creating the file if it is currently missing. Every entry ever written
+   * before this change carries a string here, so old `stack.json` files on
+   * disk remain valid without migration.
+   */
+  snapshotId: string | null;
 }
 
 export interface HistoryGroup {
@@ -80,7 +89,10 @@ function isHistoryGroup(value: unknown): value is HistoryGroup {
         typeof entry === "object" &&
         entry !== null &&
         typeof (entry as HistoryEntry).virtualPath === "string" &&
-        typeof (entry as HistoryEntry).snapshotId === "string",
+        // Widened, not changed (#85): every entry ever written before this
+        // carries a string snapshotId, so an old stack.json on disk stays
+        // valid. `null` is the new "did not exist at snapshot time" case.
+        (typeof (entry as HistoryEntry).snapshotId === "string" || (entry as HistoryEntry).snapshotId === null),
     )
   );
 }
@@ -204,7 +216,10 @@ function pushGroupToUndoStack(stack: StackFile, group: HistoryGroup): string[] {
   while (stack.undo.length > UNDO_STACK_CAP) {
     const evicted = stack.undo.shift()!;
     for (const entry of evicted.entries) {
-      evictedSnapshotIds.push(entry.snapshotId);
+      // A `null` snapshotId means "the file did not exist at snapshot
+      // time" — there is no snapshot file to delete, and deleteSnapshot
+      // must never be handed one (#85).
+      if (entry.snapshotId !== null) evictedSnapshotIds.push(entry.snapshotId);
     }
   }
   return evictedSnapshotIds;
@@ -224,7 +239,20 @@ export async function stageSnapshotEntries(id: string, virtualPaths: string[]): 
   const workDir = await resolveWorkDir(id);
   const entries: HistoryEntry[] = [];
   for (const virtualPath of virtualPaths) {
-    const content = await readVirtualFile(workDir, virtualPath);
+    let content: string;
+    try {
+      content = await readVirtualFile(workDir, virtualPath);
+    } catch (error) {
+      // Only a positively-proven absence (#85: `slide add` staging a path
+      // that does not exist yet) stages as `snapshotId: null` — a real I/O
+      // failure reading an existing file must still throw as itself, never
+      // be mistaken for "this file doesn't exist".
+      if (error instanceof CoMotionNotFoundError) {
+        entries.push({ virtualPath, snapshotId: null });
+        continue;
+      }
+      throw error;
+    }
     const snapshotId = generateOpaqueId();
     await writeSnapshot(home, id, snapshotId, content);
     entries.push({ virtualPath, snapshotId });
@@ -256,7 +284,7 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
   const snapshotIdsToDelete: string[] = [];
   for (const group of stack.redo) {
     for (const entry of group.entries) {
-      snapshotIdsToDelete.push(entry.snapshotId);
+      if (entry.snapshotId !== null) snapshotIdsToDelete.push(entry.snapshotId);
     }
   }
   stack.redo = [];
@@ -284,7 +312,9 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
 export async function discardSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
   const home = resolveCoMotionHome();
   for (const entry of entries) {
-    await deleteSnapshot(home, id, entry.snapshotId);
+    // A `null` snapshotId (the file did not exist at stage time) has no
+    // snapshot file on disk to discard.
+    if (entry.snapshotId !== null) await deleteSnapshot(home, id, entry.snapshotId);
   }
 }
 
@@ -371,6 +401,16 @@ export async function endHistoryGroup(id: string): Promise<void> {
  * stack, so the dangling reference would break every subsequent undo/redo,
  * not just the oldest entry (#73 gate round 3 finding). The caller must
  * delete `consumedSnapshotIds` only after its own `writeStack` succeeds.
+ *
+ * Absence-aware (#85): capturing "current content" now tolerates the file
+ * being currently absent (captures `snapshotId: null` instead of throwing —
+ * only `CoMotionNotFoundError` is treated as absence, any other read
+ * failure still throws as itself), and applying an entry with `snapshotId:
+ * null` deletes the real file rather than writing one. Applying an entry
+ * that *does* carry a snapshot no longer requires the file to already
+ * exist: it resolves through `resolveNewVirtualFilePath` (parent-directory
+ * discovery + a validated final segment), so undoing a `slide delete` can
+ * recreate the file it removed.
  */
 async function applyGroup(
   home: string,
@@ -380,17 +420,36 @@ async function applyGroup(
 ): Promise<{ inverseGroup: HistoryGroup; restoredPaths: string[]; consumedSnapshotIds: string[] }> {
   const inverseEntries: HistoryEntry[] = [];
   for (const entry of group.entries) {
-    const currentContent = await readVirtualFile(workDir, entry.virtualPath);
-    const inverseSnapshotId = generateOpaqueId();
-    await writeSnapshot(home, id, inverseSnapshotId, currentContent);
-    inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: inverseSnapshotId });
+    let currentContent: string | null;
+    try {
+      currentContent = await readVirtualFile(workDir, entry.virtualPath);
+    } catch (error) {
+      if (error instanceof CoMotionNotFoundError) {
+        currentContent = null;
+      } else {
+        throw error;
+      }
+    }
+    if (currentContent === null) {
+      inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: null });
+    } else {
+      const inverseSnapshotId = generateOpaqueId();
+      await writeSnapshot(home, id, inverseSnapshotId, currentContent);
+      inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: inverseSnapshotId });
+    }
   }
 
   const consumedSnapshotIds: string[] = [];
   for (let i = group.entries.length - 1; i >= 0; i--) {
     const entry = group.entries[i];
+    if (entry.snapshotId === null) {
+      // This entry's "before" state was absence — applying it means
+      // deleting whatever is there now.
+      await deleteVirtualFile(workDir, entry.virtualPath);
+      continue;
+    }
     const content = await readSnapshot(home, id, entry.snapshotId);
-    const realPath = await resolveVirtualFilePath(workDir, entry.virtualPath);
+    const realPath = await resolveNewVirtualFilePath(workDir, entry.virtualPath);
     try {
       await writeFile(realPath, content, "utf-8");
     } catch {

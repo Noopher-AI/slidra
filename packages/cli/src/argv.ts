@@ -188,6 +188,32 @@ export function parseArgv(argv: string[]): ParsedCommand {
       }
       return { name: "element delete", input: { id, slidePath, elementIds } };
     }
+    case "slide": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "slide add", "presentation-id");
+        const at = optionalNumberFlag(args, "--at", "slide add");
+        return { name: "slide add", input: { id, at } };
+      }
+      if (sub === "delete") {
+        const id = requirePositional(args, 0, "slide delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide delete", "slide-path");
+        return { name: "slide delete", input: { id, slidePath } };
+      }
+      if (sub === "duplicate") {
+        const id = requirePositional(args, 0, "slide duplicate", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide duplicate", "slide-path");
+        return { name: "slide duplicate", input: { id, slidePath } };
+      }
+      if (sub === "move") {
+        const id = requirePositional(args, 0, "slide move", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide move", "slide-path");
+        const to = requireNumberFlag(args, "--to", "slide move");
+        return { name: "slide move", input: { id, slidePath, to } };
+      }
+      throw new CoMotionError(`未知的子命令：slide ${sub ?? ""}`);
+    }
     case "undo": {
       const id = requirePositional(rest, 0, "undo", "presentation-id");
       return { name, input: { id } };

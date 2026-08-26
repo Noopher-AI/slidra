@@ -11,6 +11,7 @@ import { undoCommand } from "./commands/undo.js";
 import { redoCommand } from "./commands/redo.js";
 import { rectAddCommand, ellipseAddCommand, lineAddCommand, pathAddCommand } from "./commands/shape.js";
 import { elementDeleteCommand } from "./commands/element.js";
+import { slideAddCommand, slideDeleteCommand, slideDuplicateCommand, slideMoveCommand } from "./commands/slide.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -44,5 +45,9 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("line add", { handler: lineAddCommand, render: null });
   registry.register("path add", { handler: pathAddCommand, render: null });
   registry.register("element delete", { handler: elementDeleteCommand, render: null });
+  registry.register("slide add", { handler: slideAddCommand, render: null });
+  registry.register("slide delete", { handler: slideDeleteCommand, render: null });
+  registry.register("slide duplicate", { handler: slideDuplicateCommand, render: null });
+  registry.register("slide move", { handler: slideMoveCommand, render: null });
   return registry;
 }

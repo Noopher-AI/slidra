@@ -19,8 +19,13 @@ export {
   setTextBoxWidth,
   addShape,
   deleteElements,
+  applyPresentationChanges,
+  addSlide,
+  deleteSlide,
+  duplicateSlide,
+  moveSlide,
 } from "./workspace.js";
-export type { AddTextBoxInput } from "./workspace.js";
+export type { AddTextBoxInput, AddSlideOptions, PresentationChange } from "./workspace.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";
