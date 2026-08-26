@@ -1,6 +1,6 @@
 # CoMotion
 
-> An agent-friendly SVG presentation editor for making ideas move.
+> An AX- and UX-friendly SVG presentation editor for getting your ideas presented, fast.
 
 ## 專案定位
 
