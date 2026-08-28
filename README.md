@@ -35,7 +35,7 @@ co-motion serve          ← CLI 的常駐模式
  簡報內容
 ```
 
-- 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg` 與 `assets/`。
+- 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
 - 動態以 `data-comot-step`、`data-comot-enter` 等屬性表達，由 CoMotion 的 runtime 依步驟驅動。
