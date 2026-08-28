@@ -116,13 +116,15 @@ describe("Node vs 瀏覽器的文字寬度量測", () => {
     expect(browserWidth).toBe(nodeWidth);
   });
 
-  it("量出的寬度與 Chromium 實際渲染的 getComputedTextLength() 相對誤差 ≤ 0.5%（A5）", async () => {
-    const text = "投影片 CoMotion 文字量測";
-    const fontSizePx = 48;
-
-    const measuredWidth = await measurePresentationText(presentationId, { family: FAMILY, text, fontSizePx });
-
-    const renderedWidth = await page.evaluate(
+  /**
+   * Renders `text` at `fontSizePx` in a real `<svg><text>` using the
+   * container's embedded font and returns Chromium's own
+   * `getComputedTextLength()` — the external ground truth this measures
+   * against. Not a second implementation of the measurement, just what a
+   * browser actually draws.
+   */
+  async function renderedWidthInChromium(text: string, fontSizePx: number): Promise<number> {
+    return page.evaluate(
       async ([url, family, sampleText, size]) => {
         const style = document.createElement("style");
         style.textContent = `@font-face{font-family:"${family}";src:url("${url}") format("truetype");}`;
@@ -146,6 +148,24 @@ describe("Node vs 瀏覽器的文字寬度量測", () => {
       },
       [FONT_URL, FAMILY, text, fontSizePx] as const,
     );
+  }
+
+  /**
+   * A5 (ticket #71) plus round 2's three required shaping cases (人已裁決
+   * 「照建議做」，不放寬 0.5% 容忍度): GPOS pair kerning (`AVAVA`), a GSUB
+   * ligature ("ff"), and CJK/Latin mixed text. Each compares `core`'s
+   * measurement against Chromium's real `getComputedTextLength()` — not
+   * against another run of the same code.
+   */
+  const A5_SAMPLES: Array<{ label: string; text: string; fontSizePx: number }> = [
+    { label: "GPOS 配對修飾（AVAVA）", text: "AVAVA", fontSizePx: 1000 },
+    { label: "GSUB 連字（ff）", text: "ff", fontSizePx: 1000 },
+    { label: "中英混排", text: "投影片 CoMotion 文字量測", fontSizePx: 48 },
+  ];
+
+  it.each(A5_SAMPLES)("$label 與 Chromium 實際渲染的 getComputedTextLength() 相對誤差 ≤ 0.5%（A5）", async ({ text, fontSizePx }) => {
+    const measuredWidth = await measurePresentationText(presentationId, { family: FAMILY, text, fontSizePx });
+    const renderedWidth = await renderedWidthInChromium(text, fontSizePx);
 
     const relativeError = Math.abs(renderedWidth - measuredWidth) / measuredWidth;
     expect(relativeError).toBeLessThanOrEqual(0.005);

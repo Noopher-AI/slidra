@@ -27,10 +27,16 @@ const PRESENTATION_FONT_LICENSE_FILE = "fonts/LICENSE-NotoSansTC.txt";
 /**
  * Builds the file set for a minimal presentation (ADR-0003 container shape):
  * project.json + slides/ + a single title slide + the embedded presentation
- * font (ticket #71) + its license text.
+ * font (ticket #71, ADR-0016) + its license text.
  *
  * The slide SVG is deliberately hand-readable (ADR-0004): one title text
- * element, no base64, no generated path data, no repeated inline styles.
+ * element, no base64, no generated path data, no repeated inline styles. Its
+ * `font-family` reference is the only thing that ties it to the embedded
+ * font — no `@font-face`, no embedded font bytes. That is ADR-0016's
+ * decision 2, not an oversight: `@font-face` is injected only by CoMotion's
+ * wrapper documents (packages/web/src/canvas.ts), so this SVG opened alone
+ * by an external tool degrades to a system font instead of being unreadable
+ * or broken — legible, just not guaranteed pixel-identical to CoMotion.
  */
 export function buildMinimalPresentation(name: string): MinimalPresentationFiles {
   const fonts: FontEntry[] = [

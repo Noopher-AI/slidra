@@ -11,9 +11,10 @@ export interface ProjectJson {
   canvas: { width: number; height: number };
   slides: string[];
   /**
-   * Fonts embedded in the container (ticket #71). Optional — a presentation
-   * with no `fonts` field (every pre-#71 `.comot`) is still structurally
-   * valid; `formatVersion` does not change for this addition.
+   * Fonts embedded in the container (ticket #71, contract in ADR-0016).
+   * Optional — a presentation with no `fonts` field (every pre-#71
+   * `.comot`) is still structurally valid; `formatVersion` does not change
+   * for this addition.
    */
   fonts?: FontEntry[];
 }

@@ -259,6 +259,73 @@ it("縮圖 iframe 維持零 token sandbox", async () => {
   }
 });
 
+it("縮圖 iframe 實際載入容器內嵌的字型，不是降級成系統字型（ADR-0016 / #71 第 2 輪）", async () => {
+  // Unlike the other tests in this file (which reuse hand-written fixture
+  // decks that predate #71 and carry no `fonts/`), this one needs a deck
+  // that actually embeds a font — `new` via the CLI is what
+  // buildMinimalPresentation (packages/core/src/presentation.ts) backs, and
+  // it always embeds NotoSansTC-Presentation.ttf under `fonts/`.
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-font-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-font-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+  try {
+    const registry: CommandRegistry = createDefaultRegistry();
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath, name: "縮圖字型測試" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const presentationId = opened.data!.id;
+
+    const agent: AgentAdapterConfig = {
+      kind: "claude",
+      label: "Claude Code",
+      command: process.execPath,
+      args: [agentFixture],
+      env: {
+        PATH: `${binDir}:${path.dirname(process.execPath)}`,
+        E2E_PRESENTATION_ID: presentationId,
+        E2E_NEW_TITLE: "此測試不會送出訊息",
+      },
+    };
+    const server = await startServe({ registry, presentationId, port: 0, agent });
+    try {
+      const page = await browser.newPage();
+      await page.goto(server.url);
+
+      const firstThumbFrame = page.locator('li.overview-item[data-index="0"] iframe.overview-frame');
+      await expect.poll(() => firstThumbFrame.count(), { timeout: 30_000 }).toBe(1);
+
+      // The main canvas (canvas.ts's own wrapper) is the known-good control:
+      // its @font-face + font load must succeed the same way, or this test
+      // would be comparing the thumbnail against a broken baseline.
+      const mainFrame = page.frameLocator("iframe.slide-frame").locator("body");
+      const mainFontStatus = await mainFrame.evaluate(async (el) => {
+        const doc = el.ownerDocument;
+        await doc.fonts.ready;
+        const face = Array.from(doc.fonts).find((f) => f.family.replace(/"/g, "") === "Noto Sans TC");
+        return face?.status ?? "missing";
+      });
+      expect(mainFontStatus).toBe("loaded");
+
+      const thumbFrame = page.frameLocator('li.overview-item[data-index="0"] iframe.overview-frame').locator("body");
+      const thumbFontStatus = await thumbFrame.evaluate(async (el) => {
+        const doc = el.ownerDocument;
+        await doc.fonts.ready;
+        const face = Array.from(doc.fonts).find((f) => f.family.replace(/"/g, "") === "Noto Sans TC");
+        return face?.status ?? "missing";
+      });
+      expect(thumbFontStatus).toBe("loaded");
+
+      await page.close();
+    } finally {
+      await server.close();
+    }
+  } finally {
+    delete process.env.CO_MOTION_HOME;
+    await rm(coMotionHome, { recursive: true, force: true });
+    await rm(comotDir, { recursive: true, force: true });
+  }
+});
+
 it("幾十頁的簡報：只有視窗附近的縮圖被實體化，捲動後才補上遠處的", async () => {
   const { server, cleanup } = await startServerFor(overviewDeckDir);
   try {

@@ -201,7 +201,17 @@ async function handleRequest(
     // iframe's own slide markup uses to fetch assets through /api/raw/)
     // send no Origin header at all, confirmed empirically against a real
     // browser in e2e/player.test.ts, so this gate does not touch them.
-    if (req.headers.origin === "null") {
+    //
+    // `@font-face src: url(...)` is the one subresource load browsers fetch
+    // in CORS mode rather than no-cors — it sends `Origin: null` from an
+    // opaque srcdoc iframe (ticket #71's canvas/overview/play wrappers all
+    // inject one pointing at `/api/raw/fonts/...`). `/api/raw/` is GET-only
+    // and already deliberately public read access gated only by an
+    // unguessable presentation id (see the ACAO header set below), so it
+    // carries none of the "opaque origin can still mutate blind" risk this
+    // gate exists for — exempting it here is what makes that header not
+    // dead code.
+    if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {
       sendJson(res, 403, { error: "不接受來自不透明來源（Origin: null）的請求" });
       return;
     }
