@@ -7,16 +7,13 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import {
-  BUNDLED_FONT_DIR,
-  BUNDLED_FONT_FILE,
-  MEASURED_TEXT_CSS,
   createNewPresentation,
   openPresentation,
   readPresentationFileBytes,
-  readPresentationFontBook,
   renderTextBoxContent,
+  resolvePresentationFonts,
   wrapText,
-  type FontBook,
+  type FontMetrics,
   type WrappedText,
 } from "@co-motion/core";
 
@@ -24,13 +21,13 @@ import {
  * 驗收條件 5：Node 與瀏覽器對同一份字型算出同樣的斷行結果 (AC5)，且斷行結果
  * 是烤進 SVG 檔案裡的（AC2/AC4），不是顯示時才算。
  *
- * Model: `e2e/font-metrics.test.ts`. Node measures through the same
- * `readPresentationFontBook(id)` path a real command uses; the browser
- * loads core's own **compiled** `packages/core/dist/text/wrap.js` (and its
- * `font/metrics.js` dependency) as static ES modules, with no bundler, and
- * builds a `FontBook` in-browser from the exact same font bytes Node used
- * (`readPresentationFileBytes`, not the download cache — see
- * font-metrics.test.ts's own comment on why that distinction matters).
+ * Model: `e2e/text-metrics.test.ts`. Node measures through the same
+ * `resolvePresentationFonts(id)` path a real command uses (#98); the
+ * browser loads core's own **compiled** `packages/core/dist/text/wrap.js`
+ * (and its `text-metrics.js` dependency) as static ES modules, with no
+ * bundler, and builds a `FontMetrics` in-browser from the exact same font
+ * bytes Node used (`readPresentationFileBytes`, not the download cache —
+ * see text-metrics.test.ts's own comment on why that distinction matters).
  *
  * Falsification control (2nd describe block): the same samples at a
  * different width must produce different lines, or assertion 1 would be
@@ -44,7 +41,7 @@ const wrapJs = path.join(coreDist, "text/wrap.js");
 const FAMILY = "Noto Sans TC";
 const BROWSER_FAMILY = "CoMotion Bundled";
 
-/** Mixed CJK + Latin, matching font-metrics.test.ts's own reasoning: a
+/** Mixed CJK + Latin, matching text-metrics.test.ts's own reasoning: a
  * CJK-only sample can't falsify a wrong implementation (every character is
  * a fixed em width in a full-width font). */
 const SAMPLES: ReadonlyArray<[text: string, fontSize: number]> = [
@@ -61,7 +58,7 @@ const DIFFERENT_WIDTH = 420;
 let server: Server;
 let browser: Browser;
 let page: Page;
-let book: FontBook;
+let font: FontMetrics;
 let coMotionHome: string;
 let comotDir: string;
 
@@ -83,8 +80,13 @@ beforeAll(async () => {
   await createNewPresentation(comotPath, "斷行驗收");
   const { id } = await openPresentation(comotPath);
 
-  book = await readPresentationFontBook(id);
-  const ttf = await readPresentationFileBytes(id, `${BUNDLED_FONT_DIR}/${BUNDLED_FONT_FILE}`);
+  const fonts = await resolvePresentationFonts(id);
+  const resolved = fonts.get(FAMILY);
+  if (!resolved) {
+    throw new Error(`簡報未內嵌字型：${FAMILY}`);
+  }
+  font = resolved;
+  const ttf = await readPresentationFileBytes(id, "fonts/NotoSansTC-Presentation.ttf");
 
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -100,7 +102,7 @@ beforeAll(async () => {
     }
     // Everything else is a static file straight out of packages/core/dist —
     // the compiled module graph text/wrap.js pulls in (../errors.js,
-    // ../font/metrics.js), with no bundler involved.
+    // ../text-metrics.js), with no bundler involved.
     const filePath = path.join(coreDist, decodeURIComponent(url.pathname));
     if (!filePath.startsWith(coreDist)) {
       res.writeHead(403);
@@ -138,22 +140,22 @@ afterAll(async () => {
   await rm(comotDir, { recursive: true, force: true });
 });
 
-function nodeWrap(text: string, fontSize: number, width: number): WrappedText {
-  return wrapText(text, { width, style: { fontFamily: FAMILY, fontSize }, book });
+function nodeWrap(text: string, fontSizePx: number, width: number): WrappedText {
+  return wrapText(text, { width, font, fontSizePx });
 }
 
 /**
  * Wraps the same text at the same width, in the browser, using core's own
- * compiled `text/wrap.js` and `font/metrics.js` — a real Chromium builds
- * the `FontBook` from the same font bytes and calls the same `wrapText`.
+ * compiled `text/wrap.js` and `text-metrics.js` — a real Chromium parses
+ * the same font bytes Node used and calls the same `wrapText`.
  */
 async function browserWrap(
   text: string,
-  fontSize: number,
+  fontSizePx: number,
   width: number,
 ): Promise<{ lines: { text: string; y: number; width: number }[]; lineHeight: number; ascent: number }> {
   return page.evaluate(
-    async ([t, fam, size, w]) => {
+    async ([t, size, w]) => {
       // A real dynamic `import(...)` in this file's source gets rewritten by
       // Vitest's own SSR transform to `__vite_ssr_dynamic_import__`, which
       // does not exist inside the browser page this callback is serialized
@@ -164,15 +166,15 @@ async function browserWrap(
       const dynamicImport = new Function("specifier", "return import(specifier)") as (
         specifier: string,
       ) => Promise<any>;
-      const metrics = await dynamicImport("/font/metrics.js");
+      const textMetrics = await dynamicImport("/text-metrics.js");
       const wrap = await dynamicImport("/text/wrap.js");
       const fontResponse = await fetch("/font.ttf");
       const bytes = new Uint8Array(await fontResponse.arrayBuffer());
-      const book = metrics.createFontBook([bytes]);
+      const parsedFont = textMetrics.parseFont(bytes);
       const wrapped = wrap.wrapText(t as string, {
         width: w as number,
-        style: { fontFamily: fam as string, fontSize: size as number },
-        book,
+        font: parsedFont,
+        fontSizePx: size as number,
       });
       return {
         lines: wrapped.lines.map((line: { text: string; y: number; width: number }) => ({
@@ -184,7 +186,7 @@ async function browserWrap(
         ascent: wrapped.ascent,
       };
     },
-    [text, FAMILY, fontSize, width] as [string, string, number, number],
+    [text, fontSizePx, width] as [string, number, number],
   );
 }
 
@@ -193,13 +195,15 @@ describe("Node 與瀏覽器對同一組樣本算出同樣的斷行結果 (AC5)",
     const node = nodeWrap(text, fontSize, WIDTH);
     const browserResult = await browserWrap(text, fontSize, WIDTH);
 
+    // Same compiled JS, same font bytes, same call — the two runs must
+    // agree exactly, not merely "close enough" (#98's precision bar).
     expect(browserResult.lines.map((l) => l.text)).toEqual(node.lines.map((l) => l.text));
     node.lines.forEach((line, i) => {
-      expect(browserResult.lines[i].y).toBeCloseTo(line.y, 9);
-      expect(browserResult.lines[i].width).toBeCloseTo(line.width, 9);
+      expect(browserResult.lines[i].y).toBe(line.y);
+      expect(browserResult.lines[i].width).toBe(line.width);
     });
-    expect(browserResult.lineHeight).toBeCloseTo(node.lineHeight, 9);
-    expect(browserResult.ascent).toBeCloseTo(node.ascent, 9);
+    expect(browserResult.lineHeight).toBe(node.lineHeight);
+    expect(browserResult.ascent).toBe(node.ascent);
   });
 });
 
@@ -220,7 +224,14 @@ describe("證偽對照組——沒有這一條，上面的斷言可能是恆真�
 });
 
 describe("斷行結果本身是對的——每一行量出來都不超過宣告寬度", () => {
-  it("渲染成真正的 <svg> tspan，getComputedTextLength() 每行都 <= width + 0.02（除了單一超寬字元那一行）", async () => {
+  // This is the one comparison in this file allowed a tolerance: it is not
+  // rerunning our own JS twice (that's the AC5 block above, held to `toBe`)
+  // but comparing our measurement against Chromium's own native text-shaping
+  // engine rendering a real `<svg><text>` — the same class of comparison as
+  // e2e/text-metrics.test.ts's A5 case, and the same 0.5%-of-width-scale
+  // slack for hinting/rounding differences between the sfnt-table math here
+  // and the browser's own layout engine.
+  it("渲染成真正的 <svg> tspan，getComputedTextLength() 每行都 <= width * 1.005（除了單一超寬字元那一行）", async () => {
     const text = "文字框有寬度，文字寫滿就折到下一行。";
     const fontSize = 40;
     const node = nodeWrap(text, fontSize, WIDTH);
@@ -232,10 +243,6 @@ describe("斷行結果本身是對的——每一行量出來都不超過宣告�
         el.setAttribute("font-family", fam as string);
         el.setAttribute("font-size", String(size));
         el.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
-        el.setAttribute(
-          "style",
-          "font-kerning:none;font-variant-ligatures:none;text-spacing-trim:space-all",
-        );
         for (const line of lines as { text: string; y: number }[]) {
           const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
           tspan.setAttribute("x", "0");
@@ -255,9 +262,8 @@ describe("斷行結果本身是對的——每一行量出來都不超過宣告�
       ],
     );
 
-    expect(MEASURED_TEXT_CSS).toContain("font-kerning:none"); // sanity: the style string this test hand-copied still matches the real one
     measured.forEach((length) => {
-      expect(length).toBeLessThanOrEqual(WIDTH + 0.02);
+      expect(length).toBeLessThanOrEqual(WIDTH * 1.005);
     });
   });
 });
