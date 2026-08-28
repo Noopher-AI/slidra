@@ -18,6 +18,12 @@ import { CoMotionError } from "./errors.js";
  */
 export interface FontMetrics {
   readonly unitsPerEm: number;
+  /** hhea.ascender, font units, positive. */
+  readonly ascender: number;
+  /** hhea.descender, font units, negative. */
+  readonly descender: number;
+  /** hhea.lineGap, font units. */
+  readonly lineGap: number;
   /** Advance width in font units (not pixels) for one Unicode code point. */
   advanceWidthForCodePoint(codePoint: number): number;
   /** Glyph id for a Unicode code point via cmap; 0 (.notdef) if uncovered. */
@@ -110,6 +116,14 @@ export function parseFont(bytes: Uint8Array): FontMetrics {
   if (numberOfHMetrics === 0 || hmtx.length < numberOfHMetrics * 4) {
     throw new CoMotionError("字型檔案無效或已損毀");
   }
+  // hhea's ascender/descender/lineGap (FWord, signed, offsets 4/6/8) — the
+  // line-metrics half of text measurement (line height, baseline position),
+  // as opposed to advance widths. hhea.length >= 36 is already guaranteed
+  // above, so these three reads are always in-bounds for any font that
+  // passed the checks so far.
+  const ascender = view.getInt16(hhea.offset + 4);
+  const descender = view.getInt16(hhea.offset + 6);
+  const lineGap = view.getInt16(hhea.offset + 8);
 
   const glyphIdForCodePoint = parseCmap(view, cmap);
 
@@ -126,6 +140,9 @@ export function parseFont(bytes: Uint8Array): FontMetrics {
 
   return {
     unitsPerEm,
+    ascender,
+    descender,
+    lineGap,
     advanceWidthForCodePoint(codePoint: number): number {
       return advanceWidthForGlyph(glyphIdForCodePoint(codePoint));
     },

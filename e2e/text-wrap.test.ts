@@ -1,0 +1,317 @@
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { chromium, type Browser, type Page } from "playwright";
+import {
+  BUNDLED_FONT_DIR,
+  BUNDLED_FONT_FILE,
+  MEASURED_TEXT_CSS,
+  createNewPresentation,
+  openPresentation,
+  readPresentationFileBytes,
+  readPresentationFontBook,
+  renderTextBoxContent,
+  wrapText,
+  type FontBook,
+  type WrappedText,
+} from "@co-motion/core";
+
+/**
+ * 驗收條件 5：Node 與瀏覽器對同一份字型算出同樣的斷行結果 (AC5)，且斷行結果
+ * 是烤進 SVG 檔案裡的（AC2/AC4），不是顯示時才算。
+ *
+ * Model: `e2e/font-metrics.test.ts`. Node measures through the same
+ * `readPresentationFontBook(id)` path a real command uses; the browser
+ * loads core's own **compiled** `packages/core/dist/text/wrap.js` (and its
+ * `font/metrics.js` dependency) as static ES modules, with no bundler, and
+ * builds a `FontBook` in-browser from the exact same font bytes Node used
+ * (`readPresentationFileBytes`, not the download cache — see
+ * font-metrics.test.ts's own comment on why that distinction matters).
+ *
+ * Falsification control (2nd describe block): the same samples at a
+ * different width must produce different lines, or assertion 1 would be
+ * vacuously true no matter what `wrapText` actually does.
+ */
+
+const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const coreDist = path.join(rootDir, "packages/core/dist");
+const wrapJs = path.join(coreDist, "text/wrap.js");
+
+const FAMILY = "Noto Sans TC";
+const BROWSER_FAMILY = "CoMotion Bundled";
+
+/** Mixed CJK + Latin, matching font-metrics.test.ts's own reasoning: a
+ * CJK-only sample can't falsify a wrong implementation (every character is
+ * a fixed em width in a full-width font). */
+const SAMPLES: ReadonlyArray<[text: string, fontSize: number]> = [
+  ["文字框有寬度，文字寫滿就折到下一行。", 40],
+  ["「引用」，。文字框有寬度，文字寫滿就折到下一行，這是第三行測試用的內容。", 40],
+  ["Hello CoMotion, this line is intentionally long enough to wrap", 32],
+  ["", 40],
+  ["驗", 40],
+];
+
+const WIDTH = 280;
+const DIFFERENT_WIDTH = 420;
+
+let server: Server;
+let browser: Browser;
+let page: Page;
+let book: FontBook;
+let coMotionHome: string;
+let comotDir: string;
+
+const PAGE = [
+  "<!doctype html><meta charset=\"utf-8\">",
+  `<style>@font-face{font-family:"${BROWSER_FAMILY}";src:url(/font.ttf)}</style>`,
+  '<svg id="stage" xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>',
+].join("");
+
+const JS_CONTENT_TYPES = new Set([".js", ".mjs"]);
+
+beforeAll(async () => {
+  await requireBuilt(wrapJs, "packages/core/dist 不存在，請先執行 npm run build");
+
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+  const comotPath = path.join(comotDir, "deck.comot");
+  await createNewPresentation(comotPath, "斷行驗收");
+  const { id } = await openPresentation(comotPath);
+
+  book = await readPresentationFontBook(id);
+  const ttf = await readPresentationFileBytes(id, `${BUNDLED_FONT_DIR}/${BUNDLED_FONT_FILE}`);
+
+  server = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === "/font.ttf") {
+      res.writeHead(200, { "content-type": "font/ttf" });
+      res.end(ttf);
+      return;
+    }
+    if (url.pathname === "/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(PAGE);
+      return;
+    }
+    // Everything else is a static file straight out of packages/core/dist —
+    // the compiled module graph text/wrap.js pulls in (../errors.js,
+    // ../font/metrics.js), with no bundler involved.
+    const filePath = path.join(coreDist, decodeURIComponent(url.pathname));
+    if (!filePath.startsWith(coreDist)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    readFile(filePath)
+      .then((content) => {
+        const ext = path.extname(filePath);
+        const contentType = JS_CONTENT_TYPES.has(ext) ? "text/javascript" : "application/octet-stream";
+        res.writeHead(200, { "content-type": contentType });
+        res.end(content);
+      })
+      .catch(() => {
+        res.writeHead(404);
+        res.end();
+      });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+  browser = await chromium.launch();
+  page = await browser.newPage();
+  await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
+  await page.evaluate(
+    (family) => document.fonts.load(`100px "${family}"`).then(() => document.fonts.ready),
+    BROWSER_FAMILY,
+  );
+});
+
+afterAll(async () => {
+  await browser?.close();
+  await new Promise<void>((resolve) => server?.close(() => resolve()));
+  delete process.env.CO_MOTION_HOME;
+  await rm(coMotionHome, { recursive: true, force: true });
+  await rm(comotDir, { recursive: true, force: true });
+});
+
+function nodeWrap(text: string, fontSize: number, width: number): WrappedText {
+  return wrapText(text, { width, style: { fontFamily: FAMILY, fontSize }, book });
+}
+
+/**
+ * Wraps the same text at the same width, in the browser, using core's own
+ * compiled `text/wrap.js` and `font/metrics.js` — a real Chromium builds
+ * the `FontBook` from the same font bytes and calls the same `wrapText`.
+ */
+async function browserWrap(
+  text: string,
+  fontSize: number,
+  width: number,
+): Promise<{ lines: { text: string; y: number; width: number }[]; lineHeight: number; ascent: number }> {
+  return page.evaluate(
+    async ([t, fam, size, w]) => {
+      // A real dynamic `import(...)` in this file's source gets rewritten by
+      // Vitest's own SSR transform to `__vite_ssr_dynamic_import__`, which
+      // does not exist inside the browser page this callback is serialized
+      // into (page.evaluate re-runs the function's source text verbatim in
+      // Chromium, not in Node). Building the importer through `new
+      // Function` keeps the literal `import(...)` out of this file's
+      // static syntax, so Vitest's transform never sees it to rewrite.
+      const dynamicImport = new Function("specifier", "return import(specifier)") as (
+        specifier: string,
+      ) => Promise<any>;
+      const metrics = await dynamicImport("/font/metrics.js");
+      const wrap = await dynamicImport("/text/wrap.js");
+      const fontResponse = await fetch("/font.ttf");
+      const bytes = new Uint8Array(await fontResponse.arrayBuffer());
+      const book = metrics.createFontBook([bytes]);
+      const wrapped = wrap.wrapText(t as string, {
+        width: w as number,
+        style: { fontFamily: fam as string, fontSize: size as number },
+        book,
+      });
+      return {
+        lines: wrapped.lines.map((line: { text: string; y: number; width: number }) => ({
+          text: line.text,
+          y: line.y,
+          width: line.width,
+        })),
+        lineHeight: wrapped.lineHeight,
+        ascent: wrapped.ascent,
+      };
+    },
+    [text, FAMILY, fontSize, width] as [string, string, number, number],
+  );
+}
+
+describe("Node 與瀏覽器對同一組樣本算出同樣的斷行結果 (AC5)", () => {
+  it.each(SAMPLES)("%j @ fontSize %i", async (text, fontSize) => {
+    const node = nodeWrap(text, fontSize, WIDTH);
+    const browserResult = await browserWrap(text, fontSize, WIDTH);
+
+    expect(browserResult.lines.map((l) => l.text)).toEqual(node.lines.map((l) => l.text));
+    node.lines.forEach((line, i) => {
+      expect(browserResult.lines[i].y).toBeCloseTo(line.y, 9);
+      expect(browserResult.lines[i].width).toBeCloseTo(line.width, 9);
+    });
+    expect(browserResult.lineHeight).toBeCloseTo(node.lineHeight, 9);
+    expect(browserResult.ascent).toBeCloseTo(node.ascent, 9);
+  });
+});
+
+describe("證偽對照組——沒有這一條，上面的斷言可能是恆真的", () => {
+  it("同一組樣本換一個寬度，斷行結果就不一樣", async () => {
+    const text = SAMPLES[0][0];
+    const fontSize = SAMPLES[0][1];
+    const atWidth = nodeWrap(text, fontSize, WIDTH);
+    const atDifferentWidth = nodeWrap(text, fontSize, DIFFERENT_WIDTH);
+    expect(atDifferentWidth.lines.map((l) => l.text)).not.toEqual(atWidth.lines.map((l) => l.text));
+
+    const browserAtWidth = await browserWrap(text, fontSize, WIDTH);
+    const browserAtDifferentWidth = await browserWrap(text, fontSize, DIFFERENT_WIDTH);
+    expect(browserAtDifferentWidth.lines.map((l) => l.text)).not.toEqual(
+      browserAtWidth.lines.map((l) => l.text),
+    );
+  });
+});
+
+describe("斷行結果本身是對的——每一行量出來都不超過宣告寬度", () => {
+  it("渲染成真正的 <svg> tspan，getComputedTextLength() 每行都 <= width + 0.02（除了單一超寬字元那一行）", async () => {
+    const text = "文字框有寬度，文字寫滿就折到下一行。";
+    const fontSize = 40;
+    const node = nodeWrap(text, fontSize, WIDTH);
+
+    const measured = await page.evaluate(
+      ([lines, fam, size]) => {
+        const stage = document.getElementById("stage") as unknown as SVGSVGElement;
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        el.setAttribute("font-family", fam as string);
+        el.setAttribute("font-size", String(size));
+        el.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+        el.setAttribute(
+          "style",
+          "font-kerning:none;font-variant-ligatures:none;text-spacing-trim:space-all",
+        );
+        for (const line of lines as { text: string; y: number }[]) {
+          const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspan.setAttribute("x", "0");
+          tspan.setAttribute("y", String(line.y));
+          tspan.textContent = line.text;
+          el.appendChild(tspan);
+        }
+        stage.appendChild(el);
+        const lengths = Array.from(el.querySelectorAll("tspan")).map((t) => t.getComputedTextLength());
+        stage.removeChild(el);
+        return lengths;
+      },
+      [node.lines.map((l) => ({ text: l.text, y: l.y })), FAMILY, fontSize] as [
+        { text: string; y: number }[],
+        string,
+        number,
+      ],
+    );
+
+    expect(MEASURED_TEXT_CSS).toContain("font-kerning:none"); // sanity: the style string this test hand-copied still matches the real one
+    measured.forEach((length) => {
+      expect(length).toBeLessThanOrEqual(WIDTH + 0.02);
+    });
+  });
+});
+
+describe("純瀏覽器開檔——不經過 CoMotion server、不經過 runtime", () => {
+  let tempDir: string;
+
+  afterAll(async () => {
+    if (tempDir) await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("file:// 直接開 SVG，斷行仍然正確：N 個 tspan、N 個遞增的 y、內容正確", async () => {
+    const fontSize = 40;
+    const text = "文字框有寬度，文字寫滿就折到下一行。";
+    const wrapped = nodeWrap(text, fontSize, WIDTH);
+    const content = renderTextBoxContent(wrapped.lines);
+
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n` +
+      `  <g id="el-box" data-comot-text-width="${WIDTH}" transform="translate(100 200)">\n` +
+      `    <text font-family="${FAMILY}" font-size="${fontSize}" xml:space="preserve"\n` +
+      `    >${content}</text>\n` +
+      `  </g>\n` +
+      "</svg>\n";
+
+    tempDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-plain-"));
+    const filePath = path.join(tempDir, "slide.svg");
+    await writeFile(filePath, svg, "utf-8");
+
+    const plainPage = await browser.newPage();
+    try {
+      await plainPage.goto(`file://${filePath}`);
+      const tspanInfo = await plainPage.evaluate(() =>
+        Array.from(document.querySelectorAll("tspan")).map((t) => ({
+          y: Number(t.getAttribute("y")),
+          text: t.textContent,
+        })),
+      );
+
+      expect(tspanInfo).toHaveLength(wrapped.lines.length);
+      expect(tspanInfo.map((t) => t.text)).toEqual(wrapped.lines.map((l) => l.text));
+      for (let i = 1; i < tspanInfo.length; i++) {
+        expect(tspanInfo[i].y).toBeGreaterThan(tspanInfo[i - 1].y);
+      }
+    } finally {
+      await plainPage.close();
+    }
+  });
+});
+
+async function requireBuilt(filePath: string, message: string): Promise<void> {
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error(message);
+  }
+}

@@ -49,7 +49,10 @@ function buildSyntheticFont(): Uint8Array {
   // head: unitsPerEm at +18.
   view.setUint16(headOffset + 18, 1000);
 
-  // hhea: numberOfHMetrics at +34.
+  // hhea: ascender/descender/lineGap at +4/+6/+8, numberOfHMetrics at +34.
+  view.setInt16(hheaOffset + 4, 800);
+  view.setInt16(hheaOffset + 6, -200);
+  view.setInt16(hheaOffset + 8, 100);
   view.setUint16(hheaOffset + 34, NUM_H_METRICS);
 
   // hmtx: [advanceWidth, lsb] per glyph.
@@ -373,6 +376,13 @@ describe("parseFont", () => {
     expect(font.advanceWidthForCodePoint(0x0041)).toBe(600); // "A"
     expect(font.advanceWidthForCodePoint(0x0020)).toBe(300); // " "
     expect(font.advanceWidthForCodePoint(0x005a)).toBe(0); // "Z", uncovered -> .notdef
+  });
+
+  it("reads hhea's ascender/descender/lineGap, in font units", () => {
+    const font = parseFont(buildSyntheticFont());
+    expect(font.ascender).toBe(800);
+    expect(font.descender).toBe(-200);
+    expect(font.lineGap).toBe(100);
   });
 });
 
