@@ -1,6 +1,5 @@
 import { CoMotionError } from "../errors.js";
 import type { SlideElement, SlidePrimitive } from "../slide/format.js";
-import { measureTextWidth, type FontMetrics } from "../text-metrics.js";
 import {
   applyMatrixToPoint,
   composeMatrices,
@@ -94,25 +93,16 @@ function numberAttr(
   return Number(text);
 }
 
-export interface PrimitiveBoundsOptions {
-  /** Required to box a `<text>` primitive; every other tag ignores it. */
-  readonly fontBook?: ReadonlyMap<string, FontMetrics>;
-  /**
-   * The declared width of the text box the primitive's container names
-   * (`data-comot-text-width`, #76) — present only when the `<text>`
-   * belongs to a text box, absent for the plain, legacy `<text>` shape.
-   */
-  readonly textWidth?: number;
-}
-
 /**
  * The bounding box of one primitive, in the coordinate system the
  * primitive itself lives in (i.e. before any container transform).
  *
- * `<text>` needs font metrics (`options.fontBook`, #76) — see
- * `textPrimitiveBounds` below for its two shapes.
+ * `<text>` is not supported here and throws: its box needs font metrics,
+ * which do not exist yet (see #71/#76). This module deliberately defines
+ * no measurement interface of its own — inventing one now would mean two
+ * competing contracts later.
  */
-export function primitiveBounds(primitive: SlidePrimitive, options: PrimitiveBoundsOptions = {}): Rect {
+export function primitiveBounds(primitive: SlidePrimitive): Rect {
   switch (primitive.tag) {
     case "rect":
     case "image": {
@@ -158,87 +148,10 @@ export function primitiveBounds(primitive: SlidePrimitive, options: PrimitiveBou
       return pathBounds(d);
     }
     case "text":
-      return textPrimitiveBounds(primitive, options);
+      throw new CoMotionError("尚無法計算文字元素的邊界框：待 #76 的字型度量落地");
     default:
       throw new CoMotionError(`無法計算邊界框：<${primitive.tag}> 不是合法圖元`);
   }
-}
-
-/**
- * Reads a required string primitive attribute (font-family): SVG defines
- * no default for it, so a missing value is an error, never a guessed
- * fallback — the exact failure #71 exists to remove.
- */
-function requiredStringAttr(primitive: SlidePrimitive, name: string): string {
-  const raw = primitive.attrs.get(name);
-  if (raw === undefined || raw.trim() === "") {
-    throw new CoMotionError(`<${primitive.tag}> 缺少計算邊界框需要的屬性：${name}`);
-  }
-  return raw;
-}
-
-/**
- * `<text>`'s bounding box, one of two shapes (#76, DEBT1):
- *
- * - A **text box** (`options.textWidth` set, from the container's
- *   `data-comot-text-width`): `{x: 0, y: 0, width: <declared>, height:
- *   lines * lineHeight}` — deliberately the declared width, not the
- *   widest baked-in line, so dragging the side handle moves the box's edge
- *   to where the author put it. `lines` is the primitive's `tspanCount`
- *   (structural — no re-measuring or re-wrapping needed, since the wrap is
- *   already baked into the file, exactly #76's point).
- * - A **plain `<text>`** (the legacy shape, e.g. every `<text>` in
- *   `demo/slides/`): the content is measured, then positioned by
- *   `text-anchor` (`start` → `x`, `middle` → `x - w/2`, `end` → `x - w`),
- *   `y = baseline - ascent`, `height = ascent - descent` (hhea).
- *
- * `font-size` missing defaults to 16 (SVG's own default, the same rule
- * `numberAttr` already applies). `font-family` missing is an error — SVG
- * defines no default, and guessing one is exactly #71's failure mode.
- */
-function textPrimitiveBounds(primitive: SlidePrimitive, options: PrimitiveBoundsOptions): Rect {
-  if (!options.fontBook) {
-    throw new CoMotionError("計算 <text> 的邊界框需要字型（fontBook）");
-  }
-  const fontFamily = requiredStringAttr(primitive, "font-family");
-  const fontSize = numberAttr(primitive, "font-size", 16);
-  const font = options.fontBook.get(fontFamily);
-  if (!font) {
-    throw new CoMotionError(`簡報未內嵌字型：${fontFamily}`);
-  }
-  const anchor = primitive.attrs.get("text-anchor");
-
-  if (options.textWidth !== undefined) {
-    if (anchor !== undefined && anchor !== "start") {
-      throw new CoMotionError("文字框的 <text> 不可使用 text-anchor（尚未支援對齊）");
-    }
-    // hhea-derived, matching text/wrap.ts's own line-height formula exactly
-    // — see that module's comment for why nothing multiplies it yet.
-    const lineHeight = ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * fontSize;
-    const lines = Math.max(primitive.tspanCount, 1);
-    return { x: 0, y: 0, width: options.textWidth, height: lines * lineHeight };
-  }
-
-  const width = measureTextWidth(font, primitive.text, fontSize);
-  const ascent = (font.ascender / font.unitsPerEm) * fontSize;
-  const descent = (font.descender / font.unitsPerEm) * fontSize;
-  const x = numberAttr(primitive, "x", 0);
-  const y = numberAttr(primitive, "y", 0);
-  let boxX: number;
-  switch (anchor ?? "start") {
-    case "start":
-      boxX = x;
-      break;
-    case "middle":
-      boxX = x - width / 2;
-      break;
-    case "end":
-      boxX = x - width;
-      break;
-    default:
-      throw new CoMotionError(`<text> 的 text-anchor 不是合法值：${anchor}`);
-  }
-  return { x: boxX, y: y - ascent, width, height: ascent - descent };
 }
 
 /**
@@ -457,8 +370,6 @@ function solveQuadratic(a: number, b: number, c: number): number[] {
 export interface ElementBoundsOptions {
   /** Container matrices from the slide root down to (but excluding) this element. */
   ancestors?: readonly Matrix[];
-  /** Required to box an element containing a `<text>` primitive (#76). */
-  fontBook?: ReadonlyMap<string, FontMetrics>;
 }
 
 /**
@@ -468,15 +379,10 @@ export interface ElementBoundsOptions {
  */
 export function elementBounds(element: SlideElement, options: ElementBoundsOptions = {}): Rect {
   const chain = composeMatrices(options.ancestors ?? []);
-  return boundsWithin(element, chain, 1, options.fontBook);
+  return boundsWithin(element, chain, 1);
 }
 
-function boundsWithin(
-  element: SlideElement,
-  ancestorMatrix: Matrix,
-  depth: number,
-  fontBook: ReadonlyMap<string, FontMetrics> | undefined,
-): Rect {
+function boundsWithin(element: SlideElement, ancestorMatrix: Matrix, depth: number): Rect {
   if (depth > MAX_CONTAINER_DEPTH) {
     throw new CoMotionError(`容器巢狀超過 ${MAX_CONTAINER_DEPTH} 層，無法計算邊界框`);
   }
@@ -485,15 +391,13 @@ function boundsWithin(
     if (element.children.length === 0) {
       throw new CoMotionError(`群組 ${element.id} 裡沒有任何子元素，沒有邊界框`);
     }
-    return unionRects(element.children.map((child) => boundsWithin(child, matrix, depth + 1, fontBook)));
+    return unionRects(element.children.map((child) => boundsWithin(child, matrix, depth + 1)));
   }
   if (element.primitives.length === 0) {
     throw new CoMotionError(`元素 ${element.id} 裡沒有任何圖元，沒有邊界框`);
   }
   return unionRects(
-    element.primitives.map((primitive) =>
-      transformRect(matrix, primitiveBounds(primitive, { fontBook, textWidth: element.textWidth ?? undefined })),
-    ),
+    element.primitives.map((primitive) => transformRect(matrix, primitiveBounds(primitive))),
   );
 }
 
