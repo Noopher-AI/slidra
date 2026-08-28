@@ -359,6 +359,26 @@ export interface AddTextBoxInput {
 }
 
 /**
+ * Rounds `value` through the same 4-decimal rule the SVG write path uses
+ * (`formatSvgNumber`) and rejects it if that rounding collapses a positive
+ * input to zero (or below). `wrapText`/`assertFontSize` already reject
+ * `value <= 0` outright; this catches the narrower case they cannot see —
+ * a value that is positive on input but would be silently persisted as `0`,
+ * producing a text box the write path itself can create but the edit path
+ * (`readTextFontInfo`, `resizeTextBox`) then rejects (#76 finding, W1-R11).
+ * Returns the rounded value so callers wrap against exactly what gets
+ * written, keeping the declared width/size and the baked tspans in
+ * agreement.
+ */
+function assertPositiveAfterRounding(value: number, message: string): number {
+  const rounded = Number(formatSvgNumber(value));
+  if (!(rounded > 0)) {
+    throw new CoMotionError(message);
+  }
+  return rounded;
+}
+
+/**
  * Creates a new text box on a slide: a `<g>` container carrying
  * `data-comot-text-width`, appended as the last child of `<svg>`, wrapping
  * a `<text>` whose content is the wrap of `input.text` at `input.width`
@@ -397,16 +417,24 @@ export async function addTextBox(
   if (!font) {
     throw new CoMotionError(`簡報未內嵌字型：${input.fontFamily}`);
   }
-  const wrapped = wrapText(input.text, { width: input.width, font, fontSizePx: input.fontSize });
+  // Wrap against the value that will actually be written, not the raw
+  // input: `formatSvgNumber` rounds to 4 decimals, and a positive width or
+  // font-size below that floor would otherwise serialize as "0" while the
+  // wrap was computed against the un-rounded number — a text box whose file
+  // declares a width/size the wrap never agreed to (#76 finding, W1-R11).
+  // Errors over fallbacks: reject before any splice happens.
+  const normalizedWidth = assertPositiveAfterRounding(input.width, "文字框寬度四捨五入後不是大於 0 的數字");
+  const normalizedFontSize = assertPositiveAfterRounding(input.fontSize, "文字框的 font-size 四捨五入後不是大於 0 的數字");
+  const wrapped = wrapText(input.text, { width: normalizedWidth, font, fontSizePx: normalizedFontSize });
   const content = renderTextBoxContent(wrapped.lines);
 
   const elementId = generateElementId();
   const weightAttr = input.fontWeight === undefined ? "" : ` font-weight="${formatSvgNumber(input.fontWeight)}"`;
   const fillAttr = input.fill === undefined ? "" : ` fill="${escapeXmlAttr(input.fill)}"`;
   const markup =
-    `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(input.width)}" ` +
+    `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(normalizedWidth)}" ` +
     `transform="translate(${formatSvgNumber(input.x)} ${formatSvgNumber(input.y)})">` +
-    `<text font-family="${escapeXmlAttr(input.fontFamily)}" font-size="${formatSvgNumber(input.fontSize)}"` +
+    `<text font-family="${escapeXmlAttr(input.fontFamily)}" font-size="${formatSvgNumber(normalizedFontSize)}"` +
     `${weightAttr}${fillAttr} xml:space="preserve">${content}</text></g>`;
 
   const updated = appendElementToSvg(original, markup);

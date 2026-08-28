@@ -509,6 +509,16 @@ export function resizeTextBox(
   if (!Number.isFinite(newWidth) || newWidth <= 0) {
     throw new CoMotionError("文字框寬度必須是大於 0 的數字");
   }
+  // Wrap against the value that will actually be written (4-decimal
+  // `formatSvgNumber`), not the raw input: a positive width below that
+  // rounding floor would otherwise serialize as "0" while the wrap ran
+  // against the un-rounded number (#76 finding, W1-R11). Reject before any
+  // splice happens rather than persisting a width the edit path then
+  // rejects.
+  const roundedWidth = Number(formatSvgNumber(newWidth));
+  if (!(roundedWidth > 0)) {
+    throw new CoMotionError("文字框寬度四捨五入後不是大於 0 的數字");
+  }
 
   const container = findNodeById(scanDocument(svgContent), elementId);
   if (!container) {
@@ -535,7 +545,7 @@ export function resizeTextBox(
     .join("");
   const { fontFamily, fontSize } = readTextFontInfo(textNode, elementId);
   const font = resolveFont(fontBook, fontFamily, elementId);
-  const wrapped = wrapText(sourceText, { width: newWidth, font, fontSizePx: fontSize });
+  const wrapped = wrapText(sourceText, { width: roundedWidth, font, fontSizePx: fontSize });
   const content = renderTextBoxContent(wrapped.lines);
 
   // Two independent splices on the same string: the <text> content and the
@@ -544,7 +554,7 @@ export function resizeTextBox(
   // byte offsets stay valid after the content splice (which only touches
   // bytes from textNode.contentStart onward) — order between the two does
   // not matter here, but the content splice is applied first for clarity.
-  const widthValue = formatSvgNumber(newWidth);
+  const widthValue = formatSvgNumber(roundedWidth);
   const contentSpliced =
     svgContent.slice(0, textNode.contentStart) + content + svgContent.slice(textNode.contentEnd);
   const updated =
