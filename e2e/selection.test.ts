@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -224,21 +224,62 @@ it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯�
   }
 });
 
+/**
+ * A deck built inside the test, so a test that needs a particular slide
+ * shape does not have to bend `demo/` (or `e2e/fixtures/`, which other
+ * tests own) into that shape. Written in the compliant container form
+ * (ADR-0012).
+ */
+async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-selection-deck-"));
+  await mkdir(path.join(dir, "slides"), { recursive: true });
+  await mkdir(path.join(dir, "assets"), { recursive: true });
+  await writeFile(
+    path.join(dir, "project.json"),
+    JSON.stringify(
+      { formatVersion: 1, name: "選取測試簡報", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  await writeFile(path.join(dir, "slides/001.svg"), slideSvg, "utf-8");
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+// This test used `demo/` until #72, and cannot any more — for a reason that
+// is the ticket itself. Demo slide 1's background `<rect>` is now an
+// element of its own inside a container with an id, so there is no longer
+// any point on that page with nothing under it. Leaving the background out
+// of conversion just to keep one test's assumption alive would be the wrong
+// repair, so the test brings its own deck instead: one small square with
+// generous empty space around it.
 it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
-  const { server, cleanup } = await startServerFor(demoDir);
+  const deck = await makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-square" data-comot-name="方塊">\n' +
+      '    <rect x="540" y="280" width="200" height="160" fill="#c66"/>\n' +
+      "  </g>\n" +
+      // openApp waits for the first painted <text>; a deck with none would
+      // never finish loading as far as that helper is concerned.
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+  const { server, cleanup } = await startServerFor(deck.dir);
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     const selName = page.locator(".status .sel-name");
 
-    await slideFrame.locator("#el-title").click();
+    await slideFrame.locator("#el-square").click();
     // The postMessage round trip from selection-runtime.js to React state
     // is asynchronous — poll rather than reading immediately after click.
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).not.toBe("");
 
-    // A point on the slide with no id-carrying ancestor: the demo's first
-    // slide is 1280×720 and el-title/el-subtitle sit around y=330/420 —
-    // a corner of the stage is well clear of both.
+    // The slide's top-left corner: the square sits at x=540 y=280 on a
+    // 1280×720 viewBox, so this point has no element under it at all.
     const svgRoot = slideFrame.locator("svg").first();
     const box = await svgRoot.boundingBox();
     if (!box) throw new Error("量不到 svg 的邊界框");
@@ -255,6 +296,7 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
     expect(boxDisplay).toBe("none");
   } finally {
     await cleanup();
+    await deck.cleanup();
   }
 });
 
@@ -494,5 +536,71 @@ it("基準截圖：標準檢視含選取框", async () => {
     await compareScreenshot(page, { name: "selected", baselineDir });
   } finally {
     await cleanup();
+  }
+});
+
+// --- #72: 選取改為認容器 ---------------------------------------------------
+
+// The demo's background rect used to be unselectable (it had no id). After
+// conversion it is a real element, and clicking it selects its container.
+// This is the correct new behaviour, not a regression: #85's locking is
+// what will later make "I don't want to select the background" possible.
+// The status bar falls back to showing the 識別碼, because conversion does
+// not invent a 顯示名稱 for an element whose author never gave it one.
+it("點 demo 第 1 頁的背景會選到背景容器，狀態列顯示它的識別碼", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    const selName = page.locator(".status .sel-name");
+
+    const svgRoot = slideFrame.locator("svg").first();
+    const box = await svgRoot.boundingBox();
+    if (!box) throw new Error("量不到 svg 的邊界框");
+    await page.mouse.click(box.x + 4, box.y + 4);
+
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toMatch(/^已選取：el-.+$/);
+    // Not one of the two named elements — it really is the background.
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).not.toBe("已選取：標題");
+  } finally {
+    await cleanup();
+  }
+});
+
+// ADR-0012: a group is a container of containers, so clicking a child
+// inside a group selects the whole group — PowerPoint's semantics. This is
+// what "選取改為認容器" actually buys, and it is invisible on `demo/`
+// (which has no groups), so the test brings its own deck.
+it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組的顯示名稱", async () => {
+  const deck = await makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-group" data-comot-name="群組">\n' +
+      '    <g id="el-child-left" data-comot-name="左邊">\n' +
+      '      <rect x="200" y="260" width="200" height="200" fill="#c66"/>\n' +
+      "    </g>\n" +
+      '    <g id="el-child-right" data-comot-name="右邊">\n' +
+      '      <rect x="880" y="260" width="200" height="200" fill="#69c"/>\n' +
+      "    </g>\n" +
+      "  </g>\n" +
+      // openApp waits for the first painted <text>; see makeDeckDir's other
+      // caller. This one sits well outside the group.
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const selName = page.locator(".status .sel-name");
+
+    // Click the child's own `<rect>`. The nearest id-carrying ancestor is
+    // el-child-left; the outermost is el-group, and el-group is the answer.
+    await page.frameLocator("iframe.slide-frame").locator("#el-child-left rect").click();
+
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組");
+  } finally {
+    await cleanup();
+    await deck.cleanup();
   }
 });

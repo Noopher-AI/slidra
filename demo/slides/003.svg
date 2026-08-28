@@ -6,9 +6,19 @@
       <comot:effect target="el-step-three" family="enter" effect="fade" start="on-click"/>
     </comot:effects>
   </metadata>
-  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
-  <text id="el-effects-title" data-comot-name="標題" x="640" y="140" text-anchor="middle" font-size="64" fill="#f4f6f8">第 3 頁：效果清單</text>
-  <text id="el-step-one" data-comot-name="第一點" x="640" y="300" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟一</text>
-  <text id="el-step-two" data-comot-name="第二點" x="640" y="390" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟二</text>
-  <text id="el-step-three" data-comot-name="第三點" x="640" y="480" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟三</text>
+  <g id="el-WZX2BUPDpa8S">
+    <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
+  </g>
+  <g id="el-effects-title" data-comot-name="標題">
+    <text x="640" y="140" text-anchor="middle" font-size="64" fill="#f4f6f8">第 3 頁：效果清單</text>
+  </g>
+  <g id="el-step-one" data-comot-name="第一點">
+    <text x="640" y="300" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟一</text>
+  </g>
+  <g id="el-step-two" data-comot-name="第二點">
+    <text x="640" y="390" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟二</text>
+  </g>
+  <g id="el-step-three" data-comot-name="第三點">
+    <text x="640" y="480" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟三</text>
+  </g>
 </svg>

@@ -54,6 +54,13 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const path = rest[1];
       return { name, input: { id, path } };
     }
+    case "convert": {
+      // One argument only: convert takes the whole presentation or none of
+      // it (#72). No --dry-run and no single-slide form — a half-converted
+      // deck would need its own answer to "is this compliant?".
+      const id = requirePositional(rest, 0, "convert", "presentation-id");
+      return { name, input: { id } };
+    }
     case "text": {
       const sub = rest[0];
       if (sub !== "set") {
@@ -71,6 +78,14 @@ export function parseArgv(argv: string[]): ParsedCommand {
         throw new CoMotionError("命令 text set 缺少參數：new-text");
       }
       return { name: "text set", input: { id, slidePath, elementId, newText } };
+    }
+    case "undo": {
+      const id = requirePositional(rest, 0, "undo", "presentation-id");
+      return { name, input: { id } };
+    }
+    case "redo": {
+      const id = requirePositional(rest, 0, "redo", "presentation-id");
+      return { name, input: { id } };
     }
     default:
       // Unknown command: let the registry report it, so the error message

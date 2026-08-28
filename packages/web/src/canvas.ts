@@ -35,6 +35,13 @@
  * The zero-token posture stays untouched for the overview thumbnails
  * (overview.ts): this loosening is cut in exactly one place, the main
  * canvas.
+ *
+ * Since #72 that runtime resolves a click to the OUTERMOST id-carrying
+ * ancestor — an element's `<g>` container, or the whole group when the
+ * element sits inside one (ADR-0012). Nothing changes on this side of the
+ * seam: the `{ id, name }` arriving over postMessage has always been the
+ * resolved node's own `id` and `data-comot-name`, and after conversion
+ * that node is the container.
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";

@@ -6,8 +6,9 @@ import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
-import { listVirtualEntries, readVirtualFile, readVirtualFileBytes } from "./virtual-fs.js";
-import { writeSlideElementText } from "./element-text.js";
+import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
+import { assertSlidePathListed, replaceElementText } from "./element-text.js";
+import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -252,11 +253,42 @@ export async function listPresentationEntries(id: string, virtualPath?: string):
 }
 
 /**
+ * The single door every content-writing command must use (ticket #73, AC 4).
+ * Snapshots the file's current content into undo history before overwriting
+ * it, so any command that writes through here gets undo for free without
+ * writing its own inverse logic.
+ *
+ * The snapshot is *staged* (its file written) before the content write, but
+ * only *committed* onto the undo/redo stacks (history.ts's
+ * `commitSnapshotEntries`) after that write actually succeeds. If the
+ * write fails, the staged snapshot is discarded instead
+ * (`discardSnapshotEntries`) — a failed command must not occupy an undo
+ * slot, and it must not leave an orphan snapshot file either (finding 2).
+ */
+export async function writePresentationFile(id: string, virtualPath: string, content: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  const entries = await stageSnapshotEntries(id, [virtualPath]);
+  try {
+    await writeFile(realPath, content, "utf-8");
+  } catch {
+    await discardSnapshotEntries(id, entries);
+    // realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`寫入投影片時發生錯誤：${virtualPath}`);
+  }
+  await commitSnapshotEntries(id, entries);
+}
+
+/**
  * Sets the text content of one element on one slide, identified by their
  * virtual identifiers only (ADR-0004). This is the first write path into a
- * presentation's content — see element-text.ts for the mutation itself,
- * which splices the target element's text in place rather than
- * parsing/re-serializing the SVG, to keep every other byte identical.
+ * presentation's content — see element-text.ts's `replaceElementText` for
+ * the mutation itself, which splices the target element's text in place
+ * rather than parsing/re-serializing the SVG, to keep every other byte
+ * identical. The mutation is a pure function that throws before any write
+ * is attempted (bad element id, wrong element kind, illegal XML text), so a
+ * failed `text set` never occupies an undo step.
  */
 export async function setElementText(
   id: string,
@@ -266,5 +298,11 @@ export async function setElementText(
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
-  await writeSlideElementText(workDir, slidePath, elementId, newText);
+  // Preserves the original check order/wording: a missing real file is
+  // reported before "not a slide", exactly as writeSlideElementText did.
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = replaceElementText(original, elementId, newText);
+  await writePresentationFile(id, slidePath, updated);
 }

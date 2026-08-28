@@ -251,3 +251,42 @@ describe("replaceElementText", () => {
     });
   });
 });
+
+// #72's conversion moves `id` up from a primitive onto its wrapping `<g>`
+// container (ADR-0012). This is the red-light fix: without it, `text set`
+// on any converted slide reports "元素不是文字元素" because the id sits on
+// the `<g>`, not the `<text>`.
+describe("replaceElementText — id on a <g> container wrapping a <text> child", () => {
+  it("descends into the container and edits its single <text> child, leaving the container's own attributes untouched", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">\n' +
+      '  <g id="el-title" data-comot-name="標題"><text x="640" y="360" text-anchor="middle" font-size="48">驗收用簡報</text></g>\n' +
+      "</svg>\n";
+
+    const result = replaceElementText(svg, "el-title", "改過的標題");
+
+    expect(result).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg">\n' +
+        '  <g id="el-title" data-comot-name="標題"><text x="640" y="360" text-anchor="middle" font-size="48">改過的標題</text></g>\n' +
+        "</svg>\n",
+    );
+  });
+
+  it("throws when the container has no <text> child (e.g. it wraps a <rect>)", () => {
+    const svg = '<svg><g id="el-a"><rect x="0" y="0" width="1" height="1"></rect></g></svg>';
+
+    expect(() => replaceElementText(svg, "el-a", "new")).toThrow("元素不是文字元素：el-a");
+  });
+
+  it("throws when the container has more than one direct <text> child (ambiguous which one is 'the' text)", () => {
+    const svg = '<svg><g id="el-a"><text>a</text><text>b</text></g></svg>';
+
+    expect(() => replaceElementText(svg, "el-a", "new")).toThrow("元素不是文字元素：el-a");
+  });
+
+  it("throws when the container holds a nested <g> group rather than a single primitive", () => {
+    const svg = '<svg><g id="el-a"><g><text>a</text></g></g></svg>';
+
+    expect(() => replaceElementText(svg, "el-a", "new")).toThrow("元素不是文字元素：el-a");
+  });
+});
