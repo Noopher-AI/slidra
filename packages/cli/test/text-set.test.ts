@@ -119,7 +119,9 @@ describe("text set", () => {
 
     expect(result.ok).toBe(true);
     const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-    expect(after.data!.content).toContain(`id="${elementId}" data-comot-name="標題" x="640" y="360" text-anchor="middle" font-size="48"></text>`);
+    expect(after.data!.content).toContain(
+      `id="${elementId}" data-comot-name="標題" x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48"></text>`,
+    );
   });
 
   it("escapes <, >, &, and quotes so reading it back yields the original characters", async () => {

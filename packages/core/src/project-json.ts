@@ -10,6 +10,26 @@ export interface ProjectJson {
   name: string;
   canvas: { width: number; height: number };
   slides: string[];
+  /**
+   * Fonts embedded in the container (ticket #71). Optional — a presentation
+   * with no `fonts` field (every pre-#71 `.comot`) is still structurally
+   * valid; `formatVersion` does not change for this addition.
+   */
+  fonts?: FontEntry[];
+}
+
+/** One font embedded in the container, referenced by `project.json`'s `fonts`. */
+export interface FontEntry {
+  /** Virtual path to the font file inside the container, e.g. "fonts/NotoSansTC-Presentation.ttf". */
+  file: string;
+  /** The SVG `font-family` value slides reference. */
+  family: string;
+  /** Human-readable license name, e.g. "SIL Open Font License 1.1". */
+  license: string;
+  /** Virtual path to the full license text inside the container. */
+  licenseFile: string;
+  /** Where the font was obtained from. */
+  source: string;
 }
 
 /**
@@ -64,8 +84,41 @@ export function validateProjectJson(value: unknown): ProjectJson {
   if (!record.slides.every((slide) => typeof slide === "string")) {
     throw new CoMotionError("project.json 格式錯誤：slides 內含無效項目");
   }
+  if ("fonts" in record) {
+    validateFonts(record.fonts);
+  }
 
   // Extra unknown fields stay on the object (see the forward-compatibility
   // note above) — the cast only asserts the fields this build cares about.
   return record as unknown as ProjectJson;
+}
+
+const FONT_ENTRY_STRING_FIELDS = ["file", "family", "license", "licenseFile", "source"] as const;
+
+/** Structural + referential validation of the optional `fonts` field. */
+function validateFonts(value: unknown): asserts value is FontEntry[] {
+  if (!Array.isArray(value)) {
+    throw new CoMotionError("project.json 格式錯誤：fonts 不是陣列");
+  }
+  const seenFamilies = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) {
+      throw new CoMotionError("project.json 格式錯誤：fonts 內含無效項目");
+    }
+    const record = entry as Record<string, unknown>;
+    for (const field of FONT_ENTRY_STRING_FIELDS) {
+      if (typeof record[field] !== "string") {
+        throw new CoMotionError(`project.json 格式錯誤：fonts 內的項目缺少或型別錯誤的 ${field}`);
+      }
+    }
+    const file = record.file as string;
+    if (file.startsWith("/") || file.split("/").includes("..")) {
+      throw new CoMotionError("project.json 格式錯誤：fonts 內含不合法的路徑");
+    }
+    const family = record.family as string;
+    if (seenFamilies.has(family)) {
+      throw new CoMotionError("project.json 格式錯誤：fonts 內有重複的 family");
+    }
+    seenFamilies.add(family);
+  }
 }

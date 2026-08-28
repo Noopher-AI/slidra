@@ -50,6 +50,11 @@ const MIME_TYPES: Record<string, string> = {
   // audio/aac is the IANA-registered type for a raw ADTS AAC stream.
   ".aac": "audio/aac",
   ".json": "application/json",
+  // Fonts embedded under fonts/ (ticket #71) — served to the sandboxed
+  // srcdoc iframe's @font-face over /api/raw/, same as any other asset.
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 /**

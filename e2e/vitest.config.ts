@@ -27,6 +27,7 @@ export default defineConfig({
     // `main` fields point at build output, and this test imports their
     // TypeScript sources directly.
     alias: {
+      "@co-motion/core/text-metrics": path.join(rootDir, "packages/core/src/text-metrics.ts"),
       "@co-motion/core": path.join(rootDir, "packages/core/src/index.ts"),
       "@co-motion/cli": path.join(rootDir, "packages/cli/src/index.ts"),
     },

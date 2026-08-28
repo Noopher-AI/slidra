@@ -6,9 +6,19 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b && node -e \"require('node:fs').cpSync('src/assets','dist/assets',{recursive:true})\""
   },
   "dependencies": {
     "fflate": "^0.8.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./text-metrics": {
+      "types": "./dist/text-metrics.d.ts",
+      "default": "./dist/text-metrics.js"
+    }
   }
 }

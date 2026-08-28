@@ -294,6 +294,15 @@ async function handleRequest(
         sendJson(res, 400, { error: "路徑編碼無效" });
         return;
       }
+      // The srcdoc iframe (canvas.ts) is an opaque-origin document (ADR-0009
+      // sandboxing), so its @font-face url("/api/raw/fonts/...") load is a
+      // cross-origin fetch even though it targets this same server —
+      // without this header the browser silently refuses to use the font,
+      // slides fall back to the system font, and A2/A5 (ticket #71) fail
+      // with no visible error. `*` is safe here: every /api/raw/ response
+      // is either public asset bytes gated only by knowing an opaque
+      // presentation id, or a 404, never anything credentialed.
+      res.setHeader("Access-Control-Allow-Origin", "*");
       // The Range header is read here, at the one place that has `req`, and
       // handed on as a plain value: handleRawRequest stays a function of
       // (path, response, range) rather than growing a dependency on the

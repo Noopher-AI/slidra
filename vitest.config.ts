@@ -21,6 +21,7 @@ export default defineConfig({
       // straight to its TypeScript source here instead of relying on a
       // build artifact. This only affects the test runner — published
       // entry points (main/types) are untouched for real consumers.
+      "@co-motion/core/text-metrics": path.join(rootDir, "packages/core/src/text-metrics.ts"),
       "@co-motion/core": path.join(rootDir, "packages/core/src/index.ts"),
       // Same reasoning as @co-motion/core above: @co-motion/server's tests
       // import the registry by package name, and must pass on a clean

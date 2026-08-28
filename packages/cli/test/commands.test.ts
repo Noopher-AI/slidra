@@ -48,7 +48,7 @@ describe("new", () => {
     const id = opened.data!.id;
 
     const listed = await registry.dispatch<{ entries: string[] }>("ls", { id });
-    expect(listed.data!.entries.sort()).toEqual(["assets", "project.json", "slides"]);
+    expect(listed.data!.entries.sort()).toEqual(["assets", "fonts", "project.json", "slides"]);
 
     const projectJson = await registry.dispatch<{ content: string }>("cat", {
       id,
@@ -224,7 +224,7 @@ describe("ls", () => {
     const result = await registry.dispatch<{ entries: string[] }>("ls", { id });
 
     expect(result.ok).toBe(true);
-    expect(result.data!.entries.sort()).toEqual(["assets", "project.json", "slides"]);
+    expect(result.data!.entries.sort()).toEqual(["assets", "fonts", "project.json", "slides"]);
   });
 
   it("lists a given directory's contents, one entry deep", async () => {

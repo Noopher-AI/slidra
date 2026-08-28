@@ -4,7 +4,7 @@ import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
 import { validateProjectJson as validateProjectJsonStructure } from "./project-json.js";
 
-const REQUIRED_DIRS = ["slides", "assets"];
+const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 
 /**
  * Recursively zips every file under `sourceDir` into a `.comot` container at

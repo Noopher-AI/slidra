@@ -9,7 +9,11 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@co-motion/core/text-metrics": ["../core/src/text-metrics.ts"]
+    }
   },
   "include": ["src"]
 }
