@@ -93,4 +93,67 @@ describe("validateProjectJson", () => {
       expect(message).not.toMatch(/[/\\]/);
     }
   });
+
+  const fontEntry = {
+    file: "fonts/NotoSansTC-Presentation.ttf",
+    family: "Noto Sans TC",
+    license: "SIL Open Font License 1.1",
+    licenseFile: "fonts/LICENSE-NotoSansTC.txt",
+    source: "https://fonts.google.com/noto/specimen/Noto+Sans+TC",
+  };
+
+  it("accepts a missing fonts field — pre-#71 .comot files stay valid, formatVersion unchanged", () => {
+    expect(() => validateProjectJson(valid)).not.toThrow();
+    expect(validateProjectJson(valid).fonts).toBeUndefined();
+  });
+
+  it("accepts an empty fonts array", () => {
+    expect(() => validateProjectJson({ ...valid, fonts: [] })).not.toThrow();
+  });
+
+  it("accepts a well-formed fonts array", () => {
+    expect(validateProjectJson({ ...valid, fonts: [fontEntry] }).fonts).toEqual([fontEntry]);
+  });
+
+  it("rejects fonts that is not an array, naming the field", () => {
+    expect(() => validateProjectJson({ ...valid, fonts: fontEntry })).toThrow(/fonts 不是陣列/);
+  });
+
+  it.each(["file", "family", "license", "licenseFile", "source"] as const)(
+    "rejects a fonts entry missing %s, naming the field",
+    (field) => {
+      const { [field]: _drop, ...rest } = fontEntry;
+      expect(() => validateProjectJson({ ...valid, fonts: [rest] })).toThrow(new RegExp(field));
+    },
+  );
+
+  it("rejects a fonts entry whose file is an absolute path", () => {
+    expect(() => validateProjectJson({ ...valid, fonts: [{ ...fontEntry, file: "/etc/passwd" }] })).toThrow(
+      /不合法的路徑/,
+    );
+  });
+
+  it("rejects a fonts entry whose file contains '..'", () => {
+    expect(() => validateProjectJson({ ...valid, fonts: [{ ...fontEntry, file: "../outside.ttf" }] })).toThrow(
+      /不合法的路徑/,
+    );
+  });
+
+  it("rejects a fonts entry whose licenseFile is an absolute path", () => {
+    expect(() =>
+      validateProjectJson({ ...valid, fonts: [{ ...fontEntry, licenseFile: "/etc/passwd" }] }),
+    ).toThrow(/不合法的路徑/);
+  });
+
+  it("rejects a fonts entry whose licenseFile contains '..'", () => {
+    expect(() =>
+      validateProjectJson({ ...valid, fonts: [{ ...fontEntry, licenseFile: "../outside.txt" }] }),
+    ).toThrow(/不合法的路徑/);
+  });
+
+  it("rejects two fonts entries with the same family", () => {
+    expect(() =>
+      validateProjectJson({ ...valid, fonts: [fontEntry, { ...fontEntry, file: "fonts/other.ttf" }] }),
+    ).toThrow(/重複的 family/);
+  });
 });

@@ -382,6 +382,19 @@ export function mountGridOverview(
 }
 
 /**
+ * Mirrors canvas.ts's own `PRESENTATION_FONT_FACE_STYLE` (ticket #71 /
+ * ADR-0016): the container's embedded font is only guaranteed correct inside
+ * a CoMotion wrapper document, and a thumbnail's `srcdoc` is one — without
+ * this, a slide's `font-family="Noto Sans TC"` falls back to whatever the
+ * host OS happens to have, so a thumbnail could show visibly different text
+ * layout than the canvas it is a preview of. `url()` is an absolute
+ * `/api/raw/` path for the same cross-origin-srcdoc reason canvas.ts's copy
+ * documents.
+ */
+const PRESENTATION_FONT_FACE_STYLE =
+  '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
+
+/**
  * Mirrors canvas.ts's own wrapSlideDocument (module-private there; see file
  * header), plus one addition specific to thumbnails: the slide SVG has no
  * width/height of its own (only a viewBox), so left alone it renders at the
@@ -396,7 +409,7 @@ export function mountGridOverview(
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}<style>html,body{margin:0;height:100%}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /** Mirrors canvas.ts's own slideDirectory (module-private there; see file header). */

@@ -4,12 +4,13 @@ import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
 import { validateProjectJson as validateProjectJsonStructure } from "./project-json.js";
 
-const REQUIRED_DIRS = ["slides", "assets"];
+const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 
 /**
  * Recursively zips every file under `sourceDir` into a `.comot` container at
- * `outputPath`. `slides/` and `assets/` are guaranteed to exist as entries
- * even when empty, per ADR-0003.
+ * `outputPath`. `slides/`, `assets/`, and `fonts/` are guaranteed to exist as
+ * entries even when empty — the first two per ADR-0003, `fonts/` per its
+ * ADR-0016 amendment.
  */
 export async function packDirectory(sourceDir: string, outputPath: string): Promise<void> {
   const zippable: Zippable = {};

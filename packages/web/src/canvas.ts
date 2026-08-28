@@ -569,6 +569,21 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
 }
 
 /**
+ * `@font-face` for the presentation font every `.comot` embeds (ticket
+ * #71), injected into every srcdoc `<head>` below so a slide's
+ * `font-family="Noto Sans TC"` renders from the font the container ships,
+ * not whatever "Noto Sans TC" happens to resolve to (or not) on the host
+ * OS. `url()` is an absolute `/api/raw/` path, not relative to `<base>`, so
+ * it resolves the same regardless of which wrap function's `baseHref` is in
+ * effect. The srcdoc document is an opaque origin, so this fetch is
+ * cross-origin even though it targets this same server — see the
+ * `Access-Control-Allow-Origin` header serve.ts adds to every `/api/raw/`
+ * response for why that still works.
+ */
+const PRESENTATION_FONT_FACE_STYLE =
+  '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
+
+/**
  * Wraps the fetched slide markup for `srcdoc`. When `baseHref` is given, a
  * `<base>` element is injected so the browser's own relative-URL resolution
  * — not a regex rewrite of untrusted markup (ADR-0003) — turns a slide
@@ -586,7 +601,7 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -632,7 +647,7 @@ export function wrapSelectionDocument(
 ): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}</head><body style="margin:0"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -663,7 +678,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${hideStyle}</head><body style="margin:0">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${hideStyle}</head><body style="margin:0">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

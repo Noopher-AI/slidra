@@ -160,9 +160,14 @@ export async function createNewPresentation(outputPath: string, name: string): P
     for (const [relativePath, content] of Object.entries(files)) {
       const destPath = path.join(stagingDir, relativePath);
       await mkdir(path.dirname(destPath), { recursive: true });
-      await writeFile(destPath, content, "utf-8");
+      if (typeof content === "string") {
+        await writeFile(destPath, content, "utf-8");
+      } else {
+        await writeFile(destPath, content);
+      }
     }
     await mkdir(path.join(stagingDir, "assets"), { recursive: true });
+    await mkdir(path.join(stagingDir, "fonts"), { recursive: true });
     await packDirectory(stagingDir, outputPath);
   } finally {
     await rm(stagingDir, { recursive: true, force: true });
