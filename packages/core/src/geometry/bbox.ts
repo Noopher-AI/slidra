@@ -98,9 +98,9 @@ function numberAttr(
  * primitive itself lives in (i.e. before any container transform).
  *
  * `<text>` is not supported here and throws: its box needs font metrics,
- * which live in `packages/core/src/font/**` and arrive with #71/#76. This
- * module deliberately defines no measurement interface of its own —
- * inventing one now would mean two competing contracts later.
+ * which do not exist yet (see #71/#76). This module deliberately defines
+ * no measurement interface of its own — inventing one now would mean two
+ * competing contracts later.
  */
 export function primitiveBounds(primitive: SlidePrimitive): Rect {
   switch (primitive.tag) {

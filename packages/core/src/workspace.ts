@@ -9,8 +9,6 @@ import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
 import { assertSlidePathListed, replaceElementText } from "./element-text.js";
 import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
-import { ensureBundledFonts, loadFontBook } from "./font/bundle.js";
-import type { FontBook } from "./font/metrics.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -207,29 +205,7 @@ export async function openPresentation(comotPath: string): Promise<{ id: string 
 export async function packPresentation(id: string, outputPath: string): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
-  // A presentation that is about to leave this machine must carry its font
-  // (#71 acceptance 1): the `.comot` has to open without depending on any
-  // font being installed. Acquiring it here rather than in
-  // `createNewPresentation` keeps an empty new deck empty, and a deck that
-  // already has its font is not fetched again.
-  await ensureBundledFonts(workDir);
   await packDirectory(workDir, outputPath);
-}
-
-/**
- * The font book of the presentation identified by `id` — the only way a
- * command layer gets at text measurement (ADR-0004: ids, never paths).
- *
- * This is the other point at which a presentation first genuinely needs a
- * font, so it is also where it acquires one. The font is written into the
- * work directory, so the next measurement and the next `pack` both find it
- * already there and nothing is fetched twice.
- */
-export async function readPresentationFontBook(id: string): Promise<FontBook> {
-  const home = resolveCoMotionHome();
-  const workDir = await lookupWorkDir(home, id);
-  await ensureBundledFonts(workDir);
-  return loadFontBook(workDir);
 }
 
 /**
