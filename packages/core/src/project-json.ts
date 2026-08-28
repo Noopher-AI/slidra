@@ -112,9 +112,11 @@ function validateFonts(value: unknown): asserts value is FontEntry[] {
         throw new CoMotionError(`project.json 格式錯誤：fonts 內的項目缺少或型別錯誤的 ${field}`);
       }
     }
-    const file = record.file as string;
-    if (file.startsWith("/") || file.split("/").includes("..")) {
-      throw new CoMotionError("project.json 格式錯誤：fonts 內含不合法的路徑");
+    for (const pathField of ["file", "licenseFile"] as const) {
+      const path = record[pathField] as string;
+      if (path.startsWith("/") || path.split("/").includes("..")) {
+        throw new CoMotionError("project.json 格式錯誤：fonts 內含不合法的路徑");
+      }
     }
     const family = record.family as string;
     if (seenFamilies.has(family)) {

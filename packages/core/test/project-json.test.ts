@@ -139,6 +139,18 @@ describe("validateProjectJson", () => {
     );
   });
 
+  it("rejects a fonts entry whose licenseFile is an absolute path", () => {
+    expect(() =>
+      validateProjectJson({ ...valid, fonts: [{ ...fontEntry, licenseFile: "/etc/passwd" }] }),
+    ).toThrow(/不合法的路徑/);
+  });
+
+  it("rejects a fonts entry whose licenseFile contains '..'", () => {
+    expect(() =>
+      validateProjectJson({ ...valid, fonts: [{ ...fontEntry, licenseFile: "../outside.txt" }] }),
+    ).toThrow(/不合法的路徑/);
+  });
+
   it("rejects two fonts entries with the same family", () => {
     expect(() =>
       validateProjectJson({ ...valid, fonts: [fontEntry, { ...fontEntry, file: "fonts/other.ttf" }] }),
