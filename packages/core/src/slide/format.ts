@@ -1,6 +1,7 @@
 import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
 import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
+import { unescapeXmlText } from "../element-text.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 
 /**
@@ -77,6 +78,23 @@ export interface SlidePrimitive {
   tag: string;
   /** Attributes exactly as written, unconverted. */
   attrs: ReadonlyMap<string, string>;
+  /**
+   * For a `<text>` primitive: its rendered text, decoded. When the `<text>`
+   * carries `<tspan>` children (a text box's baked-in wrap, #76) this is
+   * every tspan's content joined in document order — exactly the
+   * concatenation `text/wrap.ts`'s line breaking guarantees is lossless.
+   * Otherwise it is the `<text>`'s own direct content (the plain, legacy
+   * shape `elementBounds` also has to support). `""` for every primitive
+   * that is not `<text>`.
+   */
+  text: string;
+  /**
+   * For a `<text>` primitive carrying `<tspan>` children: how many there
+   * are (the line count `elementBounds` needs for a text box's height). 0
+   * for a plain `<text>` with no tspans, and for every primitive that is
+   * not `<text>`.
+   */
+  tspanCount: number;
 }
 
 export interface SlideElement {
@@ -94,7 +112,20 @@ export interface SlideElement {
   children: SlideElement[];
   /** Primitives when `kind !== "group"`, otherwise empty. */
   primitives: SlidePrimitive[];
+  /**
+   * Parsed `data-comot-text-width`; `null` when the element is not a text
+   * box. Lives on the container rather than the `<text>` primitive itself
+   * (#76, W1-R1): `<text>` has no native size attribute, and the SVG 2
+   * attribute that would be native (`inline-size`) is exactly the
+   * browser-side wrapping #76 forbids computing at display time — there is
+   * no third option. The ADR-0012 amendment this implies is recorded as
+   * debt for a later documentation unit, not written here.
+   */
+  textWidth: number | null;
 }
+
+/** `data-comot-text-width`, see `SlideElement.textWidth`'s comment for why it lives here. */
+export const TEXT_WIDTH_ATTRIBUTE = "data-comot-text-width";
 
 export interface SlideModel {
   viewBox: { x: number; y: number; width: number; height: number };
@@ -357,27 +388,55 @@ export function parseSlide(svg: string, slidePath = "投影片"): SlideModel {
 
   const elements = svgRoot.children
     .filter((child) => child.tag === "g")
-    .map((child) => toElement(child));
+    .map((child) => toElement(child, svg));
 
   return { viewBox: { x, y, width, height }, elements };
 }
 
-function toElement(element: ScannedNode): SlideElement {
+/** Builds one `SlidePrimitive` from a scanned child node. `svg` is the whole document, needed to read a `<text>`'s content by its byte offsets. */
+function toPrimitive(child: ScannedNode, svg: string): SlidePrimitive {
+  const tag = child.tag.toLowerCase();
+  const attrs = new Map(child.attributes.map((attribute) => [attribute.name, attribute.value]));
+  if (tag !== "text") {
+    return { tag, attrs, text: "", tspanCount: 0 };
+  }
+  const tspans = child.children.filter((grandchild) => grandchild.tag === "tspan");
+  if (tspans.length > 0) {
+    const text = tspans
+      .map((tspan) => unescapeXmlText(svg.slice(tspan.contentStart, tspan.contentEnd)))
+      .join("");
+    return { tag, attrs, text, tspanCount: tspans.length };
+  }
+  const text = unescapeXmlText(svg.slice(child.contentStart, child.contentEnd));
+  return { tag, attrs, text, tspanCount: 0 };
+}
+
+function toElement(element: ScannedNode, svg: string): SlideElement {
   const transform = attributeValue(element, "transform");
   const children = element.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
   const isGroup = children.length > 0 && children.every((child) => child.tag === "g");
 
   const primitives: SlidePrimitive[] = isGroup
     ? []
-    : children.map((child) => ({
-        tag: child.tag.toLowerCase(),
-        attrs: new Map(child.attributes.map((attribute) => [attribute.name, attribute.value])),
-      }));
+    : children.map((child) => toPrimitive(child, svg));
 
   let kind: SlideElementKind;
   if (isGroup) kind = "group";
   else if (primitives.length === 1) kind = primitives[0].tag as SlideElementKind;
   else kind = "compound";
+
+  const textWidthRaw = attributeValue(element, TEXT_WIDTH_ATTRIBUTE);
+  let textWidth: number | null = null;
+  if (textWidthRaw !== null) {
+    const trimmed = textWidthRaw.trim();
+    const value = Number(trimmed);
+    if (trimmed === "" || !Number.isFinite(value) || value <= 0) {
+      throw new CoMotionError(
+        `元素 ${attributeValue(element, "id")} 的 ${TEXT_WIDTH_ATTRIBUTE} 不是合法的正數：${textWidthRaw}`,
+      );
+    }
+    textWidth = value;
+  }
 
   return {
     id: attributeValue(element, "id")!,
@@ -386,7 +445,8 @@ function toElement(element: ScannedNode): SlideElement {
     kind,
     transform,
     matrix: parseTransform(transform),
-    children: isGroup ? children.map((child) => toElement(child)) : [],
+    children: isGroup ? children.map((child) => toElement(child, svg)) : [],
     primitives,
+    textWidth,
   };
 }

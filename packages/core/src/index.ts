@@ -15,14 +15,20 @@ export {
   listPresentationEntries,
   setElementText,
   writePresentationFile,
+  addTextBox,
+  setTextBoxWidth,
 } from "./workspace.js";
+export type { AddTextBoxInput } from "./workspace.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";
-export { measurePresentationText } from "./fonts.js";
+export { measurePresentationText, resolvePresentationFonts } from "./fonts.js";
 export type { MeasurePresentationTextOptions } from "./fonts.js";
+export { parseFont, measureTextWidth } from "./text-metrics.js";
+export type { FontMetrics } from "./text-metrics.js";
 export * from "./geometry/index.js";
 export * from "./slide/index.js";
+export * from "./text/index.js";
 export {
   recordSnapshot,
   beginHistoryGroup,

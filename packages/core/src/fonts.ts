@@ -30,6 +30,24 @@ export async function measurePresentationText(
   return measureTextWidth(font, text, fontSizePx);
 }
 
+/**
+ * Resolves every font presentation `id` embeds, keyed by `family` — what
+ * the text-box write path (`workspace.ts`'s `addTextBox`/`setElementText`/
+ * `setTextBoxWidth`, #76) needs to pick the right font for whichever
+ * `font-family` a given `<text>` node declares, and to hand `wrapText` a
+ * `FontMetrics` it can call `measureTextWidth` against directly. Reuses
+ * `resolveFont`'s own per-(id, family) cache, so a family resolved here and
+ * one resolved through `measurePresentationText` never parse the same font
+ * bytes twice.
+ */
+export async function resolvePresentationFonts(id: string): Promise<ReadonlyMap<string, FontMetrics>> {
+  const raw = await readPresentationFile(id, "project.json");
+  const project = validateProjectJson(JSON.parse(raw));
+  const entries = project.fonts ?? [];
+  const fonts = await Promise.all(entries.map((entry) => resolveFont(id, entry.family)));
+  return new Map(entries.map((entry, i) => [entry.family, fonts[i]]));
+}
+
 async function resolveFont(id: string, family: string): Promise<FontMetrics> {
   const cacheKey = `${id}\0${family}`;
   const cached = fontCache.get(cacheKey);

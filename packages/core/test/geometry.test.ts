@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { CoMotionError } from "../src/errors.js";
 import {
   IDENTITY,
@@ -19,6 +19,8 @@ import {
   unionRects,
 } from "../src/geometry/bbox.js";
 import type { SlideElement, SlidePrimitive } from "../src/slide/format.js";
+import { createFontBook, type FontBook } from "../src/font/metrics.js";
+import { readBundledFontBytes } from "../src/font/bundle.js";
 
 // Expected matrices below come from the SVG 1.1 spec's own definitions of
 // each transform function (§7.4 "The transform attribute"), not from
@@ -216,9 +218,16 @@ describe("formatTransform", () => {
 
 // --- bounding boxes -------------------------------------------------------
 
-const primitive = (tag: string, attrs: Record<string, string>): SlidePrimitive => ({
+const primitive = (
+  tag: string,
+  attrs: Record<string, string>,
+  text = "",
+  tspanCount = 0,
+): SlidePrimitive => ({
   tag,
   attrs: new Map(Object.entries(attrs)),
+  text,
+  tspanCount,
 });
 
 const element = (over: Partial<SlideElement> & Pick<SlideElement, "id" | "kind">): SlideElement => ({
@@ -228,6 +237,7 @@ const element = (over: Partial<SlideElement> & Pick<SlideElement, "id" | "kind">
   matrix: IDENTITY,
   children: [],
   primitives: [],
+  textWidth: null,
   ...over,
 });
 
@@ -300,10 +310,66 @@ describe("primitiveBounds", () => {
     expect(() => primitiveBounds(primitive("rect", { width: "10%", height: "10" }))).toThrow(CoMotionError);
   });
 
-  it("refuses to box a text element, pointing at the font metrics ticket", () => {
-    expect(() => primitiveBounds(primitive("text", { x: "0", y: "0" }))).toThrow(
-      "尚無法計算文字元素的邊界框：待 #76 的字型度量落地",
-    );
+  // #76's red-to-green flip: <text> used to throw unconditionally, pointing
+  // at this ticket. It now needs a fontBook, and boxes two real shapes.
+  describe("<text> (#76)", () => {
+    const FAMILY = "Noto Sans TC";
+    let book: FontBook;
+
+    beforeAll(async () => {
+      book = createFontBook([await readBundledFontBytes()]);
+    });
+
+    it("still throws when no fontBook is supplied", () => {
+      expect(() => primitiveBounds(primitive("text", { x: "0", y: "0", "font-family": FAMILY }))).toThrow(
+        CoMotionError,
+      );
+    });
+
+    it("boxes a text box (tspanCount lines, the declared width, hhea-derived line height)", () => {
+      const box = primitiveBounds(
+        primitive("text", { "font-family": FAMILY, "font-size": "40" }, "", 3),
+        { fontBook: book, textWidth: 500 },
+      );
+      // hhea-derived: (ascender - descender + lineGap) / unitsPerEm * fontSize,
+      // read straight off the face book itself exposes — the same formula
+      // text/wrap.ts uses, not a value this test invented.
+      const face = book.faceFor({ fontFamily: FAMILY, fontSize: 40 });
+      const lineHeight = ((face.ascender - face.descender + face.lineGap) / face.unitsPerEm) * 40;
+      expect(box).toEqual({ x: 0, y: 0, width: 500, height: 3 * lineHeight });
+    });
+
+    it("boxes a legacy text-anchor=middle <text>, centred on its x", () => {
+      const text = "Hello";
+      const fontSize = 48;
+      const width = book.measureText(text, { fontFamily: FAMILY, fontSize });
+      const face = book.faceFor({ fontFamily: FAMILY, fontSize });
+      const ascent = (face.ascender / face.unitsPerEm) * fontSize;
+      const descent = (face.descender / face.unitsPerEm) * fontSize;
+
+      const box = primitiveBounds(
+        primitive(
+          "text",
+          { x: "640", y: "360", "font-family": FAMILY, "font-size": String(fontSize), "text-anchor": "middle" },
+          text,
+        ),
+        { fontBook: book },
+      );
+      expect(box).toEqual({ x: 640 - width / 2, y: 360 - ascent, width, height: ascent - descent });
+    });
+
+    it("defaults a missing font-size to 16 (SVG's own default)", () => {
+      const box = primitiveBounds(primitive("text", { x: "0", y: "0", "font-family": FAMILY }, "x"), {
+        fontBook: book,
+      });
+      expect(box.width).toBe(book.measureText("x", { fontFamily: FAMILY, fontSize: 16 }));
+    });
+
+    it("errors on a missing font-family — SVG defines no default, and guessing one is #71's failure mode", () => {
+      expect(() =>
+        primitiveBounds(primitive("text", { x: "0", y: "0", "font-size": "20" }, "x"), { fontBook: book }),
+      ).toThrow(CoMotionError);
+    });
   });
 });
 
@@ -435,5 +501,62 @@ describe("elementBounds / absolutePosition", () => {
       ],
     });
     expect(elementBounds(compound)).toEqual({ x: 890, y: 300, width: 140, height: 140 });
+  });
+
+  // #76 acceptance evidence item 4: elementBounds threads fontBook and
+  // textWidth through to the <text> primitive.
+  describe("<text> (#76)", () => {
+    const FAMILY = "Noto Sans TC";
+    let book: FontBook;
+
+    beforeAll(async () => {
+      book = createFontBook([await readBundledFontBytes()]);
+    });
+
+    it("a text box: {x:0, y:0, width: declared, height: lines * lineHeight}, translated by the container", () => {
+      const el = element({
+        id: "el-box",
+        kind: "text",
+        transform: "translate(120 200)",
+        matrix: parseTransform("translate(120 200)"),
+        textWidth: 520,
+        primitives: [primitive("text", { "font-family": FAMILY, "font-size": "36" }, "", 2)],
+      });
+      const face = book.faceFor({ fontFamily: FAMILY, fontSize: 36 });
+      const lineHeight = ((face.ascender - face.descender + face.lineGap) / face.unitsPerEm) * 36;
+      // transformRect's four-corner min/max round-trip can differ from the
+      // hand-computed value in the last float bit — toBeCloseTo, not toEqual.
+      const box = elementBounds(el, { fontBook: book });
+      expect(box.x).toBe(120);
+      expect(box.y).toBe(200);
+      expect(box.width).toBe(520);
+      expect(box.height).toBeCloseTo(2 * lineHeight, 9);
+    });
+
+    it("a legacy text-anchor=middle <text>: centred on its x", () => {
+      const text = "驗收用簡報";
+      const fontSize = 48;
+      const width = book.measureText(text, { fontFamily: FAMILY, fontSize });
+      const face = book.faceFor({ fontFamily: FAMILY, fontSize });
+      const ascent = (face.ascender / face.unitsPerEm) * fontSize;
+      const descent = (face.descender / face.unitsPerEm) * fontSize;
+
+      const el = element({
+        id: "el-title",
+        kind: "text",
+        primitives: [
+          primitive(
+            "text",
+            { x: "640", y: "360", "text-anchor": "middle", "font-family": FAMILY, "font-size": String(fontSize) },
+            text,
+          ),
+        ],
+      });
+      const box = elementBounds(el, { fontBook: book });
+      expect(box.x).toBeCloseTo(640 - width / 2, 9);
+      expect(box.y).toBeCloseTo(360 - ascent, 9);
+      expect(box.width).toBeCloseTo(width, 9);
+      expect(box.height).toBeCloseTo(ascent - descent, 9);
+    });
   });
 });
