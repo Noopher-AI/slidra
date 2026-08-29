@@ -1,5 +1,5 @@
 import { escapeXmlText } from "../element-text.js";
-import { formatSvgNumber } from "../geometry/transform.js";
+import { formatSvgNumber } from "../svg-number.js";
 import type { WrappedLine } from "./wrap.js";
 
 /**
