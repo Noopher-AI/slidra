@@ -52,7 +52,7 @@ describe("parseArgv text set", () => {
 
     expect(parsed).toEqual({
       name: "text set",
-      input: { id: "abc123", slidePath: "slides/001.svg", elementId: "el-a3f2c1", newText: "Hello" },
+      input: { id: "abc123", slidePath: "slides/001.svg", elementId: "el-a3f2c1", newText: "Hello", force: false },
     });
   });
 
@@ -64,6 +64,7 @@ describe("parseArgv text set", () => {
       slidePath: "slides/001.svg",
       elementId: "el-a3f2c1",
       newText: "",
+      force: false,
     });
   });
 
