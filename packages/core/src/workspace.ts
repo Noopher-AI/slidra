@@ -18,12 +18,15 @@ import {
 import {
   deleteElements,
   insertElement,
+  lockElements,
   moveElements,
   reorderElements,
   rotateElements,
   scaleElements,
   setElementStyle,
+  unlockElements,
   type InsertElementInput,
+  type MutationOptions,
   type OrderDirection,
 } from "./element-edit.js";
 import { commitSnapshotEntries, discardSnapshotEntries, stageNewFileEntry, stageSnapshotEntries } from "./history.js";
@@ -315,9 +318,18 @@ export async function writePresentationFile(id: string, virtualPath: string, con
  * needs the real filesystem (`readVirtualFile`), so it belongs with the
  * rest of workspace.ts's id-to-workDir resolution instead.
  */
+/**
+ * Widened for T3 (ADR-0013): a virtual path may also be one of the
+ * presentation's `templates` entries — a template is edited with exactly
+ * the same element commands a slide is (`element insert / move / style set /
+ * text set …`), the only reason this check is loosened at all. Neither list
+ * is required to exist (a pre-T3 `.comot` has no `templates` field).
+ */
 async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<ProjectJson> {
   const project = await readProjectJson(workDir);
-  if (!Array.isArray(project.slides) || !project.slides.includes(virtualPath)) {
+  const slides = Array.isArray(project.slides) ? project.slides : [];
+  const templates = Array.isArray(project.templates) ? project.templates : [];
+  if (!slides.includes(virtualPath) && !templates.includes(virtualPath)) {
     throw new CoMotionError(`不是投影片：${virtualPath}`);
   }
   return project;
@@ -355,6 +367,7 @@ export async function setElementText(
   slidePath: string,
   elementId: string,
   newText: string,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
@@ -364,7 +377,7 @@ export async function setElementText(
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
   const fontBook = await resolvePresentationFonts(id);
-  const updated = replaceElementText(original, elementId, newText, { fontBook });
+  const updated = replaceElementText(original, elementId, newText, { fontBook, force: options.force });
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -475,6 +488,7 @@ export async function setTextBoxWidth(
   slidePath: string,
   elementId: string,
   width: number,
+  options: MutationOptions = {},
 ): Promise<{ lines: number }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
@@ -482,7 +496,7 @@ export async function setTextBoxWidth(
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
   const fontBook = await resolvePresentationFonts(id);
-  const { updated, lines } = resizeTextBox(original, elementId, width, fontBook);
+  const { updated, lines } = resizeTextBox(original, elementId, width, fontBook, { force: options.force });
   await writePresentationFile(id, slidePath, updated);
   return { lines };
 }
@@ -529,13 +543,14 @@ export async function moveSlideElements(
   elementIds: string[],
   dx: number,
   dy: number,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = moveElements(original, slidePath, elementIds, dx, dy);
+  const updated = moveElements(original, slidePath, elementIds, dx, dy, options);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -544,13 +559,14 @@ export async function rotateSlideElements(
   slidePath: string,
   elementIds: string[],
   degrees: number,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = rotateElements(original, slidePath, elementIds, degrees);
+  const updated = rotateElements(original, slidePath, elementIds, degrees, options);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -559,6 +575,7 @@ export async function scaleSlideElements(
   slidePath: string,
   elementIds: string[],
   factor: number,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
@@ -566,7 +583,7 @@ export async function scaleSlideElements(
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
   const fontBook = await resolvePresentationFonts(id);
-  const updated = scaleElements(original, slidePath, elementIds, factor, fontBook);
+  const updated = scaleElements(original, slidePath, elementIds, factor, fontBook, options);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -576,6 +593,7 @@ export async function setSlideElementStyle(
   elementIds: string[],
   attr: string,
   value: string,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
@@ -583,7 +601,7 @@ export async function setSlideElementStyle(
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
   const fontBook = await resolvePresentationFonts(id);
-  const updated = setElementStyle(original, slidePath, elementIds, attr, value, fontBook);
+  const updated = setElementStyle(original, slidePath, elementIds, attr, value, fontBook, options);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -592,13 +610,41 @@ export async function reorderSlideElements(
   slidePath: string,
   elementIds: string[],
   direction: OrderDirection,
+  options: MutationOptions = {},
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = reorderElements(original, slidePath, elementIds, direction);
+  const updated = reorderElements(original, slidePath, elementIds, direction, options);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+/**
+ * Locks / unlocks a slide or template's elements (`co-motion element lock` /
+ * `unlock`, T3, ADR-0013) — same shape as the other element-edit write
+ * paths. `slidePath` may name either a listed slide or a template
+ * (`assertSlidePathListed`'s widened check), since a template is edited
+ * with the same commands a slide is.
+ */
+export async function lockSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = lockElements(original, slidePath, elementIds);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function unlockSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = unlockElements(original, slidePath, elementIds);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -669,6 +715,30 @@ export async function createPresentationFile(id: string, virtualPath: string, co
     await discardSnapshotEntries(id, entries);
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`寫入檔案時發生錯誤：${virtualPath}`);
+  }
+  await commitSnapshotEntries(id, entries);
+}
+
+/**
+ * Deletes an existing virtual path (T3's `slide delete`). The deletion
+ * counterpart to `writePresentationFile`: the file's current content is
+ * snapshotted first (`stageSnapshotEntries`), so undo restores it exactly —
+ * `history.ts`'s `applyGroup` already knows how to recreate a deleted file
+ * (`mkdir -p` then rewrite) from a snapshot entry. A failed delete discards
+ * the staged snapshot instead of committing it, same as every other write
+ * path here.
+ */
+export async function deletePresentationFile(id: string, virtualPath: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  const entries = await stageSnapshotEntries(id, [virtualPath]);
+  try {
+    await rm(realPath, { force: true });
+  } catch {
+    await discardSnapshotEntries(id, entries);
+    // realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`刪除檔案時發生錯誤：${virtualPath}`);
   }
   await commitSnapshotEntries(id, entries);
 }

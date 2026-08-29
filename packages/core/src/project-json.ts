@@ -17,6 +17,24 @@ export interface ProjectJson {
    * for this addition.
    */
   fonts?: FontEntry[];
+  /**
+   * Virtual paths of the presentation's templates (T3, ADR-0013), living
+   * under `templates/`. Optional — a pre-T3 `.comot` has no `templates`
+   * field and `formatVersion` does not change for this addition. A template
+   * is edited with the same element commands a slide is (workspace.ts's
+   * `assertSlidePathListed` accepts either list), but never appears in
+   * `slides`.
+   */
+  templates?: string[];
+  /**
+   * The presentation's slide transition (T3), `"none" | "fade"` — enforced
+   * at write time by `slide-ops.ts`'s `setTransition`, not here (a later
+   * build may add a transition name this build has never heard of, and
+   * `validateProjectJson` only checks shape, not the enum). Optional and
+   * missing on every pre-T3 `.comot`; a reader treats a missing value as
+   * `"none"`. This ticket only stores the value — nothing plays it back.
+   */
+  transition?: string;
 }
 
 /** One font embedded in the container, referenced by `project.json`'s `fonts`. */
@@ -87,6 +105,14 @@ export function validateProjectJson(value: unknown): ProjectJson {
   }
   if ("fonts" in record) {
     validateFonts(record.fonts);
+  }
+  if ("templates" in record) {
+    if (!Array.isArray(record.templates) || !record.templates.every((entry) => typeof entry === "string")) {
+      throw new CoMotionError("project.json 格式錯誤：templates 不是字串陣列");
+    }
+  }
+  if ("transition" in record && typeof record.transition !== "string") {
+    throw new CoMotionError("project.json 格式錯誤：transition 不是字串");
   }
 
   // Extra unknown fields stay on the object (see the forward-compatibility
