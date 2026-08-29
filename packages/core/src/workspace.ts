@@ -12,7 +12,7 @@ import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } f
 import { resolvePresentationFonts } from "./fonts.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
-import { formatSvgNumber } from "./geometry/transform.js";
+import { formatSvgNumber } from "./svg-number.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every

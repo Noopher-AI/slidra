@@ -3,7 +3,7 @@ import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./s
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import type { FontMetrics } from "./text-metrics.js";
-import { formatSvgNumber } from "./geometry/transform.js";
+import { formatSvgNumber } from "./svg-number.js";
 
 /**
  * The slide-mutation primitive behind `text set` (ADR-0002: `text set` must
