@@ -17,8 +17,26 @@ export {
   writePresentationFile,
   addTextBox,
   setTextBoxWidth,
+  insertSlideElement,
+  deleteSlideElements,
+  moveSlideElements,
+  rotateSlideElements,
+  scaleSlideElements,
+  setSlideElementStyle,
+  reorderSlideElements,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
+export {
+  insertElement,
+  deleteElements,
+  moveElements,
+  rotateElements,
+  scaleElements,
+  setElementStyle,
+  reorderElements,
+  STYLE_ATTRIBUTE_WHITELIST,
+} from "./element-edit.js";
+export type { InsertElementKind, InsertElementInput, OrderDirection } from "./element-edit.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";

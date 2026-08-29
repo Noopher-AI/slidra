@@ -106,6 +106,101 @@ export function parseArgv(argv: string[]): ParsedCommand {
       }
       throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
     }
+    case "element": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+
+      if (sub === "insert") {
+        const kind = requirePositional(args, 0, "element insert", "kind");
+        if (!["rect", "ellipse", "line", "image", "path"].includes(kind)) {
+          throw new CoMotionError(`element insert 不支援的 kind：${kind}`);
+        }
+        const id = requirePositional(args, 1, "element insert", "presentation-id");
+        const slidePath = requirePositional(args, 2, "element insert", "slide-path");
+        return {
+          name: "element insert",
+          input: {
+            id,
+            slidePath,
+            kind,
+            x: optionalNumberFlag(args, "--x", "element insert"),
+            y: optionalNumberFlag(args, "--y", "element insert"),
+            width: optionalNumberFlag(args, "--width", "element insert"),
+            height: optionalNumberFlag(args, "--height", "element insert"),
+            x1: optionalNumberFlag(args, "--x1", "element insert"),
+            y1: optionalNumberFlag(args, "--y1", "element insert"),
+            x2: optionalNumberFlag(args, "--x2", "element insert"),
+            y2: optionalNumberFlag(args, "--y2", "element insert"),
+            d: optionalFlag(args, "--d"),
+            fill: optionalFlag(args, "--fill"),
+            href: optionalFlag(args, "--href"),
+            media: optionalFlag(args, "--media"),
+          },
+        };
+      }
+
+      if (sub === "delete") {
+        const id = requirePositional(args, 0, "element delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element delete", "slide-path");
+        const elementIds = requireIdList(args, 2, "element delete");
+        return { name: "element delete", input: { id, slidePath, elementIds } };
+      }
+
+      if (sub === "move") {
+        const id = requirePositional(args, 0, "element move", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element move", "slide-path");
+        const elementIds = requireIdList(args, 2, "element move");
+        const dx = requireNumberFlag(args, "--dx", "element move");
+        const dy = requireNumberFlag(args, "--dy", "element move");
+        return { name: "element move", input: { id, slidePath, elementIds, dx, dy } };
+      }
+
+      if (sub === "scale") {
+        const id = requirePositional(args, 0, "element scale", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element scale", "slide-path");
+        const elementIds = requireIdList(args, 2, "element scale");
+        const factor = requireNumberFlag(args, "--factor", "element scale");
+        return { name: "element scale", input: { id, slidePath, elementIds, factor } };
+      }
+
+      if (sub === "rotate") {
+        const id = requirePositional(args, 0, "element rotate", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element rotate", "slide-path");
+        const elementIds = requireIdList(args, 2, "element rotate");
+        const degrees = requireNumberFlag(args, "--degrees", "element rotate");
+        return { name: "element rotate", input: { id, slidePath, elementIds, degrees } };
+      }
+
+      if (sub === "style") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：element style ${subsub ?? ""}`);
+        }
+        const styleArgs = args.slice(1);
+        const id = requirePositional(styleArgs, 0, "element style set", "presentation-id");
+        const slidePath = requirePositional(styleArgs, 1, "element style set", "slide-path");
+        const elementIds = requireIdList(styleArgs, 2, "element style set");
+        const attr = requirePositional(styleArgs, 3, "element style set", "attr");
+        const value = styleArgs[4];
+        if (value === undefined) {
+          throw new CoMotionError("命令 element style set 缺少參數：value");
+        }
+        return { name: "element style set", input: { id, slidePath, elementIds, attr, value } };
+      }
+
+      if (sub === "order") {
+        const id = requirePositional(args, 0, "element order", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element order", "slide-path");
+        const elementIds = requireIdList(args, 2, "element order");
+        const direction = requirePositional(args, 3, "element order", "direction");
+        if (!["front", "back", "up", "down"].includes(direction)) {
+          throw new CoMotionError(`element order 不支援的方向：${direction}`);
+        }
+        return { name: "element order", input: { id, slidePath, elementIds, direction } };
+      }
+
+      throw new CoMotionError(`未知的子命令：element ${sub ?? ""}`);
+    }
     case "undo": {
       const id = requirePositional(rest, 0, "undo", "presentation-id");
       return { name, input: { id } };
@@ -168,6 +263,16 @@ function requireNumberFlag(args: string[], flag: string, command: string): numbe
     throw new CoMotionError(`${flag} 不是合法數字：${raw}`);
   }
   return value;
+}
+
+/** Splits `element move`'s (etc.) comma-separated element-id positional into a real string[] (第 4 節: 逗號分隔、不含空白的清單). */
+function requireIdList(args: string[], index: number, command: string): string[] {
+  const raw = requirePositional(args, index, command, "element-ids");
+  const ids = raw.split(",").map((token) => token.trim());
+  if (ids.some((token) => token.length === 0)) {
+    throw new CoMotionError(`命令 ${command} 的元素清單格式錯誤：${raw}`);
+  }
+  return ids;
 }
 
 function optionalNumberFlag(args: string[], flag: string, command: string): number | undefined {
