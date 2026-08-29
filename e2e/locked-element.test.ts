@@ -132,6 +132,31 @@ it("點鎖定的元素選不起來：狀態列不顯示，沒有選取框", asyn
   }
 });
 
+it("鎖定子元素包在未鎖定的父群組內：點子元素選不起來，不會回傳未鎖定父群組（Reviewer repro）", async () => {
+  const { server, cleanup } = await startServerFor(lockedDeckDir);
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    const selName = page.locator(".status .sel-name");
+
+    // Real mouse click on the locked child — see this file's header note on
+    // why a locator click (not page-script .click()) is required here.
+    await slideFrame.locator("#el-locked-child").click();
+
+    await page.waitForTimeout(300);
+    expect((await selName.textContent())?.trim()).toBe("");
+
+    const boxDisplay = await page.evaluate(() => {
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+      const sel = host?.shadowRoot?.querySelector(".sel") as HTMLElement | null;
+      return sel ? getComputedStyle(sel).display : null;
+    });
+    expect(boxDisplay === null || boxDisplay === "none").toBe(true);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("點旁邊未鎖定的元素仍正常選取", async () => {
   const { server, cleanup } = await startServerFor(lockedDeckDir);
   try {

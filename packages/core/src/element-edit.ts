@@ -586,6 +586,29 @@ function scaleLeafPrimitives(
 }
 
 /**
+ * Rejects `id` (and, if it is a group, every descendant container inside
+ * it) the moment any one of them is locked without `--force` — ADR-0013.
+ * Runs entirely against the caller's `svg` snapshot before any splice, so a
+ * lock three levels deep still blocks the whole command atomically instead
+ * of leaving earlier siblings already rewritten.
+ */
+function assertSubtreeNotLocked(svg: string, id: string, force: boolean | undefined): void {
+  const roots = scanDocument(svg);
+  const svgRoot = requireSvgRoot(roots);
+  const { node } = requireContainer(svgRoot, id);
+  assertNotLocked(node, id, force);
+  if (isGroupContainer(node)) {
+    for (const child of meaningfulChildren(node)) {
+      const childId = attributeValue(child, "id");
+      if (!childId) {
+        throw new CoMotionError("群組子容器缺少 id，無法縮放");
+      }
+      assertSubtreeNotLocked(svg, childId, force);
+    }
+  }
+}
+
+/**
  * Scales one target by `factor`, anchored at the target's own container
  * origin (決定 3): the target's own `transform` never changes. A group
  * target recurses — every descendant container's own `translateX/Y` is
@@ -604,6 +627,15 @@ function scaleOneContainer(
   fontBook: ReadonlyMap<string, FontMetrics>,
   force: boolean | undefined,
 ): string {
+  // ADR-0013: a group scale indirectly moves every descendant container's
+  // transform (below), so a locked descendant is just as much "changed" as
+  // a locked target — checking only the target let a locked child hide
+  // behind an unlocked outer group and still get its translate rewritten.
+  // Walk the whole subtree against the *original* document (no splice has
+  // happened yet, so ids don't shift) and reject before any splice at all
+  // if anything in it is locked and `--force` was not given.
+  assertSubtreeNotLocked(svg, id, force);
+
   let current = svg;
   const worklist: Array<{ id: string; isTarget: boolean }> = [{ id, isTarget: true }];
 
@@ -613,15 +645,9 @@ function scaleOneContainer(
     const svgRoot = requireSvgRoot(roots);
     const { node } = requireContainer(svgRoot, currentId);
 
-    // Only the target itself is checked — a descendant container reached
-    // while recursing through a group is never independently locked; the
-    // group's own lock (checked here when isTarget) is what governs it.
-    if (isTarget) assertNotLocked(node, currentId, force);
-
     if (!isTarget) {
-      // A descendant reached while recursing through a group is never
-      // independently lock-checked (only the target itself was, above) —
-      // force is irrelevant here, so this call is never rejected on lock.
+      // Lock was already checked for every node in the subtree by
+      // assertSubtreeNotLocked above, so this call can never be rejected.
       current = applyTransformDelta(
         current,
         currentId,

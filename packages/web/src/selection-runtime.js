@@ -139,14 +139,17 @@
     while (current && current !== document.body) {
       var tag = current.tagName ? current.tagName.toLowerCase() : "";
       if (tag === "svg") break;
+      // T3 / ADR-0013: a locked element is not selectable at all in view
+      // mode, and neither is anything inside it — checking only the
+      // resolved `outermost` node let a locked child hide behind an
+      // unlocked outer group and still be reachable. The lock check must
+      // run on every ancestor on the way up, not just the one we end up
+      // returning.
+      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") {
+        return null;
+      }
       if (current.hasAttribute && current.hasAttribute("id")) outermost = current;
       current = current.parentElement;
-    }
-    // T3 / ADR-0013: a locked element is not selectable at all in view mode
-    // — the only guard the front end ever applies. It never sends --force;
-    // that escape hatch exists only for the agent's own CLI/registry path.
-    if (outermost && outermost.getAttribute("data-comot-lock") === "true") {
-      return null;
     }
     return outermost;
   }

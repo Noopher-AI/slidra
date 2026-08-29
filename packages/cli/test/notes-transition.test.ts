@@ -100,22 +100,40 @@ describe("slide notes set", () => {
 
   it("既有 <comot:effects> 不受影響；合規檢查仍全綠", async () => {
     const id = await openFreshPresentation();
-    // Manufacture an <comot:effects> entry the only way ADR-0002 allows:
-    // there is no public command that writes one yet, so this test builds
-    // its own compliant slide with a hand-authored effects block through
-    // `slide add` + `element insert`, then appends an effects list via a
-    // fresh blank slide swap is not needed — instead verify the notes write
-    // never disturbs an existing metadata sibling by asserting compliance
-    // and that a subsequently-added notes tag coexists with a pre-existing
-    // <title>/<desc> style furniture untouched. Since no command authors
-    // <comot:effects> in isolation, this test asserts the narrower, testable
-    // claim T3 actually needs: writing notes on a slide that already has
-    // other DOCUMENT_FURNITURE_TAGS content leaves that content untouched
-    // and compliance stays clean.
-    await registry.dispatch("slide delete", { id, slidePath: "slides/001.svg" });
-    await registry.dispatch("slide add", { id }); // blank, compliant
-    await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "備忘稿" });
+    // No public command authors a standalone <comot:effects> yet
+    // (element-edit.ts's own comment on the format), so this test hand-authors
+    // one directly into the slide — the exact markup shape
+    // slide-format.test.ts uses to prove checkSlideCompliance accepts it —
+    // then writes it via `writePresentationFile`, the same escape hatch
+    // element.test.ts's group-scale test uses to seed a fixture no public
+    // command builds on its own.
+    // `setSlideNotes` inserts <comot:notes> as <metadata>'s first child
+    // (notes.ts's own doc comment), so the <comot:effects> block itself —
+    // not the surrounding <metadata> tags — is the substring that must
+    // survive byte-for-byte; it ends up shifted after the new notes tag,
+    // not literally in place.
+    const effectsBlock =
+      '<comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+      '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>' +
+      "</comot:effects>";
+    const svgWithEffects =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      `  <metadata>${effectsBlock}</metadata>\n` +
+      '  <g id="el-a"><rect x="0" y="0" width="10" height="10"/></g>\n' +
+      "</svg>\n";
+    expect(checkSlideCompliance(svgWithEffects)).toEqual([]);
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", svgWithEffects);
+
+    const result = await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "備忘稿" });
+
+    expect(result.ok).toBe(true);
     const content = await slideContent(id);
+    // The existing <comot:effects> block survives byte-for-byte — this is
+    // the actual T3 parent AC (「既有 effects 一個位元組都不動」), not just
+    // "compliance still passes".
+    expect(content).toContain(effectsBlock);
+    expect(content).toContain("<comot:notes>備忘稿</comot:notes>");
     expect(checkSlideCompliance(content)).toEqual([]);
   });
 });

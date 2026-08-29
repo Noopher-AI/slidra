@@ -246,6 +246,32 @@ describe("鎖定守衛：一般命令被拒 (AC7)", () => {
     expect(result.ok).toBe(false);
     expect(await slideContent(id)).toBe(before);
   });
+
+  it("鎖定的子元素包在未鎖定的父群組內：element scale 對父群組整條拒絕，鎖定子元素的 translate 未變", async () => {
+    const { id } = await openWithRectElement();
+    const before = await slideContent(id);
+    // Hand-build a compliant group: unlocked "el-group" containing a locked
+    // child "el-locked" — the shape the reviewer's repro used to show the
+    // lock guard being bypassed via the unlocked outer group.
+    const groupSvg = before.replace(
+      "</svg>",
+      '<g id="el-group"><g id="el-locked" data-comot-lock="true" transform="translate(5 5)">' +
+        '<rect x="0" y="0" width="10" height="10"/></g></g></svg>',
+    );
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", groupSvg);
+    const beforeGroup = await slideContent(id);
+
+    const result = await registry.dispatch("element scale", {
+      id,
+      slidePath: "slides/001.svg",
+      elementIds: ["el-group"],
+      factor: 2,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(await slideContent(id)).toBe(beforeGroup);
+  });
 });
 
 describe("鎖定守衛：--force 可覆蓋 (AC8)", () => {
