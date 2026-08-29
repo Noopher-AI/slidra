@@ -19,6 +19,14 @@ import {
   elementOrderCommand,
   elementLockCommand,
   elementUnlockCommand,
+  elementGroupCommand,
+  elementUngroupCommand,
+  elementAlignCommand,
+  elementDistributeCommand,
+  elementNameSetCommand,
+  elementCopyCommand,
+  elementPasteCommand,
+  elementDuplicateCommand,
 } from "./commands/element.js";
 import { slideRenderCommand, renderSlideRender } from "./commands/slide-render.js";
 import { assetImportCommand } from "./commands/asset-import.js";
@@ -66,6 +74,14 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("element rotate", { handler: elementRotateCommand, render: null });
   registry.register("element style set", { handler: elementStyleSetCommand, render: null });
   registry.register("element order", { handler: elementOrderCommand, render: null });
+  registry.register("element group", { handler: elementGroupCommand, render: null });
+  registry.register("element ungroup", { handler: elementUngroupCommand, render: null });
+  registry.register("element align", { handler: elementAlignCommand, render: null });
+  registry.register("element distribute", { handler: elementDistributeCommand, render: null });
+  registry.register("element name set", { handler: elementNameSetCommand, render: null });
+  registry.register("element copy", { handler: elementCopyCommand, render: null });
+  registry.register("element paste", { handler: elementPasteCommand, render: null });
+  registry.register("element duplicate", { handler: elementDuplicateCommand, render: null });
   registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });
   registry.register("asset import", { handler: assetImportCommand, render: null });
   registry.register("element lock", { handler: elementLockCommand, render: null });

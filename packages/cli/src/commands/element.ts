@@ -1,13 +1,23 @@
 import {
+  alignSlideElements,
+  copySlideElements,
   deleteSlideElements,
+  distributeSlideElements,
+  duplicateSlideElements,
+  groupSlideElements,
   insertSlideElement,
   lockSlideElements,
   moveSlideElements,
+  pasteSlideClipboard,
   reorderSlideElements,
   rotateSlideElements,
   scaleSlideElements,
+  setSlideElementName,
   setSlideElementStyle,
   unlockSlideElements,
+  ungroupSlideElements,
+  type AlignDirection,
+  type DistributeAxis,
   type InsertElementInput,
   type OrderDirection,
 } from "@co-motion/core";
@@ -179,4 +189,112 @@ export type ElementUnlockData = Record<string, never>;
 export const elementUnlockCommand: CommandHandler<ElementUnlockInput, ElementUnlockData> = async (input) => {
   await unlockSlideElements(input.id, input.slidePath, input.elementIds);
   return { ok: true, data: {}, message: `已解除鎖定 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementGroupInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export interface ElementGroupData {
+  elementId: string;
+}
+
+export const elementGroupCommand: CommandHandler<ElementGroupInput, ElementGroupData> = async (input) => {
+  const { elementId } = await groupSlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: { elementId }, message: `已將 ${input.slidePath} 的 ${input.elementIds.length} 個元素群組為 ${elementId}` };
+};
+
+export interface ElementUngroupInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export type ElementUngroupData = Record<string, never>;
+
+export const elementUngroupCommand: CommandHandler<ElementUngroupInput, ElementUngroupData> = async (input) => {
+  await ungroupSlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: {}, message: `已解散 ${input.slidePath} 的 ${input.elementIds.length} 個群組` };
+};
+
+export interface ElementAlignInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+  direction: AlignDirection;
+}
+export type ElementAlignData = Record<string, never>;
+
+export const elementAlignCommand: CommandHandler<ElementAlignInput, ElementAlignData> = async (input) => {
+  await alignSlideElements(input.id, input.slidePath, input.elementIds, input.direction);
+  return { ok: true, data: {}, message: `已對齊 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementDistributeInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+  axis: DistributeAxis;
+}
+export type ElementDistributeData = Record<string, never>;
+
+export const elementDistributeCommand: CommandHandler<ElementDistributeInput, ElementDistributeData> = async (input) => {
+  await distributeSlideElements(input.id, input.slidePath, input.elementIds, input.axis);
+  return { ok: true, data: {}, message: `已分佈 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementNameSetInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+  name: string;
+}
+export type ElementNameSetData = Record<string, never>;
+
+export const elementNameSetCommand: CommandHandler<ElementNameSetInput, ElementNameSetData> = async (input) => {
+  await setSlideElementName(input.id, input.slidePath, input.elementIds, input.name);
+  return { ok: true, data: {}, message: `已設定 ${input.slidePath} 的 ${input.elementIds.length} 個元素的顯示名稱` };
+};
+
+export interface ElementCopyInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export type ElementCopyData = Record<string, never>;
+
+export const elementCopyCommand: CommandHandler<ElementCopyInput, ElementCopyData> = async (input) => {
+  await copySlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: {}, message: `已複製 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementPasteInput {
+  id: string;
+  slidePath: string;
+  dx: number;
+  dy: number;
+}
+export interface ElementPasteData {
+  elementIds: string[];
+}
+
+export const elementPasteCommand: CommandHandler<ElementPasteInput, ElementPasteData> = async (input) => {
+  const { elementIds } = await pasteSlideClipboard(input.id, input.slidePath, input.dx, input.dy);
+  return { ok: true, data: { elementIds }, message: `已貼上 ${elementIds.length} 個元素到 ${input.slidePath}` };
+};
+
+export interface ElementDuplicateInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+  dx: number;
+  dy: number;
+}
+export interface ElementDuplicateData {
+  elementIds: string[];
+}
+
+export const elementDuplicateCommand: CommandHandler<ElementDuplicateInput, ElementDuplicateData> = async (input) => {
+  const { elementIds } = await duplicateSlideElements(input.id, input.slidePath, input.elementIds, input.dx, input.dy);
+  return { ok: true, data: { elementIds }, message: `已在 ${input.slidePath} 複製出 ${elementIds.length} 個新元素` };
 };
