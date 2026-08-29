@@ -1,5 +1,5 @@
 import { CoMotionError } from "./errors.js";
-import { escapeXmlAttr, readTextFontInfo, resolveFont, rewrapTextBoxContent } from "./element-text.js";
+import { assertNotLocked, escapeXmlAttr, readTextFontInfo, resolveFont, rewrapTextBoxContent } from "./element-text.js";
 import { assertSlideCompliant, TEXT_WIDTH_ATTRIBUTE } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, parseTransform, type TransformParts } from "./geometry/transform.js";
@@ -23,6 +23,17 @@ import type { FontMetrics } from "./text-metrics.js";
 
 /** Doc furniture children accessibility markup can carry; never a real target. */
 const IGNORED_CHILD_TAGS = new Set(["title", "desc"]);
+
+/**
+ * T3, ADR-0013: `force` bypasses the locked-element guard (`assertNotLocked`,
+ * element-text.ts) for one call. Added to all seven mutations' signatures for
+ * a uniform shape, even though `insertElement` (a new element is never
+ * locked) and `deleteElements` (locked elements are deletable with no
+ * `--force`, ADR-0013) never read it.
+ */
+export interface MutationOptions {
+  readonly force?: boolean;
+}
 
 interface Splice {
   start: number;
@@ -151,6 +162,8 @@ export function insertElement(
   slidePath: string,
   elementId: string,
   input: InsertElementInput,
+  /** Shape parity with the other six mutations (T3); a new element is never locked, so unused here. */
+  _options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
 
@@ -274,7 +287,13 @@ function findDanglingEffectRanges(svgRoot: ScannedNode, removedIds: ReadonlySet<
  * silently covered by the ancestor's removal, never double-removed or
  * reported as an error (第 4 節).
  */
-export function deleteElements(svgContent: string, slidePath: string, elementIds: readonly string[]): string {
+export function deleteElements(
+  svgContent: string,
+  slidePath: string,
+  elementIds: readonly string[],
+  /** Shape parity with the other six mutations (T3); ADR-0013: deleting a locked element never needs `--force`, so unused here. */
+  _options: MutationOptions = {},
+): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
 
@@ -340,10 +359,12 @@ function applyTransformDelta(
   svg: string,
   id: string,
   mutate: (parts: TransformParts) => TransformParts,
+  force: boolean | undefined,
 ): string {
   const roots = scanDocument(svg);
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
+  assertNotLocked(node, id, force);
   const splice = buildTransformSplice(svg, node, mutate);
   return applySplices(svg, [splice]);
 }
@@ -358,6 +379,7 @@ export function moveElements(
   elementIds: readonly string[],
   dx: number,
   dy: number,
+  options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
@@ -366,11 +388,16 @@ export function moveElements(
   }
   let current = svgContent;
   for (const id of elementIds) {
-    current = applyTransformDelta(current, id, (parts) => ({
-      ...parts,
-      translateX: parts.translateX + dx,
-      translateY: parts.translateY + dy,
-    }));
+    current = applyTransformDelta(
+      current,
+      id,
+      (parts) => ({
+        ...parts,
+        translateX: parts.translateX + dx,
+        translateY: parts.translateY + dy,
+      }),
+      options.force,
+    );
   }
   return current;
 }
@@ -386,6 +413,7 @@ export function rotateElements(
   slidePath: string,
   elementIds: readonly string[],
   degrees: number,
+  options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
@@ -394,10 +422,15 @@ export function rotateElements(
   }
   let current = svgContent;
   for (const id of elementIds) {
-    current = applyTransformDelta(current, id, (parts) => ({
-      ...parts,
-      rotation: parts.rotation + degrees,
-    }));
+    current = applyTransformDelta(
+      current,
+      id,
+      (parts) => ({
+        ...parts,
+        rotation: parts.rotation + degrees,
+      }),
+      options.force,
+    );
   }
   return current;
 }
@@ -569,6 +602,7 @@ function scaleOneContainer(
   id: string,
   factor: number,
   fontBook: ReadonlyMap<string, FontMetrics>,
+  force: boolean | undefined,
 ): string {
   let current = svg;
   const worklist: Array<{ id: string; isTarget: boolean }> = [{ id, isTarget: true }];
@@ -579,12 +613,25 @@ function scaleOneContainer(
     const svgRoot = requireSvgRoot(roots);
     const { node } = requireContainer(svgRoot, currentId);
 
+    // Only the target itself is checked — a descendant container reached
+    // while recursing through a group is never independently locked; the
+    // group's own lock (checked here when isTarget) is what governs it.
+    if (isTarget) assertNotLocked(node, currentId, force);
+
     if (!isTarget) {
-      current = applyTransformDelta(current, currentId, (parts) => ({
-        ...parts,
-        translateX: parts.translateX * factor,
-        translateY: parts.translateY * factor,
-      }));
+      // A descendant reached while recursing through a group is never
+      // independently lock-checked (only the target itself was, above) —
+      // force is irrelevant here, so this call is never rejected on lock.
+      current = applyTransformDelta(
+        current,
+        currentId,
+        (parts) => ({
+          ...parts,
+          translateX: parts.translateX * factor,
+          translateY: parts.translateY * factor,
+        }),
+        true,
+      );
     }
 
     // Re-scan: the transform splice above (if any) shifted every offset at
@@ -617,6 +664,7 @@ export function scaleElements(
   elementIds: readonly string[],
   factor: number,
   fontBook: ReadonlyMap<string, FontMetrics>,
+  options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
@@ -625,7 +673,7 @@ export function scaleElements(
   }
   let current = svgContent;
   for (const id of elementIds) {
-    current = scaleOneContainer(current, id, factor, fontBook);
+    current = scaleOneContainer(current, id, factor, fontBook, options.force);
   }
   return current;
 }
@@ -688,10 +736,12 @@ function setStyleOnContainer(
   attr: string,
   value: string,
   fontBook: ReadonlyMap<string, FontMetrics>,
+  force: boolean | undefined,
 ): string {
   const roots = scanDocument(svg);
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
+  assertNotLocked(node, id, force);
 
   if (isGroupContainer(node)) {
     throw new CoMotionError(`元素 ${id} 是群組，沒有可套用樣式的圖元`);
@@ -750,13 +800,14 @@ export function setElementStyle(
   attr: string,
   value: string,
   fontBook: ReadonlyMap<string, FontMetrics>,
+  options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
   validateStyleAttribute(attr, value);
   let current = svgContent;
   for (const id of elementIds) {
-    current = setStyleOnContainer(current, id, attr, value, fontBook);
+    current = setStyleOnContainer(current, id, attr, value, fontBook, options.force);
   }
   return current;
 }
@@ -767,10 +818,11 @@ export function setElementStyle(
 
 export type OrderDirection = "front" | "back" | "up" | "down";
 
-function moveToEdge(svg: string, id: string, direction: "front" | "back"): string {
+function moveToEdge(svg: string, id: string, direction: "front" | "back", force: boolean | undefined): string {
   const roots = scanDocument(svg);
   const svgRoot = requireSvgRoot(roots);
   const { node, parent } = requireContainer(svgRoot, id);
+  assertNotLocked(node, id, force);
   const siblings = parent.children.filter((child) => child.tag === "g");
   if (siblings.length <= 1) return svg; // Only child — no-op.
 
@@ -800,10 +852,11 @@ function swapAdjacentContainers(svg: string, x: ScannedNode, y: ScannedNode): st
   return svg.slice(0, first.start) + secondText + between + firstText + svg.slice(second.end);
 }
 
-function moveOneStep(svg: string, id: string, direction: "up" | "down"): string {
+function moveOneStep(svg: string, id: string, direction: "up" | "down", force: boolean | undefined): string {
   const roots = scanDocument(svg);
   const svgRoot = requireSvgRoot(roots);
   const { node, parent } = requireContainer(svgRoot, id);
+  assertNotLocked(node, id, force);
   const siblings = parent.children.filter((child) => child.tag === "g");
   const index = siblings.indexOf(node);
   const swapIndex = direction === "up" ? index + 1 : index - 1;
@@ -822,14 +875,59 @@ export function reorderElements(
   slidePath: string,
   elementIds: readonly string[],
   direction: OrderDirection,
+  options: MutationOptions = {},
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
   let current = svgContent;
   for (const id of elementIds) {
     current = direction === "front" || direction === "back"
-      ? moveToEdge(current, id, direction)
-      : moveOneStep(current, id, direction);
+      ? moveToEdge(current, id, direction, options.force)
+      : moveOneStep(current, id, direction, options.force);
+  }
+  return current;
+}
+
+// ---------------------------------------------------------------------------
+// element lock / unlock (T3, ADR-0013)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets `data-comot-lock="true"` on every target's container (`co-motion
+ * element lock`). Idempotent: locking an already-locked element succeeds
+ * with no error. Never checks `assertNotLocked` itself — locking a locked
+ * element is a no-op, not a rejection.
+ */
+export function lockElements(svgContent: string, slidePath: string, elementIds: readonly string[]): string {
+  assertSlideCompliant(svgContent, slidePath);
+  validateIdList(elementIds);
+  let current = svgContent;
+  for (const id of elementIds) {
+    const roots = scanDocument(current);
+    const svgRoot = requireSvgRoot(roots);
+    const { node } = requireContainer(svgRoot, id);
+    current = applySplices(current, [setAttrSplice(node, "data-comot-lock", "true")]);
+  }
+  return current;
+}
+
+/**
+ * Removes `data-comot-lock` from every target's container (`co-motion
+ * element unlock`) — unlocking clears the attribute entirely, it never
+ * writes `data-comot-lock="false"` (決定 1). Idempotent: unlocking an
+ * already-unlocked element is a no-op.
+ */
+export function unlockElements(svgContent: string, slidePath: string, elementIds: readonly string[]): string {
+  assertSlideCompliant(svgContent, slidePath);
+  validateIdList(elementIds);
+  let current = svgContent;
+  for (const id of elementIds) {
+    const roots = scanDocument(current);
+    const svgRoot = requireSvgRoot(roots);
+    const { node } = requireContainer(svgRoot, id);
+    const attr = attributeOf(node, "data-comot-lock");
+    if (!attr) continue;
+    current = applySplices(current, [attributeRemovalSplice(node, current, attr)]);
   }
   return current;
 }
