@@ -1,23 +1,12 @@
 import { CoMotionError } from "../errors.js";
 
 /**
- * A hand-written, offset-carrying SVG scanner.
+ * A hand-written, offset-carrying SVG scanner. This is the one SVG scanner
+ * in the codebase (#92) — every module that needs to know what elements a
+ * slide document contains, whether to read attribute values or to splice
+ * around an element's byte offsets, goes through `scanDocument` here.
  *
- * ## Its twin, and why they are not one module
- *
- * `packages/core/src/element-text.ts` already contains a hand-written SVG
- * scanner, and the four rules below are copied from it verbatim because
- * each one is a real bug it already fixed. This module does not reuse it
- * and does not refactor it into a shared scanner for one reason only:
- * `element-text.ts` returns attribute *strings* and never returns byte
- * offsets, and every single thing this module exists to do — lifting `id`,
- * `data-comot-name`, `data-comot-media` and `transform` off a primitive and
- * onto a new container — is a splice, which is impossible without offsets.
- * Widening `element-text.ts` was not available: it sits outside this unit's
- * write boundary. The duplication is deliberate (boundary over DRY) and is
- * recorded as debt for a later cleanup ticket.
- *
- * ## The four rules inherited from element-text.ts
+ * ## Rules it follows
  *
  * 1. `<!-- -->`, `<![CDATA[ ]]>`, `<? ?>` and `<!DOCTYPE [...]>` are always
  *    skipped to their proper terminator, so markup written inside them is
@@ -28,6 +17,11 @@ import { CoMotionError } from "../errors.js";
  *    name/value pairs, never searched as text — `data-note=' id="el-a"'`
  *    contains a value, not an `id` attribute.
  * 4. Syntax it cannot make sense of throws `CoMotionError`. It never guesses.
+ *
+ * When a tag carries more than one attribute of the same name (e.g.
+ * `<text id="a" id="b">`), `attributeOf`/`attributeValue` resolve to the
+ * *first* one — `Array.find` over `attributes`, which is built in document
+ * order. Every caller relies on this same first-wins rule.
  *
  * Like the rest of `slide/` and `geometry/`, this module imports no Node
  * built-in module: the slide model has to be computable in a browser too.

@@ -255,8 +255,12 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
     .toBeGreaterThan(audioT0);
   expect(await audio.evaluate((el: HTMLAudioElement) => el.paused)).toBe(false);
 
-  // 影片仍在播——推進到音檔那一步不會把先前的媒體停掉。
-  expect(await video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
+  // 影片仍在播——推進到音檔那一步不會把先前的媒體停掉。runtime 對 video 狀態的
+  // 收斂是非同步的：機器負載高時，這裡原本「動作完成後立刻同步讀一次 paused」
+  // 的讀值時間點可能落在收斂完成之前而偶發假紅。改成等到真正安定的終止條件。
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 })
+    .toBe(false);
 
   // 已經是整份簡報的最後一步：再按一次不動、不當機。
   await page.keyboard.press("ArrowRight");
