@@ -8,6 +8,17 @@ import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
 import { appendElementToSvg, escapeXmlAttr, replaceElementText, resizeTextBox } from "./element-text.js";
+import {
+  deleteElements,
+  insertElement,
+  moveElements,
+  reorderElements,
+  rotateElements,
+  scaleElements,
+  setElementStyle,
+  type InsertElementInput,
+  type OrderDirection,
+} from "./element-edit.js";
 import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
 import { resolvePresentationFonts } from "./fonts.js";
 import { wrapText } from "./text/wrap.js";
@@ -462,4 +473,119 @@ export async function setTextBoxWidth(
   const { updated, lines } = resizeTextBox(original, elementId, width, fontBook);
   await writePresentationFile(id, slidePath, updated);
   return { lines };
+}
+
+/**
+ * The seven "element edit" write paths (#104): each follows the same shape
+ * as `setElementText`/`addTextBox`/`setTextBoxWidth` above — resolve the
+ * work directory, confirm the slide is listed, read it, call the pure
+ * mutation in `element-edit.ts`, write the result back through
+ * `writePresentationFile` (undo/redo therefore comes for free). Every one of
+ * them locates its target(s) purely from the slide's own content and
+ * `elementIds`; none of them takes a real filesystem path.
+ */
+
+export async function insertSlideElement(
+  id: string,
+  slidePath: string,
+  input: InsertElementInput,
+): Promise<{ elementId: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const elementId = generateElementId();
+  const updated = insertElement(original, slidePath, elementId, input);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+export async function deleteSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = deleteElements(original, slidePath, elementIds);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function moveSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  dx: number,
+  dy: number,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = moveElements(original, slidePath, elementIds, dx, dy);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function rotateSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  degrees: number,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = rotateElements(original, slidePath, elementIds, degrees);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function scaleSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  factor: number,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const updated = scaleElements(original, slidePath, elementIds, factor, fontBook);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideElementStyle(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  attr: string,
+  value: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const updated = setElementStyle(original, slidePath, elementIds, attr, value, fontBook);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function reorderSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  direction: OrderDirection,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = reorderElements(original, slidePath, elementIds, direction);
+  await writePresentationFile(id, slidePath, updated);
 }

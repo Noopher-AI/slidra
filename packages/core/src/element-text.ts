@@ -1,5 +1,5 @@
 import { CoMotionError } from "./errors.js";
-import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
+import { attributeOf, attributeValue, scanDocument, type ScannedAttribute, type ScannedNode } from "./slide/scan.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import type { FontMetrics } from "./text-metrics.js";
@@ -299,7 +299,7 @@ const TEXT_WIDTH_ATTRIBUTE = "data-comot-text-width";
  * in measurement — only in the CSS the `<text>` renders with, which this
  * module never touches.
  */
-function readTextFontInfo(textNode: ScannedNode, elementId: string): { fontFamily: string; fontSize: number } {
+export function readTextFontInfo(textNode: ScannedNode, elementId: string): { fontFamily: string; fontSize: number } {
   const fontFamily = attributeValue(textNode, "font-family");
   if (fontFamily === null || fontFamily.trim() === "") {
     throw new CoMotionError(`文字框缺少 font-family，無法重新換行：${elementId}`);
@@ -316,8 +316,8 @@ function readTextFontInfo(textNode: ScannedNode, elementId: string): { fontFamil
   return { fontFamily, fontSize };
 }
 
-/** Resolves `fontFamily` in `fonts`, throwing the same "缺少字型" error every text-box measurement call uses on a miss. */
-function resolveFont(fonts: ReadonlyMap<string, FontMetrics>, fontFamily: string, elementId: string): FontMetrics {
+/** Resolves `fontFamily` in `fonts`, throwing the same "缺少字型" error every text-box measurement call uses on a miss. Exported for `element-edit.ts` (#104), which resolves the same way before re-wrapping a text box. */
+export function resolveFont(fonts: ReadonlyMap<string, FontMetrics>, fontFamily: string, elementId: string): FontMetrics {
   const font = fonts.get(fontFamily);
   if (!font) {
     throw new CoMotionError(`簡報未內嵌字型 ${fontFamily}，無法重新換行：${elementId}`);
@@ -539,13 +539,40 @@ export function resizeTextBox(
     throw new CoMotionError(`元素沒有文字內容：${elementId}`);
   }
 
+  const { fontFamily, fontSize } = readTextFontInfo(textNode, elementId);
+  return rewrapTextBoxContent(svgContent, textNode, widthAttr, roundedWidth, fontFamily, fontSize, fontBook, elementId);
+}
+
+/**
+ * Re-wraps a text box's `<text>` content at `newWidth`/`fontFamily`/`fontSize`
+ * and splices both the container's `data-comot-text-width` attribute and the
+ * `<text>`'s content into `svgContent`. Extracted out of `resizeTextBox`
+ * (#104) so `element-edit.ts`'s `element scale` / `element style set` share
+ * this exact re-wrap-and-splice logic instead of a second copy — the caller
+ * decides which of width/family/size actually changed (any unchanged value
+ * is simply passed through unchanged).
+ *
+ * Takes the already-located `textNode` and `widthAttr` (not an `elementId`
+ * to re-locate them from) because both `resizeTextBox` and `element-edit.ts`
+ * have already done that lookup themselves, each with their own error
+ * wording for "not a text box" / "not found".
+ */
+export function rewrapTextBoxContent(
+  svgContent: string,
+  textNode: ScannedNode,
+  widthAttr: ScannedAttribute,
+  newWidth: number,
+  fontFamily: string,
+  fontSize: number,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  elementId: string,
+): { updated: string; lines: number } {
   const tspans = textNode.children.filter((child) => child.tag === "tspan");
   const sourceText = tspans
     .map((tspan) => unescapeXmlText(svgContent.slice(tspan.contentStart, tspan.contentEnd)))
     .join("");
-  const { fontFamily, fontSize } = readTextFontInfo(textNode, elementId);
   const font = resolveFont(fontBook, fontFamily, elementId);
-  const wrapped = wrapText(sourceText, { width: roundedWidth, font, fontSizePx: fontSize });
+  const wrapped = wrapText(sourceText, { width: newWidth, font, fontSizePx: fontSize });
   const content = renderTextBoxContent(wrapped.lines);
 
   // Two independent splices on the same string: the <text> content and the
@@ -554,7 +581,7 @@ export function resizeTextBox(
   // byte offsets stay valid after the content splice (which only touches
   // bytes from textNode.contentStart onward) — order between the two does
   // not matter here, but the content splice is applied first for clarity.
-  const widthValue = formatSvgNumber(roundedWidth);
+  const widthValue = formatSvgNumber(newWidth);
   const contentSpliced =
     svgContent.slice(0, textNode.contentStart) + content + svgContent.slice(textNode.contentEnd);
   const updated =

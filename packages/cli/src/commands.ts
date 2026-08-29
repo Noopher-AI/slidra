@@ -9,6 +9,15 @@ import { textBoxAddCommand, textBoxWidthCommand } from "./commands/textbox.js";
 import { convertCommand } from "./commands/convert.js";
 import { undoCommand } from "./commands/undo.js";
 import { redoCommand } from "./commands/redo.js";
+import {
+  elementInsertCommand,
+  elementDeleteCommand,
+  elementMoveCommand,
+  elementScaleCommand,
+  elementRotateCommand,
+  elementStyleSetCommand,
+  elementOrderCommand,
+} from "./commands/element.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -37,5 +46,12 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("convert", { handler: convertCommand, render: null });
   registry.register("undo", { handler: undoCommand, render: null });
   registry.register("redo", { handler: redoCommand, render: null });
+  registry.register("element insert", { handler: elementInsertCommand, render: null });
+  registry.register("element delete", { handler: elementDeleteCommand, render: null });
+  registry.register("element move", { handler: elementMoveCommand, render: null });
+  registry.register("element scale", { handler: elementScaleCommand, render: null });
+  registry.register("element rotate", { handler: elementRotateCommand, render: null });
+  registry.register("element style set", { handler: elementStyleSetCommand, render: null });
+  registry.register("element order", { handler: elementOrderCommand, render: null });
   return registry;
 }
