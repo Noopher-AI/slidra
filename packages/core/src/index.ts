@@ -4,6 +4,10 @@ export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./pre
 export type { MinimalPresentationFiles } from "./presentation.js";
 export { validateProjectJson } from "./project-json.js";
 export type { ProjectJson, FontEntry } from "./project-json.js";
+export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
+export type { MediaFormatEntry, MediaKind } from "./media-format.js";
+export { resolveAssetImport, sanitizeAssetBaseName, resolveConflictFreeFilename } from "./asset-import.js";
+export type { ResolveAssetImportInput, ResolvedAssetImport } from "./asset-import.js";
 export {
   resolveCoMotionHome,
   resolveWorkDir,
@@ -24,6 +28,8 @@ export {
   scaleSlideElements,
   setSlideElementStyle,
   reorderSlideElements,
+  renderSlideForDisplay,
+  createPresentationFile,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
 export {

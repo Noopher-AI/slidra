@@ -7,7 +7,14 @@ import { generateElementId, generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
-import { appendElementToSvg, escapeXmlAttr, replaceElementText, resizeTextBox } from "./element-text.js";
+import {
+  appendElementToSvg,
+  escapeXmlAttr,
+  escapeXmlText,
+  replaceElementText,
+  resizeTextBox,
+  substituteDynamicText,
+} from "./element-text.js";
 import {
   deleteElements,
   insertElement,
@@ -19,7 +26,7 @@ import {
   type InsertElementInput,
   type OrderDirection,
 } from "./element-edit.js";
-import { commitSnapshotEntries, discardSnapshotEntries, stageSnapshotEntries } from "./history.js";
+import { commitSnapshotEntries, discardSnapshotEntries, stageNewFileEntry, stageSnapshotEntries } from "./history.js";
 import { resolvePresentationFonts } from "./fonts.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
@@ -308,16 +315,21 @@ export async function writePresentationFile(id: string, virtualPath: string, con
  * needs the real filesystem (`readVirtualFile`), so it belongs with the
  * rest of workspace.ts's id-to-workDir resolution instead.
  */
-async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<void> {
-  const raw = await readVirtualFile(workDir, "project.json");
-  let project: ProjectJson;
-  try {
-    project = JSON.parse(raw) as ProjectJson;
-  } catch {
-    throw new CoMotionError("簡報設定檔已損毀");
-  }
+async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<ProjectJson> {
+  const project = await readProjectJson(workDir);
   if (!Array.isArray(project.slides) || !project.slides.includes(virtualPath)) {
     throw new CoMotionError(`不是投影片：${virtualPath}`);
+  }
+  return project;
+}
+
+/** Reads and parses `project.json`, shared by every caller that needs its structure rather than its raw bytes. */
+async function readProjectJson(workDir: string): Promise<ProjectJson> {
+  const raw = await readVirtualFile(workDir, "project.json");
+  try {
+    return JSON.parse(raw) as ProjectJson;
+  } catch {
+    throw new CoMotionError("簡報設定檔已損毀");
   }
 }
 
@@ -588,4 +600,75 @@ export async function reorderSlideElements(
   const original = await readVirtualFile(workDir, slidePath);
   const updated = reorderElements(original, slidePath, elementIds, direction);
   await writePresentationFile(id, slidePath, updated);
+}
+
+/**
+ * Renders a slide's bytes for display: `{{ slide_number }}`,
+ * `{{ slide_total }}` and `{{ presentation_name }}` are substituted with
+ * values computed fresh from `project.json`'s current state (NOOP-90/T4).
+ * `slide_number` is `project.slides.indexOf(slidePath) + 1` — recomputed on
+ * every call, never cached — so any command that changes slide order makes
+ * this correct automatically, with no dynamic-text-specific "reorder"
+ * logic anywhere.
+ *
+ * This is a read path: the result is never written back through
+ * `writePresentationFile`. `cat`'s byte-exact contract is unaffected —
+ * only a caller that explicitly wants the rendered-for-display bytes
+ * (`co-motion serve`'s `/api/files/` route for slide paths) calls this.
+ */
+export async function renderSlideForDisplay(id: string, slidePath: string): Promise<string> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  const project = await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const slideNumber = project.slides.indexOf(slidePath) + 1;
+  const variables = new Map<string, string>([
+    ["slide_number", String(slideNumber)],
+    ["slide_total", String(project.slides.length)],
+    ["presentation_name", escapeXmlText(project.name)],
+  ]);
+  return substituteDynamicText(original, variables);
+}
+
+/**
+ * Writes `content` to a virtual path that must not already exist — the
+ * creation counterpart to `writePresentationFile` (asset import,
+ * NOOP-90/T4). Undo for a created file deletes it instead of restoring
+ * prior content (`stageNewFileEntry`, history.ts), so it plugs into the
+ * same `undo`/`redo` commands as every other write with no bespoke
+ * asset-import undo logic.
+ *
+ * Binary-safe: `content` is written and later restored as raw bytes,
+ * never decoded as text — unlike `writePresentationFile`, which is only
+ * ever used for this codebase's own UTF-8 SVG/JSON content.
+ */
+export async function createPresentationFile(id: string, virtualPath: string, content: Buffer): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  let alreadyExists = true;
+  try {
+    await resolveVirtualFilePath(workDir, virtualPath);
+  } catch (error) {
+    if (!(error instanceof CoMotionNotFoundError)) {
+      throw error;
+    }
+    alreadyExists = false;
+  }
+  if (alreadyExists) {
+    throw new CoMotionError(`檔案已存在：${virtualPath}`);
+  }
+
+  const entries = [stageNewFileEntry(virtualPath)];
+  const segments = virtualPath.split("/").filter((segment) => segment.length > 0);
+  const realPath = path.join(workDir, ...segments);
+  try {
+    await mkdir(path.dirname(realPath), { recursive: true });
+    await writeFile(realPath, content);
+  } catch {
+    await discardSnapshotEntries(id, entries);
+    // realPath is a real filesystem path (ADR-0004) — never quote it.
+    throw new CoMotionError(`寫入檔案時發生錯誤：${virtualPath}`);
+  }
+  await commitSnapshotEntries(id, entries);
 }

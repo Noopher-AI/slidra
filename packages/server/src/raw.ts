@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionNotFoundError, readPresentationFileBytes } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError, MEDIA_FORMATS, readPresentationFileBytes } from "@co-motion/core";
 
 /**
  * Byte-preserving read for `assets/` content (images, video, audio) that
@@ -10,45 +10,30 @@ import { CoMotionError, CoMotionNotFoundError, readPresentationFileBytes } from 
  * serve.ts for why.
  */
 
-// Video/audio extensions here must stay in lockstep with the player's own
-// extension allow-list (packages/web/src/player-plan.ts's VIDEO_EXTENSIONS/
-// AUDIO_EXTENSIONS, ticket #30) — an extension the player accepts but this
-// table does not falls back to application/octet-stream below, which some
-// browsers refuse to decode as media even though the bytes are fine. A web
-// test (packages/web/test/player-plan.test.ts) asserts every entry in the
-// player's allow-list resolves to a non-octet-stream type here, specifically
-// to keep the two lists from drifting apart again.
+// Media extensions/MIME types are derived from `@co-motion/core`'s
+// `MEDIA_FORMATS` (NOOP-90/T4) — the single source of truth for every
+// image/video/audio format co-motion recognises, shared with asset import's
+// magic-byte detection. This table must stay in lockstep with the player's
+// own extension allow-list (packages/web/src/player-plan.ts's
+// VIDEO_EXTENSIONS/AUDIO_EXTENSIONS, ticket #30) — an extension the player
+// accepts but this table does not falls back to application/octet-stream
+// below, which some browsers refuse to decode as media even though the
+// bytes are fine. A web test (packages/web/test/player-plan.test.ts)
+// asserts every entry in the player's allow-list resolves to a
+// non-octet-stream type here, specifically to keep the two lists from
+// drifting apart again. (Dev-Leader ruling on NOOP-99: player-plan.ts's own
+// lists stay independent literals — bringing them onto this same source is
+// left for a follow-up ticket that is allowed to touch packages/web.)
+const MEDIA_MIME_TYPES: Record<string, string> = Object.fromEntries(
+  MEDIA_FORMATS.flatMap((format) => [
+    [format.extension, format.mimeType] as const,
+    ...format.aliasExtensions.map((alias) => [alias, format.mimeType] as const),
+  ]),
+);
+
 const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
+  ...MEDIA_MIME_TYPES,
   ".svg": "image/svg+xml",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  // .m4v is essentially an MP4 container with an Apple-assigned extension;
-  // there is no IANA-registered video/x-m4v, and nginx's own mime.types
-  // maps m4v to video/mp4 alongside .mp4 itself — reused here rather than
-  // inventing a less-portable type.
-  ".m4v": "video/mp4",
-  // video/quicktime is the IANA-registered type for the QuickTime container (.mov).
-  ".mov": "video/quicktime",
-  // video/ogg is the Xiph/IANA-registered type for Ogg video (.ogv).
-  ".ogv": "video/ogg",
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  // audio/mp4 is the IANA-registered type for an MPEG-4 audio container (.m4a).
-  ".m4a": "audio/mp4",
-  // .opus and .oga files produced by this project are Ogg containers (see
-  // e2e/fixtures/media-deck/assets/narration.oga, muxed with `ffmpeg -f
-  // ogg`) — audio/ogg is the correct container type for both; "audio/opus"
-  // exists as a registered type but names the raw codec/RTP payload, not an
-  // Ogg-muxed file, so it is not used here.
-  ".opus": "audio/ogg",
-  ".oga": "audio/ogg",
-  // audio/aac is the IANA-registered type for a raw ADTS AAC stream.
-  ".aac": "audio/aac",
   ".json": "application/json",
   // Fonts embedded under fonts/ (ticket #71) — served to the sandboxed
   // srcdoc iframe's @font-face over /api/raw/, same as any other asset.

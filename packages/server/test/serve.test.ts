@@ -332,6 +332,21 @@ describe("startServe", () => {
       },
       render: null,
     });
+    // /api/files/ dispatches "slide render" for a path listed in the
+    // project's slides (NOOP-90/T4) instead of "cat" — this stub mirrors
+    // the same fake content so the route's dispatch-only contract still
+    // holds for a registry that never touches the filesystem.
+    stubRegistry.register("slide render", {
+      handler: async (input: unknown) => {
+        const { path: virtualPath } = input as { path: string };
+        calls.push(virtualPath);
+        if (virtualPath === "slides/fake.svg") {
+          return { ok: true, data: { content: "<svg>STUB</svg>" }, message: "" };
+        }
+        return { ok: false, message: `找不到檔案：${virtualPath}` };
+      },
+      render: null,
+    });
 
     const server = await serve("unregistered-stub-id", { registry: stubRegistry });
 

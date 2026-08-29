@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replaceElementText } from "../src/element-text.js";
+import { replaceElementText, substituteDynamicText } from "../src/element-text.js";
 
 // This is the structural guarantee ticket #3 hinges on: replaceElementText
 // must be a string splice, not a parse-and-reserialize, so every byte
@@ -288,5 +288,102 @@ describe("replaceElementText — id on a <g> container wrapping a <text> child",
     const svg = '<svg><g id="el-a"><g><text>a</text></g></g></svg>';
 
     expect(() => replaceElementText(svg, "el-a", "new")).toThrow("元素不是文字元素：el-a");
+  });
+});
+
+describe("substituteDynamicText", () => {
+  it("replaces a known variable inside a plain <text> element", () => {
+    const svg = '<svg><text id="el-a">第 {{ slide_number }} 頁</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "3"]]));
+
+    expect(result).toBe('<svg><text id="el-a">第 3 頁</text></svg>');
+  });
+
+  it("replaces multiple distinct variables, each with its own value", () => {
+    const svg = '<svg><text id="el-a">{{ slide_number }} / {{ slide_total }}</text></svg>';
+
+    const result = substituteDynamicText(
+      svg,
+      new Map([
+        ["slide_number", "2"],
+        ["slide_total", "5"],
+      ]),
+    );
+
+    expect(result).toBe('<svg><text id="el-a">2 / 5</text></svg>');
+  });
+
+  it("replaces the same variable every time it appears", () => {
+    const svg = '<svg><text id="el-a">{{ slide_number }}-{{ slide_number }}</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "1"]]));
+
+    expect(result).toBe('<svg><text id="el-a">1-1</text></svg>');
+  });
+
+  it("tolerates extra whitespace inside the braces", () => {
+    const svg = "<svg><text id=\"el-a\">{{   slide_number   }}</text></svg>";
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "7"]]));
+
+    expect(result).toBe('<svg><text id="el-a">7</text></svg>');
+  });
+
+  it("leaves an unknown variable name exactly as written", () => {
+    const svg = '<svg><text id="el-a">{{ mystery }}</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "1"]]));
+
+    expect(result).toBe('<svg><text id="el-a">{{ mystery }}</text></svg>');
+  });
+
+  it("leaves an unmatched '{{' exactly as written, without throwing", () => {
+    const svg = '<svg><text id="el-a">use {{ like this</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "1"]]));
+
+    expect(result).toBe('<svg><text id="el-a">use {{ like this</text></svg>');
+  });
+
+  it("leaves text with no placeholders completely untouched", () => {
+    const svg = '<svg><text id="el-a">plain text</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["slide_number", "1"]]));
+
+    expect(result).toBe(svg);
+  });
+
+  it("substitutes independently inside each <tspan> of a text box, leaving other lines untouched", () => {
+    const svg =
+      '<svg><g id="el-a" data-comot-text-width="200">' +
+      '<text font-family="Noto" font-size="16">' +
+      '<tspan x="0" dy="0">line {{ slide_number }}</tspan>' +
+      '<tspan x="0" dy="20">of {{ slide_total }}</tspan>' +
+      "</text></g></svg>";
+
+    const result = substituteDynamicText(
+      svg,
+      new Map([
+        ["slide_number", "1"],
+        ["slide_total", "4"],
+      ]),
+    );
+
+    expect(result).toBe(
+      '<svg><g id="el-a" data-comot-text-width="200">' +
+        '<text font-family="Noto" font-size="16">' +
+        '<tspan x="0" dy="0">line 1</tspan>' +
+        '<tspan x="0" dy="20">of 4</tspan>' +
+        "</text></g></svg>",
+    );
+  });
+
+  it("substitutes a value that itself contains escaped XML entities verbatim", () => {
+    const svg = '<svg><text id="el-a">{{ presentation_name }}</text></svg>';
+
+    const result = substituteDynamicText(svg, new Map([["presentation_name", "A &amp; B"]]));
+
+    expect(result).toBe('<svg><text id="el-a">A &amp; B</text></svg>');
   });
 });
