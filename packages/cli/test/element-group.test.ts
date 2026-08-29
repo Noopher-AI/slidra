@@ -217,6 +217,32 @@ describe("element align", () => {
     expect(result.message).toContain("邊界框");
     expect(await readSlide(id)).toBe(before);
   });
+
+  it("inside a scaled parent group, moves the target's own local translate — not the absolute position", async () => {
+    const { id } = await openConvertedPresentation();
+    const svgBefore = await readSlide(id);
+    // Parent group scales children 2x. Local x: el-near=10, el-far=30 (absolute x: 20, 60).
+    const groupSvg = svgBefore.replace(
+      "</svg>",
+      '<g id="el-parent" transform="scale(2)">' +
+        '<g id="el-near" transform="translate(10 0)"><rect x="0" y="0" width="10" height="10"/></g>' +
+        '<g id="el-far" transform="translate(30 0)"><rect x="0" y="0" width="10" height="10"/></g>' +
+        "</g></svg>",
+    );
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", groupSvg);
+
+    const result = await registry.dispatch("element align", {
+      id, slidePath: "slides/001.svg", elementIds: ["el-near", "el-far"], direction: "left",
+    });
+
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    // Minimum LOCAL x is 10 (el-near's own x) — el-far's local translate must land on 10,
+    // not on -10 (which is what writing the absolute delta straight into local translate produces).
+    expect(svg).toContain('id="el-near" transform="translate(10 0)"');
+    expect(svg).toContain('id="el-far" transform="translate(10 0)"');
+  });
 });
 
 describe("element distribute", () => {
@@ -259,6 +285,34 @@ describe("element distribute", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it("inside a scaled parent group, spaces targets by their own local centers — not absolute centers", async () => {
+    const { id } = await openConvertedPresentation();
+    const svgBefore = await readSlide(id);
+    // Parent group scales children 2x. Local centers: el-a=5, el-b=25, el-c=55.
+    const groupSvg = svgBefore.replace(
+      "</svg>",
+      '<g id="el-parent" transform="scale(2)">' +
+        '<g id="el-a" transform="translate(0 0)"><rect x="0" y="0" width="10" height="10"/></g>' +
+        '<g id="el-b" transform="translate(20 0)"><rect x="0" y="0" width="10" height="10"/></g>' +
+        '<g id="el-c" transform="translate(50 0)"><rect x="0" y="0" width="10" height="10"/></g>' +
+        "</g></svg>",
+    );
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", groupSvg);
+
+    const result = await registry.dispatch("element distribute", {
+      id, slidePath: "slides/001.svg", elementIds: ["el-a", "el-b", "el-c"], axis: "horizontal",
+    });
+
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    // Equal local-center spacing: (5+55)/2=30, so el-b's local x moves from 20 to 25.
+    // The old absolute-delta bug produced local x=30 instead (it doubles the correction).
+    expect(svg).toContain('id="el-a" transform="translate(0 0)"');
+    expect(svg).toContain('id="el-b" transform="translate(25 0)"');
+    expect(svg).toContain('id="el-c" transform="translate(50 0)"');
+  });
 });
 
 describe("element name set", () => {
@@ -287,7 +341,9 @@ describe("element name set", () => {
 });
 
 /** A two-slide presentation, hand-built as a `.comot` container (`new` only ever creates one slide) — following `element.test.ts:419`'s manual `zipSync` technique. */
-async function openTwoSlidePresentation(options: { slide1Effects?: string } = {}): Promise<{ id: string }> {
+async function openTwoSlidePresentation(
+  options: { slide1Effects?: string; slide2Effects?: string } = {},
+): Promise<{ id: string }> {
   const effectsBlock = options.slide1Effects
     ? `<metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects">${options.slide1Effects}</comot:effects></metadata>`
     : "";
@@ -295,7 +351,10 @@ async function openTwoSlidePresentation(options: { slide1Effects?: string } = {}
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">${effectsBlock}` +
     '<g id="el-a" transform="translate(10 20)"><rect x="0" y="0" width="5" height="5"/></g>' +
     "</svg>";
-  const slide2 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
+  const slide2Effects = options.slide2Effects
+    ? `<metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects">${options.slide2Effects}</comot:effects></metadata>`
+    : "";
+  const slide2 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">${slide2Effects}</svg>`;
   const { zipSync } = await import("fflate");
   const zipped = zipSync({
     "project.json": new TextEncoder().encode(
@@ -345,6 +404,7 @@ describe("element copy / paste", () => {
   it("migrates only the effect targeting the copied element, appended at the end of the target slide's effect list", async () => {
     const { id } = await openTwoSlidePresentation({
       slide1Effects: '<comot:effect target="el-a" kind="fade"/><comot:effect target="el-other" kind="fade"/>',
+      slide2Effects: '<comot:effect target="el-existing" kind="fade"/>',
     });
 
     await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: ["el-a"] });
@@ -356,8 +416,8 @@ describe("element copy / paste", () => {
 
     const svg2 = await readSlide(id, "slides/002.svg");
     const effectMatches = [...svg2.matchAll(/<comot:effect target="([^"]+)"/g)];
-    expect(effectMatches.length).toBe(1);
-    expect(effectMatches[effectMatches.length - 1][1]).toBe(newId);
+    // The pre-existing effect stays first, untouched; the migrated one is appended last.
+    expect(effectMatches.map((match) => match[1])).toEqual(["el-existing", newId]);
   });
 
   it("deleting the pasted element cleans up its migrated effect, without touching an unrelated one", async () => {

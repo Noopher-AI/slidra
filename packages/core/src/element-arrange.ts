@@ -122,7 +122,17 @@ interface Target {
   bounds: Rect;
 }
 
-/** Resolves every target's container node (all sharing one parent) and its absolute bounding box. */
+/**
+ * Resolves every target's container node (all sharing one parent) and its
+ * bounding box *within that shared parent's own coordinate system* — i.e.
+ * `elementBounds` is called with no ancestor matrices, so a target's own
+ * `matrix` (its local translate/scale/rotate) is the only thing applied.
+ * That keeps union/center/delta math, and the resulting local-translate
+ * write-back, entirely inside the parent's frame — correct even when the
+ * parent itself (or one of its ancestors) carries a `scale`/`rotate`
+ * (ADR-0012 groups can nest), since that outer transform never enters the
+ * computation at all.
+ */
 function resolveTargets(svgContent: string, slidePath: string, elementIds: readonly string[]): Target[] {
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
@@ -139,7 +149,7 @@ function resolveTargets(svgContent: string, slidePath: string, elementIds: reado
     if (!path) {
       throw new CoMotionError(`找不到元素：${id}`);
     }
-    return { id, node, bounds: elementBounds(path.element, { ancestors: path.ancestors }) };
+    return { id, node, bounds: elementBounds(path.element, { ancestors: [] }) };
   });
 }
 
