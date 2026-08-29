@@ -153,6 +153,44 @@ describe("startLiveReload", () => {
     expect(onChange).toHaveBeenCalledTimes(3);
   });
 
+  it("calls onFrozenChange(true) on editing-frozen and onFrozenChange(false) on editing-unfrozen", () => {
+    let fake: FakeEventSource | undefined;
+    const onFrozenChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onFrozenChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("editing-frozen");
+    expect(onFrozenChange).toHaveBeenNthCalledWith(1, true);
+
+    fake!.emit("editing-unfrozen");
+    expect(onFrozenChange).toHaveBeenNthCalledWith(2, false);
+  });
+
+  it("editing-frozen/editing-unfrozen never trigger onChange — they are not a reload signal", () => {
+    let fake: FakeEventSource | undefined;
+    const onChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange,
+      onFrozenChange: () => {},
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+    onChange.mockClear(); // drop the initial "open" call
+
+    fake!.emit("editing-frozen");
+    fake!.emit("editing-unfrozen");
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("ignores events of a different type", () => {
     let fake: FakeEventSource | undefined;
     const onChange = vi.fn();

@@ -30,6 +30,13 @@ const AUTHOR_PROMPT_INDEX = 1;
 
 const newTitle = requireEnv("E2E_NEW_TITLE");
 const presentationId = requireEnv("E2E_PRESENTATION_ID");
+// T5 (NOOP-93/#110): an artificial pause between the permission grant and
+// running the command, so a test needs a real, observable window in which
+// the deck is frozen (e2e/freeze.test.ts) rather than racing a turn that
+// would otherwise complete within a couple of event-loop ticks. Optional —
+// unset/"0" (the default, and every pre-existing consumer of this fixture)
+// behaves exactly as before this change.
+const freezeHoldMs = Number(process.env.E2E_FREEZE_HOLD_MS ?? "0");
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -85,6 +92,10 @@ class EditingFakeAgent {
     });
     if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
       throw new Error(`命令未獲允許：${JSON.stringify(permission.outcome)}`);
+    }
+
+    if (freezeHoldMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, freezeHoldMs));
     }
 
     await runShellCommand(command, this.sessionCwd);

@@ -84,6 +84,12 @@ export function App() {
   // `onError` now closes that loop; this state is what actually puts the
   // message on screen instead of leaving it as an unhandled event.
   const [liveReloadError, setLiveReloadError] = useState<string | null>(null);
+  // T5 (NOOP-93/#110): true while the agent's current turn holds the
+  // single-editor lock. `/api/events` carries no replay (same as every
+  // other event on this stream), so the *initial* value on mount/reconnect
+  // must come from `GET /api/editing`, not from a stream event — see the
+  // effect below.
+  const [editingFrozen, setEditingFrozen] = useState(false);
 
   // #51's titlebar: the deck's name and canvas size, fetched separately
   // from canvas.ts's own CanvasState (which deliberately carries only
@@ -164,7 +170,21 @@ export function App() {
         presentationLoaderRef.current?.load();
       },
       onError: setLiveReloadError,
+      onFrozenChange: setEditingFrozen,
     });
+    // The stream's own editing-frozen/editing-unfrozen carry no replay
+    // (same reasoning as presentation-changed) — the state as of *this*
+    // mount must be fetched directly, or a page loaded mid-turn would show
+    // "not frozen" until the turn happens to end.
+    void fetch("/api/editing")
+      .then((response) => response.json())
+      .then((data: { frozen: boolean }) => setEditingFrozen(data.frozen))
+      .catch(() => {
+        // No fallback value — see the errors-over-fallbacks rule. Leaving
+        // the state at its initial `false` here would incorrectly claim
+        // "not frozen" on a genuine failure; better to say nothing and let
+        // the next presentation-changed/editing-frozen event correct it.
+      });
     presentationLoaderRef.current?.load();
     return () => {
       liveReload.stop();
@@ -275,6 +295,36 @@ export function App() {
       }
       event.preventDefault();
       void (event.key === "ArrowRight" ? controller.next() : controller.previous());
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z (T5, NOOP-93/#110): undo/redo. Frozen
+  // while the agent's turn holds the lock — the request is never sent, not
+  // even to be told 409 by the server, matching the behaviour contract's
+  // "不發請求，顯示凍結狀態；不得拋出未捕捉錯誤" row. `editingFrozenRef`
+  // (not `editingFrozen` itself) is read inside the listener for the same
+  // reason `canvasStateRef` is above — this effect should not need to
+  // re-subscribe every time the frozen flag flips.
+  const editingFrozenRef = useRef(editingFrozen);
+  editingFrozenRef.current = editingFrozen;
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "z" && event.key !== "Z") return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      event.preventDefault();
+      if (editingFrozenRef.current) return;
+      const path = event.shiftKey ? "/api/redo" : "/api/undo";
+      void fetch(path, { method: "POST" }).catch(() => {
+        // The server route itself already turns every failure (empty
+        // stack, a stale 409) into a JSON error response, not a rejected
+        // fetch — this only guards against a genuine network failure, and
+        // there is nothing more specific to show than what live reload's
+        // own liveReloadError already surfaces for a dead connection.
+      });
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -523,6 +573,9 @@ export function App() {
         <div role="alert" className="live-reload-banner">
           簡報資訊載入失敗：{presentationError}
         </div>
+      )}
+      {shellVisible && editingFrozen && (
+        <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
       )}
       <div className="body">
         {/* #54 (wave 4): now absent from the DOM in 播放模式, unlike the

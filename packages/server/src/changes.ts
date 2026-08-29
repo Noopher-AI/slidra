@@ -36,6 +36,15 @@ export interface ChangeBroadcaster {
    * request open.
    */
   handleConnection(res: ServerResponse): Promise<void>;
+  /**
+   * Sends `event`/`data` to every currently connected `/api/events` stream
+   * (T5, NOOP-93/#110's `editing-frozen`/`editing-unfrozen`) — the same
+   * fan-out set `presentation-changed` uses, deliberately not a second SSE
+   * stream (the plan's own instruction). A no-op when nothing is connected;
+   * `EventStream.send` is already a no-op on a closed stream, same as the
+   * watcher's own `onChange` above.
+   */
+  broadcast(event: string, data: unknown): void;
   /** Stops watching (if ever started) and closes every currently open stream. Idempotent. */
   dispose(): Promise<void>;
 }
@@ -122,6 +131,16 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
       res.once("close", () => {
         streams.delete(stream);
       });
+    },
+
+    broadcast: (event: string, data: unknown): void => {
+      for (const stream of streams) {
+        if (stream.closed) {
+          streams.delete(stream);
+          continue;
+        }
+        stream.send(event, data);
+      }
     },
 
     dispose: async () => {

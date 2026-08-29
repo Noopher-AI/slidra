@@ -4,12 +4,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
-import { CoMotionError, validateProjectJson, type ProjectJson } from "@co-motion/core";
+import { CoMotionError, undoLastGroup, redoLastGroup, validateProjectJson, type ProjectJson } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleRawRequest } from "./raw.js";
+import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -83,7 +84,12 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
 
-  const chatSession = new AgentChatSession(options.agent, presentationId);
+  // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
+  // lifecycle (AgentChatSession) and the human editing routes below. Its
+  // frozen/unfrozen events are forwarded onto the same /api/events fan-out
+  // `presentation-changed` already uses — no second SSE stream.
+  const editingLock = new EditingLock();
+  const chatSession = new AgentChatSession(options.agent, presentationId, editingLock);
   // Every SSE stream `/api/chat/stream` has ever opened, still connected.
   // `server.close()` waits for established connections rather than
   // closing them, and an SSE stream never ends on its own — so these must
@@ -101,8 +107,27 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const changeBroadcaster = createChangeBroadcaster(presentationId);
   disposers.push(() => changeBroadcaster.dispose());
 
+  const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
+  const onUnfrozen = () => changeBroadcaster.broadcast("editing-unfrozen", {});
+  editingLock.on("frozen", onFrozen);
+  editingLock.on("unfrozen", onUnfrozen);
+  disposers.push(async () => {
+    editingLock.off("frozen", onFrozen);
+    editingLock.off("unfrozen", onUnfrozen);
+  });
+
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, chatSession, chatStreams, changeBroadcaster, req, res);
+    void handleRequest(
+      registry,
+      presentationId,
+      staticDir,
+      chatSession,
+      chatStreams,
+      changeBroadcaster,
+      editingLock,
+      req,
+      res,
+    );
   });
 
   await listen(server, port, host);
@@ -182,6 +207,7 @@ async function handleRequest(
   chatSession: AgentChatSession,
   chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
+  editingLock: EditingLock,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -225,12 +251,34 @@ async function handleRequest(
         await handleChatPost(chatSession, req, res);
         return;
       }
+      if (url.pathname === "/api/undo") {
+        await handleUndoRedoPost(editingLock, presentationId, undoLastGroup, res);
+        return;
+      }
+      if (url.pathname === "/api/redo") {
+        await handleUndoRedoPost(editingLock, presentationId, redoLastGroup, res);
+        return;
+      }
+      if (url.pathname === "/api/editing/begin") {
+        handleEditingBeginPost(editingLock, res);
+        return;
+      }
+      if (url.pathname === "/api/editing/end") {
+        editingLock.endHumanEdit();
+        sendJson(res, 200, { ok: true });
+        return;
+      }
       sendJson(res, 405, { error: "只支援 GET" });
       return;
     }
 
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "只支援 GET" });
+      return;
+    }
+
+    if (url.pathname === "/api/editing") {
+      sendJson(res, 200, { frozen: editingLock.getState() === "agent" });
       return;
     }
 
@@ -364,6 +412,50 @@ async function handleChatPost(
   }
   chatSession.sendMessage(text);
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
+ * editing requests in the single-editor-lock sense (plan §4.1): refused
+ * with 409 while the agent holds the floor, run unconditionally otherwise
+ * — `undoLastGroup`/`redoLastGroup` themselves throw the "沒有可復原/重做的
+ * 操作" `CoMotionError` on an empty stack, relayed here as 400 with the
+ * core message verbatim rather than a silent 200.
+ */
+async function handleUndoRedoPost(
+  editingLock: EditingLock,
+  presentationId: string,
+  run: (id: string) => Promise<{ restoredPaths: string[] }>,
+  res: ServerResponse,
+): Promise<void> {
+  if (editingLock.getState() === "agent") {
+    sendJson(res, 409, { error: new EditingLockConflictError().message });
+    return;
+  }
+  try {
+    const result = await run(presentationId);
+    sendJson(res, 200, result);
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "無法完成操作" });
+  }
+}
+
+/**
+ * `POST /api/editing/begin` — the lease T2 (NOOP-91)'s drag UI is meant to
+ * take/renew (plan §4.1). Refused with 409 while the agent holds the
+ * floor; otherwise starts (or renews) the human lease and returns 200.
+ */
+function handleEditingBeginPost(editingLock: EditingLock, res: ServerResponse): void {
+  try {
+    editingLock.beginHumanEdit();
+    sendJson(res, 200, { ok: true });
+  } catch (error) {
+    if (error instanceof EditingLockConflictError) {
+      sendJson(res, 409, { error: error.message });
+      return;
+    }
+    throw error;
+  }
 }
 
 export type ChatStreamRegistry = ReturnType<typeof createChatStreamRegistry>;
