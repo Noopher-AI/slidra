@@ -77,7 +77,11 @@ export function parseArgv(argv: string[]): ParsedCommand {
       if (newText === undefined) {
         throw new CoMotionError("命令 text set 缺少參數：new-text");
       }
-      return { name: "text set", input: { id, slidePath, elementId, newText } };
+      // --force (T3) can only follow new-text at a fixed position — new-text
+      // itself is taken verbatim from args[3] regardless of its own content,
+      // so a literal "--force" typed as text is never mistaken for the flag.
+      const force = requireTrailingForceFlag(args, 4, "text set");
+      return { name: "text set", input: { id, slidePath, elementId, newText, force } };
     }
     case "textbox": {
       const sub = rest[0];
@@ -102,7 +106,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         if (!Number.isFinite(width)) {
           throw new CoMotionError(`命令 textbox width 的 width 不是合法數字：${widthRaw}`);
         }
-        return { name: "textbox width", input: { id, slidePath, elementId, width } };
+        const force = requireTrailingForceFlag(args, 4, "textbox width");
+        return { name: "textbox width", input: { id, slidePath, elementId, width, force } };
       }
       throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
     }
@@ -152,7 +157,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const elementIds = requireIdList(args, 2, "element move");
         const dx = requireNumberFlag(args, "--dx", "element move");
         const dy = requireNumberFlag(args, "--dy", "element move");
-        return { name: "element move", input: { id, slidePath, elementIds, dx, dy } };
+        const force = hasFlag(args, "--force");
+        return { name: "element move", input: { id, slidePath, elementIds, dx, dy, force } };
       }
 
       if (sub === "scale") {
@@ -160,7 +166,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const slidePath = requirePositional(args, 1, "element scale", "slide-path");
         const elementIds = requireIdList(args, 2, "element scale");
         const factor = requireNumberFlag(args, "--factor", "element scale");
-        return { name: "element scale", input: { id, slidePath, elementIds, factor } };
+        const force = hasFlag(args, "--force");
+        return { name: "element scale", input: { id, slidePath, elementIds, factor, force } };
       }
 
       if (sub === "rotate") {
@@ -168,7 +175,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const slidePath = requirePositional(args, 1, "element rotate", "slide-path");
         const elementIds = requireIdList(args, 2, "element rotate");
         const degrees = requireNumberFlag(args, "--degrees", "element rotate");
-        return { name: "element rotate", input: { id, slidePath, elementIds, degrees } };
+        const force = hasFlag(args, "--force");
+        return { name: "element rotate", input: { id, slidePath, elementIds, degrees, force } };
       }
 
       if (sub === "style") {
@@ -185,7 +193,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         if (value === undefined) {
           throw new CoMotionError("命令 element style set 缺少參數：value");
         }
-        return { name: "element style set", input: { id, slidePath, elementIds, attr, value } };
+        const force = hasFlag(styleArgs, "--force");
+        return { name: "element style set", input: { id, slidePath, elementIds, attr, value, force } };
       }
 
       if (sub === "order") {
@@ -196,10 +205,111 @@ export function parseArgv(argv: string[]): ParsedCommand {
         if (!["front", "back", "up", "down"].includes(direction)) {
           throw new CoMotionError(`element order 不支援的方向：${direction}`);
         }
-        return { name: "element order", input: { id, slidePath, elementIds, direction } };
+        const force = hasFlag(args, "--force");
+        return { name: "element order", input: { id, slidePath, elementIds, direction, force } };
+      }
+
+      if (sub === "lock") {
+        const id = requirePositional(args, 0, "element lock", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element lock", "slide-path");
+        const elementIds = requireIdList(args, 2, "element lock");
+        return { name: "element lock", input: { id, slidePath, elementIds } };
+      }
+
+      if (sub === "unlock") {
+        const id = requirePositional(args, 0, "element unlock", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element unlock", "slide-path");
+        const elementIds = requireIdList(args, 2, "element unlock");
+        return { name: "element unlock", input: { id, slidePath, elementIds } };
       }
 
       throw new CoMotionError(`未知的子命令：element ${sub ?? ""}`);
+    }
+    case "slide": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "slide add", "presentation-id");
+        const templatePath = optionalFlag(args, "--template");
+        const atRaw = optionalFlag(args, "--at");
+        let at: number | undefined;
+        if (atRaw !== undefined) {
+          at = Number(atRaw);
+          if (!Number.isFinite(at)) {
+            throw new CoMotionError(`--at 不是合法數字：${atRaw}`);
+          }
+        }
+        return { name: "slide add", input: { id, templatePath, at } };
+      }
+
+      if (sub === "delete") {
+        const id = requirePositional(args, 0, "slide delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide delete", "slide-path");
+        return { name: "slide delete", input: { id, slidePath } };
+      }
+
+      if (sub === "duplicate") {
+        const id = requirePositional(args, 0, "slide duplicate", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide duplicate", "slide-path");
+        return { name: "slide duplicate", input: { id, slidePath } };
+      }
+
+      if (sub === "move") {
+        const id = requirePositional(args, 0, "slide move", "presentation-id");
+        const slidePath = requirePositional(args, 1, "slide move", "slide-path");
+        const newIndexRaw = requirePositional(args, 2, "slide move", "new-index");
+        const newIndex = Number(newIndexRaw);
+        if (!Number.isFinite(newIndex)) {
+          throw new CoMotionError(`命令 slide move 的 new-index 不是合法數字：${newIndexRaw}`);
+        }
+        return { name: "slide move", input: { id, slidePath, newIndex } };
+      }
+
+      if (sub === "notes") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：slide notes ${subsub ?? ""}`);
+        }
+        const notesArgs = args.slice(1);
+        const id = requirePositional(notesArgs, 0, "slide notes set", "presentation-id");
+        const slidePath = requirePositional(notesArgs, 1, "slide notes set", "slide-path");
+        // text may legitimately be an empty string (clears the notes), same
+        // reasoning as `text set`'s new-text: checked for absence, not
+        // falsiness.
+        const text = notesArgs[2];
+        if (text === undefined) {
+          throw new CoMotionError("命令 slide notes set 缺少參數：text");
+        }
+        return { name: "slide notes set", input: { id, slidePath, text } };
+      }
+
+      throw new CoMotionError(`未知的子命令：slide ${sub ?? ""}`);
+    }
+    case "template": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "template add", "presentation-id");
+        const from = optionalFlag(args, "--from");
+        return { name: "template add", input: { id, from } };
+      }
+      throw new CoMotionError(`未知的子命令：template ${sub ?? ""}`);
+    }
+    case "presentation": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+      if (sub === "transition") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：presentation transition ${subsub ?? ""}`);
+        }
+        const transArgs = args.slice(1);
+        const id = requirePositional(transArgs, 0, "presentation transition set", "presentation-id");
+        const name = requirePositional(transArgs, 1, "presentation transition set", "name");
+        return { name: "presentation transition set", input: { id, name } };
+      }
+      throw new CoMotionError(`未知的子命令：presentation ${sub ?? ""}`);
     }
     case "undo": {
       const id = requirePositional(rest, 0, "undo", "presentation-id");
@@ -273,6 +383,26 @@ function requireIdList(args: string[], index: number, command: string): string[]
     throw new CoMotionError(`命令 ${command} 的元素清單格式錯誤：${raw}`);
   }
   return ids;
+}
+
+/** A bare boolean flag with no value (`--force`, T3). Presence anywhere in `args` is enough — order relative to other flags does not matter. */
+function hasFlag(args: string[], flag: string): boolean {
+  return args.includes(flag);
+}
+
+/**
+ * `--force` for a command whose last positional (`new-text`, `width`) is
+ * taken verbatim by fixed index rather than by flag scanning — `text set`'s
+ * new-text may legitimately equal the literal string "--force", so `--force`
+ * is only recognised in the one slot strictly after that positional, never
+ * searched for anywhere in `args` (which `hasFlag` does for the flag-based
+ * commands). Anything else in that slot is an unknown trailing argument.
+ */
+function requireTrailingForceFlag(args: string[], index: number, command: string): boolean {
+  const value = args[index];
+  if (value === undefined) return false;
+  if (value === "--force") return true;
+  throw new CoMotionError(`命令 ${command} 未知的參數：${value}`);
 }
 
 function optionalNumberFlag(args: string[], flag: string, command: string): number | undefined {

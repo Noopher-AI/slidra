@@ -7,12 +7,14 @@ export interface TextSetInput {
   slidePath: string;
   elementId: string;
   newText: string;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 
 export type TextSetData = Record<string, never>;
 
 export const textSetCommand: CommandHandler<TextSetInput, TextSetData> = async (input) => {
-  await setElementText(input.id, input.slidePath, input.elementId, input.newText);
+  await setElementText(input.id, input.slidePath, input.elementId, input.newText, { force: input.force });
   return {
     ok: true,
     data: {},

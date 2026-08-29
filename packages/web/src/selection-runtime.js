@@ -142,6 +142,12 @@
       if (current.hasAttribute && current.hasAttribute("id")) outermost = current;
       current = current.parentElement;
     }
+    // T3 / ADR-0013: a locked element is not selectable at all in view mode
+    // — the only guard the front end ever applies. It never sends --force;
+    // that escape hatch exists only for the agent's own CLI/registry path.
+    if (outermost && outermost.getAttribute("data-comot-lock") === "true") {
+      return null;
+    }
     return outermost;
   }
 
