@@ -18,6 +18,8 @@ import {
   elementStyleSetCommand,
   elementOrderCommand,
 } from "./commands/element.js";
+import { slideRenderCommand, renderSlideRender } from "./commands/slide-render.js";
+import { assetImportCommand } from "./commands/asset-import.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -53,5 +55,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("element rotate", { handler: elementRotateCommand, render: null });
   registry.register("element style set", { handler: elementStyleSetCommand, render: null });
   registry.register("element order", { handler: elementOrderCommand, render: null });
+  registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });
+  registry.register("asset import", { handler: assetImportCommand, render: null });
   return registry;
 }

@@ -1,10 +1,10 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError } from "./errors.js";
+import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateOpaqueId } from "./id.js";
 import { resolveCoMotionHome, resolveWorkDir } from "./workspace.js";
-import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
+import { readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
 
 /**
  * Undo/redo for presentation content (ticket #73). Every write a command
@@ -25,8 +25,14 @@ import { readVirtualFile, resolveVirtualFilePath } from "./virtual-fs.js";
 export interface HistoryEntry {
   /** e.g. "slides/001.svg" */
   virtualPath: string;
-  /** Filename under snapshots/. */
-  snapshotId: string;
+  /**
+   * Filename under snapshots/, holding the file's content from *before*
+   * this entry's edit — or `null` when the path did not exist before the
+   * edit (the entry represents the path's *creation*, e.g. an imported
+   * asset, NOOP-90/T4). A `null` entry undoes by deleting the file instead
+   * of restoring snapshot content; there is nothing to snapshot beforehand.
+   */
+  snapshotId: string | null;
 }
 
 export interface HistoryGroup {
@@ -69,19 +75,22 @@ function isEnoent(error: unknown): boolean {
   );
 }
 
+function isHistoryEntry(value: unknown): value is HistoryEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as HistoryEntry).virtualPath === "string" &&
+    (typeof (value as HistoryEntry).snapshotId === "string" || (value as HistoryEntry).snapshotId === null)
+  );
+}
+
 function isHistoryGroup(value: unknown): value is HistoryGroup {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as HistoryGroup).groupId === "string" &&
     Array.isArray((value as HistoryGroup).entries) &&
-    (value as HistoryGroup).entries.every(
-      (entry) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as HistoryEntry).virtualPath === "string" &&
-        typeof (entry as HistoryEntry).snapshotId === "string",
-    )
+    (value as HistoryGroup).entries.every(isHistoryEntry)
   );
 }
 
@@ -150,24 +159,30 @@ async function writeStack(home: string, id: string, stack: StackFile): Promise<v
 }
 
 /**
- * Writes one snapshot file. Wrapped end to end (directory creation and the
- * write itself) so a permission failure on `snapshots/` — the exact
- * reproduction that motivated this — surfaces as a CoMotionError instead of
- * a raw `EACCES: ... open '<real path>'` reaching the CLI's error printer.
+ * Writes one snapshot file, as raw bytes — this module has no idea whether
+ * `content` is UTF-8 SVG/JSON text or a binary asset's original bytes, and
+ * treating both uniformly as bytes means neither ever goes through a
+ * decode/re-encode round trip that could alter them (NOOP-90/T4: this used
+ * to snapshot text via `readVirtualFile`'s strict UTF-8 decode, which made
+ * it impossible to snapshot a binary asset's pre-import state at all).
+ * Wrapped end to end (directory creation and the write itself) so a
+ * permission failure on `snapshots/` — the exact reproduction that
+ * motivated this — surfaces as a CoMotionError instead of a raw
+ * `EACCES: ... open '<real path>'` reaching the CLI's error printer.
  */
-async function writeSnapshot(home: string, id: string, snapshotId: string, content: string): Promise<void> {
+async function writeSnapshot(home: string, id: string, snapshotId: string, content: Buffer): Promise<void> {
   const filePath = snapshotPath(home, id, snapshotId);
   try {
     await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf-8");
+    await writeFile(filePath, content);
   } catch {
     throw new CoMotionError("無法寫入復原快照");
   }
 }
 
-async function readSnapshot(home: string, id: string, snapshotId: string): Promise<string> {
+async function readSnapshot(home: string, id: string, snapshotId: string): Promise<Buffer> {
   try {
-    return await readFile(snapshotPath(home, id, snapshotId), "utf-8");
+    return await readFile(snapshotPath(home, id, snapshotId));
   } catch {
     // stack.json still points at a snapshot file that is no longer there —
     // never skip the entry and pretend the group is smaller than it is.
@@ -204,7 +219,7 @@ function pushGroupToUndoStack(stack: StackFile, group: HistoryGroup): string[] {
   while (stack.undo.length > UNDO_STACK_CAP) {
     const evicted = stack.undo.shift()!;
     for (const entry of evicted.entries) {
-      evictedSnapshotIds.push(entry.snapshotId);
+      if (entry.snapshotId !== null) evictedSnapshotIds.push(entry.snapshotId);
     }
   }
   return evictedSnapshotIds;
@@ -224,12 +239,25 @@ export async function stageSnapshotEntries(id: string, virtualPaths: string[]): 
   const workDir = await resolveWorkDir(id);
   const entries: HistoryEntry[] = [];
   for (const virtualPath of virtualPaths) {
-    const content = await readVirtualFile(workDir, virtualPath);
+    const content = await readVirtualFileBytes(workDir, virtualPath);
     const snapshotId = generateOpaqueId();
     await writeSnapshot(home, id, snapshotId, content);
     entries.push({ virtualPath, snapshotId });
   }
   return entries;
+}
+
+/**
+ * Records that `virtualPath` is about to be created — it does not exist
+ * yet — as the creation counterpart to `stageSnapshotEntries` (asset
+ * import, NOOP-90/T4). No I/O and no snapshot file: there is no "before"
+ * content to keep, only the fact that the path was absent. The caller
+ * writes the new file itself, then commits or discards this entry through
+ * the same `commitSnapshotEntries`/`discardSnapshotEntries` any other
+ * staged entry uses.
+ */
+export function stageNewFileEntry(virtualPath: string): HistoryEntry {
+  return { virtualPath, snapshotId: null };
 }
 
 /**
@@ -256,7 +284,7 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
   const snapshotIdsToDelete: string[] = [];
   for (const group of stack.redo) {
     for (const entry of group.entries) {
-      snapshotIdsToDelete.push(entry.snapshotId);
+      if (entry.snapshotId !== null) snapshotIdsToDelete.push(entry.snapshotId);
     }
   }
   stack.redo = [];
@@ -284,7 +312,7 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
 export async function discardSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
   const home = resolveCoMotionHome();
   for (const entry of entries) {
-    await deleteSnapshot(home, id, entry.snapshotId);
+    if (entry.snapshotId !== null) await deleteSnapshot(home, id, entry.snapshotId);
   }
 }
 
@@ -343,22 +371,66 @@ export async function endHistoryGroup(id: string): Promise<void> {
   }
 }
 
+/** Reads `virtualPath`'s current raw bytes, or `null` when it does not currently exist — the existence check `applyGroup` needs to tell "overwrite" apart from "create"/"delete" while capturing the inverse of either direction. */
+async function readVirtualFileBytesOrNull(workDir: string, virtualPath: string): Promise<Buffer | null> {
+  try {
+    return await readVirtualFileBytes(workDir, virtualPath);
+  } catch (error) {
+    if (error instanceof CoMotionNotFoundError) return null;
+    throw error;
+  }
+}
+
+/**
+ * Derives `virtualPath`'s real filesystem path by direct join, without the
+ * structural discovery `resolveVirtualFilePath` requires (which needs the
+ * file to already exist). Safe here specifically because `virtualPath`
+ * always comes from this module's own trusted history entries — never from
+ * an external caller — and was already validated once, when the entry was
+ * first staged.
+ */
+function derivedRealPath(workDir: string, virtualPath: string): string {
+  const segments = virtualPath.split("/").filter((segment) => segment.length > 0);
+  return path.join(workDir, ...segments);
+}
+
+/** Deletes `virtualPath` if it currently exists; a no-op if it does not (undoing a creation twice, or a snapshot that already lost the race, must not be an error). */
+async function deleteRealFileIfPresent(workDir: string, virtualPath: string): Promise<void> {
+  let realPath: string;
+  try {
+    realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  } catch (error) {
+    if (error instanceof CoMotionNotFoundError) return;
+    throw error;
+  }
+  try {
+    await rm(realPath, { force: true });
+  } catch {
+    throw new CoMotionError(`刪除檔案時發生錯誤：${virtualPath}`);
+  }
+}
+
 /**
  * Applies one group's snapshots to disk and returns the group that would
  * undo this application (used by both undo and redo — they are the same
  * operation run against opposite stacks).
  *
- * Every entry's *current* content is captured first, before any entry is
- * applied. This matters when the same virtualPath appears more than once
- * in a group (an element edited twice in one agent turn): capturing before
- * any write means every entry for that path captures the same, correct
- * "current" value, regardless of the order entries are processed in.
+ * Every entry's *current* state is captured first, before any entry is
+ * applied — either its current bytes, or `null` when the path currently
+ * does not exist (which happens on a redo that is about to recreate a file
+ * an earlier undo deleted). This matters when the same virtualPath appears
+ * more than once in a group (an element edited twice in one agent turn):
+ * capturing before any write means every entry for that path captures the
+ * same, correct "current" value, regardless of the order entries are
+ * processed in.
  *
  * Entries are then applied last-to-first. A group's entries were recorded
  * in the order their edits happened, each one holding the content from
  * *before* that edit — applying them in reverse peels the edits off like a
  * stack, so a path touched twice ends up at the state before its first
- * edit, not the state before its second.
+ * edit, not the state before its second. An entry with `snapshotId: null`
+ * means the path did not exist before this group ran, so "applying" it
+ * means deleting the path instead of writing content back.
  *
  * The snapshot files this group *consumes* (each one restored from and now
  * stale) are returned rather than deleted here, for the same reason the
@@ -380,19 +452,28 @@ async function applyGroup(
 ): Promise<{ inverseGroup: HistoryGroup; restoredPaths: string[]; consumedSnapshotIds: string[] }> {
   const inverseEntries: HistoryEntry[] = [];
   for (const entry of group.entries) {
-    const currentContent = await readVirtualFile(workDir, entry.virtualPath);
-    const inverseSnapshotId = generateOpaqueId();
-    await writeSnapshot(home, id, inverseSnapshotId, currentContent);
-    inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: inverseSnapshotId });
+    const currentContent = await readVirtualFileBytesOrNull(workDir, entry.virtualPath);
+    if (currentContent === null) {
+      inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: null });
+    } else {
+      const inverseSnapshotId = generateOpaqueId();
+      await writeSnapshot(home, id, inverseSnapshotId, currentContent);
+      inverseEntries.push({ virtualPath: entry.virtualPath, snapshotId: inverseSnapshotId });
+    }
   }
 
   const consumedSnapshotIds: string[] = [];
   for (let i = group.entries.length - 1; i >= 0; i--) {
     const entry = group.entries[i];
+    if (entry.snapshotId === null) {
+      await deleteRealFileIfPresent(workDir, entry.virtualPath);
+      continue;
+    }
     const content = await readSnapshot(home, id, entry.snapshotId);
-    const realPath = await resolveVirtualFilePath(workDir, entry.virtualPath);
+    const realPath = derivedRealPath(workDir, entry.virtualPath);
     try {
-      await writeFile(realPath, content, "utf-8");
+      await mkdir(path.dirname(realPath), { recursive: true });
+      await writeFile(realPath, content);
     } catch {
       throw new CoMotionError(`寫入投影片時發生錯誤：${entry.virtualPath}`);
     }

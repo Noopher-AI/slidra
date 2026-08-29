@@ -361,6 +361,68 @@ export function rewrapTextBoxContent(
   return { updated, lines: wrapped.lines.length };
 }
 
+// `{{ variableName }}` — whitespace around the name is allowed, the name
+// itself is a plain word ([A-Za-z0-9_]). A `{{` with no matching `}}`, or a
+// name this project has never heard of, simply does not match here and is
+// left as literal text by `substituteDynamicText` below — this scanner
+// never throws over dynamic-text syntax (NOOP-90/T4's decision: unknown
+// placeholders are a display-time no-op, not an error).
+const DYNAMIC_VARIABLE_PATTERN = /\{\{\s*(\w+)\s*\}\}/g;
+
+/**
+ * Collects the byte ranges of every leaf text-bearing node in the document
+ * — a `<text>` or `<tspan>` with no child elements, whose `[contentStart,
+ * contentEnd)` span is character data, not markup. A `<text>` wrapping
+ * `<tspan>` children (a text box, #76) is not itself a leaf; each of its
+ * `<tspan>` children is collected individually instead, so a variable
+ * substituted inside one line never touches the others.
+ */
+function collectTextLeafRanges(nodes: readonly ScannedNode[]): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  for (const node of nodes) {
+    if ((node.tag === "text" || node.tag === "tspan") && !node.selfClosing && node.children.length === 0) {
+      ranges.push({ start: node.contentStart, end: node.contentEnd });
+    } else {
+      ranges.push(...collectTextLeafRanges(node.children));
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Replaces `{{ variableName }}` placeholders with the values in `variables`,
+ * scanning only the character data of `<text>`/`<tspan>` leaves — never
+ * attribute values, never markup (ADR-0010: slide content is untrusted, so
+ * this is a table lookup, not a template engine; no conditionals, loops or
+ * escaping syntax exist). A placeholder naming a variable not present in
+ * `variables` is left exactly as written, byte for byte — this is the one
+ * deliberately silent case in the whole module (see the ADR's accepted
+ * cost: a presentation opened in another tool shows the literal
+ * `{{ slide_number }}`). This is a read-time projection, never persisted —
+ * callers apply it to a slide's bytes only when serving them for display,
+ * never through `writePresentationFile` (`cat`'s byte-exact contract must
+ * stay intact for every other reader).
+ *
+ * Ranges are substituted from the end of the document backwards so that an
+ * earlier range's offsets are never invalidated by a length-changing
+ * splice applied to a later one.
+ */
+export function substituteDynamicText(svgContent: string, variables: ReadonlyMap<string, string>): string {
+  const ranges = collectTextLeafRanges(scanDocument(svgContent));
+  let result = svgContent;
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const { start, end } = ranges[i];
+    const original = result.slice(start, end);
+    const replaced = original.replace(DYNAMIC_VARIABLE_PATTERN, (match, name: string) => {
+      return variables.get(name) ?? match;
+    });
+    if (replaced !== original) {
+      result = result.slice(0, start) + replaced + result.slice(end);
+    }
+  }
+  return result;
+}
+
 /**
  * Appends `markup` as the last child of the document's `<svg>` root,
  * preserving every other byte (`co-motion textbox add`'s write path, #76).

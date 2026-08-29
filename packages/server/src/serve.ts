@@ -247,7 +247,15 @@ async function handleRequest(
       // no separate "escape" case to special-case here — it is just another
       // not-found.
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      const result = await registry.dispatch<{ content: string }>("cat", {
+      // A slide path is rendered for display — `{{ slide_number }}` and its
+      // siblings substituted (NOOP-90/T4) — while every other path
+      // (project.json, assets/*) keeps reading through `cat` unchanged.
+      // Loading the project to make this check is not a new failure mode:
+      // `loadProject` already dispatches "cat" on project.json the same way
+      // every other route on this server does before it can answer anything.
+      const project = await loadProject(registry, presentationId);
+      const commandName = project.slides.includes(virtualPath) ? "slide render" : "cat";
+      const result = await registry.dispatch<{ content: string }>(commandName, {
         id: presentationId,
         path: virtualPath,
       });
