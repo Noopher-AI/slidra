@@ -283,6 +283,43 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(response.status).toBe(200);
   });
 
+  it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then allowed once it releases", async () => {
+    const { id, elementId } = await openFreshPresentationWithElement();
+    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
+
+    await postChat(server, "改標題");
+    await waitForLog((line) => line.permissionOutcome !== undefined);
+    expect((await getEditingState(server)).frozen).toBe(true);
+
+    for (const name of ["element move", "element scale", "element rotate", "textbox width"]) {
+      const response = await fetch(`${server.url}/api/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, input: { slidePath: "slides/001.svg" } }),
+      });
+      expect(response.status, `${name} 應該在凍結期間被擋下`).toBe(409);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("agent 正在編輯中，請稍候");
+    }
+
+    await waitForFrozen(server, false);
+
+    // Once the turn releases the lock, the gate itself must stop refusing —
+    // proven the same way the whitelist test above proves the opposite
+    // (never 403 there, never 409 here). Whether the command's own input
+    // is well-formed enough to actually run is a separate concern already
+    // covered by command-endpoint.test.ts.
+    for (const name of ["element move", "element scale", "element rotate", "textbox width"]) {
+      const response = await fetch(`${server.url}/api/command`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, input: { slidePath: "slides/001.svg" } }),
+      });
+      expect(response.status, `${name} 解凍後不應該再被閘門擋下`).not.toBe(409);
+    }
+  });
+
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
