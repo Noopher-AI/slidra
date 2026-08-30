@@ -75,10 +75,15 @@ function pressEscape(win: Window): void {
   win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Escape" }));
 }
 
-/** The `.group-frame` element inside `doc`'s shadow-hosted overlay. */
-function groupFrameEl(doc: Document): HTMLElement {
+/** Every `.group-frame` element inside `doc`'s shadow-hosted overlay — one per level of `groupPath` currently on screen (NOOP-149 r2's box pool). */
+function groupFrameEls(doc: Document): HTMLElement[] {
   const host = doc.body.children[1];
-  return host.shadowRoot!.querySelector(".group-frame") as HTMLElement;
+  return [...host.shadowRoot!.querySelectorAll<HTMLElement>(".group-frame")];
+}
+
+/** The `.group-frame` boxes actually showing (`display:block`), outermost first. */
+function visibleGroupFrames(doc: Document): HTMLElement[] {
+  return groupFrameEls(doc).filter((el) => el.style.display === "block");
 }
 
 describe("selection-runtime.js", () => {
@@ -192,38 +197,64 @@ describe("selection-runtime.js", () => {
     expect(box.style.display).toBe("none");
   });
 
-  it("單選一個非群組元素：.group-frame 維持 none", async () => {
+  it("單選一個非群組元素：沒有任何 .group-frame 顯示", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
 
-    expect(groupFrameEl(doc).style.display).toBe("none");
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
   });
 
-  it("單選一個群組元素（本身帶 id 的子元素）：.group-frame 顯示為 block", async () => {
+  it("單選一個群組元素（本身帶 id 的子元素）：顯示一個 .group-frame", async () => {
     const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     click(doc, doc.getElementById("el-group")!);
 
-    expect(groupFrameEl(doc).style.display).toBe("block");
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
   });
 
-  it("雙擊進入群組編輯：.group-frame 顯示為 block", async () => {
+  it("雙擊進入群組編輯：顯示一個 .group-frame", async () => {
     const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     dblclick(doc, doc.getElementById("el-child")!);
 
-    expect(groupFrameEl(doc).style.display).toBe("block");
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
   });
 
-  it("按 Esc 從群組編輯退到頂層且未選取任何元素：.group-frame 回到 none", async () => {
+  it("按 Esc 從群組編輯退到頂層且未選取任何群組：.group-frame 全部收起", async () => {
     const { doc, win } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     dblclick(doc, doc.getElementById("el-child")!);
-    expect(groupFrameEl(doc).style.display).toBe("block");
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
 
     pressEscape(win);
 
-    expect(groupFrameEl(doc).style.display).toBe("none");
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
+  });
+
+  it("三層巢狀群組逐層進入：每進一層 .group-frame 累加一個，由外而內堆疊", async () => {
+    const { doc } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
+    const leaf = doc.getElementById("leaf")!;
+
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
+  });
+
+  it("三層巢狀群組逐層退出：Esc 每次只收掉最內層的 .group-frame，外層保留", async () => {
+    const { doc, win } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
+    const leaf = doc.getElementById("leaf")!;
+
+    dblclick(doc, leaf);
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
+
+    pressEscape(win);
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+
+    pressEscape(win);
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
   });
 });

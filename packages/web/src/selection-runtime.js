@@ -231,14 +231,16 @@
   marqueeBox.style.display = "none";
   shadow.appendChild(marqueeBox);
 
-  // Single-instance dashed frame marking the group (or nested group-edit
-  // level) currently in scope — distinct from `.sel`'s solid outline so
-  // "selected the group" and "selected a child inside it" no longer look
-  // identical. See groupFrameId()/positionGroupFrame() below.
-  var groupFrame = document.createElement("div");
-  groupFrame.className = "group-frame";
-  groupFrame.style.display = "none";
-  shadow.appendChild(groupFrame);
+  // Pool of dashed frames, one per level of `groupPath` currently in scope
+  // (outermost first) — distinct from `.sel`'s solid outline so "selected
+  // the group" and "selected a child inside it" don't look identical, and
+  // distinct *per level* so entering a nested group keeps every ancestor's
+  // frame on screen instead of replacing it (NOOP-149 r2: a single-element
+  // frame that just moved to the innermost level made the outer group
+  // vanish the moment you entered it). Reused across updateBoxes() calls —
+  // same pool pattern as multiBoxEls below. See groupFrameIds()/
+  // positionGroupFrames() below.
+  var groupFrameEls = [];
 
   // Pool of plain outline boxes for a multi-selection (>1 ids) — no corner
   // decorations, so acceptance criterion 9 ("多選看不到把手") holds simply
@@ -314,39 +316,58 @@
     }
   }
 
-  /** The id of the element `.group-frame` should currently outline, or null. */
-  function groupFrameId() {
-    if (groupPath.length > 0) return groupPath[groupPath.length - 1];
+  /**
+   * The ids `.group-frame` boxes should currently outline, outermost
+   * first: every level already entered (`groupPath`, in order), plus —
+   * only when nothing has been entered yet — the top-level selected group
+   * itself, so selecting a group still previews its frame before you
+   * double-click into it. A group reached via `groupPath` never needs the
+   * fallback added on top: `resolveClickTarget` never lets `selectedIds`
+   * resolve to an id already on `groupPath` (the walk stops at the scope
+   * boundary), so the `indexOf` guard is a defensive no-op, not a
+   * necessary de-dupe.
+   */
+  function groupFrameIds() {
+    var ids = groupPath.slice();
     if (selectedIds.length === 1) {
       var el = document.getElementById(selectedIds[0]);
-      if (isGroupContainer(el)) return selectedIds[0];
+      if (isGroupContainer(el) && ids.indexOf(selectedIds[0]) === -1) ids.push(selectedIds[0]);
     }
-    return null;
+    return ids;
   }
 
-  /** Screen-px `.group-frame` sits outside the outlined element's own rect, so it never coincides exactly with `.sel`'s box on the same element. */
+  /** Screen-px each `.group-frame` sits outside its outlined element's own rect, so it never coincides exactly with `.sel`'s box on the same element. */
   var GROUP_FRAME_INSET = 3;
 
-  function positionGroupFrame() {
-    var id = groupFrameId();
-    var el = id ? document.getElementById(id) : null;
-    if (!el) {
-      groupFrame.style.display = "none";
-      return;
+  function positionGroupFrames() {
+    var ids = groupFrameIds();
+    while (groupFrameEls.length < ids.length) {
+      var el = document.createElement("div");
+      el.className = "group-frame";
+      shadow.appendChild(el);
+      groupFrameEls.push(el);
     }
-    var rect = el.getBoundingClientRect();
-    groupFrame.style.display = "block";
-    groupFrame.style.left = rect.left - GROUP_FRAME_INSET + "px";
-    groupFrame.style.top = rect.top - GROUP_FRAME_INSET + "px";
-    groupFrame.style.width = rect.width + GROUP_FRAME_INSET * 2 + "px";
-    groupFrame.style.height = rect.height + GROUP_FRAME_INSET * 2 + "px";
+    for (var i = 0; i < groupFrameEls.length; i++) {
+      var frameEl = groupFrameEls[i];
+      var target = i < ids.length ? document.getElementById(ids[i]) : null;
+      if (!target) {
+        frameEl.style.display = "none";
+        continue;
+      }
+      var rect = target.getBoundingClientRect();
+      frameEl.style.display = "block";
+      frameEl.style.left = rect.left - GROUP_FRAME_INSET + "px";
+      frameEl.style.top = rect.top - GROUP_FRAME_INSET + "px";
+      frameEl.style.width = rect.width + GROUP_FRAME_INSET * 2 + "px";
+      frameEl.style.height = rect.height + GROUP_FRAME_INSET * 2 + "px";
+    }
   }
 
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
   function updateBoxes() {
-    positionGroupFrame();
+    positionGroupFrames();
     if (selectedIds.length === 0) {
       hideBox();
       hideMultiBoxes();

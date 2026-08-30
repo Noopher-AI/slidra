@@ -607,22 +607,32 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
 
 // --- NOOP-149 / #117: 群組編輯的虛線框視覺輔助 -----------------------------
 
-/** The `.group-frame` overlay's computed `display` and its (fixed-position, screen-px) rect, read from inside the sandboxed slide iframe's shadow DOM. */
-async function groupFrameBox(
+/**
+ * The `.group-frame` overlay's box pool (NOOP-149 r2): one dashed box per
+ * level of `groupPath` currently in scope, outermost first. Only the
+ * currently-visible (`display:block`) boxes are returned — a collapsed
+ * inner level leaves its pooled element behind with `display:none`, which
+ * would otherwise show up as a spurious zero-rect entry.
+ */
+async function groupFrameBoxes(
   page: Page,
-): Promise<{ display: string; left: number; top: number; width: number; height: number }> {
+): Promise<Array<{ display: string; left: number; top: number; width: number; height: number }>> {
   const frame = await canvasFrame(page);
   return frame.evaluate(() => {
     const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
-    const el = host.shadowRoot!.querySelector(".group-frame") as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    return {
-      display: getComputedStyle(el).display,
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-    };
+    const els = [...host.shadowRoot!.querySelectorAll(".group-frame")] as HTMLElement[];
+    return els
+      .filter((el) => getComputedStyle(el).display !== "none")
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          display: getComputedStyle(el).display,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
   });
 }
 
@@ -660,15 +670,16 @@ it("選取群組時顯示虛線框", async () => {
     // (the container rule already covered above) — selecting a group.
     await page.frameLocator("iframe.slide-frame").locator("#el-leaf").click();
 
-    const frame = await groupFrameBox(page);
-    expect(frame.display).toBe("block");
+    const boxes = await groupFrameBoxes(page);
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0].display).toBe("block");
   } finally {
     await cleanup();
     await deck.cleanup();
   }
 });
 
-it("進入群組編輯後虛線框標示目前層級；巢狀逐層進入時虛線框跟著層級走", async () => {
+it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，外層的框保留不動", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -686,23 +697,29 @@ it("進入群組編輯後虛線框標示目前層級；巢狀逐層進入時虛�
     // land before reading geometry, so a still-in-flight echo cannot land
     // after a later assertion/action and silently revert local state.
     await page.waitForTimeout(50);
-    const outerFrame = await groupFrameBox(page);
-    expect(outerFrame.display).toBe("block");
+    const afterOuter = await groupFrameBoxes(page);
+    expect(afterOuter).toHaveLength(1);
+    const outerFrame = afterOuter[0];
 
     // Second dblclick, now scoped inside el-outer, resolves the leaf's
-    // outermost-within-scope ancestor (el-inner) and enters it.
+    // outermost-within-scope ancestor (el-inner) and enters it too — the
+    // outer frame must still be there, with a second (inner) frame added
+    // on top of it, not replacing it (NOOP-149 r2: a single-element frame
+    // that moved to the innermost level made the outer group vanish).
     await slideLeaf.dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
     await page.waitForTimeout(50);
-    const innerFrame = await groupFrameBox(page);
-    expect(innerFrame.display).toBe("block");
+    const afterInner = await groupFrameBoxes(page);
+    expect(afterInner).toHaveLength(2);
+    const [outerAfterInner, innerFrame] = afterInner;
 
-    // The frame moved from the outer group's rect to the inner group's —
-    // not the same rect (an unmoved frame would mean it stayed on el-outer).
-    expect(innerFrame.left).not.toBe(outerFrame.left);
-    expect(innerFrame.width).not.toBe(outerFrame.width);
+    // The outer frame's own rect is unchanged by entering the inner level.
+    expect(outerAfterInner.left).toBeCloseTo(outerFrame.left, 0);
+    expect(outerAfterInner.width).toBeCloseTo(outerFrame.width, 0);
+
     // The inner group's rect is strictly contained within the outer's, per
     // the deck's own construction (el-outer's decorative rect makes it larger).
+    expect(innerFrame.left).not.toBe(outerFrame.left);
     expect(innerFrame.width).toBeLessThan(outerFrame.width);
     expect(innerFrame.height).toBeLessThan(outerFrame.height);
   } finally {
@@ -711,7 +728,7 @@ it("進入群組編輯後虛線框標示目前層級；巢狀逐層進入時虛�
   }
 });
 
-it("Esc 逐層退出：虛線框先回退到上一層，再退一次後消失", async () => {
+it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至也被退出為止", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -722,7 +739,7 @@ it("Esc 逐層退出：虛線框先回退到上一層，再退一次後消失", 
     await slideLeaf.dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
     await page.waitForTimeout(50);
-    const outerFrame = await groupFrameBox(page);
+    const [outerFrame] = await groupFrameBoxes(page);
 
     await slideLeaf.dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
@@ -731,24 +748,22 @@ it("Esc 逐層退出：虛線框先回退到上一層，再退一次後消失", 
     // so a late-arriving echo cannot re-apply the just-entered scope on
     // top of Escape's own (synchronous, local) pop.
     await page.waitForTimeout(50);
-    const innerFrame = await groupFrameBox(page);
-    expect(innerFrame.display).toBe("block");
+    expect(await groupFrameBoxes(page)).toHaveLength(2);
 
-    // First Esc: back out of el-inner, into el-outer — the frame reverts
-    // to (rather than disappears from) the outer group's rect.
+    // First Esc: back out of el-inner, into el-outer — the innermost frame
+    // is removed and the outer frame's own rect is left untouched.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(50);
-    const afterFirstEsc = await groupFrameBox(page);
-    expect(afterFirstEsc.display).toBe("block");
-    expect(afterFirstEsc.left).toBeCloseTo(outerFrame.left, 0);
-    expect(afterFirstEsc.width).toBeCloseTo(outerFrame.width, 0);
+    const afterFirstEsc = await groupFrameBoxes(page);
+    expect(afterFirstEsc).toHaveLength(1);
+    expect(afterFirstEsc[0].left).toBeCloseTo(outerFrame.left, 0);
+    expect(afterFirstEsc[0].width).toBeCloseTo(outerFrame.width, 0);
 
     // Second Esc: back to the top level. The still-selected leaf is not a
-    // group container, so the frame disappears entirely.
+    // group container, so every frame is gone.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(50);
-    const afterSecondEsc = await groupFrameBox(page);
-    expect(afterSecondEsc.display).toBe("none");
+    expect(await groupFrameBoxes(page)).toHaveLength(0);
   } finally {
     await cleanup();
     await deck.cleanup();
