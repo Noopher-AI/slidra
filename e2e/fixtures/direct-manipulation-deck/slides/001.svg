@@ -19,4 +19,14 @@
       <rect x="0" y="0" width="80" height="60" fill="#c9c"/>
     </g>
   </g>
+  <g id="el-group-rotate" data-comot-name="旋轉群組" transform="translate(1150 250) rotate(30)">
+    <g id="el-group-rotate-child" data-comot-name="旋轉群組子元素" transform="translate(0 0)">
+      <rect x="0" y="0" width="80" height="60" fill="#9c6"/>
+    </g>
+  </g>
+  <g id="el-group-scale" data-comot-name="縮放群組" transform="translate(1150 450) scale(1.5)">
+    <g id="el-group-scale-child" data-comot-name="縮放群組子元素" transform="translate(0 0)">
+      <rect x="0" y="0" width="60" height="40" fill="#6cc"/>
+    </g>
+  </g>
 </svg>

@@ -59,6 +59,9 @@ import {
   formatTransform,
   elementBounds,
   snapTranslation,
+  composeMatrices,
+  applyMatrixToPoint,
+  invertMatrix,
   type Matrix,
   type Rect,
   type TransformParts,
@@ -272,34 +275,45 @@ interface MarqueeGesture {
 
 /**
  * Uniform scale anchored at the element's own local origin (§4.2-follow-up
- * "Scale handles"). `origin` and `startUser` both live in the SAME
- * coordinate frame move gestures already assume: the top-level viewBox's
- * user units, treated as equal to the element's own parent coordinate
- * space. That equality only actually holds when every ancestor transform
- * between the element and the slide root is the identity (no rotate/scale
- * ancestor) — the existing move gesture makes the identical assumption
- * (`toUserPoint` fed straight into `original.parts.translateX/Y`), so this
- * is not a new gap, just the same one extended to scale/rotate. Every
- * fixture and every element this ticket's own tests touch satisfies it.
+ * "Scale handles"). `origin` lives in the element's PARENT coordinate
+ * space (its matrix's own translate) — the same space `decomposeMatrix`
+ * already reports it in. `startUser`/every subsequent pointer point is
+ * reported in the top-level viewBox's user units, so it is run through
+ * `parentInverse` (the inverse of the composed ancestor chain, NOOP-91
+ * follow-up round 2) before being compared against `origin`, putting both
+ * ends of the ray in the same frame regardless of how many
+ * translate/rotate/scale ancestors sit between the element and the slide
+ * root.
  */
 interface ScaleGesture {
   kind: "scale";
   id: string;
   original: OriginalTransform;
-  /** The element's own local origin (its matrix's translate), in user units. */
+  /** The element's own local origin (its matrix's translate), in its PARENT's coordinate units. */
   origin: { x: number; y: number };
-  /** Pointer-down point, in user units — the ray's other end. */
+  /** Pointer-down point, mapped into the element's PARENT coordinate space — the ray's other end. */
   startUser: { x: number; y: number };
+  /** Maps a top-level user-unit point into the element's parent coordinate space; the inverse of the composed ancestor chain (`entry.ancestors`) captured at gesture start. */
+  parentInverse: Matrix;
   /** Last factor actually applied to the preview; used only to decide "did anything change" at release. */
   lastFactor: number;
 }
 
-/** Rotation anchored at the element's own local origin, tracking a continuously-unwrapped angle so a multi-revolution drag is not clamped to ±180° (§4.2-follow-up "Rotate handle"). */
+/**
+ * Rotation anchored at the element's own local origin, tracking a
+ * continuously-unwrapped angle so a multi-revolution drag is not clamped to
+ * ±180° (§4.2-follow-up "Rotate handle"). Same parent-coordinate-space
+ * reasoning as `ScaleGesture` above — `origin` is in the element's parent
+ * space, and every pointer point is mapped into that space via
+ * `parentInverse` before its angle is measured.
+ */
 interface RotateGesture {
   kind: "rotate";
   id: string;
   original: OriginalTransform;
   origin: { x: number; y: number };
+  /** Maps a top-level user-unit point into the element's parent coordinate space; the inverse of the composed ancestor chain (`entry.ancestors`) captured at gesture start. */
+  parentInverse: Matrix;
   /** The raw (wrapped, -180..180) angle, in degrees, as of the last processed point — used to unwrap the next frame's delta. */
   lastAngleDeg: number;
   /** Sum of every frame's unwrapped angle delta so far, in degrees — can exceed ±360 across a multi-revolution drag. */
@@ -400,6 +414,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // (which does not clear this cache: the bytes on disk for a given
   // family are still the same font).
   const fontCache = new Map<string, Promise<FontMetrics>>();
+  // Every embedded font this presentation declares, resolved and parsed at
+  // the end of reload() (below) — the browser-side equivalent of the
+  // server's `resolvePresentationFonts`. Fed to every `elementBounds` call
+  // (marquee framing, snap candidates) so a `<text>` element's box is
+  // computable there too, not just in the textbox-width gesture that used
+  // to be the only consumer of a parsed font (§4.7/§4.8). A family that
+  // fails to fetch/parse is simply absent from this map — any `<text>`
+  // using it stays unselectable/un-snappable, the same degradation
+  // `computeBounds`'s own try/catch already applies to any other
+  // unmeasurable element, rather than failing the whole reload.
+  let resolvedFonts: ReadonlyMap<string, FontMetrics> = new Map();
   // The runtime's last-reported client-px <-> user-unit mapping. `null`
   // until the runtime's "viewport" message arrives (on the iframe's own
   // `load`), which is also the state a gesture message must be ignored in.
@@ -613,7 +638,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return index;
   }
 
-  /** An element's bounds, or null when they cannot be computed (e.g. a `<text>` — see §4.7's fonts gap this ticket leaves for candidates). Never throws. */
+  /** An element's bounds, or null when they cannot be computed (e.g. a `<text>` whose font failed to resolve). Never throws. */
   function computeBounds(
     id: string,
     index: Map<string, { element: SlideElement; ancestors: Matrix[] }>,
@@ -621,7 +646,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const entry = index.get(id);
     if (!entry) return null;
     try {
-      return elementBounds(entry.element, { ancestors: entry.ancestors });
+      return elementBounds(entry.element, { ancestors: entry.ancestors, fonts: resolvedFonts });
     } catch {
       return null;
     }
@@ -684,6 +709,33 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     })();
     fontCache.set(family, promise);
     return promise;
+  }
+
+  /**
+   * Resolves every family this presentation declares into a
+   * `ReadonlyMap<string, FontMetrics>` (`elementBounds`'s `fonts` option),
+   * so a `<text>` element's box is computable outside a textbox-width
+   * gesture too — marquee framing and drag-to-move's snap candidates both
+   * need it (§4.7/§4.8). Goes through the same `resolveBrowserFont` cache
+   * textbox-width already uses, so a family fetched once here is never
+   * re-fetched when a gesture needs it later. A family whose fetch/parse
+   * fails is simply left out of the returned map rather than failing
+   * reload() outright — same "skip the one thing that cannot be computed"
+   * posture as `computeBounds`'s own try/catch.
+   */
+  async function resolveEmbeddedFonts(
+    fonts: readonly { file: string; family: string }[],
+  ): Promise<ReadonlyMap<string, FontMetrics>> {
+    const entries = await Promise.all(
+      fonts.map(async (entry): Promise<[string, FontMetrics] | null> => {
+        try {
+          return [entry.family, await resolveBrowserFont(entry.family)];
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return new Map(entries.filter((entry): entry is [string, FontMetrics] => entry !== null));
   }
 
   /** "full" (single selection: scale + rotate handles) / "move-only" (0 or 2+ selected) / "none" — the rendering condition the "selection" host->runtime command carries (§5's multi-select rule: this is computed here, never at click time in the runtime). */
@@ -856,7 +908,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return; // Skewed/degenerate matrix — cannot decompose, no gesture.
     }
     const origin = { x: parts.translateX, y: parts.translateY };
-    const startUser = toUserPoint(point);
+    let parentInverse: Matrix;
+    try {
+      parentInverse = invertMatrix(composeMatrices(entry.ancestors));
+    } catch {
+      return; // Degenerate (zero-scale) ancestor chain — no ray to project onto.
+    }
+    const startUser = applyMatrixToPoint(parentInverse, toUserPoint(point));
     if (startUser.x === origin.x && startUser.y === origin.y) return; // No ray to project onto.
     activeGesture = {
       kind: "scale",
@@ -864,13 +922,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       original: { transform: entry.element.transform, parts },
       origin,
       startUser,
+      parentInverse,
       lastFactor: 1,
     };
   }
 
-  /** `factor = ((now - origin) · (down - origin)) / |down - origin|²` — the scalar projection of "origin -> now" onto the ray "origin -> pointer-down", expressed as a fraction of that ray's own length. */
+  /** `factor = ((now - origin) · (down - origin)) / |down - origin|²` — the scalar projection of "origin -> now" onto the ray "origin -> pointer-down", expressed as a fraction of that ray's own length. Both ends of the ray live in the element's parent coordinate space (see `ScaleGesture`'s doc comment). */
   function computeScaleFactor(gesture: ScaleGesture, point: { x: number; y: number }): number {
-    const now = toUserPoint(point);
+    const now = applyMatrixToPoint(gesture.parentInverse, toUserPoint(point));
     const downX = gesture.startUser.x - gesture.origin.x;
     const downY = gesture.startUser.y - gesture.origin.y;
     const nowX = now.x - gesture.origin.x;
@@ -954,7 +1013,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
     const origin = { x: parts.translateX, y: parts.translateY };
-    const startUser = toUserPoint(point);
+    let parentInverse: Matrix;
+    try {
+      parentInverse = invertMatrix(composeMatrices(entry.ancestors));
+    } catch {
+      return; // Degenerate (zero-scale) ancestor chain — angle undefined.
+    }
+    const startUser = applyMatrixToPoint(parentInverse, toUserPoint(point));
     const vx = startUser.x - origin.x;
     const vy = startUser.y - origin.y;
     if (vx === 0 && vy === 0) return; // Pointer-down coincides with the origin — angle undefined, gesture never starts.
@@ -963,14 +1028,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       id,
       original: { transform: entry.element.transform, parts },
       origin,
+      parentInverse,
       lastAngleDeg: (Math.atan2(vy, vx) * 180) / Math.PI,
       cumulativeDeltaDeg: 0,
     };
   }
 
-  /** Advances `gesture`'s unwrapped cumulative angle to `point`, normalizing each frame's own delta into (-180, 180] before accumulating — this is what lets a drag exceed ±360° across multiple revolutions instead of clamping at the atan2 discontinuity. Returns false (and leaves the gesture untouched) when `point` sits exactly on the origin, where the angle is undefined. */
+  /** Advances `gesture`'s unwrapped cumulative angle to `point`, normalizing each frame's own delta into (-180, 180] before accumulating — this is what lets a drag exceed ±360° across multiple revolutions instead of clamping at the atan2 discontinuity. Returns false (and leaves the gesture untouched) when `point` sits exactly on the origin, where the angle is undefined. `point` is mapped into the element's parent coordinate space via `gesture.parentInverse` before its angle relative to `origin` is measured (see `RotateGesture`'s doc comment). */
   function advanceRotateGesture(gesture: RotateGesture, point: { x: number; y: number }): boolean {
-    const now = toUserPoint(point);
+    const now = applyMatrixToPoint(gesture.parentInverse, toUserPoint(point));
     const vx = now.x - gesture.origin.x;
     const vy = now.y - gesture.origin.y;
     if (vx === 0 && vy === 0) return false;
@@ -1183,14 +1249,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const hitNames: (string | null)[] = [];
     for (const element of currentSlideModel.elements) {
       try {
-        const bounds = elementBounds(element, { ancestors: [] });
+        const bounds = elementBounds(element, { ancestors: [], fonts: resolvedFonts });
         if (rectsIntersect(marqueeRect, bounds)) {
           hitIds.push(element.id);
           hitNames.push(element.name);
         }
       } catch {
-        // An element whose bounds cannot be computed (e.g. `<text>`, per
-        // §4.7's fonts gap) is simply not selectable by marquee.
+        // An element whose bounds still cannot be computed (e.g. a
+        // `<text>` whose declared font failed to resolve) is simply not
+        // selectable by marquee.
       }
     }
     selectionIds = hitIds;
@@ -1264,6 +1331,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     slides = project.slides;
     presentationFonts = project.fonts ?? [];
+    resolvedFonts = await resolveEmbeddedFonts(presentationFonts);
+    if (destroyed || thisGeneration !== generation) return;
     // Live reload calls reload() on every external edit. Staying on the
     // slide the author is looking at is the whole point — jumping back to
     // the first one because an agent changed a word elsewhere is a bug.

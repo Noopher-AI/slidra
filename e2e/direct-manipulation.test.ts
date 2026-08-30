@@ -8,6 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory, resolvePresentationFonts, wrapText } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { compareScreenshot } from "./helpers/screenshot.js";
 
 /**
  * NOOP-91's real Chromium acceptance tests, modelled on
@@ -39,6 +40,7 @@ const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
+const baselineDir = path.join(e2eDir, "__screenshots__/direct-manipulation");
 
 const VIEWPORT = { width: 1440, height: 900 };
 const VIEWBOX = { width: 1280, height: 720 };
@@ -225,6 +227,13 @@ function readScale(transform: string): { sx: number; sy: number } {
 function readRotation(transform: string): number {
   const match = /rotate\(([-\d.]+)\)/.exec(transform);
   return match ? Number(match[1]) : 0;
+}
+
+/** The `<rect>` primitive's own x/y/width/height directly inside `<g id="elementId">` — for scale assertions on a nested child, where a bare `/<rect .../ ` regex would match the wrong element. */
+function readRect(svg: string, elementId: string): { x: number; y: number; width: number; height: number } {
+  const match = new RegExp(`<g id="${elementId}"[^>]*>\\s*<rect x="([-\\d.]+)" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)"`).exec(svg);
+  if (!match) throw new Error(`找不到 ${elementId} 的 <rect>`);
+  return { x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) };
 }
 
 /** Inverse of `toPagePoint`: page-viewport pixel -> the fixture's own user-unit space. Mirrors canvas.ts's own `toUserPoint` (same linear svgRect<->viewBox mapping), so a test can hand-compute the exact user-space point a given mouse position resolves to. */
@@ -415,8 +424,16 @@ it("Shift 點兩個元素後一起拖曳：兩個元素各自的位移量相同�
     const after = await readSlide(registry, presentationId);
     const a = readTranslate(after, "el-a");
     const b = readTranslate(after, "el-b");
-    expect(a.x - 100).toBe(b.x - 700);
-    expect(a.y - 100).toBe(b.y - 300);
+    // toBeCloseTo, not toBe: `a.y`/`b.y` are independently parsed from two
+    // separately-formatted decimal strings in the written file, so their
+    // shifted differences are only guaranteed equal to the file's own
+    // 4-decimal write precision, not bit-for-bit — reload() now awaits an
+    // extra font fetch before the first render (NOOP-91 follow-up round 2's
+    // fonts fix), and that timing shift was enough to move the real
+    // mouse-driven drag by roughly one part in 1e13, previously masked by
+    // this assertion's stricter-than-warranted `toBe`.
+    expect(a.x - 100).toBeCloseTo(b.x - 700, 6);
+    expect(a.y - 100).toBeCloseTo(b.y - 300, 6);
     expect(a.x).not.toBe(100); // actually moved
 
     const undo = await registry.dispatch("undo", { id: presentationId });
@@ -441,6 +458,61 @@ it("從空白處拖出框選矩形：與框相交的元素全部選中，且簡�
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
 
     expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer round-1 FAIL：fonts 未傳入 elementBounds）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    // el-text: translate(950 100), a text BOX (data-comot-text-width="300")
+    // whose bounds start at its local origin (bbox.ts's textBounds doc) —
+    // roughly 950..1250 x, 100..~160 y. This exact rectangle is the FAIL
+    // comment's own repro.
+    await dragBy(page, { x: 900, y: 50 }, { x: 370, y: 200 }); // -> (1270, 250)
+
+    const selName = page.locator(".status .sel-name");
+    // el-text carries no `data-comot-name`, so the status bar falls back to
+    // the raw id (StatusBar.tsx).
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：el-text");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣（文字元素本身也是吸附候選）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    // el-text's own container translateX (950) IS its left edge — a text
+    // BOX's bounds start at the local origin (bbox.ts's textBounds doc).
+    const targetLeft = 950;
+    const dx = targetLeft - 100; // el-a starts at x=100
+    const dy = 300; // deliberately not aligned with anything, isolates the x-axis snap
+
+    let guidesSeenDuringDrag = false;
+    await dragBy(
+      page,
+      { x: 180, y: 150 },
+      { x: dx, y: dy },
+      {
+        onMidDrag: async () => {
+          const frame = await canvasFrame(page);
+          const guideCount = await frame.evaluate(() => {
+            const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+            return host?.shadowRoot?.querySelectorAll(".guide").length ?? 0;
+          });
+          guidesSeenDuringDrag = guideCount > 0;
+        },
+      },
+    );
+
+    expect(guidesSeenDuringDrag).toBe(true);
+
+    const after = await readSlide(registry, presentationId);
+    expect(readTranslate(after, "el-a").x).toBe(targetLeft);
   } finally {
     await cleanup();
   }
@@ -521,6 +593,146 @@ it("拖曳旋轉把手放手：rotate 改變了預期的 delta、translate/scale
     expect(readRotation(transformAfter)).toBeCloseTo(targetDeltaDeg, 0);
     expect(readTranslate(after, "el-a")).toEqual({ x: 100, y: 100 });
     expect(readScale(transformAfter)).toEqual({ sx: 1, sy: 1 });
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖先的平移（Reviewer round-1 FAIL 的原始重現）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-group-child").dblclick();
+    const selName = page.locator(".status .sel-name");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
+
+    const box = await svgBox(page);
+    // el-group: translate(300 550); el-group-child: translate(0 0), rect
+    // 0 0 80 60. The child's own local origin (0, 0) maps to TOP-LEVEL
+    // (300, 550) through the ancestor's translate — not (0, 0), which is
+    // what the pre-fix code used (the FAIL comment's own repro: dragging to
+    // the exact 2x point produced a ~90-wide box instead of 160).
+    const origin = { x: 300, y: 550 };
+    const seTopLevel = { x: 380, y: 610 }; // origin + local (80, 60)
+    const seHandle = await handleCenter(page, "se");
+    const factor = 2;
+    const target = toPagePoint(
+      box,
+      origin.x + factor * (seTopLevel.x - origin.x),
+      origin.y + factor * (seTopLevel.y - origin.y),
+    );
+    await dragPageTo(page, seHandle, target);
+
+    const after = await readSlide(registry, presentationId);
+    const rect = readRect(after, "el-group-child");
+    expect(Math.abs(rect.width - 80 * factor)).toBeLessThan(5);
+    expect(Math.abs(rect.height - 60 * factor)).toBeLessThan(5);
+    expect(readTransformAttr(after, "el-group")).toBe("translate(300 550)");
+    expect(readTransformAttr(after, "el-group-child")).toBe("translate(0 0)");
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("雙擊進入旋轉群組後拖曳子元素的縮放把手：原點套用祖先的旋轉，縮放與旋轉共用同一套 core matrix 路徑", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-group-rotate-child").dblclick();
+    const selName = page.locator(".status .sel-name");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：旋轉群組子元素");
+
+    const box = await svgBox(page);
+    // el-group-rotate: translate(1150 250) rotate(30); child: translate(0
+    // 0). The handle's own on-screen position (read below, via
+    // `handleCenter`) is selection-runtime.js's `getBoundingClientRect()`
+    // corner of the ROTATED shape — not the same point as rotating the
+    // local (80, 60) corner by hand — so this test maps that ACTUAL
+    // handle position into el-group-rotate's local (parent) frame via the
+    // ancestor's inverse rotation, scales by `factor` in that local frame
+    // (mirroring canvas.ts's own `parentInverse` math exactly), then maps
+    // the scaled point back out to a top-level drag target. Both directions
+    // use the same rotate(30) matrix `functionToMatrix`/`multiplyMatrix` in
+    // packages/core/src/geometry/transform.ts compute.
+    const origin = { x: 1150, y: 250 };
+    const rotateDeg = 30;
+    const seHandle = await handleCenter(page, "se");
+    const downTop = toUserPointTest(box, seHandle.x, seHandle.y);
+    const downLocal = rotateVector({ x: downTop.x - origin.x, y: downTop.y - origin.y }, -rotateDeg);
+    const factor = 1.5;
+    const targetLocal = { x: downLocal.x * factor, y: downLocal.y * factor };
+    const targetTopVec = rotateVector(targetLocal, rotateDeg);
+    const target = toPagePoint(box, origin.x + targetTopVec.x, origin.y + targetTopVec.y);
+    await dragPageTo(page, seHandle, target);
+
+    const after = await readSlide(registry, presentationId);
+    const rect = readRect(after, "el-group-rotate-child");
+    expect(Math.abs(rect.width - 80 * factor)).toBeLessThan(5);
+    expect(Math.abs(rect.height - 60 * factor)).toBeLessThan(5);
+    expect(readTransformAttr(after, "el-group-rotate")).toBe("translate(1150 250) rotate(30)");
+    expect(readTransformAttr(after, "el-group-rotate-child")).toBe("translate(0 0)");
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("雙擊進入縮放群組後拖曳子元素的旋轉把手：原點套用祖先的縮放，delta 不因祖先縮放而失真", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-group-scale-child").dblclick();
+    const selName = page.locator(".status .sel-name");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：縮放群組子元素");
+
+    const box = await svgBox(page);
+    // el-group-scale: translate(1150 450) scale(1.5); child: translate(0
+    // 0). A uniform ancestor scale preserves angles, so the same
+    // rotateVector helper the single-level rotate test above uses still
+    // applies, once both ends of the vector are expressed in this
+    // TOP-LEVEL frame (origin = ancestor applied to local (0, 0) = (1150,
+    // 450) — the scale of the origin itself is a no-op, only the translate
+    // moves it).
+    const origin = { x: 1150, y: 450 };
+    const rotateHandle = await handleCenter(page, "rotate");
+    const downUser = toUserPointTest(box, rotateHandle.x, rotateHandle.y);
+    const downVec = { x: downUser.x - origin.x, y: downUser.y - origin.y };
+    const targetDeltaDeg = 45;
+    const nowVec = rotateVector(downVec, targetDeltaDeg);
+    const nowUser = { x: origin.x + nowVec.x, y: origin.y + nowVec.y };
+    const nowPage = toPagePoint(box, nowUser.x, nowUser.y);
+
+    await dragPageTo(page, rotateHandle, nowPage);
+
+    const after = await readSlide(registry, presentationId);
+    const transformAfter = readTransformAttr(after, "el-group-scale-child");
+    expect(readRotation(transformAfter)).toBeCloseTo(targetDeltaDeg, 0);
+    // translateX/Y are still 0 — `formatTransform` omits a zero
+    // translate() segment entirely, so its absence here (rather than an
+    // explicit "translate(0 0)") IS the "nothing moved" assertion.
+    expect(transformAfter).not.toMatch(/translate\(/);
+    expect(readScale(transformAfter)).toEqual({ sx: 1, sy: 1 });
+    expect(readTransformAttr(after, "el-group-scale")).toBe("translate(1150 450) scale(1.5)");
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
@@ -632,6 +844,71 @@ it("按 Esc 退出群組編輯後，點同一個畫面位置：選取解析成�
     // top level: the OUTERMOST id-carrying ancestor is the group itself.
     await slideFrame.locator("#el-group-child").click();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組");
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- 視覺回歸基準（計畫 §5.6 拖曳中／放手後輔助線、§5.9 多選 move-only） ---
+
+it("基準截圖：拖曳中畫出吸附輔助線（計畫 §5.6）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+    // Same drag as "拖曳到與另一元素左緣相距在吸附半徑內" above — lands
+    // el-a's left edge exactly on el-b's, guaranteed inside the snap
+    // radius, so the vertical guide is showing at capture time.
+    const targetLeft = 700;
+    const dx = targetLeft - 100;
+    const dy = 250;
+    await dragBy(
+      page,
+      { x: 180, y: 150 },
+      { x: dx, y: dy },
+      {
+        onMidDrag: async () => {
+          // Layout from the live preview's DOM writes needs a tick to
+          // settle before a byte-exact capture (selection.test.ts's own
+          // baseline test uses the same short wait for the same reason).
+          await page.waitForTimeout(50);
+          await compareScreenshot(page, { name: "dragging-shows-guide", baselineDir });
+        },
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+it("基準截圖：放手後輔助線消失（計畫 §5.6）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+    const targetLeft = 700;
+    const dx = targetLeft - 100;
+    const dy = 250;
+    await dragBy(page, { x: 180, y: 150 }, { x: dx, y: dy });
+    await page.waitForTimeout(50);
+    await compareScreenshot(page, { name: "released-guide-cleared", baselineDir });
+  } finally {
+    await cleanup();
+  }
+});
+
+it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.9）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    await slideFrame.locator("#el-a").click();
+    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
+    const selName = page.locator(".status .sel-name");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
+    await page.waitForTimeout(50);
+    await compareScreenshot(page, { name: "multiselect-move-only", baselineDir });
   } finally {
     await cleanup();
   }
