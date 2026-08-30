@@ -92,6 +92,7 @@
 /* ── ribbon (#51) ───────────────────────────────────────────────── */
 .ribbon {
   flex-shrink: 0;
+  position: relative;
   background: var(--s-ribbon);
   border-bottom: 1px solid var(--line);
 }
@@ -177,6 +178,17 @@
 }
 .cmd:disabled svg {
   opacity: 0.55;
+}
+.ribbon-notice {
+  position: absolute;
+  right: calc(var(--u) * 2);
+  bottom: calc(var(--u) * 2);
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  background: var(--s-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-size: var(--fs-small);
 }
 
 /* 即時預覽/簡報資訊 錯誤橫幅 — carried forward from wave 1's gate finding:
