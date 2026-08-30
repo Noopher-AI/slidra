@@ -47,7 +47,15 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
   // #56 (ADR-0011): 顯示名稱 (data-comot-name) when the selected element
   // carries one, its 識別碼 (id) otherwise — that fallback mapping is a
   // view-layer decision, not something canvas.ts's CanvasState encodes.
-  const selectionLabel = state.selection ? (state.selection.name ?? state.selection.id) : null;
+  // NOOP-91 §4.8 extends this to a multi-selection: two or more elements
+  // show a count instead of trying to concatenate names.
+  const selectionCount = state.selection.ids.length;
+  const selectionLabel =
+    selectionCount === 0
+      ? null
+      : selectionCount === 1
+        ? (state.selection.names[0] ?? state.selection.ids[0])
+        : `${selectionCount} 個元素`;
 
   return (
     <footer className="status status-bar">

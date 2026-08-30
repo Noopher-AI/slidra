@@ -42,12 +42,51 @@
  * seam: the `{ id, name }` arriving over postMessage has always been the
  * resolved node's own `id` and `data-comot-name`, and after conversion
  * that node is the container.
+ *
+ * NOOP-91 (direct manipulation) extends the same runtime with drag-to-move
+ * and marquee select. The runtime (selection-runtime.js) only ever reports
+ * raw client-px coordinates and paints whatever transform/guide/marquee
+ * string this module hands it — every bit of geometry (matrix decompose,
+ * bounding boxes, snapping) happens here, using `@co-motion/core`, because
+ * the runtime is an unbundled `?raw` script that cannot import anything.
+ * See docs on the postMessage protocol below (`SelectionMessage`).
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
 import { computePlayerPlan, renderHideStyle, renderPlanScript } from "./player-plan.js";
+import {
+  decomposeMatrix,
+  formatTransform,
+  elementBounds,
+  snapTranslation,
+  type Matrix,
+  type Rect,
+  type TransformParts,
+  type SnapCandidate,
+  type SnapGuide,
+} from "@co-motion/core/geometry";
+import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
 
 export type CanvasMode = "view" | "play";
+
+/**
+ * The elements the author currently has selected in view mode (NOOP-91
+ * §4.8). Purely a front-end concept — never written to the presentation,
+ * never affects a command's semantics beyond supplying `elementIds`.
+ */
+export interface CanvasSelection {
+  /** Selected in order; length 0 means nothing is selected. */
+  ids: string[];
+  /** `ids[i]`'s `data-comot-name`; `null` when the element carries none. */
+  names: (string | null)[];
+  /**
+   * Group ids entered via double-click, outermost first. Always empty in
+   * this ticket's delivered scope — group editing is not implemented (see
+   * the PR body) — kept on the type so a later ticket does not have to
+   * touch every reader of `CanvasState.selection` again.
+   */
+  groupPath: string[];
+}
 
 export interface CanvasState {
   /** Slide virtual paths, in project.json's own order. */
@@ -57,16 +96,10 @@ export interface CanvasState {
   mode: CanvasMode;
   /** Only meaningful while mode === "play". */
   playerHasFocus: boolean;
-  /** Set when the current slide's effect list cannot be run; cleared on the next successful render. */
+  /** Set when the current slide's effect list cannot be run, or the last direct-manipulation command failed; cleared on the next successful render/command. */
   error: string | null;
-  /**
-   * The element the author currently has selected in view mode, or null.
-   * `name` is the element's `data-comot-name` (顯示名稱) when it carries
-   * one, `null` otherwise — the fallback to showing `id` instead lives in
-   * the view layer (StatusBar.tsx), not here. Never written to the
-   * presentation (CONTEXT.md 「選取」).
-   */
-  selection: { id: string; name: string | null } | null;
+  /** The elements currently selected in view mode. Never written to the presentation. */
+  selection: CanvasSelection;
 }
 
 export interface CanvasController {
@@ -132,12 +165,25 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
   );
 }
 
-/** Message shapes selection-runtime.js sends (settled seam, ADR-0011/#56). */
+/**
+ * Message shapes selection-runtime.js sends (ADR-0011/#56, extended by
+ * NOOP-91 §4.1 for direct manipulation). Every field below is untrusted —
+ * the slide running inside the sandboxed iframe can forge any of them — so
+ * every handler below validates shape and finiteness before using a value,
+ * never trusting a NaN/Infinity/wrong-type field into a command input.
+ */
 interface SelectionMessage {
   source: "comot-selection";
-  event: "select" | "clear";
+  event: "select" | "clear" | "viewport" | "gesture-start" | "gesture-move" | "gesture-end";
   id?: string;
   name?: string | null;
+  additive?: boolean;
+  svgRect?: Rect;
+  viewBox?: Rect;
+  kind?: "move" | "marquee";
+  point?: { x: number; y: number };
+  modifiers?: { shift: boolean; alt: boolean };
+  cancelled?: boolean;
 }
 
 function isSelectionMessage(data: unknown): data is SelectionMessage {
@@ -147,6 +193,86 @@ function isSelectionMessage(data: unknown): data is SelectionMessage {
     (data as { source?: unknown }).source === "comot-selection" &&
     typeof (data as { event?: unknown }).event === "string"
   );
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isValidPoint(value: unknown): value is { x: number; y: number } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    isFiniteNumber((value as { x?: unknown }).x) &&
+    isFiniteNumber((value as { y?: unknown }).y)
+  );
+}
+
+function isValidRect(value: unknown): value is Rect {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  return (
+    isFiniteNumber(r.x) &&
+    isFiniteNumber(r.y) &&
+    isFiniteNumber(r.width) &&
+    isFiniteNumber(r.height) &&
+    r.width > 0 &&
+    r.height > 0
+  );
+}
+
+/** Screen-space viewport the runtime last reported (client px <-> user units, NOOP-91 §4.1's "viewport" event). */
+interface Viewport {
+  svgRect: Rect;
+  viewBox: Rect;
+}
+
+/** One selected element's transform, captured at gesture start, for preview/revert (§4.2). */
+interface OriginalTransform {
+  /** The raw `transform` attribute value at gesture start; `null` when absent (preview reverts by removing the attribute). */
+  transform: string | null;
+  parts: TransformParts;
+}
+
+interface MoveGesture {
+  kind: "move";
+  ids: string[];
+  originals: Map<string, OriginalTransform>;
+  startUser: { x: number; y: number };
+  lastDelta: { dx: number; dy: number };
+}
+
+interface MarqueeGesture {
+  kind: "marquee";
+  startClient: { x: number; y: number };
+}
+
+type ActiveGesture = MoveGesture | MarqueeGesture;
+
+/** Snap threshold in screen px, converted to user units per-viewport at drag time (assumption noted in the PR body). */
+const SNAP_THRESHOLD_PX = 8;
+
+/** Rounds like `formatTransform`'s own 4-decimal rule, for the "did anything actually move" check (§4.2). */
+function roundsToZero(value: number): boolean {
+  return Number(value.toFixed(4)) === 0;
+}
+
+function rectsIntersect(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+/** Flattens a slide model into id -> {element, ancestor matrix chain (excluding the element's own matrix)}, recursing into groups. */
+function flattenElements(
+  elements: readonly SlideElement[],
+  ancestors: readonly Matrix[],
+  out: Map<string, { element: SlideElement; ancestors: Matrix[] }>,
+): void {
+  for (const element of elements) {
+    out.set(element.id, { element, ancestors: [...ancestors] });
+    if (element.kind === "group") {
+      flattenElements(element.children, [...ancestors, element.matrix], out);
+    }
+  }
 }
 
 export function mountCanvas(container: HTMLElement): CanvasController {
@@ -159,11 +285,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
-  // The element the author has selected in view mode (ADR-0011/#56), or
-  // null. Cleared (with notify()) whenever the slide changes, reload()
-  // runs, play() is entered, or exitPlay() returns — a selection surviving
-  // a page change would point at a different slide's DOM entirely.
-  let selection: { id: string; name: string | null } | null = null;
+  // The elements the author has selected in view mode (ADR-0011/#56,
+  // extended by NOOP-91 to a list). Cleared (with notify()) whenever the
+  // slide changes, reload() runs, play() is entered, or exitPlay()
+  // returns — a selection surviving a page change would point at a
+  // different slide's DOM entirely.
+  let selectionIds: string[] = [];
+  let selectionNames: (string | null)[] = [];
+  // The current slide's parsed model plus its raw markup, kept only so
+  // gestures can compute bounding boxes/candidates without re-fetching —
+  // reset on every render() alongside the selection.
+  let currentSlideModel: SlideModel | null = null;
+  // The runtime's last-reported client-px <-> user-unit mapping. `null`
+  // until the runtime's "viewport" message arrives (on the iframe's own
+  // `load`), which is also the state a gesture message must be ignored in.
+  let viewport: Viewport | null = null;
+  let activeGesture: ActiveGesture | null = null;
   const listeners = new Set<(state: CanvasState) => void>();
   // Bumped on every reload()/showSlide()/play()/exitPlay() call and
   // captured by each call's own closure. Nothing orders concurrent calls
@@ -203,21 +340,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (event.source !== frame.contentWindow) return;
 
     if (isSelectionMessage(event.data)) {
-      // Selection messages are only ever meaningful in view mode —
+      // Selection/gesture messages are only ever meaningful in view mode —
       // selection-runtime.js is not even injected into the play-mode
-      // srcdoc (wrapPlayDocument), so a "select"/"clear" arriving while
+      // srcdoc (wrapPlayDocument), so any of these arriving while
       // mode === "play" can only be a forgery from slide script.
       if (mode !== "view") return;
-      const selectionMessage = event.data;
-      if (selectionMessage.event === "select") {
-        selection = {
-          id: selectionMessage.id ?? "",
-          name: typeof selectionMessage.name === "string" ? selectionMessage.name : null,
-        };
-      } else {
-        selection = null;
-      }
-      notify();
+      handleSelectionMessage(event.data);
       return;
     }
 
@@ -256,6 +384,322 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       void retreatPastStart();
       return;
     }
+  }
+
+  /** Dispatches one already-validated-as-comot-selection message to the right handler (NOOP-91 §4.1). */
+  function handleSelectionMessage(message: SelectionMessage): void {
+    if (message.event === "viewport") {
+      if (isValidRect(message.svgRect) && isValidRect(message.viewBox)) {
+        viewport = { svgRect: message.svgRect, viewBox: message.viewBox };
+      }
+      return;
+    }
+    if (message.event === "select") {
+      const id = typeof message.id === "string" ? message.id : "";
+      const name = typeof message.name === "string" ? message.name : null;
+      if (message.additive) {
+        const index = selectionIds.indexOf(id);
+        if (index >= 0) {
+          selectionIds.splice(index, 1);
+          selectionNames.splice(index, 1);
+        } else {
+          selectionIds.push(id);
+          selectionNames.push(name);
+        }
+      } else {
+        selectionIds = [id];
+        selectionNames = [name];
+      }
+      notify();
+      return;
+    }
+    if (message.event === "clear") {
+      selectionIds = [];
+      selectionNames = [];
+      notify();
+      return;
+    }
+    if (message.event === "gesture-start") {
+      if (!isValidPoint(message.point)) return;
+      if (message.kind === "move") beginMoveGesture(message.point);
+      else if (message.kind === "marquee") beginMarqueeGesture(message.point);
+      return;
+    }
+    if (message.event === "gesture-move") {
+      if (!isValidPoint(message.point)) return;
+      const modifiers = { shift: Boolean(message.modifiers?.shift), alt: Boolean(message.modifiers?.alt) };
+      if (activeGesture?.kind === "move") updateMoveGesture(message.point, modifiers);
+      else if (activeGesture?.kind === "marquee") updateMarqueeGesture(message.point);
+      return;
+    }
+    if (message.event === "gesture-end") {
+      if (!isValidPoint(message.point)) {
+        // No usable endpoint at all: still tear the gesture down rather
+        // than leaving a stale preview and a phantom activeGesture around.
+        activeGesture = null;
+        return;
+      }
+      const cancelled = Boolean(message.cancelled);
+      if (activeGesture?.kind === "move") void endMoveGesture(cancelled);
+      else if (activeGesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
+      return;
+    }
+  }
+
+  function postToFrame(message: Record<string, unknown>): void {
+    frame.contentWindow?.postMessage({ source: "comot-host", ...message }, "*");
+  }
+
+  function toUserPoint(point: { x: number; y: number }): { x: number; y: number } {
+    if (!viewport) return { x: 0, y: 0 };
+    const scaleX = viewport.viewBox.width / viewport.svgRect.width;
+    const scaleY = viewport.viewBox.height / viewport.svgRect.height;
+    return {
+      x: viewport.viewBox.x + (point.x - viewport.svgRect.x) * scaleX,
+      y: viewport.viewBox.y + (point.y - viewport.svgRect.y) * scaleY,
+    };
+  }
+
+  function userXToClient(x: number): number {
+    const scaleX = viewport!.svgRect.width / viewport!.viewBox.width;
+    return viewport!.svgRect.x + (x - viewport!.viewBox.x) * scaleX;
+  }
+
+  function userYToClient(y: number): number {
+    const scaleY = viewport!.svgRect.height / viewport!.viewBox.height;
+    return viewport!.svgRect.y + (y - viewport!.viewBox.y) * scaleY;
+  }
+
+  function elementIndex(): Map<string, { element: SlideElement; ancestors: Matrix[] }> {
+    const index = new Map<string, { element: SlideElement; ancestors: Matrix[] }>();
+    if (currentSlideModel) flattenElements(currentSlideModel.elements, [], index);
+    return index;
+  }
+
+  /** An element's bounds, or null when they cannot be computed (e.g. a `<text>` — see §4.7's fonts gap this ticket leaves for candidates). Never throws. */
+  function computeBounds(
+    id: string,
+    index: Map<string, { element: SlideElement; ancestors: Matrix[] }>,
+  ): Rect | null {
+    const entry = index.get(id);
+    if (!entry) return null;
+    try {
+      return elementBounds(entry.element, { ancestors: entry.ancestors });
+    } catch {
+      return null;
+    }
+  }
+
+  function offsetUnion(rects: readonly Rect[], dx: number, dy: number): Rect {
+    const minX = Math.min(...rects.map((r) => r.x)) + dx;
+    const minY = Math.min(...rects.map((r) => r.y)) + dy;
+    const maxX = Math.max(...rects.map((r) => r.x + r.width)) + dx;
+    const maxY = Math.max(...rects.map((r) => r.y + r.height)) + dy;
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
+  /**
+   * `POST /api/command` (§4.9) — the only write path this front end has.
+   * Never retried, never silently swallowed: a failure is surfaced through
+   * `CanvasState.error`, and the caller is responsible for reverting the
+   * optimistic preview it already painted.
+   */
+  async function postCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+    try {
+      const response = await fetch("/api/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, input }),
+      });
+      const body = (await response.json().catch(() => null)) as { ok?: boolean; message?: string; error?: string } | null;
+      if (!response.ok) {
+        return { ok: false, message: (body && typeof body.error === "string" && body.error) || `命令失敗（HTTP ${response.status}）` };
+      }
+      return { ok: true, message: (body && typeof body.message === "string" && body.message) || "" };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : "命令送出失敗" };
+    }
+  }
+
+  // --- Drag-to-move (§4.2) ---
+
+  function beginMoveGesture(point: { x: number; y: number }): void {
+    if (selectionIds.length === 0 || !currentSlideModel) return;
+    const index = elementIndex();
+    const originals = new Map<string, OriginalTransform>();
+    for (const id of selectionIds) {
+      const entry = index.get(id);
+      if (!entry) continue;
+      try {
+        originals.set(id, { transform: entry.element.transform, parts: decomposeMatrix(entry.element.matrix) });
+      } catch {
+        // A skewed/degenerate matrix cannot be decomposed — skip this id
+        // rather than aborting the whole gesture for the rest of a
+        // multi-selection.
+      }
+    }
+    if (originals.size === 0) return;
+    activeGesture = {
+      kind: "move",
+      ids: [...originals.keys()],
+      originals,
+      startUser: toUserPoint(point),
+      lastDelta: { dx: 0, dy: 0 },
+    };
+  }
+
+  function updateMoveGesture(point: { x: number; y: number }, modifiers: { shift: boolean; alt: boolean }): void {
+    const gesture = activeGesture;
+    if (!gesture || gesture.kind !== "move" || !viewport) return;
+    const now = toUserPoint(point);
+    let dx = now.x - gesture.startUser.x;
+    let dy = now.y - gesture.startUser.y;
+    let guides: SnapGuide[] = [];
+
+    if (!modifiers.alt) {
+      const index = elementIndex();
+      const movingRects = gesture.ids.map((id) => computeBounds(id, index)).filter((r): r is Rect => r !== null);
+      if (movingRects.length > 0) {
+        const moving = offsetUnion(movingRects, dx, dy);
+        const candidates: SnapCandidate[] = [];
+        for (const id of index.keys()) {
+          if (gesture.ids.includes(id)) continue;
+          const bounds = computeBounds(id, index);
+          if (bounds) candidates.push({ id, bounds });
+        }
+        const thresholdUser = SNAP_THRESHOLD_PX * (viewport.viewBox.width / viewport.svgRect.width);
+        try {
+          const result = snapTranslation({
+            moving,
+            candidates,
+            canvas: { width: viewport.viewBox.width, height: viewport.viewBox.height },
+            threshold: thresholdUser,
+          });
+          dx += result.dx;
+          dy += result.dy;
+          guides = result.guides;
+        } catch {
+          // Malformed viewport/bounds (should not happen given the
+          // isValidRect/computeBounds guards above) — fall back to the
+          // unsnapped delta rather than freezing the drag.
+        }
+      }
+    }
+
+    gesture.lastDelta = { dx, dy };
+    const items = gesture.ids.map((id) => {
+      const original = gesture.originals.get(id)!;
+      const parts: TransformParts = { ...original.parts, translateX: original.parts.translateX + dx, translateY: original.parts.translateY + dy };
+      return { id, transform: formatTransform(parts) };
+    });
+    postToFrame({ command: "preview", items });
+    postToFrame({
+      command: "guides",
+      lines: guides.map((guide) => ({
+        orientation: guide.orientation,
+        position: guide.orientation === "v" ? userXToClient(guide.position) : userYToClient(guide.position),
+      })),
+    });
+  }
+
+  function revertMovePreview(gesture: MoveGesture): void {
+    const items = gesture.ids.map((id) => ({ id, transform: gesture.originals.get(id)!.transform ?? "" }));
+    postToFrame({ command: "preview", items });
+  }
+
+  async function endMoveGesture(cancelled: boolean): Promise<void> {
+    const gesture = activeGesture;
+    activeGesture = null;
+    if (!gesture || gesture.kind !== "move") return;
+    postToFrame({ command: "guides", lines: [] });
+
+    if (cancelled) {
+      revertMovePreview(gesture);
+      return;
+    }
+    if (roundsToZero(gesture.lastDelta.dx) && roundsToZero(gesture.lastDelta.dy)) {
+      // No real movement after snapping — do not create an empty undo step.
+      revertMovePreview(gesture);
+      return;
+    }
+
+    const thisGeneration = generation;
+    const result = await postCommand("element move", {
+      slidePath: slides[currentIndex],
+      elementIds: gesture.ids,
+      dx: gesture.lastDelta.dx,
+      dy: gesture.lastDelta.dy,
+    });
+    // A reload() (e.g. from the live-reload /api/events push, or the
+    // author navigating away) superseded this gesture while the request
+    // was in flight — its result is stale, and the reload's own render()
+    // has already replaced the srcdoc wholesale, discarding any preview.
+    if (destroyed || thisGeneration !== generation) return;
+
+    if (!result.ok) {
+      revertMovePreview(gesture);
+      error = result.message;
+      notify();
+      return;
+    }
+    // Success: the preview already shows the final position. The write
+    // this command just made will arrive back over /api/events and drive
+    // reload() on its own — this module deliberately adds no second
+    // refresh path (§4.9's closing note).
+  }
+
+  // --- Marquee select (§4.8's "框選" row) ---
+
+  function beginMarqueeGesture(point: { x: number; y: number }): void {
+    activeGesture = { kind: "marquee", startClient: point };
+  }
+
+  function updateMarqueeGesture(point: { x: number; y: number }): void {
+    const gesture = activeGesture;
+    if (!gesture || gesture.kind !== "marquee") return;
+    const rect: Rect = {
+      x: Math.min(gesture.startClient.x, point.x),
+      y: Math.min(gesture.startClient.y, point.y),
+      width: Math.abs(point.x - gesture.startClient.x),
+      height: Math.abs(point.y - gesture.startClient.y),
+    };
+    postToFrame({ command: "marquee", rect });
+  }
+
+  function endMarqueeGesture(point: { x: number; y: number }, cancelled: boolean): void {
+    const gesture = activeGesture;
+    activeGesture = null;
+    if (!gesture || gesture.kind !== "marquee") return;
+    postToFrame({ command: "marquee", rect: null });
+    if (cancelled || !currentSlideModel || !viewport) return;
+
+    const a = toUserPoint(gesture.startClient);
+    const b = toUserPoint(point);
+    const marqueeRect: Rect = {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x),
+      height: Math.abs(b.y - a.y),
+    };
+
+    const hitIds: string[] = [];
+    const hitNames: (string | null)[] = [];
+    for (const element of currentSlideModel.elements) {
+      try {
+        const bounds = elementBounds(element, { ancestors: [] });
+        if (rectsIntersect(marqueeRect, bounds)) {
+          hitIds.push(element.id);
+          hitNames.push(element.name);
+        }
+      } catch {
+        // An element whose bounds cannot be computed (e.g. `<text>`, per
+        // §4.7's fonts gap) is simply not selectable by marquee.
+      }
+    }
+    selectionIds = hitIds;
+    selectionNames = hitNames;
+    notify();
+    postToFrame({ command: "selection", ids: hitIds });
   }
 
   async function advancePastEnd(): Promise<void> {
@@ -298,6 +742,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
+    // A gesture in progress when an external change lands must be
+    // abandoned, not applied on top of a slide that has already moved out
+    // from under it (§4.2's "拖曳中投影片被 /api/events 通知變更" row).
+    // Clearing it here — before the fetch below — is enough: render()
+    // replaces the whole srcdoc, which discards any DOM preview the old
+    // gesture painted, and any gesture-move/-end message that still
+    // arrives afterwards finds activeGesture already null and no-ops.
+    activeGesture = null;
+
     // Claim this call's generation before the first await, then compare
     // against the live counter after every await: if another call already
     // bumped `generation` past what this call captured, this call's result
@@ -314,10 +767,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Only a presentation that got shorter forces a move, and then only as
     // far as the new last slide.
     currentIndex = slides.length === 0 ? -1 : Math.min(Math.max(currentIndex, 0), slides.length - 1);
-    // An external edit can rewrite the very element the author had
-    // selected (or remove it entirely) — the id it points at is no longer
-    // trustworthy, so the selection does not survive a reload.
-    selection = null;
+    // An external edit can rewrite the very elements the author had
+    // selected (or remove them entirely) — the ids it points at are no
+    // longer trustworthy, so the selection does not survive a reload.
+    selectionIds = [];
+    selectionNames = [];
+    viewport = null;
     notify();
 
     if (mode === "play") {
@@ -335,6 +790,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   async function render(thisGeneration: number): Promise<void> {
     if (currentIndex === -1) {
+      currentSlideModel = null;
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
       return;
     }
@@ -342,6 +798,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
+
+    // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
+    // A non-compliant slide (should not happen — every write path asserts
+    // compliance) simply gets no model: gestures degrade to "no snap
+    // candidates, no marquee hits" rather than throwing.
+    try {
+      currentSlideModel = parseSlide(svgMarkup, slidePath);
+    } catch {
+      currentSlideModel = null;
+    }
 
     frame.srcdoc = wrapSelectionDocument(
       svgMarkup,
@@ -429,12 +895,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       throw new Error(`投影片索引超出範圍：${index}`);
     }
 
+    activeGesture = null;
     const thisGeneration = ++generation;
     currentIndex = index;
-    // A selection points at an element's id on the slide the author was
+    // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
-    selection = null;
+    selectionIds = [];
+    selectionNames = [];
+    viewport = null;
     notify();
     if (mode === "play") {
       await renderPlay(thisGeneration);
@@ -455,13 +924,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function play(): Promise<void> {
     if (destroyed || mode === "play") return;
+    activeGesture = null;
     const thisGeneration = ++generation;
     mode = "play";
     playerHasFocus = false;
     error = null;
     // Entering play mode destroys the view-mode iframe (selection-runtime.js
     // included), so any selection it reported is gone with it.
-    selection = null;
+    selectionIds = [];
+    selectionNames = [];
+    viewport = null;
     rebuildFrame("allow-scripts");
     notify();
     await renderPlay(thisGeneration);
@@ -469,13 +941,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function exitPlay(): Promise<void> {
     if (destroyed || mode === "view") return;
+    activeGesture = null;
     const thisGeneration = ++generation;
     mode = "view";
     playerHasFocus = false;
     error = null;
     // Returning to view mode rebuilds the iframe with a fresh
     // selection-runtime.js instance that has never heard a click yet.
-    selection = null;
+    selectionIds = [];
+    selectionNames = [];
+    viewport = null;
     rebuildFrame("allow-scripts");
     notify();
     await render(thisGeneration);
@@ -516,14 +991,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       mode,
       playerHasFocus,
       error,
-      selection,
+      selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [] },
     };
     for (const listener of listeners) listener(state);
   }
 
   function subscribe(listener: (state: CanvasState) => void): () => void {
     listeners.add(listener);
-    listener({ slides: [...slides], currentIndex, mode, playerHasFocus, error, selection });
+    listener({
+      slides: [...slides],
+      currentIndex,
+      mode,
+      playerHasFocus,
+      error,
+      selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [] },
+    });
     return () => {
       listeners.delete(listener);
     };
@@ -680,7 +1162,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // (found in gate review round 3). Every `<` inside planScript can only
   // ever occur inside a quoted JSON string value (JSON's own structural
   // characters never include "<"), so replacing all of them with the
-  // equivalent JSON/JS string escape `\u003C` is unconditionally safe —
+  // equivalent JSON/JS string escape `<` is unconditionally safe —
   // it cannot land outside a string literal — and removes every foothold
   // for a tokenizer state change, not just the one this function used to
   // special-case.

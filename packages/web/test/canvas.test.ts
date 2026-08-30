@@ -1062,7 +1062,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(doc).toContain('source: "comot-selection"');
   });
 
-  it("一開始 (mountCanvas 剛 reload 完) CanvasState.selection 是 null", async () => {
+  it("一開始 (mountCanvas 剛 reload 完) CanvasState.selection 沒有任何選取", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1071,7 +1071,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
       state = next;
     });
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   it("收到 runtime 的 select 訊息會反映到 CanvasState.selection", async () => {
@@ -1085,12 +1085,12 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: "標題" },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: "標題", additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
 
-    expect(state?.selection).toEqual({ id: "el-a", name: "標題" });
+    expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [] });
   });
 
   it("select 訊息沒有 data-comot-name 時，selection.name 是 null", async () => {
@@ -1104,12 +1104,12 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-b", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-b", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
 
-    expect(state?.selection).toEqual({ id: "el-b", name: null });
+    expect(state?.selection).toEqual({ ids: ["el-b"], names: [null], groupPath: [] });
   });
 
   it("收到 runtime 的 clear 訊息會把 CanvasState.selection 清回 null", async () => {
@@ -1124,11 +1124,11 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
         source: frameWindow,
       }),
     );
-    expect(state?.selection).not.toBeNull();
+    expect(state?.selection.ids.length).toBeGreaterThan(0);
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -1136,7 +1136,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
         source: frameWindow,
       }),
     );
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   // Same authentication rule as isPlayerMessage's own tests: identity, never
@@ -1152,12 +1152,12 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
         source: {} as unknown as Window,
       }),
     );
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   it("換頁 (showSlide) 會清空選取", async () => {
@@ -1171,15 +1171,15 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
-    expect(state?.selection).not.toBeNull();
+    expect(state?.selection.ids.length).toBeGreaterThan(0);
 
     await controller.showSlide(1);
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   it("reload() 會清空選取", async () => {
@@ -1192,15 +1192,15 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
-    expect(state?.selection).not.toBeNull();
+    expect(state?.selection.ids.length).toBeGreaterThan(0);
 
     await controller.reload();
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   it("play() 會清空選取", async () => {
@@ -1214,15 +1214,15 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null },
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
-    expect(state?.selection).not.toBeNull();
+    expect(state?.selection.ids.length).toBeGreaterThan(0);
 
     await controller.play();
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 
   it("exitPlay() 回到 view 模式時選取是空的", async () => {
@@ -1238,6 +1238,6 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     await controller.exitPlay();
 
-    expect(state?.selection).toBeNull();
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
   });
 });
