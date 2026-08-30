@@ -1663,10 +1663,18 @@ const PRESENTATION_FONT_FACE_STYLE =
  * (`url(#grad)`, `<use href="#sym">` and friends) — measured, not assumed,
  * on all three engines by e2e/base-fragment-spike.test.ts, which is why
  * this and wrapPlayDocument/slideDirectory are exported.
+ *
+ * `html,body` get an explicit opaque white background (#120/NOOP-150): a
+ * slide with no background rect of its own used to leave this document's
+ * canvas transparent, letting `.overview-thumb`/`.play`'s `#000` loading
+ * placeholder show through permanently instead of being painted over once
+ * the slide loads. A presentation's blank page is a sheet of white paper —
+ * every `.comot` `co-motion new` creates starts as exactly that, with no
+ * rect at all, so this is not a corner case.
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%;background:#fff}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -1722,6 +1730,12 @@ export function wrapSelectionDocument(
  * which would flash the full slide first. The runtime script comes last in
  * `<body>`, after the slide markup, so `document.getElementById` inside it
  * can find every element immediately without waiting for an event.
+ *
+ * `html,body` get the same opaque white background as wrapSlideDocument
+ * above, for the same reason (#120/NOOP-150): this is the wrapper the real
+ * play path actually renders through, so a slide with no background rect
+ * left `.play`'s `#000` placeholder showing through permanently instead of
+ * this function's own content painting over it.
  */
 export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
   const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
@@ -1743,7 +1757,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${hideStyle}</head><body style="margin:0">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%;background:#fff}</style>${hideStyle}</head><body>${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

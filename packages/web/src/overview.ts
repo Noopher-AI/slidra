@@ -406,10 +406,16 @@ const PRESENTATION_FONT_FACE_STYLE =
  * Exported for e2e/base-fragment-spike.test.ts, which measures (on all
  * three engines) that the injected `<base>` leaves same-document fragment
  * references intact in this wrapper too.
+ *
+ * `html,body` carry an explicit opaque white background (#120/NOOP-150): a
+ * slide with no background rect of its own used to leave this document's
+ * canvas transparent, letting `.overview-thumb`'s `#000` loading
+ * placeholder show through permanently instead of being painted over once
+ * the thumbnail loads.
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /** Mirrors canvas.ts's own slideDirectory (module-private there; see file header). */
