@@ -469,9 +469,23 @@ it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer r
     const page = await openApp(server);
     // el-text: translate(950 100), a text BOX (data-comot-text-width="300")
     // whose bounds start at its local origin (bbox.ts's textBounds doc) —
-    // roughly 950..1250 x, 100..~160 y. This exact rectangle is the FAIL
-    // comment's own repro.
-    await dragBy(page, { x: 900, y: 50 }, { x: 370, y: 200 }); // -> (1270, 250)
+    // roughly 950..1250 x, 100..~160 y.
+    //
+    // The marquee's bottom edge originally landed at y=250 — exactly the top
+    // of el-group-rotate's bbox (translate(1150 250) rotate(30); the rotated
+    // rect's own local origin corner stays its topmost point, so the bbox's
+    // y-minimum is exactly 250, with x-minimum 1120 — well inside this
+    // marquee's x-range). That made the marquee's bottom-right corner
+    // tangent to el-group-rotate's bbox: a stage-width change (e.g. the
+    // style panel's fixed-width mount narrowing the canvas) shifts the
+    // page-pixel<->user-unit rounding in `toPagePoint` enough to flip that
+    // tangent edge from excluded to included, non-deterministically pulling
+    // el-group-rotate into the selection (Reviewer round-2 FAIL). Ending the
+    // drag at y=200 keeps 40 units of margin below el-text's own bottom edge
+    // (~160) and 50 units clear of el-group-rotate's bbox top (250), so the
+    // marquee covers el-text with room to spare on both sides regardless of
+    // stage width.
+    await dragBy(page, { x: 900, y: 50 }, { x: 370, y: 150 }); // -> (1270, 200)
 
     const selName = page.locator(".status .sel-name");
     // el-text carries no `data-comot-name`, so the status bar falls back to
