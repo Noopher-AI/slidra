@@ -746,14 +746,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * module's own `postCommand` that also surfaces a failure through
    * `CanvasState.error`, the same way every existing direct-manipulation
    * gesture below already does. No optimistic preview: a Ribbon button
-   * click has nothing already painted to revert.
+   * click has nothing already painted to revert. A success clears any
+   * stale error left over from a previous failed Ribbon command — nothing
+   * else in view mode clears it otherwise.
    */
   async function runCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
     const result = await postCommand(name, input);
-    if (!result.ok) {
-      error = result.message;
-      notify();
-    }
+    error = result.ok ? null : result.message;
+    notify();
     return result;
   }
 

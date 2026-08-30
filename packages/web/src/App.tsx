@@ -742,6 +742,11 @@ export function App() {
           簡報資訊載入失敗：{presentationError}
         </div>
       )}
+      {shellVisible && canvasState.error && (
+        <div role="alert" className="live-reload-banner canvas-error-banner">
+          {canvasState.error}
+        </div>
+      )}
       {shellVisible && editingFrozen && (
         <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
       )}

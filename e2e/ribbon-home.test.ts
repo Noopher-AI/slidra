@@ -272,6 +272,40 @@ it("排列：選兩個元素，選單出現，選「靠左對齊」後兩者 tra
   }
 });
 
+it("未選取任何元素點「複製」/「剪下」：canvasState.error 以 role=alert 顯示", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const alert = page.locator(".canvas-error-banner[role='alert']");
+
+    await page.locator('.cmd:has-text("複製")').click();
+    await expect.poll(() => alert.textContent()).toBe("元素清單不可為空");
+
+    // 沒有選取，剪下走同一條驗證路徑，訊息不變 — 只確認 banner 仍在。
+    await page.locator('.cmd:has-text("剪下")').click();
+    await expect.poll(() => alert.textContent()).toBe("元素清單不可為空");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("剪貼簿是空的時候點「貼上」：canvasState.error 以 role=alert 顯示，接著一次成功命令會清掉它", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const alert = page.locator(".canvas-error-banner[role='alert']");
+
+    await page.locator('.cmd:has-text("貼上")').click();
+    await expect.poll(() => alert.textContent()).toBe("剪貼簿是空的");
+
+    // 接著一次成功命令（新增文字方塊，不需要選取）應清掉舊的錯誤訊息。
+    await page.locator('.cmd:has-text("文字方塊")').click();
+    await expect.poll(() => alert.count()).toBe(0);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("A1 維持綠：常用分頁 7 顆按鈕全部接線後，disabled 數量仍是 0", async () => {
   const { server, cleanup } = await startServerFor();
   try {
