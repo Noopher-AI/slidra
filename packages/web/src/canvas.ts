@@ -133,6 +133,17 @@ export interface CanvasController {
    */
   stepPlayer: (direction: "advance" | "retreat") => void;
   /**
+   * Sends a whitelisted command (NOOP-141's Ribbon 常用 buttons). The only
+   * general-purpose write entry point this controller exposes — it forwards
+   * to the module's own `postCommand`, the front end's one write path
+   * (§4.9), so callers never open a second `fetch("/api/command")`. Failure
+   * is surfaced through `CanvasState.error`, never thrown and never
+   * swallowed; the write itself, on success, arrives back over
+   * `/api/events` and drives `reload()` on its own (no optimistic preview
+   * here).
+   */
+  runCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string }>;
+  /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
    * element), so a caller holding onto a stale reference would be a bug.
@@ -728,6 +739,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : "命令送出失敗" };
     }
+  }
+
+  /**
+   * `CanvasController.runCommand` (NOOP-141) — a thin wrapper over the
+   * module's own `postCommand` that also surfaces a failure through
+   * `CanvasState.error`, the same way every existing direct-manipulation
+   * gesture below already does. No optimistic preview: a Ribbon button
+   * click has nothing already painted to revert. A success clears any
+   * stale error left over from a previous failed Ribbon command — nothing
+   * else in view mode clears it otherwise.
+   */
+  async function runCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+    const result = await postCommand(name, input);
+    error = result.ok ? null : result.message;
+    notify();
+    return result;
   }
 
   /**
@@ -1646,6 +1673,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     exitPlay,
     focusPlayer,
     stepPlayer,
+    runCommand,
     get frameElement() {
       return frame;
     },

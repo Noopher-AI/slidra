@@ -1,6 +1,7 @@
 import {
   alignSlideElements,
   copySlideElements,
+  cutSlideElements,
   deleteSlideElements,
   distributeSlideElements,
   duplicateSlideElements,
@@ -266,6 +267,18 @@ export type ElementCopyData = Record<string, never>;
 export const elementCopyCommand: CommandHandler<ElementCopyInput, ElementCopyData> = async (input) => {
   await copySlideElements(input.id, input.slidePath, input.elementIds);
   return { ok: true, data: {}, message: `已複製 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementCutInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export type ElementCutData = Record<string, never>;
+
+export const elementCutCommand: CommandHandler<ElementCutInput, ElementCutData> = async (input) => {
+  await cutSlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: {}, message: `已剪下 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
 };
 
 export interface ElementPasteInput {

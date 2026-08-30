@@ -10,7 +10,7 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 /**
  * `POST /api/command` (NOOP-91 §4.9). Seam B: the real server over real
  * HTTP, no browser and no mocks. The endpoint is the front end's ONLY way
- * to write, and its whole security posture is here — a four-name whitelist
+ * to write, and its whole security posture is here — a fixed name whitelist
  * checked before dispatch, and a server-owned presentation id.
  */
 
@@ -212,11 +212,25 @@ it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", 
   expect(await readSlide(id)).toBe(before);
 });
 
-it("四個白名單命令都不會被擋在 403（textbox width / element scale / element rotate 也在內）", async () => {
+it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕新增的九條也在內）", async () => {
   const id = await openDeck("whitelist.comot");
   const server = await serve(id);
 
-  for (const name of ["element move", "element scale", "element rotate", "textbox width"]) {
+  for (const name of [
+    "element move",
+    "element scale",
+    "element rotate",
+    "textbox width",
+    "slide add",
+    "element copy",
+    "element cut",
+    "element paste",
+    "element insert",
+    "textbox add",
+    "element align",
+    "element distribute",
+    "element order",
+  ]) {
     const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
   }

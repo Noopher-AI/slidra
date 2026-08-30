@@ -25,6 +25,7 @@ import {
   elementDistributeCommand,
   elementNameSetCommand,
   elementCopyCommand,
+  elementCutCommand,
   elementPasteCommand,
   elementDuplicateCommand,
 } from "./commands/element.js";
@@ -80,6 +81,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("element distribute", { handler: elementDistributeCommand, render: null });
   registry.register("element name set", { handler: elementNameSetCommand, render: null });
   registry.register("element copy", { handler: elementCopyCommand, render: null });
+  registry.register("element cut", { handler: elementCutCommand, render: null });
   registry.register("element paste", { handler: elementPasteCommand, render: null });
   registry.register("element duplicate", { handler: elementDuplicateCommand, render: null });
   registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });

@@ -1,7 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { RIBBON, TABS, type RibbonHandlers, type RibbonTabId } from "./ribbon-commands.js";
+import { RIBBON, TABS, type RibbonCmdId, type RibbonHandlers, type RibbonTabId } from "./ribbon-commands.js";
 
 // Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
+
+/** One selectable row inside a ribbon dropdown (新增投影片 / 圖案 / 排列 — NOOP-141). */
+export interface RibbonMenuItem {
+  key: string;
+  label: string;
+  onSelect(): void;
+}
+
+export interface RibbonMenuGroup {
+  /** Omitted for a single-group menu (新增投影片 / 圖案) — only 排列's three groups need one. */
+  label?: string;
+  items: RibbonMenuItem[];
+}
+
+export interface RibbonMenuState {
+  /** Which cmd button this popover is anchored under. */
+  anchor: RibbonCmdId;
+  groups: RibbonMenuGroup[];
+}
 
 export interface RibbonProps {
   /** 從頭播放：showSlide(0) 後 play()。 */
@@ -12,6 +31,11 @@ export interface RibbonProps {
   onToggleFullscreen(): void;
   /** slides 為空時，這三顆唯一活著的鈕也必須 disabled——沒有東西可播。 */
   canPlay: boolean;
+  /** T2's per-cmd handlers (NOOP-141) — merged with the three play/fullscreen handlers above, which keep their own dedicated props. */
+  handlers: RibbonHandlers;
+  /** The one open dropdown (新增投影片 / 圖案 / 排列), or null. Contents come from App.tsx — it alone has access to `templates`/selection/canvas size — this component only renders and positions it. */
+  menu: RibbonMenuState | null;
+  onCloseMenu(): void;
 }
 
 /** SVG path fragments (viewBox 0 0 20 20), traced from base-shell.html's `const I`. */
@@ -44,10 +68,19 @@ const NOTICE_DURATION_MS = 2500;
  * make "the disabled tab isn't reachable" and the baseline screenshot both
  * sensitive to DOM order instead of what's actually on screen).
  */
-export function Ribbon({ onPlayFromStart, onPlayFromCurrent, onToggleFullscreen, canPlay }: RibbonProps) {
+export function Ribbon({
+  onPlayFromStart,
+  onPlayFromCurrent,
+  onToggleFullscreen,
+  canPlay,
+  handlers: cmdHandlers,
+  menu,
+  onCloseMenu,
+}: RibbonProps) {
   const [tab, setTab] = useState<RibbonTabId>("show");
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -55,8 +88,31 @@ export function Ribbon({ onPlayFromStart, onPlayFromCurrent, onToggleFullscreen,
     };
   }, []);
 
+  // Click outside the ribbon, or Esc, closes an open dropdown (behaviour
+  // contract row "選單開著時切換分頁 / 點選單外", NOOP-141). Only attached
+  // while a menu is actually open, so it never intercepts a stray Esc/click
+  // the rest of the app might want.
+  useEffect(() => {
+    if (!menu) return;
+    function onPointerDown(event: MouseEvent): void {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        onCloseMenu();
+      }
+    }
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") onCloseMenu();
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menu, onCloseMenu]);
+
   function selectTab(id: RibbonTabId): void {
     setTab(id);
+    onCloseMenu();
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     setNotice(null);
   }
@@ -71,11 +127,11 @@ export function Ribbon({ onPlayFromStart, onPlayFromCurrent, onToggleFullscreen,
     "play-from-start": onPlayFromStart,
     "play-from-current": onPlayFromCurrent,
     "toggle-fullscreen": onToggleFullscreen,
-    // T2–T7: add one entry per cmd id here; do not change the shape above.
+    ...cmdHandlers,
   };
 
   return (
-    <div className="ribbon">
+    <div className="ribbon" ref={rootRef}>
       <div className="tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -114,6 +170,26 @@ export function Ribbon({ onPlayFromStart, onPlayFromCurrent, onToggleFullscreen,
               );
             })}
             <span className="group-label">{group.label}</span>
+            {menu && group.cmds.some((cmd) => cmd.id === menu.anchor) && (
+              <div className="ribbon-menu" role="menu">
+                {menu.groups.map((menuGroup, index) => (
+                  <div className="ribbon-menu-group" key={menuGroup.label ?? index}>
+                    {menuGroup.label && <div className="ribbon-menu-group-label">{menuGroup.label}</div>}
+                    {menuGroup.items.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        role="menuitem"
+                        className="ribbon-menu-item"
+                        onClick={item.onSelect}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

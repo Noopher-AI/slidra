@@ -20,6 +20,53 @@ describe("fetchPresentationInfo", () => {
     await expect(fetchPresentationInfo()).resolves.toEqual({
       name: "驗收用簡報",
       canvas: { width: 1280, height: 720 },
+      templates: [],
+    });
+  });
+
+  it("carries templates[] through when project.json declares any", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            formatVersion: 1,
+            name: "有範本的簡報",
+            canvas: { width: 1280, height: 720 },
+            templates: ["templates/001.svg", "templates/002.svg"],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(fetchPresentationInfo()).resolves.toEqual({
+      name: "有範本的簡報",
+      canvas: { width: 1280, height: 720 },
+      templates: ["templates/001.svg", "templates/002.svg"],
+    });
+  });
+
+  it("falls back to templates: [] when the field is present but not a string array", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            formatVersion: 1,
+            name: "格式不對的範本欄位",
+            canvas: { width: 1280, height: 720 },
+            templates: [1, 2],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(fetchPresentationInfo()).resolves.toEqual({
+      name: "格式不對的範本欄位",
+      canvas: { width: 1280, height: 720 },
+      templates: [],
     });
   });
 
@@ -80,7 +127,7 @@ describe("createPresentationInfoLoader", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
-    expect(onSuccess).toHaveBeenCalledWith({ name: "較新", canvas: { width: 1280, height: 720 } });
+    expect(onSuccess).toHaveBeenCalledWith({ name: "較新", canvas: { width: 1280, height: 720 }, templates: [] });
 
     // The older, slower fetch now resolves. Its result must be discarded —
     // it must not overwrite what the newer call already applied.
@@ -122,7 +169,7 @@ describe("createPresentationInfoLoader", () => {
     loader.load(); // newer, resolves immediately with the correct data
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(onSuccess).toHaveBeenCalledWith({ name: "正確資料", canvas: { width: 1280, height: 720 } });
+    expect(onSuccess).toHaveBeenCalledWith({ name: "正確資料", canvas: { width: 1280, height: 720 }, templates: [] });
 
     // The older call's fetch now rejects. A stale failure must never fire
     // onError after a newer success has already landed — that would show

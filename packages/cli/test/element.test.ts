@@ -542,3 +542,77 @@ describe("element order — up/down", () => {
     expect(await readSlide(id)).toBe(svg);
   });
 });
+
+describe("element cut", () => {
+  it("removes the element from the slide and fills the clipboard so a paste brings it back with a new id", async () => {
+    const { id } = await openConvertedPresentation();
+    const inserted = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 10, y: 20, width: 100, height: 50,
+    });
+    const elementId = inserted.data!.elementId;
+    const beforeCut = await readSlide(id);
+    expect(beforeCut).toContain(elementId);
+
+    const cut = await registry.dispatch("element cut", { id, slidePath: "slides/001.svg", elementIds: [elementId] });
+    expect(cut.ok).toBe(true);
+    const afterCut = await readSlide(id);
+    expect(afterCut).not.toContain(elementId);
+
+    const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", { id, slidePath: "slides/001.svg", dx: 0, dy: 0 });
+    expect(pasted.ok).toBe(true);
+    const newId = pasted.data!.elementIds[0];
+    expect(newId).not.toBe(elementId);
+    expect(await readSlide(id)).toContain(newId);
+  });
+
+  it("a single undo restores the cut element exactly; a second undo goes further back", async () => {
+    const { id } = await openConvertedPresentation();
+    const beforeInsert = await readSlide(id);
+    const inserted = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+    });
+    const elementId = inserted.data!.elementId;
+    const beforeCut = await readSlide(id);
+
+    const cut = await registry.dispatch("element cut", { id, slidePath: "slides/001.svg", elementIds: [elementId] });
+    expect(cut.ok).toBe(true);
+
+    const undoneOnce = await registry.dispatch("undo", { id });
+    expect(undoneOnce.ok).toBe(true);
+    expect(await readSlide(id)).toBe(beforeCut);
+    expect(await readSlide(id)).toContain(elementId);
+
+    // A second undo reverts the insert itself, not "the rest of the cut" —
+    // one command produced exactly one undo step.
+    const undoneTwice = await registry.dispatch("undo", { id });
+    expect(undoneTwice.ok).toBe(true);
+    expect(await readSlide(id)).toBe(beforeInsert);
+    expect(await readSlide(id)).not.toContain(elementId);
+  });
+
+  it("fails the whole command, cutting nothing and leaving the clipboard untouched, when any id does not exist", async () => {
+    const { id } = await openConvertedPresentation();
+    const inserted = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+    });
+    const elementId = inserted.data!.elementId;
+    // Seed the clipboard with a copy of a different, still-present element so
+    // a bad cut overwriting it would be observable.
+    await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: [elementId] });
+    const before = await readSlide(id);
+
+    const result = await registry.dispatch("element cut", {
+      id, slidePath: "slides/001.svg", elementIds: [elementId, "el-does-not-exist"],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(await readSlide(id)).toBe(before);
+
+    // Clipboard still holds the earlier copy of elementId, not touched by
+    // the failed cut.
+    const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", {
+      id, slidePath: "slides/001.svg", dx: 0, dy: 0,
+    });
+    expect(pasted.ok).toBe(true);
+  });
+});
