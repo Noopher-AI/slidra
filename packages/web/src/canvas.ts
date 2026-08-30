@@ -350,6 +350,9 @@ type ActiveGesture = MoveGesture | MarqueeGesture | ScaleGesture | RotateGesture
 /** Snap threshold in screen px, converted to user units per-viewport at drag time (assumption noted in the PR body). */
 const SNAP_THRESHOLD_PX = 8;
 
+/** Minimum interval between `POST /api/editing/begin` lease renewals fired from `gesture-move`. Well under `HUMAN_LEASE_MAX_MS` (5000ms, editing-lock.ts) so a drag longer than one interval never lets the lease lapse. */
+const HUMAN_RENEW_THROTTLE_MS = 2000;
+
 /** Rounds like `formatTransform`'s own 4-decimal rule, for the "did anything actually move/scale/rotate/resize" check. */
 function roundsToZero(value: number): boolean {
   return Number(value.toFixed(4)) === 0;
@@ -430,6 +433,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // `load`), which is also the state a gesture message must be ignored in.
   let viewport: Viewport | null = null;
   let activeGesture: ActiveGesture | null = null;
+  // Timestamp (ms) of the last `POST /api/editing/begin` fired for the
+  // human lease (T5/NOOP-110, editing-lock.ts). Read by gesture-move to
+  // throttle lease renewal to once per HUMAN_RENEW_THROTTLE_MS — gesture-
+  // move is rAF-throttled but still fires dozens of times a second, which
+  // would otherwise hammer the server.
+  let lastEditingLeaseAt = 0;
   const listeners = new Set<(state: CanvasState) => void>();
   // Bumped on every reload()/showSlide()/play()/exitPlay() call and
   // captured by each call's own closure. Nothing orders concurrent calls
@@ -571,6 +580,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       else if (message.kind === "scale" && isScaleHandle(message.handle)) beginScaleGesture(message.point, message.handle);
       else if (message.kind === "rotate") beginRotateGesture(message.point);
       else if (message.kind === "textbox-width" && isTextboxHandle(message.handle)) beginTextboxWidthGesture(message.point, message.handle);
+      // Marquee never writes to the file, so it never contends with the
+      // agent for the editing lock (T5/NOOP-110) — only the four
+      // write-capable gestures take a human lease.
+      if (message.kind !== "marquee") beginEditingLease();
       return;
     }
     if (message.event === "gesture-move") {
@@ -581,23 +594,57 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       else if (activeGesture?.kind === "scale") updateScaleGesture(message.point);
       else if (activeGesture?.kind === "rotate") updateRotateGesture(message.point);
       else if (activeGesture?.kind === "textbox-width") updateTextboxWidthGesture(message.point);
+      if (
+        activeGesture &&
+        activeGesture.kind !== "marquee" &&
+        Date.now() - lastEditingLeaseAt >= HUMAN_RENEW_THROTTLE_MS
+      ) {
+        beginEditingLease();
+      }
       return;
     }
     if (message.event === "gesture-end") {
       if (!isValidPoint(message.point)) {
         // No usable endpoint at all: still tear the gesture down rather
         // than leaving a stale preview and a phantom activeGesture around.
+        const wasLeaseHolder = activeGesture !== null && activeGesture.kind !== "marquee";
         activeGesture = null;
+        if (wasLeaseHolder) endEditingLease();
         return;
       }
       const cancelled = Boolean(message.cancelled);
-      if (activeGesture?.kind === "move") void endMoveGesture(cancelled);
-      else if (activeGesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
-      else if (activeGesture?.kind === "scale") void endScaleGesture(message.point, cancelled);
-      else if (activeGesture?.kind === "rotate") void endRotateGesture(message.point, cancelled);
-      else if (activeGesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled);
+      const gesture = activeGesture;
+      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(endEditingLease);
+      else if (gesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
+      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(endEditingLease);
+      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(endEditingLease);
+      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(endEditingLease);
+      // activeGesture is already null (e.g. a stray gesture-end with no
+      // matching start) — still release the lease so it does not sit until
+      // HUMAN_LEASE_MAX_MS expires.
+      else endEditingLease();
       return;
     }
+  }
+
+  /**
+   * Fire-and-forget human-editing lease calls (T5/NOOP-110,
+   * `packages/server/src/editing-lock.ts`). The lease is best-effort: a 409
+   * (agent already holds the floor) or a network failure is silently
+   * swallowed on both begin and end. The real conflict signal for a drag
+   * that started while the agent already held the lock is `POST
+   * /api/command`'s own 409, handled by each `endXxxGesture` — this lease
+   * only exists so an agent about to *start* a turn waits for a human drag
+   * already in progress (`EditingLock.acquireAgent`'s `while (state ===
+   * "human")` wait) instead of the two racing.
+   */
+  function beginEditingLease(): void {
+    lastEditingLeaseAt = Date.now();
+    void fetch("/api/editing/begin", { method: "POST" }).catch(() => {});
+  }
+
+  function endEditingLease(): void {
+    void fetch("/api/editing/end", { method: "POST" }).catch(() => {});
   }
 
   function isScaleHandle(value: unknown): value is "nw" | "ne" | "sw" | "se" {
