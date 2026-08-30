@@ -11,6 +11,7 @@ import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleRawRequest } from "./raw.js";
 import { handleCommandPost } from "./command-endpoint.js";
+import { handleAssetPost } from "./asset-upload.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 
 /**
@@ -264,6 +265,18 @@ async function handleRequest(
           return;
         }
         await handleCommandPost(registry, presentationId, req, res);
+        return;
+      }
+      if (url.pathname === "/api/asset") {
+        // T3/NOOP-142: the same "agent holds the floor" 409 gate as
+        // /api/command, at the same call-site level — a Ribbon-driven
+        // asset upload is a human write, not exempt from the single-editor
+        // lock just because it does not go through registry.dispatch.
+        if (editingLock.getState() === "agent") {
+          sendJson(res, 409, { error: new EditingLockConflictError().message });
+          return;
+        }
+        await handleAssetPost(presentationId, req, res);
         return;
       }
       if (url.pathname === "/api/undo") {

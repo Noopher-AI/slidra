@@ -37,23 +37,31 @@ export const assetImportCommand: CommandHandler<AssetImportInput, AssetImportDat
   const bytes = URL_PATTERN.test(input.source)
     ? await downloadSource(input.source)
     : await readLocalSource(input.source);
+  const data = await importAssetBytes(input.id, sourceNameOf(input.source), bytes);
+  return { ok: true, data, message: `已匯入媒體：${data.path}` };
+};
 
-  const existingAssetNames = await listPresentationEntries(input.id, "assets");
+/**
+ * The format-decision + write half of asset import, with the source I/O
+ * already done by the caller (NOOP-90/T4's CLI command reads a local path
+ * or URL above; NOOP-142/T3's `POST /api/asset` hands in bytes it read off
+ * the wire). This is the one place `resolveAssetImport` + `createPresentationFile`
+ * are wired together — both callers share it so there is never a second
+ * copy of the format-detection-then-write sequence.
+ */
+export async function importAssetBytes(id: string, sourceName: string, bytes: Uint8Array): Promise<AssetImportData> {
+  const existingAssetNames = await listPresentationEntries(id, "assets");
   const { format, fileName } = resolveAssetImport({
-    sourceName: sourceNameOf(input.source),
+    sourceName,
     bytes,
     existingAssetNames,
   });
 
   const virtualPath = `assets/${fileName}`;
-  await createPresentationFile(input.id, virtualPath, Buffer.from(bytes));
+  await createPresentationFile(id, virtualPath, Buffer.from(bytes));
 
-  return {
-    ok: true,
-    data: { path: virtualPath, mimeType: format.mimeType, kind: format.kind },
-    message: `已匯入媒體：${virtualPath}`,
-  };
-};
+  return { path: virtualPath, mimeType: format.mimeType, kind: format.kind };
+}
 
 function sourceNameOf(source: string): string {
   if (URL_PATTERN.test(source)) {

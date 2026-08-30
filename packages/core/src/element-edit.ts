@@ -133,7 +133,7 @@ export interface InsertElementInput {
   fill?: string;
   /** `image` only. */
   href?: string;
-  /** `image` only — ADR-0005 media placeholder marker. */
+  /** Any kind — ADR-0005 media placeholder marker (T3/NOOP-142: video/audio placeholders are a `rect` with `media` set, no `href`). */
   media?: string;
 }
 
@@ -169,6 +169,12 @@ export function insertElement(
 
   const fillAttr = input.fill !== undefined ? ` fill="${escapeXmlAttr(input.fill)}"` : "";
   let containerAttrs = `id="${elementId}"`;
+  // Common to every kind (T3/NOOP-142): a media placeholder can be a `rect`
+  // (video/audio, no `href`) as well as an `image`, so this can no longer
+  // live inside `case "image"` alone.
+  if (input.media !== undefined) {
+    containerAttrs += ` data-comot-media="${escapeXmlAttr(input.media)}"`;
+  }
   let native: string;
 
   switch (input.kind) {
@@ -201,9 +207,6 @@ export function insertElement(
         throw new CoMotionError("element insert image 缺少參數：--href");
       }
       containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
-      if (input.media !== undefined) {
-        containerAttrs += ` data-comot-media="${escapeXmlAttr(input.media)}"`;
-      }
       native = `<image x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" href="${escapeXmlAttr(input.href)}"${fillAttr}/>`;
       break;
     }
