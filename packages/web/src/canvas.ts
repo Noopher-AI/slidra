@@ -240,7 +240,22 @@ interface ProjectJson {
    * fetch and parse the exact font bytes `wrapText` needs (§4.4).
    */
   fonts?: { file: string; family: string }[];
+  /**
+   * The presentation-level slide transition (T6). Absent, empty, or an
+   * unknown future value (e.g. an older build opening a newer `.comot`)
+   * all mean the same thing on the read side: play `none` instead of
+   * throwing (project-json.ts's read side deliberately does not
+   * whitelist). Only the literal `"fade"` triggers the fade-in below.
+   */
+  transition?: string;
 }
+
+/** How long renderPlay()'s fade-in runs (T6). Deliberately not shared with
+ * player-runtime.js's own 0.4s element-entrance transition — that constant
+ * animates elements *inside* the iframe document, this one animates the
+ * `<iframe>` element itself from the parent document, and the two layers
+ * must stay free to change independently of each other. */
+const PAGE_FADE_MS = 400;
 
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
@@ -524,6 +539,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // state. React subscribes to read it and issues commands to change it.
   let slides: string[] = [];
   let currentIndex = -1;
+  // The presentation-level slide transition (T6), read from
+  // project.transition on every reload() — "none" until the first fetch
+  // completes. renderPlay() is the only reader; nothing else needs it.
+  let transition: string | undefined;
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
@@ -1719,7 +1738,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const thisGeneration = ++generation;
     currentIndex += 1;
     notify();
-    await renderPlay(thisGeneration);
+    await renderPlay(thisGeneration, "first", true);
   }
 
   /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六). */
@@ -1773,6 +1792,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
 
     slides = project.slides;
+    transition = project.transition;
     presentationFonts = project.fonts ?? [];
     resolvedFonts = await resolveEmbeddedFonts(presentationFonts);
     if (destroyed || thisGeneration !== generation) return;
@@ -1859,8 +1879,23 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * `-1` for a slide with no effects at all, decision 三) is computed here,
    * after computePlayerPlan() has run, because only the parent knows the
    * slide's step count. The sentinel itself never travels over the wire.
+   *
+   * `animate` (T6): whether THIS particular page change should play the
+   * presentation-level fade, on top of `transition === "fade"` already
+   * being true. Callers pass `true` only for a user-initiated forward page
+   * change — retreat, play()/exitPlay() entry, and reload() all pass the
+   * default `false`, matching runtime's existing "retreat is instant"
+   * principle plus "a fade is a *page change*, not an entry or a
+   * background refresh". This is a distinct layer from element-entrance
+   * transitions inside the slide's own runtime: this one fades the
+   * `<iframe>` itself, from the parent document, and never touches
+   * player-runtime.js.
    */
-  async function renderPlay(thisGeneration?: number, startAt: "first" | "last" = "first"): Promise<void> {
+  async function renderPlay(
+    thisGeneration?: number,
+    startAt: "first" | "last" = "first",
+    animate = false,
+  ): Promise<void> {
     const captured = thisGeneration ?? generation;
     if (currentIndex === -1) {
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
@@ -1903,6 +1938,35 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       hideStyle,
       planScript,
     );
+
+    if (animate && transition === "fade") {
+      // Fade-in only, not a cross-fade (决定 3 in the plan): the old page is
+      // simply gone the instant srcdoc is replaced above, and the new one
+      // reveals itself from black. Fading the old page out first would mean
+      // waiting for that animation before the fetch/srcdoc swap could even
+      // start, tangling this with the generation guard above for a result
+      // that is strictly less faithful to "fade" than what this buys.
+      frame.style.transition = "none";
+      frame.style.opacity = "0";
+      // The "none" transition and opacity:0 must land in a rendered frame
+      // before switching to the real transition, or the browser coalesces
+      // both style writes into one paint and nothing animates.
+      requestAnimationFrame(() => {
+        if (destroyed || captured !== generation) return;
+        frame.style.transition = `opacity ${PAGE_FADE_MS}ms`;
+        frame.style.opacity = "1";
+      });
+    } else {
+      // Instant path must actively clear any inline opacity/transition a
+      // PRIOR fade left behind — otherwise this page silently inherits the
+      // last frame's mid-fade opacity instead of showing at full opacity.
+      // `transition` is cleared before `opacity` defensively — clearing
+      // `opacity` while a `transition` is still declared risks animating
+      // the removal itself instead of jumping straight to the resting
+      // value.
+      frame.style.removeProperty("transition");
+      frame.style.removeProperty("opacity");
+    }
   }
 
   async function showSlide(index: number): Promise<void> {
@@ -1914,6 +1978,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
+    // Captured before currentIndex moves — "forward" for the fade means
+    // this specific call moved strictly ahead, same intent as
+    // advancePastEnd()'s "+= 1" (retreatPastStart's own "-= 1" path already
+    // passes no animate flag by calling renderPlay's default).
+    const forward = index > currentIndex;
     currentIndex = index;
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
@@ -1924,7 +1993,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     viewport = null;
     notify();
     if (mode === "play") {
-      await renderPlay(thisGeneration);
+      await renderPlay(thisGeneration, "first", forward);
     } else {
       await render(thisGeneration);
     }

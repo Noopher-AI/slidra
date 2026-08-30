@@ -901,6 +901,14 @@ export function App() {
         text: "{{ slide_number }}",
       });
     },
+    // 切換分頁的轉場設定 (T6). Simple presentation-level command, no popover —
+    // server overwrites `id`, so `runRibbonCommand` never passes one.
+    "transition-none": () => {
+      void runRibbonCommand("presentation transition set", { name: "none" });
+    },
+    "transition-fade": () => {
+      void runRibbonCommand("presentation transition set", { name: "fade" });
+    },
   };
 
   const shellVisible = canvasState.mode !== "play";

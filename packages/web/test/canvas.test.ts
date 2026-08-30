@@ -984,6 +984,122 @@ describe("mountCanvas 的播放模式", () => {
   });
 });
 
+// T6: the presentation-level slide transition. renderPlay() is the only
+// reader of project.transition — these tests drive it through the public
+// controller (play()/next()/previous()/showSlide()) and assert on the
+// <iframe> element's own inline style, never on the internal renderPlay()
+// function itself.
+describe("mountCanvas 的簡報層級轉場 (T6)", () => {
+  function frame(): HTMLIFrameElement {
+    return container.querySelector("iframe") as HTMLIFrameElement;
+  }
+
+  function stubTransitionDeck(transition?: string): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(
+            JSON.stringify({ ...deck, ...(transition === undefined ? {} : { transition }) }),
+            { status: 200 },
+          );
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && deckMarkup[match[1]]) {
+          return new Response(deckMarkup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  it.each([
+    ["缺少 transition 欄位", undefined],
+    ["空字串", ""],
+    ["未知的未來值", "wipe"],
+  ] as const)("讀取端：%s 視為 none，前進換頁瞬切，不拋錯", async (_label, value) => {
+    stubTransitionDeck(value);
+    controller = mountCanvas(container);
+    await expect(controller.reload()).resolves.toBeUndefined();
+    await controller.play();
+
+    await controller.next();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+
+  it("transition: \"none\" 時前進換頁瞬切", async () => {
+    stubTransitionDeck("none");
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    await controller.next();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+
+  it("transition: \"fade\" 時前進換頁先設 opacity:0，再於下一個 animation frame 淡入到 1", async () => {
+    stubTransitionDeck("fade");
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    await controller.next();
+
+    expect(frame().style.opacity).toBe("0");
+    expect(frame().style.transition).toBe("none");
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(frame().style.opacity).toBe("1");
+    expect(frame().style.transition).toBe(`opacity 400ms`);
+  });
+
+  it("transition: \"fade\" 時倒退換頁一律瞬切（retreat is instant）", async () => {
+    stubTransitionDeck("fade");
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+    await controller.next();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    await controller.previous();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+
+  it("transition: \"fade\" 時 play() 進入播放（非換頁）瞬切", async () => {
+    stubTransitionDeck("fade");
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    await controller.play();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+
+  it("transition: \"fade\" 時上一次淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
+    stubTransitionDeck("fade");
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+    await controller.next();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(frame().style.opacity).toBe("1");
+
+    await controller.previous();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+});
+
 // Gate review round 3, P2: target ids come straight from untrusted slide
 // content (ADR-0010). A target containing "<!--<script>" (after XML entity
 // decoding) sends the HTML tokenizer into "script data double escaped"

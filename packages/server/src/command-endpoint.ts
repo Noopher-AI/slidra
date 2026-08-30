@@ -57,6 +57,7 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element distribute",
   "element order",
   "element style set",
+  "presentation transition set",
 ];
 
 /**

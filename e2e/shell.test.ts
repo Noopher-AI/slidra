@@ -171,22 +171,16 @@ it("#51 功能區：4 個分頁、預設停在投影片放映、每頁 ≤8 顆�
   }
 });
 
-it("#51 功能區：點未接線按鈕顯示「此操作尚未接上」，點已接線按鈕不顯示", async () => {
+it("#51 功能區：所有按鈕皆已接線，點擊不出現「此操作尚未接上」", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
-    // 「貼上」在 NOOP-141 已接線，「插入」分頁 6 顆也在 T3/NOOP-142 接線完
-    // 畢，不再是「尚未接上」的樣本——改用「切換」分頁的「無」（T6 才會接
-    // 線）。
-    await page.locator('.tab:has-text("切換")').click();
-
-    await page.locator('.cmd:has-text("無")').click();
-    const notice = page.locator(".ribbon-notice");
-    await expect.poll(() => notice.textContent()).toBe("此操作尚未接上");
+    for (const tab of TABS) {
+      await page.locator(`.tab:has-text("${tab.label}")`).click();
+      expect(await page.locator('.cmd[title="尚未實作"]').count()).toBe(0);
+    }
 
     await page.locator('.tab:has-text("投影片放映")').click();
-    expect(await page.locator(".ribbon-notice").count()).toBe(0);
-
     await page.locator('.cmd:has-text("全螢幕")').click();
     expect(await page.locator(".ribbon-notice").count()).toBe(0);
   } finally {
