@@ -5,7 +5,7 @@
   <g id="el-b" data-comot-name="方塊 B" transform="translate(700 300)">
     <rect x="0" y="0" width="140" height="90" fill="#6a6"/>
   </g>
-  <g id="el-c" data-comot-name="方塊 C" transform="translate(950 500)">
+  <g id="el-c" data-comot-name="方塊 C" transform="translate(550 500)">
     <rect x="0" y="0" width="120" height="80" fill="#66c"/>
   </g>
   <g id="el-caption" data-comot-name="說明">

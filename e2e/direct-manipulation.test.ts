@@ -451,7 +451,7 @@ it("從空白處拖出框選矩形：與框相交的元素全部選中，且簡�
     const before = await readSlide(registry, presentationId);
 
     // A rectangle covering el-a (100..260, 100..200) and el-b (700..840,
-    // 300..390) but not el-c (950..1070, 500..580) or the caption.
+    // 300..390) but not el-c (550..670, 500..580) or the caption.
     await dragBy(page, { x: 40, y: 40 }, { x: 850, y: 420 });
 
     const selName = page.locator(".status .sel-name");
@@ -486,13 +486,30 @@ it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣�
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    const box = await svgBox(page);
+    const threshold = snapThresholdUser(box);
     // el-text's own container translateX (950) IS its left edge — a text
     // BOX's bounds start at the local origin (bbox.ts's textBounds doc).
+    // The raw drag OVERSHOOTS that edge by a few user units (well inside
+    // the snap radius but not exactly on it) — landing exactly on 950 would
+    // pass whether or not the text candidate ever engages, since that is
+    // also el-a's own unsnapped raw endpoint (Reviewer round-2 FAIL).
+    // Overshooting rather than falling short also keeps el-a's own MID edge
+    // (which lands 10 user units short of el-text's own centre line, since
+    // el-a is 160 wide and el-text is 300) safely outside the snap radius,
+    // rather than tied with — or beating — the left-edge match.
     const targetLeft = 950;
-    const dx = targetLeft - 100; // el-a starts at x=100
-    const dy = 300; // deliberately not aligned with anything, isolates the x-axis snap
+    const rawOvershoot = threshold / 3;
+    const dx = targetLeft + rawOvershoot - 100; // el-a starts at x=100
+    // Chosen so the moved box's top/mid/bottom edges (100+dy, 150+dy,
+    // 200+dy) land far outside every OTHER candidate's own edges — the
+    // nearest is el-text's own top edge at y~105 — so no coincidental
+    // horizontal snap, and no non-text candidate happens to also sit at
+    // x=950 (fixture keeps el-c away from that column), can produce the
+    // same result as the text candidate.
+    const dy = -140;
 
-    let guidesSeenDuringDrag = false;
+    let sawVerticalGuideAt950 = false;
     await dragBy(
       page,
       { x: 180, y: 150 },
@@ -500,16 +517,29 @@ it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣�
       {
         onMidDrag: async () => {
           const frame = await canvasFrame(page);
-          const guideCount = await frame.evaluate(() => {
+          const guides = await frame.evaluate(() => {
             const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-            return host?.shadowRoot?.querySelectorAll(".guide").length ?? 0;
+            const els = host?.shadowRoot?.querySelectorAll(".guide") ?? [];
+            return Array.from(els).map((el) => ({
+              vertical: el.classList.contains("v"),
+              left: (el as HTMLElement).style.left,
+            }));
           });
-          guidesSeenDuringDrag = guideCount > 0;
+          const svgRect = await frame.evaluate(() => {
+            const r = document.querySelector("svg")!.getBoundingClientRect();
+            return { x: r.x, width: r.width };
+          });
+          // Mirrors canvas.ts's own userXToClient: user-space x=950 -> the
+          // iframe-local screen px a "left: <n>px" guide would carry.
+          const expectedClientLeft = svgRect.x + (targetLeft / VIEWBOX.width) * svgRect.width;
+          sawVerticalGuideAt950 = guides.some(
+            (g) => g.vertical && Math.abs(parseFloat(g.left) - expectedClientLeft) < 1,
+          );
         },
       },
     );
 
-    expect(guidesSeenDuringDrag).toBe(true);
+    expect(sawVerticalGuideAt950).toBe(true);
 
     const after = await readSlide(registry, presentationId);
     expect(readTranslate(after, "el-a").x).toBe(targetLeft);
