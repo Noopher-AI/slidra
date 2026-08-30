@@ -9,6 +9,7 @@ import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot } from "./helpers/screenshot.js";
+import { RIBBON, TABS } from "../packages/web/src/shell/ribbon-commands.js";
 
 /**
  * Structural + baseline-screenshot coverage for the shell decomposition
@@ -135,15 +136,19 @@ it("#51 功能區：4 個分頁、預設停在投影片放映、每頁 ≤8 顆�
   try {
     const page = await openApp(server);
     const tabs = page.locator('.tabs [role="tab"]');
-    expect(await tabs.count()).toBe(4);
+    expect(await tabs.count()).toBe(TABS.length);
+    expect(TABS.length).toBe(4);
     const selected = page.locator('.tab[aria-selected="true"]');
     expect(await selected.textContent()).toBe("投影片放映");
 
     let total = 0;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < TABS.length; i++) {
       await tabs.nth(i).click();
       const count = await page.locator(".groups .cmd").count();
       expect(count).toBeLessThanOrEqual(8);
+      const expectedForTab = RIBBON[TABS[i].id].reduce((n, g) => n + g.cmds.length, 0);
+      expect(count).toBe(expectedForTab);
+      expect(await page.locator(".cmd[disabled]").count()).toBe(0);
       total += count;
     }
     expect(total).toBeLessThanOrEqual(32);
@@ -161,6 +166,26 @@ it("#51 功能區：4 個分頁、預設停在投影片放映、每頁 ≤8 顆�
       expect(await disabled.nth(i).getAttribute("title")).toBe("尚未實作");
       expect(await disabled.nth(i).isDisabled()).toBe(true);
     }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("#51 功能區：點未接線按鈕顯示「此操作尚未接上」，點已接線按鈕不顯示", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server);
+    await page.locator('.tab:has-text("常用")').click();
+
+    await page.locator('.cmd:has-text("貼上")').click();
+    const notice = page.locator(".ribbon-notice");
+    await expect.poll(() => notice.textContent()).toBe("此操作尚未接上");
+
+    await page.locator('.tab:has-text("投影片放映")').click();
+    expect(await page.locator(".ribbon-notice").count()).toBe(0);
+
+    await page.locator('.cmd:has-text("全螢幕")').click();
+    expect(await page.locator(".ribbon-notice").count()).toBe(0);
   } finally {
     await cleanup();
   }
