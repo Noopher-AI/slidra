@@ -1,0 +1,44 @@
+name: Notify Multica on PR merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    # 只有真正被合併才發，關掉不發
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect changed files and notify
+        env:
+          GH_[REDACTED CREDENTIAL] github.token }}
+          WEBHOOK_URL: ${{ secrets.MULTICA_AUTOPILOT_WEBHOOK }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          files=$(gh pr view "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --json files -q '[.files[].path]')
+
+          payload=$(jq -n \
+            --argjson number "$PR_NUMBER" \
+            --arg title "${{ github.event.pull_request.title }}" \
+            --arg base_ref "${{ github.event.pull_request.base.ref }}" \
+            --arg merge_commit_sha "${{ github.event.pull_request.merge_commit_sha }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg url "${{ github.event.pull_request.html_url }}" \
+            --argjson changed_files "$files" \
+            '{merged_pr: {number: $number, title: $title, base_ref: $base_ref,
+                          merge_commit_sha: $merge_commit_sha, repo: $repo,
+                          url: $url, changed_files: $changed_files}}')
+
+          curl -sS -f -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -H "Idempotency-Key: comotion-pr-${PR_NUMBER}-${{ github.event.pull_request.merge_commit_sha }}" \
+            -d "$payload"
