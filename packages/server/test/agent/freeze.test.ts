@@ -131,6 +131,77 @@ async function readSlide(id: string): Promise<string> {
   return result.data!.content;
 }
 
+interface CommandExecutionFixture {
+  id: string;
+  elementId: string;
+  moveElementId: string;
+  scaleElementId: string;
+  rotateElementId: string;
+  textboxElementId: string;
+}
+
+/**
+ * Round 3 (NOOP-93): `openFreshPresentationWithElement`'s lone `<text>`
+ * title is a bare primitive outside any `<g>` — `element insert`/`requireContainer`
+ * refuse to touch a slide in that shape at all (ADR-0012 compliance), and
+ * move/scale/rotate only ever match a `<g>` besides. `convert` repairs the
+ * slide into the compliant container form first (lifting the title's id
+ * onto its new wrapping `<g>`, so `elementId` still resolves), then this adds
+ * one `<g>`-backed rect per transform command plus a real text box, letting
+ * the post-unfreeze assertions prove each command's actual effect, not just
+ * its status code.
+ */
+async function openFreshPresentationForCommandExecution(): Promise<CommandExecutionFixture> {
+  const { id, elementId } = await openFreshPresentationWithElement();
+  const slidePath = "slides/001.svg";
+  await registry.dispatch("convert", { id });
+
+  const move = await registry.dispatch<{ elementId: string }>("element insert", {
+    id,
+    slidePath,
+    kind: "rect",
+    x: 100,
+    y: 200,
+    width: 50,
+    height: 50,
+  });
+  const scale = await registry.dispatch<{ elementId: string }>("element insert", {
+    id,
+    slidePath,
+    kind: "rect",
+    x: 300,
+    y: 300,
+    width: 50,
+    height: 50,
+  });
+  const rotate = await registry.dispatch<{ elementId: string }>("element insert", {
+    id,
+    slidePath,
+    kind: "rect",
+    x: 50,
+    y: 60,
+    width: 20,
+    height: 20,
+  });
+  const textbox = await registry.dispatch<{ elementId: string }>("textbox add", {
+    id,
+    slidePath,
+    x: 10,
+    y: 10,
+    width: 200,
+    text: "hello",
+  });
+
+  return {
+    id,
+    elementId,
+    moveElementId: move.data!.elementId,
+    scaleElementId: scale.data!.elementId,
+    rotateElementId: rotate.data!.elementId,
+    textboxElementId: textbox.data!.elementId,
+  };
+}
+
 describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC1: one turn's several commands undo together as a single group, and a second undo hits the empty stack", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
@@ -283,41 +354,61 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(response.status).toBe(200);
   });
 
-  it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then allowed once it releases", async () => {
-    const { id, elementId } = await openFreshPresentationWithElement();
+  it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then actually execute once it releases", async () => {
+    const { id, elementId, moveElementId, scaleElementId, rotateElementId, textboxElementId } =
+      await openFreshPresentationForCommandExecution();
     const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
+    const slidePath = "slides/001.svg";
+
+    const payloads: Array<{ name: string; input: Record<string, unknown> }> = [
+      { name: "element move", input: { slidePath, elementIds: [moveElementId], dx: 10, dy: -5 } },
+      { name: "element scale", input: { slidePath, elementIds: [scaleElementId], factor: 2 } },
+      { name: "element rotate", input: { slidePath, elementIds: [rotateElementId], degrees: 30 } },
+      { name: "textbox width", input: { slidePath, elementId: textboxElementId, width: 100 } },
+    ];
 
     await postChat(server, "改標題");
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
-    for (const name of ["element move", "element scale", "element rotate", "textbox width"]) {
+    const frozenSlide = await readSlide(id);
+    for (const { name, input } of payloads) {
       const response = await fetch(`${server.url}/api/command`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, input: { slidePath: "slides/001.svg" } }),
+        body: JSON.stringify({ name, input }),
       });
       expect(response.status, `${name} 應該在凍結期間被擋下`).toBe(409);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("agent 正在編輯中，請稍候");
     }
+    // The 409 refusal must be a real refusal, not a "runs anyway": nothing
+    // in the slide moved while every one of the four calls above was
+    // rejected.
+    expect(await readSlide(id)).toBe(frozenSlide);
 
     await waitForFrozen(server, false);
 
-    // Once the turn releases the lock, the gate itself must stop refusing —
-    // proven the same way the whitelist test above proves the opposite
-    // (never 403 there, never 409 here). Whether the command's own input
-    // is well-formed enough to actually run is a separate concern already
-    // covered by command-endpoint.test.ts.
-    for (const name of ["element move", "element scale", "element rotate", "textbox width"]) {
+    // Once the turn releases the lock, each whitelisted command must not
+    // just avoid 409 — it must actually run, the way it does in
+    // command-endpoint.test.ts, and leave the effect in the SVG.
+    for (const { name, input } of payloads) {
       const response = await fetch(`${server.url}/api/command`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, input: { slidePath: "slides/001.svg" } }),
+        body: JSON.stringify({ name, input }),
       });
-      expect(response.status, `${name} 解凍後不應該再被閘門擋下`).not.toBe(409);
+      expect(response.status, `${name} 解凍後應可正常執行`).toBe(200);
     }
+
+    const executedSlide = await readSlide(id);
+    expect(executedSlide).toContain(`<g id="${moveElementId}" transform="translate(110 195)">`);
+    expect(executedSlide).toMatch(
+      new RegExp(`<g id="${scaleElementId}"[^>]*><rect[^>]*width="100"[^>]*height="100"`),
+    );
+    expect(executedSlide).toContain(`<g id="${rotateElementId}" transform="translate(50 60) rotate(30)">`);
+    expect(executedSlide).toContain(`data-comot-text-width="100"`);
   });
 
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
