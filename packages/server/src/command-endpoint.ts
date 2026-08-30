@@ -12,8 +12,8 @@ import type { CommandRegistry } from "@co-motion/cli";
  * Two properties carry the whole security posture, and both are structural
  * rather than remembered:
  *
- *  1. A FOUR-NAME WHITELIST, checked BEFORE `registry.dispatch` is reached
- *     at all. Every registered command is reachable through the registry —
+ *  1. A NAME WHITELIST, checked BEFORE `registry.dispatch` is reached at
+ *     all. Every registered command is reachable through the registry —
  *     `open`, `pack`, `new`, `convert` included — so an endpoint that
  *     forwarded an arbitrary `name` would hand any script that can reach
  *     this origin the entire CLI. The check is not a filter over the
@@ -30,15 +30,26 @@ import type { CommandRegistry } from "@co-motion/cli";
  */
 
 /**
- * The only commands this endpoint will run. Direct manipulation needs
- * exactly these four and no others; adding a fifth is a decision for
- * whichever ticket needs it, not a convenience.
+ * The only commands this endpoint will run. Each entry is a decision for
+ * whichever ticket needed it, not a convenience — the Ribbon's "常用" tab
+ * (NOOP-141) is what added `slide add` / `element copy` / `element cut` /
+ * `element paste` / `element insert` / `textbox add` / `element align` /
+ * `element distribute` / `element order` to the original four.
  */
 export const COMMAND_WHITELIST: readonly string[] = [
   "element move",
   "element scale",
   "element rotate",
   "textbox width",
+  "slide add",
+  "element copy",
+  "element cut",
+  "element paste",
+  "element insert",
+  "textbox add",
+  "element align",
+  "element distribute",
+  "element order",
 ];
 
 /**

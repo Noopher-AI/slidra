@@ -10,6 +10,14 @@
 export interface PresentationInfo {
   name: string;
   canvas: { width: number; height: number };
+  /**
+   * `project.json`'s `templates` (NOOP-141's 新增投影片 menu). Absent, or
+   * not a string array, is treated as "declared no templates" — a `[]`, not
+   * a format error: `project-json.ts` already rejects a genuinely malformed
+   * `templates` field server-side, so anything this loose check lets
+   * through here is honestly untyped, not corrupt.
+   */
+  templates: string[];
 }
 
 /** Non-2xx, or an invalid canvas size, throws — never a fabricated fallback. */
@@ -18,7 +26,11 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   if (!response.ok) {
     throw new Error("載入失敗：/api/presentation");
   }
-  const data = (await response.json()) as { name?: unknown; canvas?: { width?: unknown; height?: unknown } };
+  const data = (await response.json()) as {
+    name?: unknown;
+    canvas?: { width?: unknown; height?: unknown };
+    templates?: unknown;
+  };
   const { width, height } = data.canvas ?? {};
   if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
     throw new Error("project.json 的 canvas 尺寸無效，無法決定簡報資訊");
@@ -26,7 +38,11 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   if (typeof data.name !== "string") {
     throw new Error("project.json 的 name 無效，無法決定簡報資訊");
   }
-  return { name: data.name, canvas: { width, height } };
+  const templates =
+    Array.isArray(data.templates) && data.templates.every((entry) => typeof entry === "string")
+      ? (data.templates as string[])
+      : [];
+  return { name: data.name, canvas: { width, height }, templates };
 }
 
 export interface PresentationInfoLoaderCallbacks {

@@ -175,9 +175,11 @@ it("#51 功能區：點未接線按鈕顯示「此操作尚未接上」，點已
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
-    await page.locator('.tab:has-text("常用")').click();
+    // 「貼上」在 NOOP-141 已接線，不再是「尚未接上」的樣本——改用「插入」
+    // 分頁的「圖片」（insert-image，T3/T6 才會接線）。
+    await page.locator('.tab:has-text("插入")').click();
 
-    await page.locator('.cmd:has-text("貼上")').click();
+    await page.locator('.cmd:has-text("圖片")').click();
     const notice = page.locator(".ribbon-notice");
     await expect.poll(() => notice.textContent()).toBe("此操作尚未接上");
 
