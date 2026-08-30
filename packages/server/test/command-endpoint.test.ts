@@ -236,6 +236,20 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
   }
 });
 
+it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("style-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "element style set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "fill", value: "#c43e1c" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('fill="#c43e1c"');
+});
+
 it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
   const id = await openDeck("undo-group.comot");
   const server = await serve(id);

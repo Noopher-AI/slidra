@@ -1071,7 +1071,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
       state = next;
     });
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   it("收到 runtime 的 select 訊息會反映到 CanvasState.selection", async () => {
@@ -1090,7 +1090,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
       }),
     );
 
-    expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [], elements: [null] });
   });
 
   it("select 訊息沒有 data-comot-name 時，selection.name 是 null", async () => {
@@ -1109,7 +1109,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
       }),
     );
 
-    expect(state?.selection).toEqual({ ids: ["el-b"], names: [null], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: ["el-b"], names: [null], groupPath: [], elements: [null] });
   });
 
   it("收到 runtime 的 clear 訊息會把 CanvasState.selection 清回 null", async () => {
@@ -1136,7 +1136,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
         source: frameWindow,
       }),
     );
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   // Same authentication rule as isPlayerMessage's own tests: identity, never
@@ -1157,7 +1157,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
       }),
     );
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   it("換頁 (showSlide) 會清空選取", async () => {
@@ -1179,7 +1179,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     await controller.showSlide(1);
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   it("reload() 會清空選取", async () => {
@@ -1200,7 +1200,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     await controller.reload();
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   it("play() 會清空選取", async () => {
@@ -1222,7 +1222,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     await controller.play();
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
   it("exitPlay() 回到 view 模式時選取是空的", async () => {
@@ -1238,6 +1238,6 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     await controller.exitPlay();
 
-    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [] });
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 });

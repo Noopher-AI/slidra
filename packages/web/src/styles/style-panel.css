@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════
+   樣式面板 (NOOP-143). Every value below comes from tokens.css's :root —
+   see AGENTS/軍令 #2. Modeled on chat.css's sidebar shape (fixed width,
+   left border, padded surface), but its own width — it is not the chat
+   sidebar and does not share a class with it.
+   ═══════════════════════════════════════════════════════════════ */
+
+.style-panel {
+  width: calc(var(--u) * 56);
+  flex-shrink: 0;
+  border-left: 1px solid var(--line-soft);
+  background: var(--s-panel);
+  padding: calc(var(--u) * 3);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 3);
+  height: 100%;
+  overflow-y: auto;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+}
+
+.style-panel-empty {
+  margin: 0;
+  color: var(--ink-faint);
+}
+
+.style-panel-note {
+  margin: 0;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  border-left: calc(var(--u) / 2) solid var(--ink-dim);
+  background: var(--s-sunken);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+}
+
+.style-field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) / 2);
+}
+
+.style-field-label {
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+}
+
+.style-field input,
+.style-field select {
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  box-sizing: border-box;
+  background: var(--s-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font: inherit;
+}
+
+.style-field input:focus,
+.style-field select:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.style-field input:disabled,
+.style-field select:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.style-field-note {
+  color: var(--ink-faint);
+  font-size: var(--fs-small);
+}

@@ -91,6 +91,15 @@ export interface CanvasSelection {
    * up over postMessage; no command is ever sent for it.
    */
   groupPath: string[];
+  /**
+   * `ids[i]`'s parsed `SlideElement`, straight off `currentSlideModel` (NOOP-143 §1
+   * decision 2/3) — `null` when the id is not found in the current model (a
+   * reload raced the selection). Parallel to `ids`/`names`, same length.
+   * The style panel reads current values off these and computes its own
+   * summary (`summarizeSelection` in style-attrs.ts); this module does not
+   * do that aggregation itself.
+   */
+  elements: (SlideElement | null)[];
 }
 
 export interface CanvasState {
@@ -187,6 +196,14 @@ export interface CanvasController {
    * their own call.
    */
   reportError: (message: string) => void;
+  /**
+   * 樣式面板 (NOOP-143 §1 decision 4): sends `element style set` for the
+   * current selection's every id in one call, with the given attr/value.
+   * Returns `false` when the command failed — the message is already in
+   * `CanvasState.error` by the time this resolves, matching `postCommand`'s
+   * own error-surfacing contract; the caller reverts whatever it painted.
+   */
+  setStyle: (attr: string, value: string) => Promise<boolean>;
   /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
@@ -751,6 +768,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const index = new Map<string, { element: SlideElement; ancestors: Matrix[]; ancestorIds: string[] }>();
     if (currentSlideModel) flattenElements(currentSlideModel.elements, [], [], index);
     return index;
+  }
+
+  /** `CanvasSelection.elements` (NOOP-143 §1 decision 2/3): `selectionIds[i]`'s parsed `SlideElement`, or `null` when it is not (or no longer) in the current model. */
+  function selectedElements(): (SlideElement | null)[] {
+    const index = elementIndex();
+    return selectionIds.map((id) => index.get(id)?.element ?? null);
   }
 
   /** An element's bounds, or null when they cannot be computed (e.g. a `<text>` whose font failed to resolve). Never throws. */
@@ -1723,6 +1746,35 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     old.remove();
   }
 
+  /**
+   * 樣式面板 (NOOP-143 §1 decision 4, §4.6): one `element style set` call
+   * carrying every currently-selected id, so one undo reverts the whole
+   * multi-selection edit at once — the same "one call, not one per id"
+   * shape `endMoveGesture` above uses for `element move`. No optimistic
+   * preview is painted here (§2 item 3 of the plan): a successful command's
+   * file write comes back over `/api/events` and drives `reload()` on its
+   * own, same as every other direct-manipulation command in this module.
+   */
+  async function setStyle(attr: string, value: string): Promise<boolean> {
+    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("element style set", {
+      slidePath: slides[currentIndex],
+      elementIds: [...selectionIds],
+      attr,
+      value,
+    });
+    // Same race guard as endMoveGesture: a reload superseding this call
+    // while it was in flight means the result is stale.
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    return true;
+  }
+
   function notify(): void {
     // A fresh object per notification: listeners keep it as React state,
     // and handing out a mutable reference to internal arrays would let a
@@ -1733,7 +1785,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       mode,
       playerHasFocus,
       error,
-      selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [...selectionGroupPath] },
+      selection: {
+        ids: [...selectionIds],
+        names: [...selectionNames],
+        groupPath: [...selectionGroupPath],
+        elements: selectedElements(),
+      },
       dragSignal,
     };
     for (const listener of listeners) listener(state);
@@ -1747,7 +1804,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       mode,
       playerHasFocus,
       error,
-      selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [...selectionGroupPath] },
+      selection: {
+        ids: [...selectionIds],
+        names: [...selectionNames],
+        groupPath: [...selectionGroupPath],
+        elements: selectedElements(),
+      },
       dragSignal,
     });
     return () => {
@@ -1773,6 +1835,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       error = message;
       notify();
     },
+    setStyle,
     get frameElement() {
       return frame;
     },
