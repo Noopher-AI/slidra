@@ -51,6 +51,7 @@ export {
   copySlideElements,
   pasteSlideClipboard,
   duplicateSlideElements,
+  cutSlideElements,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
 export {

@@ -6,13 +6,14 @@ import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
-import { Ribbon } from "./shell/Ribbon.js";
+import { Ribbon, type RibbonMenuState } from "./shell/Ribbon.js";
 import { Rail } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
 import type { ShellView } from "./shell/view.js";
+import type { RibbonHandlers } from "./shell/ribbon-commands.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
@@ -540,6 +541,170 @@ export function App() {
     }
   }
 
+  // Ribbon 常用分頁的 7 顆按鈕 (NOOP-141). Handlers live here, not in
+  // Ribbon.tsx, because every one of them needs controllerRef/canvasState/
+  // presentationInfo — none of which Ribbon.tsx has (決定 6/7 in the plan).
+  // 新增投影片/圖案/排列 open a dropdown instead of running a command
+  // directly; its contents are computed here (they depend on `templates`,
+  // the current selection, and the canvas size) and simply rendered by
+  // Ribbon (決定 the popover assumption).
+  const [ribbonMenu, setRibbonMenu] = useState<RibbonMenuState | null>(null);
+  const closeRibbonMenu = () => setRibbonMenu(null);
+
+  async function runRibbonCommand(name: string, input: Record<string, unknown>): Promise<void> {
+    await controllerRef.current?.runCommand(name, input);
+  }
+
+  /** slidePath = the current slide's virtual path. Only ever read from a handler that fired while canPlay was true (button disabled otherwise), so currentIndex is never -1 here — but the lookup stays a real check, not an assumed cast. */
+  function currentSlidePath(): string | null {
+    return canvasState.slides[canvasState.currentIndex] ?? null;
+  }
+
+  const ribbonHandlers: RibbonHandlers = {
+    "new-slide": () => {
+      const templates = presentationInfo?.templates ?? [];
+      setRibbonMenu({
+        anchor: "new-slide",
+        groups: [
+          {
+            items: [
+              {
+                key: "__blank__",
+                label: "空白",
+                onSelect: () => {
+                  closeRibbonMenu();
+                  void runRibbonCommand("slide add", {});
+                },
+              },
+              ...templates.map((templatePath) => ({
+                key: templatePath,
+                label: templatePath.split("/").pop() ?? templatePath,
+                onSelect: () => {
+                  closeRibbonMenu();
+                  void runRibbonCommand("slide add", { templatePath });
+                },
+              })),
+            ],
+          },
+        ],
+      });
+    },
+    paste: () => {
+      const slidePath = currentSlidePath();
+      if (!slidePath) return;
+      void runRibbonCommand("element paste", { slidePath, dx: 0, dy: 0 });
+    },
+    cut: () => {
+      const slidePath = currentSlidePath();
+      if (!slidePath) return;
+      void runRibbonCommand("element cut", { slidePath, elementIds: canvasState.selection.ids });
+    },
+    copy: () => {
+      const slidePath = currentSlidePath();
+      if (!slidePath) return;
+      void runRibbonCommand("element copy", { slidePath, elementIds: canvasState.selection.ids });
+    },
+    textbox: () => {
+      const slidePath = currentSlidePath();
+      const canvas = presentationInfo?.canvas;
+      if (!slidePath || !canvas) return;
+      const width = 300;
+      void runRibbonCommand("textbox add", {
+        slidePath,
+        x: (canvas.width - width) / 2,
+        y: canvas.height / 2 - 20,
+        width,
+        text: "文字方塊",
+      });
+    },
+    shape: () => {
+      const slidePath = currentSlidePath();
+      const canvas = presentationInfo?.canvas;
+      if (!slidePath || !canvas) return;
+      const insertShape = (kind: "rect" | "ellipse" | "line") => {
+        closeRibbonMenu();
+        if (kind === "line") {
+          const length = 200;
+          const y = canvas.height / 2;
+          const x1 = (canvas.width - length) / 2;
+          void runRibbonCommand("element insert", { slidePath, kind, x1, y1: y, x2: x1 + length, y2: y });
+          return;
+        }
+        const width = 200;
+        const height = 120;
+        void runRibbonCommand("element insert", {
+          slidePath,
+          kind,
+          x: (canvas.width - width) / 2,
+          y: (canvas.height - height) / 2,
+          width,
+          height,
+        });
+      };
+      setRibbonMenu({
+        anchor: "shape",
+        groups: [
+          {
+            items: [
+              { key: "rect", label: "矩形", onSelect: () => insertShape("rect") },
+              { key: "ellipse", label: "橢圓", onSelect: () => insertShape("ellipse") },
+              { key: "line", label: "線", onSelect: () => insertShape("line") },
+            ],
+          },
+        ],
+      });
+    },
+    arrange: () => {
+      const slidePath = currentSlidePath();
+      if (!slidePath) return;
+      const elementIds = canvasState.selection.ids;
+      const runArrange = (name: string, input: Record<string, unknown>) => {
+        closeRibbonMenu();
+        void runRibbonCommand(name, { slidePath, elementIds, ...input });
+      };
+      setRibbonMenu({
+        anchor: "arrange",
+        groups: [
+          {
+            label: "對齊",
+            items: [
+              { key: "left", label: "靠左對齊", onSelect: () => runArrange("element align", { direction: "left" }) },
+              { key: "hcenter", label: "水平置中", onSelect: () => runArrange("element align", { direction: "hcenter" }) },
+              { key: "right", label: "靠右對齊", onSelect: () => runArrange("element align", { direction: "right" }) },
+              { key: "top", label: "靠上對齊", onSelect: () => runArrange("element align", { direction: "top" }) },
+              { key: "vcenter", label: "垂直置中", onSelect: () => runArrange("element align", { direction: "vcenter" }) },
+              { key: "bottom", label: "靠下對齊", onSelect: () => runArrange("element align", { direction: "bottom" }) },
+            ],
+          },
+          {
+            label: "分佈",
+            items: [
+              {
+                key: "horizontal",
+                label: "水平分佈",
+                onSelect: () => runArrange("element distribute", { axis: "horizontal" }),
+              },
+              {
+                key: "vertical",
+                label: "垂直分佈",
+                onSelect: () => runArrange("element distribute", { axis: "vertical" }),
+              },
+            ],
+          },
+          {
+            label: "順序",
+            items: [
+              { key: "front", label: "移到最上層", onSelect: () => runArrange("element order", { direction: "front" }) },
+              { key: "back", label: "移到最下層", onSelect: () => runArrange("element order", { direction: "back" }) },
+              { key: "up", label: "上移一層", onSelect: () => runArrange("element order", { direction: "up" }) },
+              { key: "down", label: "下移一層", onSelect: () => runArrange("element order", { direction: "down" }) },
+            ],
+          },
+        ],
+      });
+    },
+  };
+
   const shellVisible = canvasState.mode !== "play";
 
   return (
@@ -562,6 +727,9 @@ export function App() {
           onPlayFromCurrent={() => void controllerRef.current?.play()}
           onToggleFullscreen={() => void toggleFullscreen()}
           canPlay={hasSlides}
+          handlers={ribbonHandlers}
+          menu={ribbonMenu}
+          onCloseMenu={closeRibbonMenu}
         />
       )}
       {shellVisible && liveReloadError && (
@@ -572,6 +740,11 @@ export function App() {
       {shellVisible && presentationError && (
         <div role="alert" className="live-reload-banner">
           簡報資訊載入失敗：{presentationError}
+        </div>
+      )}
+      {shellVisible && canvasState.error && (
+        <div role="alert" className="live-reload-banner canvas-error-banner">
+          {canvasState.error}
         </div>
       )}
       {shellVisible && editingFrozen && (

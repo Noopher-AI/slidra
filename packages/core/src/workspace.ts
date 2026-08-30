@@ -863,6 +863,30 @@ export async function copySlideElements(id: string, slidePath: string, elementId
   await writeClipboardFile(home, id, payload);
 }
 
+/**
+ * Extracts `elementIds` into the presentation's clipboard file, then deletes
+ * them from the slide — `element cut` (NOOP-141). `extractElementsForCopy`
+ * runs before `deleteElements` (it reads the pre-deletion content, and any
+ * missing id fails the whole command before anything is mutated), and the
+ * clipboard write happens before `writePresentationFile` (a failed clipboard
+ * write must never leave the presentation already edited). The whole thing
+ * collapses to a single `writePresentationFile` call, so it gets exactly one
+ * undo step for free — no `beginHistoryGroup`/`endHistoryGroup` needed. Undo
+ * restores the deleted elements but does not restore the clipboard, same as
+ * every real editor.
+ */
+export async function cutSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const payload = extractElementsForCopy(original, slidePath, elementIds);
+  const updated = deleteElements(original, slidePath, elementIds);
+  await writeClipboardFile(home, id, payload);
+  await writePresentationFile(id, slidePath, updated);
+}
+
 /** Pastes the presentation's clipboard file into `slidePath`, which may differ from where it was copied from. */
 export async function pasteSlideClipboard(
   id: string,

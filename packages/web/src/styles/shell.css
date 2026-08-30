@@ -179,6 +179,43 @@
 .cmd:disabled svg {
   opacity: 0.55;
 }
+/* 新增投影片 / 圖案 / 排列 下拉選單 (NOOP-141). Anchored to the owning .group
+   (already `position: relative`), so it needs no measurement — it simply
+   drops below that group's own buttons. */
+.ribbon-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: calc(var(--u) * 1.5);
+  background: var(--s-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
+}
+.ribbon-menu-group + .ribbon-menu-group {
+  margin-top: calc(var(--u) * 1.5);
+  padding-top: calc(var(--u) * 1.5);
+  border-top: 1px solid var(--line-soft);
+}
+.ribbon-menu-group-label {
+  padding: 0 calc(var(--u) * 1);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+.ribbon-menu-item {
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-size: var(--fs-small);
+  text-align: left;
+}
+.ribbon-menu-item:hover {
+  background: var(--s-raised);
+}
 .ribbon-notice {
   position: absolute;
   right: calc(var(--u) * 2);

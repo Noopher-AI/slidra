@@ -282,6 +282,13 @@ export function parseArgv(argv: string[]): ParsedCommand {
         return { name: "element copy", input: { id, slidePath, elementIds } };
       }
 
+      if (sub === "cut") {
+        const id = requirePositional(args, 0, "element cut", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element cut", "slide-path");
+        const elementIds = requireIdList(args, 2, "element cut");
+        return { name: "element cut", input: { id, slidePath, elementIds } };
+      }
+
       if (sub === "paste") {
         const id = requirePositional(args, 0, "element paste", "presentation-id");
         const slidePath = requirePositional(args, 1, "element paste", "slide-path");
