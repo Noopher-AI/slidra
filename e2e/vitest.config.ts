@@ -30,6 +30,7 @@ export default defineConfig({
       "@co-motion/core/text-metrics": path.join(rootDir, "packages/core/src/text-metrics.ts"),
       "@co-motion/core/geometry": path.join(rootDir, "packages/core/src/geometry/index.ts"),
       "@co-motion/core/slide": path.join(rootDir, "packages/core/src/slide/index.ts"),
+      "@co-motion/core/text": path.join(rootDir, "packages/core/src/text/index.ts"),
       "@co-motion/core": path.join(rootDir, "packages/core/src/index.ts"),
       "@co-motion/cli": path.join(rootDir, "packages/cli/src/index.ts"),
     },

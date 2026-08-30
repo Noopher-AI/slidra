@@ -42,6 +42,23 @@
     parentWindow.postMessage(payload, "*");
   }
 
+  /**
+   * Attaches the current `groupPath` to a "select"/"clear" message, but
+   * only when it is non-empty. Existing tests (and canvas.ts's own
+   * postMessage-shape assertions, jsdom side) `toEqual` the exact plain
+   * top-level message shape with no `groupPath` field at all — omitting it
+   * whenever there is nothing to report keeps every one of those exact
+   * either unchanged. The host treats a missing field the same as `[]`
+   * (`select`/`clear` always describe the FULL current state, never a
+   * delta), so this is lossless: entering/staying in a group is the only
+   * case that ever needs the field, and that is also the only case where
+   * `groupPath` is non-empty.
+   */
+  function withGroupPath(message) {
+    if (groupPath.length > 0) message.groupPath = groupPath.slice();
+    return message;
+  }
+
   // The shadow *host* lives in the light DOM, where the slide's own CSS
   // can still target it (e.g. `* { display: none !important }`). Every
   // property that could hide or bury it is set inline with `!important`,
@@ -73,13 +90,13 @@
   var shadow = host.attachShadow({ mode: "open" });
 
   var style = document.createElement("style");
-  // Four corners only (top-left/top-right on `.sel::before`/`::after`,
-  // bottom-left/bottom-right on `.sel i::before`/`::after`) — deliberately
-  // not eight handles (the template's `b`/`u` elements are never created):
-  // eight handles mean "you can drag this" in every tool, and neither
-  // resize nor rotate handles are part of this ticket's delivered scope
-  // (see the PR body's 風險與未處理項) — a multi-selection or a plain drag
-  // must never show them.
+  // Four corners only on `.sel` itself (top-left/top-right on
+  // `.sel::before`/`::after`, bottom-left/bottom-right on
+  // `.sel i::before`/`::after`) — those are pure decoration, never
+  // interactive. The scale/rotate/textbox-width handles are separate real
+  // elements (`.handle`), each carrying `pointer-events:auto` so a gesture
+  // can start on them even though the shadow host and every other overlay
+  // element stay `pointer-events:none`.
   style.textContent =
     ".sel{position:fixed;box-sizing:border-box;outline:1px solid " +
     colors.accent +
@@ -105,8 +122,101 @@
     colors.accent +
     ";pointer-events:none;}" +
     ".guide.v{width:1px;top:0;bottom:0;}" +
-    ".guide.h{height:1px;left:0;right:0;}";
+    ".guide.h{height:1px;left:0;right:0;}" +
+    ".handle{position:fixed;box-sizing:border-box;width:9px;height:9px;margin:-4px 0 0 -4px;background:" +
+    colors.handle +
+    ";border:1px solid " +
+    colors.accent +
+    ";pointer-events:auto;display:none;}" +
+    ".handle.corner{cursor:nwse-resize;}" +
+    ".handle.rotate{border-radius:50%;cursor:grab;}" +
+    ".handle.edge{cursor:ew-resize;}";
   shadow.appendChild(style);
+
+  // One handle div per role, created once and repositioned/hidden on every
+  // updateBoxes() call — same reuse pattern as multiBoxEls/guideEls below.
+  // "nw"/"ne"/"sw"/"se" are the four corner scale handles, "rotate" sits
+  // above top-center, "width-left"/"width-right" are the textbox mid-edge
+  // handles.
+  var HANDLE_NAMES = ["nw", "ne", "sw", "se", "rotate", "width-left", "width-right"];
+  var handleEls = {};
+  for (var hi = 0; hi < HANDLE_NAMES.length; hi++) {
+    var hname = HANDLE_NAMES[hi];
+    var hel = document.createElement("div");
+    hel.className = "handle " + (hname === "rotate" ? "rotate" : hname === "width-left" || hname === "width-right" ? "edge" : "corner");
+    hel.setAttribute("data-comot-handle", hname);
+    shadow.appendChild(hel);
+    handleEls[hname] = hel;
+  }
+
+  /** Fixed screen-px distance the rotate handle sits above the box's top edge. */
+  var ROTATE_HANDLE_OFFSET = 24;
+
+  // Which handles the host currently allows, per the last "selection" host
+  // command (NOOP-91 follow-up §5): "full" (single, non-textbox-only
+  // selection — corner + rotate), "move-only" (0 or 2+ selected — no
+  // handles at all beyond the plain box), "none". `textboxHandles` is an
+  // independent flag layered on top of "full": textbox-width handles show
+  // only when the host says the single selected element is a text box.
+  var handleMode = "none";
+  var textboxHandlesEnabled = false;
+
+  function hideAllHandles() {
+    for (var i = 0; i < HANDLE_NAMES.length; i++) handleEls[HANDLE_NAMES[i]].style.display = "none";
+  }
+
+  function positionHandles() {
+    if (selectedIds.length !== 1) {
+      hideAllHandles();
+      return;
+    }
+    var el = document.getElementById(selectedIds[0]);
+    if (!el) {
+      hideAllHandles();
+      return;
+    }
+    var rect = el.getBoundingClientRect();
+    var showScaleRotate = handleMode === "full";
+    var corners = {
+      nw: { x: rect.left, y: rect.top },
+      ne: { x: rect.left + rect.width, y: rect.top },
+      sw: { x: rect.left, y: rect.top + rect.height },
+      se: { x: rect.left + rect.width, y: rect.top + rect.height },
+    };
+    for (var key in corners) {
+      if (!Object.prototype.hasOwnProperty.call(corners, key)) continue;
+      var cel = handleEls[key];
+      if (showScaleRotate) {
+        cel.style.display = "block";
+        cel.style.left = corners[key].x + "px";
+        cel.style.top = corners[key].y + "px";
+      } else {
+        cel.style.display = "none";
+      }
+    }
+    var rotateEl = handleEls.rotate;
+    if (showScaleRotate) {
+      rotateEl.style.display = "block";
+      rotateEl.style.left = rect.left + rect.width / 2 + "px";
+      rotateEl.style.top = rect.top - ROTATE_HANDLE_OFFSET + "px";
+    } else {
+      rotateEl.style.display = "none";
+    }
+    var showTextbox = textboxHandlesEnabled;
+    var leftEl = handleEls["width-left"];
+    var rightEl = handleEls["width-right"];
+    if (showTextbox) {
+      leftEl.style.display = "block";
+      leftEl.style.left = rect.left + "px";
+      leftEl.style.top = rect.top + rect.height / 2 + "px";
+      rightEl.style.display = "block";
+      rightEl.style.left = rect.left + rect.width + "px";
+      rightEl.style.top = rect.top + rect.height / 2 + "px";
+    } else {
+      leftEl.style.display = "none";
+      rightEl.style.display = "none";
+    }
+  }
 
   var box = document.createElement("div");
   box.className = "sel";
@@ -132,6 +242,14 @@
   // this script sends, and via the "selection" host command for gestures
   // the parent alone can resolve (marquee).
   var selectedIds = [];
+
+  // Group ids entered via double-click, outermost first; [] at top level
+  // (NOOP-91 follow-up §4.8's group-edit row). Purely local to this
+  // runtime — it changes what findSelectable() below walks up to, and is
+  // mirrored up to the host on every "select"/"clear"/"group-path" message
+  // so CanvasState.selection.groupPath agrees, but no command is ever sent
+  // for it.
+  var groupPath = [];
 
   function positionBox() {
     if (selectedIds.length !== 1) return;
@@ -191,25 +309,37 @@
     if (selectedIds.length === 0) {
       hideBox();
       hideMultiBoxes();
+      hideAllHandles();
       return;
     }
     if (selectedIds.length === 1) {
       hideMultiBoxes();
       showBox();
+      positionHandles();
       return;
     }
     hideBox();
+    hideAllHandles();
     showMultiBoxes(selectedIds);
   }
 
-  // Hit resolution: walk up from the clicked element to the `<svg>` root
-  // and return the OUTERMOST ancestor carrying an `id` — not the nearest
-  // one (#72). See the original comment history for the full rationale;
-  // unchanged by this ticket.
-  function findSelectable(el) {
+  // Hit resolution: walk up from `el` and return the OUTERMOST ancestor
+  // carrying an `id` — not the nearest one (#72). `scopeId`, when given
+  // (NOOP-91 follow-up's group-edit), stops the walk the moment it reaches
+  // the element with that id: the walk never goes past the current
+  // group's own boundary, so it resolves to the outermost id'd element
+  // STRICTLY INSIDE the entered group rather than the group itself or
+  // anything above it. When `el` is not actually inside the scope element
+  // at all, the walk never reaches it and this degrades to the plain
+  // top-level resolution — which is exactly the signal
+  // resolveClickTarget() below uses to detect "clicked outside the
+  // current group".
+  function findSelectable(el, scopeId) {
     var current = el;
     var outermost = null;
+    var scopeEl = scopeId ? document.getElementById(scopeId) : null;
     while (current && current !== document.body) {
+      if (scopeEl && current === scopeEl) break;
       var tag = current.tagName ? current.tagName.toLowerCase() : "";
       if (tag === "svg") break;
       // T3 / ADR-0013: a locked element is not selectable at all in view
@@ -225,6 +355,41 @@
       current = current.parentElement;
     }
     return outermost;
+  }
+
+  /** Nearest id-carrying element at or above `el` (the opposite of findSelectable's outermost rule) — what a double-click's own target resolves to (NOOP-91 follow-up). */
+  function nearestId(el) {
+    var current = el;
+    while (current && current !== document.body) {
+      if (current.hasAttribute && current.hasAttribute("id")) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  /** True when `el` wraps at least one further id-carrying descendant — the normal form's own rule that only containers, never primitives, carry `id` (ADR-0012) makes this exactly "is `el` a group". */
+  function isGroupContainer(el) {
+    return !!(el && el.querySelector("[id]"));
+  }
+
+  /**
+   * Resolves what a click/pointerdown at `rawTarget` hits, honouring the
+   * current group-edit scope and exiting it when the click lands outside
+   * the entered group. Mutates `groupPath` (never `selectedIds`) and
+   * returns the resolved outermost-within-scope element, or null for a
+   * miss. Shared by the click handler and pointerdown's own hit test so
+   * a drag-to-select-then-move gesture scopes exactly the same way a
+   * plain click does.
+   */
+  function resolveClickTarget(rawTarget) {
+    if (groupPath.length > 0) {
+      var scopeEl = document.getElementById(groupPath[groupPath.length - 1]);
+      if (!scopeEl || !scopeEl.contains(rawTarget)) {
+        groupPath = [];
+      }
+    }
+    var effectiveScopeId = groupPath.length > 0 ? groupPath[groupPath.length - 1] : null;
+    return findSelectable(rawTarget, effectiveScopeId);
   }
 
   // Set right before a completed drag/marquee gesture's trailing native
@@ -247,13 +412,13 @@
         suppressNextClick = false;
         return;
       }
-      var target = findSelectable(event.target);
       var additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      var target = resolveClickTarget(event.target);
       if (!target) {
         if (additive) return; // Shift/Cmd-click on blank changes nothing.
         selectedIds = [];
         updateBoxes();
-        post({ event: "clear" });
+        post(withGroupPath({ event: "clear" }));
         return;
       }
       var id = target.getAttribute("id");
@@ -266,7 +431,30 @@
         selectedIds = [id];
       }
       updateBoxes();
-      post({ event: "select", id: id, name: name, additive: additive });
+      post(withGroupPath({ event: "select", id: id, name: name, additive: additive }));
+    },
+    true,
+  );
+
+  // Double-click enters a group: pushes its id onto `groupPath` and
+  // selects the innermost id-carrying descendant actually under the
+  // pointer (NOOP-91 follow-up's group-edit row). Never sends a command —
+  // this is pure front-end selection-scope state. The two leading single
+  // clicks a dblclick is made of already ran the plain click handler
+  // above and left `selectedIds`/`groupPath` at whatever a normal
+  // (possibly now-exited-scope) click would — this handler only refines
+  // that further when the resolved target turns out to be a group.
+  window.addEventListener(
+    "dblclick",
+    function (event) {
+      var target = resolveClickTarget(event.target);
+      if (!target || !isGroupContainer(target)) return;
+      groupPath.push(target.getAttribute("id"));
+      var inner = nearestId(event.target);
+      if (!inner) return;
+      selectedIds = [inner.getAttribute("id")];
+      updateBoxes();
+      post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
     },
     true,
   );
@@ -326,18 +514,33 @@
     }
   }
 
+  /** The `data-comot-handle` name at or inside `event`'s real (composed) target, or null. `composedPath()` sees into the open shadow root even though `event.target` itself gets retargeted to the shadow host once the event reaches a window-level listener. */
+  function findHandleTarget(event) {
+    var path = typeof event.composedPath === "function" ? event.composedPath() : [event.target];
+    for (var i = 0; i < path.length; i++) {
+      var node = path[i];
+      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-comot-handle")) {
+        return node.getAttribute("data-comot-handle");
+      }
+    }
+    return null;
+  }
+
   window.addEventListener(
     "pointerdown",
     function (event) {
       if (event.button !== 0) return; // Left button only — no gesture on right/middle click.
-      var hit = findSelectable(event.target);
+      var handleName = findHandleTarget(event);
+      var hit = handleName ? null : resolveClickTarget(event.target);
       gesture = {
         pointerId: event.pointerId,
         startClient: { x: event.clientX, y: event.clientY },
         lastClient: { x: event.clientX, y: event.clientY },
         hitId: hit ? hit.getAttribute("id") : null,
+        handleName: handleName,
         started: false,
         kind: null,
+        handle: null,
       };
     },
     true,
@@ -353,19 +556,31 @@
       if (!gesture.started) {
         if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
         gesture.started = true;
-        gesture.kind = gesture.hitId ? "move" : "marquee";
-        if (gesture.kind === "move" && selectedIds.indexOf(gesture.hitId) === -1) {
-          // Dragging an element that was not already part of the current
-          // selection replaces the selection with just that element — the
-          // same "select, then move" behaviour every direct-manipulation
-          // editor gives a plain (non-additive) drag (§4.2's "多選" row
-          // implies the selection in effect at drag start is what moves).
-          var target = document.getElementById(gesture.hitId);
-          selectedIds = [gesture.hitId];
-          updateBoxes();
-          post({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: false });
+        if (gesture.handleName === "rotate") {
+          gesture.kind = "rotate";
+          gesture.handle = null;
+        } else if (gesture.handleName === "width-left" || gesture.handleName === "width-right") {
+          gesture.kind = "textbox-width";
+          gesture.handle = gesture.handleName === "width-left" ? "left" : "right";
+        } else if (gesture.handleName) {
+          gesture.kind = "scale";
+          gesture.handle = gesture.handleName;
+        } else {
+          gesture.kind = gesture.hitId ? "move" : "marquee";
+          gesture.handle = null;
+          if (gesture.kind === "move" && selectedIds.indexOf(gesture.hitId) === -1) {
+            // Dragging an element that was not already part of the current
+            // selection replaces the selection with just that element — the
+            // same "select, then move" behaviour every direct-manipulation
+            // editor gives a plain (non-additive) drag (§4.2's "多選" row
+            // implies the selection in effect at drag start is what moves).
+            var target = document.getElementById(gesture.hitId);
+            selectedIds = [gesture.hitId];
+            updateBoxes();
+            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: false }));
+          }
         }
-        post({ event: "gesture-start", kind: gesture.kind, handle: null, point: gesture.startClient });
+        post({ event: "gesture-start", kind: gesture.kind, handle: gesture.handle, point: gesture.startClient });
       }
       scheduleGestureMove({ x: event.clientX, y: event.clientY }, { shift: event.shiftKey, alt: event.altKey });
     },
@@ -394,8 +609,23 @@
   });
 
   window.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && gesture) {
+    if (event.key !== "Escape") return;
+    if (gesture) {
       endGesture(gesture.lastClient, true);
+      return;
+    }
+    // Not mid-gesture (NOOP-91 follow-up's group-edit row): pop one level
+    // of group-edit scope, or — already at the top — clear the selection
+    // instead. Never both in the same keypress.
+    if (groupPath.length > 0) {
+      groupPath.pop();
+      post({ event: "group-path", groupPath: groupPath.slice() });
+      return;
+    }
+    if (selectedIds.length > 0) {
+      selectedIds = [];
+      updateBoxes();
+      post({ event: "clear" });
     }
   });
 
@@ -424,14 +654,34 @@
     updateBoxes();
   }
 
-  function applyPreviewTextbox(id, width) {
-    // Reserved for the textbox-width gesture (§4.4), not part of this
-    // ticket's delivered scope — see the PR body. Left as a documented
-    // no-op rather than omitted outright, so a future unit extending this
-    // runtime has an obvious seam instead of having to reinvent the host
-    // command name.
-    void id;
-    void width;
+  /**
+   * Textbox-width live preview (NOOP-91 follow-up §4.4): the host has
+   * already computed the re-wrapped lines with `@co-motion/core`'s own
+   * `wrapText` (the exact function `textbox width`'s server handler calls
+   * internally) — this only ever swaps the `<text>` element's `<tspan>`
+   * children for structured `{text, y}` data, never a raw HTML/XML string,
+   * so there is no injection surface even though `text` is untrusted-slide
+   * content round-tripped through the host.
+   */
+  function applyPreviewTextbox(id, lines, width) {
+    var container = document.getElementById(id);
+    if (!container) return;
+    var textEl = container.querySelector("text");
+    if (!textEl) return;
+    while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
+    if (Array.isArray(lines)) {
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line || typeof line.text !== "string" || typeof line.y !== "number") continue;
+        var tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+        tspan.setAttribute("x", "0");
+        tspan.setAttribute("y", String(line.y));
+        tspan.textContent = line.text;
+        textEl.appendChild(tspan);
+      }
+    }
+    if (typeof width === "number") container.setAttribute("data-comot-text-width", String(width));
+    updateBoxes();
   }
 
   function drawGuides(lines) {
@@ -481,13 +731,24 @@
     if (data.command === "preview") {
       applyPreview(data.items);
     } else if (data.command === "preview-textbox") {
-      applyPreviewTextbox(data.id, data.width);
+      applyPreviewTextbox(data.id, data.lines, data.width);
     } else if (data.command === "guides") {
       drawGuides(data.lines);
     } else if (data.command === "marquee") {
       drawMarquee(data.rect);
     } else if (data.command === "selection") {
       selectedIds = Array.isArray(data.ids) ? data.ids.slice() : [];
+      // The host is authoritative for handle visibility (it alone knows
+      // the slide model — whether the single selection is a text box) and
+      // for group scope whenever IT drove the selection change (e.g.
+      // marquee, which always operates at top level and so always exits
+      // group-edit). A runtime-originated change already updated
+      // `groupPath` itself before reporting up; this mirrors the host's
+      // value back down rather than trusting it blindly, so the two sides
+      // can never drift.
+      handleMode = data.handles === "full" || data.handles === "move-only" ? data.handles : "none";
+      textboxHandlesEnabled = Boolean(data.textbox);
+      groupPath = Array.isArray(data.groupPath) ? data.groupPath.slice() : [];
       updateBoxes();
     }
   });

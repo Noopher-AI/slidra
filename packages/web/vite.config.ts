@@ -27,6 +27,12 @@ export default defineConfig({
       // without pulling in workspace.ts's node:fs.
       "@co-motion/core/geometry": path.join(rootDir, "../core/src/geometry/index.ts"),
       "@co-motion/core/slide": path.join(rootDir, "../core/src/slide/index.ts"),
+      // Same reasoning again, for the textbox-width handle's live preview
+      // (NOOP-91 follow-up): text/index.ts re-exports wrapText and
+      // renderTextBoxContent, both declared Node-free — the same
+      // `resizeTextBox` (element-text.ts, server-side) calls, so the
+      // preview and the eventual write can never disagree.
+      "@co-motion/core/text": path.join(rootDir, "../core/src/text/index.ts"),
     },
   },
   build: {
