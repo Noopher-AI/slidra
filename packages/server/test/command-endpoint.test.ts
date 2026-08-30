@@ -221,3 +221,23 @@ it("四個白名單命令都不會被擋在 403（textbox width / element scale 
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
   }
 });
+
+it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
+  const id = await openDeck("undo-group.comot");
+  const server = await serve(id);
+  const before = await readSlide(id);
+
+  const { status } = await postCommand(server, {
+    name: "element move",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], dx: 10, dy: -5 },
+  });
+  expect(status).toBe(200);
+  expect(await readSlide(id)).toContain("translate(110 195)");
+
+  const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
+  expect(undoResponse.status).toBe(200);
+  expect(await readSlide(id)).toBe(before);
+
+  const secondUndoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
+  expect(secondUndoResponse.status).toBe(400);
+});
