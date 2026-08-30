@@ -64,3 +64,43 @@
   border: none;
   box-shadow: none;
 }
+
+/* T3/NOOP-142: drag/drop asset-import overlay. Absolutely positioned over
+   `.stage` (which is `position: relative`), so it exactly matches the
+   slide's own box regardless of scale. `pointer-events` toggles between
+   "none" (default — clicks/drags pass through to the iframe underneath,
+   NOOP-91's direct manipulation) and "auto" (only while a drag is in
+   progress) via Stage.tsx's inline style; the visible dashed-border cue
+   below keys off the same `data-active` attribute Stage.tsx sets, so the
+   two never fall out of sync with each other. */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px dashed transparent;
+  transition: background-color 0.1s ease-out, border-color 0.1s ease-out;
+}
+
+.drop-overlay[data-active="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+
+/* T3/NOOP-142's hidden <input type="file"> (image/video/audio pickers) —
+   off-screen rather than `display: none`, so a screen reader and
+   `page.setInputFiles` in tests can both still reach it. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

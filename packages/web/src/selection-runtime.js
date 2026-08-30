@@ -645,6 +645,19 @@
     updateBoxes();
   });
 
+  // T3/NOOP-142: a system file dragged over this iframe never reaches the
+  // parent document's own dragenter listener — the browser delivers drag
+  // events to whichever document the pointer is physically over, and this
+  // opaque-origin document is a separate delivery target. This is the only
+  // signal the parent needs to show its drop overlay, so it is the only
+  // thing sent: never dataTransfer's files/items (ADR-0010 — this document
+  // is untrusted, its "files" could be forged by slide script, and the
+  // real bytes only ever leave through the browser's own native drop event
+  // firing on the parent's overlay once it is shown).
+  window.addEventListener("dragenter", function () {
+    post({ event: "drag-enter" });
+  });
+
   // --- Direct manipulation: viewport reporting + raw gesture coordinates ---
   // (NOOP-91 §4.1). Everything below only ever reports numbers and applies
   // parent-computed results; no geometry is computed in this file.
