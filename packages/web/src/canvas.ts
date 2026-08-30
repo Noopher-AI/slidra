@@ -133,6 +133,16 @@ export interface CanvasController {
    */
   stepPlayer: (direction: "advance" | "retreat") => void;
   /**
+   * Opens `elementId` for in-place text editing (NOOP-91/#70 US1, T5) — the
+   * same entry point double-clicking an existing text box on the canvas
+   * uses. No-op (no throw) when `elementId` does not name an existing,
+   * unlocked text box, the canvas is not in view mode, or the box's font
+   * cannot be resolved (`CanvasState.error` is set in that last case).
+   * Resolves once editing has actually started (or the attempt has been
+   * abandoned) — never once the edit itself is committed.
+   */
+  beginTextEdit: (elementId: string) => Promise<void>;
+  /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
    * element), so a caller holding onto a stale reference would be a bug.
@@ -186,9 +196,22 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
  */
 interface SelectionMessage {
   source: "comot-selection";
-  event: "select" | "clear" | "viewport" | "gesture-start" | "gesture-move" | "gesture-end" | "group-path";
+  event:
+    | "select"
+    | "clear"
+    | "viewport"
+    | "gesture-start"
+    | "gesture-move"
+    | "gesture-end"
+    | "group-path"
+    | "dblclick-textbox"
+    | "text-edit-input"
+    | "text-edit-commit"
+    | "text-edit-denied";
   id?: string;
   name?: string | null;
+  /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
+  text?: string;
   additive?: boolean;
   svgRect?: Rect;
   viewBox?: Rect;
@@ -347,6 +370,26 @@ interface TextboxWidthGesture {
 
 type ActiveGesture = MoveGesture | MarqueeGesture | ScaleGesture | RotateGesture | TextboxWidthGesture;
 
+/**
+ * In-place text editing (NOOP-91/#70 US1, T5). Unlike `ActiveGesture`, this
+ * is not driven by pointer coordinates — the runtime's hidden `<textarea>`
+ * is the source of truth for the current string, and `currentText` here
+ * only mirrors its last-reported value (`text-edit-input`) so
+ * `commitTextEdit()` has something to diff against `originalText` and to
+ * send. Exactly one of these exists at a time, independent of
+ * `activeGesture` (a drag can never start while editing — see the runtime's
+ * own editingId guard).
+ */
+interface TextEditState {
+  id: string;
+  slidePath: string;
+  originalText: string;
+  currentText: string;
+  font: FontMetrics;
+  fontSize: number;
+  width: number;
+}
+
 /** Snap threshold in screen px, converted to user units per-viewport at drag time (assumption noted in the PR body). */
 const SNAP_THRESHOLD_PX = 8;
 
@@ -433,6 +476,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // `load`), which is also the state a gesture message must be ignored in.
   let viewport: Viewport | null = null;
   let activeGesture: ActiveGesture | null = null;
+  // The in-place text edit in progress, or null between edits — see
+  // TextEditState's own doc comment. Independent of activeGesture: the
+  // runtime refuses to start a drag/marquee gesture while it has an
+  // editingId set, so the two never coexist in practice, but nothing here
+  // relies on that for correctness.
+  let editingState: TextEditState | null = null;
   // Timestamp (ms) of the last `POST /api/editing/begin` fired for the
   // human lease (T5/NOOP-110, editing-lock.ts). Read by gesture-move to
   // throttle lease renewal to once per HUMAN_RENEW_THROTTLE_MS — gesture-
@@ -623,6 +672,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // matching start) — still release the lease so it does not sit until
       // HUMAN_LEASE_MAX_MS expires.
       else endEditingLease();
+      return;
+    }
+    if (message.event === "dblclick-textbox") {
+      if (typeof message.id === "string") void enterTextEdit(message.id);
+      return;
+    }
+    if (message.event === "text-edit-input") {
+      if (!editingState || message.id !== editingState.id) return;
+      const text = typeof message.text === "string" ? message.text : "";
+      editingState.currentText = text;
+      postTextEditPreview(editingState.id, text, editingState.width, editingState.font, editingState.fontSize);
+      return;
+    }
+    if (message.event === "text-edit-commit") {
+      if (!editingState || message.id !== editingState.id) return;
+      void commitTextEdit();
+      return;
+    }
+    if (message.event === "text-edit-denied") {
+      // The runtime's own lock check rejected a host-initiated
+      // begin-text-edit (defense in depth — the dblclick path never even
+      // reaches here, since findSelectable already refuses to resolve a
+      // locked element to a click target). No error: this mirrors the
+      // silent "不進入編輯" the dblclick path gives a locked box.
+      if (editingState && editingState.id === message.id) {
+        endEditingLease();
+        editingState = null;
+      }
       return;
     }
   }
@@ -1258,6 +1335,117 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
   }
 
+  // --- In-place text editing (NOOP-91/#70 US1, T5) ---
+
+  /** Re-wraps `text` with core's `wrapText` and pushes it to the runtime via the existing preview-textbox channel — shared by the live-typing preview and a failed commit's revert. */
+  function postTextEditPreview(id: string, text: string, width: number, font: FontMetrics, fontSizePx: number): void {
+    const wrapped = wrapText(text, { width, font, fontSizePx });
+    postToFrame({
+      command: "preview-textbox",
+      id,
+      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
+      width,
+    });
+  }
+
+  /**
+   * Opens `id` for editing — the shared entry point for `beginTextEdit`
+   * (CanvasController) and the runtime's own "dblclick-textbox" report.
+   * Lock is NOT checked here: the parsed slide model (`elementIndex`) never
+   * carries `data-comot-lock` (it is a container attribute the normal-form
+   * parser does not surface on `SlideElement`), so the only place that can
+   * answer "is this locked" is the runtime's own DOM — see the
+   * "begin-text-edit"/"text-edit-denied" round trip below and
+   * selection-runtime.js's `enterRuntimeTextEdit`.
+   */
+  async function enterTextEdit(id: string): Promise<void> {
+    if (mode !== "view") return;
+    const entry = elementIndex().get(id);
+    if (!entry || entry.element.textWidth === null) return;
+    const width = entry.element.textWidth;
+    if (editingState && editingState.id === id) return; // Already editing this exact element — no-op.
+    if (editingState) await commitTextEdit(); // Editing a different element — commit it first.
+    if (destroyed || mode !== "view") return;
+
+    const textPrimitive = entry.element.primitives.find((primitive) => primitive.tag === "text");
+    if (!textPrimitive) return;
+    const fontFamily = textPrimitive.attrs.get("font-family");
+    const fontSizeRaw = textPrimitive.attrs.get("font-size");
+    const fontSize = fontSizeRaw === undefined ? 16 : Number(fontSizeRaw);
+    if (!fontFamily || !Number.isFinite(fontSize) || fontSize <= 0) {
+      error = "文字框缺少可用的字型設定";
+      notify();
+      return;
+    }
+
+    const thisGeneration = generation;
+    let font: FontMetrics;
+    try {
+      font = await resolveBrowserFont(fontFamily);
+    } catch (err) {
+      if (destroyed || thisGeneration !== generation) return;
+      error = err instanceof Error ? err.message : "字型載入失敗";
+      notify();
+      return;
+    }
+    if (destroyed || thisGeneration !== generation || mode !== "view") return;
+
+    const sourceText = textPrimitive.text;
+    editingState = {
+      id,
+      slidePath: slides[currentIndex],
+      originalText: sourceText,
+      currentText: sourceText,
+      font,
+      fontSize,
+      width,
+    };
+    beginEditingLease();
+    const wrapped = wrapText(sourceText, { width, font, fontSizePx: fontSize });
+    postToFrame({
+      command: "begin-text-edit",
+      id,
+      text: sourceText,
+      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
+      width,
+    });
+  }
+
+  /**
+   * Ends the in-progress edit (if any) and, when the text actually changed,
+   * sends the single `text set` command the whole edit produces (§4.3).
+   * Safe to call with no edit in progress (no-op) and safe to call more
+   * than once for the same edit (the second call finds `editingState`
+   * already cleared).
+   */
+  async function commitTextEdit(): Promise<void> {
+    const state = editingState;
+    if (!state) return;
+    editingState = null;
+    if (state.currentText === state.originalText) {
+      // Nothing to write — sending "text set" with the unchanged string
+      // would still create an empty, pointless undo entry.
+      endEditingLease();
+      return;
+    }
+    const thisGeneration = generation;
+    const result = await postCommand("text set", {
+      slidePath: state.slidePath,
+      elementId: state.id,
+      newText: state.currentText,
+    });
+    endEditingLease();
+    if (destroyed || thisGeneration !== generation) return;
+    if (!result.ok) {
+      postTextEditPreview(state.id, state.originalText, state.width, state.font, state.fontSize);
+      error = result.message;
+      notify();
+    }
+    // On success: no local write. /api/events's live reload paints the real
+    // file content back, the same posture every other gesture's success
+    // path relies on.
+  }
+
   // --- Marquee select (§4.8's "框選" row) ---
 
   function beginMarqueeGesture(point: { x: number; y: number }): void {
@@ -1357,6 +1545,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // the DOM, so there is nothing left to redraw, and re-fetching would
     // just race the next mount for no benefit.
     if (destroyed) return;
+
+    // An edit in progress when an external change lands is committed, not
+    // discarded — reload() also fires on this exact edit's own successful
+    // `text set` landing back over /api/events, and any OTHER external
+    // change must not silently drop text the author already typed. Not
+    // awaited: the re-render a few lines down already repaints from
+    // whatever the file holds next, and commitTextEdit()'s own generation
+    // guard discards its result if a second reload() or a mode change
+    // supersedes it first.
+    if (editingState) void commitTextEdit();
 
     // A gesture in progress when an external change lands must be
     // abandoned, not applied on top of a slide that has already moved out
@@ -1515,6 +1713,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       throw new Error(`投影片索引超出範圍：${index}`);
     }
 
+    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
     currentIndex = index;
@@ -1545,6 +1744,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function play(): Promise<void> {
     if (destroyed || mode === "play") return;
+    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
     mode = "play";
@@ -1563,6 +1763,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function exitPlay(): Promise<void> {
     if (destroyed || mode === "view") return;
+    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
     mode = "view";
@@ -1646,6 +1847,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     exitPlay,
     focusPlayer,
     stepPlayer,
+    beginTextEdit: enterTextEdit,
     get frameElement() {
       return frame;
     },

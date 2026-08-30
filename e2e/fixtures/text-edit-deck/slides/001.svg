@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <g id="el-text" data-comot-text-width="220" transform="translate(100 100)">
+    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text>
+  </g>
+  <g id="el-locked-text" data-comot-text-width="220" data-comot-lock="true" transform="translate(100 420)">
+    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">鎖定文字</tspan></text>
+  </g>
+  <g id="el-decoy" data-comot-name="旁邊的方塊">
+    <rect x="900" y="100" width="200" height="120" fill="#69c"/>
+  </g>
+</svg>
