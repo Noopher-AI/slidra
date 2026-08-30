@@ -411,6 +411,39 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(executedSlide).toContain(`data-comot-text-width="100"`);
   });
 
+  it("POST /api/asset: refused with 409 while the agent holds the floor, then actually runs once it releases", async () => {
+    const { id, elementId } = await openFreshPresentationWithElement();
+    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
+    const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+
+    await postChat(server, "改標題");
+    await waitForLog((line) => line.permissionOutcome !== undefined);
+    expect((await getEditingState(server)).frozen).toBe(true);
+
+    const frozenResponse = await fetch(`${server.url}/api/asset`, {
+      method: "POST",
+      headers: { "X-Co-Motion-Asset-Name": "photo.png" },
+      body: pngBytes,
+    });
+    expect(frozenResponse.status).toBe(409);
+    const frozenBody = (await frozenResponse.json()) as { error: string };
+    expect(frozenBody.error).toBe("agent 正在編輯中，請稍候");
+    const listedWhileFrozen = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
+    expect(listedWhileFrozen.data!.entries).toEqual([]);
+
+    await waitForFrozen(server, false);
+
+    const unfrozenResponse = await fetch(`${server.url}/api/asset`, {
+      method: "POST",
+      headers: { "X-Co-Motion-Asset-Name": "photo.png" },
+      body: pngBytes,
+    });
+    expect(unfrozenResponse.status).toBe(200);
+    const listedAfterUnfreeze = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
+    expect(listedAfterUnfreeze.data!.entries).toEqual(["photo.png"]);
+  });
+
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;

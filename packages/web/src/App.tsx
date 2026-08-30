@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { mountCanvas, type CanvasController, type CanvasState } from "./canvas.js";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
@@ -78,6 +78,7 @@ export function App() {
     playerHasFocus: false,
     error: null,
     selection: { ids: [], names: [], groupPath: [] },
+    dragSignal: 0,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -145,6 +146,167 @@ export function App() {
   // real fullscreenElement — see isCanvasAreaFullscreen()'s comment above
   // for the race this closes (review gate round 2, P2).
   const fullscreenRequestRef = useRef<Promise<void> | null>(null);
+
+  // T3/NOOP-142: 插入分頁的媒體匯入路徑 (拖曳／貼上／檔案選擇 共用).
+  // The hidden <input type="file"> the three 媒體 buttons drive; its
+  // `accept` is set right before each click() so the OS picker filters by
+  // kind, but the *inserted element's* kind always comes back from
+  // resolveAssetImport's own byte-detected `data.kind` (決定 2), never from
+  // which button was pressed — a mis-filtered pick is still handled
+  // correctly.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Whether the drop overlay (Stage.tsx) is currently showing. Two
+  // independent triggers turn it on (the iframe's forwarded "drag-enter"
+  // signal below, and a native dragenter over this parent document);
+  // only the overlay's own onDrop/onDragLeave turn it off (決定 3).
+  const [dropActive, setDropActive] = useState(false);
+  const lastDragSignalRef = useRef(0);
+
+  // canvasState.dragSignal is an edge counter (see its own comment in
+  // canvas.ts) — this effect reacts to it *changing*, not to its value, so
+  // a second dragenter while the overlay is already up is a harmless no-op
+  // re-set rather than something that needs de-duplicating.
+  useEffect(() => {
+    if (canvasState.dragSignal !== lastDragSignalRef.current) {
+      lastDragSignalRef.current = canvasState.dragSignal;
+      setDropActive(true);
+    }
+  }, [canvasState.dragSignal]);
+
+  // A drag entering the parent document's own chrome (ribbon, rail, chat
+  // sidebar, ...) never crosses into the sandboxed iframe, so it needs no
+  // relay through canvas.ts/selection-runtime.js — a plain listener here
+  // sees it directly (決定 3 point 5).
+  useEffect(() => {
+    function onWindowDragEnter() {
+      setDropActive(true);
+    }
+    window.addEventListener("dragenter", onWindowDragEnter);
+    return () => window.removeEventListener("dragenter", onWindowDragEnter);
+  }, []);
+
+  // Clipboard paste (US 4/6, docs/asset-import.md) is a window-level event,
+  // not something any one element owns — it fires wherever focus happens to
+  // be. A paste with no image item (plain text, or nothing) is legitimate
+  // and silent, per the plan's behaviour table.
+  //
+  // The listener itself is attached once (`[]` deps — no reason to
+  // re-attach on every render), but `importFile` closes over
+  // `presentationInfo`/`canvasState`, which change after mount as
+  // `/api/presentation` resolves. A `[]`-effect closure would freeze
+  // `importFile` at its *first* render, back when `presentationInfo` was
+  // still null — every paste after that would silently no-op forever
+  // (`insertImportedAsset`'s own `!canvas` guard). Routing every call
+  // through this ref, updated on every render, keeps the listener calling
+  // whichever `importFile` is current without re-subscribing it.
+  const importFileRef = useRef<((file: File) => Promise<void>) | null>(null);
+  importFileRef.current = importFile;
+
+  useEffect(() => {
+    function onPaste(event: ClipboardEvent) {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) void importFileRef.current?.(file);
+          return;
+        }
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
+  /** Inserts the element a successfully-imported asset should produce (決定 2/4): `image` for an image, a coloured `rect` placeholder for video/audio. Never reads the byte-detected format any other way — `asset.kind` already came back from `resolveAssetImport`. */
+  async function insertImportedAsset(asset: ImportedAsset): Promise<void> {
+    const slidePath = currentSlidePath();
+    const canvas = presentationInfo?.canvas;
+    if (!slidePath || !canvas) return;
+    // Slides live under `slides/`, assets under `assets/` (both siblings of
+    // the presentation root) — the returned virtual path is root-relative
+    // ("assets/x.png"), so every reference from inside a slide needs `../`.
+    const media = `../${asset.path}`;
+    if (asset.kind === "image") {
+      const width = 480;
+      const height = 270;
+      await runRibbonCommand("element insert", {
+        slidePath,
+        kind: "image",
+        x: (canvas.width - width) / 2,
+        y: (canvas.height - height) / 2,
+        width,
+        height,
+        href: media,
+        media,
+      });
+      return;
+    }
+    const width = asset.kind === "audio" ? 160 : 480;
+    const height = asset.kind === "audio" ? 160 : 270;
+    const fill = asset.kind === "audio" ? "#c66" : "#889";
+    await runRibbonCommand("element insert", {
+      slidePath,
+      kind: "rect",
+      x: (canvas.width - width) / 2,
+      y: (canvas.height - height) / 2,
+      width,
+      height,
+      fill,
+      media,
+    });
+  }
+
+  /** Uploads `file` and, on success, inserts the resulting element. Failure is already surfaced by `controller.importAsset` through `canvasState.error` — nothing more to do here on that path. */
+  async function importFile(file: File): Promise<void> {
+    const result = await controllerRef.current?.importAsset(file);
+    if (result?.ok) {
+      await insertImportedAsset(result.data);
+    }
+  }
+
+  function openMediaPicker(accept: string): void {
+    if (!currentSlidePath() || !presentationInfo?.canvas) return;
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.accept = accept;
+    input.value = "";
+    input.click();
+  }
+
+  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>): void {
+    const files = event.target.files;
+    // No file chosen (dialog cancelled) is the author changing their mind,
+    // not a failure — nothing to report.
+    if (!files || files.length === 0) return;
+    void importFile(files[0]);
+  }
+
+  function handleStageDragOver(event: DragEvent): void {
+    event.preventDefault();
+  }
+
+  function handleStageDrop(event: DragEvent): void {
+    event.preventDefault();
+    setDropActive(false);
+    const files = event.dataTransfer.files;
+    // Not a file drop at all (dragged text/a link) — legitimate and
+    // unrelated, not an error (決定 3 / §4.2 table).
+    if (files.length === 0) return;
+    if (files.length > 1) {
+      controllerRef.current?.reportError("一次只能匯入一個檔案");
+      return;
+    }
+    void importFile(files[0]);
+  }
+
+  function handleStageDragLeave(event: DragEvent): void {
+    // Only hide once the pointer has actually left the overlay's own
+    // bounds — a dragleave fired by a child element bubbling through
+    // (relatedTarget still inside) must not hide it prematurely.
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDropActive(false);
+  }
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -560,6 +722,60 @@ export function App() {
     return canvasState.slides[canvasState.currentIndex] ?? null;
   }
 
+  /** Shared by 常用 tab's `shape` and 插入 tab's `insert-shape` (T3/NOOP-142's boundary explicitly forbids a second copy of this geometry) — only `anchor` differs, so the popover positions under whichever button was actually clicked. */
+  function openShapeMenu(anchor: "shape" | "insert-shape"): void {
+    const slidePath = currentSlidePath();
+    const canvas = presentationInfo?.canvas;
+    if (!slidePath || !canvas) return;
+    const insertShape = (kind: "rect" | "ellipse" | "line") => {
+      closeRibbonMenu();
+      if (kind === "line") {
+        const length = 200;
+        const y = canvas.height / 2;
+        const x1 = (canvas.width - length) / 2;
+        void runRibbonCommand("element insert", { slidePath, kind, x1, y1: y, x2: x1 + length, y2: y });
+        return;
+      }
+      const width = 200;
+      const height = 120;
+      void runRibbonCommand("element insert", {
+        slidePath,
+        kind,
+        x: (canvas.width - width) / 2,
+        y: (canvas.height - height) / 2,
+        width,
+        height,
+      });
+    };
+    setRibbonMenu({
+      anchor,
+      groups: [
+        {
+          items: [
+            { key: "rect", label: "矩形", onSelect: () => insertShape("rect") },
+            { key: "ellipse", label: "橢圓", onSelect: () => insertShape("ellipse") },
+            { key: "line", label: "線", onSelect: () => insertShape("line") },
+          ],
+        },
+      ],
+    });
+  }
+
+  /** Shared by 常用 tab's `textbox` and 插入 tab's `insert-textbox` — identical parameters (決定 in the plan: "與 T2 的 textbox handler 完全相同的參數"), so this is the one place that inserts them. */
+  function insertDefaultTextbox(): void {
+    const slidePath = currentSlidePath();
+    const canvas = presentationInfo?.canvas;
+    if (!slidePath || !canvas) return;
+    const width = 300;
+    void runRibbonCommand("textbox add", {
+      slidePath,
+      x: (canvas.width - width) / 2,
+      y: canvas.height / 2 - 20,
+      width,
+      text: "文字方塊",
+    });
+  }
+
   const ribbonHandlers: RibbonHandlers = {
     "new-slide": () => {
       const templates = presentationInfo?.templates ?? [];
@@ -604,56 +820,8 @@ export function App() {
       if (!slidePath) return;
       void runRibbonCommand("element copy", { slidePath, elementIds: canvasState.selection.ids });
     },
-    textbox: () => {
-      const slidePath = currentSlidePath();
-      const canvas = presentationInfo?.canvas;
-      if (!slidePath || !canvas) return;
-      const width = 300;
-      void runRibbonCommand("textbox add", {
-        slidePath,
-        x: (canvas.width - width) / 2,
-        y: canvas.height / 2 - 20,
-        width,
-        text: "文字方塊",
-      });
-    },
-    shape: () => {
-      const slidePath = currentSlidePath();
-      const canvas = presentationInfo?.canvas;
-      if (!slidePath || !canvas) return;
-      const insertShape = (kind: "rect" | "ellipse" | "line") => {
-        closeRibbonMenu();
-        if (kind === "line") {
-          const length = 200;
-          const y = canvas.height / 2;
-          const x1 = (canvas.width - length) / 2;
-          void runRibbonCommand("element insert", { slidePath, kind, x1, y1: y, x2: x1 + length, y2: y });
-          return;
-        }
-        const width = 200;
-        const height = 120;
-        void runRibbonCommand("element insert", {
-          slidePath,
-          kind,
-          x: (canvas.width - width) / 2,
-          y: (canvas.height - height) / 2,
-          width,
-          height,
-        });
-      };
-      setRibbonMenu({
-        anchor: "shape",
-        groups: [
-          {
-            items: [
-              { key: "rect", label: "矩形", onSelect: () => insertShape("rect") },
-              { key: "ellipse", label: "橢圓", onSelect: () => insertShape("ellipse") },
-              { key: "line", label: "線", onSelect: () => insertShape("line") },
-            ],
-          },
-        ],
-      });
-    },
+    textbox: () => insertDefaultTextbox(),
+    shape: () => openShapeMenu("shape"),
     arrange: () => {
       const slidePath = currentSlidePath();
       if (!slidePath) return;
@@ -701,6 +869,35 @@ export function App() {
             ],
           },
         ],
+      });
+    },
+    // 插入分頁的 6 顆按鈕 (T3/NOOP-142). 圖片/影片/音訊 open the shared hidden
+    // <input type="file"> with a kind-specific `accept`; 圖案/文字方塊 reuse
+    // 常用 tab's own geometry via the two helpers above; 頁碼 is `textbox add`
+    // with the literal `{{ slide_number }}` variable (決定 4 — no core
+    // change, no replacement logic here either).
+    "insert-image": () => openMediaPicker("image/*"),
+    "insert-video": () => openMediaPicker("video/*"),
+    "insert-audio": () => openMediaPicker("audio/*"),
+    "insert-shape": () => openShapeMenu("insert-shape"),
+    "insert-textbox": () => insertDefaultTextbox(),
+    "slide-number": () => {
+      const slidePath = currentSlidePath();
+      const canvas = presentationInfo?.canvas;
+      if (!slidePath || !canvas) return;
+      // Wide enough that "{{ slide_number }}" (19 chars, default 24px font)
+      // never wraps onto a second line: substituteDynamicText only matches
+      // a placeholder that sits whole inside one <text>/<tspan> leaf
+      // (element-text.ts's collectTextLeafRanges splits wrapped lines into
+      // separate leaves), so a narrower box that wraps mid-token would
+      // silently break the substitution instead of ever showing a number.
+      const width = 220;
+      void runRibbonCommand("textbox add", {
+        slidePath,
+        x: canvas.width - width - 40,
+        y: canvas.height - 60,
+        width,
+        text: "{{ slide_number }}",
       });
     },
   };
@@ -772,7 +969,19 @@ export function App() {
             controller={controllerRef.current}
             view={view}
             onViewChange={setView}
+            dropOverlay={{
+              active: dropActive,
+              onDragOver: handleStageDragOver,
+              onDrop: handleStageDrop,
+              onDragLeave: handleStageDragLeave,
+            }}
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="visually-hidden"
+              onChange={handleFileInputChange}
+            />
             <PlayChrome
               state={canvasState}
               controller={controllerRef.current}

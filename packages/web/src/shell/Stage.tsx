@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode, RefObject } from "react";
+import type { CSSProperties, DragEvent, ReactNode, RefObject } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import type { ShellView } from "./view.js";
 import { GridView } from "./GridView.js";
@@ -22,6 +22,15 @@ export interface StageProps {
    * 的 `setView` 的 prop，貫穿 Stage → GridView。
    */
   onViewChange: (view: ShellView) => void;
+  /**
+   * T3/NOOP-142's drag/drop asset-import overlay. `active` toggles
+   * `pointer-events` — `none` at rest (letting clicks/drags reach the
+   * iframe underneath, per NOOP-91's direct manipulation) and `auto` only
+   * while a drag is in progress, so this is the one place the overlay can
+   * actually catch the browser's native `drop`. App.tsx owns all the drag
+   * state; this component only renders what it is told.
+   */
+  dropOverlay: { active: boolean; onDragOver: (event: DragEvent) => void; onDrop: (event: DragEvent) => void; onDragLeave: (event: DragEvent) => void };
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
   children?: ReactNode;
 }
@@ -47,7 +56,7 @@ export interface StageProps {
  * `.canvas-area:fullscreen`/`.stage` in the two stylesheets above neutralise
  * the ratio frame under fullscreen, not this component.
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view, onViewChange, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view, onViewChange, dropOverlay, children }: StageProps) {
   // #55 (wave 4) reads `view` here, but does NOT branch on it with an early
   // `return <GridView ... />` before the JSX below: that would swap out the
   // unconditional JSX, which gives `canvasRef`'s div a new node identity.
@@ -86,6 +95,22 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, controller, view,
     <div className="canvas-area" ref={wellRef}>
       <div className="stage" style={stageStyle}>
         <div ref={canvasRef} className="canvas" />
+        {/* T3/NOOP-142: pointer-events stays "none" until App.tsx sets
+            `active` true (either the iframe's forwarded dragenter, or a
+            native dragenter over this parent document) — otherwise this
+            div would sit over the iframe at all times and swallow every
+            click/drag NOOP-91's direct manipulation depends on. */}
+        <div
+          className="drop-overlay"
+          data-active={dropOverlay.active}
+          style={{ pointerEvents: dropOverlay.active ? "auto" : "none" }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            dropOverlay.onDragOver(event);
+          }}
+          onDrop={dropOverlay.onDrop}
+          onDragLeave={dropOverlay.onDragLeave}
+        />
       </div>
       {showGrid && <GridView controller={controller} onViewChange={onViewChange} />}
       {children}

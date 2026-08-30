@@ -105,7 +105,31 @@ export interface CanvasState {
   error: string | null;
   /** The elements currently selected in view mode. Never written to the presentation. */
   selection: CanvasSelection;
+  /**
+   * Bumped every time the sandboxed iframe reports a `dragenter` (T3/
+   * NOOP-142) — a one-shot edge signal, not a level. The iframe's own
+   * `dragover`/`drop`/`dragleave` never reach the parent document (they
+   * are captured by the iframe's document instead), so App.tsx cannot use
+   * native DOM events to know a drag has entered the slide area; this
+   * counter is that missing signal. A listener reacts to the counter
+   * *changing*, never to its absolute value.
+   */
+  dragSignal: number;
 }
+
+/**
+ * Mirrors the server's `AssetImportData` (`packages/cli/src/commands/asset-import.ts`)
+ * without importing the CLI package into the browser bundle — this module
+ * only knows the wire shape `POST /api/asset` sends back on success.
+ */
+export interface ImportedAsset {
+  /** Virtual path, e.g. "assets/photo.png" — relative to the presentation root, not the slide (`slides/`, so callers must prefix `../`). */
+  path: string;
+  mimeType: string;
+  kind: "image" | "video" | "audio";
+}
+
+export type ImportAssetResult = { ok: true; message: string; data: ImportedAsset } | { ok: false; message: string };
 
 export interface CanvasController {
   reload: () => Promise<void>;
@@ -143,6 +167,26 @@ export interface CanvasController {
    * here).
    */
   runCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string }>;
+  /**
+   * Uploads one file's raw bytes to `POST /api/asset` (T3/NOOP-142 — the
+   * human asset-import path: file picker, drag/drop, clipboard paste).
+   * Separate from `runCommand` because the transport is different (raw
+   * bytes, not JSON `{name, input}`) — the whitelist and command-dispatch
+   * machinery `runCommand` wraps do not apply here at all, `asset import`
+   * is deliberately not on `/api/command`'s whitelist. Same failure
+   * posture as `runCommand`: never thrown, surfaced through
+   * `CanvasState.error`, and a success clears any stale error.
+   */
+  importAsset: (file: File) => Promise<ImportAssetResult>;
+  /**
+   * Surfaces `message` through the same `CanvasState.error` → `[role=alert]`
+   * channel `runCommand`/`importAsset` already use (決定 7), for a front-end
+   * validation failure that never reaches the network — e.g. App.tsx
+   * rejecting a multi-file drop before calling `importAsset` at all. Never
+   * used for a real command/import failure; those already report through
+   * their own call.
+   */
+  reportError: (message: string) => void;
   /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
@@ -197,7 +241,7 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
  */
 interface SelectionMessage {
   source: "comot-selection";
-  event: "select" | "clear" | "viewport" | "gesture-start" | "gesture-move" | "gesture-end" | "group-path";
+  event: "select" | "clear" | "viewport" | "gesture-start" | "gesture-move" | "gesture-end" | "group-path" | "drag-enter";
   id?: string;
   name?: string | null;
   additive?: boolean;
@@ -414,6 +458,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
   // selectionIds/Names everywhere they are cleared (see that comment).
   let selectionGroupPath: string[] = [];
+  // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
+  // message, never reset (there is nothing to reset it back to: it is an
+  // edge counter, not a level).
+  let dragSignal = 0;
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -573,6 +621,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
       notify();
       pushSelectionToRuntime(selectionIds);
+      return;
+    }
+    if (message.event === "drag-enter") {
+      // No payload to validate — see selection-runtime.js's dragenter
+      // listener: it deliberately sends nothing but the bare event, ADR-0010
+      // (the sandboxed slide's own dataTransfer content is never trusted
+      // across postMessage).
+      dragSignal++;
+      notify();
       return;
     }
     if (message.event === "group-path") {
@@ -755,6 +812,41 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     error = result.ok ? null : result.message;
     notify();
     return result;
+  }
+
+  /**
+   * `CanvasController.importAsset` (T3/NOOP-142) — uploads `file`'s raw
+   * bytes to `POST /api/asset`. Like `postCommand`, this never throws: a
+   * rejected format, a frozen editing lock, or a network failure all come
+   * back as `{ ok: false, message }`, which the caller (`runCommand`'s
+   * sibling below) turns into `CanvasState.error` the same way every other
+   * write failure on this controller does.
+   */
+  async function importAsset(file: File): Promise<ImportAssetResult> {
+    const result = await postAsset(file);
+    error = result.ok ? null : result.message;
+    notify();
+    return result;
+  }
+
+  async function postAsset(file: File): Promise<ImportAssetResult> {
+    try {
+      const bytes = await file.arrayBuffer();
+      const response = await fetch("/api/asset", {
+        method: "POST",
+        headers: { "X-Co-Motion-Asset-Name": encodeURIComponent(file.name) },
+        body: bytes,
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { ok?: boolean; message?: string; error?: string; data?: ImportedAsset }
+        | null;
+      if (!response.ok || !body?.data) {
+        return { ok: false, message: (body && typeof body.error === "string" && body.error) || `匯入失敗（HTTP ${response.status}）` };
+      }
+      return { ok: true, message: typeof body.message === "string" ? body.message : "", data: body.data };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : "匯入失敗" };
+    }
   }
 
   /**
@@ -1642,6 +1734,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       playerHasFocus,
       error,
       selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [...selectionGroupPath] },
+      dragSignal,
     };
     for (const listener of listeners) listener(state);
   }
@@ -1655,6 +1748,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       playerHasFocus,
       error,
       selection: { ids: [...selectionIds], names: [...selectionNames], groupPath: [...selectionGroupPath] },
+      dragSignal,
     });
     return () => {
       listeners.delete(listener);
@@ -1674,6 +1768,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     focusPlayer,
     stepPlayer,
     runCommand,
+    importAsset,
+    reportError: (message: string) => {
+      error = message;
+      notify();
+    },
     get frameElement() {
       return frame;
     },
