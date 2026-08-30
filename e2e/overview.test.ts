@@ -326,6 +326,65 @@ it("縮圖 iframe 實際載入容器內嵌的字型，不是降級成系統字�
   }
 });
 
+it("沒有背景矩形的投影片（`new` 產生的空白頁），縮圖仍畫出不透明白底而非一片黑（#120）", async () => {
+  // `co-motion new` 的投影片只有一個 <text>，沒有背景矩形（見
+  // packages/core/src/presentation.ts's buildMinimalPresentation）。
+  // .overview-thumb 的黑色佔位色（rail.css）在 iframe 內容畫出來前都合理，
+  // 但投影片文件本身若是透明的，黑色佔位色永遠不會被蓋掉——縮圖看起來
+  // 一片黑。wrapSlideDocument()（overview.ts）現在應該幫文件的 html/body
+  // 蓋上不透明白底，讓「投影片＝白紙」這件事不依賴投影片作者自己畫背景。
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-nobg-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-overview-nobg-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+  try {
+    const registry: CommandRegistry = createDefaultRegistry();
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath, name: "無背景縮圖測試" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const presentationId = opened.data!.id;
+
+    const agent: AgentAdapterConfig = {
+      kind: "claude",
+      label: "Claude Code",
+      command: process.execPath,
+      args: [agentFixture],
+      env: {
+        PATH: `${binDir}:${path.dirname(process.execPath)}`,
+        E2E_PRESENTATION_ID: presentationId,
+        E2E_NEW_TITLE: "此測試不會送出訊息",
+      },
+    };
+    const server = await startServe({ registry, presentationId, port: 0, agent });
+    try {
+      const page = await browser.newPage();
+      await page.goto(server.url);
+
+      const firstThumbFrame = page.locator('li.overview-item[data-index="0"] iframe.overview-frame');
+      await expect.poll(() => firstThumbFrame.count(), { timeout: 30_000 }).toBe(1);
+
+      const thumbBody = page.frameLocator('li.overview-item[data-index="0"] iframe.overview-frame').locator("body");
+      const backgrounds = await thumbBody.evaluate((el) => {
+        const doc = el.ownerDocument;
+        return {
+          html: getComputedStyle(doc.documentElement).backgroundColor,
+          body: getComputedStyle(doc.body).backgroundColor,
+        };
+      });
+      // 規格拍板的字面值（票內「不透明白底」）：不是從實作反推的快照。
+      expect(backgrounds.html).toBe("rgb(255, 255, 255)");
+      expect(backgrounds.body).toBe("rgb(255, 255, 255)");
+
+      await page.close();
+    } finally {
+      await server.close();
+    }
+  } finally {
+    delete process.env.CO_MOTION_HOME;
+    await rm(coMotionHome, { recursive: true, force: true });
+    await rm(comotDir, { recursive: true, force: true });
+  }
+});
+
 it("幾十頁的簡報：只有視窗附近的縮圖被實體化，捲動後才補上遠處的", async () => {
   const { server, cleanup } = await startServerFor(overviewDeckDir);
   try {
