@@ -212,7 +212,7 @@ it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", 
   expect(await readSlide(id)).toBe(before);
 });
 
-it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕新增的九條也在內）", async () => {
+it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕新增的九條、NOOP-144 的 text set 也在內）", async () => {
   const id = await openDeck("whitelist.comot");
   const server = await serve(id);
 
@@ -221,6 +221,7 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element scale",
     "element rotate",
     "textbox width",
+    "text set",
     "slide add",
     "element copy",
     "element cut",

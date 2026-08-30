@@ -34,9 +34,10 @@ import type { CommandRegistry } from "@co-motion/cli";
  * whichever ticket needed it, not a convenience — the Ribbon's "常用" tab
  * (NOOP-141) is what added `slide add` / `element copy` / `element cut` /
  * `element paste` / `element insert` / `textbox add` / `element align` /
- * `element distribute` / `element order` to the original four. `"element
- * style set"` (NOOP-143): the style panel's only write path — the command
- * layer's own `STYLE_ATTRIBUTE_WHITELIST`/`validateStyleAttribute`
+ * `element distribute` / `element order` to the original four, in-place text
+ * editing (NOOP-144) added `text set`, and the style panel (NOOP-143) added
+ * `element style set` — the command layer's own
+ * `STYLE_ATTRIBUTE_WHITELIST`/`validateStyleAttribute`
  * (`packages/core/src/element-edit.ts`) still does the real gatekeeping on
  * which attributes are settable.
  */
@@ -45,6 +46,7 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element scale",
   "element rotate",
   "textbox width",
+  "text set",
   "slide add",
   "element copy",
   "element cut",
