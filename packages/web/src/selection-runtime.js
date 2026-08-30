@@ -419,16 +419,6 @@
     return outermost;
   }
 
-  /** Nearest id-carrying element at or above `el` (the opposite of findSelectable's outermost rule) — what a double-click's own target resolves to (NOOP-91 follow-up). */
-  function nearestId(el) {
-    var current = el;
-    while (current && current !== document.body) {
-      if (current.hasAttribute && current.hasAttribute("id")) return current;
-      current = current.parentElement;
-    }
-    return null;
-  }
-
   /** True when `el` wraps at least one further id-carrying descendant — the normal form's own rule that only containers, never primitives, carry `id` (ADR-0012) makes this exactly "is `el` a group". */
   function isGroupContainer(el) {
     return !!(el && el.querySelector("[id]"));
@@ -499,20 +489,35 @@
   );
 
   // Double-click enters a group: pushes its id onto `groupPath` and
-  // selects the innermost id-carrying descendant actually under the
-  // pointer (NOOP-91 follow-up's group-edit row). Never sends a command —
-  // this is pure front-end selection-scope state. The two leading single
-  // clicks a dblclick is made of already ran the plain click handler
-  // above and left `selectedIds`/`groupPath` at whatever a normal
-  // (possibly now-exited-scope) click would — this handler only refines
-  // that further when the resolved target turns out to be a group.
+  // re-resolves the pointer's own target through `resolveClickTarget` at
+  // the newly-entered scope (NOOP-91 follow-up's group-edit row; fixed
+  // under NOOP-149r3 — see below). Never sends a command — this is pure
+  // front-end selection-scope state. The two leading single clicks a
+  // dblclick is made of already ran the plain click handler above and
+  // left `selectedIds`/`groupPath` at whatever a normal (possibly
+  // now-exited-scope) click would — this handler only refines that
+  // further when the resolved target turns out to be a group.
+  //
+  // NOOP-149r3: this used to call a separate `nearestId(event.target)` —
+  // the truly nearest id-carrying ancestor, ignoring scope entirely —
+  // which could skip straight past an intervening un-entered group
+  // container to a deeper descendant (e.g. entering a 3-level-nested
+  // group's outer level and landing directly on the innermost leaf). That
+  // produced a selection the drag/pointerdown hit-test (`resolveClickTarget`
+  // + `findSelectable`'s OUTERMOST-within-scope rule, per ADR-0012 "a group
+  // is a container of containers") disagreed with: the highlighted box
+  // showed the leaf, but a following drag actually moved its enclosing
+  // group. Calling `resolveClickTarget` again here — the exact same
+  // function `click` and `pointerdown` already use — guarantees the
+  // just-entered level's selection is always the same node a subsequent
+  // click or drag at that scope would hit, by construction.
   window.addEventListener(
     "dblclick",
     function (event) {
       var target = resolveClickTarget(event.target);
       if (!target || !isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
-      var inner = nearestId(event.target);
+      var inner = resolveClickTarget(event.target);
       if (!inner) {
         updateBoxes();
         return;

@@ -236,9 +236,19 @@ describe("selection-runtime.js", () => {
     const { doc } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
     const leaf = doc.getElementById("leaf")!;
 
+    // First dblclick enters "outer" and (NOOP-149r3) resolves the
+    // newly-entered scope's own selection through the same
+    // outermost-within-scope rule a click/drag hit-test uses — that lands
+    // on "middle" (a group, not yet entered), not "leaf". "middle" being
+    // selected-but-not-entered is exactly the same situation a plain click
+    // on a group produces, so it gets the same one-frame preview on top of
+    // "outer"'s own entered-scope frame: 2 frames, not 1.
     dblclick(doc, leaf);
-    expect(visibleGroupFrames(doc)).toHaveLength(1);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
 
+    // Second dblclick enters "middle" itself; its own selection resolves
+    // to "leaf" (not a group), so no extra preview frame — still 2, now
+    // both actually entered.
     dblclick(doc, leaf);
     expect(visibleGroupFrames(doc)).toHaveLength(2);
   });

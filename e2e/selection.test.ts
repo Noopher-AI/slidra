@@ -687,10 +687,20 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
     const selName = page.locator(".status .sel-name");
 
-    // First dblclick enters el-outer (the outermost group at top level) and
-    // lands directly on the leaf actually under the pointer.
+    // First dblclick enters el-outer (the outermost group at top level).
+    // NOOP-149r3: the newly-entered scope's own selection is resolved by
+    // the same outermost-within-scope rule a click/drag would use
+    // (resolveClickTarget), so it lands on el-inner — the outermost
+    // id-carrying element strictly inside el-outer — not directly on the
+    // leaf under the pointer. This is what makes the highlighted selection
+    // box match what a drag started right after this dblclick would
+    // actually move (see the "拖曳作用對象與選取層級一致" test below).
+    // el-inner being selected-but-not-yet-entered gets the same one-frame
+    // preview a plain click on any group gets ("選取群組時顯示虛線框"
+    // above), on top of el-outer's own entered-scope frame — 2 frames
+    // already, not 1.
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
     // The click/dblclick sequence's own select messages each round-trip
     // through the host (which echoes group scope + handle flags back down
     // — see canvas.ts's pushSelectionToRuntime); give the last echo time to
@@ -698,14 +708,16 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     // after a later assertion/action and silently revert local state.
     await page.waitForTimeout(50);
     const afterOuter = await groupFrameBoxes(page);
-    expect(afterOuter).toHaveLength(1);
-    const outerFrame = afterOuter[0];
+    expect(afterOuter).toHaveLength(2);
+    const [outerFrame, innerPreviewFrame] = afterOuter;
 
-    // Second dblclick, now scoped inside el-outer, resolves the leaf's
-    // outermost-within-scope ancestor (el-inner) and enters it too — the
-    // outer frame must still be there, with a second (inner) frame added
-    // on top of it, not replacing it (NOOP-149 r2: a single-element frame
-    // that moved to the innermost level made the outer group vanish).
+    // Second dblclick, now scoped inside el-outer, formally enters el-inner
+    // too (it is itself a group container, wrapping el-leaf) and resolves
+    // the leaf as el-inner's own outermost-within-scope descendant. Both
+    // frames were already showing (as el-outer's entered-scope frame and
+    // el-inner's selected-but-not-entered preview) — entering el-inner for
+    // real must not move or drop either one (NOOP-149 r2: a single-element
+    // frame that moved to the innermost level made the outer group vanish).
     await slideLeaf.dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
     await page.waitForTimeout(50);
@@ -713,9 +725,11 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     expect(afterInner).toHaveLength(2);
     const [outerAfterInner, innerFrame] = afterInner;
 
-    // The outer frame's own rect is unchanged by entering the inner level.
+    // Both frames' rects are unchanged by entering the inner level.
     expect(outerAfterInner.left).toBeCloseTo(outerFrame.left, 0);
     expect(outerAfterInner.width).toBeCloseTo(outerFrame.width, 0);
+    expect(innerFrame.left).toBeCloseTo(innerPreviewFrame.left, 0);
+    expect(innerFrame.width).toBeCloseTo(innerPreviewFrame.width, 0);
 
     // The inner group's rect is strictly contained within the outer's, per
     // the deck's own construction (el-outer's decorative rect makes it larger).
@@ -737,7 +751,7 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
     const selName = page.locator(".status .sel-name");
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
     await page.waitForTimeout(50);
     const [outerFrame] = await groupFrameBoxes(page);
 
@@ -764,6 +778,135 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
     await page.keyboard.press("Escape");
     await page.waitForTimeout(50);
     expect(await groupFrameBoxes(page)).toHaveLength(0);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+/**
+ * Two-child inner group for the drag/selection-consistency test below —
+ * mirrors the human's PR #123 repro (三層巢狀 deck ⊃ 內層群組 ⊃ 藍色方塊／
+ * 粉色方塊). `makeNestedGroupDeck`'s inner group wraps a single leaf, so
+ * its own bounding box happens to coincide with that leaf's — useless for
+ * telling "the solid box wraps the leaf" apart from "the solid box wraps
+ * the whole group" geometrically. Two side-by-side children make the two
+ * boxes visibly different sizes.
+ */
+// ADR-0012's normal form requires every group's children to themselves be
+// `<g>` containers ("a group is a container of containers") and forbids an
+// id/data-comot-name on a bare primitive — core's parseSlide (packages/core
+// src/slide/format.ts's toElement) only recurses into a `<g>`'s children as
+// real, independently addressable SlideElements when EVERY child is itself
+// a `<g>`; otherwise the whole thing collapses into one opaque "compound"
+// element and anything nested inside becomes unreachable by id for a
+// server-side command (found the hard way: an earlier, non-compliant draft
+// of this deck put id/name straight on the `<rect>`s and a stray
+// id-less decorative `<rect>` next to el-inner, which silently made
+// el-inner unindexable — the drag below produced zero commands and zero
+// errors). el-blue/el-pink therefore get their own wrapping `<g>` each.
+async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  return makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-outer" data-comot-name="外層群組">\n' +
+      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(460 220)">\n' +
+      '      <g id="el-blue" data-comot-name="藍色方塊">\n' +
+      '        <rect width="150" height="150" fill="#69c"/>\n' +
+      "      </g>\n" +
+      '      <g id="el-pink" data-comot-name="粉色方塊" transform="translate(190 0)">\n' +
+      '        <rect width="150" height="150" fill="#c9a"/>\n' +
+      "      </g>\n" +
+      "    </g>\n" +
+      "  </g>\n" +
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">拖曳一致性測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+}
+
+/** `translate(x y)` on `elementId`'s own `<g>` — mirrors e2e/direct-manipulation.test.ts's own `readTranslate`. */
+function readTranslate(svg: string, elementId: string): { x: number; y: number } {
+  const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
+  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
+  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
+}
+
+// NOOP-149r3: the human's second PR #123 repro — after entering a group,
+// the solid selection box was drawn on a leaf while a drag actually moved
+// its enclosing (un-entered) inner group. The two assertions below cover
+// both halves of that mismatch directly, rather than trusting that
+// "displayed" and "dragged" agree: first, that the box shown right after
+// entering the group already spans the whole group (not just the child
+// under the pointer); second, that dragging from that same point really
+// does move the group as a rigid whole (both children shift, and neither
+// child gained a transform of its own).
+it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際被拖動的節點是同一個", async () => {
+  const deck = await makeDragConsistencyDeck();
+  const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const selName = page.locator(".status .sel-name");
+    const pink = page.frameLocator("iframe.slide-frame").locator("#el-pink");
+
+    // One dblclick enters el-outer; el-pink's outermost-within-scope
+    // ancestor is el-inner (a group wrapping both el-blue and el-pink), so
+    // the solid selection box must land on the whole group, not on
+    // el-pink alone.
+    await pink.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
+    await page.waitForTimeout(50);
+
+    // The iframe is sandboxed without allow-same-origin (see the sandbox
+    // test above), so its contentDocument is unreachable from page-level
+    // script — canvasFrame's CDP-based Frame.evaluate is the only way in,
+    // same as groupFrameBoxes above.
+    const frame = await canvasFrame(page);
+    const selBox = await frame.evaluate(() => {
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const rect = host.shadowRoot!.querySelector(".sel")!.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+    const pinkBox = await pink.boundingBox();
+    if (!pinkBox) throw new Error("量不到 el-pink 的邊界框");
+    // el-inner's own box (blue + pink side by side) is roughly twice as
+    // wide as el-pink alone — a box that had wrongly wrapped just the leaf
+    // would be close to pinkBox.width, not ~2x it.
+    expect(selBox.width).toBeGreaterThan(pinkBox.width * 1.5);
+
+    const before = (
+      await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })
+    ).data!.content;
+    const innerBefore = readTranslate(before, "el-inner");
+    const pinkLocalBefore = readTranslate(before, "el-pink");
+
+    // Alt disables snap-to-guide (direct-manipulation.test.ts's own
+    // convention) — without it this drag's endpoint can land within
+    // snapping distance of a guide and get pulled back to (effectively)
+    // its start position, which is not what this test means to prove.
+    const from = { x: pinkBox.x + pinkBox.width / 2, y: pinkBox.y + pinkBox.height / 2 };
+    await page.keyboard.down("Alt");
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 120, from.y + 90, { steps: 5 });
+    await page.waitForTimeout(80);
+    await page.mouse.up();
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(150);
+
+    const after = (
+      await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })
+    ).data!.content;
+    // el-blue never had a transform of its own and still doesn't; el-pink
+    // keeps exactly its original local offset — neither child moved
+    // independently, only el-inner did, as one rigid unit.
+    expect(/<g id="el-blue"[^>]*transform=/.test(after)).toBe(false);
+    expect(readTranslate(after, "el-pink")).toEqual(pinkLocalBefore);
+    const innerAfter = readTranslate(after, "el-inner");
+    expect(innerAfter.x).not.toBe(innerBefore.x);
+    expect(innerAfter.y).not.toBe(innerBefore.y);
   } finally {
     await cleanup();
     await deck.cleanup();
