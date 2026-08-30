@@ -20,4 +20,6 @@ export {
   elementBounds,
   absolutePosition,
 } from "./bbox.js";
-export type { Rect, ElementBoundsOptions } from "./bbox.js";
+export type { Rect, ElementBoundsOptions, TextBoundsContext } from "./bbox.js";
+export { snapTranslation } from "./snap.js";
+export type { SnapCandidate, SnapGuide, SnapInput, SnapResult } from "./snap.js";

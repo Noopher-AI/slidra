@@ -21,21 +21,28 @@ export default defineConfig({
       // plan, decision #9). Kept in lockstep with the same alias in the
       // root vitest.config.ts and e2e/vitest.config.ts.
       "@co-motion/core/text-metrics": path.join(rootDir, "../core/src/text-metrics.ts"),
+      // Same reasoning, for the direct-manipulation geometry (NOOP-91):
+      // geometry/index.ts and slide/index.ts are both declared Node-free,
+      // transitively, so canvas.ts can import them straight from source
+      // without pulling in workspace.ts's node:fs.
+      "@co-motion/core/geometry": path.join(rootDir, "../core/src/geometry/index.ts"),
+      "@co-motion/core/slide": path.join(rootDir, "../core/src/slide/index.ts"),
+      // Same reasoning again, for the textbox-width handle's live preview
+      // (NOOP-91 follow-up): text/index.ts re-exports wrapText and
+      // renderTextBoxContent, both declared Node-free — the same
+      // `resizeTextBox` (element-text.ts, server-side) calls, so the
+      // preview and the eventual write can never disagree.
+      "@co-motion/core/text": path.join(rootDir, "../core/src/text/index.ts"),
     },
   },
   build: {
+    // text-metrics-entry.ts is now built by a second, standalone Vite
+    // config (vite.text-metrics.config.ts) — see that file's header
+    // comment for why NOOP-91 forced the split. `npm run build` (below)
+    // runs both.
     rollupOptions: {
       input: {
         main: path.join(rootDir, "index.html"),
-        // A second, standalone entry (ticket #71): its only job is
-        // assigning `window.coMotionMeasureText`, so e2e/text-metrics.test.ts
-        // can load it directly via a <script> tag, at a predictable,
-        // unhashed path (see entryFileNames below) rather than the app's
-        // hashed main bundle.
-        "text-metrics-entry": path.join(rootDir, "src/text-metrics-entry.ts"),
-      },
-      output: {
-        entryFileNames: (chunk) => (chunk.name === "text-metrics-entry" ? "[name].js" : "assets/[name]-[hash].js"),
       },
     },
   },

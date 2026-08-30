@@ -38,10 +38,19 @@ function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window
   return { win, doc };
 }
 
-/** Collects every `comot-selection` message posted to the outer (test) window. */
+/**
+ * Collects every `comot-selection` message posted to the outer (test)
+ * window, excluding `"viewport"` (NOOP-91 §4.1) — jsdom's own async iframe
+ * load can fire the runtime's `load` listener at an unpredictable point
+ * relative to a test's click, and these tests are about hit resolution and
+ * the select/clear contract, not the viewport report.
+ */
 function collectMessages(): { messages: unknown[]; stop: () => void } {
   const messages: unknown[] = [];
-  const handler = (event: MessageEvent) => messages.push(event.data);
+  const handler = (event: MessageEvent) => {
+    if ((event.data as { event?: unknown })?.event === "viewport") return;
+    messages.push(event.data);
+  };
   window.addEventListener("message", handler);
   return { messages, stop: () => window.removeEventListener("message", handler) };
 }
@@ -61,7 +70,7 @@ describe("selection-runtime.js", () => {
     click(doc, doc.getElementById("el-a")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-a", name: "標題" }]);
+    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-a", name: "標題", additive: false }]);
     stop();
   });
 
@@ -72,7 +81,7 @@ describe("selection-runtime.js", () => {
     click(doc, doc.getElementById("el-b")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-b", name: null }]);
+    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-b", name: null, additive: false }]);
     stop();
   });
 
@@ -95,7 +104,7 @@ describe("selection-runtime.js", () => {
     click(doc, doc.querySelector("circle")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-group", name: null }]);
+    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-group", name: null, additive: false }]);
     stop();
   });
 

@@ -12,7 +12,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@co-motion/core/text-metrics": ["../core/src/text-metrics.ts"]
+      "@co-motion/core/text-metrics": ["../core/src/text-metrics.ts"],
+      "@co-motion/core/geometry": ["../core/src/geometry/index.ts"],
+      "@co-motion/core/slide": ["../core/src/slide/index.ts"],
+      "@co-motion/core/text": ["../core/src/text/index.ts"]
     }
   },
   "include": ["src"]

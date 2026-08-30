@@ -1,4 +1,6 @@
 import { CoMotionError } from "../errors.js";
+import { resolveFont } from "../element-text.js";
+import { measureTextWidth, type FontMetrics } from "../text-metrics.js";
 import type { SlideElement, SlidePrimitive } from "../slide/format.js";
 import {
   applyMatrixToPoint,
@@ -94,15 +96,29 @@ function numberAttr(
 }
 
 /**
+ * Everything a `<text>` primitive's box needs that the primitive itself
+ * does not carry: the measurement metrics, and the declared box width,
+ * which the normal form keeps on the CONTAINER
+ * (`data-comot-text-width`, see `SlideElement.textWidth`) rather than on
+ * the `<text>`.
+ */
+export interface TextBoundsContext {
+  fonts: ReadonlyMap<string, FontMetrics>;
+  /** The owning element's `textWidth`; `null` when it is not a text box. */
+  textWidth: number | null;
+  /** Only ever used to name the element in an error message. */
+  elementId: string;
+}
+
+/**
  * The bounding box of one primitive, in the coordinate system the
  * primitive itself lives in (i.e. before any container transform).
  *
- * `<text>` is not supported here and throws: its box needs font metrics,
- * which do not exist yet (see #71/#76). This module deliberately defines
- * no measurement interface of its own — inventing one now would mean two
- * competing contracts later.
+ * `<text>` needs font metrics, so it is supported only when `text` is
+ * given (NOOP-91 §4.7). Called without it — every caller before that
+ * ticket — a `<text>` throws exactly the message it always did.
  */
-export function primitiveBounds(primitive: SlidePrimitive): Rect {
+export function primitiveBounds(primitive: SlidePrimitive, text?: TextBoundsContext): Rect {
   switch (primitive.tag) {
     case "rect":
     case "image": {
@@ -148,10 +164,80 @@ export function primitiveBounds(primitive: SlidePrimitive): Rect {
       return pathBounds(d);
     }
     case "text":
-      throw new CoMotionError("尚無法計算文字元素的邊界框：待 #76 的字型度量落地");
+      if (text === undefined) {
+        throw new CoMotionError("尚無法計算文字元素的邊界框：待 #76 的字型度量落地");
+      }
+      return textBounds(primitive, text);
     default:
       throw new CoMotionError(`無法計算邊界框：<${primitive.tag}> 不是合法圖元`);
   }
+}
+
+/**
+ * The box of a `<text>` primitive (NOOP-91 §4.7).
+ *
+ * Two shapes, and they place their box differently, because the format
+ * places them differently:
+ *
+ *  - A TEXT BOX (`data-comot-text-width` on the container, one `<tspan>`
+ *    per baked-in line). `textbox add` writes the `<text>` with no `x`/`y`
+ *    at all and puts the first baseline at `y = ascent` on the first tspan,
+ *    which is exactly what makes the container's own `translate()` land on
+ *    the box's TOP-LEFT corner. So the box starts at the local origin, is
+ *    the declared width wide, and is `行數 × 行高` tall — the declared
+ *    width, never a re-measurement, because the declared width is what the
+ *    wrap was computed against and what the author dragged.
+ *
+ *  - A PLAIN `<text>` (no tspans; the legacy shape a converted deck still
+ *    has). Here `x`/`y` are SVG's own: `y` is the FIRST BASELINE, so the
+ *    box's top sits `ascent` above it. Width is the measured advance of
+ *    the string, height is one line.
+ *
+ * Line height and ascent come from the same hhea-derived formula
+ * `text/wrap.ts` uses — one rule for "how tall is a line", or a box would
+ * disagree with the wrap that produced it.
+ *
+ * A `<text>` that has tspans but no declared width throws rather than
+ * measuring the concatenated string as a single line: `SlidePrimitive`
+ * exposes the joined text and the tspan COUNT, never the per-line split, so
+ * a per-line maximum is not computable from it — and a silently wrong
+ * width here would put a snap guide visibly off with nothing to show why.
+ */
+function textBounds(primitive: SlidePrimitive, context: TextBoundsContext): Rect {
+  const fontFamily = primitive.attrs.get("font-family");
+  if (fontFamily === undefined || fontFamily.trim() === "") {
+    throw new CoMotionError(`<text> 缺少 font-family，無法計算邊界框：${context.elementId}`);
+  }
+  const fontSizeRaw = primitive.attrs.get("font-size");
+  const fontSize =
+    fontSizeRaw === undefined || fontSizeRaw.trim() === "" ? 16 : Number(fontSizeRaw.trim());
+  if (!Number.isFinite(fontSize) || fontSize <= 0) {
+    throw new CoMotionError(
+      `<text> 的 font-size 不是合法的正數，無法計算邊界框：${context.elementId}`,
+    );
+  }
+
+  const font = resolveFont(context.fonts, fontFamily.trim(), context.elementId);
+  const lineHeight = ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * fontSize;
+  const ascent = (font.ascender / font.unitsPerEm) * fontSize;
+  // A `<text>` with no tspans is one line; the tspan count is the line
+  // count for everything the wrap wrote.
+  const lineCount = primitive.tspanCount === 0 ? 1 : primitive.tspanCount;
+
+  if (context.textWidth !== null) {
+    return { x: 0, y: 0, width: context.textWidth, height: lineCount * lineHeight };
+  }
+  if (primitive.tspanCount > 0) {
+    throw new CoMotionError(
+      `<text> 有 tspan 卻沒有 ${"data-comot-text-width"}，無法計算每一行的寬度：${context.elementId}`,
+    );
+  }
+  return {
+    x: numberAttr(primitive, "x", 0),
+    y: numberAttr(primitive, "y", 0) - ascent,
+    width: measureTextWidth(font, primitive.text, fontSize),
+    height: lineHeight,
+  };
 }
 
 /**
@@ -370,6 +456,14 @@ function solveQuadratic(a: number, b: number, c: number): number[] {
 export interface ElementBoundsOptions {
   /** Container matrices from the slide root down to (but excluding) this element. */
   ancestors?: readonly Matrix[];
+  /**
+   * Font metrics by family, for elements containing `<text>` (NOOP-91
+   * §4.7). Omit it and a `<text>` throws exactly as it always did — this
+   * is opt-in, so no existing caller changes behaviour. A family missing
+   * from the map throws `resolveFont`'s own error; there is deliberately
+   * no fallback face.
+   */
+  fonts?: ReadonlyMap<string, FontMetrics>;
 }
 
 /**
@@ -379,10 +473,15 @@ export interface ElementBoundsOptions {
  */
 export function elementBounds(element: SlideElement, options: ElementBoundsOptions = {}): Rect {
   const chain = composeMatrices(options.ancestors ?? []);
-  return boundsWithin(element, chain, 1);
+  return boundsWithin(element, chain, 1, options.fonts);
 }
 
-function boundsWithin(element: SlideElement, ancestorMatrix: Matrix, depth: number): Rect {
+function boundsWithin(
+  element: SlideElement,
+  ancestorMatrix: Matrix,
+  depth: number,
+  fonts: ReadonlyMap<string, FontMetrics> | undefined,
+): Rect {
   if (depth > MAX_CONTAINER_DEPTH) {
     throw new CoMotionError(`容器巢狀超過 ${MAX_CONTAINER_DEPTH} 層，無法計算邊界框`);
   }
@@ -391,13 +490,22 @@ function boundsWithin(element: SlideElement, ancestorMatrix: Matrix, depth: numb
     if (element.children.length === 0) {
       throw new CoMotionError(`群組 ${element.id} 裡沒有任何子元素，沒有邊界框`);
     }
-    return unionRects(element.children.map((child) => boundsWithin(child, matrix, depth + 1)));
+    return unionRects(
+      element.children.map((child) => boundsWithin(child, matrix, depth + 1, fonts)),
+    );
   }
   if (element.primitives.length === 0) {
     throw new CoMotionError(`元素 ${element.id} 裡沒有任何圖元，沒有邊界框`);
   }
+  // The text context is built per element, not per primitive: `textWidth`
+  // is the CONTAINER's attribute, and it is this element's own — never an
+  // ancestor's.
+  const textContext: TextBoundsContext | undefined =
+    fonts === undefined ? undefined : { fonts, textWidth: element.textWidth, elementId: element.id };
   return unionRects(
-    element.primitives.map((primitive) => transformRect(matrix, primitiveBounds(primitive))),
+    element.primitives.map((primitive) =>
+      transformRect(matrix, primitiveBounds(primitive, textContext)),
+    ),
   );
 }
 

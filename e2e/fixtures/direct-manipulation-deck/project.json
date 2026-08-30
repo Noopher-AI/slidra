@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "name": "直接操作測試簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": ["slides/001.svg"],
+  "fonts": [
+    {
+      "file": "fonts/NotoSansTC-Presentation.ttf",
+      "family": "Noto Sans TC",
+      "license": "SIL Open Font License 1.1",
+      "licenseFile": "fonts/LICENSE-NotoSansTC.txt",
+      "source": "https://fonts.google.com/noto/specimen/Noto+Sans+TC"
+    }
+  ]
+}

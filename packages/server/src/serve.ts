@@ -10,6 +10,7 @@ import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleRawRequest } from "./raw.js";
+import { handleCommandPost } from "./command-endpoint.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -223,6 +224,13 @@ async function handleRequest(
     if (req.method === "POST") {
       if (url.pathname === "/api/chat") {
         await handleChatPost(chatSession, req, res);
+        return;
+      }
+      if (url.pathname === "/api/command") {
+        // NOOP-91 §4.9: the front end's only write path. Whitelisting and
+        // the server-owned presentation id both live inside this handler,
+        // not here — this route just forwards to it.
+        await handleCommandPost(registry, presentationId, req, res);
         return;
       }
       sendJson(res, 405, { error: "只支援 GET" });
