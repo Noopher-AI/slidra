@@ -62,6 +62,30 @@ function click(doc: Document, el: Element): void {
   el.dispatchEvent(new MouseEventCtor("click", { bubbles: true }));
 }
 
+/** Dispatches a real dblclick event that bubbles, so document's listener sees it. */
+function dblclick(doc: Document, el: Element): void {
+  const win = doc.defaultView as Window;
+  const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+  el.dispatchEvent(new MouseEventCtor("dblclick", { bubbles: true }));
+}
+
+/** Dispatches a real Escape keydown on `win`, where the runtime's own listener is registered. */
+function pressEscape(win: Window): void {
+  const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+  win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Escape" }));
+}
+
+/** Every `.group-frame` element inside `doc`'s shadow-hosted overlay — one per level of `groupPath` currently on screen (NOOP-149 r2's box pool). */
+function groupFrameEls(doc: Document): HTMLElement[] {
+  const host = doc.body.children[1];
+  return [...host.shadowRoot!.querySelectorAll<HTMLElement>(".group-frame")];
+}
+
+/** The `.group-frame` boxes actually showing (`display:block`), outermost first. */
+function visibleGroupFrames(doc: Document): HTMLElement[] {
+  return groupFrameEls(doc).filter((el) => el.style.display === "block");
+}
+
 describe("selection-runtime.js", () => {
   it("點一個帶 id 的元素會回報 select，帶上它的 id 與 data-comot-name", async () => {
     const { doc } = boot('<svg><rect id="el-a" data-comot-name="標題"/></svg>');
@@ -171,5 +195,76 @@ describe("selection-runtime.js", () => {
 
     click(doc, doc.querySelector("svg")!);
     expect(box.style.display).toBe("none");
+  });
+
+  it("單選一個非群組元素：沒有任何 .group-frame 顯示", async () => {
+    const { doc } = boot('<svg><rect id="el-a"/></svg>');
+
+    click(doc, doc.getElementById("el-a")!);
+
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
+  });
+
+  it("單選一個群組元素（本身帶 id 的子元素）：顯示一個 .group-frame", async () => {
+    const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    click(doc, doc.getElementById("el-group")!);
+
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+  });
+
+  it("雙擊進入群組編輯：顯示一個 .group-frame", async () => {
+    const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    dblclick(doc, doc.getElementById("el-child")!);
+
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+  });
+
+  it("按 Esc 從群組編輯退到頂層且未選取任何群組：.group-frame 全部收起", async () => {
+    const { doc, win } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    dblclick(doc, doc.getElementById("el-child")!);
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+
+    pressEscape(win);
+
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
+  });
+
+  it("三層巢狀群組逐層進入：每進一層 .group-frame 累加一個，由外而內堆疊", async () => {
+    const { doc } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
+    const leaf = doc.getElementById("leaf")!;
+
+    // First dblclick enters "outer" and (NOOP-149r3) resolves the
+    // newly-entered scope's own selection through the same
+    // outermost-within-scope rule a click/drag hit-test uses — that lands
+    // on "middle" (a group, not yet entered), not "leaf". "middle" being
+    // selected-but-not-entered is exactly the same situation a plain click
+    // on a group produces, so it gets the same one-frame preview on top of
+    // "outer"'s own entered-scope frame: 2 frames, not 1.
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
+
+    // Second dblclick enters "middle" itself; its own selection resolves
+    // to "leaf" (not a group), so no extra preview frame — still 2, now
+    // both actually entered.
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
+  });
+
+  it("三層巢狀群組逐層退出：Esc 每次只收掉最內層的 .group-frame，外層保留", async () => {
+    const { doc, win } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
+    const leaf = doc.getElementById("leaf")!;
+
+    dblclick(doc, leaf);
+    dblclick(doc, leaf);
+    expect(visibleGroupFrames(doc)).toHaveLength(2);
+
+    pressEscape(win);
+    expect(visibleGroupFrames(doc)).toHaveLength(1);
+
+    pressEscape(win);
+    expect(visibleGroupFrames(doc)).toHaveLength(0);
   });
 });

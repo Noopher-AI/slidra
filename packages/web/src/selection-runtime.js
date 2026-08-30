@@ -118,6 +118,9 @@
     ";background:color-mix(in srgb, " +
     colors.accent +
     " 12%, transparent);pointer-events:none;}" +
+    ".group-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
+    colors.accent +
+    ";pointer-events:none;display:none;}" +
     ".guide{position:fixed;background:" +
     colors.accent +
     ";pointer-events:none;}" +
@@ -228,6 +231,17 @@
   marqueeBox.style.display = "none";
   shadow.appendChild(marqueeBox);
 
+  // Pool of dashed frames, one per level of `groupPath` currently in scope
+  // (outermost first) — distinct from `.sel`'s solid outline so "selected
+  // the group" and "selected a child inside it" don't look identical, and
+  // distinct *per level* so entering a nested group keeps every ancestor's
+  // frame on screen instead of replacing it (NOOP-149 r2: a single-element
+  // frame that just moved to the innermost level made the outer group
+  // vanish the moment you entered it). Reused across updateBoxes() calls —
+  // same pool pattern as multiBoxEls below. See groupFrameIds()/
+  // positionGroupFrames() below.
+  var groupFrameEls = [];
+
   // Pool of plain outline boxes for a multi-selection (>1 ids) — no corner
   // decorations, so acceptance criterion 9 ("多選看不到把手") holds simply
   // because these elements never carry any. Reused across updateBoxes()
@@ -302,10 +316,58 @@
     }
   }
 
+  /**
+   * The ids `.group-frame` boxes should currently outline, outermost
+   * first: every level already entered (`groupPath`, in order), plus —
+   * only when nothing has been entered yet — the top-level selected group
+   * itself, so selecting a group still previews its frame before you
+   * double-click into it. A group reached via `groupPath` never needs the
+   * fallback added on top: `resolveClickTarget` never lets `selectedIds`
+   * resolve to an id already on `groupPath` (the walk stops at the scope
+   * boundary), so the `indexOf` guard is a defensive no-op, not a
+   * necessary de-dupe.
+   */
+  function groupFrameIds() {
+    var ids = groupPath.slice();
+    if (selectedIds.length === 1) {
+      var el = document.getElementById(selectedIds[0]);
+      if (isGroupContainer(el) && ids.indexOf(selectedIds[0]) === -1) ids.push(selectedIds[0]);
+    }
+    return ids;
+  }
+
+  /** Screen-px each `.group-frame` sits outside its outlined element's own rect, so it never coincides exactly with `.sel`'s box on the same element. */
+  var GROUP_FRAME_INSET = 3;
+
+  function positionGroupFrames() {
+    var ids = groupFrameIds();
+    while (groupFrameEls.length < ids.length) {
+      var el = document.createElement("div");
+      el.className = "group-frame";
+      shadow.appendChild(el);
+      groupFrameEls.push(el);
+    }
+    for (var i = 0; i < groupFrameEls.length; i++) {
+      var frameEl = groupFrameEls[i];
+      var target = i < ids.length ? document.getElementById(ids[i]) : null;
+      if (!target) {
+        frameEl.style.display = "none";
+        continue;
+      }
+      var rect = target.getBoundingClientRect();
+      frameEl.style.display = "block";
+      frameEl.style.left = rect.left - GROUP_FRAME_INSET + "px";
+      frameEl.style.top = rect.top - GROUP_FRAME_INSET + "px";
+      frameEl.style.width = rect.width + GROUP_FRAME_INSET * 2 + "px";
+      frameEl.style.height = rect.height + GROUP_FRAME_INSET * 2 + "px";
+    }
+  }
+
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
   function updateBoxes() {
+    positionGroupFrames();
     if (selectedIds.length === 0) {
       hideBox();
       hideMultiBoxes();
@@ -355,16 +417,6 @@
       current = current.parentElement;
     }
     return outermost;
-  }
-
-  /** Nearest id-carrying element at or above `el` (the opposite of findSelectable's outermost rule) — what a double-click's own target resolves to (NOOP-91 follow-up). */
-  function nearestId(el) {
-    var current = el;
-    while (current && current !== document.body) {
-      if (current.hasAttribute && current.hasAttribute("id")) return current;
-      current = current.parentElement;
-    }
-    return null;
   }
 
   /** True when `el` wraps at least one further id-carrying descendant — the normal form's own rule that only containers, never primitives, carry `id` (ADR-0012) makes this exactly "is `el` a group". */
@@ -437,21 +489,39 @@
   );
 
   // Double-click enters a group: pushes its id onto `groupPath` and
-  // selects the innermost id-carrying descendant actually under the
-  // pointer (NOOP-91 follow-up's group-edit row). Never sends a command —
-  // this is pure front-end selection-scope state. The two leading single
-  // clicks a dblclick is made of already ran the plain click handler
-  // above and left `selectedIds`/`groupPath` at whatever a normal
-  // (possibly now-exited-scope) click would — this handler only refines
-  // that further when the resolved target turns out to be a group.
+  // re-resolves the pointer's own target through `resolveClickTarget` at
+  // the newly-entered scope (NOOP-91 follow-up's group-edit row; fixed
+  // under NOOP-149r3 — see below). Never sends a command — this is pure
+  // front-end selection-scope state. The two leading single clicks a
+  // dblclick is made of already ran the plain click handler above and
+  // left `selectedIds`/`groupPath` at whatever a normal (possibly
+  // now-exited-scope) click would — this handler only refines that
+  // further when the resolved target turns out to be a group.
+  //
+  // NOOP-149r3: this used to call a separate `nearestId(event.target)` —
+  // the truly nearest id-carrying ancestor, ignoring scope entirely —
+  // which could skip straight past an intervening un-entered group
+  // container to a deeper descendant (e.g. entering a 3-level-nested
+  // group's outer level and landing directly on the innermost leaf). That
+  // produced a selection the drag/pointerdown hit-test (`resolveClickTarget`
+  // + `findSelectable`'s OUTERMOST-within-scope rule, per ADR-0012 "a group
+  // is a container of containers") disagreed with: the highlighted box
+  // showed the leaf, but a following drag actually moved its enclosing
+  // group. Calling `resolveClickTarget` again here — the exact same
+  // function `click` and `pointerdown` already use — guarantees the
+  // just-entered level's selection is always the same node a subsequent
+  // click or drag at that scope would hit, by construction.
   window.addEventListener(
     "dblclick",
     function (event) {
       var target = resolveClickTarget(event.target);
       if (!target || !isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
-      var inner = nearestId(event.target);
-      if (!inner) return;
+      var inner = resolveClickTarget(event.target);
+      if (!inner) {
+        updateBoxes();
+        return;
+      }
       selectedIds = [inner.getAttribute("id")];
       updateBoxes();
       post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
@@ -620,6 +690,7 @@
     if (groupPath.length > 0) {
       groupPath.pop();
       post({ event: "group-path", groupPath: groupPath.slice() });
+      updateBoxes();
       return;
     }
     if (selectedIds.length > 0) {
