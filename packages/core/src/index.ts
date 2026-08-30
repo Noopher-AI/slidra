@@ -4,6 +4,16 @@ export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./pre
 export type { MinimalPresentationFiles } from "./presentation.js";
 export { validateProjectJson } from "./project-json.js";
 export type { ProjectJson, FontEntry } from "./project-json.js";
+export {
+  addSlide,
+  deleteSlide,
+  duplicateSlide,
+  moveSlide,
+  addTemplate,
+  setNotes,
+  setTransition,
+} from "./slide-ops.js";
+export type { AddSlideInput, AddSlideResult, DuplicateSlideResult, AddTemplateInput, AddTemplateResult } from "./slide-ops.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
 export { resolveAssetImport, sanitizeAssetBaseName, resolveConflictFreeFilename } from "./asset-import.js";
@@ -30,6 +40,9 @@ export {
   reorderSlideElements,
   renderSlideForDisplay,
   createPresentationFile,
+  deletePresentationFile,
+  lockSlideElements,
+  unlockSlideElements,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
 export {
@@ -40,9 +53,11 @@ export {
   scaleElements,
   setElementStyle,
   reorderElements,
+  lockElements,
+  unlockElements,
   STYLE_ATTRIBUTE_WHITELIST,
 } from "./element-edit.js";
-export type { InsertElementKind, InsertElementInput, OrderDirection } from "./element-edit.js";
+export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOptions } from "./element-edit.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";

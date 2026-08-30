@@ -51,6 +51,11 @@ export const CONTAINER_ATTRIBUTES: readonly string[] = [
   "data-comot-name",
   "data-comot-media",
   "transform",
+  // Appended at the end, deliberately (T3, ADR-0013): earlier positions
+  // would reorder every existing convert-output's attribute string and
+  // break tests that assert on it. Locking is a container-level boolean —
+  // see element-text.ts's `assertNotLocked` for the one guard this powers.
+  "data-comot-lock",
 ];
 
 /** Appended to the issues `co-motion convert` can actually repair — never to the ones it refuses to touch. */

@@ -57,6 +57,8 @@ export interface TextBoxWidthInput {
   slidePath: string;
   elementId: string;
   width: number;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 
 export interface TextBoxWidthData {
@@ -64,7 +66,9 @@ export interface TextBoxWidthData {
 }
 
 export const textBoxWidthCommand: CommandHandler<TextBoxWidthInput, TextBoxWidthData> = async (input) => {
-  const { lines } = await setTextBoxWidth(input.id, input.slidePath, input.elementId, input.width);
+  const { lines } = await setTextBoxWidth(input.id, input.slidePath, input.elementId, input.width, {
+    force: input.force,
+  });
   return {
     ok: true,
     data: { lines },

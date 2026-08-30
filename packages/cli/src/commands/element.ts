@@ -1,11 +1,13 @@
 import {
   deleteSlideElements,
   insertSlideElement,
+  lockSlideElements,
   moveSlideElements,
   reorderSlideElements,
   rotateSlideElements,
   scaleSlideElements,
   setSlideElementStyle,
+  unlockSlideElements,
   type InsertElementInput,
   type OrderDirection,
 } from "@co-motion/core";
@@ -78,11 +80,13 @@ export interface ElementMoveInput {
   elementIds: string[];
   dx: number;
   dy: number;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 export type ElementMoveData = Record<string, never>;
 
 export const elementMoveCommand: CommandHandler<ElementMoveInput, ElementMoveData> = async (input) => {
-  await moveSlideElements(input.id, input.slidePath, input.elementIds, input.dx, input.dy);
+  await moveSlideElements(input.id, input.slidePath, input.elementIds, input.dx, input.dy, { force: input.force });
   return { ok: true, data: {}, message: `已搬移 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
 };
 
@@ -91,11 +95,13 @@ export interface ElementScaleInput {
   slidePath: string;
   elementIds: string[];
   factor: number;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 export type ElementScaleData = Record<string, never>;
 
 export const elementScaleCommand: CommandHandler<ElementScaleInput, ElementScaleData> = async (input) => {
-  await scaleSlideElements(input.id, input.slidePath, input.elementIds, input.factor);
+  await scaleSlideElements(input.id, input.slidePath, input.elementIds, input.factor, { force: input.force });
   return { ok: true, data: {}, message: `已縮放 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
 };
 
@@ -104,11 +110,13 @@ export interface ElementRotateInput {
   slidePath: string;
   elementIds: string[];
   degrees: number;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 export type ElementRotateData = Record<string, never>;
 
 export const elementRotateCommand: CommandHandler<ElementRotateInput, ElementRotateData> = async (input) => {
-  await rotateSlideElements(input.id, input.slidePath, input.elementIds, input.degrees);
+  await rotateSlideElements(input.id, input.slidePath, input.elementIds, input.degrees, { force: input.force });
   return { ok: true, data: {}, message: `已旋轉 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
 };
 
@@ -118,11 +126,15 @@ export interface ElementStyleSetInput {
   elementIds: string[];
   attr: string;
   value: string;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 export type ElementStyleSetData = Record<string, never>;
 
 export const elementStyleSetCommand: CommandHandler<ElementStyleSetInput, ElementStyleSetData> = async (input) => {
-  await setSlideElementStyle(input.id, input.slidePath, input.elementIds, input.attr, input.value);
+  await setSlideElementStyle(input.id, input.slidePath, input.elementIds, input.attr, input.value, {
+    force: input.force,
+  });
   return {
     ok: true,
     data: {},
@@ -135,10 +147,36 @@ export interface ElementOrderInput {
   slidePath: string;
   elementIds: string[];
   direction: OrderDirection;
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
 }
 export type ElementOrderData = Record<string, never>;
 
 export const elementOrderCommand: CommandHandler<ElementOrderInput, ElementOrderData> = async (input) => {
-  await reorderSlideElements(input.id, input.slidePath, input.elementIds, input.direction);
+  await reorderSlideElements(input.id, input.slidePath, input.elementIds, input.direction, { force: input.force });
   return { ok: true, data: {}, message: `已調整 ${input.slidePath} 的 ${input.elementIds.length} 個元素的疊置順序` };
+};
+
+export interface ElementLockInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export type ElementLockData = Record<string, never>;
+
+export const elementLockCommand: CommandHandler<ElementLockInput, ElementLockData> = async (input) => {
+  await lockSlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: {}, message: `已鎖定 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
+};
+
+export interface ElementUnlockInput {
+  id: string;
+  slidePath: string;
+  elementIds: string[];
+}
+export type ElementUnlockData = Record<string, never>;
+
+export const elementUnlockCommand: CommandHandler<ElementUnlockInput, ElementUnlockData> = async (input) => {
+  await unlockSlideElements(input.id, input.slidePath, input.elementIds);
+  return { ok: true, data: {}, message: `已解除鎖定 ${input.slidePath} 的 ${input.elementIds.length} 個元素` };
 };

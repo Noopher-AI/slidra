@@ -17,9 +17,20 @@ import {
   elementRotateCommand,
   elementStyleSetCommand,
   elementOrderCommand,
+  elementLockCommand,
+  elementUnlockCommand,
 } from "./commands/element.js";
 import { slideRenderCommand, renderSlideRender } from "./commands/slide-render.js";
 import { assetImportCommand } from "./commands/asset-import.js";
+import {
+  slideAddCommand,
+  slideDeleteCommand,
+  slideDuplicateCommand,
+  slideMoveCommand,
+  slideNotesSetCommand,
+} from "./commands/slide.js";
+import { templateAddCommand } from "./commands/template.js";
+import { presentationTransitionSetCommand } from "./commands/presentation.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -57,5 +68,14 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("element order", { handler: elementOrderCommand, render: null });
   registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });
   registry.register("asset import", { handler: assetImportCommand, render: null });
+  registry.register("element lock", { handler: elementLockCommand, render: null });
+  registry.register("element unlock", { handler: elementUnlockCommand, render: null });
+  registry.register("slide add", { handler: slideAddCommand, render: null });
+  registry.register("slide delete", { handler: slideDeleteCommand, render: null });
+  registry.register("slide duplicate", { handler: slideDuplicateCommand, render: null });
+  registry.register("slide move", { handler: slideMoveCommand, render: null });
+  registry.register("slide notes set", { handler: slideNotesSetCommand, render: null });
+  registry.register("template add", { handler: templateAddCommand, render: null });
+  registry.register("presentation transition set", { handler: presentationTransitionSetCommand, render: null });
   return registry;
 }

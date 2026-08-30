@@ -82,6 +82,37 @@ export function escapeXmlAttr(value: string): string {
 const TEXT_WIDTH_ATTRIBUTE = "data-comot-text-width";
 
 /**
+ * `data-comot-lock` (T3, ADR-0013). Duplicated here as a literal rather than
+ * imported from `slide/format.ts`'s `CONTAINER_ATTRIBUTES`, for the same
+ * module-cycle reason `TEXT_WIDTH_ATTRIBUTE` above is duplicated: `slide/format.ts`
+ * already imports `unescapeXmlText` from this file.
+ */
+const LOCK_ATTRIBUTE = "data-comot-lock";
+
+/**
+ * The one guard every editing command that targets an *existing* element
+ * checks before mutating it (ADR-0013): `element move` / `scale` / `rotate` /
+ * `style set` / `order`, plus `text set` / `textbox width` here. `element
+ * insert` never calls this (a brand-new element cannot already be locked)
+ * and `element delete` deliberately never calls this either (ADR-0013: a
+ * locked element may still be deleted, no `--force` required) — see
+ * `element-edit.ts`'s `deleteElements`.
+ *
+ * `force: true` is the one-time bypass an agent asks for explicitly with
+ * `--force` on that single command; it never persists (the lock attribute
+ * stays exactly as it was). The message deliberately names the element id,
+ * why it was rejected, and the exact escape hatch — never just "locked".
+ */
+export function assertNotLocked(node: ScannedNode, elementId: string, force: boolean | undefined): void {
+  if (force) return;
+  if (attributeValue(node, LOCK_ATTRIBUTE) === "true") {
+    throw new CoMotionError(
+      `元素 ${elementId} 是鎖定的版面骨架，一般命令不會改動它。確定要改請在同一條命令加上 --force。`,
+    );
+  }
+}
+
+/**
  * Reads the family + size a `<text>` node's own attributes declare, for
  * re-wrapping a text box's content. `font-weight` is not read here: #98's
  * font model resolves purely by family (one embedded font file per family,
@@ -207,6 +238,8 @@ export interface ReplaceElementTextOptions {
    * anyway on every call.
    */
   readonly fontBook?: ReadonlyMap<string, FontMetrics>;
+  /** Bypasses the locked-element guard (T3, ADR-0013, `--force`). */
+  readonly force?: boolean;
 }
 
 /**
@@ -240,6 +273,7 @@ export function replaceElementText(
   if (!node) {
     throw new CoMotionError(`找不到元素：${elementId}`);
   }
+  assertNotLocked(node, elementId, options.force);
 
   if (node.tag === "g") {
     return replaceContainerText(svgContent, elementId, node, newText, options);
@@ -274,6 +308,7 @@ export function resizeTextBox(
   elementId: string,
   newWidth: number,
   fontBook: ReadonlyMap<string, FontMetrics>,
+  options: { readonly force?: boolean } = {},
 ): { updated: string; lines: number } {
   if (!Number.isFinite(newWidth) || newWidth <= 0) {
     throw new CoMotionError("文字框寬度必須是大於 0 的數字");
@@ -297,6 +332,7 @@ export function resizeTextBox(
   if (!widthAttr) {
     throw new CoMotionError(`元素不是文字框：${elementId}`);
   }
+  assertNotLocked(container, elementId, options.force);
 
   const groupChildren = container.children.filter((child) => child.tag === "g");
   const textChildren = container.children.filter((child) => child.tag === "text");
