@@ -223,6 +223,82 @@ export function parseArgv(argv: string[]): ParsedCommand {
         return { name: "element unlock", input: { id, slidePath, elementIds } };
       }
 
+      if (sub === "group") {
+        const id = requirePositional(args, 0, "element group", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element group", "slide-path");
+        const elementIds = requireIdList(args, 2, "element group");
+        return { name: "element group", input: { id, slidePath, elementIds } };
+      }
+
+      if (sub === "ungroup") {
+        const id = requirePositional(args, 0, "element ungroup", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element ungroup", "slide-path");
+        const elementIds = requireIdList(args, 2, "element ungroup");
+        return { name: "element ungroup", input: { id, slidePath, elementIds } };
+      }
+
+      if (sub === "align") {
+        const id = requirePositional(args, 0, "element align", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element align", "slide-path");
+        const elementIds = requireIdList(args, 2, "element align");
+        const direction = requirePositional(args, 3, "element align", "direction");
+        if (!["left", "hcenter", "right", "top", "vcenter", "bottom"].includes(direction)) {
+          throw new CoMotionError(`element align 不支援的方向：${direction}`);
+        }
+        return { name: "element align", input: { id, slidePath, elementIds, direction } };
+      }
+
+      if (sub === "distribute") {
+        const id = requirePositional(args, 0, "element distribute", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element distribute", "slide-path");
+        const elementIds = requireIdList(args, 2, "element distribute");
+        const axis = requirePositional(args, 3, "element distribute", "axis");
+        if (!["horizontal", "vertical"].includes(axis)) {
+          throw new CoMotionError(`element distribute 不支援的方向：${axis}`);
+        }
+        return { name: "element distribute", input: { id, slidePath, elementIds, axis } };
+      }
+
+      if (sub === "name") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：element name ${subsub ?? ""}`);
+        }
+        const nameArgs = args.slice(1);
+        const id = requirePositional(nameArgs, 0, "element name set", "presentation-id");
+        const slidePath = requirePositional(nameArgs, 1, "element name set", "slide-path");
+        const elementIds = requireIdList(nameArgs, 2, "element name set");
+        const value = nameArgs[3];
+        if (value === undefined) {
+          throw new CoMotionError("命令 element name set 缺少參數：name");
+        }
+        return { name: "element name set", input: { id, slidePath, elementIds, name: value } };
+      }
+
+      if (sub === "copy") {
+        const id = requirePositional(args, 0, "element copy", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element copy", "slide-path");
+        const elementIds = requireIdList(args, 2, "element copy");
+        return { name: "element copy", input: { id, slidePath, elementIds } };
+      }
+
+      if (sub === "paste") {
+        const id = requirePositional(args, 0, "element paste", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element paste", "slide-path");
+        const dx = optionalNumberFlag(args, "--dx", "element paste") ?? 0;
+        const dy = optionalNumberFlag(args, "--dy", "element paste") ?? 0;
+        return { name: "element paste", input: { id, slidePath, dx, dy } };
+      }
+
+      if (sub === "duplicate") {
+        const id = requirePositional(args, 0, "element duplicate", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element duplicate", "slide-path");
+        const elementIds = requireIdList(args, 2, "element duplicate");
+        const dx = optionalNumberFlag(args, "--dx", "element duplicate") ?? 0;
+        const dy = optionalNumberFlag(args, "--dy", "element duplicate") ?? 0;
+        return { name: "element duplicate", input: { id, slidePath, elementIds, dx, dy } };
+      }
+
       throw new CoMotionError(`未知的子命令：element ${sub ?? ""}`);
     }
     case "slide": {

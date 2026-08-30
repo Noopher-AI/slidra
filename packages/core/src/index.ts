@@ -43,6 +43,14 @@ export {
   deletePresentationFile,
   lockSlideElements,
   unlockSlideElements,
+  groupSlideElements,
+  ungroupSlideElements,
+  alignSlideElements,
+  distributeSlideElements,
+  setSlideElementName,
+  copySlideElements,
+  pasteSlideClipboard,
+  duplicateSlideElements,
 } from "./workspace.js";
 export type { AddTextBoxInput } from "./workspace.js";
 export {
@@ -58,6 +66,11 @@ export {
   STYLE_ATTRIBUTE_WHITELIST,
 } from "./element-edit.js";
 export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOptions } from "./element-edit.js";
+export { groupElements, ungroupElements, setElementName } from "./element-group.js";
+export { alignElements, distributeElements } from "./element-arrange.js";
+export type { AlignDirection, DistributeAxis } from "./element-arrange.js";
+export { extractElementsForCopy, pasteElements } from "./element-clipboard.js";
+export type { ClipboardPayload, PasteResult } from "./element-clipboard.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";

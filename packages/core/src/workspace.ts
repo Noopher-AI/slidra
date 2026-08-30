@@ -34,6 +34,9 @@ import { resolvePresentationFonts } from "./fonts.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import { formatSvgNumber } from "./svg-number.js";
+import { groupElements, setElementName, ungroupElements } from "./element-group.js";
+import { alignElements, distributeElements, type AlignDirection, type DistributeAxis } from "./element-arrange.js";
+import { extractElementsForCopy, pasteElements, type ClipboardPayload } from "./element-clipboard.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -741,4 +744,163 @@ export async function deletePresentationFile(id: string, virtualPath: string): P
     throw new CoMotionError(`刪除檔案時發生錯誤：${virtualPath}`);
   }
   await commitSnapshotEntries(id, entries);
+}
+
+// ---------------------------------------------------------------------------
+// element group / ungroup / align / distribute / name set / clipboard
+// (NOOP-113, T6). Same shape as the "seven element edit" write paths above:
+// resolve work dir, confirm the slide is listed, read, mutate, write back
+// through `writePresentationFile`.
+// ---------------------------------------------------------------------------
+
+export async function groupSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+): Promise<{ elementId: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const elementId = generateElementId();
+  const updated = groupElements(original, slidePath, elementIds, elementId);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+export async function ungroupSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = ungroupElements(original, slidePath, elementIds);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function alignSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  direction: AlignDirection,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = alignElements(original, slidePath, elementIds, direction);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function distributeSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  axis: DistributeAxis,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = distributeElements(original, slidePath, elementIds, axis);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideElementName(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  name: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setElementName(original, slidePath, elementIds, name);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+/** `<CO_MOTION_HOME>/clipboard/<presentationId>.json` — sibling to `history/<id>/`, outside the working directory (packing the working dir into `.comot` must never leak clipboard contents). Per-id filing is the entire mechanism enforcing "same presentation only". */
+function clipboardFilePath(home: string, id: string): string {
+  return path.join(home, "clipboard", `${id}.json`);
+}
+
+async function readClipboardFile(home: string, id: string): Promise<ClipboardPayload> {
+  let raw: string;
+  try {
+    raw = await readFile(clipboardFilePath(home, id), "utf-8");
+  } catch (error) {
+    if (isEnoent(error)) {
+      throw new CoMotionError("剪貼簿是空的");
+    }
+    throw new CoMotionError("無法讀取剪貼簿");
+  }
+  try {
+    return JSON.parse(raw) as ClipboardPayload;
+  } catch {
+    throw new CoMotionError("剪貼簿資料已損毀");
+  }
+}
+
+async function writeClipboardFile(home: string, id: string, payload: ClipboardPayload): Promise<void> {
+  const dir = path.join(home, "clipboard");
+  await mkdir(dir, { recursive: true });
+  await writeFile(clipboardFilePath(home, id), JSON.stringify(payload), "utf-8");
+}
+
+/** Extracts `elementIds` into the presentation's clipboard file. Never mutates the presentation — no undo step recorded. */
+export async function copySlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const payload = extractElementsForCopy(original, slidePath, elementIds);
+  await writeClipboardFile(home, id, payload);
+}
+
+/** Pastes the presentation's clipboard file into `slidePath`, which may differ from where it was copied from. */
+export async function pasteSlideClipboard(
+  id: string,
+  slidePath: string,
+  dx: number,
+  dy: number,
+): Promise<{ elementIds: string[] }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const payload = await readClipboardFile(home, id);
+  const original = await readVirtualFile(workDir, slidePath);
+  const { updated, elementIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementIds };
+}
+
+/**
+ * Copies `elementIds` and pastes them back onto the same slide in one step
+ * (決定 7) — internally the same extract/paste pair `copy`/`paste` use, but
+ * routed around the clipboard file entirely so it never overwrites the
+ * user's actual clipboard.
+ */
+export async function duplicateSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  dx: number,
+  dy: number,
+): Promise<{ elementIds: string[] }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const payload = extractElementsForCopy(original, slidePath, elementIds);
+  const { updated, elementIds: newIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementIds: newIds };
 }
