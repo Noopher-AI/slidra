@@ -32,6 +32,11 @@ const CHANGE_EVENT = "presentation-changed";
 // its own, gets an explicit HTTP error back, and silently keeps trying
 // forever with nothing on screen.
 const WATCH_ERROR_EVENT = "presentation-watch-error";
+// T5 (NOOP-93/#110): the single-editor lock's own two events, fanned out
+// over this same /api/events stream rather than a second one (see
+// packages/server/src/changes.ts's `broadcast`).
+const EDITING_FROZEN_EVENT = "editing-frozen";
+const EDITING_UNFROZEN_EVENT = "editing-unfrozen";
 const EVENTS_PATH = "/api/events";
 const DEFAULT_ERROR_MESSAGE = "即時預覽已中斷";
 
@@ -56,6 +61,14 @@ export function startLiveReload(options: {
    * covers.
    */
   onError?: (message: string) => void;
+  /**
+   * T5 (NOOP-93/#110): fired whenever the server reports the single-editor
+   * lock changing (`true` on `editing-frozen`, `false` on
+   * `editing-unfrozen`). Like `onChange`, this stream carries no replay —
+   * the initial state on load/reconnect must come from `GET /api/editing`,
+   * called by the caller, not from this stream.
+   */
+  onFrozenChange?: (frozen: boolean) => void;
   eventSourceFactory?: (url: string) => EventSource;
 }): LiveReload {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
@@ -70,6 +83,14 @@ export function startLiveReload(options: {
 
   source.addEventListener(CHANGE_EVENT, () => {
     options.onChange();
+  });
+
+  source.addEventListener(EDITING_FROZEN_EVENT, () => {
+    options.onFrozenChange?.(true);
+  });
+
+  source.addEventListener(EDITING_UNFROZEN_EVENT, () => {
+    options.onFrozenChange?.(false);
   });
 
   source.addEventListener(WATCH_ERROR_EVENT, (event) => {

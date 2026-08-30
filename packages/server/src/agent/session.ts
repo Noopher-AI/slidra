@@ -5,10 +5,17 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as acp from "@zed-industries/agent-client-protocol";
-import { CoMotionError, CoMotionNotFoundError, readPresentationFile } from "@co-motion/core";
+import {
+  CoMotionError,
+  CoMotionNotFoundError,
+  readPresentationFile,
+  beginHistoryGroup,
+  endHistoryGroup,
+} from "@co-motion/core";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
+import type { EditingLock } from "../editing-lock.js";
 
 /**
  * `fs/write_text_file` is always refused (ADR-0004, first layer). The
@@ -167,11 +174,28 @@ export class AgentChatSession extends EventEmitter {
    * longer current.
    */
   private generation = 0;
+  /**
+   * Single-editor lock (T5, NOOP-93/#110). Shared with the HTTP routes
+   * (`/api/undo`, `/api/redo`, `/api/editing/*`) via `serve.ts` — this
+   * session only ever calls `acquireAgent`/`releaseAgent` on it, never
+   * inspects the human side directly.
+   */
+  private readonly editingLock: EditingLock;
+  /**
+   * True once this turn has acquired `editingLock` and opened a history
+   * group — set on the turn's first command, cleared in `runTurn`'s
+   * `finally`. Guards against a second command in the same turn trying to
+   * open a second group (`beginHistoryGroup` throws on nesting) and tells
+   * `finally` whether there is a group/lock to close at all (a turn that
+   * only thinks/reads never opens either).
+   */
+  private turnHasEditLock = false;
 
-  constructor(config: AgentAdapterConfig, presentationId: string) {
+  constructor(config: AgentAdapterConfig, presentationId: string, editingLock: EditingLock) {
     super();
     this.config = config;
     this.presentationId = presentationId;
+    this.editingLock = editingLock;
   }
 
   override on<K extends keyof ChatEvents>(event: K, listener: ChatEvents[K]): this {
@@ -219,6 +243,30 @@ export class AgentChatSession extends EventEmitter {
     } finally {
       this.relayingCurrentTurn = false;
       this.relayedToolCalls.clear();
+      await this.closeEditLockIfOpen();
+    }
+  }
+
+  /**
+   * Closes the history group and releases the editing lock this turn
+   * opened, if it opened one — the "共用同一條界線" half of the contract
+   * (opening happens in `requestPermission`, below). A turn that never ran
+   * a command never opened either, and this is a no-op for it.
+   *
+   * `endHistoryGroup` failing (e.g. a disk error) must not leave the lock
+   * held forever — that would freeze the whole server — so the release
+   * always runs, in its own `finally`, while the failure itself is still
+   * surfaced rather than swallowed.
+   */
+  private async closeEditLockIfOpen(): Promise<void> {
+    if (!this.turnHasEditLock) return;
+    this.turnHasEditLock = false;
+    try {
+      await endHistoryGroup(this.presentationId);
+    } catch (error) {
+      this.emitTyped("chat-error", { message: describeError(error) });
+    } finally {
+      this.editingLock.releaseAgent();
     }
   }
 
@@ -426,6 +474,14 @@ export class AgentChatSession extends EventEmitter {
         // see — this sidebar is a view of the work, not a debug log.
       },
       requestPermission: async (params: acp.RequestPermissionRequest) => {
+        // Only a command actually about to run needs the floor — a request
+        // the allowlist was always going to refuse touches nothing on
+        // disk, so freezing for it would be pure side effect with no
+        // corresponding write to protect (and would open/immediately-close
+        // an empty history group for every refused command, for nothing).
+        if (isAllowedCommand(params)) {
+          await this.openEditLockOnFirstCommand();
+        }
         return this.decidePermission(params);
       },
       readTextFile: async (params: acp.ReadTextFileRequest) => {
@@ -496,6 +552,25 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
+   * The freeze/undo-group boundary's entry point (T5, NOOP-93/#110): the
+   * author's turn's first `session/request_permission` call — never the
+   * 編輯規約 turn (`relayingCurrentTurn` is false for it) — waits for
+   * `editingLock.acquireAgent()` (which itself waits out any in-progress
+   * human edit rather than throwing) and opens the history group. Every
+   * later command in the same turn sees `turnHasEditLock` already true and
+   * returns immediately — no second acquire, no second group. Only called
+   * for a request the allowlist is actually going to allow (see the
+   * `requestPermission` call site) — a refused command touches nothing on
+   * disk, so there is nothing for the lock/group to protect.
+   */
+  private async openEditLockOnFirstCommand(): Promise<void> {
+    if (!this.relayingCurrentTurn || this.turnHasEditLock) return;
+    await this.editingLock.acquireAgent();
+    this.turnHasEditLock = true;
+    await beginHistoryGroup(this.presentationId);
+  }
+
+  /**
    * `session/request_permission` — the second layer of ADR-0004. Allows a
    * request only when the command it names is structurally guaranteed to
    * invoke the `co-motion` program and nothing else (see
@@ -516,8 +591,7 @@ export class AgentChatSession extends EventEmitter {
    * `reject_always` are both acceptable there.
    */
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
-    const command = extractCommand(params.toolCall);
-    const allow = command !== undefined && isCoMotionCommand(command);
+    const allow = isAllowedCommand(params);
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
       : params.options.find((candidate) => candidate.kind === "reject_once") ??
@@ -631,6 +705,7 @@ export class AgentChatSession extends EventEmitter {
     if (this.disposed) return;
     this.disposed = true;
     this.removeAllListeners();
+    await this.closeEditLockIfOpen();
     await this.teardownSession();
   }
 }
@@ -645,6 +720,12 @@ export class AgentChatSession extends EventEmitter {
  * — returns undefined, which `decidePermission` treats as "cannot
  * determine the command" and refuses (fail closed).
  */
+/** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */
+function isAllowedCommand(params: acp.RequestPermissionRequest): boolean {
+  const command = extractCommand(params.toolCall);
+  return command !== undefined && isCoMotionCommand(command);
+}
+
 function extractCommand(toolCall: { rawInput?: Record<string, unknown> }): string | undefined {
   const rawInput = toolCall.rawInput;
   if (typeof rawInput !== "object" || rawInput === null) return undefined;
