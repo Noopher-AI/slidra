@@ -62,6 +62,25 @@ function click(doc: Document, el: Element): void {
   el.dispatchEvent(new MouseEventCtor("click", { bubbles: true }));
 }
 
+/** Dispatches a real dblclick event that bubbles, so document's listener sees it. */
+function dblclick(doc: Document, el: Element): void {
+  const win = doc.defaultView as Window;
+  const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+  el.dispatchEvent(new MouseEventCtor("dblclick", { bubbles: true }));
+}
+
+/** Dispatches a real Escape keydown on `win`, where the runtime's own listener is registered. */
+function pressEscape(win: Window): void {
+  const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+  win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Escape" }));
+}
+
+/** The `.group-frame` element inside `doc`'s shadow-hosted overlay. */
+function groupFrameEl(doc: Document): HTMLElement {
+  const host = doc.body.children[1];
+  return host.shadowRoot!.querySelector(".group-frame") as HTMLElement;
+}
+
 describe("selection-runtime.js", () => {
   it("點一個帶 id 的元素會回報 select，帶上它的 id 與 data-comot-name", async () => {
     const { doc } = boot('<svg><rect id="el-a" data-comot-name="標題"/></svg>');
@@ -171,5 +190,40 @@ describe("selection-runtime.js", () => {
 
     click(doc, doc.querySelector("svg")!);
     expect(box.style.display).toBe("none");
+  });
+
+  it("單選一個非群組元素：.group-frame 維持 none", async () => {
+    const { doc } = boot('<svg><rect id="el-a"/></svg>');
+
+    click(doc, doc.getElementById("el-a")!);
+
+    expect(groupFrameEl(doc).style.display).toBe("none");
+  });
+
+  it("單選一個群組元素（本身帶 id 的子元素）：.group-frame 顯示為 block", async () => {
+    const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    click(doc, doc.getElementById("el-group")!);
+
+    expect(groupFrameEl(doc).style.display).toBe("block");
+  });
+
+  it("雙擊進入群組編輯：.group-frame 顯示為 block", async () => {
+    const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    dblclick(doc, doc.getElementById("el-child")!);
+
+    expect(groupFrameEl(doc).style.display).toBe("block");
+  });
+
+  it("按 Esc 從群組編輯退到頂層且未選取任何元素：.group-frame 回到 none", async () => {
+    const { doc, win } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
+
+    dblclick(doc, doc.getElementById("el-child")!);
+    expect(groupFrameEl(doc).style.display).toBe("block");
+
+    pressEscape(win);
+
+    expect(groupFrameEl(doc).style.display).toBe("none");
   });
 });

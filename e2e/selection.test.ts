@@ -604,3 +604,170 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
     await deck.cleanup();
   }
 });
+
+// --- NOOP-149 / #117: 群組編輯的虛線框視覺輔助 -----------------------------
+
+/** The `.group-frame` overlay's computed `display` and its (fixed-position, screen-px) rect, read from inside the sandboxed slide iframe's shadow DOM. */
+async function groupFrameBox(
+  page: Page,
+): Promise<{ display: string; left: number; top: number; width: number; height: number }> {
+  const frame = await canvasFrame(page);
+  return frame.evaluate(() => {
+    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const el = host.shadowRoot!.querySelector(".group-frame") as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    return {
+      display: getComputedStyle(el).display,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+}
+
+/**
+ * Three-level nested deck for the group-frame tests: a decorative untagged
+ * `<rect>` gives `el-outer` a bounding box strictly larger than (and
+ * offset from) `el-inner`'s own, so "the frame moved to the inner group"
+ * is a real geometry assertion rather than two rects that happen to
+ * coincide because the outer group has no content of its own.
+ */
+async function makeNestedGroupDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  return makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-outer" data-comot-name="外層群組">\n' +
+      '    <rect x="450" y="200" width="380" height="320" fill="none" stroke="#ccc"/>\n' +
+      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 260)">\n' +
+      '      <rect id="el-leaf" data-comot-name="葉節點" width="200" height="200" fill="#c66"/>\n' +
+      "    </g>\n" +
+      "  </g>\n" +
+      // openApp waits for the first painted <text>; see makeDeckDir's other callers.
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組虛線框測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+}
+
+it("選取群組時顯示虛線框", async () => {
+  const deck = await makeNestedGroupDeck();
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+
+    // Clicking the leaf resolves to the outermost id'd ancestor, el-outer
+    // (the container rule already covered above) — selecting a group.
+    await page.frameLocator("iframe.slide-frame").locator("#el-leaf").click();
+
+    const frame = await groupFrameBox(page);
+    expect(frame.display).toBe("block");
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+it("進入群組編輯後虛線框標示目前層級；巢狀逐層進入時虛線框跟著層級走", async () => {
+  const deck = await makeNestedGroupDeck();
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
+    const selName = page.locator(".status .sel-name");
+
+    // First dblclick enters el-outer (the outermost group at top level) and
+    // lands directly on the leaf actually under the pointer.
+    await slideLeaf.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    // The click/dblclick sequence's own select messages each round-trip
+    // through the host (which echoes group scope + handle flags back down
+    // — see canvas.ts's pushSelectionToRuntime); give the last echo time to
+    // land before reading geometry, so a still-in-flight echo cannot land
+    // after a later assertion/action and silently revert local state.
+    await page.waitForTimeout(50);
+    const outerFrame = await groupFrameBox(page);
+    expect(outerFrame.display).toBe("block");
+
+    // Second dblclick, now scoped inside el-outer, resolves the leaf's
+    // outermost-within-scope ancestor (el-inner) and enters it.
+    await slideLeaf.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await page.waitForTimeout(50);
+    const innerFrame = await groupFrameBox(page);
+    expect(innerFrame.display).toBe("block");
+
+    // The frame moved from the outer group's rect to the inner group's —
+    // not the same rect (an unmoved frame would mean it stayed on el-outer).
+    expect(innerFrame.left).not.toBe(outerFrame.left);
+    expect(innerFrame.width).not.toBe(outerFrame.width);
+    // The inner group's rect is strictly contained within the outer's, per
+    // the deck's own construction (el-outer's decorative rect makes it larger).
+    expect(innerFrame.width).toBeLessThan(outerFrame.width);
+    expect(innerFrame.height).toBeLessThan(outerFrame.height);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+it("Esc 逐層退出：虛線框先回退到上一層，再退一次後消失", async () => {
+  const deck = await makeNestedGroupDeck();
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
+    const selName = page.locator(".status .sel-name");
+
+    await slideLeaf.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await page.waitForTimeout(50);
+    const outerFrame = await groupFrameBox(page);
+
+    await slideLeaf.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    // See the previous test's comment: wait for the dblclick's own select
+    // message to round-trip back through the host before pressing Escape,
+    // so a late-arriving echo cannot re-apply the just-entered scope on
+    // top of Escape's own (synchronous, local) pop.
+    await page.waitForTimeout(50);
+    const innerFrame = await groupFrameBox(page);
+    expect(innerFrame.display).toBe("block");
+
+    // First Esc: back out of el-inner, into el-outer — the frame reverts
+    // to (rather than disappears from) the outer group's rect.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(50);
+    const afterFirstEsc = await groupFrameBox(page);
+    expect(afterFirstEsc.display).toBe("block");
+    expect(afterFirstEsc.left).toBeCloseTo(outerFrame.left, 0);
+    expect(afterFirstEsc.width).toBeCloseTo(outerFrame.width, 0);
+
+    // Second Esc: back to the top level. The still-selected leaf is not a
+    // group container, so the frame disappears entirely.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(50);
+    const afterSecondEsc = await groupFrameBox(page);
+    expect(afterSecondEsc.display).toBe("none");
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+it("基準截圖：群組編輯中的虛線框", async () => {
+  const deck = await makeNestedGroupDeck();
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+    await page.frameLocator("iframe.slide-frame").locator("#el-leaf").dblclick();
+    // Same settle-before-capture wait as the other baseline screenshot
+    // above — geometry is read from getBoundingClientRect() at click time.
+    await page.waitForTimeout(50);
+    await compareScreenshot(page, { name: "group-frame", baselineDir });
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});

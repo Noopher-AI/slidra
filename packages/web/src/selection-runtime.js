@@ -118,6 +118,9 @@
     ";background:color-mix(in srgb, " +
     colors.accent +
     " 12%, transparent);pointer-events:none;}" +
+    ".group-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
+    colors.accent +
+    ";pointer-events:none;display:none;}" +
     ".guide{position:fixed;background:" +
     colors.accent +
     ";pointer-events:none;}" +
@@ -228,6 +231,15 @@
   marqueeBox.style.display = "none";
   shadow.appendChild(marqueeBox);
 
+  // Single-instance dashed frame marking the group (or nested group-edit
+  // level) currently in scope — distinct from `.sel`'s solid outline so
+  // "selected the group" and "selected a child inside it" no longer look
+  // identical. See groupFrameId()/positionGroupFrame() below.
+  var groupFrame = document.createElement("div");
+  groupFrame.className = "group-frame";
+  groupFrame.style.display = "none";
+  shadow.appendChild(groupFrame);
+
   // Pool of plain outline boxes for a multi-selection (>1 ids) — no corner
   // decorations, so acceptance criterion 9 ("多選看不到把手") holds simply
   // because these elements never carry any. Reused across updateBoxes()
@@ -302,10 +314,39 @@
     }
   }
 
+  /** The id of the element `.group-frame` should currently outline, or null. */
+  function groupFrameId() {
+    if (groupPath.length > 0) return groupPath[groupPath.length - 1];
+    if (selectedIds.length === 1) {
+      var el = document.getElementById(selectedIds[0]);
+      if (isGroupContainer(el)) return selectedIds[0];
+    }
+    return null;
+  }
+
+  /** Screen-px `.group-frame` sits outside the outlined element's own rect, so it never coincides exactly with `.sel`'s box on the same element. */
+  var GROUP_FRAME_INSET = 3;
+
+  function positionGroupFrame() {
+    var id = groupFrameId();
+    var el = id ? document.getElementById(id) : null;
+    if (!el) {
+      groupFrame.style.display = "none";
+      return;
+    }
+    var rect = el.getBoundingClientRect();
+    groupFrame.style.display = "block";
+    groupFrame.style.left = rect.left - GROUP_FRAME_INSET + "px";
+    groupFrame.style.top = rect.top - GROUP_FRAME_INSET + "px";
+    groupFrame.style.width = rect.width + GROUP_FRAME_INSET * 2 + "px";
+    groupFrame.style.height = rect.height + GROUP_FRAME_INSET * 2 + "px";
+  }
+
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
   function updateBoxes() {
+    positionGroupFrame();
     if (selectedIds.length === 0) {
       hideBox();
       hideMultiBoxes();
@@ -451,7 +492,10 @@
       if (!target || !isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
       var inner = nearestId(event.target);
-      if (!inner) return;
+      if (!inner) {
+        updateBoxes();
+        return;
+      }
       selectedIds = [inner.getAttribute("id")];
       updateBoxes();
       post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
@@ -620,6 +664,7 @@
     if (groupPath.length > 0) {
       groupPath.pop();
       post({ event: "group-path", groupPath: groupPath.slice() });
+      updateBoxes();
       return;
     }
     if (selectedIds.length > 0) {
