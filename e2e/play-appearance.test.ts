@@ -476,3 +476,62 @@ it("基準截圖：控制列隱藏態", async () => {
     await cleanup();
   }
 });
+
+it("沒有背景矩形的投影片（`new` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
+  // `.canvas`（play.css，data-mode="play"）的 #000 黑幕是進場前/載入前的
+  // 佔位色，本該被投影片文件蓋掉。但 `co-motion new` 的空白頁沒有背景矩形
+  // （packages/core/src/presentation.ts's buildMinimalPresentation），播放
+  // 模式走的是 renderPlay() 的正常路徑（canvas.ts's wrapPlayDocument），不
+  // 是票面文字點名的 wrapSlideDocument——這裡直接量播放中 iframe 自己的
+  // html/body 背景，量的是實際播放路徑用到的那個 wrap 函式，不是名字對得
+  // 上但實際沒被這條路徑呼叫到的那個。
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-play-nobg-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-play-nobg-files-"));
+  process.env["CO_MOTION_HOME"] = coMotionHome;
+  try {
+    const registry: CommandRegistry = createDefaultRegistry();
+    const comotPath = path.join(comotDir, "deck.comot");
+    await registry.dispatch("new", { path: comotPath, name: "無背景播放測試" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const presentationId = opened.data!.id;
+
+    const agent: AgentAdapterConfig = {
+      kind: "claude",
+      label: "Claude Code",
+      command: process.execPath,
+      args: [agentFixture],
+      env: {
+        PATH: `${binDir}:${path.dirname(process.execPath)}`,
+        E2E_PRESENTATION_ID: presentationId,
+        E2E_NEW_TITLE: "此測試不會送出訊息",
+      },
+    };
+    const server = await startServe({ registry, presentationId, port: 0, agent });
+    try {
+      const page = await browser.newPage({ viewport: VIEWPORT });
+      await page.goto(server.url);
+
+      const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
+      await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
+
+      await enterPlay(page);
+
+      const playBody = page.frameLocator("iframe.slide-frame").locator("body");
+      const bodyBackground = await playBody.evaluate((el) => getComputedStyle(el).backgroundColor);
+      // 規格拍板的字面值（票內「不透明白底」）：不是從實作反推的快照。只量
+      // body——wrapPlayDocument()（canvas.ts）刻意只在 body 上蓋白底，沒有
+      // 額外對 html 設定；body 沒填滿的部分本來就會由瀏覽器的 canvas
+      // background propagation 規則沿用 body 的顏色，html 自己維持初始的
+      // 透明值是正常、預期的行為，不是缺陷。
+      expect(bodyBackground).toBe("rgb(255, 255, 255)");
+
+      await page.close();
+    } finally {
+      await server.close();
+    }
+  } finally {
+    delete process.env["CO_MOTION_HOME"];
+    await rm(coMotionHome, { recursive: true, force: true });
+    await rm(comotDir, { recursive: true, force: true });
+  }
+});

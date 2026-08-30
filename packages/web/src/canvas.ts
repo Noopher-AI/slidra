@@ -1663,10 +1663,18 @@ const PRESENTATION_FONT_FACE_STYLE =
  * (`url(#grad)`, `<use href="#sym">` and friends) — measured, not assumed,
  * on all three engines by e2e/base-fragment-spike.test.ts, which is why
  * this and wrapPlayDocument/slideDirectory are exported.
+ *
+ * `background:#fff` on `<body>` (#120): a slide with no background rect of
+ * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * document fully transparent. This function's own callers only ever render
+ * inside a black loading/error placeholder (the empty-deck message and
+ * renderPlay()'s parse-error fallback, both painted over play.css's `.canvas`
+ * `#000`), so a transparent document there reads as solid black instead of a
+ * blank page.
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -1722,6 +1730,14 @@ export function wrapSelectionDocument(
  * which would flash the full slide first. The runtime script comes last in
  * `<body>`, after the slide markup, so `document.getElementById` inside it
  * can find every element immediately without waiting for an event.
+ *
+ * `background:#fff` on `<body>` (#120): this is play mode's normal
+ * rendering path (renderPlay()'s non-error branch), painted over play.css's
+ * `.canvas` `#000` loading placeholder. A slide with no background rect of
+ * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * document transparent, so the black placeholder never gets covered — the
+ * whole point of #000 there (avoid a flash of white before content paints)
+ * regresses into the opposite failure: a flash of black that never clears.
  */
 export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
   const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
@@ -1743,7 +1759,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${hideStyle}</head><body style="margin:0">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

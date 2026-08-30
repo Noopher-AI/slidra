@@ -403,13 +403,21 @@ const PRESENTATION_FONT_FACE_STYLE =
  * `preserveAspectRatio`'s default `xMidYMid meet`, which is what keeps the
  * aspect ratio correct and the whole slide visible instead of cropped.
  *
+ * `html,body{background:#fff}` (#120): a slide with no background rect of
+ * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * document fully transparent, so `.overview-thumb`'s `#000` loading
+ * placeholder (rail.css) never gets painted over — the thumbnail reads as
+ * solid black instead of an empty page. A presentation's mental model is a
+ * sheet of paper; a blank one is white everywhere, not just where an author
+ * happened to draw a rect.
+ *
  * Exported for e2e/base-fragment-spike.test.ts, which measures (on all
  * three engines) that the injected `<base>` leaves same-document fragment
  * references intact in this wrapper too.
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /** Mirrors canvas.ts's own slideDirectory (module-private there; see file header). */
