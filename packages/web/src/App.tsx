@@ -980,6 +980,7 @@ export function App() {
               ref={fileInputRef}
               type="file"
               className="visually-hidden"
+              tabIndex={-1}
               onChange={handleFileInputChange}
             />
             <PlayChrome
