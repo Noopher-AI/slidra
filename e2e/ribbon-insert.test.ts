@@ -221,6 +221,10 @@ it("圖案：選單出現，選「橢圓」後該頁多出一個含 <ellipse> �
     await expect.poll(async () => (await readSlide(registry, presentationId)).match(/<ellipse/g)?.length ?? 0).toBe(
       beforeCount + 1,
     );
+    // NOOP-224: a shape with no `fill` renders SVG-default black, invisible
+    // against the `demo/` deck's near-black background.
+    const after = await readSlide(registry, presentationId);
+    expect(/<ellipse[^>]*\sfill="[^"]+"/.test(after)).toBe(true);
   } finally {
     await cleanup();
   }
@@ -232,6 +236,10 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
     const beforeCount = before.match(/<g /g)?.length ?? 0;
+    // Fixture already has both a filled and a fill-less `<text>` (NOOP-224:
+    // counting must isolate the newly inserted one, not just "some text has
+    // fill", which would already be true before the fix).
+    const beforeFilledTextCount = before.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     await page.locator('.groups .cmd:has-text("文字方塊")').click();
     await expect.poll(async () => (await readSlide(registry, presentationId)).match(/<g /g)?.length ?? 0).toBe(
@@ -239,6 +247,7 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     );
     const after = await readSlide(registry, presentationId);
     expect(after).toContain("<text");
+    expect(after.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
   } finally {
     await cleanup();
   }
@@ -250,6 +259,11 @@ it("頁碼：插入字面 {{ slide_number }}，渲染路徑（供播放模式用
     // Second slide so there is a real "move" to prove the number updates.
     const added = await registry.dispatch<{ path: string }>("slide add", { id: presentationId });
     const secondSlidePath = added.data!.path;
+    // Fixture already has both a filled and a fill-less `<text>` (NOOP-224:
+    // counting must isolate the newly inserted one, not just "some text has
+    // fill", which would already be true before the fix).
+    const beforeFilledTextCount =
+      (await readSlide(registry, presentationId)).match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     const page = await openApp(server);
     await page.locator('.cmd:has-text("頁碼")').click();
@@ -259,6 +273,7 @@ it("頁碼：插入字面 {{ slide_number }}，渲染路徑（供播放模式用
     );
     const rawSvg = await readSlide(registry, presentationId);
     expect(rawSvg).toContain("{{ slide_number }}");
+    expect(rawSvg.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
 
     // Rendered path (what /api/files/ hands the play-mode iframe) shows "1"
     // — the slide the button was clicked on is the first slide.
