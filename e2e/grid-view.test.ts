@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import type { RunningServer } from "../packages/server/src/serve.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 import { openApp as openAppHelper, requireBuilt, startServerFor as startServerForHelper } from "./helpers/launch.js";
 
 /**
@@ -244,6 +244,7 @@ it("基準截圖：總覽網格檢視", async () => {
     // baseline in this repo.
     await expect.poll(() => page.locator("iframe.grid-frame").count()).toBe(4);
     await page.waitForLoadState("networkidle");
+    await settleForScreenshot(page);
     // fullPage: true (screenshot.ts's own comment says it exists for this
     // ticket) — the grid can hold more slides than fit in one viewport.
     await compareScreenshot(page, { name: "grid-view", baselineDir, fullPage: true });

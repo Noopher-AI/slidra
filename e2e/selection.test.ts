@@ -9,7 +9,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * 元素選取 (#56, ADR-0011): clicking an element on the canvas in view mode
@@ -533,6 +533,7 @@ it("基準截圖：標準檢視含選取框", async () => {
     // The box's geometry is read from getBoundingClientRect() at click
     // time; give layout a tick to settle before the byte-exact capture.
     await page.waitForTimeout(50);
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "selected", baselineDir });
   } finally {
     await cleanup();
@@ -923,6 +924,7 @@ it("基準截圖：群組編輯中的虛線框", async () => {
     // Same settle-before-capture wait as the other baseline screenshot
     // above — geometry is read from getBoundingClientRect() at click time.
     await page.waitForTimeout(50);
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "group-frame", baselineDir });
   } finally {
     await cleanup();

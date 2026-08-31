@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 import { RIBBON, TABS } from "../packages/web/src/shell/ribbon-commands.js";
 
 /**
@@ -418,6 +418,7 @@ it("基準截圖：功能區（標題列＋停在投影片放映分頁的 ribbon
     const page = await openApp(server);
     const box = await page.locator(".ribbon").boundingBox();
     if (!box) throw new Error("找不到 .ribbon");
+    await settleForScreenshot(page);
     await compareScreenshot(page, {
       name: "ribbon",
       baselineDir,
@@ -444,6 +445,7 @@ it("基準截圖：縮圖軌全高", async () => {
     const page = await openApp(server);
     const rail = await page.locator(".overview").boundingBox();
     if (!rail) throw new Error("找不到 .overview");
+    await settleForScreenshot(page);
     await compareScreenshot(page, {
       name: "rail-and-notes",
       baselineDir,
@@ -460,6 +462,7 @@ it("基準截圖：狀態列", async () => {
     const page = await openApp(server);
     const box = await page.locator(".status").boundingBox();
     if (!box) throw new Error("找不到 .status");
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "status-bar", baselineDir, clip: box });
   } finally {
     await cleanup();

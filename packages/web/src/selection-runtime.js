@@ -110,9 +110,11 @@
     ".sel::after{right:-4px;top:-4px;}" +
     ".sel i::before{left:-4px;bottom:-4px;}" +
     ".sel i::after{right:-4px;bottom:-4px;}" +
-    ".sel-multi{position:fixed;box-sizing:border-box;outline:1px solid " +
+    ".sel-multi{position:fixed;box-sizing:border-box;outline:2px solid " +
     colors.accent +
-    ";pointer-events:none;}" +
+    ";background:color-mix(in srgb, " +
+    colors.accent +
+    " 15%, transparent);pointer-events:none;}" +
     ".marquee{position:fixed;box-sizing:border-box;border:1px dashed " +
     colors.accent +
     ";background:color-mix(in srgb, " +

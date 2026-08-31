@@ -153,6 +153,10 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
     const beforeCount = before.match(/<g /g)?.length ?? 0;
+    // Fixture already has both a filled and a fill-less `<text>` (NOOP-224:
+    // counting must isolate the newly inserted one, not just "some text has
+    // fill", which would already be true before the fix).
+    const beforeFilledTextCount = before.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     await page.locator('.cmd:has-text("文字方塊")').click();
     await expect.poll(async () => (await readSlide(registry, presentationId)).match(/<g /g)?.length ?? 0).toBe(
@@ -161,6 +165,7 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     const after = await readSlide(registry, presentationId);
     expect(after).toContain("文字方塊");
     expect(after).toContain("<text");
+    expect(after.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
   } finally {
     await cleanup();
   }
@@ -172,6 +177,10 @@ it("圖案：選單出現，選「矩形」後該頁多出一個含 <rect> 的 <
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
     const beforeRectCount = before.match(/<rect/g)?.length ?? 0;
+    // Fixture already has several filled rects (NOOP-224: counting must
+    // isolate the newly inserted one, not just "some rect has fill", which
+    // would already be true before the fix).
+    const beforeFilledRectCount = before.match(/<rect[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     await page.locator('.cmd:has-text("圖案")').click();
     const menuItems = page.locator(".ribbon-menu [role=\"menuitem\"]");
@@ -183,6 +192,8 @@ it("圖案：選單出現，選「矩形」後該頁多出一個含 <rect> 的 <
       beforeRectCount + 1,
     );
     expect(await page.locator(".ribbon-menu").count()).toBe(0);
+    const after = await readSlide(registry, presentationId);
+    expect(after.match(/<rect[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledRectCount + 1);
   } finally {
     await cleanup();
   }

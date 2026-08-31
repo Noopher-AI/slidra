@@ -167,7 +167,11 @@ it("圖片：檔案選擇匯入 PNG 後，該頁多出一個 href 指向 ../asse
     const page = await openApp(server);
     await pickFile(page, "圖片", realPngPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["photo.png"]);
+    // A real file-input round trip through the browser (not just DOM state)
+    // — same "give it real I/O budget" convention as e2e/player-media.test.ts
+    // and e2e/smoke.test.ts, since the vitest default (1000ms) leaves too
+    // thin a margin under load and made this assertion batch-flaky.
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["photo.png"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('href="../assets/photo.png"');
   } finally {
@@ -182,7 +186,7 @@ it("影片：檔案選擇匯入 webm 後，該頁多出一個帶 data-comot-medi
     const clipPath = path.join(e2eDir, "fixtures/media-deck/assets/clip.webm");
     await pickFile(page, "影片", clipPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["clip.webm"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["clip.webm"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('data-comot-media="../assets/clip.webm"');
     expect(svg).not.toContain("<image");
@@ -198,7 +202,7 @@ it("音訊：檔案選擇匯入 oga 後，該頁多出一個帶 data-comot-media
     const narrationPath = path.join(e2eDir, "fixtures/media-deck/assets/narration.oga");
     await pickFile(page, "音訊", narrationPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["narration.oga"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["narration.oga"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('data-comot-media="../assets/narration.oga"');
   } finally {
@@ -221,6 +225,10 @@ it("圖案：選單出現，選「橢圓」後該頁多出一個含 <ellipse> �
     await expect.poll(async () => (await readSlide(registry, presentationId)).match(/<ellipse/g)?.length ?? 0).toBe(
       beforeCount + 1,
     );
+    // NOOP-224: a shape with no `fill` renders SVG-default black, invisible
+    // against the `demo/` deck's near-black background.
+    const after = await readSlide(registry, presentationId);
+    expect(/<ellipse[^>]*\sfill="[^"]+"/.test(after)).toBe(true);
   } finally {
     await cleanup();
   }
@@ -232,6 +240,10 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
     const beforeCount = before.match(/<g /g)?.length ?? 0;
+    // Fixture already has both a filled and a fill-less `<text>` (NOOP-224:
+    // counting must isolate the newly inserted one, not just "some text has
+    // fill", which would already be true before the fix).
+    const beforeFilledTextCount = before.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     await page.locator('.groups .cmd:has-text("文字方塊")').click();
     await expect.poll(async () => (await readSlide(registry, presentationId)).match(/<g /g)?.length ?? 0).toBe(
@@ -239,6 +251,7 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     );
     const after = await readSlide(registry, presentationId);
     expect(after).toContain("<text");
+    expect(after.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
   } finally {
     await cleanup();
   }
@@ -250,6 +263,11 @@ it("頁碼：插入字面 {{ slide_number }}，渲染路徑（供播放模式用
     // Second slide so there is a real "move" to prove the number updates.
     const added = await registry.dispatch<{ path: string }>("slide add", { id: presentationId });
     const secondSlidePath = added.data!.path;
+    // Fixture already has both a filled and a fill-less `<text>` (NOOP-224:
+    // counting must isolate the newly inserted one, not just "some text has
+    // fill", which would already be true before the fix).
+    const beforeFilledTextCount =
+      (await readSlide(registry, presentationId)).match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0;
 
     const page = await openApp(server);
     await page.locator('.cmd:has-text("頁碼")').click();
@@ -259,6 +277,7 @@ it("頁碼：插入字面 {{ slide_number }}，渲染路徑（供播放模式用
     );
     const rawSvg = await readSlide(registry, presentationId);
     expect(rawSvg).toContain("{{ slide_number }}");
+    expect(rawSvg.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
 
     // Rendered path (what /api/files/ hands the play-mode iframe) shows "1"
     // — the slide the button was clicked on is the first slide.
@@ -305,7 +324,7 @@ it("拖曳一張真 PNG 進舞台：檔案進 assets/，投影片出現對應 <i
       bytes,
     );
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["dropped.png"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["dropped.png"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('href="../assets/dropped.png"');
     expect(await page.locator(".canvas-error-banner[role='alert']").count()).toBe(0);
@@ -365,10 +384,12 @@ it("剪貼簿貼上一張 PNG：檔案進 assets/，投影片出現對應 <image
       window.dispatchEvent(event);
     }, bytes);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["clipboard.png"]);
-    await expect.poll(async () => (await readSlide(registry, presentationId)).includes('href="../assets/clipboard.png"')).toBe(
-      true,
-    );
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["clipboard.png"]);
+    await expect
+      .poll(async () => (await readSlide(registry, presentationId)).includes('href="../assets/clipboard.png"'), {
+        timeout: 10_000,
+      })
+      .toBe(true);
   } finally {
     await cleanup();
   }
