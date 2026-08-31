@@ -167,7 +167,11 @@ it("圖片：檔案選擇匯入 PNG 後，該頁多出一個 href 指向 ../asse
     const page = await openApp(server);
     await pickFile(page, "圖片", realPngPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["photo.png"]);
+    // A real file-input round trip through the browser (not just DOM state)
+    // — same "give it real I/O budget" convention as e2e/player-media.test.ts
+    // and e2e/smoke.test.ts, since the vitest default (1000ms) leaves too
+    // thin a margin under load and made this assertion batch-flaky.
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["photo.png"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('href="../assets/photo.png"');
   } finally {
@@ -182,7 +186,7 @@ it("影片：檔案選擇匯入 webm 後，該頁多出一個帶 data-comot-medi
     const clipPath = path.join(e2eDir, "fixtures/media-deck/assets/clip.webm");
     await pickFile(page, "影片", clipPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["clip.webm"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["clip.webm"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('data-comot-media="../assets/clip.webm"');
     expect(svg).not.toContain("<image");
@@ -198,7 +202,7 @@ it("音訊：檔案選擇匯入 oga 後，該頁多出一個帶 data-comot-media
     const narrationPath = path.join(e2eDir, "fixtures/media-deck/assets/narration.oga");
     await pickFile(page, "音訊", narrationPath);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["narration.oga"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["narration.oga"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('data-comot-media="../assets/narration.oga"');
   } finally {
@@ -320,7 +324,7 @@ it("拖曳一張真 PNG 進舞台：檔案進 assets/，投影片出現對應 <i
       bytes,
     );
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["dropped.png"]);
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["dropped.png"]);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('href="../assets/dropped.png"');
     expect(await page.locator(".canvas-error-banner[role='alert']").count()).toBe(0);
@@ -380,10 +384,12 @@ it("剪貼簿貼上一張 PNG：檔案進 assets/，投影片出現對應 <image
       window.dispatchEvent(event);
     }, bytes);
 
-    await expect.poll(async () => listAssets(registry, presentationId)).toEqual(["clipboard.png"]);
-    await expect.poll(async () => (await readSlide(registry, presentationId)).includes('href="../assets/clipboard.png"')).toBe(
-      true,
-    );
+    await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["clipboard.png"]);
+    await expect
+      .poll(async () => (await readSlide(registry, presentationId)).includes('href="../assets/clipboard.png"'), {
+        timeout: 10_000,
+      })
+      .toBe(true);
   } finally {
     await cleanup();
   }
