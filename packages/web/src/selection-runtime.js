@@ -133,7 +133,20 @@
     ";pointer-events:auto;display:none;}" +
     ".handle.corner{cursor:nwse-resize;}" +
     ".handle.rotate{border-radius:50%;cursor:grab;}" +
-    ".handle.edge{cursor:ew-resize;}";
+    ".handle.edge{cursor:ew-resize;}" +
+    // In-place editing has no visible input of its own — the <textarea>
+    // that actually holds the keystrokes is 1px and transparent — so
+    // without these two the author cannot tell a double-click did
+    // anything until they type. The frame says "this element is open for
+    // editing"; the caret says where the next character lands (the end of
+    // the string, always — the editing model has no caret movement).
+    ".edit-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
+    colors.accent +
+    ";pointer-events:none;display:none;}" +
+    ".edit-caret{position:fixed;width:2px;background:" +
+    colors.accent +
+    ";pointer-events:none;display:none;animation:comot-caret 1s step-end infinite;}" +
+    "@keyframes comot-caret{50%{opacity:0;}}";
   shadow.appendChild(style);
 
   // One handle div per role, created once and repositioned/hidden on every
@@ -230,6 +243,14 @@
   marqueeBox.className = "marquee";
   marqueeBox.style.display = "none";
   shadow.appendChild(marqueeBox);
+
+  var editFrame = document.createElement("div");
+  editFrame.className = "edit-frame";
+  shadow.appendChild(editFrame);
+
+  var editCaret = document.createElement("div");
+  editCaret.className = "edit-caret";
+  shadow.appendChild(editCaret);
 
   // Pool of dashed frames, one per level of `groupPath` currently in scope
   // (outermost first) — distinct from `.sel`'s solid outline so "selected
@@ -349,12 +370,17 @@
     var ta = ensureTextarea();
     ta.value = typeof initialText === "string" ? initialText : "";
     ta.focus();
+    // The frame and caret are the only thing that tells the author the
+    // double-click landed — the textarea holding the keystrokes is 1px
+    // and transparent.
+    updateEditDecoration();
     return true;
   }
 
   function exitRuntimeTextEdit() {
     editingId = null;
     if (textarea) textarea.blur();
+    updateEditDecoration();
   }
 
   function positionBox() {
@@ -458,7 +484,44 @@
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
+  /**
+   * Paints the editing frame and the trailing caret for whatever
+   * `editingId` currently is, or hides both when nothing is being edited.
+   * Everything is measured off the live DOM (`getBoundingClientRect`), so
+   * this needs no font metrics and stays correct for a plain `<text>`
+   * whose own `text-anchor` decides where the string actually sits.
+   */
+  function updateEditDecoration() {
+    var el = editingId === null ? null : document.getElementById(editingId);
+    if (!el) {
+      editFrame.style.display = "none";
+      editCaret.style.display = "none";
+      return;
+    }
+    var rect = el.getBoundingClientRect();
+    editFrame.style.display = "block";
+    editFrame.style.left = rect.left - 3 + "px";
+    editFrame.style.top = rect.top - 3 + "px";
+    editFrame.style.width = rect.width + 6 + "px";
+    editFrame.style.height = rect.height + 6 + "px";
+
+    // The caret sits at the end of the last line — the only place a
+    // character can be added or removed (§7 決定 6).
+    var textEl = el.querySelector("text");
+    var tspans = textEl ? textEl.getElementsByTagName("tspan") : null;
+    var lastEl = tspans && tspans.length > 0 ? tspans[tspans.length - 1] : textEl;
+    var caretRect = lastEl ? lastEl.getBoundingClientRect() : rect;
+    // An empty string measures 0x0 at the origin, which would park the
+    // caret in the page's corner — fall back to the container's own box.
+    if (caretRect.width === 0 && caretRect.height === 0) caretRect = rect;
+    editCaret.style.display = "block";
+    editCaret.style.left = caretRect.right + "px";
+    editCaret.style.top = caretRect.top + "px";
+    editCaret.style.height = caretRect.height + "px";
+  }
+
   function updateBoxes() {
+    updateEditDecoration();
     positionGroupFrames();
     if (selectedIds.length === 0) {
       hideBox();

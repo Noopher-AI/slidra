@@ -158,6 +158,39 @@ it("沒有 font-family 的文字框：雙擊可進入編輯，換行用內建預
   }
 });
 
+it("進入編輯後畫面看得出來：編輯外框與尾端游標都出現，游標隨打字往後移", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = page.frameLocator("iframe.slide-frame");
+
+    const decoration = () =>
+      frame.locator("body").evaluate(() => {
+        const shadow = document.querySelector("[data-comot-selection-host]")!.shadowRoot!;
+        const caret = shadow.querySelector(".edit-caret") as HTMLElement;
+        return {
+          frame: (shadow.querySelector(".edit-frame") as HTMLElement).style.display,
+          caret: caret.style.display,
+          caretLeft: parseFloat(caret.style.left || "0"),
+        };
+      });
+
+    expect((await decoration()).frame).not.toBe("block"); // Nothing being edited yet.
+
+    await frame.locator("#el-plain").dblclick();
+    await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
+
+    const opened = await decoration();
+    expect(opened.frame).toBe("block");
+    expect(opened.caret).toBe("block");
+
+    await page.keyboard.type("字");
+    await expect.poll(async () => (await decoration()).caretLeft).toBeGreaterThan(opened.caretLeft);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("一般 <text>（沒有 data-comot-text-width）：雙擊可進入編輯，提交只換字串，x／y／text-anchor 原封不動", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
