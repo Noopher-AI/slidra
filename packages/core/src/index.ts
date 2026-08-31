@@ -1,6 +1,8 @@
 export { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 export { generateOpaqueId, generateElementId } from "./id.js";
 export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./presentation.js";
+export { DEFAULT_FONT_FAMILY } from "./default-font.js";
+export { readDefaultFontBytes } from "./default-font-bytes.js";
 export type { MinimalPresentationFiles } from "./presentation.js";
 export { validateProjectJson } from "./project-json.js";
 export type { ProjectJson, FontEntry } from "./project-json.js";

@@ -11,6 +11,7 @@ import { Rail } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
+import { StylePanel } from "./shell/StylePanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
 import type { ShellView } from "./shell/view.js";
 import type { RibbonHandlers } from "./shell/ribbon-commands.js";
@@ -77,7 +78,7 @@ export function App() {
     mode: "view",
     playerHasFocus: false,
     error: null,
-    selection: { ids: [], names: [], groupPath: [] },
+    selection: { ids: [], names: [], groupPath: [], elements: [] },
     dragSignal: 0,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
@@ -994,6 +995,10 @@ export function App() {
           </Stage>
           {shellVisible && <Notes hidden={view === "grid"} />}
         </div>
+        {/* 樣式面板 (NOOP-143): same shellVisible gate as everything else in
+            this row — absent from the DOM in 播放模式, mounted ahead of the
+            chat sidebar (plan §1 decision 1). */}
+        {shellVisible && <StylePanel state={canvasState} controller={controllerRef.current} />}
         {/* #54 (wave 4): now absent from the DOM in 播放模式 — #54's own
             AC ("功能區、縮圖軌、對話、備忘稿、狀態列都不在 DOM 裡") names
             對話 explicitly. No e2e test depends on the chat sidebar being

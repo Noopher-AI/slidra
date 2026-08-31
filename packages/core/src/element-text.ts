@@ -1,4 +1,5 @@
 import { CoMotionError } from "./errors.js";
+import { DEFAULT_FONT_FAMILY } from "./default-font.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedAttribute, type ScannedNode } from "./slide/scan.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
@@ -121,10 +122,12 @@ export function assertNotLocked(node: ScannedNode, elementId: string, force: boo
  * module never touches.
  */
 export function readTextFontInfo(textNode: ScannedNode, elementId: string): { fontFamily: string; fontSize: number } {
-  const fontFamily = attributeValue(textNode, "font-family");
-  if (fontFamily === null || fontFamily.trim() === "") {
-    throw new CoMotionError(`文字框缺少 font-family，無法重新換行：${elementId}`);
-  }
+  // font-family is optional in SVG. A text box that omits it is measured
+  // against the build's own bundled family (see default-font.ts), which
+  // `resolvePresentationFonts` always puts in the font book — the same
+  // rule the browser-side editing path applies in canvas.ts.
+  const declaredFamily = attributeValue(textNode, "font-family");
+  const fontFamily = declaredFamily === null || declaredFamily.trim() === "" ? DEFAULT_FONT_FAMILY : declaredFamily;
   const fontSizeRaw = attributeValue(textNode, "font-size");
   const fontSize = fontSizeRaw === null || fontSizeRaw.trim() === "" ? 16 : Number(fontSizeRaw);
   if (!Number.isFinite(fontSize) || fontSize <= 0) {

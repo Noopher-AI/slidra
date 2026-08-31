@@ -133,7 +133,20 @@
     ";pointer-events:auto;display:none;}" +
     ".handle.corner{cursor:nwse-resize;}" +
     ".handle.rotate{border-radius:50%;cursor:grab;}" +
-    ".handle.edge{cursor:ew-resize;}";
+    ".handle.edge{cursor:ew-resize;}" +
+    // In-place editing has no visible input of its own — the <textarea>
+    // that actually holds the keystrokes is 1px and transparent — so
+    // without these two the author cannot tell a double-click did
+    // anything until they type. The frame says "this element is open for
+    // editing"; the caret says where the next character lands (the end of
+    // the string, always — the editing model has no caret movement).
+    ".edit-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
+    colors.accent +
+    ";pointer-events:none;display:none;}" +
+    ".edit-caret{position:fixed;width:2px;background:" +
+    colors.accent +
+    ";pointer-events:none;display:none;animation:comot-caret 1s step-end infinite;}" +
+    "@keyframes comot-caret{50%{opacity:0;}}";
   shadow.appendChild(style);
 
   // One handle div per role, created once and repositioned/hidden on every
@@ -231,6 +244,14 @@
   marqueeBox.style.display = "none";
   shadow.appendChild(marqueeBox);
 
+  var editFrame = document.createElement("div");
+  editFrame.className = "edit-frame";
+  shadow.appendChild(editFrame);
+
+  var editCaret = document.createElement("div");
+  editCaret.className = "edit-caret";
+  shadow.appendChild(editCaret);
+
   // Pool of dashed frames, one per level of `groupPath` currently in scope
   // (outermost first) — distinct from `.sel`'s solid outline so "selected
   // the group" and "selected a child inside it" don't look identical, and
@@ -264,6 +285,103 @@
   // so CanvasState.selection.groupPath agrees, but no command is ever sent
   // for it.
   var groupPath = [];
+
+  // --- In-place text editing (NOOP-91/#70 US1, T5) ---
+  //
+  // The id of the text box currently being edited, or null between edits.
+  // This is checked at the very top of every click/dblclick/pointerdown
+  // handler below — editing suspends normal selection/gesture handling
+  // entirely (§4.2's "編輯期間不觸發選取／拖曳邏輯" row) — rather than
+  // layering an edit-mode branch into each one.
+  var editingId = null;
+  var textarea = null;
+  var isComposing = false;
+
+  /** Any ancestor (including `el` itself) carrying `data-comot-lock="true"` — the same walk `findSelectable` does, exposed standalone because the host-initiated `beginTextEdit` path never goes through a click at all and so never runs `findSelectable`. */
+  function isLockedOrInsideLocked(el) {
+    var current = el;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  /**
+   * Lazily creates the hidden `<textarea>` that captures keyboard input
+   * while editing (§4.2's IME row: `input`, not `keydown`, is what is
+   * trusted for the string itself — `keydown` only ever intercepts Enter).
+   * `opacity:0` rather than `display:none` — a display:none element cannot
+   * hold focus or receive IME composition events.
+   */
+  function ensureTextarea() {
+    if (textarea) return textarea;
+    var el = document.createElement("textarea");
+    el.setAttribute("aria-hidden", "true");
+    el.style.position = "fixed";
+    el.style.top = "0";
+    el.style.left = "0";
+    el.style.width = "1px";
+    el.style.height = "1px";
+    el.style.padding = "0";
+    el.style.border = "none";
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+    shadow.appendChild(el);
+    el.addEventListener("compositionstart", function () {
+      isComposing = true;
+    });
+    el.addEventListener("compositionend", function () {
+      isComposing = false;
+      reportTextEditInput();
+    });
+    el.addEventListener("keydown", function (event) {
+      // Enter never inserts a line break and never ends editing — core's
+      // wrapText has no newline semantics (§4.2's Enter row); Esc is
+      // handled by the window-level keydown listener below regardless of
+      // where focus sits.
+      if (event.key === "Enter") event.preventDefault();
+    });
+    el.addEventListener("input", function () {
+      if (!isComposing) sanitizeTextareaValue();
+      reportTextEditInput();
+    });
+    textarea = el;
+    return el;
+  }
+
+  /** Replaces any newline in the textarea's value with a single space (pasted multi-line text has no wrapText-side representation) — never while an IME composition is in progress, which this same replacement would corrupt. */
+  function sanitizeTextareaValue() {
+    var value = textarea.value;
+    var sanitized = value.replace(/\r\n|\r|\n/g, " ");
+    if (sanitized !== value) textarea.value = sanitized;
+  }
+
+  function reportTextEditInput() {
+    if (editingId === null || !textarea) return;
+    post({ event: "text-edit-input", id: editingId, text: textarea.value });
+  }
+
+  /** Starts editing `id` with `initialText` already loaded into the textarea — false (and no-op) when `id` is missing or locked. */
+  function enterRuntimeTextEdit(id, initialText) {
+    var el = document.getElementById(id);
+    if (!el || isLockedOrInsideLocked(el)) return false;
+    editingId = id;
+    var ta = ensureTextarea();
+    ta.value = typeof initialText === "string" ? initialText : "";
+    ta.focus();
+    // The frame and caret are the only thing that tells the author the
+    // double-click landed — the textarea holding the keystrokes is 1px
+    // and transparent.
+    updateEditDecoration();
+    return true;
+  }
+
+  function exitRuntimeTextEdit() {
+    editingId = null;
+    if (textarea) textarea.blur();
+    updateEditDecoration();
+  }
 
   function positionBox() {
     if (selectedIds.length !== 1) return;
@@ -366,7 +484,44 @@
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
+  /**
+   * Paints the editing frame and the trailing caret for whatever
+   * `editingId` currently is, or hides both when nothing is being edited.
+   * Everything is measured off the live DOM (`getBoundingClientRect`), so
+   * this needs no font metrics and stays correct for a plain `<text>`
+   * whose own `text-anchor` decides where the string actually sits.
+   */
+  function updateEditDecoration() {
+    var el = editingId === null ? null : document.getElementById(editingId);
+    if (!el) {
+      editFrame.style.display = "none";
+      editCaret.style.display = "none";
+      return;
+    }
+    var rect = el.getBoundingClientRect();
+    editFrame.style.display = "block";
+    editFrame.style.left = rect.left - 3 + "px";
+    editFrame.style.top = rect.top - 3 + "px";
+    editFrame.style.width = rect.width + 6 + "px";
+    editFrame.style.height = rect.height + 6 + "px";
+
+    // The caret sits at the end of the last line — the only place a
+    // character can be added or removed (§7 決定 6).
+    var textEl = el.querySelector("text");
+    var tspans = textEl ? textEl.getElementsByTagName("tspan") : null;
+    var lastEl = tspans && tspans.length > 0 ? tspans[tspans.length - 1] : textEl;
+    var caretRect = lastEl ? lastEl.getBoundingClientRect() : rect;
+    // An empty string measures 0x0 at the origin, which would park the
+    // caret in the page's corner — fall back to the container's own box.
+    if (caretRect.width === 0 && caretRect.height === 0) caretRect = rect;
+    editCaret.style.display = "block";
+    editCaret.style.left = caretRect.right + "px";
+    editCaret.style.top = caretRect.top + "px";
+    editCaret.style.height = caretRect.height + "px";
+  }
+
   function updateBoxes() {
+    updateEditDecoration();
     positionGroupFrames();
     if (selectedIds.length === 0) {
       hideBox();
@@ -460,6 +615,11 @@
   window.addEventListener(
     "click",
     function (event) {
+      // A commit-triggering outside pointerdown already cleared editingId
+      // and set suppressNextClick before this click fires (§4.2's
+      // "pointerdown 落在被編輯元素之外" row) — this guard only matters for
+      // a click with no preceding pointerdown at all (e.g. synthetic).
+      if (editingId !== null) return;
       if (suppressNextClick) {
         suppressNextClick = false;
         return;
@@ -514,8 +674,22 @@
   window.addEventListener(
     "dblclick",
     function (event) {
+      if (editingId !== null) return;
       var target = resolveClickTarget(event.target);
-      if (!target || !isGroupContainer(target)) return;
+      if (!target) return;
+      // A text box's container carries data-comot-text-width (#76) — double
+      // clicking it opens in-place editing instead of the group-entry
+      // logic below. resolveClickTarget already ran findSelectable, which
+      // returns null (so `target` is null, handled above) for a locked
+      // box or anything inside one — this is the dblclick path's half of
+      // the "two checks" lock posture (§7 決定 8); enterRuntimeTextEdit's
+      // own isLockedOrInsideLocked is the other half, for the
+      // host-initiated beginTextEdit path this click never goes through.
+      if (target.hasAttribute("data-comot-text-width") || isPlainTextContainer(target)) {
+        post({ event: "dblclick-textbox", id: target.getAttribute("id") });
+        return;
+      }
+      if (!isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
       var inner = resolveClickTarget(event.target);
       if (!inner) {
@@ -613,6 +787,20 @@
     "pointerdown",
     function (event) {
       if (event.button !== 0) return; // Left button only — no gesture on right/middle click.
+      if (editingId !== null) {
+        var editedEl = document.getElementById(editingId);
+        var insideEdited = editedEl && (editedEl === event.target || editedEl.contains(event.target));
+        if (insideEdited) return; // Still editing — no gesture starts on the box being edited itself.
+        // Outside the edited box: commit and leave editing (§4.2's
+        // "pointerdown 落在被編輯元素之外" row). This same pointerdown does
+        // not also start a new gesture/selection — suppressNextClick only
+        // eats the trailing click; a second, separate click is what
+        // resumes normal selection.
+        post({ event: "text-edit-commit", id: editingId });
+        exitRuntimeTextEdit();
+        suppressNextClick = true;
+        return;
+      }
       var handleName = findHandleTarget(event);
       var hit = handleName ? null : resolveClickTarget(event.target);
       gesture = {
@@ -693,6 +881,17 @@
 
   window.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
+    // Esc COMMITS an in-progress edit rather than cancelling it (§7 決定
+    // 4) — checked before the gesture-cancel branch below, since Escape
+    // must never fall through to popping groupPath while mid-edit. Works
+    // regardless of whether the hidden textarea currently has focus: this
+    // listener is on `window`, and keydown bubbles there from any focus
+    // target in this document.
+    if (editingId !== null) {
+      post({ event: "text-edit-commit", id: editingId });
+      exitRuntimeTextEdit();
+      return;
+    }
     if (gesture) {
       endGesture(gesture.lastClient, true);
       return;
@@ -747,6 +946,33 @@
    * so there is no injection surface even though `text` is untrusted-slide
    * content round-tripped through the host.
    */
+  /**
+   * A container holding exactly one `<text>` and no other element — the
+   * shape `text set` writes through unchanged (core's
+   * `replaceContainerText`). Text boxes are the wrapping variant of this,
+   * marked by `data-comot-text-width`; everything else here is a plain
+   * `<text>` whose own x/y/text-anchor stay authoritative.
+   */
+  function isPlainTextContainer(el) {
+    var children = el.children;
+    var texts = 0;
+    for (var i = 0; i < children.length; i++) {
+      if (children[i].tagName === "text") texts++;
+      else return false;
+    }
+    return texts === 1;
+  }
+
+  /** Live preview for a plain `<text>`: replaces the string only, leaving the element's own positioning attributes untouched. */
+  function applyPreviewText(id, text) {
+    var container = document.getElementById(id);
+    if (!container) return;
+    var textEl = container.querySelector("text");
+    if (!textEl) return;
+    textEl.textContent = typeof text === "string" ? text : "";
+    updateBoxes();
+  }
+
   function applyPreviewTextbox(id, lines, width) {
     var container = document.getElementById(id);
     if (!container) return;
@@ -816,6 +1042,15 @@
       applyPreview(data.items);
     } else if (data.command === "preview-textbox") {
       applyPreviewTextbox(data.id, data.lines, data.width);
+    } else if (data.command === "preview-text") {
+      applyPreviewText(data.id, data.text);
+    } else if (data.command === "begin-text-edit") {
+      var started = enterRuntimeTextEdit(data.id, data.text);
+      // No `lines` means a plain <text> (host side sends them only for a
+      // text box) — nothing to re-wrap, so the initial paint is a no-op.
+      if (started) {
+        if (Array.isArray(data.lines)) applyPreviewTextbox(data.id, data.lines, data.width);
+      } else post({ event: "text-edit-denied", id: data.id });
     } else if (data.command === "guides") {
       drawGuides(data.lines);
     } else if (data.command === "marquee") {

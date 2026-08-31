@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
-import { CoMotionError, undoLastGroup, redoLastGroup, validateProjectJson, type ProjectJson } from "@co-motion/core";
+import { CoMotionError, readDefaultFontBytes, undoLastGroup, redoLastGroup, validateProjectJson, type ProjectJson } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
@@ -307,6 +307,17 @@ async function handleRequest(
 
     if (url.pathname === "/api/editing") {
       sendJson(res, 200, { frozen: editingLock.getState() === "agent" });
+      return;
+    }
+
+    if (url.pathname === "/api/default-font") {
+      // The one font every build ships (core's DEFAULT_FONT_FAMILY). The
+      // browser needs its metrics to wrap a text box whose <text> declares
+      // no font-family of its own — a legal SVG the presentation's own
+      // `fonts` list says nothing about, so /api/raw/ cannot serve it.
+      const bytes = readDefaultFontBytes();
+      res.writeHead(200, { "content-type": "font/ttf", "content-length": String(bytes.byteLength) });
+      res.end(bytes);
       return;
     }
 
