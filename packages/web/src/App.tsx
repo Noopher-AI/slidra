@@ -17,6 +17,17 @@ import type { ShellView } from "./shell/view.js";
 import type { RibbonHandlers } from "./shell/ribbon-commands.js";
 
 /**
+ * `element insert`/`textbox add` render as plain black (SVG's own default)
+ * when no `fill` is given — invisible against the `demo/` deck's near-black
+ * background (NOOP-224/#133). `presentationInfo` carries no foreground/theme
+ * color today, so these are literal defaults matching the light text/neutral
+ * shape fills `demo/slides/*.svg` already uses, not a value read from the
+ * presentation.
+ */
+const DEFAULT_TEXT_FILL = "#f4f6f8";
+const DEFAULT_SHAPE_FILL = "#889";
+
+/**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
  * e2e/fullscreen-spike.test.ts). Shared by toggleFullscreen() and
  * handleExitPlay() below rather than duplicated — exitFullscreen() needs no
@@ -746,6 +757,7 @@ export function App() {
         y: (canvas.height - height) / 2,
         width,
         height,
+        fill: DEFAULT_SHAPE_FILL,
       });
     };
     setRibbonMenu({
@@ -774,6 +786,7 @@ export function App() {
       y: canvas.height / 2 - 20,
       width,
       text: "文字方塊",
+      fill: DEFAULT_TEXT_FILL,
     });
   }
 
@@ -899,6 +912,7 @@ export function App() {
         y: canvas.height - 60,
         width,
         text: "{{ slide_number }}",
+        fill: DEFAULT_TEXT_FILL,
       });
     },
     // 切換分頁的轉場設定 (T6). Simple presentation-level command, no popover —

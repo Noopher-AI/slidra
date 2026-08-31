@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory, resolvePresentationFonts, wrapText } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * NOOP-91's real Chromium acceptance tests, modelled on
@@ -916,6 +916,7 @@ it("基準截圖：拖曳中畫出吸附輔助線（計畫 §5.6）", async () =
           // settle before a byte-exact capture (selection.test.ts's own
           // baseline test uses the same short wait for the same reason).
           await page.waitForTimeout(50);
+          await settleForScreenshot(page);
           await compareScreenshot(page, { name: "dragging-shows-guide", baselineDir });
         },
       },
@@ -935,6 +936,7 @@ it("基準截圖：放手後輔助線消失（計畫 §5.6）", async () => {
     const dy = 250;
     await dragBy(page, { x: 180, y: 150 }, { x: dx, y: dy });
     await page.waitForTimeout(50);
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "released-guide-cleared", baselineDir });
   } finally {
     await cleanup();
@@ -952,6 +954,7 @@ it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.
     const selName = page.locator(".status .sel-name");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
     await page.waitForTimeout(50);
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "multiselect-move-only", baselineDir });
   } finally {
     await cleanup();

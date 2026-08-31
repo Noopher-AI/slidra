@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * Geometry + baseline coverage for the stage (#50): the slide sits centred
@@ -270,6 +270,7 @@ it("基準截圖：標準檢視的舞台（深色投影片、可辨的邊界）"
   const page = await openApp();
   const wellBox = await page.locator(".canvas-area").boundingBox();
   if (!wellBox) throw new Error("找不到 .canvas-area");
+  await settleForScreenshot(page);
   await compareScreenshot(page, {
     name: "standard-stage",
     baselineDir,

@@ -22,3 +22,6 @@ node_modules/
 
 # Local quick-start scratch
 .quickstart/
+
+# E2E screenshot-comparison failure diagnostics (actual + diff PNGs)
+e2e/__screenshots__/__failed__/
