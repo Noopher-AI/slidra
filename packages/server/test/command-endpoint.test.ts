@@ -109,6 +109,14 @@ async function readSlide(presentationId: string): Promise<string> {
   return result.data!.content;
 }
 
+async function readProjectJson(presentationId: string): Promise<Record<string, unknown>> {
+  const result = await registry.dispatch<{ content: string }>("cat", {
+    id: presentationId,
+    path: "project.json",
+  });
+  return JSON.parse(result.data!.content);
+}
+
 it("白名單內的 element move 會實際改到投影片，並回 200 與 CommandResult", async () => {
   const id = await openDeck("move.comot");
   const server = await serve(id);
@@ -231,8 +239,9 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element align",
     "element distribute",
     "element order",
+    "presentation transition set",
   ]) {
-    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade" } });
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
   }
 });
@@ -249,6 +258,34 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
+});
+
+it("presentation transition set：白名單內的合法值回 2xx，並寫進 project.json", async () => {
+  const id = await openDeck("transition-fade.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "presentation transition set",
+    input: { name: "fade" },
+  });
+
+  expect(status).toBeGreaterThanOrEqual(200);
+  expect(status).toBeLessThan(300);
+  expect(json.ok).toBe(true);
+  expect((await readProjectJson(id)).transition).toBe("fade");
+});
+
+it("presentation transition set：白名單外的值被命令層拒絕，project.json 不變", async () => {
+  const id = await openDeck("transition-bad.comot");
+  const server = await serve(id);
+
+  const { status } = await postCommand(server, {
+    name: "presentation transition set",
+    input: { name: "spin" },
+  });
+
+  expect(status).not.toBe(200);
+  expect((await readProjectJson(id)).transition).toBeUndefined();
 });
 
 it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
