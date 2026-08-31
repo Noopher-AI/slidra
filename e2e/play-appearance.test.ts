@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * 播放模式外觀 (issue #54): pure black full-bleed stage, the floating
@@ -455,6 +455,7 @@ it("基準截圖：控制列浮現態", async () => {
   const { page, cleanup } = await openApp(demoDir, "play-appearance-shot-awake");
   try {
     await enterPlay(page);
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "play-awake", baselineDir });
   } finally {
     await page.close();
@@ -470,6 +471,7 @@ it("基準截圖：控制列隱藏態", async () => {
     await expect
       .poll(() => page.locator(".play-bar").evaluate((el) => getComputedStyle(el).opacity), { timeout: 5_000 })
       .toBe("0");
+    await settleForScreenshot(page);
     await compareScreenshot(page, { name: "play-asleep", baselineDir });
   } finally {
     await page.close();

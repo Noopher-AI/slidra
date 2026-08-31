@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * Visual regression baseline for ticket #49 — the app now wears the
@@ -119,6 +119,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 
 it("標準檢視：整個 app 的外觀符合基準截圖", async () => {
   const page = await openApp();
+  await settleForScreenshot(page);
   await compareScreenshot(page, { name: "standard-view", baselineDir });
   await page.close();
 });
@@ -131,6 +132,7 @@ it("縮圖軌：目前投影片的選取框（重點色）符合基準截圖", a
   const currentThumb = page.locator(".overview-item-current .overview-thumb");
   const box = await currentThumb.boundingBox();
   if (!box) throw new Error("找不到目前投影片的縮圖 — .overview-item-current 沒有渲染出來");
+  await settleForScreenshot(page);
   await compareScreenshot(page, {
     name: "overview-current-thumb",
     baselineDir,
