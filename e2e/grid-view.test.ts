@@ -1,14 +1,10 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
-import { startServe, type RunningServer } from "../packages/server/src/serve.js";
-import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import type { RunningServer } from "../packages/server/src/serve.js";
 import { compareScreenshot } from "./helpers/screenshot.js";
+import { openApp as openAppHelper, requireBuilt, startServerFor as startServerForHelper } from "./helpers/launch.js";
 
 /**
  * #55's grid view: a third status-bar button that switches the centre
@@ -20,22 +16,15 @@ import { compareScreenshot } from "./helpers/screenshot.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
-const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-const demoDir = path.join(rootDir, "demo");
 const overviewDeckDir = path.join(e2eDir, "fixtures/overview-deck");
-const binDir = path.join(rootDir, "node_modules/.bin");
+const demoDir = path.join(rootDir, "demo");
 const baselineDir = path.join(e2eDir, "__screenshots__/grid");
-
-const VIEWPORT = { width: 1440, height: 900 };
 
 let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
+  await requireBuilt(rootDir);
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 });
@@ -49,63 +38,14 @@ afterEach(async () => {
   openPages = [];
 });
 
-async function requireBuilt(filePath: string, message: string): Promise<void> {
-  try {
-    await access(filePath);
-  } catch {
-    throw new Error(message);
-  }
-}
-
-async function startServerFor(
-  deckDir: string,
-): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-grid-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-grid-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-
-  const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
-  const presentationId = opened.data!.id;
-
-  const agent: AgentAdapterConfig = {
-    kind: "claude",
-    label: "Claude Code",
-    command: process.execPath,
-    args: [agentFixture],
-    env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
-      E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
-    },
-  };
-
-  const server = await startServe({ registry, presentationId, port: 0, agent });
-
-  return {
-    server,
-    cleanup: async () => {
-      await server.close();
-      delete process.env.CO_MOTION_HOME;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
-    },
-  };
+async function startServerFor(deckDir: string): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
+  return startServerForHelper({ deckDir, prefix: "grid" });
 }
 
 /** Loads the app and waits for the first slide + the SSE chat stream to be up. */
 async function openApp(server: RunningServer): Promise<Page> {
-  const page = await browser.newPage({ viewport: VIEWPORT });
+  const page = await openAppHelper(browser, server, { waitForAgent: true, waitForFonts: true });
   openPages.push(page);
-  await page.goto(server.url);
-  const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
-  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
-  await expect
-    .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-    .toContain("已連線");
-  await page.evaluate(() => document.fonts.ready);
   return page;
 }
 
