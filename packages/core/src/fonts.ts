@@ -1,4 +1,6 @@
 import { CoMotionError } from "./errors.js";
+import { DEFAULT_FONT_FAMILY } from "./default-font.js";
+import { readDefaultFontBytes } from "./default-font-bytes.js";
 import { validateProjectJson, type FontEntry } from "./project-json.js";
 import { readPresentationFile, readPresentationFileBytes } from "./workspace.js";
 import { parseFont, measureTextWidth, type FontMetrics } from "./text-metrics.js";
@@ -45,7 +47,20 @@ export async function resolvePresentationFonts(id: string): Promise<ReadonlyMap<
   const project = validateProjectJson(JSON.parse(raw));
   const entries = project.fonts ?? [];
   const fonts = await Promise.all(entries.map((entry) => resolveFont(id, entry.family)));
-  return new Map(entries.map((entry, i) => [entry.family, fonts[i]]));
+  // The build's own family is always in the book, so a <text> that
+  // declares no font-family (see readTextFontInfo) is still measurable in
+  // a presentation that embeds nothing. A presentation declaring that same
+  // family keeps ITS bytes: its own entry is added second and wins.
+  const book = new Map<string, FontMetrics>([[DEFAULT_FONT_FAMILY, defaultFontMetrics()]]);
+  for (let i = 0; i < entries.length; i++) book.set(entries[i].family, fonts[i]);
+  return book;
+}
+
+/** Parsed once per process — the bytes ship with the build and never change. */
+let defaultFont: FontMetrics | null = null;
+function defaultFontMetrics(): FontMetrics {
+  if (!defaultFont) defaultFont = parseFont(readDefaultFontBytes());
+  return defaultFont;
 }
 
 async function resolveFont(id: string, family: string): Promise<FontMetrics> {

@@ -622,7 +622,7 @@
       // the "two checks" lock posture (§7 決定 8); enterRuntimeTextEdit's
       // own isLockedOrInsideLocked is the other half, for the
       // host-initiated beginTextEdit path this click never goes through.
-      if (target.hasAttribute("data-comot-text-width")) {
+      if (target.hasAttribute("data-comot-text-width") || isPlainTextContainer(target)) {
         post({ event: "dblclick-textbox", id: target.getAttribute("id") });
         return;
       }
@@ -883,6 +883,33 @@
    * so there is no injection surface even though `text` is untrusted-slide
    * content round-tripped through the host.
    */
+  /**
+   * A container holding exactly one `<text>` and no other element — the
+   * shape `text set` writes through unchanged (core's
+   * `replaceContainerText`). Text boxes are the wrapping variant of this,
+   * marked by `data-comot-text-width`; everything else here is a plain
+   * `<text>` whose own x/y/text-anchor stay authoritative.
+   */
+  function isPlainTextContainer(el) {
+    var children = el.children;
+    var texts = 0;
+    for (var i = 0; i < children.length; i++) {
+      if (children[i].tagName === "text") texts++;
+      else return false;
+    }
+    return texts === 1;
+  }
+
+  /** Live preview for a plain `<text>`: replaces the string only, leaving the element's own positioning attributes untouched. */
+  function applyPreviewText(id, text) {
+    var container = document.getElementById(id);
+    if (!container) return;
+    var textEl = container.querySelector("text");
+    if (!textEl) return;
+    textEl.textContent = typeof text === "string" ? text : "";
+    updateBoxes();
+  }
+
   function applyPreviewTextbox(id, lines, width) {
     var container = document.getElementById(id);
     if (!container) return;
@@ -952,10 +979,15 @@
       applyPreview(data.items);
     } else if (data.command === "preview-textbox") {
       applyPreviewTextbox(data.id, data.lines, data.width);
+    } else if (data.command === "preview-text") {
+      applyPreviewText(data.id, data.text);
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
-      if (started) applyPreviewTextbox(data.id, data.lines, data.width);
-      else post({ event: "text-edit-denied", id: data.id });
+      // No `lines` means a plain <text> (host side sends them only for a
+      // text box) — nothing to re-wrap, so the initial paint is a no-op.
+      if (started) {
+        if (Array.isArray(data.lines)) applyPreviewTextbox(data.id, data.lines, data.width);
+      } else post({ event: "text-edit-denied", id: data.id });
     } else if (data.command === "guides") {
       drawGuides(data.lines);
     } else if (data.command === "marquee") {

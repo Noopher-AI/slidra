@@ -458,10 +458,28 @@ interface TextEditState {
   slidePath: string;
   originalText: string;
   currentText: string;
-  font: FontMetrics;
-  fontSize: number;
-  width: number;
+  /**
+   * The declared text-box width, or null for a plain `<text>` — one that
+   * carries no `data-comot-text-width` and therefore has no wrapping at
+   * all. `font`/`fontSize` are null on exactly the same elements: with
+   * nothing to wrap, nothing needs measuring. `text set` already handles
+   * both shapes (element-text.ts's `replaceContainerText`).
+   */
+  width: number | null;
+  font: FontMetrics | null;
+  fontSize: number | null;
 }
+
+/**
+ * The family a `<text>` is measured against when it declares no
+ * `font-family` of its own — `font-family` is optional in SVG, so a
+ * perfectly legal text box can omit it, and in-place editing still has to
+ * wrap. Kept as a literal rather than imported from core's
+ * `DEFAULT_FONT_FAMILY`: that lives in presentation.ts, which reads the
+ * font bytes off disk with node:fs and so cannot be imported into the
+ * browser bundle. The bytes themselves arrive over /api/default-font.
+ */
+const DEFAULT_FONT_FAMILY = "Noto Sans TC";
 
 /** Snap threshold in screen px, converted to user units per-viewport at drag time (assumption noted in the PR body). */
 const SNAP_THRESHOLD_PX = 8;
@@ -964,12 +982,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (cached) return cached;
     const promise = (async () => {
       const entry = presentationFonts.find((candidate) => candidate.family === family);
-      if (!entry) {
+      // The build's own bundled family is always resolvable, even for a
+      // presentation whose project.json lists no fonts at all — see
+      // DEFAULT_FONT_FAMILY's own comment and serve.ts's /api/default-font.
+      if (!entry && family !== DEFAULT_FONT_FAMILY) {
         throw new Error(`簡報未內嵌字型：${family}`);
       }
-      const response = await fetch(`/api/raw/${entry.file}`);
+      const source = entry ? `/api/raw/${entry.file}` : "/api/default-font";
+      const response = await fetch(source);
       if (!response.ok) {
-        throw new Error(`字型載入失敗：${entry.file}`);
+        throw new Error(`字型載入失敗：${entry ? entry.file : DEFAULT_FONT_FAMILY}`);
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       return parseFont(bytes);
@@ -1481,7 +1503,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // --- In-place text editing (NOOP-91/#70 US1, T5) ---
 
   /** Re-wraps `text` with core's `wrapText` and pushes it to the runtime via the existing preview-textbox channel — shared by the live-typing preview and a failed commit's revert. */
-  function postTextEditPreview(id: string, text: string, width: number, font: FontMetrics, fontSizePx: number): void {
+  function postTextEditPreview(
+    id: string,
+    text: string,
+    width: number | null,
+    font: FontMetrics | null,
+    fontSizePx: number | null,
+  ): void {
+    if (width === null || font === null || fontSizePx === null) {
+      // A plain <text>: no wrapping, and no tspan rewrite either — the
+      // runtime replaces the text content in place, leaving the element's
+      // own x/y/text-anchor alone.
+      postToFrame({ command: "preview-text", id, text });
+      return;
+    }
     const wrapped = wrapText(text, { width, font, fontSizePx });
     postToFrame({
       command: "preview-textbox",
@@ -1504,7 +1539,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   async function enterTextEdit(id: string): Promise<void> {
     if (mode !== "view") return;
     const entry = elementIndex().get(id);
-    if (!entry || entry.element.textWidth === null) return;
+    if (!entry) return;
     const width = entry.element.textWidth;
     if (editingState && editingState.id === id) return; // Already editing this exact element — no-op.
     if (editingState) await commitTextEdit(); // Editing a different element — commit it first.
@@ -1512,11 +1547,32 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     const textPrimitive = entry.element.primitives.find((primitive) => primitive.tag === "text");
     if (!textPrimitive) return;
-    const fontFamily = textPrimitive.attrs.get("font-family");
+    const sourceText = textPrimitive.text;
+
+    if (width === null) {
+      // A plain <text>: `text set` writes the string straight through with
+      // no re-wrapping, so no font is fetched and no measurement happens.
+      editingState = {
+        id,
+        slidePath: slides[currentIndex],
+        originalText: sourceText,
+        currentText: sourceText,
+        width: null,
+        font: null,
+        fontSize: null,
+      };
+      beginEditingLease();
+      postToFrame({ command: "begin-text-edit", id, text: sourceText });
+      return;
+    }
+
+    // font-family is optional in SVG; a text box that omits it is measured
+    // against the build's own bundled family rather than refused.
+    const fontFamily = textPrimitive.attrs.get("font-family") || DEFAULT_FONT_FAMILY;
     const fontSizeRaw = textPrimitive.attrs.get("font-size");
     const fontSize = fontSizeRaw === undefined ? 16 : Number(fontSizeRaw);
-    if (!fontFamily || !Number.isFinite(fontSize) || fontSize <= 0) {
-      error = "文字框缺少可用的字型設定";
+    if (!Number.isFinite(fontSize) || fontSize <= 0) {
+      error = `文字框的 font-size 不是合法的正數：${fontSizeRaw}`;
       notify();
       return;
     }
@@ -1533,7 +1589,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (destroyed || thisGeneration !== generation || mode !== "view") return;
 
-    const sourceText = textPrimitive.text;
     editingState = {
       id,
       slidePath: slides[currentIndex],

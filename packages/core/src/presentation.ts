@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateElementId } from "./id.js";
+import { DEFAULT_FONT_FAMILY } from "./default-font.js";
 import type { FontEntry, ProjectJson } from "./project-json.js";
 
 export const FORMAT_VERSION = 1;
@@ -20,7 +21,7 @@ export interface MinimalPresentationFiles {
 
 const assetsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "assets");
 
-const PRESENTATION_FONT_FAMILY = "Noto Sans TC";
+const PRESENTATION_FONT_FAMILY = DEFAULT_FONT_FAMILY;
 const PRESENTATION_FONT_FILE = "fonts/NotoSansTC-Presentation.ttf";
 const PRESENTATION_FONT_LICENSE_FILE = "fonts/LICENSE-NotoSansTC.txt";
 
