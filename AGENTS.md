@@ -29,8 +29,8 @@ PR 的「給人類的驗證清單」裡寫出來的每一條指令，都必須**
 
 ### 視覺回歸的把關分工
 
-外觀基準截圖（`e2e/helpers/screenshot.ts` 的 `compareScreenshot`）是在 macOS 上產生的；CI runner 是 Ubuntu，字型光柵化不同，逐像素比對必然失敗，不是 flaky。因此：
+外觀基準截圖（`e2e/helpers/screenshot.ts` 的 `compareScreenshot`）必須在跟 CI 相同的 `ubuntu-latest` + Playwright 內建 Chromium 上產生，本機（尤其 macOS）產生的截圖字型渲染不同，會讓外觀測試在 CI 上假性失敗。因此：
 
-- **CI（`.github/workflows/e2e.yml`）只跑功能性 e2e**：`SKIP_APPEARANCE_BASELINES=1` 讓截圖比對一律視為通過（顯示「已跳過」訊息），其餘測試照常執行。
-- **外觀基準比對與 `npm run visual-qa` 由本機負責**（不設 `SKIP_APPEARANCE_BASELINES`，`npm run test:e2e` 照常逐像素比對）。
-- **外觀變更的 PR 必須附本機全綠證據與基準更新**（`UPDATE_APPEARANCE_BASELINES=1` 重新產生基準、檢查過截圖內容後再提交）——CI 的跳過不能替代這一步。
+- **CI（`.github/workflows/e2e.yml`）是外觀基準比對的權威把關者**：`npm run test:e2e` 照常逐像素比對，不跳過。
+- **重產基準截圖唯一支援的方式**：手動觸發 `e2e.yml` 並勾選 `update_baselines`，跑完從 `appearance-baselines` artifact 下載結果、檢查截圖內容正確後再 commit。
+- **本機執行 `npm run test:e2e` 或 `npm run visual-qa` 的外觀比對結果僅供參考**（本機字型渲染與 CI 不同，逐像素比對必然失敗），不能作為驗收證據；驗收以 CI 上的比對結果為準。
