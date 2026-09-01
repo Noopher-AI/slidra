@@ -1,0 +1,47 @@
+import type { Page } from "playwright";
+import { afterEach, describe, expect, it } from "vitest";
+import { compareScreenshot } from "./screenshot.js";
+
+/**
+ * Regression guard for the CI/local appearance-baseline split (NOOP-297):
+ * `SKIP_APPEARANCE_BASELINES=1` must skip the pixel compare entirely, and
+ * its absence must leave the normal compare path untouched. No baseline
+ * PNGs exist for `name`, so the un-skipped call is expected to reach
+ * `page.screenshot()` and then fail on the missing-baseline error — that
+ * failure is the proof it took the compare path, not the skip path.
+ */
+describe("compareScreenshot / SKIP_APPEARANCE_BASELINES", () => {
+  afterEach(() => {
+    delete process.env.SKIP_APPEARANCE_BASELINES;
+  });
+
+  function fakePage(): { page: Page; getScreenshotCalls: () => number } {
+    let screenshotCalls = 0;
+    const page = {
+      screenshot: async () => {
+        screenshotCalls++;
+        return Buffer.from([]);
+      },
+    } as unknown as Page;
+    return { page, getScreenshotCalls: () => screenshotCalls };
+  }
+
+  it("skips the pixel compare when the flag is set", async () => {
+    process.env.SKIP_APPEARANCE_BASELINES = "1";
+    const { page, getScreenshotCalls } = fakePage();
+
+    await expect(
+      compareScreenshot(page, { name: "no-such-baseline", baselineDir: "/tmp/does-not-exist" }),
+    ).resolves.toBeUndefined();
+    expect(getScreenshotCalls()).toBe(0);
+  });
+
+  it("still compares when the flag is absent", async () => {
+    const { page, getScreenshotCalls } = fakePage();
+
+    await expect(
+      compareScreenshot(page, { name: "no-such-baseline", baselineDir: "/tmp/does-not-exist" }),
+    ).rejects.toThrow(/找不到基準截圖/);
+    expect(getScreenshotCalls()).toBe(1);
+  });
+});
