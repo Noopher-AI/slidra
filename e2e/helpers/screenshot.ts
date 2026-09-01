@@ -52,6 +52,29 @@ export interface CompareScreenshotOptions {
  */
 const UPDATE_ENV_VAR = "UPDATE_APPEARANCE_BASELINES";
 
+/**
+ * Set to `1` to force-skip appearance comparison regardless of platform, or
+ * `0` to force it to run even on a non-Linux machine. Unset defers to the
+ * platform check in `shouldSkipAppearanceBaselines` below — baselines are
+ * only ever produced on `ubuntu-latest` (see `UPDATE_ENV_VAR` above), so
+ * comparing against them on any other OS is a guaranteed font-rasterization
+ * mismatch, not a real regression.
+ */
+const SKIP_ENV_VAR = "SKIP_APPEARANCE_BASELINES";
+
+/**
+ * Whether this run should skip appearance comparison instead of failing on
+ * expected cross-platform rendering noise. Explicit `SKIP_APPEARANCE_BASELINES`
+ * wins when set; otherwise skip on anything that isn't the `linux` baseline
+ * platform.
+ */
+function shouldSkipAppearanceBaselines(): boolean {
+  const override = process.env[SKIP_ENV_VAR];
+  if (override === "1") return true;
+  if (override === "0") return false;
+  return process.platform !== "linux";
+}
+
 /** `pixelmatch`'s own default sensitivity for per-pixel colour delta. */
 const PIXELMATCH_THRESHOLD = 0.1;
 
@@ -89,6 +112,15 @@ function failedDir(baselineDir: string): string {
 export async function compareScreenshot(page: Page, options: CompareScreenshotOptions): Promise<void> {
   if (options.clip && options.fullPage) {
     throw new Error("compareScreenshot：`clip` 與 `fullPage` 不能同時指定 — 兩者代表不同的截圖範圍，互斥。");
+  }
+
+  if (process.env[UPDATE_ENV_VAR] !== "1" && shouldSkipAppearanceBaselines()) {
+    console.warn(
+      `[compareScreenshot] 本環境跳過外觀基準比對（未實際比對，非通過）：${options.name} ` +
+        `— 基準只在 ubuntu-latest 上產生，其他平台的字型渲染差異會造成假失敗。` +
+        `設定 ${SKIP_ENV_VAR}=0 可強制在本機比對。`,
+    );
+    return;
   }
 
   const baselinePath = path.join(options.baselineDir, `${options.name}.png`);
