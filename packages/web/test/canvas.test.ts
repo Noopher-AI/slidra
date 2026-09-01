@@ -1357,3 +1357,88 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 });
+
+// NOOP-328 [Fix.5]: reproduces, at the postMessage-protocol boundary (never
+// against beginMoveGesture/toUserPoint directly — those are not a public
+// boundary), the race behind the e2e "Alt 拖到同一位置" test's intermittent
+// 180px-off failure. Root cause (see NOOP-329's plan comment for the full
+// arithmetic): selection-runtime.js only calls reportViewport() on the
+// iframe's own `load`/`resize` events, so a "gesture-start" that reaches
+// canvas.ts before the first "viewport" message used to hit
+// toUserPoint's `!viewport` branch, which silently returns { x: 0, y: 0 } —
+// beginMoveGesture then records that origin as the drag's startUser with no
+// guard at all (unlike updateMoveGesture, which already declines to act
+// while viewport is null). Every subsequent delta is then measured from the
+// wrong origin.
+describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)", () => {
+  it("gesture-start 抵達時 viewport 尚為 null，不會把手勢起點記成 (0,0)", async () => {
+    const slideMarkupWithEl =
+      '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideMarkupWithEl, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
+        }
+        // /api/editing/begin, /api/editing/end: fire-and-forget, swallowed
+        // by beginEditingLease/endEditingLease's own .catch — any rejection
+        // here is harmless.
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) =>
+      window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    // Select el-a, then start a "move" gesture at client (180,150) — BEFORE
+    // any "viewport" message has ever arrived (the exact race window: the
+    // runtime's `load` listener has not fired yet).
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "comot-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 180, y: 150 } });
+
+    // The runtime's viewport report now lands (1:1 client-px <-> user-unit
+    // mapping, to keep the arithmetic simple: svgRect and viewBox both
+    // 1280x720 at the origin).
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+
+    // Drag to client (775,400) with Alt held (no snapping), then release.
+    send({
+      source: "comot-selection",
+      event: "gesture-move",
+      point: { x: 775, y: 400 },
+      modifiers: { shift: false, alt: true },
+    });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 775, y: 400 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Buggy behavior (pre-fix): startUser was silently (0,0), so dx became
+    // 775 - 0 = 775 instead of the correct 775 - 180 = 595 (and dy 400
+    // instead of 250) — el-a would land at x=875, 180px off el-b's expected
+    // 695 landing spot in the e2e test this reproduces. beginMoveGesture now
+    // declines to start a gesture at all while viewport is still null (the
+    // same posture updateMoveGesture already takes on every later point in
+    // the drag), so this race drops the one affected drag instead of
+    // teleporting the element: no "element move" command is posted, and
+    // nothing lands at the wrong (0,0)-derived offset.
+    const moveCalls = commandCalls.filter((call) => call.name === "element move");
+    expect(moveCalls).toEqual([]);
+  });
+});

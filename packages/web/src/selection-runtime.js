@@ -893,6 +893,15 @@
             post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: false }));
           }
         }
+        // reportViewport() is otherwise only wired to the iframe's own
+        // "load"/"resize" events (below). A gesture can start before "load"
+        // has fired, and postMessage delivery preserves send order, so
+        // sending "viewport" here — synchronously, before "gesture-start" —
+        // guarantees the host already has a viewport by the time it
+        // processes gesture-start, instead of racing "load" (NOOP-328: that
+        // race let the host's toUserPoint fall back to (0,0), producing a
+        // drag landing 180px off target).
+        reportViewport();
         post({ event: "gesture-start", kind: gesture.kind, handle: gesture.handle, point: gesture.startClient });
       }
       scheduleGestureMove({ x: event.clientX, y: event.clientY }, { shift: event.shiftKey, alt: event.altKey });
