@@ -2,8 +2,9 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { it } from "vitest";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { openApp, requireBuilt, startServerFor } from "../helpers/launch.js";
+import { settleForScreenshot } from "../helpers/screenshot.js";
 import { SCENARIOS, type Scenario } from "./scenarios.js";
 
 /**
@@ -21,6 +22,44 @@ const outDir = path.join(e2eDir, "visual-qa/out");
 
 interface FlatScenario extends Scenario {
   cmdId: string;
+}
+
+/** How long a screenshot must stay byte-identical before the frame counts as settled. */
+const SETTLE_INTERVAL_MS = 40;
+/** Consecutive identical frames required to declare the frame settled. */
+const SETTLE_STABLE_FRAMES = 2;
+/** Hard cap on frames sampled per scenario (~0.8s) before giving up and erroring out. */
+const SETTLE_MAX_FRAMES = 20;
+
+const SCREENSHOT_OPTIONS = { animations: "disabled", caret: "hide", scale: "css" } as const;
+
+/**
+ * Executor-level replacement for a bare `page.screenshot()`: waits for fonts
+ * and paint via `settleForScreenshot()`, then polls screenshots until
+ * `SETTLE_STABLE_FRAMES` consecutive captures are byte-identical, so a
+ * scenario whose repaint lands in more than one pass (iframe SVG → shadow
+ * DOM overlay → ribbon state) isn't screenshotted mid-repaint. Scenarios
+ * never wait for this themselves — that is the point of putting it here
+ * instead of in scenarios.ts.
+ */
+async function captureSettled(page: Page, scenarioId: string): Promise<Buffer> {
+  await settleForScreenshot(page);
+
+  let last: Buffer | null = null;
+  let stableCount = 0;
+  for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame++) {
+    const shot = await page.screenshot(SCREENSHOT_OPTIONS);
+    if (last && shot.equals(last)) {
+      stableCount++;
+      if (stableCount >= SETTLE_STABLE_FRAMES - 1) return shot;
+    } else {
+      stableCount = 0;
+    }
+    last = shot;
+    await page.waitForTimeout(SETTLE_INTERVAL_MS);
+  }
+
+  throw new Error(`場景 "${scenarioId}" 的畫面在 ${SETTLE_MAX_FRAMES * SETTLE_INTERVAL_MS}ms 內未穩定下來`);
 }
 
 function flattenScenarios(): FlatScenario[] {
@@ -51,7 +90,8 @@ async function runScenario(browser: Browser, scenario: FlatScenario): Promise<vo
     const page = await openApp(browser, server, { waitForFonts: true });
     try {
       await scenario.run({ page, server, registry, presentationId });
-      await page.screenshot({ path: path.join(outDir, `${scenario.id}.png`) });
+      const settled = await captureSettled(page, scenario.id);
+      await writeFile(path.join(outDir, `${scenario.id}.png`), settled);
     } finally {
       await page.close();
     }
