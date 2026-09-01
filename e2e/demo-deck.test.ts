@@ -460,7 +460,15 @@ it("轉檔後的投影片用 file:// 直接開，靜態畫面正確：文字、�
     const titleBox = (await page.locator("#el-title").boundingBox())!;
     const subtitleBox = (await page.locator("#el-subtitle").boundingBox())!;
     const viewport = page.viewportSize()!;
-    expect(titleBox.x + titleBox.width / 2).toBeCloseTo(viewport.width / 2, 0);
+    // The centre is measured off the *rendered* glyph box, so it carries the
+    // platform's font metrics: the same correctly-centred title measures 640.0
+    // on macOS and 639.0 on Linux CI. A 0.5px tolerance is a font-rasterization
+    // assertion in disguise, not a layout one — the same cross-platform problem
+    // the appearance baselines have (see AGENTS.md, 視覺回歸的把關分工). A few
+    // pixels of slack still leaves no room for a real regression: losing
+    // `text-anchor="middle"` shifts the centre by half the title's width,
+    // hundreds of pixels.
+    expect(Math.abs(titleBox.x + titleBox.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(2);
     expect(titleBox.y).toBeLessThan(subtitleBox.y);
     expect(titleBox.height).toBeGreaterThan(0);
 

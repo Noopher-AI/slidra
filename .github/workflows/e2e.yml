@@ -1,0 +1,48 @@
+name: e2e
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      update_baselines:
+        description: "重新產生外觀基準截圖（e2e/__screenshots__），而不是比對它們"
+        type: boolean
+        default: false
+
+jobs:
+  test-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Build
+        run: npm run build
+
+      - name: Run e2e tests
+        run: npm run test:e2e
+        env:
+          UPDATE_APPEARANCE_BASELINES: ${{ inputs.update_baselines && '1' || '' }}
+
+      # 基準截圖是跨平台渲染敏感的資料，必須在跟 CI 相同的 ubuntu-latest +
+      # Playwright 內建 Chromium 上產生，本機（尤其 macOS）產生的截圖字型
+      # 渲染不同，會讓外觀測試在 CI 上假性失敗。這是重產基準截圖唯一支援的
+      # 方式：手動觸發本 workflow 並勾選 update_baselines，跑完從這個
+      # artifact 下載結果、檢查截圖內容正確後再 commit。
+      - name: Upload regenerated baselines
+        if: ${{ inputs.update_baselines }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: appearance-baselines
+          path: e2e/__screenshots__

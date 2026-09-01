@@ -51,7 +51,8 @@ DEMO_ID_FILE="$DEMO_DIR/presentation-id"
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
 
 # 1. 相依套件 ---------------------------------------------------------------
-if [ ! -d "$ROOT/node_modules" ]; then
+# package.json 比 node_modules 新，代表相依有變動（新增／移除）但還沒重裝過。
+if [ ! -d "$ROOT/node_modules" ] || [ "$ROOT/package.json" -nt "$ROOT/node_modules" ]; then
   step "安裝相依套件"
   npm install
 fi
