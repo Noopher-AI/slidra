@@ -100,7 +100,9 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
     throw new Error("compareScreenshot：`clip` 與 `fullPage` 不能同時指定 — 兩者代表不同的截圖範圍，互斥。");
   }
 
-  if (process.env[SKIP_ENV_VAR] === "1") {
+  const updateBaselines = process.env[UPDATE_ENV_VAR] === "1";
+
+  if (!updateBaselines && process.env[SKIP_ENV_VAR] === "1") {
     console.log(`已跳過外觀截圖比對（CI 平台與基準平台不同）：${options.name}`);
     return;
   }
@@ -113,7 +115,7 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
     scale: "css",
   });
 
-  if (process.env[UPDATE_ENV_VAR] === "1") {
+  if (updateBaselines) {
     await mkdir(options.baselineDir, { recursive: true });
     await writeFile(baselinePath, actual);
     return;
