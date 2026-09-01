@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       update_baselines:
-        description: "重新產生外觀基準截圖（e2e/__screenshots__），而不是比對它們"
+        description: "在 ubuntu-latest 上重產截圖並以 artifact 上傳，僅供跨平台診斷用；不得取代本機 macOS 產生的基準"
         type: boolean
         default: false
 
@@ -40,14 +40,14 @@ jobs:
           UPDATE_APPEARANCE_BASELINES: ${{ inputs.update_baselines && '1' || '' }}
           SKIP_APPEARANCE_BASELINES: ${{ !inputs.update_baselines && '1' || '' }}
 
-      # 基準截圖是跨平台渲染敏感的資料，必須在跟 CI 相同的 ubuntu-latest +
-      # Playwright 內建 Chromium 上產生，本機（尤其 macOS）產生的截圖字型
-      # 渲染不同，會讓外觀測試在 CI 上假性失敗。這是重產基準截圖唯一支援的
-      # 方式：手動觸發本 workflow 並勾選 update_baselines，跑完從這個
-      # artifact 下載結果、檢查截圖內容正確後再 commit。
-      - name: Upload regenerated baselines
+      # 基準截圖的權威平台是本機 macOS，不是這裡的 ubuntu-latest——見
+      # AGENTS.md「視覺回歸的把關分工」。這個 artifact 只是 ubuntu 渲染出的
+      # 截圖，用來診斷跨平台字型渲染差異，其內容不得 commit 進
+      # e2e/__screenshots__ 取代 macOS 基準。正式更新基準請依 AGENTS.md
+      # 在本機執行 UPDATE_APPEARANCE_BASELINES=1 後再提交。
+      - name: Upload ubuntu-rendered screenshots (diagnostic only)
         if: ${{ inputs.update_baselines }}
         uses: actions/upload-artifact@v4
         with:
-          name: appearance-baselines
+          name: ubuntu-rendered-screenshots-diagnostic
           path: e2e/__screenshots__
