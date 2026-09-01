@@ -22,7 +22,7 @@ describe("runServeCli — no adapter installed", () => {
   afterEach(async () => {
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
-    await rm(emptyPathDir, { recursive: true, force: true });
+    await rm(emptyPathDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it("exits with an explicit error naming both npm packages, and never starts the server", async () => {

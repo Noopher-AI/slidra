@@ -23,7 +23,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function registryPath(): string {
@@ -44,7 +44,7 @@ describe("a missing registry", () => {
       const raw = await readFile(registryPath(), "utf-8");
       expect(JSON.parse(raw)[id]).toBeDefined();
     } finally {
-      await rm(comotDir, { recursive: true, force: true });
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });
@@ -68,7 +68,7 @@ describe("a corrupt registry", () => {
       const after = await readFile(registryPath(), "utf-8");
       expect(after).toBe(before);
     } finally {
-      await rm(comotDir, { recursive: true, force: true });
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });
@@ -126,7 +126,7 @@ describe("a registry write that fails partway through", () => {
         const workEntriesAfter = await readdir(path.join(coMotionHome, "work"));
         expect(workEntriesAfter).toHaveLength(1);
       } finally {
-        await rm(comotDir, { recursive: true, force: true });
+        await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       }
     },
   );
@@ -158,7 +158,7 @@ describe("an invalid container opened repeatedly", () => {
       const workEntries = await readdir(path.join(coMotionHome, "work")).catch(() => []);
       expect(workEntries).toEqual([]);
     } finally {
-      await rm(comotDir, { recursive: true, force: true });
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });
@@ -190,7 +190,7 @@ describe("a registry that exists but cannot be read", () => {
           await chmod(registryPath(), 0o644);
         }
       } finally {
-        await rm(comotDir, { recursive: true, force: true });
+        await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       }
     },
   );
