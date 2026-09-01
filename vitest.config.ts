@@ -6,7 +6,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "scripts/test/**/*.test.ts"],
     // Default 5000ms budget gets tripped under full-suite CPU contention
     // even though every failing test finishes in well under 3s when run
     // alone. 30s gives ~10x headroom while staying far below e2e's 120s,
