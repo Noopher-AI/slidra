@@ -25,10 +25,10 @@ interface FlatScenario extends Scenario {
 }
 
 /** How long a screenshot must stay byte-identical before the frame counts as settled. */
-const SETTLE_INTERVAL_MS = 80;
+const SETTLE_INTERVAL_MS = 40;
 /** Consecutive identical frames required to declare the frame settled. */
-const SETTLE_STABLE_FRAMES = 3;
-/** Hard cap on frames sampled per scenario (~2.4s) before giving up and erroring out. */
+const SETTLE_STABLE_FRAMES = 2;
+/** Hard cap on frames sampled per scenario (~0.8s) before giving up and erroring out. */
 const SETTLE_MAX_FRAMES = 20;
 
 const SCREENSHOT_OPTIONS = { animations: "disabled", caret: "hide", scale: "css" } as const;
