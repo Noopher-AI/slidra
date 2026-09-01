@@ -40,7 +40,16 @@ export interface CompareScreenshotOptions {
   fullPage?: boolean;
 }
 
-/** Set (e.g. `UPDATE_APPEARANCE_BASELINES=1 npx vitest run …`) to deliberately (re)write baselines instead of comparing against them. */
+/**
+ * Set to `1` to deliberately (re)write baselines instead of comparing
+ * against them. Baselines are rendering-sensitive — a macOS-produced PNG
+ * doesn't match ubuntu-latest's font rasterization closely enough to pass
+ * CI's tolerance. Never set this locally to update a committed baseline;
+ * instead run the `e2e` workflow via `workflow_dispatch` with
+ * `update_baselines: true` (this is what sets the env var, on the same
+ * runner CI compares against) and download the `appearance-baselines`
+ * artifact it uploads.
+ */
 const UPDATE_ENV_VAR = "UPDATE_APPEARANCE_BASELINES";
 
 /** `pixelmatch`'s own default sensitivity for per-pixel colour delta. */
@@ -72,9 +81,10 @@ function failedDir(baselineDir: string): string {
  *   the baseline path, the diff pixel count/ratio, and where the `actual`
  *   and `diff` PNGs were written for inspection.
  *
- * Set `UPDATE_APPEARANCE_BASELINES=1` to deliberately (re)write the
- * baseline instead of comparing — the one supported way to change a
- * baseline on purpose.
+ * To deliberately change a baseline, run the `e2e` GitHub Actions workflow
+ * via `workflow_dispatch` with `update_baselines: true` — the one supported
+ * way, since it sets `UPDATE_APPEARANCE_BASELINES=1` on ubuntu-latest itself
+ * rather than whatever OS ran it locally.
  */
 export async function compareScreenshot(page: Page, options: CompareScreenshotOptions): Promise<void> {
   if (options.clip && options.fullPage) {
@@ -101,7 +111,8 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
   } catch {
     throw new Error(
       `找不到基準截圖：${baselinePath}\n` +
-        `這是新基準嗎？執行「${UPDATE_ENV_VAR}=1」重新跑這個測試檔來產生它，檢查過截圖內容正確後再提交。`,
+        `這是新基準嗎？到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來產生它，` +
+        `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
     );
   }
 
@@ -115,7 +126,8 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
     throw new Error(
       `外觀截圖尺寸與基準不符：${baselinePath}` +
         `（實際 ${actualPng.width}x${actualPng.height}，基準 ${expectedPng.width}x${expectedPng.height}）\n` +
-        `若這是刻意的外觀變更，執行「${UPDATE_ENV_VAR}=1」重新跑這個測試檔來重新產生基準，檢查過截圖內容正確後再提交。`,
+        `若這是刻意的外觀變更，到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來重新產生基準，` +
+        `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
     );
   }
 
@@ -142,7 +154,8 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
     `外觀截圖與基準不符：${baselinePath}\n` +
       `差異像素數：${diffPixels} / ${totalPixels}（${ratio}%），容忍上限：${maxDiffPixels}\n` +
       `實際截圖：${actualPath}\n差異圖：${diffPath}\n` +
-      `若這是刻意的外觀變更，執行「${UPDATE_ENV_VAR}=1」重新跑這個測試檔來重新產生基準，檢查過截圖內容正確後再提交。`,
+      `若這是刻意的外觀變更，到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來重新產生基準，` +
+      `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
   );
 }
 
