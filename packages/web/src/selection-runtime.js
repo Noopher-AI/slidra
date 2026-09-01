@@ -601,6 +601,46 @@
     return findSelectable(rawTarget, effectiveScopeId);
   }
 
+  /**
+   * Radius, in CSS pixels, of the forgiveness ring below. Large enough that
+   * a default-width line (`stroke-width: 2`) becomes comfortably clickable,
+   * small enough that it never reaches past a neighbouring element a user
+   * could have aimed at instead.
+   */
+  var HIT_TOLERANCE_PX = 6;
+
+  /**
+   * `resolveClickTarget`, plus a forgiveness ring for thin geometry.
+   *
+   * SVG hit testing is exact: a `<line stroke-width="2">` is only clickable
+   * within those 2 pixels, which in practice means it cannot be clicked at
+   * all. On a miss this re-runs the SAME resolution at eight points on a
+   * ring around the pointer, so the browser's own hit testing (and with it
+   * z-order, `pointer-events`, and the lock/group-scope rules inside
+   * `findSelectable`) still decides what was hit — this only widens where
+   * we ask, never how the answer is computed.
+   *
+   * Only reached when the exact hit already missed, so it can never take a
+   * click away from an element the pointer was genuinely over.
+   */
+  function resolveClickTargetAtEvent(event) {
+    var exact = resolveClickTarget(event.target);
+    if (exact) return exact;
+    // A miss on blank canvas is the overwhelmingly common case and must
+    // stay a miss when there is genuinely nothing near the pointer.
+    for (var i = 0; i < 8; i++) {
+      var angle = (i * Math.PI) / 4;
+      var el = document.elementFromPoint(
+        event.clientX + Math.cos(angle) * HIT_TOLERANCE_PX,
+        event.clientY + Math.sin(angle) * HIT_TOLERANCE_PX,
+      );
+      if (!el || el === host || el === document.body || el === document.documentElement) continue;
+      var near = resolveClickTarget(el);
+      if (near) return near;
+    }
+    return null;
+  }
+
   // Set right before a completed drag/marquee gesture's trailing native
   // `click` event would otherwise fire (browsers dispatch `click` after
   // `pointerup` regardless of how far the pointer moved in between) —
@@ -627,7 +667,7 @@
         return;
       }
       var additive = event.shiftKey || event.metaKey || event.ctrlKey;
-      var target = resolveClickTarget(event.target);
+      var target = resolveClickTargetAtEvent(event);
       if (!target) {
         if (additive) return; // Shift/Cmd-click on blank changes nothing.
         selectedIds = [];
@@ -677,7 +717,7 @@
     "dblclick",
     function (event) {
       if (editingId !== null) return;
-      var target = resolveClickTarget(event.target);
+      var target = resolveClickTargetAtEvent(event);
       if (!target) return;
       // A text box's container carries data-comot-text-width (#76) — double
       // clicking it opens in-place editing instead of the group-entry
@@ -693,7 +733,7 @@
       }
       if (!isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
-      var inner = resolveClickTarget(event.target);
+      var inner = resolveClickTargetAtEvent(event);
       if (!inner) {
         updateBoxes();
         return;
@@ -804,7 +844,7 @@
         return;
       }
       var handleName = findHandleTarget(event);
-      var hit = handleName ? null : resolveClickTarget(event.target);
+      var hit = handleName ? null : resolveClickTargetAtEvent(event);
       gesture = {
         pointerId: event.pointerId,
         startClient: { x: event.clientX, y: event.clientY },

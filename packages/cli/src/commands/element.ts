@@ -46,6 +46,8 @@ export interface ElementInsertInput {
   y2?: number;
   d?: string;
   fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
   href?: string;
   media?: string;
 }
@@ -67,6 +69,8 @@ export const elementInsertCommand: CommandHandler<ElementInsertInput, ElementIns
     y2: input.y2,
     d: input.d,
     fill: input.fill,
+    stroke: input.stroke,
+    strokeWidth: input.strokeWidth,
     href: input.href,
     media: input.media,
   });

@@ -131,6 +131,10 @@ export interface InsertElementInput {
   /** `path` only. */
   d?: string;
   fill?: string;
+  /** Outline colour. A `line` has no fill area, so this is the only way to make one visible (NOOP-227 follow-up: without it SVG's `stroke: none` default renders nothing). */
+  stroke?: string;
+  /** Outline width, paired with `stroke`. */
+  strokeWidth?: number;
   /** `image` only. */
   href?: string;
   /** Any kind — ADR-0005 media placeholder marker (T3/NOOP-142: video/audio placeholders are a `rect` with `media` set, no `href`). */
@@ -168,6 +172,11 @@ export function insertElement(
   assertSlideCompliant(svgContent, slidePath);
 
   const fillAttr = input.fill !== undefined ? ` fill="${escapeXmlAttr(input.fill)}"` : "";
+  // Applies to every kind, not just `line` — an outlined rect is the same
+  // two attributes, so there is nothing kind-specific to special-case.
+  const strokeAttr =
+    (input.stroke !== undefined ? ` stroke="${escapeXmlAttr(input.stroke)}"` : "") +
+    (input.strokeWidth !== undefined ? ` stroke-width="${formatSvgNumber(requirePositiveNumber(input.strokeWidth, "stroke-width"))}"` : "");
   let containerAttrs = `id="${elementId}"`;
   // Common to every kind (T3/NOOP-142): a media placeholder can be a `rect`
   // (video/audio, no `href`) as well as an `image`, so this can no longer
@@ -184,7 +193,7 @@ export function insertElement(
       const width = requirePositiveNumber(input.width, "width");
       const height = requirePositiveNumber(input.height, "height");
       containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
-      native = `<rect x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"${fillAttr}/>`;
+      native = `<rect x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"${fillAttr}${strokeAttr}/>`;
       break;
     }
     case "ellipse": {
@@ -195,7 +204,7 @@ export function insertElement(
       const rx = width / 2;
       const ry = height / 2;
       containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
-      native = `<ellipse cx="${formatSvgNumber(rx)}" cy="${formatSvgNumber(ry)}" rx="${formatSvgNumber(rx)}" ry="${formatSvgNumber(ry)}"${fillAttr}/>`;
+      native = `<ellipse cx="${formatSvgNumber(rx)}" cy="${formatSvgNumber(ry)}" rx="${formatSvgNumber(rx)}" ry="${formatSvgNumber(ry)}"${fillAttr}${strokeAttr}/>`;
       break;
     }
     case "image": {
@@ -207,7 +216,7 @@ export function insertElement(
         throw new CoMotionError("element insert image 缺少參數：--href");
       }
       containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
-      native = `<image x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" href="${escapeXmlAttr(input.href)}"${fillAttr}/>`;
+      native = `<image x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" href="${escapeXmlAttr(input.href)}"${fillAttr}${strokeAttr}/>`;
       break;
     }
     case "line": {
@@ -215,7 +224,7 @@ export function insertElement(
       const y1 = requireFiniteNumber(input.y1, "y1");
       const x2 = requireFiniteNumber(input.x2, "x2");
       const y2 = requireFiniteNumber(input.y2, "y2");
-      native = `<line x1="${formatSvgNumber(x1)}" y1="${formatSvgNumber(y1)}" x2="${formatSvgNumber(x2)}" y2="${formatSvgNumber(y2)}"${fillAttr}/>`;
+      native = `<line x1="${formatSvgNumber(x1)}" y1="${formatSvgNumber(y1)}" x2="${formatSvgNumber(x2)}" y2="${formatSvgNumber(y2)}"${fillAttr}${strokeAttr}/>`;
       break;
     }
     case "path": {
@@ -230,7 +239,7 @@ export function insertElement(
       if (x !== 0 || y !== 0) {
         containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
       }
-      native = `<path d="${escapeXmlAttr(input.d)}"${fillAttr}/>`;
+      native = `<path d="${escapeXmlAttr(input.d)}"${fillAttr}${strokeAttr}/>`;
       break;
     }
     default:

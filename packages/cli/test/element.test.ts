@@ -477,6 +477,16 @@ describe("element insert — other kinds", () => {
     expect(svg).toContain(`<g id="${result.data!.elementId}"><line x1="1" y1="2" x2="3" y2="4"/></g>`);
   });
 
+  it("inserts a line with --stroke/--stroke-width, without which it renders invisible", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "line", x1: 1, y1: 2, x2: 3, y2: 4, stroke: "#889", strokeWidth: 2,
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(`<line x1="1" y1="2" x2="3" y2="4" stroke="#889" stroke-width="2"/>`);
+  });
+
   it("inserts an image with --media marking it as a placeholder (ADR-0005)", async () => {
     const { id } = await openConvertedPresentation();
     const result = await registry.dispatch<{ elementId: string }>("element insert", {

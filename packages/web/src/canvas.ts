@@ -556,6 +556,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
   // selectionIds/Names everywhere they are cleared (see that comment).
   let selectionGroupPath: string[] = [];
+  // NOOP-227: the element a just-finished insert command created, still
+  // waiting for the reload()/render() its own write triggers over
+  // /api/events. reload() would otherwise clear the selection like every
+  // other reload — this is the one case where the id IS trustworthy,
+  // because this module made it moments ago. Consumed (set back to null)
+  // by the render() that follows, whether or not the id still resolves.
+  let pendingSelectionId: string | null = null;
   // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
@@ -919,22 +926,35 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * `CanvasState.error`, and the caller is responsible for reverting the
    * optimistic preview it already painted.
    */
-  async function postCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+  async function postCommand(
+    name: string,
+    input: Record<string, unknown>,
+  ): Promise<{ ok: boolean; message: string; data?: unknown }> {
     try {
       const response = await fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, input }),
       });
-      const body = (await response.json().catch(() => null)) as { ok?: boolean; message?: string; error?: string } | null;
+      const body = (await response.json().catch(() => null)) as
+        | { ok?: boolean; message?: string; error?: string; data?: unknown }
+        | null;
       if (!response.ok) {
         return { ok: false, message: (body && typeof body.error === "string" && body.error) || `命令失敗（HTTP ${response.status}）` };
       }
-      return { ok: true, message: (body && typeof body.message === "string" && body.message) || "" };
+      return { ok: true, message: (body && typeof body.message === "string" && body.message) || "", data: body?.data };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : "命令送出失敗" };
     }
   }
+
+  /**
+   * Whitelisted commands whose `data.elementId` (NOOP-227) should become
+   * the selection once this write's own reload lands — the Ribbon's insert
+   * actions (`textbox add`, `element insert`: 矩形/橢圓/線). Every other
+   * whitelisted command leaves the selection to reload()'s existing clear.
+   */
+  const SELECT_AFTER_COMMAND = new Set(["textbox add", "element insert"]);
 
   /**
    * `CanvasController.runCommand` (NOOP-141) — a thin wrapper over the
@@ -948,6 +968,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   async function runCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
     const result = await postCommand(name, input);
     error = result.ok ? null : result.message;
+    if (result.ok && SELECT_AFTER_COMMAND.has(name)) {
+      const elementId = (result.data as { elementId?: unknown } | undefined)?.elementId;
+      if (typeof elementId === "string") pendingSelectionId = elementId;
+    }
     notify();
     return result;
   }
@@ -1825,6 +1849,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * must never paint over the newer page the author actually asked for.
    */
   async function render(thisGeneration: number): Promise<void> {
+    // Consumed here regardless of outcome (NOOP-227) — a stale id (the
+    // slide moved out from under it, or the insert failed to parse back)
+    // must not leak into some later, unrelated render().
+    const selectAfterLoad = pendingSelectionId;
+    pendingSelectionId = null;
+
     if (currentIndex === -1) {
       currentSlideModel = null;
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
@@ -1850,6 +1880,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
     );
+
+    if (selectAfterLoad) selectOnceLoaded(selectAfterLoad, thisGeneration);
+  }
+
+  /**
+   * NOOP-227: `frame.srcdoc` just changed, which means selection-runtime.js
+   * has not attached its `message` listener yet — a `postMessage` sent now
+   * would race the navigation and be silently dropped. `load` fires only
+   * once the new document (and every synchronous script in it, the
+   * listener included) has finished, so waiting for it is what makes this
+   * safe. Captures its own target iframe rather than reading the closure's
+   * `frame` variable, so a `play()`/`exitPlay()` swap in the meantime
+   * cannot redirect the listener onto a different element.
+   */
+  function selectOnceLoaded(elementId: string, thisGeneration: number): void {
+    const targetFrame = frame;
+    const onLoad = () => {
+      targetFrame.removeEventListener("load", onLoad);
+      if (destroyed || thisGeneration !== generation || mode !== "view") return;
+      const entry = elementIndex().get(elementId);
+      if (!entry) return;
+      selectionIds = [elementId];
+      selectionNames = [entry.element.name];
+      selectionGroupPath = [];
+      notify();
+      pushSelectionToRuntime(selectionIds);
+    };
+    targetFrame.addEventListener("load", onLoad);
   }
 
   /**

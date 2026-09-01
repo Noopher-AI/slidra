@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type Frame, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
@@ -64,6 +64,25 @@ afterEach(async () => {
   for (const page of openPages) await page.close().catch(() => {});
   openPages = [];
 });
+
+/** Same lookup as e2e/selection.test.ts's own helper — the main canvas iframe, not the overview thumbnails. */
+async function canvasFrame(page: Page): Promise<Frame> {
+  for (const frame of page.frames()) {
+    const element = await frame.frameElement().catch(() => null);
+    if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
+  }
+  throw new Error("找不到主畫布的 iframe.slide-frame");
+}
+
+/** Reads the `.sel` overlay's `display` the same way e2e/selection.test.ts's click-selection test does — `"block"` means a selection box is actually showing. */
+async function selectionBoxDisplay(page: Page): Promise<string | null> {
+  const frame = await canvasFrame(page);
+  return frame.evaluate(() => {
+    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+    const sel = host?.shadowRoot?.querySelector(".sel") ?? null;
+    return sel ? getComputedStyle(sel).display : null;
+  });
+}
 
 async function requireBuilt(filePath: string, message: string): Promise<void> {
   try {
@@ -229,6 +248,11 @@ it("圖案：選單出現，選「橢圓」後該頁多出一個含 <ellipse> �
     // against the `demo/` deck's near-black background.
     const after = await readSlide(registry, presentationId);
     expect(/<ellipse[^>]*\sfill="[^"]+"/.test(after)).toBe(true);
+
+    // NOOP-227: the newly inserted shape must become the current
+    // selection, so the author sees a selection box instead of a silent
+    // insert.
+    await expect.poll(() => selectionBoxDisplay(page)).toBe("block");
   } finally {
     await cleanup();
   }
@@ -252,6 +276,11 @@ it("文字方塊：該頁多出一個含 <text> 的 <g>", async () => {
     const after = await readSlide(registry, presentationId);
     expect(after).toContain("<text");
     expect(after.match(/<text[^>]*\sfill="[^"]+"/g)?.length ?? 0).toBe(beforeFilledTextCount + 1);
+
+    // NOOP-227: the newly inserted text box must become the current
+    // selection, so the author sees a selection box instead of a silent
+    // insert.
+    await expect.poll(() => selectionBoxDisplay(page)).toBe("block");
   } finally {
     await cleanup();
   }
