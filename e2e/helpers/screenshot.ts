@@ -43,6 +43,15 @@ export interface CompareScreenshotOptions {
 /** Set (e.g. `UPDATE_APPEARANCE_BASELINES=1 npx vitest run …`) to deliberately (re)write baselines instead of comparing against them. */
 const UPDATE_ENV_VAR = "UPDATE_APPEARANCE_BASELINES";
 
+/**
+ * Set to `1` to skip the pixel comparison entirely and treat every call as
+ * passing. Baselines are macOS-rendered; CI runs on Ubuntu, where font
+ * rasterization differs enough that a pixel-level compare against those
+ * baselines fails deterministically, not flakily. See AGENTS.md's
+ * "視覺回歸的把關分工" section for the local/CI split this implements.
+ */
+const SKIP_ENV_VAR = "SKIP_APPEARANCE_BASELINES";
+
 /** `pixelmatch`'s own default sensitivity for per-pixel colour delta. */
 const PIXELMATCH_THRESHOLD = 0.1;
 
@@ -79,6 +88,11 @@ function failedDir(baselineDir: string): string {
 export async function compareScreenshot(page: Page, options: CompareScreenshotOptions): Promise<void> {
   if (options.clip && options.fullPage) {
     throw new Error("compareScreenshot：`clip` 與 `fullPage` 不能同時指定 — 兩者代表不同的截圖範圍，互斥。");
+  }
+
+  if (process.env[SKIP_ENV_VAR] === "1") {
+    console.log(`已跳過外觀截圖比對（CI 平台與基準平台不同）：${options.name}`);
+    return;
   }
 
   const baselinePath = path.join(options.baselineDir, `${options.name}.png`);

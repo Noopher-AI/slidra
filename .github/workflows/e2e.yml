@@ -25,4 +25,10 @@ jobs:
         run: npm run build
 
       - name: Run e2e tests
+        # Baselines are macOS-rendered; this runner is Ubuntu, where font
+        # rasterization differs enough that a pixel-level compare against
+        # those baselines fails deterministically (not flaky). Appearance
+        # regression stays a local gate — see AGENTS.md's "視覺回歸的把關分工".
         run: npm run test:e2e
+        env:
+          SKIP_APPEARANCE_BASELINES: "1"
