@@ -23,5 +23,8 @@ node_modules/
 # Local quick-start scratch
 .quickstart/
 
+# Visual QA executor output — screenshots and manifest are regenerated per run
+e2e/visual-qa/out/
+
 # E2E screenshot-comparison failure diagnostics (actual + diff PNGs)
 e2e/__screenshots__/__failed__/
