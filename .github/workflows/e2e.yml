@@ -26,11 +26,3 @@ jobs:
 
       - name: Run e2e tests
         run: npm run test:e2e
-        env:
-          UPDATE_APPEARANCE_BASELINES: "1"
-
-      - name: Upload regenerated baselines
-        uses: actions/upload-artifact@v4
-        with:
-          name: appearance-baselines
-          path: e2e/__screenshots__
