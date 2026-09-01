@@ -5,17 +5,24 @@
 # 它做的事：
 #   1. 安裝相依套件（node_modules 不存在時）
 #   2. 建置 core / cli / server（tsc -b）與 web（vite build）
-#   3. 把 demo/ 打包成示範簡報（.comot），取得簡報識別碼
-#   4. 執行 co-motion serve，開瀏覽器看畫面
+#   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
+#   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
+#   5. 執行 co-motion serve，開瀏覽器看畫面
 #
-# 示範簡報的內容就是 repo 裡的 demo/：四頁投影片、三個資產（圖、影片、音檔），
-# 其中兩頁帶效果清單。想改驗收素材就改那裡，然後用 --fresh 重跑。
+# 兩種簡報準備方式：
+#   - 預設（不加旗標）：把 demo/ 打包成示範簡報，四頁投影片、三個資產（圖、
+#     影片、音檔），其中兩頁帶效果清單。用來驗**既有行為沒壞**——換頁、資產、
+#     播放、效果、倒退、全螢幕這些都需要現成內容才驗得到。想改驗收素材就改
+#     demo/，然後用 --fresh 重跑。
+#   - --blank：建立一份全新的空白簡報。用來驗**從零開始的路徑**——新簡報建立、
+#     第一次插入元素、空狀態畫面、agent 對一份空簡報下第一道命令。
 #
 # 用法：
-#   ./quick_start.sh                      # 全自動
+#   ./quick_start.sh                      # 全自動，示範簡報
+#   ./quick_start.sh --blank              # 全自動，空白簡報
 #   ./quick_start.sh --port 6000          # 換連接埠
-#   ./quick_start.sh --agent claude       # 指定 agent（偵測到多個時必填）
-#   ./quick_start.sh --fresh              # 丟掉舊示範簡報，重新建立
+#   ./quick_start.sh --agent claude       # 指定 agent（偵測到多個時建議加）
+#   ./quick_start.sh --fresh              # 丟掉舊簡報，重新建立
 #   ./quick_start.sh --skip-build         # 跳過建置（只改前端原始碼時不要用）
 #   ./quick_start.sh --no-open            # 不要自動開瀏覽器
 
@@ -29,6 +36,7 @@ AGENT=""
 FRESH=0
 SKIP_BUILD=0
 OPEN_BROWSER=1
+BLANK=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,7 +45,8 @@ while [ $# -gt 0 ]; do
     --fresh) FRESH=1; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --no-open) OPEN_BROWSER=0; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    --blank) BLANK=1; shift ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "未知的參數：$1" >&2; exit 1 ;;
   esac
 done
@@ -47,6 +56,8 @@ DEMO_SOURCE="$ROOT/demo"
 DEMO_DIR="$ROOT/.quickstart"
 DEMO_COMOT="$DEMO_DIR/demo.comot"
 DEMO_ID_FILE="$DEMO_DIR/presentation-id"
+BLANK_COMOT="$DEMO_DIR/blank.comot"
+BLANK_ID_FILE="$DEMO_DIR/blank-presentation-id"
 
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
 
@@ -65,46 +76,111 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
 fi
 
 if [ ! -f "$ROOT/packages/web/dist/index.html" ]; then
-  echo "找不到 packages/web/dist/index.html，請先執行不帶 --skip-build 的建置。" >&2
+  echo "packages/web/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
   exit 1
 fi
 
-# 3. 示範簡報 ---------------------------------------------------------------
+# 3. 前置檢查 -----------------------------------------------------------------
+if [ ! -f "$ROOT/packages/cli/dist/bin.js" ]; then
+  echo "packages/cli/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
+  exit 1
+fi
+
+if [ ! -x "$CLI" ]; then
+  echo "找不到可執行的 node_modules/.bin/co-motion。npm workspaces 應該要建出這個連結，請執行 npm install 後重試。" >&2
+  exit 1
+fi
+
+step "檢查 agent"
+CLAUDE_ADAPTER_PRESENT=0
+CODEX_ADAPTER_PRESENT=0
+command -v claude-code-acp >/dev/null 2>&1 && CLAUDE_ADAPTER_PRESENT=1
+command -v codex-acp >/dev/null 2>&1 && CODEX_ADAPTER_PRESENT=1
+
+if [ -n "$AGENT" ]; then
+  case "$AGENT" in
+    claude)
+      if [ "$CLAUDE_ADAPTER_PRESENT" -eq 0 ]; then
+        echo "指定的 agent 尚未安裝：Claude Code。請執行「npm install -g @zed-industries/claude-code-acp」安裝後再試一次。" >&2
+        exit 1
+      fi
+      ;;
+    codex)
+      if [ "$CODEX_ADAPTER_PRESENT" -eq 0 ]; then
+        echo "指定的 agent 尚未安裝：Codex。請執行「npm install -g @zed-industries/codex-acp」安裝後再試一次。" >&2
+        exit 1
+      fi
+      ;;
+  esac
+elif [ "$CLAUDE_ADAPTER_PRESENT" -eq 0 ] && [ "$CODEX_ADAPTER_PRESENT" -eq 0 ]; then
+  cat >&2 <<'MSG'
+找不到任何可用的 agent，CoMotion 的聊天功能需要先安裝以下其中一個：
+- Claude Code：npm install -g @zed-industries/claude-code-acp
+- Codex：npm install -g @zed-industries/codex-acp
+安裝完成後重新執行 npm run verify:setup。
+MSG
+  exit 1
+elif [ "$CLAUDE_ADAPTER_PRESENT" -eq 1 ] && [ "$CODEX_ADAPTER_PRESENT" -eq 1 ]; then
+  echo "提醒：偵測到多個 agent，未指定時 serve 會在第一則訊息時報錯，建議加 --agent claude 或 --agent codex。"
+fi
+
+# 4. 簡報 ---------------------------------------------------------------------
 if [ "$FRESH" -eq 1 ]; then
   rm -rf "$DEMO_DIR"
 fi
 mkdir -p "$DEMO_DIR"
 
-# demo/ 比打包出來的 .comot 新，代表素材改過了。這裡不自動重打包——重打包就得
-# 重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令都作廢。
-if [ -f "$DEMO_COMOT" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_COMOT" -type f -print -quit)" ]; then
-  echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+if [ "$BLANK" -eq 1 ]; then
+  if [ ! -f "$BLANK_COMOT" ]; then
+    step "建立空白簡報"
+    "$CLI" new "$BLANK_COMOT" --name "空白簡報"
+  fi
+
+  if [ ! -s "$BLANK_ID_FILE" ]; then
+    step "開啟空白簡報，取得識別碼"
+    # open 先印一行訊息，再印 { "id": "..." }；只取 id 欄位。
+    "$CLI" open "$BLANK_COMOT" \
+      | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed 's/.*"\([^"]*\)"$/\1/' > "$BLANK_ID_FILE"
+  fi
+
+  PRESENTATION_ID="$(cat "$BLANK_ID_FILE")"
+  if [ -z "$PRESENTATION_ID" ]; then
+    echo "無法取得簡報識別碼，請用 --fresh 重跑。" >&2
+    exit 1
+  fi
+else
+  # demo/ 比打包出來的 .comot 新，代表素材改過了。這裡不自動重打包——重打包就得
+  # 重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令都作廢。
+  if [ -f "$DEMO_COMOT" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_COMOT" -type f -print -quit)" ]; then
+    echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+  fi
+
+  if [ ! -f "$DEMO_COMOT" ]; then
+    step "打包示範簡報（demo/ → .comot）"
+    # packDirectory 只在 core 有，還沒有對應的 CLI 命令，所以直接呼叫它。
+    node --input-type=module -e '
+      import { packDirectory } from "@co-motion/core";
+      await packDirectory(process.argv[1], process.argv[2]);
+    ' "$DEMO_SOURCE" "$DEMO_COMOT"
+  fi
+
+  if [ ! -s "$DEMO_ID_FILE" ]; then
+    step "開啟示範簡報，取得識別碼"
+    # open 先印一行訊息，再印 { "id": "..." }；只取 id 欄位。
+    "$CLI" open "$DEMO_COMOT" \
+      | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed 's/.*"\([^"]*\)"$/\1/' > "$DEMO_ID_FILE"
+  fi
+
+  PRESENTATION_ID="$(cat "$DEMO_ID_FILE")"
+  if [ -z "$PRESENTATION_ID" ]; then
+    echo "無法取得簡報識別碼，請用 --fresh 重跑。" >&2
+    exit 1
+  fi
 fi
 
-if [ ! -f "$DEMO_COMOT" ]; then
-  step "打包示範簡報（demo/ → .comot）"
-  # packDirectory 只在 core 有，還沒有對應的 CLI 命令，所以直接呼叫它。
-  node --input-type=module -e '
-    import { packDirectory } from "@co-motion/core";
-    await packDirectory(process.argv[1], process.argv[2]);
-  ' "$DEMO_SOURCE" "$DEMO_COMOT"
-fi
-
-if [ ! -s "$DEMO_ID_FILE" ]; then
-  step "開啟示範簡報，取得識別碼"
-  # open 先印一行訊息，再印 { "id": "..." }；只取 id 欄位。
-  "$CLI" open "$DEMO_COMOT" \
-    | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
-    | sed 's/.*"\([^"]*\)"$/\1/' > "$DEMO_ID_FILE"
-fi
-
-PRESENTATION_ID="$(cat "$DEMO_ID_FILE")"
-if [ -z "$PRESENTATION_ID" ]; then
-  echo "無法取得簡報識別碼，請用 --fresh 重跑。" >&2
-  exit 1
-fi
-
-# 4. 啟動 -------------------------------------------------------------------
+# 5. 啟動 -------------------------------------------------------------------
 SERVE_ARGS=("serve" "$PRESENTATION_ID" "--port" "$PORT")
 if [ -n "$AGENT" ]; then
   SERVE_ARGS+=("--agent" "$AGENT")
@@ -116,7 +192,42 @@ fi
 # 「command not found: co-motion」而完全改不動簡報。
 export PATH="$ROOT/node_modules/.bin:$PATH"
 
+step "驗證 PATH"
+RESOLVED="$(command -v co-motion || true)"
+if [ "$RESOLVED" != "$CLI" ]; then
+  echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 $CLI。" >&2
+  exit 1
+fi
+# co-motion 沒有 --help；用不帶參數呼叫來確認它真的被 node 執行了（會印出
+# 「缺少命令名稱」並以非 0 結束），而不是被 shell 當成 command not found。
+INVOKE_OUTPUT="$(co-motion 2>&1 || true)"
+if printf '%s' "$INVOKE_OUTPUT" | grep -qi "command not found"; then
+  echo "co-motion 執行失敗，agent 會拿到 command not found。" >&2
+  exit 1
+fi
+echo "co-motion 已可用：$RESOLVED"
+
 URL="http://127.0.0.1:$PORT"
+
+if [ "$BLANK" -eq 1 ]; then
+  cat <<INFO
+
+簡報識別碼：$PRESENTATION_ID
+簡報檔：    $BLANK_COMOT
+網址：      $URL
+
+驗收清單（空白簡報，驗從零開始的路徑）：
+  - 畫面開到一份空白簡報，沒有任何投影片內容殘留。
+  - 在聊天框輸入一道建立元素的指令（例如「加一個標題文字」），agent 會經 CLI
+    改檔，畫面自動更新出現這個元素——這是這份簡報第一次被下命令。
+  - 從終端機看同一份內容：
+      node_modules/.bin/co-motion cat $PRESENTATION_ID project.json
+
+其他：
+  - 按 Ctrl+C 結束。
+
+INFO
+else
 cat <<INFO
 
 簡報識別碼：$PRESENTATION_ID
@@ -185,6 +296,7 @@ cat <<INFO
   - 按 Ctrl+C 結束。
 
 INFO
+fi
 
 if [ "$OPEN_BROWSER" -eq 1 ] && command -v open >/dev/null 2>&1; then
   # serve 綁定成功後才開瀏覽器，避免開到一個還沒起來的頁面。

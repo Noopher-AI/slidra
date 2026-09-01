@@ -6,7 +6,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "scripts/test/**/*.test.ts"],
     // packages/web needs a document: the canvas module manipulates real DOM
     // nodes (iframe, srcdoc), and the effects parser reads a slide through
     // DOMParser. Every other package is Node-only server/CLI code and stays
