@@ -26,6 +26,9 @@ import type { RibbonHandlers } from "./shell/ribbon-commands.js";
  */
 const DEFAULT_TEXT_FILL = "#f4f6f8";
 const DEFAULT_SHAPE_FILL = "#889";
+/** A `line` has no fill area, so it needs an explicit stroke to be visible at all — SVG's default is `stroke: none`. */
+const DEFAULT_SHAPE_STROKE = "#889";
+const DEFAULT_SHAPE_STROKE_WIDTH = 2;
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
@@ -745,7 +748,16 @@ export function App() {
         const length = 200;
         const y = canvas.height / 2;
         const x1 = (canvas.width - length) / 2;
-        void runRibbonCommand("element insert", { slidePath, kind, x1, y1: y, x2: x1 + length, y2: y });
+        void runRibbonCommand("element insert", {
+          slidePath,
+          kind,
+          x1,
+          y1: y,
+          x2: x1 + length,
+          y2: y,
+          stroke: DEFAULT_SHAPE_STROKE,
+          strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
+        });
         return;
       }
       const width = 200;

@@ -138,6 +138,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
             y2: optionalNumberFlag(args, "--y2", "element insert"),
             d: optionalFlag(args, "--d"),
             fill: optionalFlag(args, "--fill"),
+            stroke: optionalFlag(args, "--stroke"),
+            strokeWidth: optionalNumberFlag(args, "--stroke-width", "element insert"),
             href: optionalFlag(args, "--href"),
             media: optionalFlag(args, "--media"),
           },
