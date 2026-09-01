@@ -40,11 +40,7 @@ jobs:
           UPDATE_APPEARANCE_BASELINES: ${{ inputs.update_baselines && '1' || '' }}
           SKIP_APPEARANCE_BASELINES: ${{ !inputs.update_baselines && '1' || '' }}
 
-      # 基準截圖的權威平台是本機 macOS，不是這裡的 ubuntu-latest——見
-      # AGENTS.md「視覺回歸的把關分工」。這個 artifact 只是 ubuntu 渲染出的
-      # 截圖，用來診斷跨平台字型渲染差異，其內容不得 commit 進
-      # e2e/__screenshots__ 取代 macOS 基準。正式更新基準請依 AGENTS.md
-      # 在本機執行 UPDATE_APPEARANCE_BASELINES=1 後再提交。
+      # 基準截圖的權威平台與更新規則以 AGENTS.md「視覺回歸的把關分工」為準。
       - name: Upload ubuntu-rendered screenshots (diagnostic only)
         if: ${{ inputs.update_baselines }}
         uses: actions/upload-artifact@v4
