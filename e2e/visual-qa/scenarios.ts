@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
-import type { Frame, Page } from "playwright";
+import type { Page } from "playwright";
 import type { CommandRegistry } from "@co-motion/cli";
 import type { RunningServer } from "../../packages/server/src/serve.js";
 import type { RibbonCmdId } from "../../packages/web/src/shell/ribbon-commands.js";
@@ -87,25 +87,6 @@ async function pickFile(page: Page, buttonLabel: string, filePath: string): Prom
 
 function gCount(svg: string): number {
   return svg.match(/<g /g)?.length ?? 0;
-}
-
-/** Same lookup as e2e/selection.test.ts's own helper — the main canvas iframe, not the overview thumbnails. */
-async function canvasFrame(page: Page): Promise<Frame> {
-  for (const frame of page.frames()) {
-    const element = await frame.frameElement().catch(() => null);
-    if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
-  }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
-}
-
-/** Reads the `.sel` overlay's `display` the same way e2e/selection.test.ts's click-selection test does — `"block"` means a selection box is actually showing. */
-async function selectionBoxDisplay(page: Page): Promise<string | null> {
-  const frame = await canvasFrame(page);
-  return frame.evaluate(() => {
-    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-    const sel = host?.shadowRoot?.querySelector(".sel") ?? null;
-    return sel ? getComputedStyle(sel).display : null;
-  });
 }
 
 function elementIds(svg: string): string[] {
@@ -227,10 +208,6 @@ export const SCENARIOS: Record<RibbonCmdId, Scenario[]> = {
         const before = await readSlide(ctx);
         await Promise.all([waitForSlideRepaint(ctx.page), clickCmd(ctx.page, "文字方塊")]);
         await expect.poll(async () => gCount(await readSlide(ctx))).toBe(gCount(before) + 1);
-        // NOOP-227/#132: the inserted text box must become the current selection,
-        // so the screenshot below captures the selection box instead of a silent
-        // insert. Same polling as e2e/ribbon-insert.test.ts:272-283.
-        await expect.poll(() => selectionBoxDisplay(ctx.page)).toBe("block");
       },
     },
   ],
@@ -386,10 +363,6 @@ export const SCENARIOS: Record<RibbonCmdId, Scenario[]> = {
         const before = await readSlide(ctx);
         await Promise.all([waitForSlideRepaint(ctx.page), clickCmd(ctx.page, "文字方塊")]);
         await expect.poll(async () => gCount(await readSlide(ctx))).toBe(gCount(before) + 1);
-        // NOOP-227/#132: the inserted text box must become the current selection,
-        // so the screenshot below captures the selection box instead of a silent
-        // insert. Same polling as e2e/ribbon-insert.test.ts:272-283.
-        await expect.poll(() => selectionBoxDisplay(ctx.page)).toBe("block");
       },
     },
   ],
