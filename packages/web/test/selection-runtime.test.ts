@@ -33,6 +33,13 @@ function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window
   const win = iframe.contentWindow as Window & { __COMOT_SELECTION_COLORS__?: typeof COLORS };
   const doc = iframe.contentDocument as Document;
   doc.body.innerHTML = bodyMarkup;
+  // jsdom has no layout engine and does not implement elementFromPoint at all,
+  // but the runtime's hit-tolerance ring (selection-runtime.js) calls it when
+  // an exact hit misses. jsdom's honest answer for "what's at this point" is
+  // "nothing", so shim it to null. This only fills an environment gap — it
+  // does not change the production code path, which real browsers implement.
+  // The ring's own pixel-tolerance behavior is covered by e2e/visual-qa, not here.
+  (doc as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => null;
   win.__COMOT_SELECTION_COLORS__ = colors;
   (win as unknown as { eval: (source: string) => void }).eval(runtimeSource);
   return { win, doc };

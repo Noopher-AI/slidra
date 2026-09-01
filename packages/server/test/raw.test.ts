@@ -56,8 +56,8 @@ afterEach(async () => {
     rawServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {

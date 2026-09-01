@@ -107,9 +107,9 @@ afterEach(async () => {
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
-  await rm(staticRoot, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {

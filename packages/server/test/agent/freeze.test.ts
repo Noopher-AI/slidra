@@ -39,9 +39,9 @@ beforeEach(async () => {
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
-  await rm(logDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
@@ -96,8 +96,13 @@ async function readLog(): Promise<LogLine[]> {
     .map((line) => JSON.parse(line));
 }
 
-/** Polls the fake agent's log until `predicate` matches a line, or `timeoutMs` elapses. */
-async function waitForLog(predicate: (line: LogLine) => boolean, timeoutMs = 5000): Promise<LogLine> {
+/**
+ * Polls the fake agent's log until `predicate` matches a line, or `timeoutMs` elapses.
+ * Default matches vitest.config.ts's testTimeout: this is a self-timed poll loop, so
+ * raising the vitest-level budget alone does not help it survive full-suite CPU
+ * contention — it needs the same 30s headroom applied here directly.
+ */
+async function waitForLog(predicate: (line: LogLine) => boolean, timeoutMs = 30_000): Promise<LogLine> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const lines = await readLog();
@@ -115,8 +120,8 @@ async function getEditingState(server: RunningServer): Promise<{ frozen: boolean
   return (await response.json()) as { frozen: boolean };
 }
 
-/** Polls GET /api/editing until `frozen` matches. */
-async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs = 5000): Promise<void> {
+/** Polls GET /api/editing until `frozen` matches. Same rationale as waitForLog above. */
+async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const state = await getEditingState(server);

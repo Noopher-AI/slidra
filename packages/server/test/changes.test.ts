@@ -55,8 +55,8 @@ afterEach(async () => {
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
@@ -278,7 +278,7 @@ describe("GET /api/events", () => {
     const { id } = await openFreshPresentation();
     const server = await serve(id);
     const workDir = await resolveWorkDir(id);
-    await rm(workDir, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 
     const response = await fetch(`${server.url}/api/events`);
     const body = await response.json();
