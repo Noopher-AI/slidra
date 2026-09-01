@@ -1086,7 +1086,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // --- Drag-to-move (§4.2) ---
 
   function beginMoveGesture(point: { x: number; y: number }): void {
-    if (selectionIds.length === 0 || !currentSlideModel) return;
+    // Without this guard, toUserPoint(point) silently returns { x: 0, y: 0 }
+    // when the runtime's first "viewport" message has not landed yet, and
+    // that becomes the gesture's startUser with no indication anything went
+    // wrong — every subsequent delta is then measured from the wrong
+    // origin (NOOP-328: traced to a 180px-off drag landing spot). Declining
+    // to start the gesture at all is the same posture updateMoveGesture
+    // already takes on every subsequent move while viewport is null.
+    if (selectionIds.length === 0 || !currentSlideModel || !viewport) return;
     const index = elementIndex();
     const originals = new Map<string, OriginalTransform>();
     for (const id of selectionIds) {
