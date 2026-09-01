@@ -20,8 +20,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** Opens a presentation built from hand-picked slide SVGs, one file per slide, in `slides/001.svg`, `slides/002.svg`, ... order. */

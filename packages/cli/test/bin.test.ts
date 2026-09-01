@@ -30,8 +30,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe("a downstream pipe that closes early", () => {

@@ -15,7 +15,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function createAndOpen(): Promise<{ id: string }> {
@@ -25,7 +25,7 @@ async function createAndOpen(): Promise<{ id: string }> {
     await createNewPresentation(comotPath, "測試簡報");
     return await openPresentation(comotPath);
   } finally {
-    await rm(comotDir, { recursive: true, force: true });
+    await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 

@@ -29,8 +29,8 @@ afterEach(async () => {
   // lingers past the test.
   await Promise.all(watchers.map((watcher) => watcher.close()));
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function watch(
@@ -104,7 +104,7 @@ describe("watchPresentation", () => {
     const { id } = await openFreshPresentation();
     const { resolveWorkDir } = await import("../src/workspace.js");
     const workDir = await resolveWorkDir(id);
-    await rm(workDir, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 
     let caught: Error | undefined;
     try {

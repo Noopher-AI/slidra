@@ -41,9 +41,9 @@ afterEach(async () => {
   // suite hangs on a live child process / open socket.
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
-  await rm(comotDir, { recursive: true, force: true });
-  await rm(logDir, { recursive: true, force: true });
+  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
@@ -580,7 +580,7 @@ describe("chat: a failed start must not leak its subprocess", () => {
       expect(isAlive(firstPid)).toBe(false);
       expect(isAlive(secondPid)).toBe(true);
     } finally {
-      await rm(markerDir, { recursive: true, force: true });
+      await rm(markerDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 });
@@ -637,7 +637,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
         await waitFor(() => !isAlive(pids[0]));
         expect(isAlive(pids[0])).toBe(false);
       } finally {
-        await rm(markerDir, { recursive: true, force: true });
+        await rm(markerDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       }
     },
     15000,
