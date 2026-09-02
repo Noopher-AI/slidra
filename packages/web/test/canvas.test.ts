@@ -1358,6 +1358,166 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
   });
 });
 
+// NOOP-275/#156: `element paste`'s `data.elementIds` (plural — unlike
+// `textbox add`/`element insert`'s singular `data.elementId`) must become
+// the selection once the write's own reload lands, same NOOP-227 mechanism
+// extended to a list.
+describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", () => {
+  const slideWithTwoElements =
+    '<svg viewBox="0 0 1280 720">' +
+    '<g id="el-src" data-comot-name="來源"><rect width="10" height="10"/></g>' +
+    "</svg>";
+  const slideAfterPaste =
+    '<svg viewBox="0 0 1280 720">' +
+    '<g id="el-src" data-comot-name="來源"><rect width="10" height="10"/></g>' +
+    '<g id="el-new1" data-comot-name="複本一"><rect width="10" height="10"/></g>' +
+    '<g id="el-new2" data-comot-name="複本二"><rect width="10" height="10"/></g>' +
+    "</svg>";
+
+  function stubPasteCommand(elementIds: string[]): void {
+    let pasted = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(pasted ? slideAfterPaste : slideWithTwoElements, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { name: string };
+          if (body.name === "element paste") {
+            pasted = true;
+            return new Response(JSON.stringify({ ok: true, message: "", data: { elementIds } }), { status: 200 });
+          }
+          throw new Error(`unexpected command: ${body.name}`);
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  // selectOnceLoaded (canvas.ts) waits for the iframe's own "load" event
+  // before trusting elementIndex() — real browsers fire it once srcdoc
+  // finishes parsing, but jsdom's srcdoc implementation never dispatches it
+  // (verified: a bare srcdoc assignment + addEventListener("load", ...)
+  // never fires here, with or without jsdom's pretendToBeVisual/resources
+  // options). render() has already parsed the fetched markup into
+  // currentSlideModel by the time reload() resolves, so dispatching "load"
+  // by hand here only unblocks the consumer — it does not skip anything
+  // this module itself would otherwise have waited on.
+  function dispatchFrameLoad(): void {
+    controller!.frameElement.dispatchEvent(new Event("load"));
+  }
+
+  it("貼上多個元素後全部被選取，不只第一個 (A2)", async () => {
+    stubPasteCommand(["el-new1", "el-new2"]);
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.runCommand("element paste", { slidePath: "slides/001.svg", dx: 20, dy: 20 });
+    await controller.reload();
+    dispatchFrameLoad();
+
+    expect(state?.selection.ids).toEqual(["el-new1", "el-new2"]);
+    expect(state?.selection.names).toEqual(["複本一", "複本二"]);
+  });
+
+  it("貼上失敗（ok:false）不改變選取，也不留下待選取的 id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideWithTwoElements, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          return new Response(JSON.stringify({ ok: false, error: "剪貼簿是空的" }), { status: 400 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.runCommand("element paste", { slidePath: "slides/001.svg", dx: 0, dy: 0 });
+    await controller.reload();
+
+    expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
+  });
+
+  it("回傳的 elementIds 裡有找不到的元素時，只選取找得到的那些", async () => {
+    stubPasteCommand(["el-new1", "el-missing"]);
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.runCommand("element paste", { slidePath: "slides/001.svg", dx: 20, dy: 20 });
+    await controller.reload();
+    dispatchFrameLoad();
+
+    expect(state?.selection.ids).toEqual(["el-new1"]);
+  });
+
+  it("textbox add / element insert 的單一 elementId 選取行為不因本次改動而回歸", async () => {
+    let inserted = false;
+    const slideAfterInsert =
+      '<svg viewBox="0 0 1280 720"><g id="el-shape" data-comot-name="矩形"><rect width="10" height="10"/></g></svg>';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(inserted ? slideAfterInsert : slideMarkup, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          inserted = true;
+          return new Response(
+            JSON.stringify({ ok: true, message: "", data: { elementId: "el-shape" } }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.runCommand("element insert", { slidePath: "slides/001.svg", shape: "rect" });
+    await controller.reload();
+    dispatchFrameLoad();
+
+    expect(state?.selection.ids).toEqual(["el-shape"]);
+  });
+});
+
 // NOOP-328 [Fix.5]: reproduces, at the postMessage-protocol boundary (never
 // against beginMoveGesture/toUserPoint directly — those are not a public
 // boundary), the race behind the e2e "Alt 拖到同一位置" test's intermittent

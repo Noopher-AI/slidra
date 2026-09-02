@@ -556,13 +556,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
   // selectionIds/Names everywhere they are cleared (see that comment).
   let selectionGroupPath: string[] = [];
-  // NOOP-227: the element a just-finished insert command created, still
-  // waiting for the reload()/render() its own write triggers over
+  // NOOP-227: the element(s) a just-finished insert/paste command created,
+  // still waiting for the reload()/render() its own write triggers over
   // /api/events. reload() would otherwise clear the selection like every
-  // other reload — this is the one case where the id IS trustworthy,
-  // because this module made it moments ago. Consumed (set back to null)
-  // by the render() that follows, whether or not the id still resolves.
-  let pendingSelectionId: string | null = null;
+  // other reload — this is the one case where the id(s) ARE trustworthy,
+  // because this module made them moments ago. Consumed (set back to null)
+  // by the render() that follows, whether or not any id still resolves.
+  // Extended by NOOP-275/#156 from a single id to a list, so a multi-element
+  // paste selects everything it created rather than just the first one.
+  let pendingSelectionIds: string[] | null = null;
   // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
@@ -949,12 +951,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * Whitelisted commands whose `data.elementId` (NOOP-227) should become
-   * the selection once this write's own reload lands — the Ribbon's insert
-   * actions (`textbox add`, `element insert`: 矩形/橢圓/線). Every other
-   * whitelisted command leaves the selection to reload()'s existing clear.
+   * Whitelisted commands whose result (NOOP-227, extended by NOOP-275/#156)
+   * should become the selection once this write's own reload lands — the
+   * Ribbon's insert actions (`textbox add`, `element insert`: 矩形/橢圓/線)
+   * and paste (`element paste`). The value says which shape that command's
+   * `data` uses: `"elementId"` for the single-element commands' existing
+   * string field, `"elementIds"` for paste's array field. This is purely a
+   * front-end lookup — the two backend response shapes are not unified by
+   * this change. Every other whitelisted command leaves the selection to
+   * reload()'s existing clear.
    */
-  const SELECT_AFTER_COMMAND = new Set(["textbox add", "element insert"]);
+  const SELECT_AFTER_COMMAND = new Map<string, "elementId" | "elementIds">([
+    ["textbox add", "elementId"],
+    ["element insert", "elementId"],
+    ["element paste", "elementIds"],
+  ]);
 
   /**
    * `CanvasController.runCommand` (NOOP-141) — a thin wrapper over the
@@ -971,9 +982,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   ): Promise<{ ok: boolean; message: string; data?: unknown }> {
     const result = await postCommand(name, input);
     error = result.ok ? null : result.message;
-    if (result.ok && SELECT_AFTER_COMMAND.has(name)) {
-      const elementId = (result.data as { elementId?: unknown } | undefined)?.elementId;
-      if (typeof elementId === "string") pendingSelectionId = elementId;
+    const shape = SELECT_AFTER_COMMAND.get(name);
+    if (result.ok && shape) {
+      const data = result.data as { elementId?: unknown; elementIds?: unknown } | undefined;
+      const raw = shape === "elementId" ? [data?.elementId] : data?.elementIds;
+      const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+      if (ids.length > 0) pendingSelectionIds = ids;
     }
     notify();
     return result;
@@ -1859,11 +1873,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * must never paint over the newer page the author actually asked for.
    */
   async function render(thisGeneration: number): Promise<void> {
-    // Consumed here regardless of outcome (NOOP-227) — a stale id (the
-    // slide moved out from under it, or the insert failed to parse back)
+    // Consumed here regardless of outcome (NOOP-227) — stale ids (the
+    // slide moved out from under them, or the write failed to parse back)
     // must not leak into some later, unrelated render().
-    const selectAfterLoad = pendingSelectionId;
-    pendingSelectionId = null;
+    const selectAfterLoad = pendingSelectionIds;
+    pendingSelectionIds = null;
 
     if (currentIndex === -1) {
       currentSlideModel = null;
@@ -1904,15 +1918,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * `frame` variable, so a `play()`/`exitPlay()` swap in the meantime
    * cannot redirect the listener onto a different element.
    */
-  function selectOnceLoaded(elementId: string, thisGeneration: number): void {
+  function selectOnceLoaded(elementIds: string[], thisGeneration: number): void {
     const targetFrame = frame;
     const onLoad = () => {
       targetFrame.removeEventListener("load", onLoad);
       if (destroyed || thisGeneration !== generation || mode !== "view") return;
-      const entry = elementIndex().get(elementId);
-      if (!entry) return;
-      selectionIds = [elementId];
-      selectionNames = [entry.element.name];
+      // Only the ids that still resolve are selected — a paste of several
+      // elements where one was concurrently deleted still gives feedback
+      // for the rest, rather than discarding the whole selection.
+      const entries = elementIds
+        .map((id) => [id, elementIndex().get(id)] as const)
+        .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== undefined);
+      if (entries.length === 0) return;
+      selectionIds = entries.map(([id]) => id);
+      selectionNames = entries.map(([, entry]) => entry.element.name);
       selectionGroupPath = [];
       notify();
       pushSelectionToRuntime(selectionIds);

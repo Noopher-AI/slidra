@@ -16,6 +16,7 @@ import { SidePanel } from "./shell/SidePanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
 import type { ShellView } from "./shell/view.js";
 import type { RibbonHandlers } from "./shell/ribbon-commands.js";
+import { INITIAL_PASTE_OFFSET_STATE, nextPasteOffset, clipboardWritten } from "./paste-offset.js";
 
 /**
  * `element insert`/`textbox add` render as plain black (SVG's own default)
@@ -177,6 +178,10 @@ export function App() {
   // only the overlay's own onDrop/onDragLeave turn it off (決定 3).
   const [dropActive, setDropActive] = useState(false);
   const lastDragSignalRef = useRef(0);
+  // NOOP-275/#156: how far the next Ribbon paste should offset from its
+  // source. Lives outside React state — advancing it is a side effect of
+  // sending a command, not something a render should react to.
+  const pasteOffsetRef = useRef(INITIAL_PASTE_OFFSET_STATE);
 
   // canvasState.dragSignal is an edge counter (see its own comment in
   // canvas.ts) — this effect reacts to it *changing*, not to its value, so
@@ -859,16 +864,22 @@ export function App() {
     paste: () => {
       const slidePath = currentSlidePath();
       if (!slidePath) return;
-      void runRibbonCommand("element paste", { slidePath, dx: 0, dy: 0 });
+      // Advanced before the (async) command is sent, so two quick paste
+      // clicks each get their own dx/dy instead of racing on the same one.
+      const { dx, dy, next } = nextPasteOffset(pasteOffsetRef.current, slidePath);
+      pasteOffsetRef.current = next;
+      void runRibbonCommand("element paste", { slidePath, dx, dy });
     },
     cut: () => {
       const slidePath = currentSlidePath();
       if (!slidePath) return;
+      pasteOffsetRef.current = clipboardWritten(slidePath);
       void runRibbonCommand("element cut", { slidePath, elementIds: canvasState.selection.ids });
     },
     copy: () => {
       const slidePath = currentSlidePath();
       if (!slidePath) return;
+      pasteOffsetRef.current = clipboardWritten(slidePath);
       void runRibbonCommand("element copy", { slidePath, elementIds: canvasState.selection.ids });
     },
     textbox: () => insertDefaultTextbox(),
