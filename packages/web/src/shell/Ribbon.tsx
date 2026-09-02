@@ -41,6 +41,7 @@ export interface RibbonProps {
 /** SVG path fragments (viewBox 0 0 20 20), traced from base-shell.html's `const I`. */
 const ICON: Record<string, string> = {
   plus: '<path d="M10 4v12M4 10h12"/>',
+  template: '<rect x="3" y="2.5" width="14" height="15"/><path d="M6 6.5h8M6 10h8M6 13.5h5"/>',
   paste: '<rect x="5" y="3" width="10" height="14"/><path d="M8 3V1.5h4V3"/>',
   cut: '<circle cx="5" cy="15" r="2"/><circle cx="15" cy="15" r="2"/><path d="M6 13.5L14 3M14 13.5L6 3"/>',
   copy: '<rect x="3" y="3" width="9" height="11"/><path d="M6 16h8V6"/>',

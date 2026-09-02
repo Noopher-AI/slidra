@@ -1,8 +1,9 @@
 export type RibbonTabId = "home" | "insert" | "transitions" | "show";
 
-/** Every ribbon button's stable id; T2–T7 add one handler entry per id. */
+/** Every ribbon button's stable id (19 total); T2–T7 add one handler entry per id. */
 export type RibbonCmdId =
   | "new-slide"
+  | "template"
   | "paste"
   | "cut"
   | "copy"
@@ -41,7 +42,13 @@ export const TABS: { id: RibbonTabId; label: string }[] = [
 
 export const RIBBON: Record<RibbonTabId, RibbonGroup[]> = {
   home: [
-    { label: "投影片", cmds: [{ id: "new-slide", label: "新增投影片", icon: "plus" }] },
+    {
+      label: "投影片",
+      cmds: [
+        { id: "new-slide", label: "新增投影片", icon: "plus" },
+        { id: "template", label: "範本", icon: "template" },
+      ],
+    },
     {
       label: "剪貼簿",
       cmds: [

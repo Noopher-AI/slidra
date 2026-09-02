@@ -1,0 +1,139 @@
+/* ═══════════════════════════════════════════════════════════════
+   範本管理對話框 ([E4.T7]). Every value below comes from tokens.css's
+   :root — see AGENTS/軍令 #2. First centered-modal component in this
+   codebase (existing popovers are all ribbon-anchored dropdowns), so its
+   own shape rather than a reuse of style-panel.css's sidebar layout.
+   ═══════════════════════════════════════════════════════════════ */
+
+.template-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.template-dialog {
+  width: calc(var(--u) * 140);
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: calc(var(--u) * 4);
+  background: var(--s-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 3);
+}
+
+.template-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.template-dialog-header h2 {
+  margin: 0;
+  font-size: var(--fs-lead);
+}
+
+.template-dialog-close {
+  color: var(--ink-dim);
+}
+
+.template-dialog-save,
+.template-dialog-rename,
+.template-dialog-confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.5);
+}
+
+.template-dialog-save input,
+.template-dialog-rename input {
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  box-sizing: border-box;
+  background: var(--s-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font: inherit;
+}
+
+.template-dialog-save input:focus,
+.template-dialog-rename input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.template-dialog-save-open {
+  align-self: flex-start;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  background: var(--s-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.template-dialog-save-open:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.template-dialog-error {
+  color: var(--accent-hi);
+  font-size: var(--fs-small);
+}
+
+.template-dialog-empty {
+  margin: 0;
+  color: var(--ink-faint);
+}
+
+.template-dialog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 2);
+}
+
+.template-dialog-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2);
+  padding: calc(var(--u) * 1.5);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+}
+
+.template-dialog-thumb {
+  width: calc(var(--u) * 24);
+  height: calc(var(--u) * 13.5);
+  flex-shrink: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  background: var(--s-well);
+}
+
+.template-dialog-name {
+  flex: 1;
+  color: var(--ink);
+}
+
+.template-dialog-confirm-delete {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.template-dialog-confirm-delete p {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+}

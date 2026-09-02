@@ -43,6 +43,24 @@ async function readProject(ctx: ScenarioContext): Promise<{ slides: string[] }> 
   return JSON.parse(result.data!.content);
 }
 
+/** `project.json`'s `templates`, already normalized to `{ file, name }` since every deck this suite opens is written post-[E4.T7]. */
+async function readProjectTemplates(ctx: ScenarioContext): Promise<{ file: string; name: string }[]> {
+  const result = await ctx.registry.dispatch<{ content: string }>("cat", { id: ctx.presentationId, path: "project.json" });
+  if (!result.ok) throw new Error(result.message);
+  const project = JSON.parse(result.data!.content) as { templates?: unknown };
+  return Array.isArray(project.templates) ? (project.templates as { file: string; name: string }[]) : [];
+}
+
+/** Adds one template directly through the registry (setup for a 範本管理 scenario that needs an existing template, bypassing the UI it isn't testing). */
+async function addTemplateFixture(ctx: ScenarioContext, name: string): Promise<void> {
+  const result = await ctx.registry.dispatch<{ templatePath: string }>("template add", {
+    id: ctx.presentationId,
+    from: "slides/001.svg",
+    name,
+  });
+  if (!result.ok) throw new Error(result.message);
+}
+
 /**
  * `translate(x y)` -> `{x, y}`. An element with no `transform` attribute at
  * all is legitimately at its untransformed position (`element-arrange.ts`'s
@@ -120,7 +138,7 @@ async function insertRectAndGetId(ctx: ScenarioContext): Promise<string> {
   return newId;
 }
 
-/** Covers all 18 `RibbonCmdId` values — a missing key fails `npm run typecheck`. */
+/** Covers all 19 `RibbonCmdId` values — a missing key fails `npm run typecheck`. */
 export const SCENARIOS: Record<RibbonCmdId, Scenario[]> = {
   "new-slide": [
     {
@@ -151,6 +169,95 @@ export const SCENARIOS: Record<RibbonCmdId, Scenario[]> = {
         // push, not this polling) needs its own confirmation, or the
         // screenshot can be taken mid-race against a still-stale UI.
         await expect.poll(() => overviewItems.count()).toBe(beforeItemCount + 1);
+      },
+    },
+  ],
+  template: [
+    {
+      id: "template-dialog-empty",
+      description: "沒有任何範本時開啟範本管理對話框，顯示空狀態文字（A2）",
+      async run(ctx) {
+        await goToTab(ctx.page, "常用");
+        await clickCmd(ctx.page, "範本");
+        const dialog = ctx.page.locator(".template-dialog");
+        await expect.poll(() => dialog.locator(".template-dialog-empty").count()).toBe(1);
+      },
+    },
+    {
+      id: "template-dialog-open",
+      description: "開啟範本管理對話框，清單顯示既有範本的縮圖與名稱（A1/A2）",
+      async run(ctx) {
+        await addTemplateFixture(ctx, "封面");
+        await goToTab(ctx.page, "常用");
+        await clickCmd(ctx.page, "範本");
+        const dialog = ctx.page.locator(".template-dialog");
+        await expect.poll(() => dialog.locator(".template-dialog-item").count()).toBe(1);
+        await expect.poll(() => dialog.locator(".template-dialog-name").first().textContent()).toBe("封面");
+      },
+    },
+    {
+      id: "template-save-current",
+      description: "對話框內把目前這頁存成範本，清單與 project.json 各多一筆（A3）",
+      async run(ctx) {
+        const before = await readProjectTemplates(ctx);
+        await goToTab(ctx.page, "常用");
+        await clickCmd(ctx.page, "範本");
+        const dialog = ctx.page.locator(".template-dialog");
+        await dialog.locator(".template-dialog-save-open").click();
+        await dialog.locator(".template-dialog-save input").fill("我的範本");
+        await Promise.all([
+          ctx.page.waitForResponse((response) => response.url().endsWith("/api/command") && response.status() === 200),
+          dialog.locator('.template-dialog-save button:has-text("確定")').click(),
+        ]);
+        await expect.poll(async () => (await readProjectTemplates(ctx)).length).toBe(before.length + 1);
+        await expect.poll(() => dialog.locator(".template-dialog-item").count()).toBe(before.length + 1);
+      },
+    },
+    {
+      id: "template-rename",
+      description: "清單上把範本改名，關閉對話框後「新增投影片」選單顯示新名字（A7）",
+      async run(ctx) {
+        await addTemplateFixture(ctx, "封面");
+        await goToTab(ctx.page, "常用");
+        await clickCmd(ctx.page, "範本");
+        const dialog = ctx.page.locator(".template-dialog");
+        await expect.poll(() => dialog.locator(".template-dialog-item").count()).toBe(1);
+        await dialog.locator('.template-dialog-item button:has-text("改名")').click();
+        await dialog.locator(".template-dialog-rename input").fill("封面（新）");
+        await Promise.all([
+          ctx.page.waitForResponse((response) => response.url().endsWith("/api/command") && response.status() === 200),
+          dialog.locator('.template-dialog-rename button:has-text("確定")').click(),
+        ]);
+        await expect.poll(async () => (await readProjectTemplates(ctx))[0]?.name).toBe("封面（新）");
+        // 「新增投影片」選單的內容是點擊當下對 presentationInfo 的一次性快照
+        // （ribbonHandlers 既有的設計），不是隨後續更新重新計算的即時清單——
+        // 所以要等對話框自己（會隨 presentationInfo 重繪）先顯示新名字，
+        // 確認 live-reload 真的落地了，才能關閉對話框、重新開這個選單。
+        await expect.poll(() => dialog.locator(".template-dialog-name").first().textContent()).toBe("封面（新）");
+        await dialog.locator(".template-dialog-close").click();
+        await clickCmd(ctx.page, "新增投影片");
+        const menuItems = ctx.page.locator('.ribbon-menu [role="menuitem"]');
+        await expect.poll(() => menuItems.filter({ hasText: "封面（新）" }).count()).toBe(1);
+      },
+    },
+    {
+      id: "template-delete-confirm",
+      description: "刪除範本前顯示確認文字，確認後範本從清單與 project.json 消失（A8）",
+      async run(ctx) {
+        await addTemplateFixture(ctx, "封面");
+        await goToTab(ctx.page, "常用");
+        await clickCmd(ctx.page, "範本");
+        const dialog = ctx.page.locator(".template-dialog");
+        await expect.poll(() => dialog.locator(".template-dialog-item").count()).toBe(1);
+        await dialog.locator('.template-dialog-item button:has-text("刪除")').click();
+        await expect
+          .poll(() => dialog.locator(".template-dialog-confirm-delete").textContent())
+          .toContain("已用此範本建立的投影片不受影響");
+        await Promise.all([
+          ctx.page.waitForResponse((response) => response.url().endsWith("/api/command") && response.status() === 200),
+          dialog.locator('.template-dialog-confirm-delete button:has-text("確定刪除")').click(),
+        ]);
+        await expect.poll(async () => (await readProjectTemplates(ctx)).length).toBe(0);
       },
     },
   ],
