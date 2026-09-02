@@ -1,8 +1,20 @@
 /* ═══════════════════════════════════════════════════════════════
-   CoMotion design tokens — reproduces docs/design/base-shell.html's
-   :root exactly, name for name and value for value (ticket #49).
-   Every other stylesheet in this package references these tokens; no
-   selector anywhere introduces a new hard-coded colour or spacing value.
+   CoMotion design tokens — the single public UI token contract
+   (NOOP-3 / GitHub #182). Every stylesheet in this package consumes
+   these tokens by name; no selector anywhere introduces a new
+   hard-coded colour, size, radius, shadow or motion value.
+
+   Naming is by *purpose*, never by colour name or numeric scale
+   (no `--red-500`, no `--space-4`): a token's name says what it is
+   for, not what its current value happens to be.
+
+   The original 27 tokens below (ticket #49) reproduce
+   docs/design/base-shell.html's :root exactly, name for name and
+   value for value, and are frozen — 325 existing `var(--…)`
+   references across every regional stylesheet plus canvas.ts and two
+   e2e suites depend on these exact names. Everything after that
+   section is new (NOOP-3), added in the same naming style to close
+   the categories the original set left uncovered.
    ═══════════════════════════════════════════════════════════════ */
 :root {
   /* Surfaces: outer to inner, shallow to deep. Depth reads through
@@ -49,19 +61,127 @@
   --fs-ui: 12.5px;
   --fs-small: 11.5px;
   --fs-lead: 14px;
+
+  /* ── Surfaces (NOOP-3 additions) ──────────────────────────────
+     Values collected from existing literal colours so regional CSS
+     can be migrated to these names without a pixel changing — see
+     the PR body for which call sites still hold the literal today. */
+  --s-slide: #fff; /* stage.css — the slide's own paper */
+  --s-blackout: #000; /* rail.css / play.css / shell.css / grid.css — playback & thumbnail black */
+  --s-scrim: rgba(0, 0, 0, 0.5); /* template-dialog.css — modal scrim */
+  --s-overlay: rgba(32, 31, 30, 0.82); /* shell.css — floating play-bar / view-fullscreen-bar */
+  --s-overlay-raised: rgba(255, 255, 255, 0.09); /* shell.css — overlay button hover */
+
+  /* ── Lines (NOOP-3 additions) ────────────────────────────────── */
+  --line-overlay: rgba(255, 255, 255, 0.1); /* shell.css — overlay border */
+  --line-overlay-strong: rgba(255, 255, 255, 0.12); /* play.css — overlay border, stronger */
+  --line-slide: rgba(255, 255, 255, 0.14); /* stage.css — slide paper border */
+
+  /* ── Focus / selection / status (accent family stays as-is — the
+     red brand direction is not touched by any of these) ────────── */
+  --focus-ring: var(--accent);
+  --focus-ring-width: 1px;
+  --select-outline: var(--accent);
+  --select-outline-width: 2px;
+  --select-fill: var(--accent-wash);
+  --status-ok: #4a8f45; /* shell.css — connected indicator */
+  --status-ok-glow: rgba(74, 143, 69, 0.18);
+
+  /* ── Typography (NOOP-3 additions) ────────────────────────────
+     --fw-medium has no consumer yet — this is the token that makes
+     the weight usable at all once the 500-weight subset ships. */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-bold: 700;
+  --fs-micro: 10.5px;
+  --lh-flush: 1;
+  --lh-tight: 1.15;
+  --lh-ui: 1.2;
+  --lh-read: 1.55;
+  --ls-brand: 0.14em;
+  --ls-label: 0.1em;
+
+  /* ── Radius (NOOP-3 additions; --r above stays the default) ───── */
+  --r-control: 2px;
+  --r-pill: 5px;
+  --r-panel: calc(var(--u) * 2);
+  --r-round: 50%;
+
+  /* ── Shadow (NOOP-3 additions) ─────────────────────────────────── */
+  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.24);
+  --shadow-slide: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px -12px rgba(0, 0, 0, 0.8);
+
+  /* ── Icon geometry (NOOP-3 additions) ──────────────────────────
+     Consumed by packages/web/src/icons/Icon.tsx; --icon-stroke unifies
+     shell.css's 1.4 (play.css's 15px/1.5 pairing is one of the frozen
+     literals this ticket does not touch — see the PR body). */
+  --icon-inline: 14px;
+  --icon-control: 15px;
+  --icon-command: 20px;
+  --icon-stroke: 1.4;
+
+  /* ── Motion (NOOP-3 additions) ──────────────────────────────────
+     Three tiers by what's animating, not by where. --dur-micro and
+     --dur-panel are chosen to equal stage.css's/play.css's existing
+     literal durations so a future migration of those rules is
+     pixel-neutral; --dur-view has no existing literal to match and
+     takes a value inside its own ≤300ms budget. */
+  --dur-micro: 100ms; /* micro-interactions — ≤160ms */
+  --dur-panel: 180ms; /* panels / menus — ≤220ms */
+  --dur-view: 260ms; /* dialogs / view switches — ≤300ms */
+  --ease-micro: ease-out;
+  --ease-panel: ease;
+  --ease-view: ease-out;
 }
 
-/* Bundled Noto Sans TC subset (ticket #49) — loaded from the app's own
-   origin so the UI never falls back to system-ui (which resolves to 蘋方
-   on macOS, 微軟正黑 on Windows, breaking cross-machine screenshot
-   comparison) and never depends on network access at runtime. The subset
-   is built by scripts/build-font-subset.mjs and committed under
-   src/assets/fonts/ — see README.md for the licence (SIL OFL 1.1) and
-   source. */
+/* Bundled Noto Sans TC subsets (ticket #49, extended by NOOP-3 to
+   400/500/700) — loaded from the app's own origin so the UI never
+   falls back to system-ui (which resolves to 蘋方 on macOS, 微軟正黑
+   on Windows, breaking cross-machine screenshot comparison) and never
+   depends on network access at runtime. Each subset is built by
+   scripts/build-font-subset.mjs and committed under src/assets/fonts/
+   — see README.md for the licence (SIL OFL 1.1) and source. */
 @font-face {
   font-family: "Noto Sans TC";
   src: url("../assets/fonts/NotoSansTC-subset.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: block;
+}
+@font-face {
+  font-family: "Noto Sans TC";
+  src: url("../assets/fonts/NotoSansTC-subset-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Noto Sans TC";
+  src: url("../assets/fonts/NotoSansTC-subset-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+/* ── 基礎樣式層：reduced-motion ──────────────────────────────────
+   Two layers, both required: the token override below only helps
+   rules that already consume a --dur-*/--ease-* token; the `*` safety
+   net catches everything else (existing literal-second transitions,
+   canvas.ts's inline transition, and any future @keyframes loop —
+   `animation-iteration-count: 1` stops a looping animation after one
+   pass instead of letting it run forever). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur-panel: 0ms;
+    --dur-view: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
