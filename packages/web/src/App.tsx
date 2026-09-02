@@ -11,7 +11,7 @@ import { Rail } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
-import { StylePanel } from "./shell/StylePanel.js";
+import { SidePanel } from "./shell/SidePanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
 import type { ShellView } from "./shell/view.js";
 import type { RibbonHandlers } from "./shell/ribbon-commands.js";
@@ -1029,66 +1029,68 @@ export function App() {
           </Stage>
           {shellVisible && <Notes hidden={view === "grid"} />}
         </div>
-        {/* 樣式面板 (NOOP-143): same shellVisible gate as everything else in
-            this row — absent from the DOM in 播放模式, mounted ahead of the
-            chat sidebar (plan §1 decision 1). */}
-        {shellVisible && <StylePanel state={canvasState} controller={controllerRef.current} />}
-        {/* #54 (wave 4): now absent from the DOM in 播放模式 — #54's own
-            AC ("功能區、縮圖軌、對話、備忘稿、狀態列都不在 DOM 裡") names
-            對話 explicitly. No e2e test depends on the chat sidebar being
-            present during play mode (unlike <Rail>, which needed the
-            5-site migration above before it could be gated the same way). */}
+        {/* 側邊面板分頁化 (NOOP-271/#154): 對話／樣式 share one container
+            and one shellVisible gate — same "absent from the DOM in 播放
+            模式" contract #54 set for the rest of this row. 對話 JSX passed
+            through unchanged; its state (`messages`/`draft`/…) stays here
+            in App.tsx so switching tabs never loses it (plan §3.4/§4.3). */}
         {shellVisible && (
-          <aside className="chat-sidebar">
-            <h2>對話</h2>
-            <div className="chat-messages">
-              {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
-              {messages.map((message) =>
-                message.role === "notice" ? (
-                  <p key={message.id} className="chat-notice" role="alert">
-                    {message.text}
-                  </p>
-                ) : message.role === "command" ? (
-                  <div
-                    key={message.id}
-                    className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
-                    role={message.status === "failed" ? "alert" : undefined}
-                  >
-                    <p className="chat-command-line">
-                      <span className="chat-command-status">
-                        {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
-                      </span>
-                      <code className="chat-command-text">{message.command}</code>
-                    </p>
-                    {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
-                  </div>
-                ) : (
-                  <p key={message.id} className={`chat-message chat-message-${message.role}`}>
-                    {message.text}
-                  </p>
-                ),
-              )}
-              {working && <p className="chat-working">agent 正在工作中…</p>}
-              {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
-              {error && <p className="chat-error">{error}</p>}
-            </div>
-            <form
-              className="chat-input"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendMessage();
-              }}
-            >
-              <input
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
-              />
-              <button type="submit" disabled={!streamReady}>
-                送出
-              </button>
-            </form>
-          </aside>
+          <SidePanel
+            state={canvasState}
+            controller={controllerRef.current}
+            chat={
+              <aside className="chat-sidebar">
+                <h2>對話</h2>
+                <div className="chat-messages">
+                  {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
+                  {messages.map((message) =>
+                    message.role === "notice" ? (
+                      <p key={message.id} className="chat-notice" role="alert">
+                        {message.text}
+                      </p>
+                    ) : message.role === "command" ? (
+                      <div
+                        key={message.id}
+                        className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
+                        role={message.status === "failed" ? "alert" : undefined}
+                      >
+                        <p className="chat-command-line">
+                          <span className="chat-command-status">
+                            {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
+                          </span>
+                          <code className="chat-command-text">{message.command}</code>
+                        </p>
+                        {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
+                      </div>
+                    ) : (
+                      <p key={message.id} className={`chat-message chat-message-${message.role}`}>
+                        {message.text}
+                      </p>
+                    ),
+                  )}
+                  {working && <p className="chat-working">agent 正在工作中…</p>}
+                  {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
+                  {error && <p className="chat-error">{error}</p>}
+                </div>
+                <form
+                  className="chat-input"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendMessage();
+                  }}
+                >
+                  <input
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
+                  />
+                  <button type="submit" disabled={!streamReady}>
+                    送出
+                  </button>
+                </form>
+              </aside>
+            }
+          />
         )}
       </div>
       {shellVisible && (
