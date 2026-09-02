@@ -15,6 +15,7 @@ import "./styles/play.css";
 import "./styles/grid.css";
 import "./styles/selection.css";
 import "./styles/style-panel.css";
+import "./styles/side-panel.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

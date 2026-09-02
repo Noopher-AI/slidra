@@ -109,6 +109,11 @@ async function openApp(server: RunningServer): Promise<Page> {
   return page;
 }
 
+/** NOOP-271/#154: 樣式面板現在是側邊分頁的一個 tab，預設停在對話，這裡先切過去。 */
+async function openStyleTab(page: Page): Promise<void> {
+  await page.locator('.side-panel-tab[data-tab="style"]').click();
+}
+
 async function readSlide(registry: CommandRegistry, presentationId: string): Promise<string> {
   const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
   if (!result.ok) throw new Error(result.message);
@@ -125,6 +130,7 @@ it("A：選取元素時，fill 格顯示的值與 SVG 檔裡的原文字串一�
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
 
     const fillInput = page.locator('input[data-attr="fill"]');
@@ -142,6 +148,7 @@ it("B：沒有 stroke 屬性的元素，stroke 格是空字串、data-state=unse
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
 
     const strokeInput = page.locator('input[data-attr="stroke"]');
@@ -157,6 +164,7 @@ it("C：把 fill 改成新值並失焦後，slide 檔裡該元素的 fill 真的
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
 
     const fillInput = page.locator('input[data-attr="fill"]');
@@ -176,6 +184,7 @@ it("D：多選改一個屬性只佔一格復原：一次 undo 兩個元素同時
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
@@ -207,6 +216,7 @@ it("E：兩個 fill 相同的元素同時選取，面板顯示該共同值", asy
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
@@ -223,6 +233,7 @@ it("F：兩個 fill 不同的元素同時選取，面板顯示不一致（空字
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-c").click({ modifiers: ["Shift"] });
@@ -240,6 +251,7 @@ it("G：直接 POST 白名單外的屬性（transform）被命令層拒絕，HTT
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     const before = await readSlide(registry, presentationId);
 
     const response = await page.request.post(`${server.url}/api/command`, {
@@ -262,6 +274,7 @@ it("H：面板提供的 data-attr 集合恰好是八個白名單屬性，不含�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
 
     const controls = page.locator(".style-panel :is(input,select)[data-attr]");
@@ -283,6 +296,7 @@ it("I：選取群組時，八格全部 disabled，並顯示群組沒有可套用
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-group").click();
 
     const controls = page.locator(".style-panel :is(input,select)[data-attr]");
@@ -301,6 +315,7 @@ it("J：選取文字框時，只有 text-anchor 被 disabled，font-size 仍可�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-text").click();
 
     const anchorSelect = page.locator('select[data-attr="text-anchor"]');
@@ -316,6 +331,7 @@ it("K：選取 0 個元素時，面板顯示空狀態提示，八格都不渲染
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    await openStyleTab(page);
     await expect.poll(() => page.locator(".style-panel-empty").isVisible()).toBe(true);
     expect(await page.locator(".style-panel :is(input,select)[data-attr]").count()).toBe(0);
   } finally {

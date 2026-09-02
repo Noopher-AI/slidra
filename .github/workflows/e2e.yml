@@ -41,7 +41,7 @@ jobs:
       # 方式：手動觸發本 workflow 並勾選 update_baselines，跑完從這個
       # artifact 下載結果、檢查截圖內容正確後再 commit。
       - name: Upload regenerated baselines
-        if: ${{ inputs.update_baselines }}
+        if: ${{ always() && inputs.update_baselines }}
         uses: actions/upload-artifact@v4
         with:
           name: appearance-baselines
