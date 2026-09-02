@@ -662,8 +662,16 @@ it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元�
     for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
 
     const before = await readSelection(page);
-    const rect = await charClientRect(page, "el-text", 0);
-    await page.mouse.click(rect.startX, rect.top + rect.height / 2);
+    // Clicks the horizontal midpoint of the edited element itself, not a
+    // specific character: the box's resize/rotate handles stay visible and
+    // interactive during text edit, clustered within ~9px of its left/right
+    // edges (ADR-0017 doesn't hide them mid-edit) — a point on the element
+    // itself, away from those edges, is what a pointerdown-inside-the-edited-
+    // element assertion needs, so this must land on the text rather than a
+    // handle intercepting the click first.
+    const elBox = await frame.locator("#el-text").boundingBox();
+    if (!elBox) throw new Error("量不到 #el-text 的邊界框");
+    await page.mouse.click(elBox.x + elBox.width / 2, elBox.y + elBox.height / 2);
     await page.waitForTimeout(50);
     expect(await readSelection(page)).toEqual(before);
 
