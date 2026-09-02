@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
  * The 22 icons that exist in the product today. This registry is
  * exhaustive by construction (`Record<IconName, ReactElement>` below) —
  * adding a name here without a value is a type error, and there is no
- * name in here that isn't already drawn somewhere in the app (NOOP-3
+ * name in here that isn't already drawn somewhere in the app (NOOP-376
  * does not speculate about icons a future feature might want).
  */
 export type IconName =

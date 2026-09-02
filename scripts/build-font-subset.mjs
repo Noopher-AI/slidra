@@ -2,7 +2,7 @@
 // Builds the three static Noto Sans TC subsets (400/500/700) the web app
 // ships under packages/web/src/assets/fonts/ — the only fonts it uses, so
 // its UI never falls back to system-ui (ticket #49) and 700 doesn't fall
-// back to the browser's synthesized bold (NOOP-3). `system-ui` resolves to
+// back to the browser's synthesized bold (NOOP-376). `system-ui` resolves to
 // 蘋方 on macOS and 微軟正黑 on Windows, which would make the screenshot
 // regression baselines in e2e/ non-reproducible across machines.
 //

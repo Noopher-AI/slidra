@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Icon, type IconName, type IconSize } from "../src/icons/index.js";
 
 // Icon's public boundary is the markup it renders, not the registry's
-// internal path data (NOOP-3 Plan §6) — every assertion below renders
+// internal path data (NOOP-376 Plan §6) — every assertion below renders
 // through react-dom/server and inspects the resulting string.
 
 const ALL_ICON_NAMES: IconName[] = [
@@ -32,7 +32,7 @@ const ALL_ICON_NAMES: IconName[] = [
   "view-play",
 ];
 
-describe("Icon（NOOP-3 驗收）", () => {
+describe("Icon（NOOP-376 驗收）", () => {
   it("22 個 IconName 都能渲染出含 viewBox 與 aria-hidden 的 svg", () => {
     expect(ALL_ICON_NAMES).toHaveLength(22);
     for (const name of ALL_ICON_NAMES) {

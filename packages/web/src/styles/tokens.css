@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    CoMotion design tokens — the single public UI token contract
-   (NOOP-3 / GitHub #182). Every stylesheet in this package consumes
+   (NOOP-376 / GitHub #182). Every stylesheet in this package consumes
    these tokens by name; no selector anywhere introduces a new
    hard-coded colour, size, radius, shadow or motion value.
 
@@ -13,7 +13,7 @@
    value for value, and are frozen — 325 existing `var(--…)`
    references across every regional stylesheet plus canvas.ts and two
    e2e suites depend on these exact names. Everything after that
-   section is new (NOOP-3), added in the same naming style to close
+   section is new (NOOP-376), added in the same naming style to close
    the categories the original set left uncovered.
    ═══════════════════════════════════════════════════════════════ */
 :root {
@@ -62,7 +62,7 @@
   --fs-small: 11.5px;
   --fs-lead: 14px;
 
-  /* ── Surfaces (NOOP-3 additions) ──────────────────────────────
+  /* ── Surfaces (NOOP-376 additions) ──────────────────────────────
      Values collected from existing literal colours so regional CSS
      can be migrated to these names without a pixel changing — see
      the PR body for which call sites still hold the literal today. */
@@ -72,7 +72,7 @@
   --s-overlay: rgba(32, 31, 30, 0.82); /* shell.css — floating play-bar / view-fullscreen-bar */
   --s-overlay-raised: rgba(255, 255, 255, 0.09); /* shell.css — overlay button hover */
 
-  /* ── Lines (NOOP-3 additions) ────────────────────────────────── */
+  /* ── Lines (NOOP-376 additions) ────────────────────────────────── */
   --line-overlay: rgba(255, 255, 255, 0.1); /* shell.css — overlay border */
   --line-overlay-strong: rgba(255, 255, 255, 0.12); /* play.css — overlay border, stronger */
   --line-slide: rgba(255, 255, 255, 0.14); /* stage.css — slide paper border */
@@ -87,7 +87,7 @@
   --status-ok: #4a8f45; /* shell.css — connected indicator */
   --status-ok-glow: rgba(74, 143, 69, 0.18);
 
-  /* ── Typography (NOOP-3 additions) ────────────────────────────
+  /* ── Typography (NOOP-376 additions) ────────────────────────────
      --fw-medium has no consumer yet — this is the token that makes
      the weight usable at all once the 500-weight subset ships. */
   --fw-regular: 400;
@@ -101,17 +101,17 @@
   --ls-brand: 0.14em;
   --ls-label: 0.1em;
 
-  /* ── Radius (NOOP-3 additions; --r above stays the default) ───── */
+  /* ── Radius (NOOP-376 additions; --r above stays the default) ───── */
   --r-control: 2px;
   --r-pill: 5px;
   --r-panel: calc(var(--u) * 2);
   --r-round: 50%;
 
-  /* ── Shadow (NOOP-3 additions) ─────────────────────────────────── */
+  /* ── Shadow (NOOP-376 additions) ─────────────────────────────────── */
   --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.24);
   --shadow-slide: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px -12px rgba(0, 0, 0, 0.8);
 
-  /* ── Icon geometry (NOOP-3 additions) ──────────────────────────
+  /* ── Icon geometry (NOOP-376 additions) ──────────────────────────
      Consumed by packages/web/src/icons/Icon.tsx; --icon-stroke unifies
      shell.css's 1.4 (play.css's 15px/1.5 pairing is one of the frozen
      literals this ticket does not touch — see the PR body). */
@@ -120,7 +120,7 @@
   --icon-command: 20px;
   --icon-stroke: 1.4;
 
-  /* ── Motion (NOOP-3 additions) ──────────────────────────────────
+  /* ── Motion (NOOP-376 additions) ──────────────────────────────────
      Three tiers by what's animating, not by where. --dur-micro and
      --dur-panel are chosen to equal stage.css's/play.css's existing
      literal durations so a future migration of those rules is
@@ -134,7 +134,7 @@
   --ease-view: ease-out;
 }
 
-/* Bundled Noto Sans TC subsets (ticket #49, extended by NOOP-3 to
+/* Bundled Noto Sans TC subsets (ticket #49, extended by NOOP-376 to
    400/500/700) — loaded from the app's own origin so the UI never
    falls back to system-ui (which resolves to 蘋方 on macOS, 微軟正黑
    on Windows, breaking cross-machine screenshot comparison) and never

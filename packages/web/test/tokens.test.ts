@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // tokens.css's public boundary is the file's own text — it *is* the
-// contract (NOOP-3 Plan §6). Assertions below read the raw CSS with
+// contract (NOOP-376 Plan §6). Assertions below read the raw CSS with
 // node:fs and regex; they deliberately do not mount the stylesheet in
 // jsdom and read computed style, which would test jsdom's CSS engine
 // instead of this file's contents.
@@ -47,7 +47,7 @@ function usedVarNames(css: string): Set<string> {
   return names;
 }
 
-describe("tokens.css（NOOP-3 驗收）", () => {
+describe("tokens.css（NOOP-376 驗收）", () => {
   it("區域 CSS 用到的每一個 var(--x)（豁免 --overview-aspect-ratio）都在 tokens.css 的 :root 有定義", () => {
     const declared = declaredRootTokenNames();
     const missing = new Set<string>();
