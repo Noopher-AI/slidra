@@ -91,3 +91,68 @@ describe("parseArgv convert", () => {
     expect(() => parseArgv(["convert", "--dry-run"])).toThrow(CoMotionError);
   });
 });
+
+describe("parseArgv template list ([E4.T7], A10)", () => {
+  it("parses the presentation id", () => {
+    expect(parseArgv(["template", "list", "p1"])).toEqual({ name: "template list", input: { id: "p1" } });
+  });
+
+  it("reports the missing presentation id", () => {
+    expect(() => parseArgv(["template", "list"])).toThrow("命令 template list 缺少參數：presentation-id");
+  });
+});
+
+describe("parseArgv template rename ([E4.T7], A5/A6/A10)", () => {
+  it("parses id, template-path, and new-name into structured input", () => {
+    expect(parseArgv(["template", "rename", "p1", "templates/001.svg", "封面"])).toEqual({
+      name: "template rename",
+      input: { id: "p1", templatePath: "templates/001.svg", newName: "封面" },
+    });
+  });
+
+  it("accepts an empty string as new-name (rejected downstream as blank, not treated as omitted)", () => {
+    expect(parseArgv(["template", "rename", "p1", "templates/001.svg", ""])).toEqual({
+      name: "template rename",
+      input: { id: "p1", templatePath: "templates/001.svg", newName: "" },
+    });
+  });
+
+  it("fails when new-name is missing entirely, distinct from an empty string", () => {
+    expect(() => parseArgv(["template", "rename", "p1", "templates/001.svg"])).toThrow(
+      "命令 template rename 缺少參數：new-name",
+    );
+  });
+
+  it("reports the missing template-path rather than swallowing it into new-name", () => {
+    expect(() => parseArgv(["template", "rename", "p1"])).toThrow("命令 template rename 缺少參數：template-path");
+  });
+});
+
+describe("parseArgv template delete ([E4.T7], A8/A10)", () => {
+  it("parses id and template-path", () => {
+    expect(parseArgv(["template", "delete", "p1", "templates/001.svg"])).toEqual({
+      name: "template delete",
+      input: { id: "p1", templatePath: "templates/001.svg" },
+    });
+  });
+
+  it("reports the missing template-path", () => {
+    expect(() => parseArgv(["template", "delete", "p1"])).toThrow("命令 template delete 缺少參數：template-path");
+  });
+});
+
+describe("parseArgv template add --name ([E4.T7])", () => {
+  it("parses --name alongside --from", () => {
+    expect(parseArgv(["template", "add", "p1", "--from", "slides/001.svg", "--name", "封面"])).toEqual({
+      name: "template add",
+      input: { id: "p1", from: "slides/001.svg", name: "封面" },
+    });
+  });
+
+  it("leaves name undefined when --name is absent, unchanged from before [E4.T7]", () => {
+    expect(parseArgv(["template", "add", "p1"])).toEqual({
+      name: "template add",
+      input: { id: "p1", from: undefined, name: undefined },
+    });
+  });
+});

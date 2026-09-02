@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateElementId, generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
+import { readTemplateEntries } from "./project-json.js";
 import { packDirectory, unpackContainer } from "./container.js";
 import { listVirtualEntries, readVirtualFile, readVirtualFileBytes, resolveVirtualFilePath } from "./virtual-fs.js";
 import {
@@ -331,8 +332,8 @@ export async function writePresentationFile(id: string, virtualPath: string, con
 async function assertSlidePathListed(workDir: string, virtualPath: string): Promise<ProjectJson> {
   const project = await readProjectJson(workDir);
   const slides = Array.isArray(project.slides) ? project.slides : [];
-  const templates = Array.isArray(project.templates) ? project.templates : [];
-  if (!slides.includes(virtualPath) && !templates.includes(virtualPath)) {
+  const templates = readTemplateEntries(project);
+  if (!slides.includes(virtualPath) && !templates.some((template) => template.file === virtualPath)) {
     throw new CoMotionError(`不是投影片：${virtualPath}`);
   }
   return project;

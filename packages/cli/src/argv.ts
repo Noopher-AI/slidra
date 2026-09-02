@@ -377,7 +377,30 @@ export function parseArgv(argv: string[]): ParsedCommand {
       if (sub === "add") {
         const id = requirePositional(args, 0, "template add", "presentation-id");
         const from = optionalFlag(args, "--from");
-        return { name: "template add", input: { id, from } };
+        const name = optionalFlag(args, "--name");
+        return { name: "template add", input: { id, from, name } };
+      }
+      if (sub === "list") {
+        const id = requirePositional(args, 0, "template list", "presentation-id");
+        return { name: "template list", input: { id } };
+      }
+      if (sub === "rename") {
+        const id = requirePositional(args, 0, "template rename", "presentation-id");
+        const templatePath = requirePositional(args, 1, "template rename", "template-path");
+        // newName may legitimately be an empty string (rejected downstream
+        // as "name cannot be blank", not treated as "argument omitted") —
+        // same reasoning as `slide notes set`'s text: checked for absence,
+        // not falsiness.
+        const newName = args[2];
+        if (newName === undefined) {
+          throw new CoMotionError("命令 template rename 缺少參數：new-name");
+        }
+        return { name: "template rename", input: { id, templatePath, newName } };
+      }
+      if (sub === "delete") {
+        const id = requirePositional(args, 0, "template delete", "presentation-id");
+        const templatePath = requirePositional(args, 1, "template delete", "template-path");
+        return { name: "template delete", input: { id, templatePath } };
       }
       throw new CoMotionError(`未知的子命令：template ${sub ?? ""}`);
     }

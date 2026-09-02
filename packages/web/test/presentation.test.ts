@@ -47,6 +47,55 @@ describe("fetchPresentationInfo", () => {
     });
   });
 
+  it("extracts the file path from post-[E4.T7] { file, name } template entries", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            formatVersion: 2,
+            name: "物件格式範本",
+            canvas: { width: 1280, height: 720 },
+            templates: [
+              { file: "templates/001.svg", name: "封面" },
+              { file: "templates/002.svg", name: "章節頁" },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(fetchPresentationInfo()).resolves.toEqual({
+      name: "物件格式範本",
+      canvas: { width: 1280, height: 720 },
+      templates: ["templates/001.svg", "templates/002.svg"],
+    });
+  });
+
+  it("extracts file paths from a mix of pre- and post-upgrade template entries", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            formatVersion: 2,
+            name: "混合格式範本",
+            canvas: { width: 1280, height: 720 },
+            templates: ["templates/001.svg", { file: "templates/002.svg", name: "章節頁" }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(fetchPresentationInfo()).resolves.toEqual({
+      name: "混合格式範本",
+      canvas: { width: 1280, height: 720 },
+      templates: ["templates/001.svg", "templates/002.svg"],
+    });
+  });
+
   it("falls back to templates: [] when the field is present but not a string array", async () => {
     vi.stubGlobal(
       "fetch",

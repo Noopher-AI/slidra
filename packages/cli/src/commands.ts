@@ -38,7 +38,12 @@ import {
   slideMoveCommand,
   slideNotesSetCommand,
 } from "./commands/slide.js";
-import { templateAddCommand } from "./commands/template.js";
+import {
+  templateAddCommand,
+  templateListCommand,
+  templateRenameCommand,
+  templateDeleteCommand,
+} from "./commands/template.js";
 import { presentationTransitionSetCommand } from "./commands/presentation.js";
 
 /**
@@ -94,6 +99,9 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register("slide move", { handler: slideMoveCommand, render: null });
   registry.register("slide notes set", { handler: slideNotesSetCommand, render: null });
   registry.register("template add", { handler: templateAddCommand, render: null });
+  registry.register("template list", { handler: templateListCommand, render: null });
+  registry.register("template rename", { handler: templateRenameCommand, render: null });
+  registry.register("template delete", { handler: templateDeleteCommand, render: null });
   registry.register("presentation transition set", { handler: presentationTransitionSetCommand, render: null });
   return registry;
 }

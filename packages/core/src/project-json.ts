@@ -1,4 +1,5 @@
 import { CoMotionError } from "./errors.js";
+import { FORMAT_VERSION } from "./presentation.js";
 
 /**
  * The structural shape `project.json` is guaranteed to hold (ADR-0003):
@@ -18,14 +19,21 @@ export interface ProjectJson {
    */
   fonts?: FontEntry[];
   /**
-   * Virtual paths of the presentation's templates (T3, ADR-0013), living
-   * under `templates/`. Optional — a pre-T3 `.comot` has no `templates`
-   * field and `formatVersion` does not change for this addition. A template
-   * is edited with the same element commands a slide is (workspace.ts's
-   * `assertSlidePathListed` accepts either list), but never appears in
-   * `slides`.
+   * The presentation's templates (T3/[E4.T7], ADR-0013), living under
+   * `templates/`. Optional — a pre-T3 `.comot` has no `templates` field. A
+   * template is edited with the same element commands a slide is
+   * (workspace.ts's `assertSlidePathListed` accepts either list), but never
+   * appears in `slides`.
+   *
+   * A pre-[E4.T7] `.comot` stores each entry as a bare virtual-path string
+   * (no name). `readTemplateEntries` is the one place that normalizes both
+   * shapes into `TemplateEntry[]` — nothing else should read this field
+   * directly. `writeProject` (slide-ops.ts) upgrades a file's `templates`
+   * to the object shape the next time it writes `project.json` at all;
+   * this field's declared type stays a union so an untouched pre-upgrade
+   * file still type-checks.
    */
-  templates?: string[];
+  templates?: (string | TemplateEntry)[];
   /**
    * The presentation's slide transition (T3), `"none" | "fade"` — enforced
    * at write time by `slide-ops.ts`'s `setTransition`, not here (a later
@@ -35,6 +43,14 @@ export interface ProjectJson {
    * `"none"`. This ticket only stores the value — nothing plays it back.
    */
   transition?: string;
+}
+
+/** One entry of `project.json`'s `templates` ([E4.T7]), as normalized by `readTemplateEntries`. */
+export interface TemplateEntry {
+  /** Virtual path inside the container, e.g. "templates/001.svg". */
+  file: string;
+  /** User-visible name. May be any non-empty string; two templates may share one (A6). */
+  name: string;
 }
 
 /** One font embedded in the container, referenced by `project.json`'s `fonts`. */
@@ -107,9 +123,7 @@ export function validateProjectJson(value: unknown): ProjectJson {
     validateFonts(record.fonts);
   }
   if ("templates" in record) {
-    if (!Array.isArray(record.templates) || !record.templates.every((entry) => typeof entry === "string")) {
-      throw new CoMotionError("project.json 格式錯誤：templates 不是字串陣列");
-    }
+    validateTemplates(record.templates);
   }
   if ("transition" in record && typeof record.transition !== "string") {
     throw new CoMotionError("project.json 格式錯誤：transition 不是字串");
@@ -149,5 +163,73 @@ function validateFonts(value: unknown): asserts value is FontEntry[] {
       throw new CoMotionError("project.json 格式錯誤：fonts 內有重複的 family");
     }
     seenFamilies.add(family);
+  }
+}
+
+/**
+ * Structural validation of the optional `templates` field. Accepts a
+ * mixture of pre-[E4.T7] bare-string entries and post-upgrade `TemplateEntry`
+ * objects in the same array — that mixture is the natural mid-upgrade state
+ * of a file only some of whose writes have gone through `writeProject`'s
+ * normalization (see `ProjectJson.templates`'s doc comment), not an error.
+ */
+function validateTemplates(value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new CoMotionError("project.json 格式錯誤：templates 不是陣列");
+  }
+  for (const entry of value) {
+    if (typeof entry === "string") continue;
+    if (typeof entry !== "object" || entry === null) {
+      throw new CoMotionError("project.json 格式錯誤：templates 內含無效項目");
+    }
+    const record = entry as Record<string, unknown>;
+    if (typeof record.file !== "string") {
+      throw new CoMotionError("project.json 格式錯誤：templates 內的項目缺少或型別錯誤的 file");
+    }
+    if (typeof record.name !== "string") {
+      throw new CoMotionError("project.json 格式錯誤：templates 內的項目缺少或型別錯誤的 name");
+    }
+    if (record.file.startsWith("/") || record.file.split("/").includes("..")) {
+      throw new CoMotionError("project.json 格式錯誤：templates 內含不合法的路徑");
+    }
+  }
+}
+
+/**
+ * The one entry point through which `templates` is ever read — normalizes
+ * a pre-[E4.T7] bare-string entry into `{ file, name }` with `name` falling
+ * back to the file's basename minus extension (A11: an old presentation
+ * shows its templates' filenames, never a blank name). Callers must never
+ * read `project.templates` directly (workspace.ts's `assertSlidePathListed`
+ * and slide-ops.ts's `addSlide`/`duplicateSlide` all route through this).
+ */
+export function readTemplateEntries(project: ProjectJson): TemplateEntry[] {
+  const templates = project.templates ?? [];
+  return templates.map((entry) => {
+    if (typeof entry === "string") {
+      const base = entry.split("/").pop() ?? entry;
+      const name = base.replace(/\.svg$/, "");
+      return { file: entry, name };
+    }
+    return entry;
+  });
+}
+
+/**
+ * Rejects a `project.json` written by a newer CoMotion than this build
+ * understands. Deliberately not folded into `validateProjectJson` — that
+ * function's whole reason for only checking shape (never an upper bound)
+ * is forward compatibility with fields it has never heard of; a future
+ * `formatVersion` is exactly the case that comment protects. Called only at
+ * the two places a presentation is loaded from disk into memory:
+ * `unpackContainer` (open) and the server's `loadProject` — not on every
+ * `slide-ops.ts` read, since those all operate on a work directory `open`
+ * already validated.
+ */
+export function assertSupportedFormatVersion(project: ProjectJson): void {
+  if (project.formatVersion > FORMAT_VERSION) {
+    throw new CoMotionError(
+      `此簡報由較新版本的 CoMotion 建立（格式版本 ${project.formatVersion}），請升級後再開啟`,
+    );
   }
 }

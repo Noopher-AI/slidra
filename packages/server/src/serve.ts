@@ -4,7 +4,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
-import { CoMotionError, readDefaultFontBytes, undoLastGroup, redoLastGroup, validateProjectJson, type ProjectJson } from "@co-motion/core";
+import {
+  CoMotionError,
+  readDefaultFontBytes,
+  undoLastGroup,
+  redoLastGroup,
+  validateProjectJson,
+  assertSupportedFormatVersion,
+  type ProjectJson,
+} from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
@@ -177,7 +185,9 @@ async function loadProject(registry: CommandRegistry, id: string): Promise<Proje
   // was first unpacked. Running it again here catches a work directory
   // whose project.json was mutated after `open` (e.g. by a future write
   // command) rather than trusting a shape that was only ever true once.
-  return validateProjectJson(parsed);
+  const project = validateProjectJson(parsed);
+  assertSupportedFormatVersion(project);
+  return project;
 }
 
 function listen(server: http.Server, port: number, host: string): Promise<void> {

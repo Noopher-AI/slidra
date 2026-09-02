@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { validateProjectJson } from "../src/project-json.js";
+import { validateProjectJson, readTemplateEntries, assertSupportedFormatVersion } from "../src/project-json.js";
 import { CoMotionError } from "../src/errors.js";
+import { FORMAT_VERSION } from "../src/presentation.js";
 
 const valid = {
   formatVersion: 1,
@@ -155,5 +156,116 @@ describe("validateProjectJson", () => {
     expect(() =>
       validateProjectJson({ ...valid, fonts: [fontEntry, { ...fontEntry, file: "fonts/other.ttf" }] }),
     ).toThrow(/重複的 family/);
+  });
+
+  describe("templates ([E4.T7])", () => {
+    it("accepts a missing templates field", () => {
+      expect(() => validateProjectJson(valid)).not.toThrow();
+    });
+
+    it("accepts a pre-[E4.T7] bare-string templates array", () => {
+      expect(validateProjectJson({ ...valid, templates: ["templates/001.svg"] }).templates).toEqual([
+        "templates/001.svg",
+      ]);
+    });
+
+    it("accepts a post-upgrade { file, name } templates array", () => {
+      const entry = { file: "templates/001.svg", name: "封面" };
+      expect(validateProjectJson({ ...valid, templates: [entry] }).templates).toEqual([entry]);
+    });
+
+    it("accepts a mixture of bare-string and object entries in the same array", () => {
+      const entries = ["templates/001.svg", { file: "templates/002.svg", name: "章節頁" }];
+      expect(validateProjectJson({ ...valid, templates: entries }).templates).toEqual(entries);
+    });
+
+    it("rejects templates that is not an array, naming the field", () => {
+      expect(() => validateProjectJson({ ...valid, templates: "templates/001.svg" })).toThrow(
+        /templates 不是陣列/,
+      );
+    });
+
+    it("rejects a templates entry missing file, naming the field", () => {
+      expect(() => validateProjectJson({ ...valid, templates: [{ name: "封面" }] })).toThrow(
+        /templates 內的項目缺少或型別錯誤的 file/,
+      );
+    });
+
+    it("rejects a templates entry missing name, naming the field", () => {
+      expect(() => validateProjectJson({ ...valid, templates: [{ file: "templates/001.svg" }] })).toThrow(
+        /templates 內的項目缺少或型別錯誤的 name/,
+      );
+    });
+
+    it("accepts an empty name on a templates entry — blank names are rejected at the command layer, not here", () => {
+      expect(() =>
+        validateProjectJson({ ...valid, templates: [{ file: "templates/001.svg", name: "" }] }),
+      ).not.toThrow();
+    });
+
+    it("rejects a templates entry whose file is an absolute path", () => {
+      expect(() =>
+        validateProjectJson({ ...valid, templates: [{ file: "/etc/passwd", name: "x" }] }),
+      ).toThrow(/不合法的路徑/);
+    });
+
+    it("rejects a templates entry whose file contains '..'", () => {
+      expect(() =>
+        validateProjectJson({ ...valid, templates: [{ file: "../outside.svg", name: "x" }] }),
+      ).toThrow(/不合法的路徑/);
+    });
+  });
+});
+
+describe("readTemplateEntries", () => {
+  const project = { ...valid, formatVersion: FORMAT_VERSION };
+
+  it("returns [] for a project with no templates field", () => {
+    expect(readTemplateEntries(project)).toEqual([]);
+  });
+
+  it("returns [] for an empty templates array", () => {
+    expect(readTemplateEntries({ ...project, templates: [] })).toEqual([]);
+  });
+
+  it("normalizes a bare-string entry to { file, name }, name falling back to the basename without extension (A11)", () => {
+    expect(readTemplateEntries({ ...project, templates: ["templates/001.svg"] })).toEqual([
+      { file: "templates/001.svg", name: "001" },
+    ]);
+  });
+
+  it("passes an already-object entry through unchanged", () => {
+    const entry = { file: "templates/001.svg", name: "封面" };
+    expect(readTemplateEntries({ ...project, templates: [entry] })).toEqual([entry]);
+  });
+
+  it("normalizes a mixture of bare-string and object entries element by element", () => {
+    expect(
+      readTemplateEntries({
+        ...project,
+        templates: ["templates/001.svg", { file: "templates/002.svg", name: "章節頁" }],
+      }),
+    ).toEqual([
+      { file: "templates/001.svg", name: "001" },
+      { file: "templates/002.svg", name: "章節頁" },
+    ]);
+  });
+});
+
+describe("assertSupportedFormatVersion", () => {
+  const project = { ...valid, formatVersion: FORMAT_VERSION };
+
+  it("passes a project at the current FORMAT_VERSION", () => {
+    expect(() => assertSupportedFormatVersion(project)).not.toThrow();
+  });
+
+  it("passes a project older than the current FORMAT_VERSION", () => {
+    expect(() => assertSupportedFormatVersion({ ...project, formatVersion: FORMAT_VERSION - 1 })).not.toThrow();
+  });
+
+  it("rejects a project newer than the current FORMAT_VERSION, naming that it is too new", () => {
+    expect(() => assertSupportedFormatVersion({ ...project, formatVersion: FORMAT_VERSION + 1 })).toThrow(
+      /較新版本/,
+    );
   });
 });
