@@ -140,14 +140,18 @@
     // that actually holds the keystrokes is 1px and transparent — so
     // without these two the author cannot tell a double-click did
     // anything until they type. The frame says "this element is open for
-    // editing"; the caret says where the next character lands (the end of
-    // the string, always — the editing model has no caret movement).
+    // editing"; the caret says where `textarea.selectionStart` currently
+    // sits (ADR-0017 — this replaced the older "caret is always at the end
+    // of the string" model, see updateEditDecoration()).
     ".edit-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
     colors.accent +
     ";pointer-events:none;display:none;}" +
     ".edit-caret{position:fixed;width:2px;background:" +
     colors.accent +
     ";pointer-events:none;display:none;animation:comot-caret 1s step-end infinite;}" +
+    ".edit-selection{position:fixed;box-sizing:border-box;background:color-mix(in srgb, " +
+    colors.accent +
+    " 30%, transparent);pointer-events:none;display:none;}" +
     "@keyframes comot-caret{50%{opacity:0;}}";
   shadow.appendChild(style);
 
@@ -254,6 +258,11 @@
   editCaret.className = "edit-caret";
   shadow.appendChild(editCaret);
 
+  // Pool of selection-highlight divs, one per line touched by the current
+  // text selection (ADR-0017's §4.3 "each line gets its own block" rule) —
+  // same reuse pattern as multiBoxEls/groupFrameEls above.
+  var selectionBlockEls = [];
+
   // Pool of dashed frames, one per level of `groupPath` currently in scope
   // (outermost first) — distinct from `.sel`'s solid outline so "selected
   // the group" and "selected a child inside it" don't look identical, and
@@ -299,6 +308,13 @@
   var textarea = null;
   var isComposing = false;
 
+  // In-progress text-selection drag (ADR-0017 §4.5) — pointerdown landing
+  // inside the box being edited starts this instead of an element gesture;
+  // null between drags. `anchor` is the fixed end of the selection while
+  // dragging; the moving end is whatever indexAtPoint() reports at the
+  // current pointer position.
+  var textSelectDrag = null;
+
   /** Any ancestor (including `el` itself) carrying `data-comot-lock="true"` — the same walk `findSelectable` does, exposed standalone because the host-initiated `beginTextEdit` path never goes through a click at all and so never runs `findSelectable`. */
   function isLockedOrInsideLocked(el) {
     var current = el;
@@ -336,6 +352,7 @@
     el.addEventListener("compositionend", function () {
       isComposing = false;
       reportTextEditInput();
+      scheduleDecorationSync();
     });
     el.addEventListener("keydown", function (event) {
       // Enter never inserts a line break and never ends editing — core's
@@ -343,13 +360,41 @@
       // handled by the window-level keydown listener below regardless of
       // where focus sits.
       if (event.key === "Enter") event.preventDefault();
+      // `selectionStart`/`selectionEnd` have not been updated by the
+      // browser yet at this point in the event (arrow keys, Home/End,
+      // Ctrl/Cmd+A move them as part of the DEFAULT action) — deferred one
+      // tick by scheduleDecorationSync() itself (ADR-0017 §4.1).
+      scheduleDecorationSync();
     });
+    el.addEventListener("keyup", scheduleDecorationSync);
+    el.addEventListener("select", scheduleDecorationSync);
+    el.addEventListener("focus", scheduleDecorationSync);
     el.addEventListener("input", function () {
       if (!isComposing) sanitizeTextareaValue();
       reportTextEditInput();
+      scheduleDecorationSync();
     });
     textarea = el;
     return el;
+  }
+
+  /**
+   * Batches redraws of the caret/selection decoration to at most once per
+   * tick (ADR-0017 §4.1) — several of the events that can move
+   * `selectionStart`/`selectionEnd` (keydown then keyup, or keydown then
+   * input) fire back-to-back for the same user action, and `keydown`
+   * itself fires BEFORE the browser applies the default action that moves
+   * the selection, so this always defers via a macrotask rather than
+   * reading `selectionStart` synchronously.
+   */
+  var decorationSyncScheduled = false;
+  function scheduleDecorationSync() {
+    if (decorationSyncScheduled) return;
+    decorationSyncScheduled = true;
+    setTimeout(function () {
+      decorationSyncScheduled = false;
+      updateEditDecoration();
+    }, 0);
   }
 
   /** Replaces any newline in the textarea's value with a single space (pasted multi-line text has no wrapText-side representation) — never while an IME composition is in progress, which this same replacement would corrupt. */
@@ -371,6 +416,13 @@
     editingId = id;
     var ta = ensureTextarea();
     ta.value = typeof initialText === "string" ? initialText : "";
+    // Caret starts at the end of the existing string — the same place a
+    // freshly-focused, freshly-valued textarea would put it, made explicit
+    // rather than relied upon (ADR-0017: entering edit no longer has an
+    // implicit "always at the end" model, but a fresh edit session
+    // starting the caret at the end, before any click repositions it, is
+    // still the sensible default).
+    ta.setSelectionRange(ta.value.length, ta.value.length);
     ta.focus();
     // The frame and caret are the only thing that tells the author the
     // double-click landed — the textarea holding the keystrokes is 1px
@@ -381,6 +433,8 @@
 
   function exitRuntimeTextEdit() {
     editingId = null;
+    isComposing = false;
+    textSelectDrag = null;
     if (textarea) textarea.blur();
     updateEditDecoration();
   }
@@ -483,21 +537,196 @@
     }
   }
 
+  /**
+   * Converts an SVG user-space point (as returned by
+   * `getStartPositionOfChar`/`getEndPositionOfChar`) to viewport (client
+   * px) coordinates via `textEl`'s own screen CTM — the transform used
+   * throughout ADR-0017 to place the fixed-position overlay divs.
+   */
+  function toClientPoint(ctm, point) {
+    return new DOMPoint(point.x, point.y).matrixTransform(ctm);
+  }
+
+  /**
+   * `textEl.getScreenCTM()`, or `null` when it is missing (jsdom, used by
+   * this repo's own non-geometry unit tests, implements neither this nor
+   * `getNumberOfChars`) or returns nothing usable — the single guard point
+   * that keeps every geometry helper below from ever throwing, per
+   * ADR-0017 §4.2's "格式錯誤／型別錯誤" row.
+   */
+  function getTextCTM(textEl) {
+    return typeof textEl.getScreenCTM === "function" ? textEl.getScreenCTM() : null;
+  }
+
+  /**
+   * The character-index ranges covered by each visual line of `textEl`,
+   * outermost/topmost first, each with the `<tspan>` (or, for a
+   * single-line plain `<text>`, the `<text>` itself) client rect that line
+   * occupies. Character indices are a running count across every line —
+   * `getNumberOfChars()`/`getStartPositionOfChar()` already address chars
+   * this way (ADR-0017 §3.1: wrapText never drops a character, so this
+   * running count and `textarea.value`'s own index space are identical).
+   */
+  function textLineRanges(textEl) {
+    var n = textEl.getNumberOfChars();
+    var tspans = textEl.getElementsByTagName("tspan");
+    var lines = [];
+    if (tspans.length > 0) {
+      var idx = 0;
+      for (var i = 0; i < tspans.length; i++) {
+        var len = tspans[i].textContent.length;
+        lines.push({ start: idx, end: idx + len, rect: tspans[i].getBoundingClientRect() });
+        idx += len;
+      }
+    } else {
+      lines.push({ start: 0, end: n, rect: textEl.getBoundingClientRect() });
+    }
+    return lines;
+  }
+
+  /**
+   * The line (from `textLineRanges`) whose vertical band contains
+   * `clientY`, clamped to the first/last line when `clientY` falls above
+   * or below all of them (ADR-0017 §4.2's "點在整段文字上方／下方" row).
+   */
+  function lineAtClientY(lines, clientY) {
+    var line = lines[0];
+    for (var li = 0; li < lines.length; li++) {
+      line = lines[li];
+      if (clientY < line.rect.bottom || li === lines.length - 1) break;
+    }
+    return line;
+  }
+
+  /**
+   * Hit-tests a viewport point against the `<text>` currently being edited
+   * and returns a `textarea.value` character index, or `null` when there
+   * is nothing to test against (ADR-0017 §4.2's contract table: no
+   * editing session, missing element/`<text>`, or an unusable CTM all
+   * return `null` rather than a guessed index). Horizontal placement uses
+   * the midpoint of each character's box — `clientX` past the midpoint
+   * lands the index after that character — and a point past a line's last
+   * character (including any invisible trailing wrap space) resolves to
+   * that line's end, which is numerically identical to the next line's
+   * start.
+   */
+  function indexAtPoint(clientX, clientY) {
+    if (editingId === null) return null;
+    var el = document.getElementById(editingId);
+    if (!el) return null;
+    var textEl = el.querySelector("text");
+    if (!textEl) return null;
+    var ctm = getTextCTM(textEl);
+    if (!ctm) return null;
+    var lines = textLineRanges(textEl);
+    var n = lines.length > 0 ? lines[lines.length - 1].end : 0;
+    if (n === 0) return 0;
+    var line = lineAtClientY(lines, clientY);
+    for (var i = line.start; i < line.end; i++) {
+      var start = toClientPoint(ctm, textEl.getStartPositionOfChar(i));
+      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(i));
+      if (clientX < (start.x + end.x) / 2) return i;
+    }
+    return line.end;
+  }
+
+  /**
+   * The screen rect the caret should be drawn at for character index `i`
+   * (`textarea.selectionStart === selectionEnd`), or `null` when there is
+   * no text geometry to measure (empty string, handled by the caller's
+   * container-box fallback — same 0×0 case the pre-ADR-0017 code already
+   * handled).
+   */
+  function caretRectForIndex(textEl, ctm, lines, i) {
+    var n = lines.length > 0 ? lines[lines.length - 1].end : 0;
+    if (n === 0) return null;
+    if (i >= n) {
+      var lastLine = lines[lines.length - 1];
+      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(n - 1));
+      return { x: end.x, top: lastLine.rect.top, height: lastLine.rect.height };
+    }
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      if (i >= line.start && i < line.end) {
+        var start = toClientPoint(ctm, textEl.getStartPositionOfChar(i));
+        return { x: start.x, top: line.rect.top, height: line.rect.height };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * One rect per line touched by `[start, end)` (ADR-0017 §4.3) — a
+   * mid-line selection uses the selected characters' own start/end x, not
+   * the tspan's full rect, so a partial selection never paints a block
+   * over the unselected trailing wrap space; a fully-selected line's block
+   * still stops at its last real character for the same reason. Each
+   * block's top/height come from that line's own tspan rect, never
+   * interpolated between lines — the source of "破洞或重疊" this replaces
+   * (ADR-0017 §4.3's own note on why).
+   */
+  function selectionRectsForRange(textEl, ctm, lines, start, end) {
+    var rects = [];
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var s = Math.max(start, line.start);
+      var e = Math.min(end, line.end);
+      if (s >= e) continue;
+      var startPoint = toClientPoint(ctm, textEl.getStartPositionOfChar(s));
+      var endPoint = toClientPoint(ctm, textEl.getEndPositionOfChar(e - 1));
+      rects.push({
+        left: Math.min(startPoint.x, endPoint.x),
+        right: Math.max(startPoint.x, endPoint.x),
+        top: line.rect.top,
+        height: line.rect.height,
+      });
+    }
+    return rects;
+  }
+
+  function hideSelectionBlocks() {
+    for (var i = 0; i < selectionBlockEls.length; i++) selectionBlockEls[i].style.display = "none";
+  }
+
+  function showSelectionBlocks(rects) {
+    while (selectionBlockEls.length < rects.length) {
+      var el = document.createElement("div");
+      el.className = "edit-selection";
+      shadow.appendChild(el);
+      selectionBlockEls.push(el);
+    }
+    for (var i = 0; i < selectionBlockEls.length; i++) {
+      if (i >= rects.length) {
+        selectionBlockEls[i].style.display = "none";
+        continue;
+      }
+      var r = rects[i];
+      var el2 = selectionBlockEls[i];
+      el2.style.display = "block";
+      el2.style.left = r.left + "px";
+      el2.style.top = r.top + "px";
+      el2.style.width = r.right - r.left + "px";
+      el2.style.height = r.height + "px";
+    }
+  }
+
   // Redraws whatever `selectedIds` currently holds. Called after every
   // selection change (click, marquee) and on resize/preview so the box(es)
   // track the element(s) as they move.
   /**
-   * Paints the editing frame and the trailing caret for whatever
-   * `editingId` currently is, or hides both when nothing is being edited.
-   * Everything is measured off the live DOM (`getBoundingClientRect`), so
-   * this needs no font metrics and stays correct for a plain `<text>`
-   * whose own `text-anchor` decides where the string actually sits.
+   * Paints the editing frame plus either the caret or the selection
+   * blocks (never both — ADR-0017 §4.3) for whatever `editingId`/
+   * `textarea.selectionStart/End` currently are, or hides everything when
+   * nothing is being edited. `textarea.selectionStart/End` is the single
+   * source of truth for where the caret/selection are (ADR-0017 §4.1);
+   * this function only ever reads them, never writes them.
    */
   function updateEditDecoration() {
     var el = editingId === null ? null : document.getElementById(editingId);
-    if (!el) {
+    if (!el || !textarea) {
       editFrame.style.display = "none";
       editCaret.style.display = "none";
+      hideSelectionBlocks();
       return;
     }
     var rect = el.getBoundingClientRect();
@@ -507,19 +736,27 @@
     editFrame.style.width = rect.width + 6 + "px";
     editFrame.style.height = rect.height + 6 + "px";
 
-    // The caret sits at the end of the last line — the only place a
-    // character can be added or removed (§7 決定 6).
     var textEl = el.querySelector("text");
-    var tspans = textEl ? textEl.getElementsByTagName("tspan") : null;
-    var lastEl = tspans && tspans.length > 0 ? tspans[tspans.length - 1] : textEl;
-    var caretRect = lastEl ? lastEl.getBoundingClientRect() : rect;
-    // An empty string measures 0x0 at the origin, which would park the
-    // caret in the page's corner — fall back to the container's own box.
-    if (caretRect.width === 0 && caretRect.height === 0) caretRect = rect;
+    var ctm = textEl ? getTextCTM(textEl) : null;
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+
+    if (start !== end && textEl && ctm) {
+      editCaret.style.display = "none";
+      var lines = textLineRanges(textEl);
+      showSelectionBlocks(selectionRectsForRange(textEl, ctm, lines, Math.min(start, end), Math.max(start, end)));
+      return;
+    }
+
+    hideSelectionBlocks();
+    var caretRect = textEl && ctm ? caretRectForIndex(textEl, ctm, textLineRanges(textEl), start) : null;
+    // An empty string (or an unmeasurable <text>) has no character
+    // geometry to place the caret against — fall back to the container's
+    // own box, same as the pre-ADR-0017 code's 0×0 fallback.
     editCaret.style.display = "block";
-    editCaret.style.left = caretRect.right + "px";
-    editCaret.style.top = caretRect.top + "px";
-    editCaret.style.height = caretRect.height + "px";
+    editCaret.style.left = (caretRect ? caretRect.x : rect.left) + "px";
+    editCaret.style.top = (caretRect ? caretRect.top : rect.top) + "px";
+    editCaret.style.height = (caretRect ? caretRect.height : rect.height) + "px";
   }
 
   function updateBoxes() {
@@ -832,7 +1069,28 @@
       if (editingId !== null) {
         var editedEl = document.getElementById(editingId);
         var insideEdited = editedEl && (editedEl === event.target || editedEl.contains(event.target));
-        if (insideEdited) return; // Still editing — no gesture starts on the box being edited itself.
+        if (insideEdited) {
+          // Still editing — no element gesture starts on the box being
+          // edited itself. Instead this begins a text-selection drag
+          // (ADR-0017 §4.5), unless an IME composition is in progress
+          // (§4.4: pointer input must not disturb selectionStart/End while
+          // composing).
+          if (isComposing) return;
+          var idx = indexAtPoint(event.clientX, event.clientY);
+          if (idx === null) return;
+          // The click lands on the SVG text, not the textarea itself — a
+          // browser's default mousedown action blurs whatever currently
+          // has focus when the pressed target isn't itself focusable.
+          // Without preventDefault() here, this would blur `textarea`
+          // (dropping keyboard focus out of the edit session) the instant
+          // this same click sets the selection it was meant to change.
+          event.preventDefault();
+          textSelectDrag = { pointerId: event.pointerId, anchor: idx };
+          textarea.focus();
+          textarea.setSelectionRange(idx, idx);
+          updateEditDecoration();
+          return;
+        }
         // Outside the edited box: commit and leave editing (§4.2's
         // "pointerdown 落在被編輯元素之外" row). This same pointerdown does
         // not also start a new gesture/selection — suppressNextClick only
@@ -862,6 +1120,13 @@
   window.addEventListener(
     "pointermove",
     function (event) {
+      if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
+        var dragIdx = indexAtPoint(event.clientX, event.clientY);
+        if (dragIdx === null) return;
+        textarea.setSelectionRange(Math.min(textSelectDrag.anchor, dragIdx), Math.max(textSelectDrag.anchor, dragIdx));
+        updateEditDecoration();
+        return;
+      }
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       gesture.lastClient = { x: event.clientX, y: event.clientY };
       var dx = event.clientX - gesture.startClient.x;
@@ -912,6 +1177,12 @@
   window.addEventListener(
     "pointerup",
     function (event) {
+      if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
+        textSelectDrag = null;
+        suppressNextClick = true; // Eat the trailing click (§4.5) — the editingId!==null click handler already ignores it, but this matches every other gesture's own suppression.
+        updateEditDecoration();
+        return;
+      }
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       var point = { x: event.clientX, y: event.clientY };
       var wasStarted = gesture.started;
@@ -926,6 +1197,10 @@
   );
 
   window.addEventListener("pointercancel", function (event) {
+    if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
+      textSelectDrag = null;
+      return;
+    }
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     endGesture(gesture.lastClient, true);
   });
@@ -939,6 +1214,10 @@
     // listener is on `window`, and keydown bubbles there from any focus
     // target in this document.
     if (editingId !== null) {
+      // Mid-composition, Esc belongs to the IME (cancelling the candidate,
+      // not the edit) — ADR-0017 §4.4. `compositionend` will fire from
+      // that, and Esc resumes committing the edit on any subsequent press.
+      if (isComposing) return;
       post({ event: "text-edit-commit", id: editingId });
       exitRuntimeTextEdit();
       return;
