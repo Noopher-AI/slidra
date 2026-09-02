@@ -861,8 +861,8 @@ it("雙擊進入群組後拖曳群組內的單一子元素：只有子元素的 
     // top-level `element move` on the CHILD's own id, not the group's.
     expect(readTransformAttr(after, "el-group")).toBe("translate(300 550)");
 
-    const undo = await registry.dispatch("undo", { id: presentationId });
-    expect(undo.ok).toBe(true);
+    const undo = await registry.dispatch<{ message?: string }>("undo", { id: presentationId });
+    expect(undo.ok, undo.message).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(before);
   } finally {
     await cleanup();

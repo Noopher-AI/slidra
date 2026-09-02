@@ -29,7 +29,13 @@ import {
   type MutationOptions,
   type OrderDirection,
 } from "./element-edit.js";
-import { commitSnapshotEntries, discardSnapshotEntries, stageNewFileEntry, stageSnapshotEntries } from "./history.js";
+import {
+  commitSnapshotEntries,
+  discardSnapshotEntries,
+  revertCommittedEntries,
+  stageNewFileEntry,
+  stageSnapshotEntries,
+} from "./history.js";
 import { resolvePresentationFonts } from "./fonts.js";
 import { wrapText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
@@ -286,11 +292,18 @@ export async function listPresentationEntries(id: string, virtualPath?: string):
  * it, so any command that writes through here gets undo for free without
  * writing its own inverse logic.
  *
- * The snapshot is *staged* (its file written) before the content write, but
- * only *committed* onto the undo/redo stacks (history.ts's
- * `commitSnapshotEntries`) after that write actually succeeds. If the
- * write fails, the staged snapshot is discarded instead
- * (`discardSnapshotEntries`) — a failed command must not occupy an undo
+ * The snapshot is *staged* (its file written) before the content write. The
+ * undo group is then *committed* (history.ts's `commitSnapshotEntries`)
+ * *before* the content write itself (NOOP-337, reversing this function's
+ * original order): a caller that polls with a fixed delay after issuing a
+ * command — the e2e suite's own `dragBy` does this — could otherwise
+ * observe the new content on disk (`writeFile` had completed) before
+ * `commitSnapshotEntries`'s own `writeStack` had, and see `undo` reject
+ * with "沒有可復原的操作" even though the edit it means to revert is
+ * already visible. Committing first closes that window: nothing makes the
+ * new content visible until the undo group that reverts it is already
+ * durable. If the content write itself then fails, the commit is unwound
+ * (`revertCommittedEntries`) — a failed command must not occupy an undo
  * slot, and it must not leave an orphan snapshot file either (finding 2).
  */
 export async function writePresentationFile(id: string, virtualPath: string, content: string): Promise<void> {
@@ -298,14 +311,14 @@ export async function writePresentationFile(id: string, virtualPath: string, con
   const workDir = await lookupWorkDir(home, id);
   const realPath = await resolveVirtualFilePath(workDir, virtualPath);
   const entries = await stageSnapshotEntries(id, [virtualPath]);
+  await commitSnapshotEntries(id, entries);
   try {
     await writeFile(realPath, content, "utf-8");
   } catch {
-    await discardSnapshotEntries(id, entries);
+    await revertCommittedEntries(id, entries);
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`寫入投影片時發生錯誤：${virtualPath}`);
   }
-  await commitSnapshotEntries(id, entries);
 }
 
 /**

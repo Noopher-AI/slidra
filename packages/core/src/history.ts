@@ -305,6 +305,31 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
 }
 
 /**
+ * Reverses one `commitSnapshotEntries(id, entries)` call whose caller's
+ * next step — making the new content visible — then failed (NOOP-337:
+ * `writePresentationFile` commits the undo group *before* renaming its
+ * temp file onto the real path, precisely so undo is never unavailable for
+ * content a reader can already see; a failed rename must therefore undo
+ * that commit too, or the commit would occupy an undo slot for a write
+ * that never actually took visible effect). Removes exactly `entries` from
+ * wherever `commitSnapshotEntries` put them — the open group's tail, or by
+ * popping the group it pushed — and deletes their now-orphaned snapshot
+ * files. Must be called with the same `entries` immediately after, before
+ * anything else commits against this id.
+ */
+export async function revertCommittedEntries(id: string, entries: HistoryEntry[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  const stack = await readStack(home, id);
+  if (stack.openGroup) {
+    stack.openGroup.entries = stack.openGroup.entries.slice(0, stack.openGroup.entries.length - entries.length);
+  } else {
+    stack.undo.pop();
+  }
+  await writeStack(home, id, stack);
+  await discardSnapshotEntries(id, entries);
+}
+
+/**
  * Deletes snapshot files staged by `stageSnapshotEntries` whose write was
  * never committed — the caller's actual content write failed, so these
  * would otherwise sit on disk unreferenced by any stack (finding 2).
