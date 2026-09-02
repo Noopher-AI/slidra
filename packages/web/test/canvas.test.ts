@@ -1442,3 +1442,140 @@ describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)
     expect(moveCalls).toEqual([]);
   });
 });
+
+// NOOP-334: beginMoveGesture's !viewport guard (above) had no equivalent in
+// beginScaleGesture/beginRotateGesture/beginTextboxWidthGesture — they share
+// the same toUserPoint(point) call that silently returns {x:0,y:0} while
+// viewport is still null. reportViewport() now firing synchronously before
+// every "gesture-start" (selection-runtime.js) makes the race far less
+// likely to hit in practice, but these three functions had no guard of
+// their own if it ever did. Reproduced the same way as the move case: at
+// the postMessage-protocol boundary, never against the gesture functions
+// directly.
+describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start 早於 viewport (NOOP-334)", () => {
+  const slideMarkupWithEl =
+    '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
+  const slideMarkupWithTextbox =
+    '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="200" transform="translate(100 100)">' +
+    '<text font-family="Noto Sans TC" font-size="16">hello</text></g></svg>';
+
+  function stubFetch(slideMarkup: string, commandCalls: { name: string; input: Record<string, unknown> }[]): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideMarkup, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  it("gesture-start (scale) 抵達時 viewport 尚為 null，不會送出 element scale 指令", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(slideMarkupWithEl, commandCalls);
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    // el-a's origin (post-decompose) is (100,100). Without the guard,
+    // toUserPoint(point) here silently returns {x:0,y:0}, so startUser is
+    // corrupted to (0,0) instead of being dropped — the gesture does NOT
+    // abort, it completes with a wrong factor. (50,50) is picked so that
+    // ray "origin(100,100) -> corrupted startUser(0,0)" and ray
+    // "origin -> (50,50)" point the same direction, giving a valid
+    // positive factor (0.5) that DOES get posted as "element scale" in the
+    // buggy case — a coordinate that instead yields a negative/invalid
+    // factor either way would pass this test even without the guard.
+    send({ source: "comot-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 50, y: 50 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 50, y: 50 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const scaleCalls = commandCalls.filter((call) => call.name === "element scale");
+    expect(scaleCalls).toEqual([]);
+  });
+
+  it("gesture-start (rotate) 抵達時 viewport 尚為 null，不會送出 element rotate 指令", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(slideMarkupWithEl, commandCalls);
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "comot-selection", event: "gesture-start", kind: "rotate", handle: null, point: { x: 180, y: 150 } });
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 250 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 150, y: 250 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const rotateCalls = commandCalls.filter((call) => call.name === "element rotate");
+    expect(rotateCalls).toEqual([]);
+  });
+
+  it("gesture-start (textbox-width) 抵達時 viewport 尚為 null，不會嘗試載入字型（state.error 不會被設定）", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(slideMarkupWithTextbox, commandCalls);
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    // Without the !viewport guard, beginTextboxWidthGesture would set
+    // activeGesture synchronously and kick off resolveBrowserFont(), whose
+    // fetch("/api/default-font") is not stubbed above and rejects — that
+    // rejection's .catch() (canvas.ts) sets state.error, but only while
+    // `activeGesture` still === this gesture object. Checking right after
+    // gesture-start (before any gesture-end, which unconditionally nulls
+    // activeGesture first thing) is what keeps that window open long
+    // enough for the assertion below to actually observe the rejection.
+    send({ source: "comot-selection", event: "gesture-start", kind: "textbox-width", handle: "left", point: { x: 180, y: 150 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(state?.error).toBeNull();
+
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 150 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 150, y: 150 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const textboxCalls = commandCalls.filter((call) => call.name === "textbox width");
+    expect(textboxCalls).toEqual([]);
+  });
+});
