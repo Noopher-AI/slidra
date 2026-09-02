@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path";
 import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
-import { validateProjectJson as validateProjectJsonStructure } from "./project-json.js";
+import { validateProjectJson as validateProjectJsonStructure, assertSupportedFormatVersion } from "./project-json.js";
 
 const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 
@@ -163,5 +163,6 @@ async function validateProjectJson(workDir: string, comotPath: string): Promise<
   // by both open and serve, and serve has no .comot path to echo). Kept
   // path-free here too rather than appended, so both callers report the
   // exact same wording for the exact same malformed field.
-  validateProjectJsonStructure(parsed);
+  const project = validateProjectJsonStructure(parsed);
+  assertSupportedFormatVersion(project);
 }

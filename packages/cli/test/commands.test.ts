@@ -6,6 +6,7 @@ import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
 import { renderCat } from "../src/commands/cat.js";
 import { renderLs } from "../src/commands/ls.js";
+import { FORMAT_VERSION } from "@co-motion/core";
 
 // root ignores permission bits, so the two chmod(0o000)-based tests below
 // can never observe the EACCES they are provoking when this process runs
@@ -55,7 +56,7 @@ describe("new", () => {
       path: "project.json",
     });
     const project = JSON.parse(projectJson.data!.content);
-    expect(project.formatVersion).toBe(1);
+    expect(project.formatVersion).toBe(FORMAT_VERSION);
     expect(project.name).toBe("我的簡報");
     expect(project.slides).toEqual(["slides/001.svg"]);
 

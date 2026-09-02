@@ -216,7 +216,7 @@ describe("template add / 脫鉤 (AC3)", () => {
 });
 
 describe("template add", () => {
-  it("AC8: 無 --from 建立空白範本並登記進 templates；formatVersion 不變", async () => {
+  it("AC8: 無 --from 建立空白範本並登記進 templates（[E4.T7]：物件格式，name 預設為檔名）", async () => {
     const id = await openFreshPresentation();
     const before = await readProject(id);
     expect(before.templates).toBeUndefined();
@@ -225,8 +225,7 @@ describe("template add", () => {
     expect(result.ok).toBe(true);
 
     const after = await readProject(id);
-    expect(after.templates).toEqual([result.data!.templatePath]);
-    expect(after.formatVersion).toBe(before.formatVersion);
+    expect(after.templates).toEqual([{ file: result.data!.templatePath, name: "001" }]);
   });
 
   it("--from 指向一張投影片，複製其內容並重新 mint id", async () => {

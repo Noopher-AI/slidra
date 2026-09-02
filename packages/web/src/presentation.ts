@@ -11,11 +11,18 @@ export interface PresentationInfo {
   name: string;
   canvas: { width: number; height: number };
   /**
-   * `project.json`'s `templates` (NOOP-141's 新增投影片 menu). Absent, or
-   * not a string array, is treated as "declared no templates" — a `[]`, not
-   * a format error: `project-json.ts` already rejects a genuinely malformed
-   * `templates` field server-side, so anything this loose check lets
-   * through here is honestly untyped, not corrupt.
+   * Virtual paths of `project.json`'s `templates` (NOOP-141's 新增投影片
+   * menu). Absent, or not an array, is treated as "declared no templates" —
+   * a `[]`, not a format error: `project-json.ts` already rejects a
+   * genuinely malformed `templates` field server-side, so anything this
+   * loose check lets through here is honestly untyped, not corrupt.
+   *
+   * `templates` entries may be either a pre-[E4.T7] bare string or a
+   * post-upgrade `{ file, name }` object (`project-json.ts`'s
+   * `TemplateEntry`) — this loader only needs the path, so it extracts
+   * `file` from either shape and stays a `string[]`. The template's `name`
+   * is not carried into `PresentationInfo`; the template management dialog
+   * (a later ticket) reads names some other way.
    */
   templates: string[];
 }
@@ -38,11 +45,19 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   if (typeof data.name !== "string") {
     throw new Error("project.json 的 name 無效，無法決定簡報資訊");
   }
-  const templates =
-    Array.isArray(data.templates) && data.templates.every((entry) => typeof entry === "string")
-      ? (data.templates as string[])
-      : [];
+  const templates: string[] = Array.isArray(data.templates)
+    ? data.templates.map(extractTemplateFile).filter((file): file is string => file !== null)
+    : [];
   return { name: data.name, canvas: { width, height }, templates };
+}
+
+/** Extracts a `templates` entry's virtual path regardless of shape — a bare string, or `{ file, name }`. Returns `null` for anything else (honestly-untyped, not corrupt — see `PresentationInfo.templates`). */
+function extractTemplateFile(entry: unknown): string | null {
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry !== null && typeof (entry as { file?: unknown }).file === "string") {
+    return (entry as { file: string }).file;
+  }
+  return null;
 }
 
 export interface PresentationInfoLoaderCallbacks {

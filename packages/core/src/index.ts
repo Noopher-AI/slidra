@@ -4,14 +4,17 @@ export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./pre
 export { DEFAULT_FONT_FAMILY } from "./default-font.js";
 export { readDefaultFontBytes } from "./default-font-bytes.js";
 export type { MinimalPresentationFiles } from "./presentation.js";
-export { validateProjectJson } from "./project-json.js";
-export type { ProjectJson, FontEntry } from "./project-json.js";
+export { validateProjectJson, readTemplateEntries, assertSupportedFormatVersion } from "./project-json.js";
+export type { ProjectJson, FontEntry, TemplateEntry } from "./project-json.js";
 export {
   addSlide,
   deleteSlide,
   duplicateSlide,
   moveSlide,
   addTemplate,
+  listTemplates,
+  renameTemplate,
+  deleteTemplate,
   setNotes,
   setTransition,
 } from "./slide-ops.js";

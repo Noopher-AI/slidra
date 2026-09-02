@@ -5,7 +5,14 @@ import { generateElementId } from "./id.js";
 import { DEFAULT_FONT_FAMILY } from "./default-font.js";
 import type { FontEntry, ProjectJson } from "./project-json.js";
 
-export const FORMAT_VERSION = 1;
+/**
+ * Bumped 1 → 2 for [E4.T7]: `templates` entries gained a `name` field
+ * (`project-json.ts`'s `TemplateEntry`). Existing `formatVersion: 1` files
+ * remain readable — `readTemplateEntries` normalizes their bare-string
+ * `templates` entries on read — and are upgraded to `2` the next time
+ * anything writes their `project.json` (`slide-ops.ts`'s `writeProject`).
+ */
+export const FORMAT_VERSION = 2;
 
 export const SLIDE_FILE_NAME = "slides/001.svg";
 

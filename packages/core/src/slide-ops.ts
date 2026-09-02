@@ -1,6 +1,7 @@
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 import { generateElementId } from "./id.js";
-import { validateProjectJson, type ProjectJson } from "./project-json.js";
+import { validateProjectJson, readTemplateEntries, type ProjectJson, type TemplateEntry } from "./project-json.js";
+import { FORMAT_VERSION } from "./presentation.js";
 import { scanDocument, attributeOf, type ScannedNode } from "./slide/scan.js";
 import { setSlideNotes } from "./notes.js";
 import {
@@ -50,8 +51,21 @@ async function readProject(id: string): Promise<ProjectJson> {
   return validateProjectJson(parsed);
 }
 
+/**
+ * The one `project.json` write point (every command below routes through
+ * it). Upgrades opportunistically on every write, never on open (4.2 of
+ * the plan): `formatVersion` is bumped to the current `FORMAT_VERSION`, and
+ * a present `templates` field is normalized to the object-entry shape
+ * (`readTemplateEntries`) — a pre-[E4.T7] file's bare-string entries become
+ * `{ file, name }` the next time anything touches its `project.json`, and
+ * not a moment sooner.
+ */
 async function writeProject(id: string, project: ProjectJson): Promise<void> {
-  await writePresentationFile(id, "project.json", `${JSON.stringify(project, null, 2)}\n`);
+  const nextProject: ProjectJson = { ...project, formatVersion: FORMAT_VERSION };
+  if (nextProject.templates !== undefined) {
+    nextProject.templates = readTemplateEntries(project);
+  }
+  await writePresentationFile(id, "project.json", `${JSON.stringify(nextProject, null, 2)}\n`);
 }
 
 /** Builds a blank slide/template: an empty, compliant `<svg viewBox>` with no elements yet. */
@@ -185,8 +199,8 @@ export async function addSlide(id: string, input: AddSlideInput = {}): Promise<A
 
   let content: string;
   if (input.templatePath !== undefined) {
-    const templates = project.templates ?? [];
-    if (templates.includes(input.templatePath)) {
+    const templates = readTemplateEntries(project);
+    if (templates.some((template) => template.file === input.templatePath)) {
       const raw = await readPresentationFile(id, input.templatePath);
       content = mintElementIds(raw);
     } else if (project.slides.includes(input.templatePath)) {
@@ -248,7 +262,7 @@ export async function duplicateSlide(id: string, slidePath: string): Promise<Dup
   const project = await readProject(id);
   const sourceIndex = project.slides.indexOf(slidePath);
   if (sourceIndex === -1) {
-    if ((project.templates ?? []).includes(slidePath)) {
+    if (readTemplateEntries(project).some((template) => template.file === slidePath)) {
       throw new CoMotionError(`不是投影片：${slidePath}（複製範本請用 template add --from）`);
     }
     throw new CoMotionError(`不是投影片：${slidePath}`);
@@ -291,14 +305,27 @@ export async function moveSlide(id: string, slidePath: string, newIndex: number)
 export interface AddTemplateInput {
   /** Virtual path of an existing slide to copy from. Omit for a blank template. */
   from?: string;
+  /** User-visible name (trimmed). Omit to default to the new file's basename (A11's fallback rule). */
+  name?: string;
 }
 
 export interface AddTemplateResult {
   templatePath: string;
 }
 
-/** `co-motion template add` (T3, AC 8): registers the new path in `project.json`'s `templates` (created if this is the presentation's first template) — never in `slides`. */
+/**
+ * `co-motion template add` (T3/[E4.T7], AC 8, A10): registers the new path
+ * in `project.json`'s `templates` (created if this is the presentation's
+ * first template) — never in `slides`. A blank/whitespace-only `--name` is
+ * rejected before any file is created or `project.json` touched (A4: a
+ * cancelled/failed "save as template" leaves no residue).
+ */
 export async function addTemplate(id: string, input: AddTemplateInput = {}): Promise<AddTemplateResult> {
+  const trimmedName = input.name?.trim();
+  if (input.name !== undefined && trimmedName === "") {
+    throw new CoMotionError("範本名稱不可為空");
+  }
+
   const project = await readProject(id);
 
   let content: string;
@@ -314,7 +341,8 @@ export async function addTemplate(id: string, input: AddTemplateInput = {}): Pro
 
   const number = await nextAvailableNumber(id, "templates");
   const templatePath = `templates/${formatSlideNumber(number)}.svg`;
-  const nextTemplates = [...(project.templates ?? []), templatePath];
+  const name = trimmedName ?? formatSlideNumber(number);
+  const nextTemplates: TemplateEntry[] = [...readTemplateEntries(project), { file: templatePath, name }];
 
   await beginHistoryGroup(id);
   try {
@@ -325,6 +353,67 @@ export async function addTemplate(id: string, input: AddTemplateInput = {}): Pro
   }
 
   return { templatePath };
+}
+
+/** `co-motion template list` ([E4.T7], A10): the presentation's templates in `project.json` order, normalized (A11's filename fallback for pre-upgrade entries). */
+export async function listTemplates(id: string): Promise<TemplateEntry[]> {
+  const project = await readProject(id);
+  return readTemplateEntries(project);
+}
+
+/**
+ * `co-motion template rename` ([E4.T7], A5/A6/A10): renames a template's
+ * `name` field only — never the SVG file or its path. A single-file write,
+ * so (unlike `deleteTemplate`) it needs no history group to be one undo
+ * step (compare `moveSlide`). Two templates may share a name (A6) — no
+ * uniqueness check, ever.
+ */
+export async function renameTemplate(id: string, templatePath: string, newName: string): Promise<void> {
+  const trimmed = newName.trim();
+  if (trimmed === "") {
+    throw new CoMotionError("範本名稱不可為空");
+  }
+
+  const project = await readProject(id);
+  const entries = readTemplateEntries(project);
+  const index = entries.findIndex((entry) => entry.file === templatePath);
+  if (index === -1) {
+    if (project.slides.includes(templatePath)) {
+      throw new CoMotionError(`不是範本：${templatePath}`);
+    }
+    throw new CoMotionNotFoundError(`找不到範本：${templatePath}`);
+  }
+
+  const nextTemplates = [...entries];
+  nextTemplates[index] = { ...nextTemplates[index], name: trimmed };
+  await writeProject(id, { ...project, templates: nextTemplates });
+}
+
+/**
+ * `co-motion template delete` ([E4.T7], A8/A9/A10): deletes the SVG file
+ * and removes its `templates` entry in one history group (A9: one undo
+ * step restores both). ADR-0013 — a template is dead once applied — so
+ * deleting it never touches, scans, or warns about slides already built
+ * from it.
+ */
+export async function deleteTemplate(id: string, templatePath: string): Promise<void> {
+  const project = await readProject(id);
+  const entries = readTemplateEntries(project);
+  if (!entries.some((entry) => entry.file === templatePath)) {
+    if (project.slides.includes(templatePath)) {
+      throw new CoMotionError(`不是範本：${templatePath}（刪除投影片請用 slide delete）`);
+    }
+    throw new CoMotionNotFoundError(`找不到範本：${templatePath}`);
+  }
+  const nextTemplates = entries.filter((entry) => entry.file !== templatePath);
+
+  await beginHistoryGroup(id);
+  try {
+    await deletePresentationFile(id, templatePath);
+    await writeProject(id, { ...project, templates: nextTemplates });
+  } finally {
+    await endHistoryGroup(id);
+  }
 }
 
 /** `co-motion slide notes set` (T3, AC 11) — slides only, never templates (a template's speaker notes have no display-time meaning). */
