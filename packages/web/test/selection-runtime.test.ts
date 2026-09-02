@@ -395,3 +395,48 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 });
+
+// NOOP-328/NOOP-334: the postMessage-protocol boundary contract that makes
+// the host-side !viewport guards (canvas.ts) rarely matter in practice —
+// reportViewport() must fire synchronously, immediately before "gesture-start"
+// is posted, so send-order delivery guarantees the host already has a
+// viewport by the time it processes the gesture. Removing that
+// reportViewport() call (leaving viewport reporting wired to "load"/"resize"
+// only, as before NOOP-328) must fail this test.
+describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-start 送出", () => {
+  it("拖曳超過門檻觸發手勢時，緊接在 gesture-start 之前送出的是 viewport 訊息", async () => {
+    const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const handleEl = host.shadowRoot!.querySelector('[data-comot-handle="nw"]') as HTMLElement;
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    handleEl.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, composed: true, pointerId: 1, clientX: 100, clientY: 100, button: 0 }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 110, clientY: 110 }));
+    // postMessage delivery is async even within the same window (jsdom
+    // queues it as a task) — give it a tick before reading `messages`.
+    // jsdom's own iframe "load" can also fire the runtime's load-wired
+    // reportViewport() at an unpredictable point (see collectMessages'
+    // own comment above), so this may capture extra leading "viewport"
+    // messages; that's fine — see the assertion below for why.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    window.removeEventListener("message", handler);
+
+    // Only the last two messages matter: the gesture's own reportViewport()
+    // call and its post({event:"gesture-start", ...}) happen back-to-back,
+    // synchronously, inside the same pointermove handler invocation — with
+    // nothing else able to post a message in between — so send-order
+    // delivery guarantees this pair is adjacent regardless of whether (or
+    // when) "load"'s own viewport report also fired. Remove the guarded
+    // reportViewport() call and the message directly before "gesture-start"
+    // stops being "viewport" (or disappears entirely).
+    const lastTwo = messages.slice(-2).map((message) => message.event);
+    expect(lastTwo).toEqual(["viewport", "gesture-start"]);
+  });
+});

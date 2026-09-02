@@ -1236,6 +1236,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function beginScaleGesture(point: { x: number; y: number }, _corner: "nw" | "ne" | "sw" | "se"): void {
     void _corner; // The corner only ever affected the runtime's own handle-cursor styling — every corner drives the identical uniform-scale-from-origin math.
+    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
+    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
+    if (!viewport) return;
     if (selectionIds.length !== 1) return;
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
@@ -1341,6 +1344,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // --- Rotate handle (§4.2-follow-up) ---
 
   function beginRotateGesture(point: { x: number; y: number }): void {
+    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
+    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
+    if (!viewport) return;
     if (selectionIds.length !== 1) return;
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
@@ -1434,6 +1440,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // --- Textbox-width handles (§4.4) ---
 
   function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
+    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
+    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
+    if (!viewport) return;
     if (selectionIds.length !== 1) return;
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
