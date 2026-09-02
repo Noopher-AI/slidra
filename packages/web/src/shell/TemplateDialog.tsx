@@ -47,6 +47,7 @@ export function TemplateDialog({
   const [renameError, setRenameError] = useState<string | null>(null);
 
   const [confirmingDeleteFile, setConfirmingDeleteFile] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // 只在對話框開著（此元件掛載）時抓縮圖；元件卸載即釋放，不做預抓或快取層。
   useEffect(() => {
@@ -82,6 +83,7 @@ export function TemplateDialog({
     }
     if (confirmingDeleteFile && !templates.some((t) => t.file === confirmingDeleteFile)) {
       setConfirmingDeleteFile(null);
+      setDeleteError(null);
     }
   }, [templates, renamingFile, confirmingDeleteFile]);
 
@@ -136,8 +138,13 @@ export function TemplateDialog({
   }
 
   async function handleDeleteConfirm(file: string): Promise<void> {
-    await onDelete(file);
+    const result = await onDelete(file);
+    if (!result.ok) {
+      setDeleteError(result.message);
+      return;
+    }
     setConfirmingDeleteFile(null);
+    setDeleteError(null);
   }
 
   return (
@@ -240,12 +247,29 @@ export function TemplateDialog({
                     <button type="button" onClick={() => void handleDeleteConfirm(template.file)}>
                       確定刪除
                     </button>
-                    <button type="button" onClick={() => setConfirmingDeleteFile(null)}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmingDeleteFile(null);
+                        setDeleteError(null);
+                      }}
+                    >
                       取消
                     </button>
+                    {deleteError && (
+                      <div role="alert" className="template-dialog-error">
+                        {deleteError}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setConfirmingDeleteFile(template.file)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmingDeleteFile(template.file);
+                      setDeleteError(null);
+                    }}
+                  >
                     刪除
                   </button>
                 )}
