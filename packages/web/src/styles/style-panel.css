@@ -3,19 +3,19 @@
    see AGENTS/軍令 #2. Modeled on chat.css's sidebar shape (fixed width,
    left border, padded surface), but its own width — it is not the chat
    sidebar and does not share a class with it.
+   NOOP-271/#154: width/border/background/height now live on the
+   `.side-panel` container that wraps this tabpanel; this class only styles
+   its own contents and fills the container via flex.
    ═══════════════════════════════════════════════════════════════ */
 
 .style-panel {
-  width: calc(var(--u) * 56);
-  flex-shrink: 0;
-  border-left: 1px solid var(--line-soft);
-  background: var(--s-panel);
+  flex: 1;
+  min-height: 0;
   padding: calc(var(--u) * 3);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: calc(var(--u) * 3);
-  height: 100%;
   overflow-y: auto;
   color: var(--ink);
   font-size: var(--fs-ui);

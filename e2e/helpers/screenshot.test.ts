@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compareScreenshot } from "./screenshot.js";
 
 /**
@@ -9,10 +9,25 @@ import { compareScreenshot } from "./screenshot.js";
  * PNGs exist for `name`, so the un-skipped call is expected to reach
  * `page.screenshot()` and then fail on the missing-baseline error — that
  * failure is the proof it took the compare path, not the skip path.
+ *
+ * `UPDATE_APPEARANCE_BASELINES` outranks the skip flag in `compareScreenshot`
+ * (deliberately — see screenshot.ts), so this describe must clear it before
+ * each test and restore it after: a CI `update_baselines` run has it set to
+ * `1`, which would otherwise short-circuit both SKIP assertions here into
+ * the write path instead of the paths this suite exists to check.
  */
 describe("compareScreenshot / SKIP_APPEARANCE_BASELINES", () => {
+  let savedUpdateFlag: string | undefined;
+
+  beforeEach(() => {
+    savedUpdateFlag = process.env.UPDATE_APPEARANCE_BASELINES;
+    delete process.env.UPDATE_APPEARANCE_BASELINES;
+  });
+
   afterEach(() => {
     delete process.env.SKIP_APPEARANCE_BASELINES;
+    if (savedUpdateFlag === undefined) delete process.env.UPDATE_APPEARANCE_BASELINES;
+    else process.env.UPDATE_APPEARANCE_BASELINES = savedUpdateFlag;
   });
 
   function fakePage(): { page: Page; getScreenshotCalls: () => number } {

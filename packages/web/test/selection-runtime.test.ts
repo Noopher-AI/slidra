@@ -82,6 +82,50 @@ function pressEscape(win: Window): void {
   win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Escape" }));
 }
 
+async function tick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Sends a `begin-text-edit` host command the same way canvas.ts's
+ * `enterTextEdit` does, entering the runtime's in-place editing mode for
+ * `id`. Dispatched as a manually-constructed `MessageEvent` rather than a
+ * real `win.postMessage(...)` call: jsdom does not wire up
+ * `iframe.contentWindow.parent`/`.top` for a plainly `appendChild`'d
+ * iframe (verified directly — `win.parent !== window` here, and a real
+ * cross-window `postMessage` delivers with `event.source` matching
+ * neither `window` nor `win.parent`), so the runtime's own
+ * `event.source !== parentWindow` guard (ADR-0011's host-authenticity
+ * check — this is the one thing selection-runtime.js's message listener
+ * checks that player-runtime.js's does not) would silently drop every
+ * such message. Setting `source: win.parent` explicitly on a
+ * synthesized event reproduces exactly what a real embedding's
+ * `postMessage` would deliver, without weakening that guard.
+ */
+async function beginTextEdit(win: Window, id: string, text: string): Promise<void> {
+  const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+  win.dispatchEvent(
+    new MessageEventCtor("message", {
+      data: { source: "comot-host", command: "begin-text-edit", id, text },
+      source: win.parent as unknown as MessageEventSource,
+    }),
+  );
+  await tick();
+}
+
+/** The hidden `<textarea>` the runtime uses to capture keystrokes while editing — lazily created by `ensureTextarea()`, so only present once an edit session has started. */
+function editTextarea(doc: Document): HTMLTextAreaElement {
+  const host = doc.body.children[doc.body.children.length - 1];
+  return host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+}
+
+/** Dispatches a real pointerdown that bubbles, with the given client coordinates and pointerId — same shape the runtime's own pointerdown/pointermove/pointerup listeners read. */
+function pointerdownAt(doc: Document, el: Element, clientX: number, clientY: number, pointerId = 1): void {
+  const win = doc.defaultView as Window;
+  const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+  el.dispatchEvent(new PointerEventCtor("pointerdown", { bubbles: true, button: 0, pointerId, clientX, clientY }));
+}
+
 /** Every `.group-frame` element inside `doc`'s shadow-hosted overlay — one per level of `groupPath` currently on screen (NOOP-149 r2's box pool). */
 function groupFrameEls(doc: Document): HTMLElement[] {
   const host = doc.body.children[1];
@@ -273,5 +317,81 @@ describe("selection-runtime.js", () => {
 
     pressEscape(win);
     expect(visibleGroupFrames(doc)).toHaveLength(0);
+  });
+});
+
+/**
+ * ADR-0017 / NOOP-272 — in-place editing's caret/selection state machine.
+ * jsdom has no layout engine and implements neither `getScreenCTM` nor
+ * `getNumberOfChars` at all (verified directly against jsdom, not just
+ * assumed), so `indexAtPoint()` always resolves to `null` here — every
+ * geometry-dependent assertion (actual caret x, selection block rects) is
+ * an e2e concern (e2e/text-edit.test.ts), never a jsdom one. What jsdom
+ * CAN exercise without any layout: the parts of the state machine that
+ * don't need a resolved index at all — the IME composition guard around
+ * Esc, and that a pointerdown landing inside the edited element never
+ * falls through to the plain element-gesture code path it used to hit
+ * before ADR-0017 (this only used to `return`; it now branches into
+ * text-selection first, so this guards against a future edit
+ * accidentally letting it fall through into `gesture = {...}`).
+ */
+describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
+  it("組字期間按 Esc 不 commit、不離開編輯；組字結束後 Esc 才 commit", async () => {
+    const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    const { messages, stop } = collectMessages();
+
+    ta.dispatchEvent(new (win as unknown as { CompositionEvent: typeof CompositionEvent }).CompositionEvent("compositionstart", { bubbles: true }));
+    pressEscape(win);
+    await tick();
+    expect(messages).toHaveLength(0);
+
+    ta.dispatchEvent(new (win as unknown as { CompositionEvent: typeof CompositionEvent }).CompositionEvent("compositionend", { bubbles: true }));
+    pressEscape(win);
+    await tick();
+    expect(messages).toContainEqual({ source: "comot-selection", event: "text-edit-commit", id: "el-text" });
+    stop();
+  });
+
+  it("組字期間 pointerdown 落在被編輯元素之外，仍然 commit 並離開編輯（既有行為不受本次修改影響）", async () => {
+    const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g><rect id="outside"/></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    ta.dispatchEvent(new (win as unknown as { CompositionEvent: typeof CompositionEvent }).CompositionEvent("compositionstart", { bubbles: true }));
+    const { messages, stop } = collectMessages();
+
+    pointerdownAt(doc, doc.getElementById("outside")!, 0, 0);
+    await tick();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "text-edit-commit", id: "el-text" });
+    stop();
+  });
+
+  it("編輯中：pointerdown 落在被編輯元素內部不會發出 gesture-start、select 或 clear", async () => {
+    const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const { messages, stop } = collectMessages();
+
+    pointerdownAt(doc, doc.getElementById("el-text")!, 5, 5);
+    await tick();
+
+    expect(messages.filter((m) => (m as { event?: string }).event === "gesture-start")).toHaveLength(0);
+    expect(messages.filter((m) => (m as { event?: string }).event === "select")).toHaveLength(0);
+    expect(messages.filter((m) => (m as { event?: string }).event === "clear")).toHaveLength(0);
+    stop();
+  });
+
+  it("編輯中 click／dblclick 仍被忽略，不觸發選取", async () => {
+    const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const { messages, stop } = collectMessages();
+
+    click(doc, doc.getElementById("el-text")!);
+    dblclick(doc, doc.getElementById("el-text")!);
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
   });
 });

@@ -191,8 +191,12 @@ it("圖片：檔案選擇匯入 PNG 後，該頁多出一個 href 指向 ../asse
     // and e2e/smoke.test.ts, since the vitest default (1000ms) leaves too
     // thin a margin under load and made this assertion batch-flaky.
     await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["photo.png"]);
-    const svg = await readSlide(registry, presentationId);
-    expect(svg).toContain('href="../assets/photo.png"');
+    // The asset write and the slide-SVG write are two separate steps; polling
+    // only the asset lets the slide read race ahead of its own write under
+    // CI load, so poll the slide content too, not just read it once.
+    await expect
+      .poll(async () => readSlide(registry, presentationId), { timeout: 10_000 })
+      .toContain('href="../assets/photo.png"');
   } finally {
     await cleanup();
   }
@@ -206,8 +210,12 @@ it("影片：檔案選擇匯入 webm 後，該頁多出一個帶 data-comot-medi
     await pickFile(page, "影片", clipPath);
 
     await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["clip.webm"]);
+    // Same two-step-write race as the image case above: poll the slide
+    // content itself before trusting it.
+    await expect
+      .poll(async () => readSlide(registry, presentationId), { timeout: 10_000 })
+      .toContain('data-comot-media="../assets/clip.webm"');
     const svg = await readSlide(registry, presentationId);
-    expect(svg).toContain('data-comot-media="../assets/clip.webm"');
     expect(svg).not.toContain("<image");
   } finally {
     await cleanup();
@@ -222,8 +230,11 @@ it("音訊：檔案選擇匯入 oga 後，該頁多出一個帶 data-comot-media
     await pickFile(page, "音訊", narrationPath);
 
     await expect.poll(async () => listAssets(registry, presentationId), { timeout: 10_000 }).toEqual(["narration.oga"]);
-    const svg = await readSlide(registry, presentationId);
-    expect(svg).toContain('data-comot-media="../assets/narration.oga"');
+    // Same two-step-write race as the image case above: poll the slide
+    // content itself before trusting it.
+    await expect
+      .poll(async () => readSlide(registry, presentationId), { timeout: 10_000 })
+      .toContain('data-comot-media="../assets/narration.oga"');
   } finally {
     await cleanup();
   }

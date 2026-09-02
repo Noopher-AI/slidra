@@ -142,6 +142,146 @@ async function waitForEditTextareaFocus(page: Page): Promise<void> {
   await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 }
 
+/**
+ * ADR-0017 (NOOP-272/T6) — caret/selection geometry helpers below. Every
+ * one of these reads its numbers straight off the browser's own SVG text
+ * geometry APIs (`getStartPositionOfChar`/`getEndPositionOfChar`/
+ * `getScreenCTM`, `<tspan>.getBoundingClientRect()`) — never off the
+ * runtime's own `indexAtPoint()`/`textLineRanges()` — so a test using them
+ * is an independent check on the runtime's behaviour, not a tautology
+ * that would pass even if that behaviour were wrong. This is the same
+ * technique the plan's own spike (§3.4) validated against Chromium.
+ */
+
+/** Ground-truth client-space geometry for character `index` of `elementId`'s `<text>`. */
+async function charClientRect(
+  page: Page,
+  elementId: string,
+  index: number,
+): Promise<{ startX: number; endX: number; top: number; height: number }> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate(
+    (body, { elementId, index }) => {
+      const doc = body.ownerDocument as Document;
+      const el = doc.getElementById(elementId)!;
+      const textEl = el.querySelector("text") as SVGTextContentElement;
+      const ctm = textEl.getScreenCTM()!;
+      const toClient = (p: { x: number; y: number }) => new DOMPoint(p.x, p.y).matrixTransform(ctm);
+      const start = toClient(textEl.getStartPositionOfChar(index));
+      const end = toClient(textEl.getEndPositionOfChar(index));
+      const tspans = textEl.getElementsByTagName("tspan");
+      let top = 0;
+      let height = 0;
+      if (tspans.length === 0) {
+        const r = textEl.getBoundingClientRect();
+        top = r.top;
+        height = r.height;
+      } else {
+        let cursor = 0;
+        for (let i = 0; i < tspans.length; i++) {
+          const len = tspans[i].textContent!.length;
+          if (index < cursor + len || i === tspans.length - 1) {
+            const r = tspans[i].getBoundingClientRect();
+            top = r.top;
+            height = r.height;
+            break;
+          }
+          cursor += len;
+        }
+      }
+      return { startX: start.x, endX: end.x, top, height };
+    },
+    { elementId, index },
+  );
+}
+
+/**
+ * `charClientRect`/`getBoundingClientRect` are relative to the sandboxed
+ * iframe's OWN viewport, not the top-level page — the same reason the
+ * existing drag test above computes its click point off `svg.boundingBox()`
+ * rather than raw numbers. This is the offset to add before any
+ * `page.mouse.*` call driven by an iframe-local rect.
+ */
+async function iframeOffset(page: Page): Promise<{ x: number; y: number }> {
+  const box = await page.locator("iframe.slide-frame").boundingBox();
+  if (!box) throw new Error("量不到 iframe.slide-frame 的邊界框");
+  return { x: box.x, y: box.y };
+}
+
+/** Clicks the point 1/4 of the way across character `index` — inside the half `indexAtPoint`'s midpoint rule (ADR-0017 §4.2) resolves to that same index, away from the exact midpoint boundary. */
+async function clickChar(page: Page, elementId: string, index: number): Promise<void> {
+  const rect = await charClientRect(page, elementId, index);
+  const offset = await iframeOffset(page);
+  const x = offset.x + rect.startX + (rect.endX - rect.startX) * 0.25;
+  const y = offset.y + rect.top + rect.height / 2;
+  await page.mouse.click(x, y);
+}
+
+/** Drags a text selection from the start of character `fromIndex` to the start of character `toIndex` (page-offset-corrected — see `iframeOffset`). */
+async function dragSelectChars(page: Page, elementId: string, fromIndex: number, toIndex: number, steps = 5): Promise<void> {
+  const offset = await iframeOffset(page);
+  const from = await charClientRect(page, elementId, fromIndex);
+  const to = await charClientRect(page, elementId, toIndex);
+  await page.mouse.move(offset.x + from.startX, offset.y + from.top + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(offset.x + to.startX, offset.y + to.top + to.height / 2, { steps });
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+}
+
+/** `textarea.selectionStart`/`selectionEnd` of the runtime's hidden edit textarea. */
+async function readSelection(page: Page): Promise<{ start: number; end: number }> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate((body) => {
+    const doc = body.ownerDocument as Document;
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+    return { start: ta.selectionStart as number, end: ta.selectionEnd as number };
+  });
+}
+
+/** The `.edit-caret` overlay div's own client rect, or `null` when hidden. */
+async function readCaretRect(page: Page): Promise<{ left: number; top: number; height: number } | null> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate((body) => {
+    const doc = body.ownerDocument as Document;
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const caret = host.shadowRoot!.querySelector(".edit-caret") as HTMLElement;
+    if (getComputedStyle(caret).display === "none") return null;
+    const r = caret.getBoundingClientRect();
+    return { left: r.left, top: r.top, height: r.height };
+  });
+}
+
+/** Visible `.edit-selection` overlay divs' client rects, DOM order. */
+async function readSelectionBlockRects(
+  page: Page,
+): Promise<{ left: number; top: number; right: number; bottom: number }[]> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate((body) => {
+    const doc = body.ownerDocument as Document;
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const blocks = [...host.shadowRoot!.querySelectorAll(".edit-selection")] as HTMLElement[];
+    return blocks
+      .filter((el) => getComputedStyle(el).display !== "none")
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      });
+  });
+}
+
+/** Number of `<tspan>` children currently under `elementId`'s live (in-edit-preview) `<text>`. */
+async function tspanCount(page: Page, elementId: string): Promise<number> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate((body, elementId) => {
+    const doc = body.ownerDocument as Document;
+    const el = doc.getElementById(elementId)!;
+    return el.querySelector("text")!.getElementsByTagName("tspan").length;
+  }, elementId);
+}
+
 /** `<tspan x="0" y="…">…</tspan>` entries inside `elementId`'s own `<text>`, in document order. */
 function readTspans(svg: string, elementId: string): { text: string; y: number }[] {
   const containerMatch = new RegExp(`<g id="${elementId}"[^>]*>\\s*<text[^>]*>([\\s\\S]*?)</text>`).exec(svg);
@@ -307,6 +447,241 @@ it("鎖定的文字框雙擊不會進入編輯：沒有 focus 到編輯用 texta
     await page.waitForTimeout(200);
 
     expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A1：ArrowLeft 依序左移游標，caret 畫面位置與 textarea.selectionStart 同步", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    // Fixture's initial text is "Hi" (len 2) — type more so there is enough
+    // room to walk the caret left several steps.
+    await page.keyboard.type("ABCD");
+    await page.waitForTimeout(80);
+    const len = "HiABCD".length;
+
+    for (let n = 1; n <= len; n++) {
+      await page.keyboard.press("ArrowLeft");
+      await page.waitForTimeout(30);
+      const sel = await readSelection(page);
+      expect(sel.start).toBe(len - n);
+      expect(sel.end).toBe(len - n);
+      const caret = await readCaretRect(page);
+      expect(caret).not.toBeNull();
+      const expected = await charClientRect(page, "el-text", len - n);
+      expect(caret!.left).toBeCloseTo(expected.startX, 0);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A2：點文字中第 k 個字，游標停在該處；接著打字插在該處（AC2 的座標版本）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.type("ABCDE"); // "Hi" + "ABCDE" -> "HiABCDE" (len 7)
+    await page.waitForTimeout(80);
+
+    await clickChar(page, "el-text", 3); // "HiABCDE"[3] = "B"
+    await page.waitForTimeout(80);
+    expect((await readSelection(page)).start).toBe(3);
+
+    await page.keyboard.type("X");
+    await page.waitForTimeout(80);
+    expect(await isEditTextareaFocused(page)).toBe(true);
+    const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+    expect(value).toBe("HiAXBCDE"); // caret sits before index 3 ("B") — "A" | "X" | "BCDE"
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.type("ABCDE"); // -> "HiABCDE" (len 7)
+    await page.waitForTimeout(80);
+
+    await dragSelectChars(page, "el-text", 2, 5); // selects "ABC" (indices 2..4)
+
+    const sel = await readSelection(page);
+    expect(sel.end - sel.start).toBe(3); // "ABC"
+
+    await page.keyboard.type("Z");
+    await page.waitForTimeout(80);
+    const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+    expect(value).toBe("HiZDE"); // [2,5) = "ABC" replaced by "Z"
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A4：跨行選取，每行各自一塊，接縫處無破洞或重疊", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+    await page.keyboard.type("aaaa bbbb cccc dddd");
+    await page.waitForTimeout(150);
+
+    const lines = await tspanCount(page, "el-text");
+    expect(lines).toBeGreaterThan(1); // The fixture's whole point: this must actually wrap.
+
+    await dragSelectChars(page, "el-text", 0, 18, 8); // whole string
+
+    const blocks = await readSelectionBlockRects(page);
+    expect(blocks.length).toBe(lines);
+    const sorted = [...blocks].sort((a, b) => a.top - b.top);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i - 1].bottom).toBeLessThanOrEqual(sorted[i].top + 0.5);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令，undo 一格回到原字串", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const before = await readSlide(registry, presentationId);
+    const page = await openApp(server);
+
+    let commandCount = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+    });
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.type("ABCDE"); // -> "HiABCDE"
+    await page.waitForTimeout(80);
+
+    await dragSelectChars(page, "el-text", 2, 5); // selects "ABC" (indices 2..4)
+    const dragSel = await readSelection(page);
+    expect(dragSel.end - dragSel.start).toBe(3);
+
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(80);
+    const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+    expect(value).toBe("HiDE"); // [2,5) = "ABC" deleted
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    expect(commandCount).toBe(1);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A6：西文含空白斷行的文字方塊，逐字元點擊，selectionStart 與字元位置零偏移（wrapText 字元保存不變式的機械證明）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+    const text = "aaaa bbbb cccc dddd";
+    await page.keyboard.type(text);
+    await page.waitForTimeout(150);
+
+    expect(await tspanCount(page, "el-text")).toBeGreaterThan(1);
+
+    for (let k = 0; k < text.length; k++) {
+      await clickChar(page, "el-text", k);
+      await page.waitForTimeout(20);
+      const sel = await readSelection(page);
+      expect(sel.start).toBe(k);
+      expect(sel.end).toBe(k);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元素上按下不改變選取", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+
+    const frame = page.frameLocator("iframe.slide-frame");
+    const xs: number[] = [];
+    // Simulate an IME composing "你好" one candidate character at a time —
+    // compositionstart, then a growing composition string on each `input`,
+    // never compositionend until the final step (ADR-0017 §4.4).
+    await frame.locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+      ta.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    });
+    for (const partial of ["你", "你好"]) {
+      await frame.locator("body").evaluate((body, partial) => {
+        const doc = body.ownerDocument as Document;
+        const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+        const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+        const base = "Hi";
+        ta.value = base + partial;
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        ta.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      }, partial);
+      await page.waitForTimeout(50);
+      const caret = await readCaretRect(page);
+      expect(caret).not.toBeNull();
+      xs.push(caret!.left);
+    }
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+
+    const before = await readSelection(page);
+    // Clicks the horizontal midpoint of the edited element itself, not a
+    // specific character: the box's resize/rotate handles stay visible and
+    // interactive during text edit, clustered within ~9px of its left/right
+    // edges (ADR-0017 doesn't hide them mid-edit) — a point on the element
+    // itself, away from those edges, is what a pointerdown-inside-the-edited-
+    // element assertion needs, so this must land on the text rather than a
+    // handle intercepting the click first.
+    const elBox = await frame.locator("#el-text").boundingBox();
+    if (!elBox) throw new Error("量不到 #el-text 的邊界框");
+    await page.mouse.click(elBox.x + elBox.width / 2, elBox.y + elBox.height / 2);
+    await page.waitForTimeout(50);
+    expect(await readSelection(page)).toEqual(before);
+
+    await frame.locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
+      ta.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    });
+    await page.waitForTimeout(50);
   } finally {
     await cleanup();
   }
