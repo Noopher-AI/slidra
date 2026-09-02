@@ -165,7 +165,7 @@
 
 /* ── 基礎樣式層：reduced-motion ──────────────────────────────────
    Two layers, both required: the token override below only helps
-   rules that already consume a --dur-*/--ease-* token; the `*` safety
+   rules that already consume a --dur-* / --ease-* token; the `*` safety
    net catches everything else (existing literal-second transitions,
    canvas.ts's inline transition, and any future @keyframes loop —
    `animation-iteration-count: 1` stops a looping animation after one
