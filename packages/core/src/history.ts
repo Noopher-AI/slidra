@@ -260,31 +260,52 @@ export function stageNewFileEntry(virtualPath: string): HistoryEntry {
   return { virtualPath, snapshotId: null };
 }
 
+export interface CommitResult {
+  /**
+   * A deep copy of the stack exactly as it stood before this commit —
+   * before the redo clear, before any cap eviction, before `entries` was
+   * appended. Handed back so a caller whose next step (making the new
+   * content visible) then fails can restore history to precisely this
+   * state via `revertCommittedEntries`, instead of trying to reconstruct
+   * it field by field.
+   */
+  previousStack: StackFile;
+  /**
+   * Snapshot ids this commit orphaned (the redo stack it cleared, plus any
+   * cap-evicted undo group) — not deleted yet. Deleting them here would
+   * make the rollback in `revertCommittedEntries` impossible once the
+   * caller's write fails, since `previousStack` still references them.
+   * The caller must call `finalizeCommittedEntries` with this list once it
+   * knows the commit is not going to be reverted.
+   */
+  pendingDeletionSnapshotIds: string[];
+}
+
 /**
  * Commits previously staged entries onto the undo timeline: with an open
  * group (`beginHistoryGroup`), the entries are appended to it; otherwise
  * they become their own single-command undo group immediately. Every call
  * clears the redo stack — undo is a linear timeline, and a new edit after
- * an undo invalidates whatever redo would have replayed — and it *deletes*
- * every cleared redo entry's snapshot file rather than just dropping the
- * stack.json references to it, so an ordinary "set → undo → set" loop does
- * not leave the file on disk with nothing pointing at it (finding 1).
+ * an undo invalidates whatever redo would have replayed.
  *
- * The snapshot deletions (cleared redo entries, plus any cap-evicted group)
- * are collected but not performed until *after* `writeStack` has written
- * the replacement stack durably to disk. Deleting them first would mean a
- * failed `writeStack` (e.g. disk full) leaves the old stack.json — which
- * still references those now-deleted files — as the current history,
- * permanently dangling (#73 gate round 2 finding).
+ * Unlike an ordinary "set → undo → set" loop, this function does *not*
+ * delete the cleared redo entries' (or any cap-evicted group's) snapshot
+ * files itself — see `CommitResult`. A caller with no failure case of its
+ * own between this call and visible effect (`recordSnapshot`,
+ * `createPresentationFile`, `deletePresentationFile`) should immediately
+ * follow up with `finalizeCommittedEntries`. A caller that commits *before*
+ * a write that can still fail (`writePresentationFile`, NOOP-337) instead
+ * holds `previousStack` until it knows whether to finalize or revert.
  */
-export async function commitSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<void> {
+export async function commitSnapshotEntries(id: string, entries: HistoryEntry[]): Promise<CommitResult> {
   const home = resolveCoMotionHome();
   const stack = await readStack(home, id);
+  const previousStack: StackFile = JSON.parse(JSON.stringify(stack));
 
-  const snapshotIdsToDelete: string[] = [];
+  const pendingDeletionSnapshotIds: string[] = [];
   for (const group of stack.redo) {
     for (const entry of group.entries) {
-      if (entry.snapshotId !== null) snapshotIdsToDelete.push(entry.snapshotId);
+      if (entry.snapshotId !== null) pendingDeletionSnapshotIds.push(entry.snapshotId);
     }
   }
   stack.redo = [];
@@ -292,14 +313,25 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
   if (stack.openGroup) {
     stack.openGroup.entries.push(...entries);
   } else {
-    snapshotIdsToDelete.push(...pushGroupToUndoStack(stack, { groupId: generateOpaqueId(), entries }));
+    pendingDeletionSnapshotIds.push(...pushGroupToUndoStack(stack, { groupId: generateOpaqueId(), entries }));
   }
 
   await writeStack(home, id, stack);
 
-  // Only now is the new stack durable, so only now is it safe to delete
-  // the snapshot files nothing on disk references any more.
-  for (const snapshotId of snapshotIdsToDelete) {
+  return { previousStack, pendingDeletionSnapshotIds };
+}
+
+/**
+ * Deletes the snapshot files a `commitSnapshotEntries` call orphaned, once
+ * the caller knows that commit will never be reverted. Split out from
+ * `commitSnapshotEntries` itself (NOOP-333 Fix.7r2) so a caller that commits
+ * before a write that can still fail keeps those files on disk — and thus
+ * recoverable via `revertCommittedEntries` — until the write's outcome is
+ * known.
+ */
+export async function finalizeCommittedEntries(id: string, snapshotIds: string[]): Promise<void> {
+  const home = resolveCoMotionHome();
+  for (const snapshotId of snapshotIds) {
     await deleteSnapshot(home, id, snapshotId);
   }
 }
@@ -311,21 +343,29 @@ export async function commitSnapshotEntries(id: string, entries: HistoryEntry[])
  * temp file onto the real path, precisely so undo is never unavailable for
  * content a reader can already see; a failed rename must therefore undo
  * that commit too, or the commit would occupy an undo slot for a write
- * that never actually took visible effect). Removes exactly `entries` from
- * wherever `commitSnapshotEntries` put them — the open group's tail, or by
- * popping the group it pushed — and deletes their now-orphaned snapshot
- * files. Must be called with the same `entries` immediately after, before
- * anything else commits against this id.
+ * that never actually took visible effect).
+ *
+ * Writes `previousStack` (as returned by that same `commitSnapshotEntries`
+ * call) back verbatim — restoring the redo stack it cleared and any group
+ * it cap-evicted, not just popping the group it pushed (NOOP-333 Fix.7r2:
+ * the earlier version only undid the push, so a write failure after a
+ * commit that had cleared/evicted redo history left that history
+ * permanently gone even though the edit that cleared it never took visible
+ * effect). Because `commitSnapshotEntries` never deleted those redo/evicted
+ * snapshot files — only staged them for deletion — they are still on disk
+ * for `previousStack` to reference. `entries`' own staged snapshot files
+ * (the failed write's own "before" content) are discarded, since the
+ * content they exist for never got written. Must be called with the same
+ * `entries`/`previousStack` pair immediately after, before anything else
+ * commits against this id.
  */
-export async function revertCommittedEntries(id: string, entries: HistoryEntry[]): Promise<void> {
+export async function revertCommittedEntries(
+  id: string,
+  entries: HistoryEntry[],
+  previousStack: StackFile,
+): Promise<void> {
   const home = resolveCoMotionHome();
-  const stack = await readStack(home, id);
-  if (stack.openGroup) {
-    stack.openGroup.entries = stack.openGroup.entries.slice(0, stack.openGroup.entries.length - entries.length);
-  } else {
-    stack.undo.pop();
-  }
-  await writeStack(home, id, stack);
+  await writeStack(home, id, previousStack);
   await discardSnapshotEntries(id, entries);
 }
 
@@ -350,7 +390,8 @@ export async function discardSnapshotEntries(id: string, entries: HistoryEntry[]
  */
 export async function recordSnapshot(id: string, virtualPaths: string[]): Promise<void> {
   const entries = await stageSnapshotEntries(id, virtualPaths);
-  await commitSnapshotEntries(id, entries);
+  const { pendingDeletionSnapshotIds } = await commitSnapshotEntries(id, entries);
+  await finalizeCommittedEntries(id, pendingDeletionSnapshotIds);
 }
 
 /**

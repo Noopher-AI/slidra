@@ -32,6 +32,7 @@ import {
 import {
   commitSnapshotEntries,
   discardSnapshotEntries,
+  finalizeCommittedEntries,
   revertCommittedEntries,
   stageNewFileEntry,
   stageSnapshotEntries,
@@ -311,14 +312,15 @@ export async function writePresentationFile(id: string, virtualPath: string, con
   const workDir = await lookupWorkDir(home, id);
   const realPath = await resolveVirtualFilePath(workDir, virtualPath);
   const entries = await stageSnapshotEntries(id, [virtualPath]);
-  await commitSnapshotEntries(id, entries);
+  const { previousStack, pendingDeletionSnapshotIds } = await commitSnapshotEntries(id, entries);
   try {
     await writeFile(realPath, content, "utf-8");
   } catch {
-    await revertCommittedEntries(id, entries);
+    await revertCommittedEntries(id, entries, previousStack);
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`寫入投影片時發生錯誤：${virtualPath}`);
   }
+  await finalizeCommittedEntries(id, pendingDeletionSnapshotIds);
 }
 
 /**
@@ -732,7 +734,8 @@ export async function createPresentationFile(id: string, virtualPath: string, co
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`寫入檔案時發生錯誤：${virtualPath}`);
   }
-  await commitSnapshotEntries(id, entries);
+  const { pendingDeletionSnapshotIds } = await commitSnapshotEntries(id, entries);
+  await finalizeCommittedEntries(id, pendingDeletionSnapshotIds);
 }
 
 /**
@@ -756,7 +759,8 @@ export async function deletePresentationFile(id: string, virtualPath: string): P
     // realPath is a real filesystem path (ADR-0004) — never quote it.
     throw new CoMotionError(`刪除檔案時發生錯誤：${virtualPath}`);
   }
-  await commitSnapshotEntries(id, entries);
+  const { pendingDeletionSnapshotIds } = await commitSnapshotEntries(id, entries);
+  await finalizeCommittedEntries(id, pendingDeletionSnapshotIds);
 }
 
 // ---------------------------------------------------------------------------
