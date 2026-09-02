@@ -58,6 +58,11 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element order",
   "element style set",
   "presentation transition set",
+  // [E4.T7] 的範本管理對話框加入這四條。
+  "template add",
+  "template list",
+  "template rename",
+  "template delete",
 ];
 
 /**

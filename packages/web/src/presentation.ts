@@ -7,24 +7,30 @@
  * `mountOverview`'s signature staying free of an injected value is worth one
  * extra GET.
  */
+/** One `templates` entry, shape aligned with core's `TemplateEntry` (web doesn't import core's project-json, so it's restated here). */
+export interface TemplateInfo {
+  file: string;
+  name: string;
+}
+
 export interface PresentationInfo {
   name: string;
   canvas: { width: number; height: number };
   /**
-   * Virtual paths of `project.json`'s `templates` (NOOP-141's 新增投影片
-   * menu). Absent, or not an array, is treated as "declared no templates" —
-   * a `[]`, not a format error: `project-json.ts` already rejects a
-   * genuinely malformed `templates` field server-side, so anything this
-   * loose check lets through here is honestly untyped, not corrupt.
+   * `project.json`'s `templates` (NOOP-141's 新增投影片 menu, [E4.T7]'s
+   * template management dialog). Absent, or not an array, is treated as
+   * "declared no templates" — a `[]`, not a format error: `project-json.ts`
+   * already rejects a genuinely malformed `templates` field server-side, so
+   * anything this loose check lets through here is honestly untyped, not
+   * corrupt.
    *
    * `templates` entries may be either a pre-[E4.T7] bare string or a
    * post-upgrade `{ file, name }` object (`project-json.ts`'s
-   * `TemplateEntry`) — this loader only needs the path, so it extracts
-   * `file` from either shape and stays a `string[]`. The template's `name`
-   * is not carried into `PresentationInfo`; the template management dialog
-   * (a later ticket) reads names some other way.
+   * `TemplateEntry`) — this restates `readTemplateEntries`'s normalization
+   * (a bare string, or a missing/non-string `name`, becomes the file's
+   * basename without `.svg`) so both shapes end up as `TemplateInfo`.
    */
-  templates: string[];
+  templates: TemplateInfo[];
 }
 
 /** Non-2xx, or an invalid canvas size, throws — never a fabricated fallback. */
@@ -45,17 +51,25 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   if (typeof data.name !== "string") {
     throw new Error("project.json 的 name 無效，無法決定簡報資訊");
   }
-  const templates: string[] = Array.isArray(data.templates)
-    ? data.templates.map(extractTemplateFile).filter((file): file is string => file !== null)
+  const templates: TemplateInfo[] = Array.isArray(data.templates)
+    ? data.templates.map(extractTemplateInfo).filter((info): info is TemplateInfo => info !== null)
     : [];
   return { name: data.name, canvas: { width, height }, templates };
 }
 
-/** Extracts a `templates` entry's virtual path regardless of shape — a bare string, or `{ file, name }`. Returns `null` for anything else (honestly-untyped, not corrupt — see `PresentationInfo.templates`). */
-function extractTemplateFile(entry: unknown): string | null {
-  if (typeof entry === "string") return entry;
+/** Basename of a virtual path with its extension dropped, e.g. `templates/001.svg` → `001`. */
+function basenameWithoutExtension(file: string): string {
+  const basename = file.split("/").pop() ?? file;
+  return basename.replace(/\.[^.]+$/, "");
+}
+
+/** Normalizes a `templates` entry regardless of shape — a bare string, or `{ file, name }` — into a `TemplateInfo`, mirroring `readTemplateEntries`'s fallback. Returns `null` for anything else (honestly-untyped, not corrupt — see `PresentationInfo.templates`). */
+function extractTemplateInfo(entry: unknown): TemplateInfo | null {
+  if (typeof entry === "string") return { file: entry, name: basenameWithoutExtension(entry) };
   if (typeof entry === "object" && entry !== null && typeof (entry as { file?: unknown }).file === "string") {
-    return (entry as { file: string }).file;
+    const file = (entry as { file: string }).file;
+    const name = (entry as { name?: unknown }).name;
+    return { file, name: typeof name === "string" ? name : basenameWithoutExtension(file) };
   }
   return null;
 }

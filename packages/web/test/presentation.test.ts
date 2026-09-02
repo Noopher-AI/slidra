@@ -24,7 +24,7 @@ describe("fetchPresentationInfo", () => {
     });
   });
 
-  it("carries templates[] through when project.json declares any", async () => {
+  it("normalizes bare-string templates[] into { file, name } using the basename (A11)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -43,11 +43,14 @@ describe("fetchPresentationInfo", () => {
     await expect(fetchPresentationInfo()).resolves.toEqual({
       name: "有範本的簡報",
       canvas: { width: 1280, height: 720 },
-      templates: ["templates/001.svg", "templates/002.svg"],
+      templates: [
+        { file: "templates/001.svg", name: "001" },
+        { file: "templates/002.svg", name: "002" },
+      ],
     });
   });
 
-  it("extracts the file path from post-[E4.T7] { file, name } template entries", async () => {
+  it("carries the name through from post-[E4.T7] { file, name } template entries", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -69,11 +72,14 @@ describe("fetchPresentationInfo", () => {
     await expect(fetchPresentationInfo()).resolves.toEqual({
       name: "物件格式範本",
       canvas: { width: 1280, height: 720 },
-      templates: ["templates/001.svg", "templates/002.svg"],
+      templates: [
+        { file: "templates/001.svg", name: "封面" },
+        { file: "templates/002.svg", name: "章節頁" },
+      ],
     });
   });
 
-  it("extracts file paths from a mix of pre- and post-upgrade template entries", async () => {
+  it("normalizes a mix of pre- and post-upgrade template entries", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -92,7 +98,33 @@ describe("fetchPresentationInfo", () => {
     await expect(fetchPresentationInfo()).resolves.toEqual({
       name: "混合格式範本",
       canvas: { width: 1280, height: 720 },
-      templates: ["templates/001.svg", "templates/002.svg"],
+      templates: [
+        { file: "templates/001.svg", name: "001" },
+        { file: "templates/002.svg", name: "章節頁" },
+      ],
+    });
+  });
+
+  it("falls back to the basename when a { file } entry's name isn't a string", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            formatVersion: 2,
+            name: "name 欄位型別不對",
+            canvas: { width: 1280, height: 720 },
+            templates: [{ file: "templates/001.svg", name: 42 }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(fetchPresentationInfo()).resolves.toEqual({
+      name: "name 欄位型別不對",
+      canvas: { width: 1280, height: 720 },
+      templates: [{ file: "templates/001.svg", name: "001" }],
     });
   });
 

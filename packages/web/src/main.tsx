@@ -16,6 +16,7 @@ import "./styles/grid.css";
 import "./styles/selection.css";
 import "./styles/style-panel.css";
 import "./styles/side-panel.css";
+import "./styles/template-dialog.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

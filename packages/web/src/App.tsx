@@ -7,6 +7,7 @@ import { mountOverview, type OverviewController } from "./overview.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
 import { Ribbon, type RibbonMenuState } from "./shell/Ribbon.js";
+import { TemplateDialog, type TemplateCommandResult } from "./shell/TemplateDialog.js";
 import { Rail } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
@@ -732,6 +733,29 @@ export function App() {
     await controllerRef.current?.runCommand(name, input);
   }
 
+  // 範本管理對話框 ([E4.T7]). Its three writes go through `runCommand` (the
+  // one write path) directly, unlike `runRibbonCommand` above, because the
+  // dialog needs the `{ ok, message }` result to display core's own error
+  // text in place (A5/A8's contract), not just fire-and-forget.
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+
+  async function handleTemplateSave(name: string): Promise<TemplateCommandResult> {
+    const slidePath = currentSlidePath();
+    if (!slidePath) return { ok: false, message: "目前沒有可另存的投影片" };
+    const result = await controllerRef.current?.runCommand("template add", { from: slidePath, name });
+    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
+  }
+
+  async function handleTemplateRename(templatePath: string, newName: string): Promise<TemplateCommandResult> {
+    const result = await controllerRef.current?.runCommand("template rename", { templatePath, newName });
+    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
+  }
+
+  async function handleTemplateDelete(templatePath: string): Promise<TemplateCommandResult> {
+    const result = await controllerRef.current?.runCommand("template delete", { templatePath });
+    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
+  }
+
   /** slidePath = the current slide's virtual path. Only ever read from a handler that fired while canPlay was true (button disabled otherwise), so currentIndex is never -1 here — but the lookup stays a real check, not an assumed cast. */
   function currentSlidePath(): string | null {
     return canvasState.slides[canvasState.currentIndex] ?? null;
@@ -818,12 +842,12 @@ export function App() {
                   void runRibbonCommand("slide add", {});
                 },
               },
-              ...templates.map((templatePath) => ({
-                key: templatePath,
-                label: templatePath.split("/").pop() ?? templatePath,
+              ...templates.map((template) => ({
+                key: template.file,
+                label: template.name,
                 onSelect: () => {
                   closeRibbonMenu();
-                  void runRibbonCommand("slide add", { templatePath });
+                  void runRibbonCommand("slide add", { templatePath: template.file });
                 },
               })),
             ],
@@ -831,6 +855,7 @@ export function App() {
         ],
       });
     },
+    template: () => setTemplateDialogOpen(true),
     paste: () => {
       const slidePath = currentSlidePath();
       if (!slidePath) return;
@@ -962,6 +987,16 @@ export function App() {
           handlers={ribbonHandlers}
           menu={ribbonMenu}
           onCloseMenu={closeRibbonMenu}
+        />
+      )}
+      {shellVisible && templateDialogOpen && (
+        <TemplateDialog
+          templates={presentationInfo?.templates ?? []}
+          canSaveCurrent={currentSlidePath() !== null}
+          onClose={() => setTemplateDialogOpen(false)}
+          onSaveCurrent={handleTemplateSave}
+          onRename={handleTemplateRename}
+          onDelete={handleTemplateDelete}
         />
       )}
       {shellVisible && liveReloadError && (

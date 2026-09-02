@@ -185,7 +185,7 @@ export interface CanvasController {
    * `/api/events` and drives `reload()` on its own (no optimistic preview
    * here).
    */
-  runCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string }>;
+  runCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string; data?: unknown }>;
   /**
    * Uploads one file's raw bytes to `POST /api/asset` (T3/NOOP-142 — the
    * human asset-import path: file picker, drag/drop, clipboard paste).
@@ -965,7 +965,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * stale error left over from a previous failed Ribbon command — nothing
    * else in view mode clears it otherwise.
    */
-  async function runCommand(name: string, input: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+  async function runCommand(
+    name: string,
+    input: Record<string, unknown>,
+  ): Promise<{ ok: boolean; message: string; data?: unknown }> {
     const result = await postCommand(name, input);
     error = result.ok ? null : result.message;
     if (result.ok && SELECT_AFTER_COMMAND.has(name)) {

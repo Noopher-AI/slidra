@@ -246,6 +246,34 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
   }
 });
 
+it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實際改到 project.json", async () => {
+  const id = await openDeck("template-commands.comot");
+  const server = await serve(id);
+
+  const added = await postCommand(server, {
+    name: "template add",
+    input: { from: "slides/001.svg", name: "封面" },
+  });
+  expect(added.status).toBe(200);
+  expect(added.json.ok).toBe(true);
+  const templatePath = added.json.data.templatePath as string;
+
+  const listed = await postCommand(server, { name: "template list", input: {} });
+  expect(listed.status).toBe(200);
+  expect(listed.json.data.templates).toEqual([{ file: templatePath, name: "封面" }]);
+
+  const renamed = await postCommand(server, {
+    name: "template rename",
+    input: { templatePath, newName: "封面（改）" },
+  });
+  expect(renamed.status).toBe(200);
+  expect((await readProjectJson(id)).templates).toEqual([{ file: templatePath, name: "封面（改）" }]);
+
+  const deleted = await postCommand(server, { name: "template delete", input: { templatePath } });
+  expect(deleted.status).toBe(200);
+  expect((await readProjectJson(id)).templates).toEqual([]);
+});
+
 it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
   const id = await openDeck("style-set.comot");
   const server = await serve(id);

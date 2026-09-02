@@ -101,7 +101,7 @@ async function runScenario(browser: Browser, scenario: FlatScenario): Promise<vo
 }
 
 it(
-  "視覺 QA 場景執行器：跑完 22 個場景，輸出截圖與 manifest",
+  "視覺 QA 場景執行器：跑完 27 個場景，輸出截圖與 manifest",
   async () => {
     await requireBuilt(rootDir);
     const scenarios = flattenScenarios();
