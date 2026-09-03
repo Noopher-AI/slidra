@@ -71,13 +71,16 @@
    the work itself, so it sits full width between them rather than taking
    either side's bubble.
    [E1.T4/#183] Each of the five command states carries a *second*,
-   non-colour cue on `border-left-style` (solid/dashed/double/dotted) so
-   the state reads even without colour vision — spec #180's "loading /
-   success / error must not depend on colour alone" applies to these just
-   as much as to the chat-level error banner below. --accent still marks
-   "in progress" (the one state that is genuinely "現在在哪"); the failed
-   state's border and status text both move to a colour that meets AA
-   (4.5:1) as *text* — --accent-hi measured at 3.85:1 on --s-panel this
+   non-colour cue on `border-left-style` (dashed/solid/groove/double/
+   dotted, one per state) so the state reads even without colour vision —
+   spec #180's "loading / success / error must not depend on colour alone"
+   applies to these just as much as to the chat-level error banner below;
+   in particular "in progress" (solid) and "completed" (groove) must stay
+   distinguishable from each other, not just from failed/pending, since
+   both are otherwise --ink-dim/--accent-toned neutrals. --accent still
+   marks "in progress" (the one state that is genuinely "現在在哪"); the
+   failed state's border and status text both move to a colour that meets
+   AA (4.5:1) as *text* — --accent-hi measured at 3.85:1 on --s-panel this
    round (Plan §3.5), which is why the status text stays --ink and only
    the border itself carries --accent-hi. */
 .chat-command {
@@ -98,6 +101,8 @@
 }
 
 .chat-command-completed {
+  border-left-width: calc(var(--u) * 0.75);
+  border-left-style: groove;
   border-left-color: var(--ink-dim);
 }
 

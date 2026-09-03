@@ -144,7 +144,13 @@ for (const viewport of VIEWPORTS) {
       expect(fillInputBox.height).toBeGreaterThanOrEqual(28);
 
       // V4：頁籤鍵盤取得焦點時顯示 focus-visible 外框，顏色沿用 --focus-ring。
+      // Chromium 的 :focus-visible 啟發式是整頁一個「上一次輸入模態」旗標，不是
+      // 逐元素的——上面 openStyleTabWithSelection 已經點過滑鼠，旗標停在
+      // "pointer"，之後不管對哪個元素呼叫幾次 .focus() 都會是 focus-visible:
+      // false（實測驗證過）。要讓它變回 "keyboard"，得先有一次真的鍵盤事件；
+      // Tab 落在哪個元素不重要，重要的是它把模態旗標翻回鍵盤。
       const styleTab = page.locator('.side-panel-tab[data-tab="style"]');
+      await page.keyboard.press("Tab");
       await styleTab.focus();
       const outlineStyle = await styleTab.evaluate((el) => getComputedStyle(el).outlineStyle);
       expect(outlineStyle).not.toBe("none");
@@ -205,8 +211,16 @@ it("V1/V2/V3/V4/V8：範本對話框內容過多時只有清單捲動，按鈕�
     }));
     expect(dialogOverflow.scrollH).toBeLessThanOrEqual(dialogOverflow.clientH + 1);
 
-    // 標題列在清單捲動後仍然看得到（不隨清單一起被捲走）。
-    await expect(page.locator(".template-dialog-header")).toBeInViewport();
+    // 標題列在清單捲動後仍然看得到（不隨清單一起被捲走）——這個檔案的 expect
+    // 來自 "vitest"，不是 "@playwright/test"，沒有 toBeInViewport 這個 matcher
+    // 可用，所以直接讀標題列相對頁面 viewport 的座標，核對它落在可視範圍內。
+    const viewportSize = page.viewportSize();
+    if (!viewportSize) throw new Error("page 沒有 viewport");
+    const header = page.locator(".template-dialog-header").first();
+    const headerBox = await header.boundingBox();
+    if (!headerBox) throw new Error(".template-dialog-header 沒有 boundingBox");
+    expect(headerBox.y).toBeGreaterThanOrEqual(0);
+    expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(viewportSize.height);
 
     // V1：對話框本身不產生水平溢出。
     const hOverflow = await page.locator(".template-dialog").evaluate((el) => ({
@@ -223,8 +237,11 @@ it("V1/V2/V3/V4/V8：範本對話框內容過多時只有清單捲動，按鈕�
     expect(firstItemButtonBox.width).toBeGreaterThanOrEqual(28);
     expect(firstItemButtonBox.height).toBeGreaterThanOrEqual(28);
 
-    // V4：關閉鈕 focus-visible 外框顏色沿用 --focus-ring。
+    // V4：關閉鈕 focus-visible 外框顏色沿用 --focus-ring。上面已經點過 ribbon
+    // 按鈕，頁面的輸入模態旗標停在 pointer——見 V1/V3/V4 那個 it() 裡的註解，
+    // 先按一次 Tab 把模態翻回 keyboard，.focus() 才會顯示 focus-visible。
     const closeButton = page.locator(".template-dialog-close");
+    await page.keyboard.press("Tab");
     await closeButton.focus();
     const outlineStyle = await closeButton.evaluate((el) => getComputedStyle(el).outlineStyle);
     expect(outlineStyle).not.toBe("none");
