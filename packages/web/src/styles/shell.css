@@ -3,43 +3,70 @@
    Every value below comes from tokens.css's :root — see AGENTS/軍令 #2.
    ═══════════════════════════════════════════════════════════════ */
 
-/* `.app` is a flex column, not the template's own CSS Grid
-   (`grid-template-rows: var(--h-titlebar) auto 1fr var(--h-status)`) —
-   deliberately. Grid row auto-placement assigns each child the *next*
-   numbered row in DOM order; the number of children varies (播放模式 drops
-   TitleBar/Ribbon/live-reload-banner/StatusBar down to just `.body`, and
-   the banners themselves are conditional even outside play mode), so a
-   fixed 4-track grid silently misassigns rows the moment the child count
-   isn't exactly 4 — measured while building this ticket: `.body` ended up
-   squeezed into the 36px titlebar row track. A flex column has no such
-   failure mode: each child sizes off its own CSS regardless of how many
-   siblings are present. */
+/* `.app` is a CSS Grid with *named* areas, not row auto-placement (NOOP-4
+   E1.T2). Auto-placement assigns each child the next numbered row in DOM
+   order; the number of children varies (播放模式 drops
+   TitleBar/Ribbon/.app-notices/StatusBar down to just `.body`, and the
+   notices wrapper itself is conditional even outside play mode), so a
+   fixed N-track grid with unnamed rows silently misassigns rows the
+   moment the child count isn't exactly N — this was measured while
+   building an earlier version of this file: `.body` ended up squeezed
+   into the 36px titlebar row track. Named areas don't have that failure
+   mode: an absent child just leaves its own area's track empty (`auto`
+   collapses to 0), every other child still lands on the area it was
+   assigned regardless of who else is present. */
 .app {
   height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "titlebar"
+    "ribbon"
+    "notices"
+    "body"
+    "status";
   font-family: var(--font);
   font-size: var(--fs-ui);
   color: var(--ink);
   background: var(--s-well);
 }
+/* `.app` must never gain `container-type`: it would make `.app` the
+   containing block for `.template-dialog-backdrop`'s `position: fixed`
+   (template-dialog.css) instead of the viewport. Currently harmless only
+   because `.app` happens to be 100vh — that's a coincidence, not a
+   guarantee, so don't rely on it while adding future rules here. */
 
 /* ── 標題列 (#51) ─────────────────────────────────────────────── */
 .titlebar {
+  grid-area: titlebar;
+  container-type: inline-size;
+  container-name: titlebar;
   height: var(--h-titlebar);
-  flex-shrink: 0;
   background: var(--s-titlebar);
   border-bottom: 1px solid var(--line-soft);
   display: flex;
   align-items: center;
-  padding: 0 calc(var(--u) * 3);
+  padding-inline: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
   gap: calc(var(--u) * 3);
   box-sizing: border-box;
 }
+/* ≥1800px: 標題列在 2560×1440 這類寬視窗下確實會觸發，多留一點呼吸空間。
+   <720px：低於本票支援範圍（1280–2560）的安全網，不是功能。 */
+@container titlebar (width >= 1800px) {
+  .titlebar {
+    gap: calc(var(--u) * 5);
+  }
+}
+@container titlebar (width < 720px) {
+  .titlebar {
+    gap: calc(var(--u) * 2);
+  }
+}
 .mark {
   font-size: var(--fs-small);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-brand);
   color: var(--accent-hi);
 }
 .deck-name {
@@ -67,20 +94,17 @@
   flex-shrink: 0;
 }
 .agent-dot i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  width: calc(var(--u) * 1.5);
+  height: calc(var(--u) * 1.5);
+  border-radius: var(--r-round);
   background: var(--ink-faint);
 }
-/* "已連線" only — the one state base-shell.html itself shows. #4a8f45 and
-   its wash are copied verbatim from the template's own `.agent-dot i` rule
-   (same literal-copy exception already used for `.canvas-area:fullscreen`'s
-   #000 below), not a new colour invented here. "connecting"/"disconnected"
-   have no template precedent, so they stay on existing ink tokens instead
-   of inventing amber/red. */
+/* "已連線" only — the one state base-shell.html itself shows.
+   "connecting"/"disconnected" have no template precedent, so they stay on
+   existing ink tokens instead of inventing amber/red. */
 .agent-dot-connected i {
-  background: #4a8f45;
-  box-shadow: 0 0 0 2px rgba(74, 143, 69, 0.18);
+  background: var(--status-ok);
+  box-shadow: 0 0 0 2px var(--status-ok-glow);
 }
 .agent-dot-connecting i {
   background: var(--ink-dim);
@@ -91,8 +115,18 @@
 
 /* ── ribbon (#51) ───────────────────────────────────────────────── */
 .ribbon {
-  flex-shrink: 0;
+  grid-area: ribbon;
+  container-type: inline-size;
+  container-name: ribbon;
   position: relative;
+  /* `container-type: inline-size` applies `contain: layout`, which makes
+     `.ribbon` a new stacking context — without an explicit z-index here,
+     `.ribbon-menu`'s z-index:20 (below) would be trapped inside that
+     context and lose to `.canvas-area` (position:relative, opaque
+     background, later in DOM). 10 sits above every canvas-area-side layer
+     (stage selection layer is 5) and below `.template-dialog-backdrop`
+     (20, fixed — outside this stacking context anyway). */
+  z-index: 10;
   background: var(--s-ribbon);
   border-bottom: 1px solid var(--line);
 }
@@ -105,49 +139,59 @@
 }
 .tab {
   padding: 0 calc(var(--u) * 3);
+  min-height: calc(var(--u) * 7);
   color: var(--ink-dim);
-  border-bottom: 2px solid transparent;
+  border-bottom: calc(var(--u) / 2) solid transparent;
   font-size: var(--fs-ui);
-}
-.tab:hover {
-  color: var(--ink);
-}
-.tab[aria-selected="true"] {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
 }
 
 .groups {
   height: var(--h-ribbon);
   display: flex;
   align-items: stretch;
-  padding: 0 var(--u);
+  padding-inline: clamp(var(--u), 0.6cqi, calc(var(--u) * 4));
+}
+/* 支援範圍內（1280–2560）不會觸發；低於支援範圍時讓命令換行而不是把它們
+   裁掉或縮小（AC 明文禁止用縮小文字/點擊區換空間）。880px 取自「常用」
+   頁籤（8 顆 .cmd，最寬的一頁）實測 scrollWidth 後留出的餘裕。 */
+@container ribbon (width < 880px) {
+  .groups {
+    height: auto;
+    min-height: var(--h-ribbon);
+    flex-wrap: wrap;
+    align-content: flex-start;
+  }
 }
 .group {
   display: flex;
   align-items: center;
   gap: var(--u);
-  padding: 0 calc(var(--u) * 2) calc(var(--u) * 4);
+  padding-inline: clamp(calc(var(--u) * 2), 0.5cqi, calc(var(--u) * 4));
+  padding-block-end: calc(var(--u) * 4);
   position: relative;
 }
 .group + .group::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 22px;
+  top: calc(var(--u) * 2);
+  bottom: calc(var(--u) * 5.5);
   border-left: 1px solid var(--line-soft);
 }
 .group-label {
   position: absolute;
-  bottom: 4px;
+  bottom: var(--u);
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-faint);
 }
 
+/* 72×58 是刻意的定值，不隨視窗放大：螢幕變大時應該是舞台變大，不是工具
+   列跟著變大——那只是把浪費從邊界移到按鈕上，AC「一般圖示控制項至少
+   28×28px」也因此在三個支援尺寸下都是同一個固定值，不是隨視窗浮動的
+   數字。 */
 .cmd {
   width: 72px;
   height: 58px;
@@ -159,25 +203,8 @@
   border-radius: var(--r);
   color: var(--ink);
   font-size: var(--fs-small);
-  line-height: 1.15;
+  line-height: var(--lh-tight);
   text-align: center;
-}
-.cmd svg {
-  width: 20px;
-  height: 20px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.4;
-}
-.cmd:not(:disabled):hover {
-  background: var(--s-raised);
-}
-.cmd:disabled {
-  color: var(--ink-faint);
-  cursor: default;
-}
-.cmd:disabled svg {
-  opacity: 0.55;
 }
 /* 新增投影片 / 圖案 / 排列 下拉選單 (NOOP-141). Anchored to the owning .group
    (already `position: relative`), so it needs no measurement — it simply
@@ -194,7 +221,7 @@
   background: var(--s-panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow-pop);
 }
 .ribbon-menu-group + .ribbon-menu-group {
   margin-top: calc(var(--u) * 1.5);
@@ -203,18 +230,17 @@
 }
 .ribbon-menu-group-label {
   padding: 0 calc(var(--u) * 1);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-faint);
 }
 .ribbon-menu-item {
+  min-height: calc(var(--u) * 7);
   padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
   border-radius: var(--r);
   color: var(--ink);
   font-size: var(--fs-small);
   text-align: left;
-}
-.ribbon-menu-item:hover {
-  background: var(--s-raised);
+  box-sizing: border-box;
 }
 .ribbon-notice {
   position: absolute;
@@ -228,13 +254,23 @@
   font-size: var(--fs-small);
 }
 
+/* 全域通知 wrapper（NOOP-4 E1.T2 新增）：`.app` 只有一格 `notices` grid
+   area，而四條 live-reload-banner（即時預覽/簡報資訊/canvas 錯誤/編輯
+   凍結）可以同時成立——不包起來會全部疊在同一格互相覆蓋。純版面用途，
+   本身不參與任何 e2e 選擇器，內部無可聚焦元素，不影響 Tab 順序。 */
+.app-notices {
+  grid-area: notices;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 /* 即時預覽/簡報資訊 錯誤橫幅 — carried forward from wave 1's gate finding:
    was hard-coded #5c1a1a/#fff/rem, now token-driven like every other error
    surface in the app (same neutral-raised pattern as .player-error-notice
    in ../style.css — no dedicated error-red token exists to invent one
-   with). Sits between the ribbon and the body, in the grid's `auto` row. */
+   with). Stacked inside `.app-notices`, between the ribbon and the body. */
 .live-reload-banner {
-  flex-shrink: 0;
   padding: calc(var(--u) * 2) calc(var(--u) * 3);
   background: var(--s-raised);
   border-bottom: 1px solid var(--line);
@@ -243,24 +279,42 @@
 }
 
 /* ── 中段三欄 ────────────────────────────────────────────────── */
+/* 左右兩欄維持 `var(--w-rail)` / `var(--w-chat)` 定值，不做 clamp()：兩者
+   內部元素（縮圖、對話面板）目前是定寬版面，讓軌道流動會讓它們溢出。
+   讓縮圖軌／側欄本身可流動是後續票（E1.T4/E1.T5）的事，屆時 `.body` 需
+   改用具名 grid area（見下方 auto-placement 的說明）。中間那條是本票唯一
+   要響應式的軌道。 auto-placement（沒有具名 area）在這裡是安全的：三個
+   子元素（.overview / .main / .side-panel）共用同一個 shellVisible 閘門
+   （見 App.tsx），要嘛三個都在、要嘛只剩 `.main`——後者已由 play.css 的
+   `.app[data-mode="play"] .body { grid-template-columns: 1fr }` 覆蓋成單
+   欄，不受這裡影響。 */
 .body {
-  flex: 1;
+  grid-area: body;
+  min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--w-rail) 1fr var(--w-chat);
+  grid-template-columns: var(--w-rail) minmax(0, 1fr) var(--w-chat);
 }
 
 /* `min-height: 0`（gate round 2 finding, #50）：沒有這行，`.main` 作為
    `.body` 那顆隱含 grid row 的 item，其自動最小尺寸取決於內容的
    min-content（`.canvas-area` 裡 `.stage` 靠 aspect-ratio 撐出的高度），
    使 `.main` 永遠不會縮到比內容矮——視窗變矮時 `.body`（實際可用高度已
-   被上層 flex 夾到 100vh 以內）容不下，`.main` 溢出到文件底部，長出
+   被上層 grid 夾在視窗內）容不下，`.main` 溢出到文件底部，長出
    document-level 捲軸，`.stage` 的下緣因此掉出視窗（違反 #50 AC 2）。量測
    證實：1440×600 時 `.main` 卡在 650.5px 高，`.body` 只給了 422px。加這行
-   後 `.main` 才會真的隨可用空間縮小。 */
+   後 `.main` 才會真的隨可用空間縮小。
+
+   兩列維持定義：第一列（舞台可用區）用 `minmax(0, 1fr)` 吸收所有多出來
+   的垂直空間，第二列（備忘稿）維持 `var(--h-notes)` 定值——多出來的空間
+   全部給舞台，不是給備忘稿。這是本票交付給 E1.T3 的既定介面：`.main` 是
+   兩列 grid，`.canvas-area` 是它的直接子元素，中間不得插入 wrapper（見
+   `.canvas-area` 上面的 `grid.css:105` `:has()` 直接子代選擇器約束）。
+   `grid.css`／`play.css` 會把這兩列覆蓋成 `1fr`，這沒問題：`.canvas-area`
+   自己已有 `min-height: 0`，`1fr` 與 `minmax(0,1fr)` 在此等價。 */
 .main {
   display: grid;
-  grid-template-rows: 1fr var(--h-notes);
+  grid-template-rows: minmax(0, 1fr) var(--h-notes);
   min-width: 0;
   min-height: 0;
 }
@@ -337,79 +391,136 @@
 
 /* ── 狀態列 (#53) ─────────────────────────────────────────────── */
 .status {
-  height: var(--h-status);
-  flex-shrink: 0;
+  grid-area: status;
+  container-type: inline-size;
+  container-name: status;
+  /* --h-status 是 26px，早於 AC 的 28px 點擊區下限；tokens.css 不在本票
+     改動範圍，所以地板寫在這裡。max() 讓 --h-status 一旦調大會自動接手，
+     不代表這裡偷改了 token 的語意。 */
+  min-height: max(var(--h-status), calc(var(--u) * 8));
   background: var(--s-titlebar);
   border-top: 1px solid var(--line-soft);
   display: flex;
   align-items: center;
-  gap: calc(var(--u) * 4);
-  padding: 0 calc(var(--u) * 3);
+  gap: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
+  padding-inline: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
   color: var(--ink-dim);
   font-size: var(--fs-small);
   box-sizing: border-box;
 }
+@container status (width < 640px) {
+  .status {
+    gap: calc(var(--u) * 2);
+  }
+}
 .status .spacer {
   flex: 1;
 }
+/* D7：極長的選取名稱過去會把 .slide-nav-*／.views 推出視窗 */
 .status .sel-name {
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .views {
   display: flex;
-  gap: 1px;
+  gap: calc(var(--u) / 4);
 }
 .view-btn {
-  width: 26px;
-  height: 20px;
+  width: calc(var(--u) * 7);
+  height: calc(var(--u) * 7);
   display: grid;
   place-items: center;
-  border-radius: 2px;
+  border-radius: var(--r-control);
   color: var(--ink-dim);
-}
-.view-btn svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.4;
-}
-.view-btn:hover {
-  background: var(--s-raised);
-  color: var(--ink);
-}
-.view-btn[aria-pressed="true"] {
-  background: var(--s-raised);
-  color: var(--accent-hi);
-}
-.view-btn:disabled {
-  color: var(--ink-faint);
-  cursor: default;
 }
 
 /* 檢視模式的 ‹ › 翻頁鈕：偏離 base-shell.html 的狀態列版面（樣板沒有它們）
    — 見 PR body 的「與樣板的偏離」說明，class 名稱沿用 #25/#29 既有的
    e2e 契約，原樣移入。 */
 .slide-nav-button {
-  padding: calc(var(--u) * 1) calc(var(--u) * 2);
+  min-inline-size: calc(var(--u) * 7);
+  min-block-size: calc(var(--u) * 7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: calc(var(--u) * 2);
+  box-sizing: border-box;
   font-size: var(--fs-lead);
-  line-height: 1.2;
+  line-height: var(--lh-ui);
   cursor: pointer;
   color: var(--ink-dim);
   border-radius: var(--r);
-}
-.slide-nav-button:hover:not(:disabled) {
-  background: var(--s-raised);
-  color: var(--ink);
-}
-.slide-nav-button:disabled {
-  cursor: default;
-  color: var(--ink-faint);
 }
 .slide-nav-position {
   font-size: var(--fs-ui);
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── 互動狀態 (NOOP-4 E1.T2)：default/hover/active/focus-visible/selected/
+   disabled 統一經由共用語意 token 套用，涵蓋標題列以下所有互動控制項。
+   只過場顏色類屬性 → 互動結果不等待動畫（AC 最後一條）。
+   prefers-reduced-motion 由 tokens.css 的兩層機制（token 歸零 + `*` 安全
+   網）自動處理，這裡不需要也不應該再寫一個 @media。 ─────────────── */
+.tab,
+.cmd,
+.ribbon-menu-item,
+.view-btn,
+.slide-nav-button {
+  transition:
+    background-color var(--dur-micro) var(--ease-micro),
+    color var(--dur-micro) var(--ease-micro),
+    border-color var(--dur-micro) var(--ease-micro),
+    outline-color var(--dur-micro) var(--ease-micro);
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+.cmd:not(:disabled):hover,
+.view-btn:not(:disabled):hover,
+.slide-nav-button:not(:disabled):hover,
+.ribbon-menu-item:hover {
+  background: var(--s-raised);
+  color: var(--ink);
+}
+
+.cmd:not(:disabled):active,
+.view-btn:not(:disabled):active,
+.slide-nav-button:not(:disabled):active,
+.ribbon-menu-item:active {
+  background: var(--s-sunken);
+}
+
+.tab:focus-visible,
+.cmd:focus-visible,
+.ribbon-menu-item:focus-visible,
+.view-btn:focus-visible,
+.slide-nav-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.view-btn[aria-pressed="true"] {
+  background: var(--s-raised);
+  color: var(--accent-hi);
+}
+
+.cmd:disabled,
+.view-btn:disabled,
+.slide-nav-button:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+.cmd:disabled svg {
+  opacity: 0.55;
 }
 
 /* ── 播放模式浮動控制列 (#53/#54 交界，見 PR body) ─────────────── */

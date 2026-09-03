@@ -1,3 +1,5 @@
+import type { IconName } from "../icons/index.js";
+
 export type RibbonTabId = "home" | "insert" | "transitions" | "show";
 
 /** Every ribbon button's stable id (19 total); T2–T7 add one handler entry per id. */
@@ -25,7 +27,7 @@ export type RibbonCmdId =
 export interface RibbonCmd {
   id: RibbonCmdId;
   label: string;
-  icon: string;
+  icon: IconName;
 }
 
 export interface RibbonGroup {
