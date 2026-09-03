@@ -5,5 +5,32 @@
    without touching the frozen stylesheet. */
 .status .sel-name b {
   color: var(--accent-hi);
-  font-weight: 400;
+  /* E1.T3: a second, non-colour channel for the selected element's name —
+     it no longer relies on --accent-hi alone. */
+  font-weight: var(--fw-medium);
 }
+
+/* E1.T3 契約文件：畫布內選取／控制點／文字游標／文字選取／對齊參考線的
+   色彩已經從語意 token 讀取後傳入既有 runtime（本輪不改程式碼，這裡只
+   記錄現況，讓契約有紀錄而不是散在三個檔案裡口耳相傳）：
+     tokens.css --accent-hi / --s-titlebar
+       → canvas.ts selectionColors()（getComputedStyle(document.documentElement)）
+       → canvas.ts wrapSelectionDocument()（序列化成
+         window.__COMOT_SELECTION_COLORS__，注入 srcdoc）
+       → selection-runtime.js（shadow root 內的 <style>，零色碼字面值）
+   每種提示都另有一個非色彩的辨識通道，不是同一個東西換顏色：
+     .sel            單選取框：1px 實線 + 四角 7px 方塊
+     .sel-multi      多選取框：2px 實線 + 15% 填色
+     .marquee        框選：虛線 + 12% 填色
+     .group-frame    群組框：虛線
+     .guide          對齊參考線：出現／消失＋位置（拖曳吸附時才出現）
+     .handle         縮放／旋轉／文字框寬把手：形狀分工（corner 方形、
+                     rotate 圓形、edge 方形＋各自 cursor）
+     .edit-frame     編輯框：虛線
+     .edit-caret     文字游標：2px 直立細條 + step-end 閃爍動畫
+     .edit-selection 文字選取：30% 填色塊
+   tokens.css 已備好 --select-outline / --select-outline-width /
+   --select-fill / --focus-ring 等語意選取 token，但 canvas.ts 目前吃的是
+   --accent-hi（重點色）與 --s-titlebar（標題列表面色）。把 runtime 換成
+   語意正確的 token 需要改 canvas.ts:1961-1962，而 canvas.ts 不在本票
+   （E1.T3）改動範圍內——這是留給另一張票的 token 語意升級，本輪不動。 */
