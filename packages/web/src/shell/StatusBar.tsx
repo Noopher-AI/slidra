@@ -1,7 +1,6 @@
 import type { CanvasController, CanvasState } from "../canvas.js";
+import { Icon } from "../icons/index.js";
 import type { ShellView } from "./view.js";
-
-// Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
 
 export interface StatusBarProps {
   state: CanvasState;
@@ -91,10 +90,7 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
           title="標準"
           onClick={() => handleViewClick("normal")}
         >
-          <svg viewBox="0 0 16 16">
-            <rect x="1.5" y="2.5" width="4" height="11" />
-            <rect x="7.5" y="2.5" width="7" height="11" />
-          </svg>
+          <Icon name="view-normal" size="inline" />
         </button>
         <button
           type="button"
@@ -104,12 +100,7 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
           title="總覽網格"
           onClick={() => handleViewClick("grid")}
         >
-          <svg viewBox="0 0 16 16">
-            <rect x="1.5" y="2.5" width="5.5" height="4.5" />
-            <rect x="9" y="2.5" width="5.5" height="4.5" />
-            <rect x="1.5" y="9" width="5.5" height="4.5" />
-            <rect x="9" y="9" width="5.5" height="4.5" />
-          </svg>
+          <Icon name="view-grid" size="inline" />
         </button>
         <button
           type="button"
@@ -120,9 +111,7 @@ export function StatusBar({ state, controller, view, onViewChange, onExitPlay }:
           disabled={!hasSlides}
           onClick={() => handleViewClick("play")}
         >
-          <svg viewBox="0 0 16 16">
-            <path d="M4 2.5 L13 8 L4 13.5 Z" />
-          </svg>
+          <Icon name="view-play" size="inline" />
         </button>
       </div>
     </footer>

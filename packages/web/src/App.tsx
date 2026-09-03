@@ -1010,23 +1010,27 @@ export function App() {
           onDelete={handleTemplateDelete}
         />
       )}
-      {shellVisible && liveReloadError && (
-        <div role="alert" className="live-reload-banner">
-          即時預覽已停止：{liveReloadError}，請重新整理頁面
+      {shellVisible && (
+        <div className="app-notices">
+          {liveReloadError && (
+            <div role="alert" className="live-reload-banner">
+              即時預覽已停止：{liveReloadError}，請重新整理頁面
+            </div>
+          )}
+          {presentationError && (
+            <div role="alert" className="live-reload-banner">
+              簡報資訊載入失敗：{presentationError}
+            </div>
+          )}
+          {canvasState.error && (
+            <div role="alert" className="live-reload-banner canvas-error-banner">
+              {canvasState.error}
+            </div>
+          )}
+          {editingFrozen && (
+            <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
+          )}
         </div>
-      )}
-      {shellVisible && presentationError && (
-        <div role="alert" className="live-reload-banner">
-          簡報資訊載入失敗：{presentationError}
-        </div>
-      )}
-      {shellVisible && canvasState.error && (
-        <div role="alert" className="live-reload-banner canvas-error-banner">
-          {canvasState.error}
-        </div>
-      )}
-      {shellVisible && editingFrozen && (
-        <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
       )}
       <div className="body">
         {/* #54 (wave 4): now absent from the DOM in 播放模式, unlike the

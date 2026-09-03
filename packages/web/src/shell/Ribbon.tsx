@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "../icons/index.js";
 import { RIBBON, TABS, type RibbonCmdId, type RibbonHandlers, type RibbonTabId } from "./ribbon-commands.js";
-
-// Icons are hand-drawn in this repo (traced from docs/design/base-shell.html); no third-party icon art.
 
 /** One selectable row inside a ribbon dropdown (新增投影片 / 圖案 / 排列 — NOOP-141). */
 export interface RibbonMenuItem {
@@ -37,27 +36,6 @@ export interface RibbonProps {
   menu: RibbonMenuState | null;
   onCloseMenu(): void;
 }
-
-/** SVG path fragments (viewBox 0 0 20 20), traced from base-shell.html's `const I`. */
-const ICON: Record<string, string> = {
-  plus: '<path d="M10 4v12M4 10h12"/>',
-  template: '<rect x="3" y="2.5" width="14" height="15"/><path d="M6 6.5h8M6 10h8M6 13.5h5"/>',
-  paste: '<rect x="5" y="3" width="10" height="14"/><path d="M8 3V1.5h4V3"/>',
-  cut: '<circle cx="5" cy="15" r="2"/><circle cx="15" cy="15" r="2"/><path d="M6 13.5L14 3M14 13.5L6 3"/>',
-  copy: '<rect x="3" y="3" width="9" height="11"/><path d="M6 16h8V6"/>',
-  textbox: '<rect x="2.5" y="5" width="15" height="10"/><path d="M7 8h6M10 8v4"/>',
-  shape: '<circle cx="7" cy="7" r="4.5"/><rect x="8" y="9" width="8" height="8"/>',
-  arrange: '<rect x="2.5" y="2.5" width="9" height="9"/><rect x="8" y="8" width="9" height="9"/>',
-  image: '<rect x="2.5" y="3.5" width="15" height="13"/><circle cx="7" cy="8" r="1.5"/><path d="M3 15l5-5 4 4 2-2 3 3"/>',
-  video: '<rect x="2.5" y="4.5" width="10" height="11"/><path d="M13 8l4.5-2.5v9L13 12z"/>',
-  audio: '<path d="M4 8v4h3l4 3.5V4.5L7 8z"/><path d="M13.5 7.5a4 4 0 010 5"/>',
-  number: '<rect x="2.5" y="3.5" width="15" height="13"/><path d="M12 14h3"/>',
-  none: '<circle cx="10" cy="10" r="7"/><path d="M5 15L15 5"/>',
-  fade: '<circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 010 14z" fill="currentColor" stroke="none" opacity=".5"/>',
-  fromstart: '<path d="M6 4l9 6-9 6z"/><path d="M3 4v12"/>',
-  fromhere: '<path d="M5 4l9 6-9 6z"/>',
-  fullscr: '<path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/>',
-};
 
 /** How long the "尚未接上" notice stays before auto-dismissing. */
 const NOTICE_DURATION_MS = 2500;
@@ -165,7 +143,7 @@ export function Ribbon({
                   title={run ? undefined : "尚未實作"}
                   onClick={() => (run ? run() : showNotImplementedNotice())}
                 >
-                  <svg viewBox="0 0 20 20" dangerouslySetInnerHTML={{ __html: ICON[cmd.icon] }} />
+                  <Icon name={cmd.icon} size="command" />
                   <span>{cmd.label}</span>
                 </button>
               );
