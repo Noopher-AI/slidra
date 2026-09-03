@@ -9,6 +9,18 @@ RUN if getent passwd node >/dev/null; then userdel -r node; fi \
     && if getent group node >/dev/null; then groupdel node; fi \
     && useradd -m -u ${UID} -s /bin/bash dev
 
+# The GitHub CLI is used to drive PR/workflow automation (create/inspect
+# PRs, trigger and watch e2e.yml runs) from inside the sandbox; it isn't
+# part of the base Node image and isn't an npm dependency, so it belongs
+# here as a system package.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+    && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Playwright's browser builds need a set of shared libraries that aren't in
 # the base Node image. `playwright install-deps` is the project's own tool
 # for resolving that list per-distro; running it here (as root, at build
