@@ -473,8 +473,10 @@
   transition:
     background-color var(--dur-micro) var(--ease-micro),
     color var(--dur-micro) var(--ease-micro),
-    border-color var(--dur-micro) var(--ease-micro),
-    outline-color var(--dur-micro) var(--ease-micro);
+    border-color var(--dur-micro) var(--ease-micro);
+  /* outline-color is deliberately not transitioned: the ring would fade in
+     from currentColor, so a keyboard focus reads as grey before it turns
+     --accent. */
 }
 
 .tab:hover {
