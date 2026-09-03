@@ -1,0 +1,11 @@
+{
+  "name": "co-motion",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": { "UID": "1000" }
+  },
+  "containerEnv": {
+    "PLAYWRIGHT_BROWSERS_PATH": "0"
+  },
+  "postCreateCommand": "export PLAYWRIGHT_BROWSERS_PATH=0 && npm ci --no-audit --fund=false && npx playwright install chromium"
+}
