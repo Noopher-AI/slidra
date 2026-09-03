@@ -12,6 +12,13 @@
   overflow-y: auto;
   border-right: 1px solid var(--line-soft);
   background: var(--s-panel);
+  /* Inline size is pinned to --w-rail across all three supported
+     viewports (shell.css's `.body` grid), so an inline-size query here
+     would never fire. Height is the only axis that actually varies —
+     `container-type: size` is safe because `.overview`'s own height
+     comes from `.body`'s grid stretch, not from its own content. */
+  container-type: size;
+  container-name: rail;
 }
 
 .overview-list {
@@ -25,22 +32,45 @@
 
 .overview-item {
   display: grid;
-  grid-template-columns: 20px 1fr;
+  grid-template-columns: calc(var(--u) * 5) 1fr;
   gap: calc(var(--u) * 2);
   align-items: start;
   padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  position: relative;
+  transition: background-color var(--dur-micro) var(--ease-micro);
+}
+
+.overview-item:hover {
+  background: var(--s-raised);
+}
+
+/* Current slide's second, non-colour signal: a left-edge marker. Absolutely
+   positioned so it doesn't shift the thumbnail's own box (keeps the
+   overview-current-thumb.png baseline untouched). */
+.overview-item-current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(var(--u) * 1.5);
+  bottom: calc(var(--u) * 1.5);
+  width: calc(var(--u) * 0.75);
+  background: var(--accent-hi);
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+  pointer-events: none;
 }
 
 .overview-number {
   text-align: right;
   padding-top: calc(var(--u) * 1);
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
 
 .overview-item-current .overview-number {
   color: var(--ink);
+  /* Current slide's third, non-colour signal: a heavier page number. */
+  font-weight: var(--fw-medium);
 }
 
 .overview-thumb {
@@ -56,16 +86,32 @@
   height: auto;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: var(--r-control);
   /* #000 (not a token) is copied verbatim from base-shell.html's own
      .thumb rule — the placeholder colour before a thumbnail's iframe has
      painted anything, same literal-copy exception used in shell.css's
      .stage/.canvas-area:fullscreen comments. */
-  background: #000;
+  background: var(--s-blackout);
   cursor: pointer;
   overflow: hidden;
   outline: 2px solid transparent;
   outline-offset: 1px;
+  /* Only border-color transitions — not outline-color, for the same
+     reason as shell.css's .cmd rules: outline is reserved for the
+     current-slide indicator, and fading it from currentColor would make
+     keyboard focus look grey for a moment before it settles. */
+  transition: border-color var(--dur-micro) var(--ease-micro);
+}
+
+.overview-thumb:active {
+  border-color: var(--accent-hi);
+}
+
+/* box-shadow, not outline: `outline` on this element is reserved for the
+   "current slide" indicator (see .overview-item-current .overview-thumb
+   below, locked by e2e/shell.test.ts). */
+.overview-thumb:focus-visible {
+  box-shadow: 0 0 0 calc(var(--focus-ring-width) * 2) var(--focus-ring);
 }
 
 .overview-item-current .overview-thumb {
@@ -80,4 +126,28 @@
   height: 100%;
   border: 0;
   pointer-events: none;
+}
+
+/* `.overview`'s inline size is a fixed `--w-rail` at every supported
+   viewport (shell.css's `.body` grid columns), so height is the only axis
+   worth querying. 1440×900 (the middle of the three supported sizes)
+   falls between these two thresholds on purpose, so its baseline
+   screenshot stays pixel-identical. */
+@container rail (height < 620px) {
+  .overview-list {
+    gap: var(--u);
+    padding-block: var(--u);
+  }
+  .overview-item {
+    padding-block: var(--u);
+  }
+}
+
+@container rail (height >= 1100px) {
+  .overview-list {
+    gap: calc(var(--u) * 2.5);
+  }
+  .overview-item {
+    padding-block: calc(var(--u) * 2.5);
+  }
 }

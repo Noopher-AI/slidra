@@ -363,6 +363,8 @@
   padding: calc(var(--u) * 7);
   overflow: hidden;
   background: var(--s-well);
+  container-type: inline-size;
+  container-name: well;
 }
 .canvas {
   display: block;
@@ -385,7 +387,7 @@
 .canvas-area:-webkit-full-screen {
   width: 100vw;
   height: 100vh;
-  background: #000;
+  background: var(--s-blackout);
   padding: 0;
 }
 

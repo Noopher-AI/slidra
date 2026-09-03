@@ -356,3 +356,126 @@ it("A6：.tab 取得鍵盤焦點時顯示 focus-visible 外框，顏色沿用 --
     await cleanup();
   }
 });
+
+// ─── E1.T3：編輯工作區（縮圖軌／舞台／備忘稿）視覺更新 ──────────────────
+// 下方 it() 標題裡的 A1–A6 是本票（NOOP-22 / GitHub #184）自己的驗收清單編
+// 號，與上面 E1.T2 的 A1–A7 是兩套不同的編號，只是巧合共用同一個檔案。
+
+it("E1.T3 A1：縮圖軌／舞台／備忘稿在三個尺寸下皆無區域級水平捲軸", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    for (const viewport of VIEWPORTS) {
+      const page = await openApp(server, viewport);
+      for (const selector of [".overview", ".canvas-area", ".notes"]) {
+        const region = await page.evaluate((sel) => {
+          const el = document.querySelector(sel) as HTMLElement;
+          return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+        }, selector);
+        expect(region.scrollWidth).toBeLessThanOrEqual(region.clientWidth + 1);
+      }
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("E1.T3 A2：縮圖點擊區在三個尺寸下寬高皆 ≥28px", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    for (const viewport of VIEWPORTS) {
+      const page = await openApp(server, viewport);
+      const thumbBoxes = await page
+        .locator("button.overview-thumb")
+        .evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map(({ width, height }) => ({ width, height })));
+      expect(thumbBoxes.length).toBeGreaterThan(0);
+      for (const box of thumbBoxes) {
+        expect(box.width).toBeGreaterThanOrEqual(28);
+        expect(box.height).toBeGreaterThanOrEqual(28);
+      }
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("E1.T3 A3：目前投影片除既有的 outline 色之外，還有兩個非色彩的辨識通道", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server, VIEWPORTS[1]);
+
+    const markerWidth = await page
+      .locator("li.overview-item-current")
+      .evaluate((el) => getComputedStyle(el, "::before").width);
+    expect(markerWidth).not.toBe("0px");
+    const markerContent = await page
+      .locator("li.overview-item-current")
+      .evaluate((el) => getComputedStyle(el, "::before").content);
+    expect(markerContent).not.toBe("none");
+
+    const currentWeight = await page.locator("li.overview-item-current .overview-number").evaluate((el) => getComputedStyle(el).fontWeight);
+    const otherWeight = await page
+      .locator("li.overview-item:not(.overview-item-current) .overview-number")
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontWeight);
+    expect(currentWeight).not.toBe(otherWeight);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("E1.T3 A4：縮圖鍵盤焦點顯示未被裁切的可見焦點框", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const page = await openApp(server, VIEWPORTS[1]);
+    const firstThumb = page.locator("button.overview-thumb").first();
+    await firstThumb.focus();
+
+    const boxShadow = await firstThumb.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(boxShadow).not.toBe("none");
+
+    const itemBox = await page.locator("li.overview-item").first().boundingBox();
+    const overviewBox = await page.locator(".overview").boundingBox();
+    if (!itemBox || !overviewBox) throw new Error("量不到 .overview-item 或 .overview 的 boundingBox");
+    expect(itemBox.x).toBeGreaterThanOrEqual(overviewBox.x);
+    expect(itemBox.x + itemBox.width).toBeLessThanOrEqual(overviewBox.x + overviewBox.width);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("E1.T3 A5：舞台在三個尺寸下維持投影片比例", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    for (const viewport of VIEWPORTS) {
+      const page = await openApp(server, viewport);
+      const stageBox = await page.locator(".stage").boundingBox();
+      if (!stageBox) throw new Error("量不到 .stage 的 boundingBox");
+      expect(stageBox.width / stageBox.height).toBeCloseTo(1280 / 720, 1);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+it("E1.T3 A6：舞台與縮圖軌的密度隨可用空間切換（container query 生效）", async () => {
+  const { server, cleanup } = await startServerFor(demoDir);
+  try {
+    const paddings: number[] = [];
+    const gaps: number[] = [];
+    for (const viewport of VIEWPORTS) {
+      const page = await openApp(server, viewport);
+      const paddingLeft = await page.locator(".canvas-area").evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
+      const rowGap = await page.locator(".overview-list").evaluate((el) => parseFloat(getComputedStyle(el).rowGap));
+      paddings.push(paddingLeft);
+      gaps.push(rowGap);
+    }
+    const [p1280, p1440, p2560] = paddings;
+    expect(p1280).toBeLessThan(p1440);
+    expect(p1440).toBeLessThan(p2560);
+
+    const [g1280, , g2560] = gaps;
+    expect(g1280).toBeLessThan(g2560);
+  } finally {
+    await cleanup();
+  }
+});
