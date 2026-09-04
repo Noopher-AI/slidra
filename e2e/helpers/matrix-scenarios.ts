@@ -47,6 +47,14 @@ async function switchToGrid(page: Page): Promise<void> {
 }
 
 export function matrixScenarios(deps: MatrixScenarioDeps): MatrixScenario[] {
+  // template-dialog's server (and so its presentationId) is shared across all three
+  // viewports for that one scenario (visual-matrix.test.ts §4.4 決定 9), but arrive()
+  // runs once per viewport — without this guard, "template add" would fire 3 times
+  // against the same presentation and each viewport's baseline would show a different
+  // template count (found via the update_baselines artifact: viewport 2's screenshot
+  // already had 2 entries). One dispatch per presentation, not per arrive() call.
+  const templatedPresentations = new Set<string>();
+
   const scenarios: MatrixScenario[] = [
     {
       id: "standard",
@@ -132,12 +140,15 @@ export function matrixScenarios(deps: MatrixScenarioDeps): MatrixScenario[] {
       id: "template-dialog",
       deckDir: deps.demoDir,
       arrive: async (page, ctx) => {
-        const added = await ctx.registry.dispatch<{ templatePath: string }>("template add", {
-          id: ctx.presentationId,
-          from: "slides/001.svg",
-          name: "矩陣基準用範本",
-        });
-        if (!added.ok) throw new Error(`template add 失敗：${added.message}`);
+        if (!templatedPresentations.has(ctx.presentationId)) {
+          const added = await ctx.registry.dispatch<{ templatePath: string }>("template add", {
+            id: ctx.presentationId,
+            from: "slides/001.svg",
+            name: "矩陣基準用範本",
+          });
+          if (!added.ok) throw new Error(`template add 失敗：${added.message}`);
+          templatedPresentations.add(ctx.presentationId);
+        }
 
         await page.locator('.tab:has-text("常用")').click();
         await page.locator('.cmd:has-text("範本")').click();
