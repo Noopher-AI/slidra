@@ -317,6 +317,8 @@
   grid-template-rows: minmax(0, 1fr) var(--h-notes);
   min-width: 0;
   min-height: 0;
+  container-type: inline-size;
+  container-name: main;
 }
 
 /* 舞台底＝全螢幕目標＝播放黑幕容器 (#29 契約，見 App.tsx 的 wellRef 註解)。

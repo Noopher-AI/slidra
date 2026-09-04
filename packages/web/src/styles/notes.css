@@ -8,10 +8,6 @@
   flex-direction: column;
   gap: var(--u);
   box-sizing: border-box;
-  /* Inline size follows `.main` (768/928/2048px across the three
-     supported viewports), so this axis is a real query target. */
-  container-type: inline-size;
-  container-name: notes;
   overflow: hidden;
   min-height: 0;
 }
@@ -27,13 +23,13 @@
   line-height: var(--lh-read);
 }
 
-@container notes (width < 880px) {
+@container main (width < 880px) {
   .notes {
     padding-inline: calc(var(--u) * 3);
   }
 }
 
-@container notes (width >= 1400px) {
+@container main (width >= 1400px) {
   .notes {
     padding-inline: calc(var(--u) * 8);
   }

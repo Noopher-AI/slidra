@@ -112,13 +112,13 @@
    before stage.css, so at equal specificity these rules win. 1440×900
    (the middle supported viewport) falls between the two thresholds on
    purpose, keeping its padding — and baseline screenshot — unchanged. */
-@container well (width < 880px) {
+@container main (width < 880px) {
   .canvas-area {
     padding: calc(var(--u) * 4);
   }
 }
 
-@container well (width >= 1400px) {
+@container main (width >= 1400px) {
   .canvas-area {
     padding: calc(var(--u) * 10);
   }
