@@ -67,7 +67,7 @@
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-brand);
-  color: var(--accent-hi);
+  color: var(--accent-text);
 }
 .deck-name {
   color: var(--ink);
@@ -78,7 +78,7 @@
   white-space: nowrap;
 }
 .deck-meta {
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   font-size: var(--fs-small);
   flex-shrink: 0;
 }
@@ -185,7 +185,7 @@
   right: 0;
   text-align: center;
   font-size: var(--fs-micro);
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 /* 72×58 是刻意的定值，不隨視窗放大：螢幕變大時應該是舞台變大，不是工具

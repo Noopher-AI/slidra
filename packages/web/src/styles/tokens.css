@@ -43,6 +43,16 @@
   --accent: #c41e3a;
   --accent-hi: #e03a56;
   --accent-wash: rgba(196, 30, 58, 0.16);
+  /* --accent-text (NOOP-9r2): --accent-hi measured at 3.85:1 on
+     --s-titlebar — short of WCAG 2.2 AA body text's 4.5:1 (SC 1.4.3).
+     chat.css already routes around this by keeping --accent-hi to
+     borders/backgrounds only (its own comment there documents the same
+     3.85:1 reading); shell.css's `.mark` was the one place still using
+     --accent-hi as literal text colour. This lightens the same hue just
+     enough to clear 4.5:1 on --s-titlebar (.mark's only consumer) without
+     touching --accent-hi's own resolved value — contrast.test.ts pins
+     --focus-ring (== --accent-hi) to #e03a56 for its 3:1 non-text check. */
+  --accent-text: #e55c73;
 
   /* Rhythm: 4px baseline. */
   --u: 4px;

@@ -109,7 +109,11 @@
 
 .grid-number {
   margin: 0;
-  color: var(--ink-faint);
+  /* NOOP-9r2: was --ink-faint (3.5:1 on --s-well, axe color-contrast,
+     grid 場景) — --ink-faint 的 token 註解本就標明只給 disabled 用，這裡
+     的頁碼是一般啟用中的文字，同 shell.css `.deck-meta`/`.group-label`
+     的修法。 */
+  color: var(--ink-dim);
   font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
