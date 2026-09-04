@@ -3,6 +3,19 @@
    tokens.css's :root — see AGENTS/軍令 #2. The container holds the width/
    border/background that .chat-sidebar and .style-panel used to carry on
    their own (plan §1/§7.3) — those two now only style their own contents.
+
+   [E1.T4/#183] `container-type: inline-size` below makes `.side-panel` a
+   query container so its contents (chat.css/style-panel.css) can react to
+   the panel's own width rather than the viewport. At today's three formal
+   viewports the panel is always exactly `--w-chat` (316px) — see
+   `e2e/side-panel-visual.test.ts` — so the `@container` rules in this file
+   and in chat.css/style-panel.css never actually trigger yet; they are a
+   safety net for when the parent grid track becomes fluid, written now so
+   that day doesn't require touching this file again (same precedent as
+   shell.css's `.titlebar` `@container … (width < 720px)`). Safe against
+   the `.app` `container-type` warning in shell.css: `TemplateDialog` is
+   not a descendant of `.side-panel` (it mounts directly under `.app`, see
+   App.tsx), so its `position: fixed` backdrop is unaffected.
    ═══════════════════════════════════════════════════════════════ */
 
 .side-panel {
@@ -14,6 +27,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  container-type: inline-size;
+  container-name: side-panel;
 }
 
 .side-panel-tabs {
@@ -35,12 +50,33 @@
   color: var(--ink-dim);
   font: inherit;
   font-size: var(--fs-ui);
+  font-weight: var(--fw-regular);
   cursor: pointer;
+  transition:
+    color var(--dur-micro) var(--ease-micro),
+    border-color var(--dur-micro) var(--ease-micro);
 }
 
+.side-panel-tab:hover {
+  color: var(--ink);
+}
+
+.side-panel-tab:active {
+  background: var(--s-sunken);
+}
+
+.side-panel-tab:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Selected reads through colour *and* weight (decision #7) — the border
+   accent alone would fail for anyone who can't distinguish the underline
+   colour from the transparent default. */
 .side-panel-tab[aria-selected="true"] {
   color: var(--ink);
   border-bottom-color: var(--accent);
+  font-weight: var(--fw-medium);
 }
 
 .side-panel-badge {
@@ -57,9 +93,32 @@
   line-height: 1;
 }
 
+/* Tab switch is a conditional remount, not a display:none toggle (A1), so
+   an *entrance* animation on mount is the correct tool — a `transition`
+   needs a property change on a persisting element, which this isn't. */
 .side-panel-tabpanel {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  animation: side-panel-tabpanel-in var(--dur-panel) var(--ease-panel);
+}
+
+@keyframes side-panel-tabpanel-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--u) * 1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Density safety net (see file header) — not reachable at today's fixed
+   316px panel width. */
+@container side-panel (width < 280px) {
+  .side-panel-tab {
+    gap: var(--u);
+  }
 }

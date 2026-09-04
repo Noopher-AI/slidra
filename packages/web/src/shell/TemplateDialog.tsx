@@ -158,13 +158,19 @@ export function TemplateDialog({
       <div className="template-dialog" role="dialog" aria-modal="true" aria-label="範本管理">
         <div className="template-dialog-header">
           <h2>範本管理</h2>
-          <button type="button" className="template-dialog-close" aria-label="關閉" onClick={onClose}>
+          <button
+            type="button"
+            className="template-dialog-close"
+            aria-label="關閉"
+            title="關閉"
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
 
         {savingOpen ? (
-          <div className="template-dialog-save">
+          <div className="template-dialog-save" aria-busy={saving}>
             <input
               type="text"
               value={newName}
