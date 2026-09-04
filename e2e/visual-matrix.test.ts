@@ -101,4 +101,3 @@ it("涵蓋狀態：六種代表性互動狀態各至少有一個場景涵蓋", (
     expect(candidateIds.some((id) => ids.has(id)), `狀態 "${state}" 沒有對應場景`).toBe(true);
   }
 });
-
