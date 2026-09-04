@@ -17,7 +17,7 @@
 .grid-view {
   position: absolute;
   inset: 0;
-  /* Below .play-bar/.view-fullscreen-bar (shell.css, z-index: 2) so a
+  /* Below .play-bar/.view-fullscreen-bar (play.css, z-index: 2) so a
      fullscreen exit control started from grid view stays reachable. */
   z-index: 1;
   background: var(--s-well);
@@ -27,6 +27,40 @@
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: calc(var(--u) * 5);
   align-content: start;
+  /* 進場動畫，不做離場 (E1.T6 D7)：Stage.tsx 是條件渲染
+     (`{showGrid && <GridView/>}`)，離場需要延遲卸載 ⇒ 需要動畫專用 React
+     state ⇒ 違反 architecture「不新增動畫用 React 狀態」。手法照抄
+     side-panel.css 的 side-panel-tabpanel-in：animation 而非 transition，
+     因為元素是重新掛載，不是屬性變化。 */
+  animation: grid-view-in var(--dur-view) var(--ease-view);
+}
+
+@keyframes grid-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--u) * 1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 網格密度隨容器寬度變化 (E1.T6 D9)：閾值沿用 stage.css/notes.css 既有的
+   880/1400，容器掛在 `.main`（shell.css）——`.canvas-area` 自己宣告
+   container-name: well，但容器查詢不命中容器自己的元素，只命中其子孫（見
+   commit d1cf07e），所以不能查 well。 */
+@container main (width < 880px) {
+  .grid-view {
+    padding: calc(var(--u) * 4);
+    gap: calc(var(--u) * 3);
+  }
+}
+@container main (width >= 1400px) {
+  .grid-view {
+    padding: calc(var(--u) * 8);
+    gap: calc(var(--u) * 6);
+  }
 }
 
 .grid-cell {
@@ -47,12 +81,21 @@
   height: auto;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: #000;
+  /* E1.T6 D13：與 rail.css 的 .overview-thumb 對齊（同一種物件——投影片
+     縮圖——在縮圖軌與網格裡不該有兩種圓角）。 */
+  border-radius: var(--r-control);
+  background: var(--s-blackout);
   cursor: pointer;
   overflow: hidden;
   outline: 2px solid transparent;
   outline-offset: 1px;
+}
+
+/* box-shadow，不用 outline：outline 保留給「目前投影片」信號（下面的
+   .grid-cell[aria-current="true"] .grid-thumb），同 rail.css 的
+   .overview-thumb:focus-visible。 */
+.grid-thumb:focus-visible {
+  box-shadow: 0 0 0 calc(var(--focus-ring-width) * 2) var(--focus-ring);
 }
 
 .grid-cell[aria-current="true"] .grid-thumb {
@@ -69,6 +112,9 @@
 
 .grid-cell[aria-current="true"] .grid-number {
   color: var(--ink);
+  /* 目前投影片的第二個非顏色信號，同 rail.css 的
+     .overview-item-current .overview-number。 */
+  font-weight: var(--fw-medium);
 }
 
 .grid-frame {
