@@ -225,6 +225,14 @@
 
 .chat-input input {
   flex: 1;
+  /* [NOOP-51] Firefox measured .chat-input's submit button rendered
+     19.5–20px past .side-panel's right edge at every viewport (335 vs
+     315 clientWidth) whenever this input is on screen — Chromium/WebKit
+     stayed at delta=0 in the same states. Firefox gives a bare <input>'s
+     flex-item automatic minimum size its size=20 intrinsic width rather
+     than shrinking it to fit, so it doesn't yield the space the button
+     needs; min-width: 0 lets it shrink like Chromium/WebKit already do. */
+  min-width: 0;
   padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
   box-sizing: border-box;
   background: var(--s-sunken);

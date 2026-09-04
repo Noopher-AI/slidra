@@ -1,4 +1,4 @@
-import type { Browser } from "playwright";
+import type { Browser, Page } from "playwright";
 import { expect } from "vitest";
 import type { RunningServer } from "../../packages/server/src/serve.js";
 import { openApp } from "./launch.js";
@@ -86,18 +86,43 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
       }
     }
 
-    // ── 4. No unexpected clipping within each region ───────────────────
-    for (const { selector } of regionBoxes) {
-      const overflow = await page.locator(selector).evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
-      expect(overflow.scrollWidth, `${selector} 沒有非預期裁切`).toBeLessThanOrEqual(overflow.clientWidth + 1);
-    }
+    // ── 4/5. No unexpected clipping, at every screen state ──────────────
+    // NOOP-51: the original version of this check ran `expect` per-region
+    // inside the loop, so the first violation threw and aborted the test —
+    // every region/state after the first offender was never exercised, on
+    // both the region and the page-overflow check. Two rounds in a row each
+    // fixed exactly the one selector the aborted run happened to reach and
+    // shipped with the rest still unmeasured. `measureOverflowAt` below
+    // only *collects* violations; nothing throws until every state has been
+    // visited and reported in one shot (violations aggregated, see below).
+    const violations: string[] = [];
+    await measureOverflowAt(page, "normal-selected", violations);
 
-    // ── 5. No page-level overflow ────────────────────────────────────
-    const pageOverflow = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      innerWidth: window.innerWidth,
-    }));
-    expect(pageOverflow.scrollWidth).toBeLessThanOrEqual(pageOverflow.innerWidth + 1);
+    await page.locator('.view-btn[data-view="grid"]').click();
+    await expect.poll(() => page.locator(".grid-view").count()).toBe(1);
+    await measureOverflowAt(page, "grid", violations);
+    await page.locator('.view-btn[data-view="normal"]').click();
+    await expect.poll(() => page.locator(".grid-view").count()).toBe(0);
+
+    await page.locator('.view-btn[data-view="play"]').click();
+    await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("play");
+    // Play mode intentionally unmounts the editor chrome (App.tsx) — these
+    // five regions are expected to be absent here, not a fallback for a
+    // selector that failed to resolve.
+    await measureOverflowAt(page, "play", violations, [".titlebar", ".ribbon", ".overview", ".side-panel", ".status"]);
+    await page.locator(".play-bar .play-toggle-button.leave").click();
+    await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
+
+    await page.locator('.side-panel-tab[data-tab="style"]').click();
+    await measureOverflowAt(page, "side-panel-style", violations);
+    await page.locator('.side-panel-tab[data-tab="chat"]').click();
+
+    await page.locator('.tab:has-text("常用")').click();
+    await page.locator('.cmd:has-text("範本")').click();
+    await expect.poll(() => page.locator('[aria-label="範本管理"]').count()).toBe(1);
+    await measureOverflowAt(page, "template-dialog", violations);
+
+    expect(violations, violations.join("\n")).toEqual([]);
 
     // ── 6. Not a light-mode break: .app's own painted background is dark ──
     // (not document.body — body itself carries no background rule; .app is
@@ -107,5 +132,41 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     expect(relativeLuminance(parseColor(appBackground))).toBeLessThan(0.2);
   } finally {
     await page.close().catch(() => {});
+  }
+}
+
+/**
+ * Measures region clipping (§4) and page-level overflow (§5) at one screen
+ * state, pushing a description of every violation onto `violations` instead
+ * of asserting — the caller aggregates across every state it visits and
+ * asserts once, so no single violation stops the rest of the states from
+ * being measured (NOOP-51: the previous per-region `expect` inside a loop
+ * made every state after the first failure invisible to the test run).
+ * `expectedAbsent` lists regions that are known not to exist for this
+ * screen (e.g. play mode's chrome unmount) — anything absent that is *not*
+ * on that list is itself a violation, not a silently skipped region.
+ */
+async function measureOverflowAt(page: Page, screen: string, violations: string[], expectedAbsent: string[] = []): Promise<void> {
+  const regionSelectors = [".titlebar", ".ribbon", ".overview", ".canvas-area", ".side-panel", ".status"];
+  for (const selector of regionSelectors) {
+    const box = await page.locator(selector).boundingBox();
+    if (!box) {
+      if (!expectedAbsent.includes(selector)) {
+        violations.push(`${screen}：${selector} 預期存在但缺席`);
+      }
+      continue;
+    }
+    const overflow = await page.locator(selector).evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
+    if (overflow.scrollWidth > overflow.clientWidth + 1) {
+      violations.push(`${screen}：${selector} 沒有非預期裁切 - scrollWidth=${overflow.scrollWidth} clientWidth=${overflow.clientWidth}`);
+    }
+  }
+
+  const pageOverflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  if (pageOverflow.scrollWidth > pageOverflow.innerWidth + 1) {
+    violations.push(`${screen}：頁面沒有非預期 overflow - scrollWidth=${pageOverflow.scrollWidth} innerWidth=${pageOverflow.innerWidth}`);
   }
 }
