@@ -363,7 +363,31 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   padding: calc(var(--u) * 7);
-  overflow: hidden;
+  /* `overflow: clip`（NOOP-9r2 回歸修正；不是 `overflow: hidden`）：
+     `.stage`（stage.css）用 `position:relative; top/left:50%;
+     transform:translate(-50%,-50%)` 置中，畫面上完全置中、沒有任何裁切
+     （已用 debug dump 逐像素核對），但 Firefox 把 `.canvas-area` 的
+     scrollable overflow（`scrollWidth`/`scrollHeight`）算成 `.stage`
+     **套用 transform 之前**的版面位置＋尺寸，完全無視 transform 把它移回
+     中心這件事，导致 `scrollWidth` 比 `clientWidth` 大了一整個盒子的位移
+     量（cross-browser-smoke.test.ts 三個尺寸都量到，CI run
+     33858549752／33866052700，數字精確對得上：368(pre-transform
+     left)+711.117(.stage 寬)+16(padding)=1095.117 ≈ 實測 1095）。
+     `overflow: hidden` 的元素仍然會維護一個（即使視覺上不可見的）
+     scrollable overflow 矩形供 `scrollTo()` 之類的 API 使用，這正是
+     Firefox 那個位移算法會誤算的對象；`overflow: clip` 讓元素完全不成為
+     scroll container，規格上不追蹤 scrollable overflow，
+     `scrollWidth`/`scrollHeight` 因此直接等於 `clientWidth`/
+     `clientHeight`，繞開這整個計算路徑——視覺結果不變（沒有
+     `overflow-clip-margin`，裁切邊界跟 `hidden` 一樣落在 padding
+     edge）。曾嘗試改用 `margin: auto` 取代 transform 置中 `.stage`
+     本身：確實能讓 Firefox 的 scrollWidth 轉綠，但同一輪 CI
+     （run 33868036355，兩次重跑一致重現）測出它讓 `.stage` 的實際版面
+     位置與原本的 transform 版有極小但足以累積的差異，連帶造成
+     text-edit.test.ts 的跨行選取分塊、direct-manipulation.test.ts 的吸附
+     ／旋轉 delta、以及十個外觀基準截圖全部改變——影響面遠超出這張票的
+     範圍，因此改採這個不動 `.stage` 定位方式的修法。 */
+  overflow: clip;
   background: var(--s-well);
   container-type: inline-size;
   container-name: well;
