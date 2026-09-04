@@ -79,7 +79,7 @@
 
   /* ── Focus / selection / status (accent family stays as-is — the
      red brand direction is not touched by any of these) ────────── */
-  --focus-ring: var(--accent);
+  --focus-ring: var(--accent-hi);
   --focus-ring-width: 1px;
   --select-outline: var(--accent);
   --select-outline-width: 2px;

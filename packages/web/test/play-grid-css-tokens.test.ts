@@ -36,19 +36,9 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly patter
 ];
 
 describe("播放／網格 CSS 不得寫死色值／duration／easing（E1.T6，A1）", () => {
-  for (const fileName of FILES) {
-    it(`${fileName} 每個值都來自 var(--…)，沒有字面色值／duration／easing`, () => {
-      const raw = readFileSync(path.join(stylesDir, fileName), "utf8");
-      const css = withoutComments(raw);
-
-      const offenders: string[] = [];
-      for (const { name, pattern } of FORBIDDEN_PATTERNS) {
-        const matches = [...css.matchAll(pattern)].map((match) => match[0]);
-        if (matches.length > 0) offenders.push(`${name}: ${matches.join(", ")}`);
-      }
-      expect(offenders).toEqual([]);
-    });
-  }
+  // 泛用的 FORBIDDEN_PATTERNS 掃描已由 packages/web/test/design-contract.test.ts
+  // 取代（它涵蓋全部 12 個 CSS 檔，不只 play.css／grid.css）——NOOP-9 Plan §1。
+  // A2/C1/F4 是這兩個檔案專屬的斷言，design-contract.test.ts 不涵蓋，保留。
 
   // A2：邊界收尾——.play-bar/.view-fullscreen-bar 已整段遷到 play.css，
   // shell.css 不應再留下任何殘跡（含註解裡的提及）。
