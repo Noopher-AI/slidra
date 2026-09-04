@@ -65,9 +65,16 @@ async function switchToGrid(page: Page): Promise<void> {
   await expect.poll(() => page.locator(".grid-view").count()).toBe(1);
 }
 
+/** Same wait as e2e/play-appearance.test.ts's enterPlay: entering play mode
+ * hands focus to the player asynchronously once its fresh runtime posts
+ * "ready" (canvas.ts's own focusPlayer() call) — a Tab/focus() issued before
+ * that lands races the runtime and can be stolen back by the iframe. */
 async function switchToPlay(page: Page): Promise<void> {
   await page.locator('.view-btn[data-view="play"]').click();
   await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("play");
+  await expect
+    .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+    .toBe("true");
 }
 
 /** Resolves a `--token` from `:root` to its literal CSS text (e.g. `#c41e3a`, `rgba(0, 0, 0, 0.5)`). */
@@ -485,6 +492,10 @@ it("F3：reduced-motion 下播放頁碼、載入底色、錯誤通知都仍可�
     const position = page.locator(".play-bar-position");
     await expect.poll(() => position.textContent()).toBe("1 / 4");
 
+    // .view-btn[data-view="grid"] only exists in view mode (StatusBar
+    // unmounts in play mode) — leave play first.
+    await page.locator(".play-bar .play-toggle-button.leave").click();
+    await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
     await switchToGrid(page);
     const loadingBg = await page.locator(".grid-thumb").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(loadingBg).toBe("rgb(0, 0, 0)");

@@ -31,17 +31,21 @@
      (`{showGrid && <GridView/>}`)，離場需要延遲卸載 ⇒ 需要動畫專用 React
      state ⇒ 違反 architecture「不新增動畫用 React 狀態」。手法照抄
      side-panel.css 的 side-panel-tabpanel-in：animation 而非 transition，
-     因為元素是重新掛載，不是屬性變化。 */
+     因為元素是重新掛載，不是屬性變化。**只動 transform，不動 opacity**——
+     跟 side-panel-tabpanel-in 不同：`.grid-view` 是 `iframe.grid-frame` 的
+     直接祖先，若對它做 opacity 進場，動畫期間整條祖先鏈會被
+     e2e/workspace-side-panel-integration.test.ts 的 IP-6b（.grid-frame 祖先
+     鏈不得有 opacity<1，防止投影片內容被產品主題「改色」）判定為違規——
+     實測跑過，opacity 版本會讓 IP-6b 在動畫進行中的那一刻讀到
+     `.grid-view: opacity=0.29...` 直接判定失敗。 */
   animation: grid-view-in var(--dur-view) var(--ease-view);
 }
 
 @keyframes grid-view-in {
   from {
-    opacity: 0;
     transform: translateY(calc(var(--u) * 1));
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
