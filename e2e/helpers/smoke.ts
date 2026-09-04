@@ -149,8 +149,14 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
 async function measureOverflowAt(page: Page, screen: string, violations: string[], expectedAbsent: string[] = []): Promise<void> {
   const regionSelectors = [".titlebar", ".ribbon", ".overview", ".canvas-area", ".side-panel", ".status"];
   for (const selector of regionSelectors) {
-    const box = await page.locator(selector).boundingBox();
-    if (!box) {
+    // `.locator(selector).boundingBox()` auto-waits the full default
+    // timeout for a selector that resolves to zero elements instead of
+    // returning null immediately — play mode legitimately has five of
+    // these six selectors absent, so that call would hang ~30s per
+    // selector instead of reporting "absent" right away. `.count()` never
+    // waits; it is the existence check this loop actually wants.
+    const count = await page.locator(selector).count();
+    if (count === 0) {
       if (!expectedAbsent.includes(selector)) {
         violations.push(`${screen}：${selector} 預期存在但缺席`);
       }
