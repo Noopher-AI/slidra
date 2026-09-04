@@ -36,14 +36,15 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # changed. The `: '...'` no-op below changes the instruction text once to
 # bust that stale cache; the explicit packages and trailing dpkg checks make
 # missing Firefox/X11 dependencies a hard build error instead of another
-# undetected bad layer.
+# undetected bad layer. This Bookworm base names the GTK package `libgtk-3-0`
+# (the `libgtk-3-0t64` name is from newer Ubuntu/Debian releases).
 RUN : 'cache-bust NOOP-52: verify all Playwright Firefox system deps' \
     && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
-    && apt-get install -y libxcb-shm0 libgtk-3-0t64 \
+    && apt-get install -y libxcb-shm0 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/* \
     && dpkg -l | grep -q '^ii  libglib2.0-0' \
     && dpkg -l | grep -q '^ii  libxcb-shm0' \
-    && dpkg -l | grep -q '^ii  libgtk-3-0t64'
+    && dpkg -l | grep -q '^ii  libgtk-3-0'
 
 USER dev
 ENV HOME=/home/dev
