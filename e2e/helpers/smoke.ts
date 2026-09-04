@@ -122,14 +122,19 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     await expect.poll(() => page.locator('[aria-label="範本管理"]').count()).toBe(1);
     await measureOverflowAt(page, "template-dialog", violations);
 
-    expect(violations, violations.join("\n")).toEqual([]);
-
     // ── 6. Not a light-mode break: .app's own painted background is dark ──
     // (not document.body — body itself carries no background rule; .app is
     // the themed root that paints --s-well, see packages/web/src/styles/
-    // shell.css:18-32.)
+    // shell.css:18-32.) Pushed onto the same `violations` array as §4/5
+    // instead of asserting here directly, so an overflow/clipping violation
+    // earlier in the run doesn't short-circuit this check (NOOP-52).
     const appBackground = await page.locator(".app").evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(relativeLuminance(parseColor(appBackground))).toBeLessThan(0.2);
+    const appLuminance = relativeLuminance(parseColor(appBackground));
+    if (appLuminance >= 0.2) {
+      violations.push(`背景不是深色 - relativeLuminance=${appLuminance}`);
+    }
+
+    expect(violations, violations.join("\n")).toEqual([]);
   } finally {
     await page.close().catch(() => {});
   }
@@ -160,6 +165,10 @@ async function measureOverflowAt(page: Page, screen: string, violations: string[
       if (!expectedAbsent.includes(selector)) {
         violations.push(`${screen}：${selector} 預期存在但缺席`);
       }
+      continue;
+    }
+    if (expectedAbsent.includes(selector)) {
+      violations.push(`${screen}：${selector} 預期缺席但實際存在`);
       continue;
     }
     const overflow = await page.locator(selector).evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
