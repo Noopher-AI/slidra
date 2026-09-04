@@ -37,14 +37,18 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # bust that stale cache; the explicit packages and trailing dpkg checks make
 # missing Firefox/X11 dependencies a hard build error instead of another
 # undetected bad layer. This Bookworm base names the GTK package `libgtk-3-0`
-# (the `libgtk-3-0t64` name is from newer Ubuntu/Debian releases).
-RUN : 'cache-bust NOOP-52: verify all Playwright Firefox system deps' \
+# (the `libgtk-3-0t64` name is from newer Ubuntu/Debian releases), and ships
+# ICU 72, AVIF 15, and turbo-JPEG 62 as its WebKit runtime providers.
+RUN : 'cache-bust NOOP-52: verify all Playwright browser system deps' \
     && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
-    && apt-get install -y libxcb-shm0 libgtk-3-0 \
+    && apt-get install -y libxcb-shm0 libgtk-3-0 libicu72 libavif15 libjpeg62-turbo \
     && rm -rf /var/lib/apt/lists/* \
     && dpkg -l | grep -q '^ii  libglib2.0-0' \
     && dpkg -l | grep -q '^ii  libxcb-shm0' \
-    && dpkg -l | grep -q '^ii  libgtk-3-0'
+    && dpkg -l | grep -q '^ii  libgtk-3-0' \
+    && dpkg -l | grep -q '^ii  libicu72' \
+    && dpkg -l | grep -q '^ii  libavif15' \
+    && dpkg -l | grep -q '^ii  libjpeg62-turbo'
 
 USER dev
 ENV HOME=/home/dev
