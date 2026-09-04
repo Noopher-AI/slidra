@@ -24,7 +24,7 @@
    commander — this is a case where the plan's 1.8 and the frozen
    regression baseline could not both be honoured literally. */
 .app[data-mode="play"] .canvas {
-  background: #000;
+  background: var(--s-blackout);
 }
 
 /* 純黑滿版 (#54 AC1/AC2): 量測 base-shell.html（Playwright 內建
@@ -37,30 +37,29 @@
    有規則），這裡補上 `.canvas-area` 與 `.stage` 兩層，讓黑幕從舞台底一路
    到舞台邊框都是純黑、沒有留白。 */
 .app[data-mode="play"] .canvas-area {
-  background: #000;
+  background: var(--s-blackout);
   padding: 0;
 }
 .app[data-mode="play"] .stage {
-  background: #000;
+  background: var(--s-blackout);
   border: 0;
   box-shadow: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   控制列浮現／隱去 (#54). shell.css:365-394 already ships `.play-bar`'s
-   static box — position, translucent background, border, radius, blur —
-   copied verbatim from base-shell.html:314-330 as part of the #53/#54
-   boundary; that file is frozen here. What base-shell.html has and
-   shell.css does not is the idle-fade `opacity`/`transition`
-   (base-shell.html:322-324) and the awake toggle, plus the new paging
-   controls/divider (base-shell.html:331-335) and the cursor-hide/`.body`
-   collapse this ticket's own DOM changes require. All of that lives here.
+   控制列浮現／隱去 (#54). `.play-bar`'s static box — position, translucent
+   background, border, radius, blur — was originally split off into
+   shell.css as part of the #53/#54 boundary; E1.T6 migrates it back here
+   (see the block further down) so the whole control's styling lives in one
+   file. The idle-fade `opacity`/`transition`, the awake toggle, the paging
+   controls/divider and the cursor-hide/`.body` collapse below were always
+   this ticket's own.
    ═══════════════════════════════════════════════════════════════ */
 
 /* 閒置淡出 (AC3/AC4)：PlayChrome 用 `awake` state 切換這個 class. */
 .play-bar {
   opacity: 0;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--dur-panel) var(--ease-panel);
 }
 .play-bar.awake {
   opacity: 1;
@@ -71,7 +70,7 @@
 .play-bar-divider {
   width: 1px;
   align-self: stretch;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--line-overlay-strong);
   margin: 0 var(--u);
 }
 
@@ -84,10 +83,11 @@
    button`/`.play-bar button:hover`（高度、padding、hover 底色），只是
    內容從文字換成 SVG。 */
 .play-bar svg {
-  width: 15px;
-  height: 15px;
+  width: var(--icon-control);
+  height: var(--icon-control);
   stroke: currentColor;
   fill: none;
+  /* 維持字面 1.5，不換成 --icon-stroke（1.4）：那不是像素中性的遷移。 */
   stroke-width: 1.5;
 }
 /* disabled 狀態（第一頁的上一步／最後一頁的下一步）不是樣板既有的字面
@@ -157,4 +157,69 @@
   position: absolute;
   inset: 0;
   z-index: 1;
+}
+
+/* ── 播放模式浮動控制列 (E1.T6，從 shell.css 遷入)：邊界收尾把 #53/#54
+   落地在 shell.css 的靜態盒子搬來這裡，跟 #54 自己的閒置淡出/svg/頁碼規則
+   合流成同一個檔案。原本的 rgba 字面值換成 tokens.css 對應的語意 token
+   （--s-overlay/--line-overlay/--s-overlay-raised/--r-pill/--r-control），
+   逐字比對過都是同一個值，像素中性。 ─────────────────────────────── */
+.play-bar {
+  position: absolute;
+  left: calc(var(--u) * 5);
+  bottom: calc(var(--u) * 5);
+  display: flex;
+  align-items: center;
+  gap: var(--u);
+  padding: calc(var(--u) * 1.5);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  border-radius: var(--r-pill);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+.play-bar button {
+  height: 26px;
+  padding: 0 calc(var(--u) * 2.5);
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-control);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+}
+.play-bar button:not(:disabled):hover {
+  background: var(--s-overlay-raised);
+  color: var(--ink);
+}
+.play-bar button:not(:disabled):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* ── 檢視模式的全螢幕離開控制 (從 shell.css 遷入，理由同上) ────────── */
+.view-fullscreen-bar {
+  position: absolute;
+  right: calc(var(--u) * 5);
+  top: calc(var(--u) * 5);
+  z-index: 2;
+}
+.view-fullscreen-bar .fullscreen-toggle-button {
+  height: 26px;
+  padding: 0 calc(var(--u) * 2.5);
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-control);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  backdrop-filter: blur(12px);
+}
+.view-fullscreen-bar .fullscreen-toggle-button:hover {
+  background: var(--s-overlay-raised);
+  color: var(--ink);
+}
+.view-fullscreen-bar .fullscreen-toggle-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
 }
