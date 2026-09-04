@@ -29,8 +29,17 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # postCreateCommand. CI (.github/workflows/e2e.yml) installs all three
 # engines via `playwright install --with-deps`; match that here so the
 # devcontainer can run the same e2e suite CI does.
-RUN npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
-    && rm -rf /var/lib/apt/lists/*
+#
+# NOOP-31: the builder previously cached this layer from a run where
+# `install-deps` had silently failed to pull in libglib2.0-0, and every
+# later build reused that broken layer since the instruction text never
+# changed. The `: '...'` no-op below changes the instruction text once to
+# bust that stale cache; the trailing dpkg check makes any future silent
+# failure here a hard build error instead of another undetected bad layer.
+RUN : 'cache-bust NOOP-31: ensure playwright system deps are actually installed' \
+    && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
+    && rm -rf /var/lib/apt/lists/* \
+    && dpkg -l | grep -q libglib2.0-0
 
 USER dev
 ENV HOME=/home/dev
