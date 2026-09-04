@@ -308,6 +308,8 @@ for (const viewport of VIEWPORTS) {
         if (!box) throw new Error(`figure.grid-cell[${i}] 沒有 boundingBox`);
         boxes.push(box);
       }
+      // NOOP-9 §2.2 溫度診斷（暫時，驗證後移除）：console.log(count, boxes.map(b => b.y))
+      console.log(`[NOOP-9 §2.2 診斷] ${viewport.width}x${viewport.height} count=${count} ys=${JSON.stringify(boxes.map((b) => b.y))}`);
 
       // D2：任兩格不重疊。
       for (let i = 0; i < boxes.length; i++) {
