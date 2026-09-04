@@ -199,6 +199,12 @@ for (const testCase of CATEGORY_CASES) {
       await openApp(page, server);
       await page.locator('.tab:has-text("常用")').click();
       if (testCase.arrive) await testCase.arrive(page);
+      // reducedMotion 下 duration 趨近 0 不代表 0——像 .template-dialog 這種入場動畫仍會
+      // 從 opacity:0 起跑，只是幾乎瞬間跑完；緊接著 evaluate() 有機會量到還沒跑完那一格
+      // 影格的 opacity（CI 上實測會量到 0，不是產品沒把內容顯示出來）。給一次事件迴圈
+      // 加一個影格的時間讓它真的跑完，同檔其餘既有測試（如 F1）沒有這個問題是因為它們
+      // 量的元素本身不是「淡入」動畫。
+      await page.waitForTimeout(50);
 
       const el = page.locator(testCase.selector).first();
       const durations = await el.evaluate((node) => {

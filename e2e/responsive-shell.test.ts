@@ -331,7 +331,7 @@ it("A5：.sel-name 極長文字不把 .views 推出視窗，仍無頁面級捲�
 
 // ─── A6：focus-visible ────────────────────────────────────────────
 
-it("A6：.tab 取得鍵盤焦點時顯示 focus-visible 外框，顏色沿用 --accent", async () => {
+it("A6：.tab 取得鍵盤焦點時顯示 focus-visible 外框，顏色沿用 --focus-ring", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server, VIEWPORTS[1]);
@@ -341,17 +341,20 @@ it("A6：.tab 取得鍵盤焦點時顯示 focus-visible 外框，顏色沿用 --
     const outlineStyle = await firstTab.evaluate((el) => getComputedStyle(el).outlineStyle);
     expect(outlineStyle).not.toBe("none");
 
-    const accent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
-    const accentRgb = await page.evaluate((value) => {
+    // shell.css 的 `.tab:focus-visible` 消費 `var(--focus-ring)`，不是 `--accent`
+    // 本身——NOOP-9 把 `--focus-ring` 改指到 `--accent-hi`（WCAG 2.2 AA 非文字對比
+    // 3:1，見該票交付說明），這裡原本寫死讀 `--accent` 就會跟著改動的 token 脫鉤。
+    const focusRing = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--focus-ring").trim());
+    const focusRingRgb = await page.evaluate((value) => {
       const probe = document.createElement("span");
       probe.style.color = value;
       document.body.appendChild(probe);
       const rgb = getComputedStyle(probe).color;
       probe.remove();
       return rgb;
-    }, accent);
+    }, focusRing);
     const outlineColor = await firstTab.evaluate((el) => getComputedStyle(el).outlineColor);
-    expect(outlineColor).toBe(accentRgb);
+    expect(outlineColor).toBe(focusRingRgb);
   } finally {
     await cleanup();
   }

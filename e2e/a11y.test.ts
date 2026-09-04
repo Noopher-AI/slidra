@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { AxeBuilder } from "@axe-core/playwright";
 import type { RunningServer } from "../packages/server/src/serve.js";
 import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/launch.js";
@@ -30,6 +30,7 @@ const SCENARIOS = matrixScenarios({ demoDir, brokenEffectsDeckDir }).filter((s) 
 
 let browser: Browser;
 let openPages: Page[] = [];
+let openContexts: BrowserContext[] = [];
 
 beforeAll(async () => {
   await requireBuilt(rootDir);
@@ -43,6 +44,8 @@ afterAll(async () => {
 afterEach(async () => {
   for (const page of openPages) await page.close().catch(() => {});
   openPages = [];
+  for (const context of openContexts) await context.close().catch(() => {});
+  openContexts = [];
 });
 
 it("§1：a11y.test.ts 涵蓋的場景 id 恰好是 NOOP-9 Plan §4.6 列的 7 個（不多不少）", () => {
@@ -85,8 +88,11 @@ for (const scenario of SCENARIOS) {
   });
 }
 
+/** AxeBuilder rejects a page created via the shorthand `browser.newPage()` ("Please use browser.newContext()", verified on CI) — it needs a page that came from an explicit context. */
 async function openPage(server: RunningServer, viewport: { width: number; height: number }): Promise<Page> {
-  const page = await browser.newPage({ viewport });
+  const context = await browser.newContext({ viewport });
+  openContexts.push(context);
+  const page = await context.newPage();
   openPages.push(page);
   await page.goto(server.url);
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
@@ -182,8 +188,13 @@ it("鍵盤順序：從 document.body 連續 Tab 不離開文件、不卡在同�
     const page = await openPage(server, VIEWPORT);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
-    // Region priority, top-to-bottom (architecture: 標題列→ribbon→畫布→側欄→狀態列).
-    const REGION_PRIORITY = [".titlebar", ".ribbon", ".canvas-area", ".overview", ".side-panel", ".status"];
+    // Region priority, in actual DOM tab order — verified on CI (this test's own
+    // console.log below), not the architecture summary's prose "標題列→ribbon→畫布→
+    // 側欄→狀態列": the thumbnail rail (.overview) sits to the canvas's left and is
+    // reached before .canvas-area, not after. .titlebar has no focusable elements at
+    // all today, which is fine — a region only needs to be non-decreasing when it
+    // does appear, not to appear.
+    const REGION_PRIORITY = [".titlebar", ".ribbon", ".overview", ".canvas-area", ".side-panel", ".status"];
 
     const sequence: Array<{ tag: string; id: string; region: number }> = [];
     for (let step = 0; step < 60; step++) {
