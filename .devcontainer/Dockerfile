@@ -1,4 +1,8 @@
-FROM node:22-bookworm
+# Playwright 1.62's WebKit binary is built against Noble's ICU 74 / AVIF 16 /
+# JPEG 8 ABI.  The matching official image supplies all three browser engines
+# and their system libraries; the build-time Node check below makes Node 22 a
+# hard requirement rather than an assumption about the image tag.
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
 
 ARG UID=1000
 
@@ -39,16 +43,17 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # undetected bad layer. This Bookworm base names the GTK package `libgtk-3-0`
 # (the `libgtk-3-0t64` name is from newer Ubuntu/Debian releases), and ships
 # ICU 72, AVIF 15, and turbo-JPEG 62 as its WebKit runtime providers.
-RUN : 'cache-bust NOOP-52: verify all Playwright browser system deps' \
+RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
+    && node --version | grep -q '^v22\.' \
     && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
-    && apt-get install -y libxcb-shm0 libgtk-3-0 libicu72 libavif15 libjpeg62-turbo \
+    && apt-get install -y libxcb-shm0 libgtk-3-0t64 libicu74 libavif16 libjpeg8 \
     && rm -rf /var/lib/apt/lists/* \
-    && dpkg -l | grep -q '^ii  libglib2.0-0' \
+    && dpkg -l | grep -q '^ii  libglib2.0-0t64' \
     && dpkg -l | grep -q '^ii  libxcb-shm0' \
-    && dpkg -l | grep -q '^ii  libgtk-3-0' \
-    && dpkg -l | grep -q '^ii  libicu72' \
-    && dpkg -l | grep -q '^ii  libavif15' \
-    && dpkg -l | grep -q '^ii  libjpeg62-turbo'
+    && dpkg -l | grep -q '^ii  libgtk-3-0t64' \
+    && dpkg -l | grep -q '^ii  libicu74' \
+    && dpkg -l | grep -q '^ii  libavif16' \
+    && dpkg -l | grep -q '^ii  libjpeg8'
 
 USER dev
 ENV HOME=/home/dev
