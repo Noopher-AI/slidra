@@ -516,7 +516,14 @@ it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮�
 
     await page.getByRole("button", { name: "New" }).click();
     const newMenu = page.locator('[role="menu"][data-menu="new"]');
+    // 範本清單走 `template list` 非同步載入（useTemplateList）——只等
+    // `Blank`（同步渲染）可見就截圖是一場競賽：CI 上兩次執行的載入時機不
+    // 保證相同，基準截圖與比對截圖可能一個等到範本、一個還在 loading。
+    // 等到範本項目（Title／Section）也出現，畫面才是穩定的「已完全載入」
+    // 狀態，跟 New 面板那個功能測試（test A）等的東西一致。
     await expect.poll(() => newMenu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
+    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Title" }).isVisible()).toBe(true);
+    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Section" }).isVisible()).toBe(true);
     await settleForScreenshot(page);
     const newPanelBox = await newMenu.boundingBox();
     if (!newPanelBox) throw new Error("找不到 New 面板");
