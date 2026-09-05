@@ -99,72 +99,86 @@ function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<CliResult> {
 
 describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件 3/4）", () => {
   it("點 pdf-frames：出現進度、完成後下載連結可用、內容與 CLI 匯出的一致", async () => {
-    const started: StartedServer = await startServerFor({ deckDir: exportDeckDir, prefix: "export-gui-parity" });
+    // 45 格（15 張投影片 × 3 格）而不是 6 格的 export-deck：檔頭註解與
+    // buildManyFrameDeck 自己的理由——6 格常常在截圖/輪詢指令發出前就已經
+    // 整個匯出完，看不出進度真的有在動。
+    const manyFrameDeckDir = await buildManyFrameDeck();
     try {
-      const page = await openApp(browser, started.server);
-      openPages.push(page);
-
-      await page.getByRole("button", { name: "Export" }).click();
-      await page.getByRole("menu").waitFor({ timeout: 5_000 });
-      await page.locator(".export-menu-item", { hasText: "One page per animation step" }).click();
-
-      // 面板點擊後關閉，進度區出現，且 n 至少變動過一次（§4.7 驗收語氣：
-      // 「n 至少變動過一次」——不要求逐格都被看到，只要求不是從頭到尾都是
-      // 同一個數字，或乾脆完成前一格都沒看到，見下面 seenValues 的斷言）。
-      const statusLocator = page.locator(".export-status");
-      const seenTexts = new Set<string>();
-      await expect
-        .poll(
-          async () => {
-            const text = await statusLocator.textContent().catch(() => null);
-            if (text) seenTexts.add(text.trim());
-            return Array.from(seenTexts);
-          },
-          { timeout: 30_000 },
-        )
-        .toEqual(expect.arrayContaining([expect.stringContaining("下載")]));
-
-      const progressTexts = Array.from(seenTexts).filter((t) => t.startsWith("匯出中"));
-      expect(progressTexts.length).toBeGreaterThan(0);
-
-      const downloadLink = page.locator(".export-status-done a");
-      await downloadLink.waitFor({ timeout: 5_000 });
-      const downloadPath = await downloadLink.getAttribute("href");
-      expect(downloadPath).toMatch(/^\/api\/export\/[a-f0-9]+\/file$/);
-
-      const response = await page.request.get(`${started.server.url}${downloadPath}`);
-      expect(response.ok()).toBe(true);
-      expect(response.headers()["content-type"]).toBe("application/pdf");
-      const guiPdfBytes = await response.body();
-
-      // 與 CLI 對同一份簡報跑出來的 PDF 比對：頁數相同、每頁 viewport 尺寸
-      // 相同、每頁光柵化後像素相同——不比對 bytes（Chromium 會寫入
-      // /CreationDate，位元組不會相同，見 §5 第 5 條）。
-      const cliOutPath = path.join(tmpdir(), `cli-${started.presentationId}.pdf`);
-      const cliResult = await runCli(
-        ["export", started.presentationId, "--format", "pdf-frames", "--out", cliOutPath],
-        process.env,
-      );
-      expect(cliResult.code).toBe(0);
-      const cliPdfBytes = await readFile(cliOutPath);
-
-      const guiInfo = await loadPdf(browser, guiPdfBytes);
-      const cliInfo = await loadPdf(browser, cliPdfBytes);
+      const started: StartedServer = await startServerFor({ deckDir: manyFrameDeckDir, prefix: "export-gui-parity" });
       try {
-        expect(guiInfo.numPages).toBe(cliInfo.numPages);
-        expect(guiInfo.pageSizes).toEqual(cliInfo.pageSizes);
-        for (let i = 0; i < guiInfo.numPages; i++) {
-          const guiRaster = await guiInfo.rasterizePage(i);
-          const cliRaster = await cliInfo.rasterizePage(i);
-          expect(guiRaster.equals(cliRaster)).toBe(true);
+        const page = await openApp(browser, started.server);
+        openPages.push(page);
+
+        await page.getByRole("button", { name: "Export" }).click();
+        await page.getByRole("menu").waitFor({ timeout: 5_000 });
+        await page.locator(".export-menu-item", { hasText: "One page per animation step" }).click();
+
+        // 面板點擊後關閉，進度區出現，且 n 至少變動過一次（§4.7 驗收語氣：
+        // 「n 至少變動過一次」——不要求逐格都被看到，只要求不是從頭到尾都是
+        // 同一個數字，或乾脆完成前一格都沒看到）。斷言至少看過兩個相異的
+        // n：只看過「有沒有出現匯出中字樣」分不出「n 真的在跳」跟「running
+        // 事件帶著 0/N 出現一次、之後直接跳完成」。
+        const statusLocator = page.locator(".export-status");
+        const seenTexts = new Set<string>();
+        await expect
+          .poll(
+            async () => {
+              const text = await statusLocator.textContent().catch(() => null);
+              if (text) seenTexts.add(text.trim());
+              return Array.from(seenTexts);
+            },
+            { timeout: 30_000 },
+          )
+          .toEqual(expect.arrayContaining([expect.stringContaining("下載")]));
+
+        const seenNs = new Set(
+          Array.from(seenTexts)
+            .map((t) => /匯出中[^0-9]*(\d+)\s*\/\s*\d+/.exec(t)?.[1])
+            .filter((n): n is string => n !== undefined),
+        );
+        expect(seenNs.size).toBeGreaterThan(1);
+
+        const downloadLink = page.locator(".export-status-done a");
+        await downloadLink.waitFor({ timeout: 5_000 });
+        const downloadPath = await downloadLink.getAttribute("href");
+        expect(downloadPath).toMatch(/^\/api\/export\/[a-f0-9]+\/file$/);
+
+        const response = await page.request.get(`${started.server.url}${downloadPath}`);
+        expect(response.ok()).toBe(true);
+        expect(response.headers()["content-type"]).toBe("application/pdf");
+        const guiPdfBytes = await response.body();
+
+        // 與 CLI 對同一份簡報跑出來的 PDF 比對：頁數相同、每頁 viewport 尺寸
+        // 相同、每頁光柵化後像素相同——不比對 bytes（Chromium 會寫入
+        // /CreationDate，位元組不會相同，見 §5 第 5 條）。
+        const cliOutPath = path.join(tmpdir(), `cli-${started.presentationId}.pdf`);
+        const cliResult = await runCli(
+          ["export", started.presentationId, "--format", "pdf-frames", "--out", cliOutPath],
+          process.env,
+        );
+        expect(cliResult.code).toBe(0);
+        const cliPdfBytes = await readFile(cliOutPath);
+
+        const guiInfo = await loadPdf(browser, guiPdfBytes);
+        const cliInfo = await loadPdf(browser, cliPdfBytes);
+        try {
+          expect(guiInfo.numPages).toBe(cliInfo.numPages);
+          expect(guiInfo.pageSizes).toEqual(cliInfo.pageSizes);
+          for (let i = 0; i < guiInfo.numPages; i++) {
+            const guiRaster = await guiInfo.rasterizePage(i);
+            const cliRaster = await cliInfo.rasterizePage(i);
+            expect(guiRaster.equals(cliRaster)).toBe(true);
+          }
+        } finally {
+          await guiInfo.close();
+          await cliInfo.close();
+          await rm(cliOutPath, { force: true });
         }
       } finally {
-        await guiInfo.close();
-        await cliInfo.close();
-        await rm(cliOutPath, { force: true });
+        await started.cleanup();
       }
     } finally {
-      await started.cleanup();
+      await rm(manyFrameDeckDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   }, 120_000);
 
