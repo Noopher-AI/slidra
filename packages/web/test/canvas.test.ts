@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
-import type { CanvasController, CanvasState } from "../src/canvas.js";
+import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.js";
 
 // Finding P1: slide markup must render inside a sandboxed, opaque-origin
 // iframe rather than being injected into this document with innerHTML.
@@ -1737,5 +1737,123 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
 
     const textboxCalls = commandCalls.filter((call) => call.name === "textbox width");
     expect(textboxCalls).toEqual([]);
+  });
+});
+
+// NOOP-91 round-2 FAIL #4: `computeOverlayLabel`/`notifyOverlay` (the data
+// `SelectionOverlay.tsx`/`ContextBar.tsx` render) had zero test coverage —
+// only the *rendering* of that data was ever exercised manually. These test
+// black-box through `subscribeOverlay`, the same postMessage-protocol
+// boundary every other canvas.ts test in this file uses, rather than
+// reaching into module-private state.
+describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算（NOOP-91 round-2 FAIL #4）", () => {
+  function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
+    const frameWindow = controllerFrame.contentWindow as unknown as Window;
+    window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+  }
+
+  it("單選一個元素：label 用顯示名稱、path 為空；boxes/union 來自 bounds 事件", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+
+    expect(latest?.label).toEqual({ text: "方塊 A", path: [] });
+    expect(latest?.boxes).toEqual([rect]);
+    expect(latest?.union).toEqual(rect);
+  });
+
+  it("鑽入群組後選取子元素：label.path 依 bounds 回報的祖先鏈由外到內排列", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "select",
+      id: "el-group-child",
+      name: "群組子元素",
+      additive: false,
+      groupPath: ["el-group"],
+    });
+    const rect = { x: 0, y: 0, width: 10, height: 10 };
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "bounds",
+      items: [
+        {
+          id: "el-group-child",
+          rect,
+          ancestors: [
+            { id: "el-group", name: "群組" },
+            { id: "el-group-2", name: null },
+          ],
+        },
+      ],
+      union: rect,
+    });
+
+    // Outermost ancestor first; a nameless ancestor falls back to its id
+    // (computeOverlayLabel's own doc comment).
+    expect(latest?.label).toEqual({ text: "群組子元素", path: ["群組", "el-group-2"] });
+  });
+
+  it("多選：label 顯示『N elements』，不含 path（即使 bounds 回報了祖先鏈也忽略）", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-b", name: "方塊 B", additive: true });
+    const rectA = { x: 0, y: 0, width: 10, height: 10 };
+    const rectB = { x: 20, y: 20, width: 10, height: 10 };
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "bounds",
+      items: [
+        { id: "el-a", rect: rectA, ancestors: [{ id: "should-be-ignored", name: "多選時忽略祖先鏈" }] },
+        { id: "el-b", rect: rectB, ancestors: [] },
+      ],
+      union: { x: 0, y: 0, width: 30, height: 30 },
+    });
+
+    expect(latest?.label).toEqual({ text: "2 elements", path: [] });
+    expect(latest?.boxes).toEqual([rectA, rectB]);
+  });
+
+  it("清除選取後（runtime 隨即回報空 bounds，如真實 runtime 的 updateBoxes 一樣）：label/union/boxes 全部清空", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    expect(latest?.label).not.toBeNull();
+
+    // selection-runtime.js's updateBoxes() always calls reportBounds() right
+    // after any selection change, including the empty-selection branch — a
+    // "clear" is never sent without an immediate follow-up "bounds".
+    send(controller.frameElement, { source: "comot-selection", event: "clear" });
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [], union: null });
+
+    expect(latest?.label).toBeNull();
+    expect(latest?.union).toBeNull();
+    expect(latest?.boxes).toEqual([]);
   });
 });

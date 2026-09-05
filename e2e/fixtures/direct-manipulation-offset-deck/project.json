@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "非零原點縮放錨點測試簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": ["slides/001.svg"]
+}

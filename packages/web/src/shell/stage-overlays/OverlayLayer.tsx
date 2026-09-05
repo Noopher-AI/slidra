@@ -15,6 +15,22 @@ export interface OverlayLayerProps {
 
 const EMPTY_OVERLAY: OverlayState = { boxes: [], union: null, label: null, guides: [], contextMenu: null };
 
+/** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer (NOOP-91 round-2 FAIL #4). */
+export function toLocalPoint(
+  point: { x: number; y: number },
+  offset: { x: number; y: number },
+): { x: number; y: number } {
+  return { x: point.x - offset.x, y: point.y - offset.y };
+}
+
+/** Same conversion as `toLocalPoint`, applied to a rect — width/height are already well-relative sizes, so only the corner shifts. */
+export function toLocalRect(
+  rect: { x: number; y: number; width: number; height: number },
+  offset: { x: number; y: number },
+): { x: number; y: number; width: number; height: number } {
+  return { x: rect.x - offset.x, y: rect.y - offset.y, width: rect.width, height: rect.height };
+}
+
 /**
  * 舞台疊層的根容器：`pointer-events: none`（個別可互動元件——情境列按鈕、
  * 右鍵選單——自己開回 `pointer-events: auto`，見 stage-overlays.css），坐在
@@ -49,15 +65,9 @@ export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProp
   const offsetX = wellRect?.left ?? 0;
   const offsetY = wellRect?.top ?? 0;
   const bounds = { width: wellRect?.width ?? 0, height: wellRect?.height ?? 0 };
+  const offset = { x: offsetX, y: offsetY };
 
-  function toLocalPoint(point: { x: number; y: number }): { x: number; y: number } {
-    return { x: point.x - offsetX, y: point.y - offsetY };
-  }
-  function toLocalRect(rect: { x: number; y: number; width: number; height: number }) {
-    return { x: rect.x - offsetX, y: rect.y - offsetY, width: rect.width, height: rect.height };
-  }
-
-  const union = overlay.union ? toLocalRect(overlay.union) : null;
+  const union = overlay.union ? toLocalRect(overlay.union, offset) : null;
   const guides = overlay.guides.map((guide) => ({
     orientation: guide.orientation,
     position: guide.orientation === "v" ? guide.position - offsetX : guide.position - offsetY,
@@ -71,7 +81,7 @@ export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProp
       <GuideLayer guides={guides} />
       {overlay.contextMenu && controller && (
         <ContextMenu
-          point={toLocalPoint(overlay.contextMenu.point)}
+          point={toLocalPoint(overlay.contextMenu.point, offset)}
           bounds={bounds}
           onClose={() => controller.closeContextMenu()}
           onDelete={() => void controller.deleteSelection()}

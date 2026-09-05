@@ -90,6 +90,56 @@ describe("resizeElements — rect, anchor semantics", () => {
     );
   });
 
+  it("anchor nw: a rect NOT anchored at local (0,0) still keeps its nw corner fixed (NOOP-91 round-2 FAIL #1)", () => {
+    // rect's own local nw corner is (50, 20), not (0, 0) — the case that
+    // exposed buildPrimitiveResizeSplices leaving a rect's x/y untouched
+    // while resizeOneTarget's anchor delta assumes every primitive scales
+    // about local (0, 0), exactly like ellipse's cx/cy already do.
+    const svg = slide('<g id="el-a" transform="translate(100 100)"><rect x="50" y="20" width="100" height="50"/></g>');
+
+    const result = resizeElements(svg, SLIDE_PATH, ["el-a"], 200, 100, "nw", NO_FONTS);
+
+    // sx=sy=2: rect's own x/y now also scale (50->100, 20->40), and the
+    // container's translate absorbs exactly the delta needed to keep the nw
+    // corner — translate(100,100)+(50,20)=(150,120) before — landing back on
+    // the same (150, 120) after: translate(50,80)+(100,40)=(150,120).
+    expect(result).toContain('id="el-a" transform="translate(50 80)"');
+    expect(result).toContain('<rect x="100" y="40" width="200" height="100"/>');
+
+    const model = parseSlide(result, SLIDE_PATH);
+    const element = model.elements.find((e) => e.id === "el-a")!;
+    const nwAfter = applyMatrixToPoint(element.matrix, { x: 100, y: 40 });
+    expect(nwAfter.x).toBeCloseTo(150, 6);
+    expect(nwAfter.y).toBeCloseTo(120, 6);
+  });
+
+  it("anchor se: a rect NOT anchored at local (0,0) still keeps its se corner fixed (NOOP-91 round-2 FAIL #1)", () => {
+    const svg = slide('<g id="el-a" transform="translate(100 100)"><rect x="50" y="20" width="100" height="50"/></g>');
+
+    const result = resizeElements(svg, SLIDE_PATH, ["el-a"], 200, 100, "se", NO_FONTS);
+
+    // se corner before: translate(100,100)+(50+100,20+50)=(250,170).
+    // sx=sy=2: rect's own x/y scale to (100,40); translate absorbs the delta
+    // so the se corner (x+width, y+height) lands back on the same (250,170).
+    expect(result).toContain('<rect x="100" y="40" width="200" height="100"/>');
+    const model = parseSlide(result, SLIDE_PATH);
+    const element = model.elements.find((e) => e.id === "el-a")!;
+    const seAfter = applyMatrixToPoint(element.matrix, { x: 100 + 200, y: 40 + 100 });
+    expect(seAfter.x).toBeCloseTo(250, 6);
+    expect(seAfter.y).toBeCloseTo(170, 6);
+  });
+
+  it("a rect with no x/y attribute at all (defaults to local origin 0,0) is unaffected by the x/y scaling fix", () => {
+    const svg = slide('<g id="el-a" transform="translate(10 20)"><rect width="100" height="50"/></g>');
+
+    const result = resizeElements(svg, SLIDE_PATH, ["el-a"], 200, 100, "nw", NO_FONTS);
+
+    expect(result).toContain('id="el-a" transform="translate(10 20)"');
+    expect(result).toContain('<rect width="200" height="100"/>');
+    expect(result).not.toMatch(/<rect[^>]*\sx=/);
+    expect(result).not.toMatch(/<rect[^>]*\sy=/);
+  });
+
   it("rejects a locked target without --force, leaving the SVG unchanged", () => {
     const svg = slide('<g id="el-a" transform="translate(0 0)"><rect x="0" y="0" width="10" height="10"/></g>');
     const locked = lockElements(svg, SLIDE_PATH, ["el-a"]);

@@ -1765,6 +1765,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
+   * Clamps a slide-frame (viewBox-space) point to the slide's own boundary —
+   * 05-INTERACTIONS.feature「縮放」's "不超出投影片": dragging a resize
+   * handle past the visible edge of the slide must not push the dragged
+   * corner any further than that edge, no matter how the target itself is
+   * rotated or nested. Same GUI-only floor as `minResizeSize` (決定 7).
+   */
+  function clampToViewBox(point: { x: number; y: number }): { x: number; y: number } {
+    const box = viewport!.viewBox;
+    return {
+      x: Math.min(Math.max(point.x, box.x), box.x + box.width),
+      y: Math.min(Math.max(point.y, box.y), box.y + box.height),
+    };
+  }
+
+  /**
    * The non-uniform resize path's live preview: computes `(sx, sy)` against
    * the gesture-start `localBox`, then the SAME anchor-preserving translate
    * delta `packages/core`'s `resizeOneTarget` computes server-side — but
@@ -1778,7 +1793,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   function applyResizePreview(gesture: ScaleGesture, point: { x: number; y: number }): boolean {
     if (!gesture.localBox || !gesture.fullInverse) return false;
-    const draggedLocal = applyMatrixToPoint(gesture.fullInverse, toUserPoint(point));
+    const draggedLocal = applyMatrixToPoint(gesture.fullInverse, clampToViewBox(toUserPoint(point)));
     const { width: minWidth, height: minHeight } = minResizeSize();
     const width = Math.max(Math.abs(draggedLocal.x - gesture.anchorLocal.x), minWidth);
     const height = Math.max(Math.abs(draggedLocal.y - gesture.anchorLocal.y), minHeight);

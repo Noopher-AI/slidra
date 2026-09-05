@@ -18,10 +18,28 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * element close enough to exercise snapping without bending its layout,
  * per the plan's own assumption note).
  *
- * SCOPE DELIVERED: drag-to-move (live preview, single command, snap,
- * Alt-disables-snap), multi-select drag, marquee select, scale/rotate
- * handles, textbox-width handles, and group-edit entry/exit (double-click
- * in, Esc out). See the PR body for the exact acceptance-list coverage.
+ * 場景 ↔ 測試對照表（05-INTERACTIONS.feature「移動與縮放元素」，NOOP-91
+ * round-2 FAIL #2/#4 補做——第 1 輪漏做）：
+ *
+ * - 場景「拖曳吸附」（假設拖曳選取中的元素／吸附輔助線／⌥不吸附／放開成一筆歷史）:
+ *   - "拖曳單一元素放手後：預覽字串與寫入檔案的字串逐字元相同，整次拖曳只產生一條命令"
+ *   - "拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左緣完全相等，且畫出/清除輔助線"
+ *   - "按住 Alt 拖到同一位置：不會貼齊，左緣不等於候選元素的左緣"
+ *   - "Shift 點兩個元素後一起拖曳：兩個元素各自的位移量相同，且只產生一條命令"
+ *   - "從空白處拖出框選矩形：與框相交的元素全部選中，且簡報檔案位元組完全未變"
+ *   - "拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣（文字元素本身也是吸附候選）"
+ *   - "驗收條件第四條 (a)/(b)"（history 計數：100 步一筆／20 次獨立拖曳 20 筆）
+ *   - "基準截圖：拖曳中畫出吸附輔助線"／"基準截圖：放手後輔助線消失"／"基準截圖：多選只有 move"
+ * - 場景「縮放」（拖曳四角把手／最小 3cqw×0.6cqh／不超出投影片）:
+ *   - "按住 Shift 拖曳右下角把手放手：scale 依 factor 縮放..."（等比）
+ *   - "拖曳右下角把手放手（不按 Shift）：走 element resize..."（非等比，含 GUI→CLI 抽查）
+ *   - "非等比縮放一個原點非 (0,0) 的 rect：..."（FAIL #1 迴歸：錨點公式）
+ *   - "拖 se 把手拖出投影片右下角：...縮放不超出投影片"（FAIL #2：投影片邊界夾制）
+ *   - 群組祖先鏈（平移/旋轉/縮放）三條 + 文字框寬度把手一條，見對應測項標題
+ *
+ * 其餘測項（⌘A/Delete/⌘D/⌘]/右鍵選單/Arrange 選單/群組進出/白名單）不對應
+ * 05-INTERACTIONS.feature 這兩個場景，是 NOOP-61 驗收條件其餘各條（CLI 對應、
+ * 截圖比對六案、GUI↔CLI 抽查）自己的覆蓋，各自的測項名稱已經自我描述。
  *
  * The fixture's `project.json` declares one embedded font
  * ("Noto Sans TC", for `el-text`'s textbox-width tests) but does not carry
@@ -38,6 +56,10 @@ const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
+// Dedicated single-element fixture for the "rect at a non-zero local origin"
+// resize-anchor regression (NOOP-91 round-2 FAIL #1) — `direct-manipulation-deck`'s
+// own el-a sits at local (0, 0), which is exactly the case that hid the bug.
+const offsetDeckDir = path.join(e2eDir, "fixtures/direct-manipulation-offset-deck");
 const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const baselineDir = path.join(e2eDir, "__screenshots__/direct-manipulation");
@@ -72,7 +94,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
   }
 }
 
-async function startServerFor(): Promise<{
+async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
@@ -87,7 +109,9 @@ async function startServerFor(): Promise<{
   // the real embedded-font bytes (see this file's header comment) — the
   // fixture's own project.json already declares the font entry, it just
   // has no `fonts/` directory checked in for packDirectory to pick up.
-  await cp(deckDir, deckStagingDir, { recursive: true });
+  // `offsetDeckDir` has no font declaration at all, so this is a no-op
+  // extra directory for it (packDirectory only packs what's on disk).
+  await cp(sourceDeckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
@@ -322,6 +346,21 @@ it("拖曳單一元素放手後：預覽字串與寫入檔案的字串逐字元�
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(before);
+
+    // GUI-did-once -> agent-runs-same-CLI spot check (驗收條件第三條，
+    // Plan §6.3 建議案例之一：移動): undo above already restored `before`;
+    // running the equivalent `element move` CLI command with the exact
+    // delta the drag committed must reproduce byte-for-byte the same
+    // `after`.
+    const cliResult = await registry.dispatch("element move", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      elementIds: ["el-a"],
+      dx: moved.x - 100,
+      dy: moved.y - 100,
+    });
+    expect(cliResult.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(after);
   } finally {
     await cleanup();
   }
@@ -726,6 +765,126 @@ it("拖曳右下角把手放手（不按 Shift）：走 element resize，非等�
     });
     expect(cliResult.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(after);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("非等比縮放一個原點非 (0,0) 的 rect：預覽 nw 角與放手後 nw 角在 client 座標系一致（NOOP-91 round-2 FAIL #1 迴歸測試）", async () => {
+  // `direct-manipulation-deck`'s own el-a is a <rect x="0" y="0" .../> inside
+  // a translated <g> — the anchor-preserving delta formula in
+  // `resizeOneTarget` (element-edit.ts) happens to be correct for that shape
+  // even when `buildPrimitiveResizeSplices` leaves the rect's own x/y
+  // untouched, because 0 * anything is still 0. `offsetDeckDir`'s el-a has
+  // NO <g> transform at all and a rect anchored at local (100, 100) —
+  // exactly the shape that exposed the bug (the nw corner visibly jumped on
+  // release because the persisted x/y never scaled while the live preview,
+  // driven by a `scale()` transform, correctly did).
+  const { server, registry, presentationId, cleanup } = await startServerFor(offsetDeckDir);
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    expect(readTransformAttr(before, "el-a")).toBe("");
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
+    const box = await svgBox(page);
+    const seHandle = await handleCenter(page, "se");
+    // Same non-uniform ratios as the sibling "不按 Shift" test above (width
+    // x1.5, height x1.3) — deliberately different axes so this can only be
+    // `element resize`, anchored at the opposite (nw) corner.
+    const target = toPagePoint(box, 100 + 240, 100 + 130);
+
+    const readNwCornerClient = async (): Promise<{ x: number; y: number }> => {
+      const frame = await canvasFrame(page);
+      return frame.evaluate(() => {
+        const rect = document.getElementById("el-a")!.getBoundingClientRect();
+        return { x: rect.left, y: rect.top };
+      });
+    };
+
+    await page.mouse.move(seHandle.x, seHandle.y);
+    await page.mouse.down();
+    await page.mouse.move(target.x, target.y, { steps: 5 });
+    await page.waitForTimeout(80);
+    const nwDuringDrag = await readNwCornerClient();
+    await page.mouse.up();
+    // POST /api/command round trip + the write's own /api/events live-reload
+    // push (canvas.ts's reload()) — same wait every other handle-drag test
+    // in this file gives the persisted result to land.
+    await page.waitForTimeout(150);
+    const nwAfterRelease = await readNwCornerClient();
+
+    // The nw corner is the anchor: it must not visibly jump between the
+    // live preview (mid-drag) and the persisted result (after release).
+    expect(Math.abs(nwAfterRelease.x - nwDuringDrag.x)).toBeLessThan(3);
+    expect(Math.abs(nwAfterRelease.y - nwDuringDrag.y)).toBeLessThan(3);
+
+    // Byte-level check, independent of client-pixel rounding: the nw corner
+    // in the persisted file's own coordinate space — translate(tx,ty) + the
+    // rect's own (spliced) x/y — must land back on exactly (100, 100),
+    // where it started.
+    const after = await readSlide(registry, presentationId);
+    const rectMatch = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(after);
+    expect(rectMatch).not.toBeNull();
+    expect(Math.abs(Number(rectMatch![3]) - 240)).toBeLessThan(5);
+    expect(Math.abs(Number(rectMatch![4]) - 130)).toBeLessThan(5);
+    // `readTransformAttr`/`readTranslate` (this file's own helpers) assume
+    // `transform` appears AFTER `id` in the tag — true for every other
+    // fixture here (their elements already carry a `transform`, so a
+    // resize/move only ever rewrites it in place), but false for this
+    // fixture's el-a: it starts with NO `transform` at all, so
+    // `buildTransformSplice` (element-edit.ts) inserts the new attribute
+    // right after `<g`, BEFORE `id`. Match the whole opening tag first
+    // (attribute-order-independent), then pull `transform` out of that.
+    const gTag = /<g\b[^>]*\bid="el-a"[^>]*>/.exec(after)?.[0] ?? "";
+    const transformValue = /transform="([^"]*)"/.exec(gTag)?.[1] ?? "";
+    const translateAfter = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(transformValue);
+    const tx = translateAfter ? Number(translateAfter[1]) : 0;
+    const ty = translateAfter ? Number(translateAfter[2]) : 0;
+    expect(tx + Number(rectMatch![1])).toBeCloseTo(100, 3);
+    expect(ty + Number(rectMatch![2])).toBeCloseTo(100, 3);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("拖 se 把手拖出投影片右下角：結果 bbox 的右／下緣夾在 viewBox 邊緣（NOOP-91 round-2 FAIL #2：縮放不超出投影片）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-a").click();
+    const box = await svgBox(page);
+    const seHandle = await handleCenter(page, "se");
+    // el-a: translate(100 100), rect 0 0 160 100 -> bbox 100..260 / 100..200.
+    // Drag the se handle far past the slide's own viewBox (1280x720) —
+    // the resulting bbox's right/bottom edge must clamp to the viewBox
+    // edge itself, not keep growing with the pointer.
+    const target = toPagePoint(box, 1600, 1000);
+    await dragPageTo(page, seHandle, target);
+
+    const after = await readSlide(registry, presentationId);
+    const rectMatch = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(after);
+    expect(rectMatch).not.toBeNull();
+    const translateAfter = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(readTransformAttr(after, "el-a"));
+    const tx = translateAfter ? Number(translateAfter[1]) : 0;
+    const ty = translateAfter ? Number(translateAfter[2]) : 0;
+    const right = tx + Number(rectMatch![1]) + Number(rectMatch![3]);
+    const bottom = ty + Number(rectMatch![2]) + Number(rectMatch![4]);
+    expect(right).toBeLessThanOrEqual(1280 + 1);
+    expect(bottom).toBeLessThanOrEqual(720 + 1);
+    // Dragged far past the edge, so the clamp must actually have engaged —
+    // the result should land close to the viewBox edge, not merely under it.
+    expect(right).toBeGreaterThan(1270);
+    expect(bottom).toBeGreaterThan(710);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
   } finally {
     await cleanup();
   }
@@ -1171,6 +1330,20 @@ it("Arrange 選單：Align left 對齊三個選取元素的最小 x；未達門�
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(before);
+
+    // GUI-did-once -> agent-runs-same-CLI spot check (驗收條件第三條，
+    // Plan §6.3 建議案例之一：Arrange › Align left): undo above already
+    // restored `before`; running the equivalent `element align` CLI command
+    // for the same three targets must reproduce byte-for-byte the same
+    // `after`.
+    const cliResult = await registry.dispatch("element align", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      elementIds: ["el-a", "el-b", "el-c"],
+      direction: "left",
+    });
+    expect(cliResult.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(after);
   } finally {
     await cleanup();
   }
@@ -1239,6 +1412,51 @@ it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.
     await page.waitForTimeout(50);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "multiselect-move-only", baselineDir });
+  } finally {
+    await cleanup();
+  }
+});
+
+// NOOP-91 round-2 FAIL #3: 驗收條件第二條「截圖比對：單選、多選、群組選取、
+// 鑽入標籤、Arrange 選單、右鍵選單」六案，第 1 輪只交了前三案——這是第五、
+// 六案。基準圖尚未產生（AGENTS.md「視覺回歸的把關分工」），這兩條測試在基
+// 準產生前會因「找不到基準截圖」失敗，等 CI 觸發 update_baselines 後才會轉
+// 綠，同 selection.test.ts 的「鑽入標籤」基準截圖一樣。
+it("基準截圖：Arrange 選單（三欄 Align / Distribute / Order）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-a").click();
+    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
+    await slideFrame.locator("#el-c").click({ modifiers: ["Shift"] });
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 3 elements");
+
+    await page.getByRole("button", { name: "Arrange" }).click();
+    await expect.poll(() => page.locator(".arrange-menu-item", { hasText: "Align left" }).isVisible()).toBe(true);
+    await page.waitForTimeout(50);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "arrange-menu", baselineDir });
+  } finally {
+    await cleanup();
+  }
+});
+
+it("基準截圖：元素右鍵選單", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.evaluate(() => document.fonts.ready);
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click({ button: "right" });
+    const menu = page.locator(".element-context-menu");
+    await expect.poll(() => menu.isVisible()).toBe(true);
+    await page.waitForTimeout(50);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "context-menu", baselineDir });
   } finally {
     await cleanup();
   }

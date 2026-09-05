@@ -736,6 +736,13 @@ function anchorCorner(anchor: ResizeAnchor, box: { x: number; y: number; width: 
   };
 }
 
+/** Scales `name` (defaulting to 0 per the SVG spec when absent) by `factor` — absent stays absent since `0 * factor` is still the default. */
+function scaleOptionalNumericAttr(node: ScannedNode, name: string, factor: number, elementId: string): Splice[] {
+  const attr = attributeOf(node, name);
+  if (!attr) return [];
+  return [scaleNumericAttr(node, name, factor, elementId, false)];
+}
+
 /**
  * Non-uniform counterpart to `buildPrimitiveScaleSplices`: `sx`/`sy` scale
  * the x-ish and y-ish native attributes independently. Shapes whose data
@@ -745,12 +752,22 @@ function anchorCorner(anchor: ResizeAnchor, box: { x: number; y: number; width: 
  * reject a non-uniform request outright rather than silently degrading to
  * something else — when `sx === sy` they fall through to the existing
  * uniform generator unchanged.
+ *
+ * `rect`/`image` also scale their own `x`/`y` (unlike the uniform-scale
+ * generator, which leaves them alone because scale's contract fixes the
+ * *container* origin, not a bbox corner) — `resizeOneTarget`'s anchor delta
+ * is derived assuming every primitive's native geometry scales about the
+ * local frame's origin `(0, 0)`, exactly like `ellipse`'s `cx`/`cy` and
+ * `line`'s `x1`/`y1`/`x2`/`y2` already do. Leaving `x`/`y` fixed broke that
+ * assumption for any `rect`/`image` not already sitting at local `(0, 0)`.
  */
 function buildPrimitiveResizeSplices(node: ScannedNode, sx: number, sy: number, elementId: string): Splice[] {
   switch (node.tag) {
     case "rect":
     case "image":
       return [
+        ...scaleOptionalNumericAttr(node, "x", sx, elementId),
+        ...scaleOptionalNumericAttr(node, "y", sy, elementId),
         scaleNumericAttr(node, "width", sx, elementId, true),
         scaleNumericAttr(node, "height", sy, elementId, true),
       ];
