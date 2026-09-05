@@ -100,6 +100,35 @@ describe("slide notes set", () => {
     expect(doc.getElementsByTagName("parsererror").length).toBe(0);
   });
 
+  it("既有 <comot:notes> 缺 xmlns:comot（舊檔，本次修正前寫入的）：重寫後補上，不再是 parsererror", async () => {
+    // Round 1 只補了「沒有 <metadata>」與「有 <metadata> 但沒有 <comot:notes>」兩個分支，
+    // 第三個分支（<comot:notes> 已存在）只換內容、不碰開標籤，於是任何在修正前就已經下過
+    // `slide notes set` 的簡報，其 <comot:notes> 永遠缺 xmlns:comot —— 這裡手動重現那個舊檔狀態。
+    const id = await openFreshPresentation();
+    const legacySvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      "  <metadata><comot:notes>舊的備忘稿</comot:notes></metadata>\n" +
+      '  <g id="el-a"><rect x="0" y="0" width="10" height="10"/></g>\n' +
+      "</svg>\n";
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", legacySvg);
+
+    const result = await registry.dispatch("slide notes set", {
+      id,
+      slidePath: "slides/001.svg",
+      text: "作者在 GUI 裡改過的新備忘稿",
+    });
+
+    expect(result.ok).toBe(true);
+    const content = await slideContent(id);
+    expect(content).toContain(
+      '<comot:notes xmlns:comot="https://co-motion.dev/ns">作者在 GUI 裡改過的新備忘稿</comot:notes>',
+    );
+    expect(content).not.toContain("舊的備忘稿");
+    const doc = new (new JSDOM().window.DOMParser)().parseFromString(content, "image/svg+xml");
+    expect(doc.getElementsByTagName("parsererror").length).toBe(0);
+  });
+
   it("路徑不是投影片：不是投影片", async () => {
     const id = await openFreshPresentation();
     const result = await registry.dispatch("slide notes set", { id, slidePath: "slides/999.svg", text: "x" });

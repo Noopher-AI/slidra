@@ -1,6 +1,6 @@
 import { CoMotionError } from "./errors.js";
 import { escapeXmlText } from "./element-text.js";
-import { scanDocument, type ScannedNode } from "./slide/scan.js";
+import { attributeOf, scanDocument, type ScannedNode } from "./slide/scan.js";
 
 /**
  * Speaker notes (T3): a pure string -> string splice, modeled on
@@ -50,6 +50,17 @@ export function setSlideNotes(svgContent: string, text: string): string {
     const markup = `<${NOTES_TAG} xmlns:comot="${NOTES_NS}">${escaped}</${NOTES_TAG}>`;
     const insertAt = metadata.contentStart;
     return svgContent.slice(0, insertAt) + markup + svgContent.slice(insertAt);
+  }
+
+  // A `<comot:notes>` written before this namespace declaration existed (or
+  // otherwise missing it) would parse fine here — this scanner doesn't
+  // validate namespaces — but produce a fatal parse error the moment a
+  // consumer that does (e.g. `effects.ts`'s `parseEffects`) reads it. Rewrite
+  // the open tag along with the content so every write leaves the element
+  // namespace-valid, not just freshly created ones.
+  if (attributeOf(notes, "xmlns:comot")?.value !== NOTES_NS) {
+    const markup = `<${NOTES_TAG} xmlns:comot="${NOTES_NS}">${escaped}`;
+    return svgContent.slice(0, notes.start) + markup + svgContent.slice(notes.contentEnd);
   }
 
   return svgContent.slice(0, notes.contentStart) + escaped + svgContent.slice(notes.contentEnd);
