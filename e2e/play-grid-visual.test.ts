@@ -320,8 +320,15 @@ for (const viewport of VIEWPORTS) {
       }
 
       // D3：第一列欄數 ≥2（用第一列各格的 y 判定同一列），縮圖寬度 ≥160px。
+      // 同列容忍度取 row-gap 的一半（NOOP-9 §2.2 診斷：CI 上實測同一列的 y 值彼此
+      // 相差可達 ~1px 的次像素渲染差，原本寫死的 `< 1` 剛好卡在這個差值邊界，
+      // 導致同一列被誤判成不同列——這是量測本身的 flake，不是 grid-cell 只渲染
+      // 一格的產品迴歸（見這個 PR 的交付說明：1280/1440/2560 三個尺寸的診斷輸出
+      // 都是 count=4，且非同列的格子 y 差了數百 px，同列彼此只差 ~0.3-1.1px）。
+      const rowGap = await page.locator(".grid-view").evaluate((el) => Number.parseFloat(getComputedStyle(el).rowGap));
+      const sameRowTolerance = Math.max(2, rowGap / 2);
       const firstRowY = boxes[0].y;
-      const firstRowCount = boxes.filter((box) => Math.abs(box.y - firstRowY) < 1).length;
+      const firstRowCount = boxes.filter((box) => Math.abs(box.y - firstRowY) < sameRowTolerance).length;
       expect(firstRowCount).toBeGreaterThanOrEqual(2);
 
       const thumbWidth = await page.locator(".grid-thumb").first().evaluate((el) => el.getBoundingClientRect().width);

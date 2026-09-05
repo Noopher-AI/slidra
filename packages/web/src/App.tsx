@@ -1066,6 +1066,7 @@ export function App() {
               type="file"
               className="visually-hidden"
               tabIndex={-1}
+              aria-label="匯入媒體檔案"
               onChange={handleFileInputChange}
             />
             <PlayChrome

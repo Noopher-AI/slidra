@@ -1,4 +1,9 @@
-FROM node:22-bookworm
+# Playwright 1.62's WebKit binary is built against Noble's ICU 74 / AVIF 16 /
+# JPEG 8 ABI.  The matching official image supplies all three browser engines
+# and their system libraries. It ships Node 24; CI (.github/workflows/e2e.yml)
+# pins Node 22, so Node 22 is installed below and asserted at build time
+# (2026-09-04 NOOP-52: asserting v22 on the image's own Node failed the build).
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
 
 ARG UID=1000
 
@@ -34,12 +39,34 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # `install-deps` had silently failed to pull in libglib2.0-0, and every
 # later build reused that broken layer since the instruction text never
 # changed. The `: '...'` no-op below changes the instruction text once to
-# bust that stale cache; the trailing dpkg check makes any future silent
-# failure here a hard build error instead of another undetected bad layer.
-RUN : 'cache-bust NOOP-31: ensure playwright system deps are actually installed' \
-    && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
+# bust that stale cache; the explicit packages and trailing dpkg checks make
+# missing Firefox/X11 dependencies a hard build error instead of another
+# undetected bad layer. This Bookworm base names the GTK package `libgtk-3-0`
+# (the `libgtk-3-0t64` name is from newer Ubuntu/Debian releases), and ships
+# ICU 72, AVIF 15, and turbo-JPEG 62 as its WebKit runtime providers.
+# Match CI's Node 22: the base image installs Node 24 from NodeSource's node_24.x
+# list, so point that list at node_22.x (setup_22.x leaves an existing list
+# alone), reinstall from it, and make the version a hard build-time check.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource-22.gpg \
+    && rm -f /etc/apt/sources.list.d/nodesource.list \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource-22.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get remove -y nodejs \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    && dpkg -l | grep -q libglib2.0-0
+    && node --version | grep -q '^v22\.'
+
+RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
+    && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
+    && apt-get install -y libxcb-shm0 libgtk-3-0t64 libicu74 libavif16 libjpeg8 \
+    && rm -rf /var/lib/apt/lists/* \
+    && dpkg -l | grep -q '^ii  libglib2.0-0t64' \
+    && dpkg -l | grep -q '^ii  libxcb-shm0' \
+    && dpkg -l | grep -q '^ii  libgtk-3-0t64' \
+    && dpkg -l | grep -q '^ii  libicu74' \
+    && dpkg -l | grep -q '^ii  libavif16' \
+    && dpkg -l | grep -q '^ii  libjpeg8'
 
 USER dev
 ENV HOME=/home/dev
