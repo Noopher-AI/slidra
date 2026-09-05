@@ -8,6 +8,19 @@ import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 import { loadPdf } from "./helpers/pdf.js";
+import type { ExportSseEvent } from "../packages/web/src/live-reload.js";
+
+interface ExportRecording {
+  sse: ExportSseEvent[];
+  dom: string[];
+}
+
+/** `sub` 的每一項都依序出現在 `full` 裡（允許 full 有多的）。DOM 只會少於事件序列（React 批次合併），永遠不會多出事件沒帶過的值。 */
+function isSubsequenceOf(sub: readonly string[], full: readonly string[]): boolean {
+  let i = 0;
+  for (const item of full) if (i < sub.length && sub[i] === item) i++;
+  return i === sub.length;
+}
 
 /**
  * GUI Export 面板 (#210 條件 3/4，NOOP-93 §4.7)。
@@ -16,7 +29,9 @@ import { loadPdf } from "./helpers/pdf.js";
  * 完成後可下載、CLI 與 GUI 產出同一份」；截圖比對的「進度中」情境改用一份
  * 這裡動態產生、有更多畫格的簡報（見 buildManyFrameDeck），單純是為了給
  * Playwright 足夠的時間視窗真的抓到「還在進行中」的畫面——用 6 格的
- * export-deck 曾經在本機整個匯出於截圖指令發出前就已經跑完。
+ * export-deck 曾經在本機整個匯出於截圖指令發出前就已經跑完。45 格只是給
+ * 這個時間視窗與截圖測試用；進度斷言本身不依賴格數（NOOP-104 §3.2：進度
+ * 事件的數量與相異值個數是機器速度的函數，不是產品契約）。
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -101,7 +116,8 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
   it("點 pdf-frames：出現進度、完成後下載連結可用、內容與 CLI 匯出的一致", async () => {
     // 45 格（15 張投影片 × 3 格）而不是 6 格的 export-deck：檔頭註解與
     // buildManyFrameDeck 自己的理由——6 格常常在截圖/輪詢指令發出前就已經
-    // 整個匯出完，看不出進度真的有在動。
+    // 整個匯出完，看不出進度真的有在動。這個格數是給 409 測試與「匯出進行
+    // 中」截圖測試撐時間視窗用的，下面的進度斷言不依賴它。
     const manyFrameDeckDir = await buildManyFrameDeck();
     try {
       const started: StartedServer = await startServerFor({ deckDir: manyFrameDeckDir, prefix: "export-gui-parity" });
@@ -109,37 +125,93 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
         const page = await openApp(browser, started.server);
         openPages.push(page);
 
+        // 第 1、2 輪都卡在「用輪詢去取樣一個幾百毫秒的視窗」——45 格的匯出
+        // 從點擊到出現下載連結只有 ~1s，其中真正在跑格子的時間更短，取樣頻率
+        // 追不上事件速度，於是同一個斷言在正確的程式碼上也會約一半機率變紅
+        // （NOOP-103）。這裡改成在頁面內裝兩個「無損記錄器」：事件一發生就被
+        // 寫進頁面內的陣列，測試端只在最後一次性讀回，所以測試端自己再怎麼
+        // 停頓（GC、CDP 往返）都不可能漏掉任何一次事件或任何一次 DOM 更新。
+        await page.evaluate(async () => {
+          const w = window as unknown as { __exportRec?: ExportRecording; __exportRecEs?: EventSource };
+          const rec: ExportRecording = { sse: [], dom: [] };
+          w.__exportRec = rec;
+          // MutationObserver 必須掛在永遠存在的 .export-panel-anchor 上：
+          // .export-status 只在 busy/done/error 才存在，掛在它上面等於還沒開始
+          // 就沒有觀察對象（ExportPanel.tsx 的三個條件式區塊）。
+          const anchor = document.querySelector(".export-panel-anchor");
+          if (!anchor) throw new Error("找不到 .export-panel-anchor");
+          const record = () => {
+            const text = (document.querySelector(".export-status")?.textContent ?? "").trim();
+            if (text && text !== rec.dom[rec.dom.length - 1]) rec.dom.push(text);
+          };
+          new MutationObserver(record).observe(anchor, { subtree: true, childList: true, characterData: true });
+          record();
+          // 自己再開一條 /api/events：changes.ts 的 broadcast 是對所有開著的
+          // stream fan-out，所以這條會收到與 App.tsx 那條一模一樣的事件序列，
+          // 而且不必去 hook 已經載入完成的應用程式。
+          const es = new EventSource("/api/events");
+          w.__exportRecEs = es;
+          es.addEventListener("export", (ev) => rec.sse.push(JSON.parse((ev as MessageEvent).data)));
+          // 必須等到 open 才回來：POST /api/export 的 queued 是同步廣播的，
+          // 連線還沒建立就會漏掉第一則。
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("EventSource 未在 5s 內連上")), 5_000);
+            es.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+          });
+        });
+
         await page.getByRole("button", { name: "Export" }).click();
         await page.getByRole("menu").waitFor({ timeout: 5_000 });
         await page.locator(".export-menu-item", { hasText: "One page per animation step" }).click();
 
-        // 面板點擊後關閉，進度區出現，且 n 至少變動過一次（§4.7 驗收語氣：
-        // 「n 至少變動過一次」——不要求逐格都被看到，只要求不是從頭到尾都是
-        // 同一個數字，或乾脆完成前一格都沒看到）。斷言至少看過兩個相異的
-        // n：只看過「有沒有出現匯出中字樣」分不出「n 真的在跳」跟「running
-        // 事件帶著 0/N 出現一次、之後直接跳完成」。
-        const statusLocator = page.locator(".export-status");
-        const seenTexts = new Set<string>();
-        await expect
-          .poll(
-            async () => {
-              const text = await statusLocator.textContent().catch(() => null);
-              if (text) seenTexts.add(text.trim());
-              return Array.from(seenTexts);
-            },
-            { timeout: 30_000 },
-          )
-          .toEqual(expect.arrayContaining([expect.stringContaining("下載")]));
+        await page.locator(".export-status-done a").waitFor({ timeout: 30_000 });
+        const rec: ExportRecording = await page.evaluate(() => {
+          const w = window as unknown as { __exportRec: ExportRecording; __exportRecEs: EventSource };
+          w.__exportRecEs.close(); // 讀回的同一次 evaluate 裡就關掉，斷言失敗也不會留下連線
+          return w.__exportRec;
+        });
 
-        const seenNs = new Set(
-          Array.from(seenTexts)
-            .map((t) => /匯出中[^0-9]*(\d+)\s*\/\s*\d+/.exec(t)?.[1])
-            .filter((n): n is string => n !== undefined),
-        );
-        expect(seenNs.size).toBeGreaterThan(1);
+        // (1) 產品真的發出了 progress 事件。這是本輪的突變守衛：拿掉 job.ts
+        //     的 progress broadcast，這裡就是 0。結構性保證它在正確程式碼上
+        //     不會是 0——render.ts 的 lastCompleted 種子是 -1，所以第一次成功
+        //     觀察到匯出頁的輪詢一定會呼叫 onProgress，即使 completed 還是 0。
+        //     這與 deck 大小、機器速度、輪詢是否跟得上都無關。
+        const progressEvents = rec.sse.filter((e) => e.state === "progress");
+        expect(progressEvents, `未收到任何 state:"progress" 的 export SSE 事件。完整序列：${JSON.stringify(rec.sse)}`)
+          .not.toHaveLength(0);
+
+        // (2) 事件序列合法且屬於同一個 job（去掉連續重複後，狀態恰好是這四個）。
+        expect(rec.sse.map((e) => e.state).filter((s, i, a) => s !== a[i - 1]))
+          .toEqual(["queued", "running", "progress", "done"]);
+        expect(new Set(rec.sse.map((e) => e.jobId)).size).toBe(1);
+
+        // (3) progress 的 completedFrames 單調不減、不超過 totalFrames。
+        //     不要斷言 done.completedFrames === totalFrames：render.ts 的
+        //     waitForFunction 可能先解出、clearInterval 早於最後一次輪詢，
+        //     實測看過 done 帶 33/45（見計畫 NOOP-104 §3.3 ROUND 2）。
+        const completed = progressEvents.map((e) => e.completedFrames);
+        expect(completed).toEqual([...completed].sort((a, b) => a - b));
+        expect(progressEvents.every((e) => e.completedFrames <= e.totalFrames)).toBe(true);
+
+        // (4) 畫面顯示過的每一則文字，都是某個事件真的帶過的值，順序也一致。
+        //     用「子序列」而不是相等：React 會合併同一個 tick 內到達的事件，
+        //     實測看過 running(0/45) 與 progress(7/45) 同毫秒到達、畫面只渲染
+        //     出後者（NOOP-104 §3.3 ROUND 1）。相等會是新的 flaky。
+        const expectedTexts = rec.sse.flatMap((e) => {
+          if (e.state === "queued") return ["匯出中…"]; // App.tsx 樂觀狀態也是這一則
+          if (e.state === "running" || e.state === "progress")
+            return [e.totalFrames > 0 ? `匯出中… ${e.completedFrames}/${e.totalFrames}` : "匯出中…"];
+          if (e.state === "done") return [`下載 ${e.fileName}（${e.pageCount} 頁）`];
+          return [];
+        });
+        expect(isSubsequenceOf(rec.dom, expectedTexts)).toBe(true);
+
+        // (5) 畫面最後停在下載連結，文字與 done 事件一致。
+        const doneEvent = rec.sse.find((e) => e.state === "done");
+        expect(doneEvent).toBeDefined();
+        expect(rec.dom.at(-1)).toBe(`下載 ${doneEvent!.fileName}（${doneEvent!.pageCount} 頁）`);
 
         const downloadLink = page.locator(".export-status-done a");
-        await downloadLink.waitFor({ timeout: 5_000 });
         const downloadPath = await downloadLink.getAttribute("href");
         expect(downloadPath).toMatch(/^\/api\/export\/[a-f0-9]+\/file$/);
 
