@@ -121,6 +121,14 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--glass-divider",
   "--glass-input-bg",
   "--glass-input-bg-focus",
+  // 圖示 (icon) geometry: prose in the doc's § 圖示 (20×20 viewBox / stroke 1.5),
+  // no table row. Consumed by icons/Icon.tsx via *inline* style var() — the two
+  // mechanical scans below cannot see that usage, which is how they went missing
+  // in round 1 (every shell icon collapsed to 0px). --icon-control is listed with
+  // the compat layer below (play.css reads it too).
+  "--icon-inline",
+  "--icon-command",
+  "--icon-stroke",
   // Pre-rebuild S1 shell compat layer: NOT design-package tokens. play.css /
   // PlayChrome.tsx (playback mode, out of scope for the New v3 shell rebuild,
   // untouched) still consume every one of these by name — removing any of

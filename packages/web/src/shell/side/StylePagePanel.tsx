@@ -3,5 +3,5 @@
  * 票只保證 SidePanel.tsx 的 side/sub 狀態機正確地把這個分頁掛上/卸下。
  */
 export function StylePagePanel() {
-  return <div className="style-page-panel" role="tabpanel" aria-label="樣式 · Page" />;
+  return <div className="style-page-panel" role="tabpanel" aria-label="Style · Page" />;
 }

@@ -5,6 +5,8 @@ import { useCloseFloatingLayer } from "./use-floating-layer.js";
 export interface RailProps {
   /** overview.ts 掛載用的容器。App 只掛一次，React 不再渲染其內容（ADR-0001/0002）。 */
   containerRef: RefObject<HTMLElement | null>;
+  /** 「Slides」標題右側的頁數（原型：`SLIDES 7`）。 */
+  slideCount: number;
 }
 
 type RailMenu = "new" | "templates" | null;
@@ -16,7 +18,7 @@ type RailMenu = "new" | "templates" | null;
  * `overview.ts`（既有的 vanilla DOM 模組）繼續掛在 `.overview` 節點裡，
  * class 名稱刻意保留，Rail 本身只是多包一層版面容器。
  */
-export function Rail({ containerRef }: RailProps) {
+export function Rail({ containerRef, slideCount }: RailProps) {
   const [menu, setMenu] = useState<RailMenu>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const newButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -49,7 +51,10 @@ export function Rail({ containerRef }: RailProps) {
         </button>
         {menu !== null && <div ref={menuRef} className="rail-menu" role="menu" data-menu={menu} />}
       </div>
-      <div className="rail-slides-label">Slides</div>
+      <div className="rail-slides-label">
+        Slides
+        <span className="rail-slides-count">{slideCount}</span>
+      </div>
       <aside className="overview" ref={containerRef} />
     </aside>
   );

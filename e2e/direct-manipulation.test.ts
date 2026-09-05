@@ -403,7 +403,7 @@ it("Shift 點兩個元素後一起拖曳：兩個元素各自的位移量相同�
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
 
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
 
     // Multi-select only ever supports move — the scale/rotate/textbox-width
     // handles must be entirely absent from the rendered handle set the
@@ -455,7 +455,7 @@ it("從空白處拖出框選矩形：與框相交的元素全部選中，且簡�
     await dragBy(page, { x: 40, y: 40 }, { x: 850, y: 420 });
 
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
 
     expect(await readSlide(registry, presentationId)).toBe(before);
   } finally {
@@ -490,7 +490,7 @@ it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer r
     const selName = page.locator(".status-selection-chip");
     // el-text carries no `data-comot-name`, so the status bar falls back to
     // the raw id (StatusBar.tsx).
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：el-text");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: el-text");
   } finally {
     await cleanup();
   }
@@ -655,7 +655,7 @@ it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖�
 
     await slideFrame.locator("#el-group-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
 
     const box = await svgBox(page);
     // el-group: translate(300 550); el-group-child: translate(0 0), rect
@@ -698,7 +698,7 @@ it("雙擊進入旋轉群組後拖曳子元素的縮放把手：原點套用祖�
 
     await slideFrame.locator("#el-group-rotate-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：旋轉群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 旋轉群組子元素");
 
     const box = await svgBox(page);
     // el-group-rotate: translate(1150 250) rotate(30); child: translate(0
@@ -747,7 +747,7 @@ it("雙擊進入縮放群組後拖曳子元素的旋轉把手：原點套用祖�
 
     await slideFrame.locator("#el-group-scale-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：縮放群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 縮放群組子元素");
 
     const box = await svgBox(page);
     // el-group-scale: translate(1150 450) scale(1.5); child: translate(0
@@ -845,7 +845,7 @@ it("雙擊進入群組後拖曳群組內的單一子元素：只有子元素的 
 
     await slideFrame.locator("#el-group-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
 
     // el-group: translate(300 550); el-group-child: translate(0 0), rect
     // 0 0 80 60 -> absolute 300..380 / 550..610. Alt disables snapping —
@@ -877,17 +877,17 @@ it("按 Esc 退出群組編輯後，點同一個畫面位置：選取解析成�
     const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-group-child").dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
 
     await page.keyboard.press("Escape");
     // Esc while not mid-gesture only pops the group-edit scope — the
     // selection itself is untouched until the next click.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
 
     // Clicking the exact same screen position again now resolves at the
     // top level: the OUTERMOST id-carrying ancestor is the group itself.
     await slideFrame.locator("#el-group-child").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
   } finally {
     await cleanup();
   }
@@ -952,7 +952,7 @@ it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
     await page.waitForTimeout(50);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "multiselect-move-only", baselineDir });

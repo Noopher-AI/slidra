@@ -166,7 +166,7 @@ it("點旁邊未鎖定的元素仍正常選取", async () => {
 
     await slideFrame.locator("#el-unlocked").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：未鎖定方塊");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 未鎖定方塊");
   } finally {
     await cleanup();
   }

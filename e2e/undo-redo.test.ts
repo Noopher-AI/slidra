@@ -189,7 +189,7 @@ it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/und
     });
     await page.goto(frozen.server.url);
     await page.frameLocator("iframe.slide-frame").locator("svg text").first().waitFor({ timeout: 30_000 });
-    await expect.poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 }).toContain("已連線");
+    await expect.poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 }).toContain("connected");
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
     await page.locator(".chat-input input").fill("改標題");

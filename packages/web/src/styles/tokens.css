@@ -18,11 +18,15 @@
        (cqw-relative). That's presentation content rendered onto a
        slide, not product UI chrome; it does not belong in a CSS
        custom property consumed by the shell's own stylesheets.
-     - 圖示 (icon) geometry — the doc describes viewBox/stroke-width/
-       rx as implementation rules for the `ICONS` JS constant ("全部
-       定義於 ICONS 常數"), not as a `token.path | value` table row.
-       There is nothing here to mechanically map a CSS custom
-       property name to, so no `--icon-*` tokens are declared.
+     - 圖示 (icon) geometry is prose in the doc (§ 圖示: 20×20 viewBox,
+       stroke 1.5, small sizes 1.6–1.8), not a `token.path | value`
+       row — so the `--icon-*` names below are this file's own, like
+       the glass-material ones. They must exist: icons/Icon.tsx consumes
+       them through *inline* `style={{ width: "var(--icon-inline)" }}`,
+       which neither the CSS-file scan nor the getPropertyValue() scan
+       in tokens.test.ts can see; dropping them silently collapses every
+       shell icon to 0px (round-2 review: Dock/Open/Save/Export icons
+       were invisible, the rail's + was 46px).
 
    Several design-package tokens are documented as a *range*
    (e.g. `text.xs = 10.5–11px`) rather than a single value. Per the
@@ -203,6 +207,16 @@
   --shadow-red: 0 4px 12px rgba(200, 35, 59, 0.22); /* 主要 CTA、pin */
   --shadow-stage: 0 1px 2px rgba(0, 0, 0, 0.4), 0 24px 64px -16px rgba(0, 0, 0, 0.7);
   --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 12px 32px rgba(0, 0, 0, 0.28);
+
+  /* ── 圖示（Icon） ─────────────────────────────────────────────
+     Sizes measured in the prototype: 15px in the titlebar (Open/Save/
+     Export/Play/undo/redo), 14px in the rail's New/Templates, 16–17px
+     on the glass dock. `--icon-control` (15px) is the old-shell compat
+     token above that play.css still reads; `inline`/`command` are the
+     two sizes the New v3 shell actually uses (Icon.tsx's size prop). */
+  --icon-inline: 15px; /* 標題列／側欄／狀態列內嵌圖示 */
+  --icon-command: 17px; /* Dock 指令按鈕圖示 */
+  --icon-stroke: 1.5; /* 文件 § 圖示：stroke-width 1.5 */
 
   /* ── 玻璃材質（Glass） ─────────────────────────────────────────
      Documented as prose + a CSS code block (§ 玻璃材質), not a

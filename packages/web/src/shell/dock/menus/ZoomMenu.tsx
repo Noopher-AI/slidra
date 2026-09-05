@@ -31,12 +31,12 @@ export function ZoomMenu({ zoomPan, onChange, onClose }: ZoomMenuProps) {
   }
 
   return (
-    <div className="floating-layer zoom-menu" role="menu" aria-label="縮放">
-      <button type="button" className="zoom-menu-step" aria-label="縮小" onClick={zoomOut}>
+    <div className="floating-layer zoom-menu" role="menu" aria-label="Zoom">
+      <button type="button" className="zoom-menu-step" aria-label="Zoom out" onClick={zoomOut}>
         −
       </button>
       <span className="zoom-menu-current">{formatZoomPercent(zoomPan.zoom)}</span>
-      <button type="button" className="zoom-menu-step" aria-label="放大" onClick={zoomIn}>
+      <button type="button" className="zoom-menu-step" aria-label="Zoom in" onClick={zoomIn}>
         +
       </button>
       <span className="zoom-menu-divider" />

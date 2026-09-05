@@ -715,12 +715,12 @@ export function App() {
         <div className="app-notices">
           {liveReloadError && (
             <div role="alert" className="live-reload-banner">
-              即時預覽已停止：{liveReloadError}，請重新整理頁面
+              Live preview stopped: {liveReloadError} — reload the page
             </div>
           )}
           {presentationError && (
             <div role="alert" className="live-reload-banner">
-              簡報資訊載入失敗：{presentationError}
+              Deck info failed to load: {presentationError}
             </div>
           )}
           {canvasState.error && (
@@ -729,12 +729,12 @@ export function App() {
             </div>
           )}
           {editingFrozen && (
-            <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
+            <div className="live-reload-banner editing-frozen-banner">Agent editing · undo/redo paused</div>
           )}
         </div>
       )}
       <div className="body">
-        {shellVisible && <Rail containerRef={overviewRef} />}
+        {shellVisible && <Rail containerRef={overviewRef} slideCount={canvasState.slides.length} />}
         <div className="main">
           <Stage
             canvasRef={canvasRef}
@@ -758,7 +758,7 @@ export function App() {
               onExitPlay={() => void handleExitPlay()}
             />
           </Stage>
-          {shellVisible && <Notes />}
+          {shellVisible && <Notes slideNumber={hasSlides ? canvasState.currentIndex + 1 : null} />}
         </div>
         {shellVisible && (
           <SidePanel

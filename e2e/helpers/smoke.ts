@@ -39,7 +39,7 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
 
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => page.locator(".status-selection-chip").textContent()).toContain("已選取");
+    await expect.poll(() => page.locator(".status-selection-chip").textContent()).toContain("Selected");
 
     // ── 2. Operability: every non-disabled control is ≥24×24 and fully on-screen ──
     for (const selector of [".slide-nav-button", ".side-panel-tab", ".dock-command", ".dock-hand-button", ".dock-zoom-control"]) {

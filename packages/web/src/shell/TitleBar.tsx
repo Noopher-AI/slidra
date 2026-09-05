@@ -19,9 +19,9 @@ export interface TitleBarProps {
 }
 
 const AGENT_LABEL: Record<AgentConnection, string> = {
-  connecting: "agent 連線中…",
-  connected: "agent 已連線",
-  disconnected: "agent 連線中斷",
+  connecting: "Agent connecting…",
+  connected: "Agent connected",
+  disconnected: "Agent disconnected",
 };
 
 /**
@@ -50,7 +50,8 @@ export function TitleBar({
         <span className="mark">CoMotion</span>
         <span className="titlebar-beta">BETA</span>
       </div>
-      <div className="titlebar-history" role="group" aria-label="復原／重做">
+      <span className="titlebar-divider" />
+      <div className="titlebar-history" role="group" aria-label="Undo / Redo">
         <button
           type="button"
           className="titlebar-icon-button"
@@ -73,7 +74,7 @@ export function TitleBar({
         </button>
       </div>
       <span className="deck-name" title={deckName ?? undefined}>
-        {deckName ?? "簡報資訊載入失敗"}
+        {deckName ?? "Deck info unavailable"}
       </span>
       {editingFrozen && (
         <span className="titlebar-frozen-badge" role="status">

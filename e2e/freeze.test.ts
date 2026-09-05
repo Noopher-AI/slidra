@@ -292,8 +292,8 @@ it("凍結期間仍可翻頁、進出播放模式；解凍後標題確實已更�
   try {
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
-    const nextButton = page.locator('.slide-nav-button[aria-label="下一頁"]');
-    const previousButton = page.locator('.slide-nav-button[aria-label="上一頁"]');
+    const nextButton = page.locator('.slide-nav-button[aria-label="Next slide"]');
+    const previousButton = page.locator('.slide-nav-button[aria-label="Previous slide"]');
 
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
 
@@ -390,7 +390,7 @@ it("agent 動手期間編輯凍結，作者看得到凍結狀態；凍結期間 
     await sendChatMessage(page, "改標題");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
     await expect.poll(() => banner.isVisible()).toBe(true);
-    expect(await banner.textContent()).toBe("Agent 編輯中，暫時無法復原/重做");
+    expect(await banner.textContent()).toBe("Agent editing · undo/redo paused");
 
     // App.tsx's editingFrozenRef early-return: Ctrl+Z while frozen sends no
     // request at all, so the (still first-page) text is untouched.

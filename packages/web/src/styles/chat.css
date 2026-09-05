@@ -11,24 +11,15 @@
 .chat-sidebar {
   flex: 1;
   min-height: 0;
-  padding: var(--space-8);
-  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   color: var(--ink-900);
 }
 
-.chat-sidebar h2 {
-  margin: 0 0 var(--space-4);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--ink-500);
-  text-transform: none;
-}
-
 .chat-placeholder {
-  color: var(--ink-500);
+  margin: 0;
+  color: var(--ink-400);
+  text-align: center;
 }
 
 .chat-messages {
@@ -36,96 +27,113 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-6) var(--space-3);
 }
 
 .chat-message {
   margin: 0;
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-lg);
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 88%;
   line-height: 1.55;
 }
 
+/* 使用者：右靠的淡色氣泡，右下角收成小圓角指向輸入框。 */
 .chat-message-author {
   align-self: flex-end;
-  background: var(--brand-red-tint);
-  border: 1px solid var(--brand-red-ring);
+  max-width: 88%;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-1);
+  border-radius: var(--radius-xl) var(--radius-xl) var(--space-1);
 }
 
+/* agent：不用氣泡，左側 🤖 頭像 + 內文（03-UI_RATIONALE.md §E）。頭像用
+   ::before 畫，ChatPanel.tsx 的 markup 不變（e2e 靠 class 名稱）。 */
 .chat-message-agent {
-  align-self: flex-start;
-  background: var(--surface-2);
-  border: 1px solid var(--surface-2);
+  align-self: stretch;
+  display: flex;
+  gap: var(--space-3);
+  color: var(--ink-800);
+}
+.chat-message-agent::before {
+  content: "🤖";
+  flex: none;
+  width: calc(var(--space-4) + var(--space-5)); /* 22px：原型頭像尺寸 */
+  height: calc(var(--space-4) + var(--space-5));
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--brand-red-tint);
+  font-size: var(--text-base);
+  line-height: 1;
 }
 
-/* 一筆指令既不是作者也不是 agent 的發言，用滿版呈現。五種狀態各自在
-   `border-left-style` 上有第二個非色彩線索（dashed/solid/groove/double/
-   dotted），色弱／色盲也能分辨。 */
+/* 指令卡：縮排到 agent 內文的起點（頭像 22px + gap 8px），狀態以文字徽章
+   呈現（文字本身就是非色彩線索），指令碼用等寬字。 */
 .chat-command {
   align-self: stretch;
-  border-left: 1px solid var(--ink-200);
+  margin-left: calc(var(--space-4) + var(--space-5) + var(--space-3)); /* 頭像 22px + gap 8px */
   padding: var(--space-3) var(--space-4);
-  background: var(--surface-1);
-  font-size: var(--text-sm);
-}
-
-.chat-command-pending {
-  border-left-style: dashed;
-}
-
-.chat-command-in_progress {
-  border-left-style: solid;
-  border-left-color: var(--brand-red);
-}
-
-.chat-command-completed {
-  border-left-style: groove;
-  border-left-color: var(--ink-500);
-}
-
-.chat-command-failed {
-  border-left-style: double;
-  border-left-color: var(--brand-red-hover);
-}
-
-/* 結果不明（串流中斷，ticket #19）：跟「執行中」（紅、實線）與「失敗」
-   （深紅、double）都不同，維持在較淡的中性色 + dotted。 */
-.chat-command-interrupted {
-  border-left-style: dotted;
-  border-left-color: var(--ink-400);
-}
-.chat-command-interrupted .chat-command-status {
-  color: var(--ink-500);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--surface-0);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md-segmented);
+  font-size: var(--text-xs-hint);
 }
 
 .chat-command-line {
   margin: 0;
   display: flex;
-  gap: var(--space-4);
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .chat-command-status {
+  display: inline-flex;
+  align-items: center;
+  padding: calc(var(--space-1) / 2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
   color: var(--ink-500);
+  font-weight: 700;
   white-space: nowrap;
 }
+.chat-command-in_progress .chat-command-status {
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+}
+.chat-command-completed .chat-command-status {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
 .chat-command-failed .chat-command-status {
-  color: var(--ink-900);
+  background: var(--brand-red-tint2);
+  color: var(--brand-red-hover);
+}
+/* 結果不明（串流中斷，ticket #19）：跟「執行中」（紅）與「失敗」（深紅）
+   都不同，維持在中性色。 */
+.chat-command-interrupted .chat-command-status {
+  background: var(--surface-2);
+  color: var(--ink-500);
 }
 
 .chat-command-text {
+  font-family: var(--font-mono);
+  color: var(--ink-600);
+  line-height: 1.5;
   word-break: break-all;
 }
 
 .chat-command-output {
-  margin: var(--space-3) 0 0;
+  margin: 0;
   padding: var(--space-3) var(--space-4);
-  background: var(--surface-2);
+  background: var(--surface-1);
   border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-y: auto;
@@ -137,8 +145,8 @@
   align-self: stretch;
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  border-left: 1px solid var(--ink-400);
   background: var(--surface-1);
+  border-radius: var(--radius-md-segmented);
   color: var(--ink-500);
   font-size: var(--text-sm);
 }
@@ -148,9 +156,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  color: var(--ink-500);
-  font-size: var(--text-sm);
-  font-style: italic;
+  color: var(--ink-400);
+  font-size: var(--text-xs-hint);
 }
 
 /* 一個空心圈，不是文字：「agent 正在工作中…」已經說明一切，圈只是補充的
@@ -183,53 +190,74 @@
   align-self: stretch;
   margin: 0;
   padding: var(--space-3) var(--space-4);
-  border-left: 1px solid var(--brand-red-hover);
-  background: var(--surface-1);
+  background: var(--brand-red-tint);
+  border-radius: var(--radius-md-segmented);
   color: var(--ink-900);
   font-size: var(--text-sm);
 }
 
+/* 輸入框是一張白卡：上半是輸入列，下半是提示 + 圓角送出鈕；焦點框畫在整
+   張卡上（不是 input 自己）。`.chat-input input` / `.chat-input button`
+   選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層 footer。 */
 .chat-input {
+  flex: none;
+  margin: var(--space-3) var(--space-5) var(--space-5);
   display: flex;
-  gap: var(--space-3);
+  flex-direction: column;
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-xl);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.chat-input:focus-within {
+  border-color: var(--brand-red-ring);
 }
 
 .chat-input input {
-  flex: 1;
   /* Firefox min-width fix (NOOP-51): a bare <input> keeps its size=20
      intrinsic width as its flex-item automatic minimum unless told
      otherwise, so it doesn't yield the space the submit button needs. */
   min-width: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-1);
   box-sizing: border-box;
-  background: var(--surface-1);
-  border: 1px solid var(--surface-2);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
   color: var(--ink-900);
   font: inherit;
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
-.chat-input input:hover {
-  background: var(--surface-0);
+  font-size: var(--text-base);
 }
 .chat-input input::placeholder {
   color: var(--ink-400);
   opacity: 1;
 }
 .chat-input input:focus-visible {
-  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
-  outline-offset: 1px;
-  border-color: var(--brand-red);
+  outline: none;
+}
+
+.chat-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-3) var(--space-4);
+}
+.chat-input-hint {
+  color: var(--ink-300);
+  font-size: var(--text-xs-hint);
 }
 
 .chat-input button {
-  padding: 0 var(--space-5);
+  width: var(--control-h);
+  height: var(--control-h);
+  flex: none;
+  padding: 0;
   border: none;
   border-radius: var(--radius-md);
   background: var(--brand-red);
   color: var(--surface-white);
   font: inherit;
-  font-weight: 600;
+  font-size: var(--text-md-panel-title);
+  font-weight: 800;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out);
 }

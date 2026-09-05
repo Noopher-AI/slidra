@@ -22,8 +22,10 @@ import { AnimatePanel } from "./panels/AnimatePanel.js";
  * shape/arrange menus are empty containers — their contents are a future
  * ticket (see the PR report). There is no `"group"` entry: 05-INTERACTIONS
  * .feature's Group command has no assigned panel/menu component in this
- * ticket's file list, so this skeleton does not render a button for it
- * rather than shipping a button with nowhere to go.
+ * ticket's file list, so this skeleton renders it as a permanently
+ * disabled button (see the JSX below) — the prototype's dock ends with
+ * `Animate Arrange Group`, and 03-UI_RATIONALE.md §D says the three
+ * form one group with no divider between them.
  */
 export type DockLayer = "zoom" | "shape" | "arrange" | "text" | "image" | "video" | "audio" | "table" | "chart" | "animate";
 
@@ -93,7 +95,7 @@ export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection }
         disabled={isCommandDisabled(cmd.key, hasSelection)}
         onClick={() => toggle(cmd.key)}
       >
-        <Icon name={cmd.icon} size="inline" />
+        <Icon name={cmd.icon} size="command" />
         <span>{cmd.label}</span>
       </button>
     );
@@ -135,8 +137,15 @@ export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection }
       </div>
       <span className="dock-divider" />
       <div className="dock-center">{INSERT_COMMANDS.map(renderCommand)}</div>
-      <span className="dock-divider" />
-      <div className="dock-right">{EDIT_COMMANDS.map(renderCommand)}</div>
+      {/* Insert 與 Edit 群組之間沒有分隔線（03-UI_RATIONALE.md §D：右段三者「不加分隔線以表示同類」，原型也只在 ✋/縮放後面畫一條）。 */}
+      <div className="dock-right">
+        {EDIT_COMMANDS.map(renderCommand)}
+        {/* 外觀佔位：Group 尚無面板/指令可接（見檔頭註解），一律停用。 */}
+        <button type="button" className="dock-command" title="Group" aria-label="Group" disabled>
+          <Icon name="group" size="command" />
+          <span>Group</span>
+        </button>
+      </div>
       {openLayer !== null && renderOpenLayer()}
     </div>
   );

@@ -16,8 +16,8 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding-inline: var(--space-3);
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
   border-radius: var(--radius-xl);
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -26,13 +26,18 @@
   box-shadow: var(--shadow-glass);
 }
 
+/* 群組內按鈕彼此貼合（原型：Text 的右緣就是 Shape 的左緣），只有 ✋ 與縮放
+   之間留 4px；整列量出來 ≈700px，正是 02-DESIGN_DOC.md §8 說的「工具列
+   最寬 ≈ 700px，在 728px 舞台欄內置中」。 */
 .dock-left,
 .dock-center,
 .dock-right {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
   flex: none;
+}
+.dock-left {
+  gap: var(--space-1);
 }
 .dock-center {
   flex: 0 1 auto;
@@ -43,14 +48,16 @@
 .dock-divider {
   width: 1px;
   align-self: stretch;
-  margin-block: var(--space-2);
+  margin-block: var(--space-5);
   background: var(--glass-divider);
   flex: none;
 }
 
+/* Dock 內按鈕高度 = 玻璃列 46px 扣掉上下各 7px（原型量測 32px），介於
+   --control-h（30）與 --control-h-compact（28）之外，故從 --toolbar-h 推。 */
 .dock-hand-button {
   width: var(--control-h);
-  height: var(--control-h-compact);
+  height: calc(var(--toolbar-h) - var(--space-6));
   border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
@@ -67,8 +74,8 @@
 
 .dock-zoom-control {
   min-width: calc(var(--control-h) * 1.4);
-  height: var(--control-h-compact);
-  padding-inline: var(--space-2);
+  height: calc(var(--toolbar-h) - var(--space-6));
+  padding-inline: var(--space-1);
   border-radius: var(--radius-sm);
   font-size: var(--text-xs-hint);
   font-weight: 700;
@@ -84,9 +91,9 @@
 .dock-command {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  height: var(--control-h);
-  padding-inline: var(--space-2);
+  gap: calc(var(--space-2) / 2);
+  height: calc(var(--toolbar-h) - var(--space-6));
+  padding-inline: calc(var(--space-1) - 1px); /* 3px：本機字型比原型略寬，4px 會讓整列超過舞台欄 */
   border-radius: var(--radius-sm);
   font-size: var(--text-xs-hint);
   font-weight: 600;

@@ -298,7 +298,7 @@ it("縮放選單：從工具列正上方中央長出，含 −/百分比/+/Fit/�
     expect(currentColor).toBe(brandRedRgb);
 
     // 先放大，再點 Fit：應回到 100% 且置中（translate 回到初始值）。
-    await menu.locator('button[aria-label="放大"]').click();
+    await menu.locator('button[aria-label="Zoom in"]').click();
     await expect.poll(() => menu.locator(".zoom-menu-current").textContent()).not.toBe("100%");
     await menu.getByText("Fit", { exact: true }).click();
     await expect.poll(() => page.locator(".dock-zoom-control").textContent()).toBe("100%");

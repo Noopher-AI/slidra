@@ -72,12 +72,17 @@
 .rail-slides-label {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: var(--space-2) var(--space-6) var(--space-1);
   font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-400);
+}
+
+.rail-slides-count {
+  color: var(--ink-300);
 }
 
 .overview {
@@ -89,47 +94,46 @@
 .overview-list {
   list-style: none;
   margin: 0;
-  padding: var(--space-3) 0;
+  padding: var(--space-1) var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
+/* 03-UI_RATIONALE.md §B「頁碼圓點：當前頁紅底白字」；整列（不是縮圖）以底色
+   標示目前頁，縮圖本身另外加紅色外框。 */
 .overview-item {
   display: grid;
-  grid-template-columns: var(--space-8) 1fr;
+  grid-template-columns: calc(var(--space-4) * 2) 1fr; /* 20px 頁碼圓點直徑（原型量測） */
   gap: var(--space-3);
   align-items: start;
-  padding: var(--space-2) var(--space-6);
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
   position: relative;
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 .overview-item:hover {
+  background: var(--surface-3);
+}
+.overview-item-current {
   background: var(--surface-2);
 }
 
-.overview-item-current::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: var(--space-2);
-  bottom: var(--space-2);
-  width: var(--space-1);
-  background: var(--brand-red);
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
-  pointer-events: none;
-}
-
 .overview-number {
-  text-align: right;
-  padding-top: var(--space-1);
+  width: calc(var(--space-4) * 2);
+  height: calc(var(--space-4) * 2);
+  margin-top: calc(var(--space-1) / 2);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
   color: var(--ink-400);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs-hint);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .overview-item-current .overview-number {
-  color: var(--ink-900);
-  font-weight: 700;
+  background: var(--brand-red);
+  color: var(--surface-white);
 }
 
 .overview-thumb {
@@ -138,24 +142,21 @@
   width: 100%;
   height: auto;
   padding: 0;
-  border: 1px solid var(--surface-2);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--well-play);
+  box-shadow: var(--shadow-seg);
   cursor: pointer;
   overflow: hidden;
-  outline: calc(var(--space-1) / 2) solid transparent;
-  outline-offset: 1px;
-  transition: border-color var(--dur-fast) var(--ease-out);
-}
-.overview-thumb:active {
-  border-color: var(--brand-red);
+  transition: outline-color var(--dur-fast) var(--ease-out);
 }
 .overview-thumb:focus-visible {
   box-shadow: 0 0 0 var(--space-1) var(--brand-red-ring);
 }
+/* 目前頁的紅框用 outline（跟著 border-radius 走），不疊進 box-shadow —
+   design-contract 只允許 box-shadow 整值來自 token。 */
 .overview-item-current .overview-thumb {
-  border-color: var(--brand-red);
-  outline-color: var(--brand-red);
+  outline: calc(var(--space-1) / 2) solid var(--brand-red);
 }
 
 .overview-frame {

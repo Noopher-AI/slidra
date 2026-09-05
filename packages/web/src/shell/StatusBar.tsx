@@ -1,4 +1,5 @@
 import type { CanvasController, CanvasState } from "../canvas.js";
+import { Icon } from "../icons/index.js";
 
 export interface StatusBarProps {
   state: CanvasState;
@@ -26,36 +27,42 @@ export function StatusBar({ state, controller }: StatusBarProps) {
       ? null
       : selectionCount === 1
         ? (state.selection.names[0] ?? state.selection.ids[0])
-        : `${selectionCount} 個元素`;
+        : `${selectionCount} elements`;
 
   return (
     <footer className="status status-bar">
-      <span className="status-selection-chip">{selectionLabel !== null && <>已選取：<b>{selectionLabel}</b></>}</span>
+      <span className="status-selection-chip">{selectionLabel !== null && <>Selected: <b>{selectionLabel}</b></>}</span>
       <span className="status-hints">
-        ← → 換頁 · ⇧點多選 · 雙擊編輯 · ⌘Z 復原 · ⌘D 複製 · 右鍵更多
+        ← → slides · ⇧click multi-select · double-click to edit · ⌘Z undo · ⌘D duplicate · right-click for more
       </span>
       <span className="spacer" />
       <span className="status-page">
         <button
           type="button"
           className="slide-nav-button"
-          aria-label="上一頁"
+          aria-label="Previous slide"
           disabled={!hasSlides || state.currentIndex <= 0}
           onClick={() => void controller?.previous()}
         >
-          ‹
+          <Icon name="prev" size="inline" />
         </button>
         <span className="slide-nav-position">
-          {hasSlides ? `第 ${state.currentIndex + 1} 頁，共 ${slideCount} 頁` : "尚無投影片"}
+          {hasSlides ? (
+            <>
+              Slide <b>{state.currentIndex + 1}</b> of {slideCount}
+            </>
+          ) : (
+            "No slides"
+          )}
         </span>
         <button
           type="button"
           className="slide-nav-button"
-          aria-label="下一頁"
+          aria-label="Next slide"
           disabled={!hasSlides || state.currentIndex >= slideCount - 1}
           onClick={() => void controller?.next()}
         >
-          ›
+          <Icon name="next" size="inline" />
         </button>
       </span>
     </footer>

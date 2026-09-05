@@ -176,7 +176,7 @@ describe("mountOverview", () => {
 
     const firstButton = items[0].querySelector("button.overview-thumb");
     expect(firstButton).not.toBeNull();
-    expect(firstButton!.getAttribute("aria-label")).toBe("第 1 頁");
+    expect(firstButton!.getAttribute("aria-label")).toBe("Slide 1");
 
     // No iframe until the <li> intersects — the acceptance criterion is
     // that far-away thumbnails are not materialised at all, and a browsing
@@ -306,7 +306,7 @@ describe("mountOverview", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const frame = item.querySelector("iframe") as HTMLIFrameElement;
-    expect(frame.srcdoc).toContain("縮圖載入失敗");
+    expect(frame.srcdoc).toContain("Thumbnail failed to load");
   });
 
   it("does not refetch or reset an already-loaded thumbnail when only currentIndex changes", async () => {

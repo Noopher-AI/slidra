@@ -15,9 +15,9 @@ type SideId = "chat" | "style" | "animate";
 type SubId = "page" | "object";
 
 const SIDE_TABS: ReadonlyArray<{ id: SideId; label: string }> = [
-  { id: "chat", label: "對話" },
-  { id: "style", label: "樣式" },
-  { id: "animate", label: "動畫" },
+  { id: "chat", label: "Chat" },
+  { id: "style", label: "Style" },
+  { id: "animate", label: "Animate" },
 ];
 
 /**
@@ -74,7 +74,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
 
   return (
     <div className="side-panel">
-      <div className="side-panel-tabs" role="tablist" aria-label="右欄">
+      <div className="side-panel-tabs" role="tablist" aria-label="Side panel">
         {SIDE_TABS.map((tab, index) => (
           <button
             key={tab.id}
@@ -94,7 +94,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
         ))}
       </div>
       {showSub && (
-        <div className="side-panel-subtabs" role="tablist" aria-label="頁面／物件">
+        <div className="side-panel-subtabs" role="tablist" aria-label="Page / Object">
           <button
             type="button"
             className="side-panel-subtab"

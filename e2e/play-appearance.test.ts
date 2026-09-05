@@ -443,7 +443,7 @@ it("離開播放模式後，總覽縮圖軌重新掛載且可點擊換頁（over
     const titleText = () => playFrame().locator("svg text").first().textContent().catch(() => null);
     const firstSlideText = await titleText();
 
-    await page.locator('button[aria-label="第 2 頁"]').click();
+    await page.locator('button[aria-label="Slide 2"]').click();
     await expect.poll(titleText, { timeout: 30_000 }).not.toBe(firstSlideText);
   } finally {
     await page.close();

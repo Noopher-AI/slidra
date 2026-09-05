@@ -46,7 +46,7 @@ button:disabled {
   border-bottom: 1px solid var(--surface-2);
   display: flex;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-6);
   padding-inline: var(--space-8);
   box-sizing: border-box;
 }
@@ -57,10 +57,16 @@ button:disabled {
   flex: none;
 }
 .mark {
-  font-size: var(--text-md-panel-title);
+  font-size: calc(var(--text-lg-dialog) - 1px); /* 16px：原型量測值，沒有剛好對應的字級 token */
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--brand-red);
+}
+.titlebar-divider {
+  width: 1px;
+  height: calc(var(--space-4) * 2);
+  background: var(--surface-2);
+  flex: none;
 }
 .titlebar-beta {
   font-size: var(--text-2xs);
@@ -73,18 +79,18 @@ button:disabled {
 }
 .titlebar-history {
   display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: 1px;
+  padding: calc(var(--space-1) / 2);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   flex: none;
 }
 .titlebar-icon-button {
-  width: var(--control-h);
-  height: var(--control-h-compact);
+  width: var(--control-h-compact);
+  height: calc(var(--control-h-compact) - var(--space-1) / 2);
   display: grid;
   place-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--ink-700);
 }
 .titlebar-icon-button:not(:disabled):hover {
@@ -155,7 +161,7 @@ button:disabled {
   border: 1px solid var(--surface-2);
   border-radius: var(--radius-sm);
   background: var(--surface-white);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--ink-700);
   white-space: nowrap;
@@ -177,7 +183,7 @@ button:disabled {
   height: var(--control-h);
   background: var(--brand-red);
   color: var(--surface-white);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -273,7 +279,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  padding-inline: var(--space-8);
+  padding-inline: var(--space-6);
   color: var(--ink-500);
   font-size: var(--text-sm);
   box-sizing: border-box;
@@ -290,7 +296,7 @@ button:disabled {
   font-weight: 600;
 }
 .status-hints {
-  color: var(--ink-400);
+  color: var(--ink-300);
   font-size: var(--text-xs-hint);
   white-space: nowrap;
   overflow: hidden;
@@ -303,14 +309,13 @@ button:disabled {
   flex: none;
 }
 .slide-nav-button {
-  min-width: var(--hit-min);
-  min-height: var(--hit-min);
+  width: var(--hit-min);
+  height: var(--hit-min);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding-inline: var(--space-3);
+  padding: 0;
   box-sizing: border-box;
-  font-size: var(--text-md-panel-title);
   color: var(--ink-500);
   border-radius: var(--radius-sm);
 }
@@ -323,6 +328,10 @@ button:disabled {
   color: var(--ink-500);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.slide-nav-position b {
+  color: var(--ink-900);
+  font-weight: 700;
 }
 
 /* ── 共用互動狀態 ─────────────────────────────────────────────── */

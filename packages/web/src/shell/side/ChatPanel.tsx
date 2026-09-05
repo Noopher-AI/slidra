@@ -22,9 +22,8 @@ export interface ChatPanelProps {
 export function ChatPanel({ messages, working, streamReady, error, draft, onDraftChange, onSubmit }: ChatPanelProps) {
   return (
     <aside className="chat-sidebar">
-      <h2>對話</h2>
       <div className="chat-messages">
-        {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
+        {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
           message.role === "notice" ? (
             <p key={message.id} className="chat-notice" role="alert">
@@ -50,8 +49,8 @@ export function ChatPanel({ messages, working, streamReady, error, draft, onDraf
             </p>
           ),
         )}
-        {working && <p className="chat-working">agent 正在工作中…</p>}
-        {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
+        {working && <p className="chat-working">agent is working…</p>}
+        {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
         {error && <p className="chat-error">{error}</p>}
       </div>
       <form
@@ -64,11 +63,14 @@ export function ChatPanel({ messages, working, streamReady, error, draft, onDraf
         <input
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
-          placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
+          placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
         />
-        <button type="submit" disabled={!streamReady}>
-          送出
-        </button>
+        <div className="chat-input-footer">
+          <span className="chat-input-hint">↵ to send</span>
+          <button type="submit" aria-label="Send" title="Send (↵)" disabled={!streamReady}>
+            ↑
+          </button>
+        </div>
       </form>
     </aside>
   );
@@ -76,11 +78,11 @@ export function ChatPanel({ messages, working, streamReady, error, draft, onDraf
 
 /** ACP tool-call 狀態 → 使用者看到的字——逐字搬自 App.tsx。 */
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
-  pending: "準備執行",
-  in_progress: "執行中",
-  completed: "已完成",
-  failed: "執行失敗",
+  pending: "Pending",
+  in_progress: "Running",
+  completed: "✓ Done",
+  failed: "Failed",
 };
 
 /** 串流中斷、結果不明時顯示的字（不是 CommandStatus 的一員：真的不知道成功與否，不編一個答案）。 */
-const COMMAND_INTERRUPTED_LABEL = "結果不明";
+const COMMAND_INTERRUPTED_LABEL = "Unknown";

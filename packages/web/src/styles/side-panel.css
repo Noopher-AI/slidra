@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    右欄 (New v3 skeleton): 3 個主分頁（對話/樣式/動畫）+ 樣式/動畫底下的
-   Page/Object 子分頁 (SidePanel.tsx 的狀態機)。
+   Page/Object 子分頁 (SidePanel.tsx 的狀態機)。兩層分頁都是原型的
+   segmented control（surface.1 軌 + 白色選中片 + shadow.seg），只差尺寸。
    ═══════════════════════════════════════════════════════════════ */
 
 .side-panel {
@@ -8,7 +9,7 @@
   width: var(--panel-w);
   flex-shrink: 0;
   border-left: 1px solid var(--surface-2);
-  background: var(--surface-0);
+  background: var(--surface-white);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -18,8 +19,11 @@
 .side-panel-tabs {
   flex-shrink: 0;
   display: flex;
-  height: var(--control-h);
-  border-bottom: 1px solid var(--surface-2);
+  gap: calc(var(--space-1) / 2);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: calc(var(--space-2) / 2);
+  border-radius: var(--radius-md-segmented);
+  background: var(--surface-1);
 }
 
 .side-panel-tab {
@@ -28,17 +32,18 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
+  height: var(--control-h-compact);
   border: none;
-  border-bottom: calc(var(--space-1) / 2) solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-500);
   font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: 600;
   cursor: pointer;
   transition:
     color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out);
 }
 .side-panel-tab:hover {
   color: var(--ink-900);
@@ -47,19 +52,19 @@
   outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
 }
-/* 選中同時吃顏色與粗細（不能只靠底線色分辨）。 */
+/* 選中同時吃底色、陰影與文字色（不能只靠一種線索分辨）。 */
 .side-panel-tab[aria-selected="true"] {
+  background: var(--surface-white);
   color: var(--ink-900);
-  border-bottom-color: var(--brand-red);
-  font-weight: 700;
+  box-shadow: var(--shadow-seg);
 }
 
 .side-panel-subtabs {
   flex-shrink: 0;
   display: flex;
-  gap: var(--space-1);
-  margin: var(--space-3) var(--space-5) 0;
-  padding: var(--space-1);
+  gap: calc(var(--space-1) / 2);
+  margin: var(--space-6) var(--space-6) 0;
+  padding: calc(var(--space-2) / 2);
   border-radius: var(--radius-md-segmented);
   background: var(--surface-1);
 }

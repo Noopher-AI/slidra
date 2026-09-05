@@ -137,7 +137,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
     } catch {
       if (generations[index] !== thisGeneration) return;
-      frame.srcdoc = wrapSlideDocument(`<p>縮圖載入失敗</p>`);
+      frame.srcdoc = wrapSlideDocument(`<p>Thumbnail failed to load</p>`);
     }
   }
 
@@ -175,7 +175,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       const button = document.createElement("button");
       button.type = "button";
       button.className = "overview-thumb";
-      button.setAttribute("aria-label", `第 ${index + 1} 頁`);
+      button.setAttribute("aria-label", `Slide ${index + 1}`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
       li.appendChild(number);

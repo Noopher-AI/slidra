@@ -17,7 +17,7 @@ export function HandButton({ active, onToggle }: HandButtonProps) {
       aria-pressed={active}
       onClick={onToggle}
     >
-      <Icon name="hand" size="inline" />
+      <Icon name="hand" size="command" />
     </button>
   );
 }

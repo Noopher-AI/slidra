@@ -1,28 +1,45 @@
 /* 備忘稿 (New v3 skeleton). No ticket in this fleet wires real note content
-   yet — Notes.tsx always shows the same honest placeholder. Height is the
+   yet — Notes.tsx always shows the same honest placeholder, styled as the
+   prototype's notes box (white card, not an editable field). Height is the
    design package's own `--notes-h` token. */
 .notes {
   grid-row: 2;
   height: var(--notes-h);
   background: var(--surface-0);
   border-top: 1px solid var(--surface-2);
-  padding: var(--space-3) var(--space-8);
+  padding: var(--space-4) calc(var(--space-5) * 2) var(--space-6); /* 左右 24px（原型量測） */
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
 }
 .notes-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   color: var(--ink-400);
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 700;
 }
+.notes-label-slide {
+  color: var(--ink-300);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .notes-empty {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3) var(--space-5);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md-segmented);
   color: var(--ink-400);
   font-size: var(--text-base);
-  line-height: 1.5;
+  line-height: 1.55;
 }
