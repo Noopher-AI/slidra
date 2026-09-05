@@ -15,7 +15,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * 元素選取 (#56, ADR-0011): clicking an element on the canvas in view mode
  * selects it, draws a four-corner box over it in a Shadow DOM, and shows
  * its 顯示名稱 (or 識別碼 fallback) in the status bar. Modeled on
- * e2e/grid-view.test.ts's startServerFor shape and e2e/player-hostile.test.ts's
+ * e2e/demo-deck.test.ts's startServerFor shape and e2e/player-hostile.test.ts's
  * hostile-fixture posture.
  *
  * Every click below uses a real Playwright locator click (dispatches a
@@ -212,13 +212,13 @@ it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯�
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
 
     await slideFrame.locator("#el-plain").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：el-plain");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: el-plain");
   } finally {
     await cleanup();
   }
@@ -271,7 +271,7 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-square").click();
     // The postMessage round trip from selection-runtime.js to React state
@@ -300,16 +300,35 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
   }
 });
 
-it("選取不會啟用任何 disabled 的功能區按鈕", async () => {
+// New v3 shell rebuild: 這條測項原本斷言「選取不改變任何 disabled 按鈕的
+// 數量」——舊殼的 Ribbon 命令從不隨選取變動。New v3 的 Dock 明確要求相反
+// （05-INTERACTIONS.feature「停用態」：沒有選取時 Animate/Arrange 半透明不
+// 可按，見 Dock.tsx 的 isCommandDisabled），所以原本的斷言現在會跟這張票
+// 自己交付的規格衝突，不是「保持不變」的既有行為。改成精準斷言：選取只讓
+// Animate／Arrange 這兩顆從 disabled 變 enabled，其餘原本 disabled 的按鈕
+// 一個都不受影響——保留原測項真正要防的那個問題（選取意外啟用不相干的按
+// 鈕），同時容納這張票新增的、刻意的兩顆按鈕反應性。
+it("選取只會啟用 Animate／Arrange 兩顆按鈕，其餘 disabled 按鈕不受影響", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
-    const disabledCountBefore = await page.locator("button[disabled]").count();
+    const animate = page.locator('.dock-command[aria-label="Animate"]');
+    const arrange = page.locator('.dock-command[aria-label="Arrange"]');
+    expect(await animate.isDisabled()).toBe(true);
+    expect(await arrange.isDisabled()).toBe(true);
+
+    const countOtherDisabled = () =>
+      page.locator("button[disabled]").evaluateAll(
+        (els) => els.filter((el) => el.getAttribute("aria-label") !== "Animate" && el.getAttribute("aria-label") !== "Arrange").length,
+      );
+    const otherDisabledBefore = await countOtherDisabled();
 
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
 
-    const disabledCountAfter = await page.locator("button[disabled]").count();
-    expect(disabledCountAfter).toBe(disabledCountBefore);
+    await expect.poll(() => animate.isDisabled()).toBe(false);
+    await expect.poll(() => arrange.isDisabled()).toBe(false);
+    const otherDisabledAfter = await countOtherDisabled();
+    expect(otherDisabledAfter).toBe(otherDisabledBefore);
   } finally {
     await cleanup();
   }
@@ -430,9 +449,9 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     const pageIndicator = page.locator(".slide-nav-position");
     const slideFrame = page.locator("iframe.slide-frame");
 
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 1 頁，共 4 頁");
-    await page.locator('button[aria-label="下一頁"]').click();
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 4 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("Slide 1 of 4");
+    await page.locator('button[aria-label="Next slide"]').click();
+    await expect.poll(() => pageIndicator.textContent()).toBe("Slide 2 of 4");
 
     const sandbox = await slideFrame.getAttribute("sandbox");
     expect(sandbox).toContain("allow-scripts");
@@ -441,7 +460,7 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     // comfortably longer than that before asserting nothing moved.
     await page.waitForTimeout(600);
 
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 2 頁，共 4 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("Slide 2 of 4");
     const srcdoc = await slideFrame.getAttribute("srcdoc");
     expect(srcdoc).not.toBeNull();
     expect(srcdoc).not.toContain("__COMOT_PLAN__");
@@ -466,13 +485,13 @@ it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）�
     const page = await openApp(server);
     const pageIndicator = page.locator(".slide-nav-position");
     for (let i = 0; i < 3; i++) {
-      await page.locator('button[aria-label="下一頁"]').click();
+      await page.locator('button[aria-label="Next slide"]').click();
     }
-    await expect.poll(() => pageIndicator.textContent()).toBe("第 4 頁，共 4 頁");
+    await expect.poll(() => pageIndicator.textContent()).toBe("Slide 4 of 4");
 
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
@@ -496,7 +515,7 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
   try {
     const page = await openApp(server);
 
-    await page.locator('.cmd:has-text("從頭播放")').click();
+    await page.locator(".play-from-start-button").click();
     // Shell collapsing (titlebar unmounts) is direct evidence play mode
     // took effect — same signal e2e/shell.test.ts polls after this same
     // click, chosen over the sandbox attribute because both modes now
@@ -505,12 +524,12 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
 
     await page.locator('button:has-text("離開播放")').click();
     // Symmetric wait for the round trip back to view mode: the titlebar
-    // (and with it the ribbon's 從頭播放 command) reappears.
+    // (and with it its own Play-from-start button) reappears.
     await expect.poll(() => page.locator(".titlebar").count()).toBe(1);
 
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
@@ -553,16 +572,16 @@ it("點 demo 第 1 頁的背景會選到背景容器，狀態列顯示它的識�
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     const svgRoot = slideFrame.locator("svg").first();
     const box = await svgRoot.boundingBox();
     if (!box) throw new Error("量不到 svg 的邊界框");
     await page.mouse.click(box.x + 4, box.y + 4);
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toMatch(/^已選取：el-.+$/);
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toMatch(/^Selected: el-.+$/);
     // Not one of the two named elements — it really is the background.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).not.toBe("已選取：標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).not.toBe("Selected: 標題");
   } finally {
     await cleanup();
   }
@@ -593,13 +612,13 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
     const page = await openApp(server);
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     // Click the child's own `<rect>`. The nearest id-carrying ancestor is
     // el-child-left; the outermost is el-group, and el-group is the answer.
     await page.frameLocator("iframe.slide-frame").locator("#el-child-left rect").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -686,7 +705,7 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
   try {
     const page = await openApp(server);
     const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     // First dblclick enters el-outer (the outermost group at top level).
     // NOOP-149r3: the newly-entered scope's own selection is resolved by
@@ -701,7 +720,7 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     // above), on top of el-outer's own entered-scope frame — 2 frames
     // already, not 1.
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
     // The click/dblclick sequence's own select messages each round-trip
     // through the host (which echoes group scope + handle flags back down
     // — see canvas.ts's pushSelectionToRuntime); give the last echo time to
@@ -720,7 +739,7 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     // real must not move or drop either one (NOOP-149 r2: a single-element
     // frame that moved to the innermost level made the outer group vanish).
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
     await page.waitForTimeout(50);
     const afterInner = await groupFrameBoxes(page);
     expect(afterInner).toHaveLength(2);
@@ -749,15 +768,15 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
   try {
     const page = await openApp(server);
     const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
     await page.waitForTimeout(50);
     const [outerFrame] = await groupFrameBoxes(page);
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
     // See the previous test's comment: wait for the dblclick's own select
     // message to round-trip back through the host before pressing Escape,
     // so a late-arriving echo cannot re-apply the just-entered scope on
@@ -849,7 +868,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
   const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
   try {
     const page = await openApp(server);
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     const pink = page.frameLocator("iframe.slide-frame").locator("#el-pink");
 
     // One dblclick enters el-outer; el-pink's outermost-within-scope
@@ -857,7 +876,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
     // the solid selection box must land on the whole group, not on
     // el-pink alone.
     await pink.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
     await page.waitForTimeout(50);
 
     // The iframe is sandboxed without allow-same-origin (see the sandbox

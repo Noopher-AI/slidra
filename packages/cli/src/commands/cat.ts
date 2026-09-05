@@ -1,5 +1,5 @@
 import { readPresentationFile } from "@co-motion/core";
-import type { CommandHandler, TerminalRenderer } from "../registry.js";
+import type { CommandHandler, CommandRegistry, TerminalRenderer } from "../registry.js";
 
 export interface CatInput {
   id: string;
@@ -26,3 +26,7 @@ export const catCommand: CommandHandler<CatInput, CatData> = async (input) => {
  * newline (ADR-0004).
  */
 export const renderCat: TerminalRenderer<CatData> = (data) => data.content;
+
+export function register(registry: CommandRegistry): void {
+  registry.register("cat", { handler: catCommand, render: renderCat });
+}

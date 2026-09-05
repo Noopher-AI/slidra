@@ -109,7 +109,7 @@ it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", as
     })
     .toBe("看起來人畜無害的投影片");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // The hostile script fires its fetch immediately on load; wait for its

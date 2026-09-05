@@ -1,18 +1,61 @@
-import type { RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
+import { Icon } from "../icons/index.js";
+import { useCloseFloatingLayer } from "./use-floating-layer.js";
 
 export interface RailProps {
   /** overview.ts 掛載用的容器。App 只掛一次，React 不再渲染其內容（ADR-0001/0002）。 */
   containerRef: RefObject<HTMLElement | null>;
+  /** 「Slides」標題右側的頁數（原型：`SLIDES 7`）。 */
+  slideCount: number;
 }
 
+type RailMenu = "new" | "templates" | null;
+
 /**
- * The thumbnail rail (#52). `overview.ts` — a vanilla DOM module, same trust
- * posture as canvas.ts — mounts the real thumbnail list into this container
- * once and owns everything inside it from then on; React never re-renders
- * into it (ADR-0001/ADR-0002). Page numbers and the current-slide outline
- * are generated inside overview.ts's own rebuildList()/updateHighlight(),
- * not duplicated here.
+ * 左欄 (New v3 skeleton)：New/Templates 按鈕 + 縮圖 rail。02-DESIGN_DOC.md
+ * §7 的「從大綱生成」「範本清單」內容不在這張骨架票範圍內（Insert 面板同一
+ * 類的「未來票」內容）——兩顆按鈕只開關一個空的浮層容器，不渲染清單。
+ * `overview.ts`（既有的 vanilla DOM 模組）繼續掛在 `.overview` 節點裡，
+ * class 名稱刻意保留，Rail 本身只是多包一層版面容器。
  */
-export function Rail({ containerRef }: RailProps) {
-  return <aside className="overview" ref={containerRef} />;
+export function Rail({ containerRef, slideCount }: RailProps) {
+  const [menu, setMenu] = useState<RailMenu>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const newButtonRef = useRef<HTMLButtonElement | null>(null);
+  const templatesButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useCloseFloatingLayer(menu !== null, [menuRef, newButtonRef, templatesButtonRef], () => setMenu(null));
+
+  return (
+    <aside className="rail">
+      <div className="rail-actions">
+        <button
+          ref={newButtonRef}
+          type="button"
+          className="rail-action-button"
+          aria-expanded={menu === "new"}
+          onClick={() => setMenu((current) => (current === "new" ? null : "new"))}
+        >
+          <Icon name="plus" size="inline" />
+          New
+        </button>
+        <button
+          ref={templatesButtonRef}
+          type="button"
+          className="rail-action-button"
+          aria-expanded={menu === "templates"}
+          onClick={() => setMenu((current) => (current === "templates" ? null : "templates"))}
+        >
+          <Icon name="template" size="inline" />
+          Templates
+        </button>
+        {menu !== null && <div ref={menuRef} className="rail-menu" role="menu" data-menu={menu} />}
+      </div>
+      <div className="rail-slides-label">
+        Slides
+        <span className="rail-slides-count">{slideCount}</span>
+      </div>
+      <aside className="overview" ref={containerRef} />
+    </aside>
+  );
 }

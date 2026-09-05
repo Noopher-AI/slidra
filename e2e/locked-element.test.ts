@@ -109,7 +109,7 @@ it("點鎖定的元素選不起來：狀態列不顯示，沒有選取框", asyn
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     // A real mouse click (locator click), never page-script `element.click()`
     // — see this file's header note and e2e/selection.test.ts's own posture
@@ -137,7 +137,7 @@ it("鎖定子元素包在未鎖定的父群組內：點子元素選不起來，�
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     // Real mouse click on the locked child — see this file's header note on
     // why a locator click (not page-script .click()) is required here.
@@ -162,11 +162,11 @@ it("點旁邊未鎖定的元素仍正常選取", async () => {
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-unlocked").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：未鎖定方塊");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 未鎖定方塊");
   } finally {
     await cleanup();
   }

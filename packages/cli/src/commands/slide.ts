@@ -1,5 +1,5 @@
 import { addSlide, deleteSlide, duplicateSlide, moveSlide, setNotes } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
  * `slide add / delete / duplicate / move / notes set` (T3). Thin
@@ -73,3 +73,11 @@ export const slideNotesSetCommand: CommandHandler<SlideNotesSetInput, SlideNotes
   await setNotes(input.id, input.slidePath, input.text);
   return { ok: true, data: {}, message: `已更新 ${input.slidePath} 的備忘稿` };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("slide add", { handler: slideAddCommand, render: null });
+  registry.register("slide delete", { handler: slideDeleteCommand, render: null });
+  registry.register("slide duplicate", { handler: slideDuplicateCommand, render: null });
+  registry.register("slide move", { handler: slideMoveCommand, render: null });
+  registry.register("slide notes set", { handler: slideNotesSetCommand, render: null });
+}

@@ -7,7 +7,7 @@ import {
   resolveAssetImport,
   type MediaKind,
 } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
  * `co-motion asset import` — copies or downloads a media asset into the
@@ -40,6 +40,10 @@ export const assetImportCommand: CommandHandler<AssetImportInput, AssetImportDat
   const data = await importAssetBytes(input.id, sourceNameOf(input.source), bytes);
   return { ok: true, data, message: `已匯入媒體：${data.path}` };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("asset import", { handler: assetImportCommand, render: null });
+}
 
 /**
  * The format-decision + write half of asset import, with the source I/O

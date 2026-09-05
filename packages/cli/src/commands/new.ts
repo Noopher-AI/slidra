@@ -1,5 +1,5 @@
 import { createNewPresentation } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 export interface NewInput {
   path: string;
@@ -17,3 +17,7 @@ export const newCommand: CommandHandler<NewInput, NewData> = async (input) => {
     message: `已建立簡報「${name}」`,
   };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("new", { handler: newCommand, render: null });
+}

@@ -1,156 +1,294 @@
 /* ═══════════════════════════════════════════════════════════════
-   CoMotion design tokens — the single public UI token contract
-   (NOOP-376 / GitHub #182). Every stylesheet in this package consumes
-   these tokens by name; no selector anywhere introduces a new
-   hard-coded colour, size, radius, shadow or motion value.
+   CoMotion design tokens — the single public UI token contract.
 
-   Naming is by *purpose*, never by colour name or numeric scale
-   (no `--red-500`, no `--space-4`): a token's name says what it is
-   for, not what its current value happens to be.
+   This file was rewritten to track the design package's own token
+   set, not an ad-hoc naming scheme:
+     docs/design/docs/01-DESIGN_TOKENS.md  ("設計語言承襲 Holspire…")
 
-   The original 27 tokens below (ticket #49) reproduce
-   docs/design/base-shell.html's :root exactly, name for name and
-   value for value, and are frozen — 325 existing `var(--…)`
-   references across every regional stylesheet plus canvas.ts and two
-   e2e suites depend on these exact names. Everything after that
-   section is new (NOOP-376), added in the same naming style to close
-   the categories the original set left uncovered.
+   Naming rule: a CSS custom property's name is `--` + the design
+   package's token path with every `.` replaced by `-`.
+   e.g. `brand.red` → `--brand-red`, `surface.0` → `--surface-0`,
+   `ink.900` → `--ink-900`, `well.bg` → `--well-bg`.
+
+   Categories intentionally NOT brought in here (see the PR body /
+   issue for the full rationale):
+     - `accent.palette.*` (brand/cool/warm chart colour palettes) —
+       out of scope, belongs to a future chart ticket.
+     - "字級（投影片，容器單位）" — the slide-*content* font sizes
+       (cqw-relative). That's presentation content rendered onto a
+       slide, not product UI chrome; it does not belong in a CSS
+       custom property consumed by the shell's own stylesheets.
+     - 圖示 (icon) geometry is prose in the doc (§ 圖示: 20×20 viewBox,
+       stroke 1.5, small sizes 1.6–1.8), not a `token.path | value`
+       row — so the `--icon-*` names below are this file's own, like
+       the glass-material ones. They must exist: icons/Icon.tsx consumes
+       them through *inline* `style={{ width: "var(--icon-inline)" }}`,
+       which neither the CSS-file scan nor the getPropertyValue() scan
+       in tokens.test.ts can see; dropping them silently collapses every
+       shell icon to 0px (round-2 review: Dock/Open/Save/Export icons
+       were invisible, the rail's + was 46px).
+
+   Several design-package tokens are documented as a *range*
+   (e.g. `text.xs = 10.5–11px`) rather than a single value. Per the
+   ticket, each such range was resolved by grepping the actual value
+   used in the prototype's inline styles
+   (docs/design/prototype/CoMotion (New v3).dc.html). Where the same
+   token name is genuinely used at two different real values for two
+   different named purposes, it is split into two CSS custom
+   properties — each split is called out with its own comment below.
    ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* Surfaces: outer to inner, shallow to deep. Depth reads through
-     lightness, never through borders. */
-  --s-titlebar: #201f1e;
-  --s-ribbon: #292827;
-  --s-panel: #201f1e; /* thumbnail rail, chat, notes */
-  --s-well: #100f0f; /* stage floor — the deepest surface in the whole app */
-  --s-raised: #323130; /* hover / input fields */
-  --s-sunken: #1b1a19;
-
-  /* Lines: one weight, two strengths. */
-  --line: #3b3a39;
-  --line-soft: #2b2a29;
-
-  /* Text: three tiers, no more. */
+  /* ── 舊殼相容層（暫留，非設計包 token） ───────────────────────────
+     整份 tokens.css 改採設計包 token 後，這些名字都不在任何設計包分類
+     裡，但刪掉任何一個都會讓消費它的規則解不出值（CSS `var()` 解析失敗
+     時整條屬性宣告失效，不是留空）。三種消費者：
+       1. play.css／PlayChrome.tsx（播放模式，本票明確排除、留給後續
+          票）——`.play-bar` 的版位、底色、邊框、字級、圓角、焦點框。
+       2. style.css 的 `.player-error-notice`（同樣是播放模式 UI）——
+          `--r`／`--s-raised`／`--line`／`--ink`／`--fs-small`／`--u`。
+       3. canvas.ts 的 `selectionColors()`——用 JS `getPropertyValue()`
+          讀 `--accent-hi`／`--s-titlebar`，餵給 iframe 內的
+          selection-runtime.js 組出選取框/把手/輔助線/文字游標的 inline
+          style；這一種是機械掃描 CSS 檔案找不到的用法，容易漏。
+     值原封不動抄自 base（b0de47f）的舊 tokens.css，不是重新設計。播放
+     模式整體改版時，這整塊連同 play.css／PlayChrome.tsx／
+     .player-error-notice 的引用一併淘汰。 */
+  --u: 4px;
   --ink: #f3f2f1;
   --ink-dim: #a19f9d;
-  --ink-faint: #6b6968; /* disabled only */
-
-  /* Accent: settled by the user via issue #58 as #c41e3a (2026-08-25),
-     superseding the template's original PowerPoint-brick-red #c43e1c.
-     --accent-hi and --accent-wash are derived from the template's own
-     relationship to its accent (roughly +28 per channel for -hi, the
-     same .16 alpha for -wash), applied to the new base. */
-  --accent: #c41e3a;
-  --accent-hi: #e03a56;
-  --accent-wash: rgba(196, 30, 58, 0.16);
-  /* --accent-text (NOOP-9r2): --accent-hi measured at 3.85:1 on
-     --s-titlebar — short of WCAG 2.2 AA body text's 4.5:1 (SC 1.4.3).
-     chat.css already routes around this by keeping --accent-hi to
-     borders/backgrounds only (its own comment there documents the same
-     3.85:1 reading); shell.css's `.mark` was the one place still using
-     --accent-hi as literal text colour. This lightens the same hue just
-     enough to clear 4.5:1 on --s-titlebar (.mark's only consumer) without
-     touching --accent-hi's own resolved value — contrast.test.ts pins
-     --focus-ring (== --accent-hi) to #e03a56 for its 3:1 non-text check. */
-  --accent-text: #e55c73;
-
-  /* Rhythm: 4px baseline. */
-  --u: 4px;
-  --r: 3px; /* a single radius value — Office is square */
-
-  /* Sizes */
-  --h-titlebar: 36px;
-  --h-tabs: 30px;
-  --h-ribbon: 84px;
-  --h-status: 26px;
-  --w-rail: 196px;
-  --w-chat: 316px;
+  --ink-faint: #6b6968;
   --h-notes: 104px;
-
-  --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
-  --fs-ui: 12.5px;
   --fs-small: 11.5px;
-  --fs-lead: 14px;
-
-  /* ── Surfaces (NOOP-376 additions) ──────────────────────────────
-     Values collected from existing literal colours so regional CSS
-     can be migrated to these names without a pixel changing — see
-     the PR body for which call sites still hold the literal today. */
-  --s-slide: #fff; /* stage.css — the slide's own paper */
-  --s-blackout: #000; /* rail.css / play.css / shell.css / grid.css — playback & thumbnail black */
-  --s-scrim: rgba(0, 0, 0, 0.5); /* template-dialog.css — modal scrim */
-  --s-overlay: rgba(32, 31, 30, 0.82); /* shell.css — floating play-bar / view-fullscreen-bar */
-  --s-overlay-raised: rgba(255, 255, 255, 0.09); /* shell.css — overlay button hover */
-
-  /* ── Lines (NOOP-376 additions) ────────────────────────────────── */
-  --line-overlay: rgba(255, 255, 255, 0.1); /* shell.css — overlay border */
-  --line-overlay-strong: rgba(255, 255, 255, 0.12); /* play.css — overlay border, stronger */
-  --line-slide: rgba(255, 255, 255, 0.14); /* stage.css — slide paper border */
-
-  /* ── Focus / selection / status (accent family stays as-is — the
-     red brand direction is not touched by any of these) ────────── */
-  --focus-ring: var(--accent-hi);
+  --s-blackout: #000;
+  --s-overlay: rgba(32, 31, 30, 0.82);
+  --s-overlay-raised: rgba(255, 255, 255, 0.09);
+  --line-overlay: rgba(255, 255, 255, 0.1);
+  --line-overlay-strong: rgba(255, 255, 255, 0.12);
+  --focus-ring: #e03a56;
   --focus-ring-width: 1px;
-  --select-outline: var(--accent);
-  --select-outline-width: 2px;
-  --select-fill: var(--accent-wash);
-  --status-ok: #4a8f45; /* shell.css — connected indicator */
-  --status-ok-glow: rgba(74, 143, 69, 0.18);
-
-  /* ── Typography (NOOP-376 additions) ────────────────────────────
-     --fw-medium has no consumer yet — this is the token that makes
-     the weight usable at all once the 500-weight subset ships. */
-  --fw-regular: 400;
-  --fw-medium: 500;
-  --fw-bold: 700;
-  --fs-micro: 10.5px;
-  --lh-flush: 1;
-  --lh-tight: 1.15;
-  --lh-ui: 1.2;
-  --lh-read: 1.55;
-  --ls-brand: 0.14em;
-  --ls-label: 0.1em;
-
-  /* ── Radius (NOOP-376 additions; --r above stays the default) ───── */
   --r-control: 2px;
   --r-pill: 5px;
-  --r-panel: calc(var(--u) * 2);
-  --r-round: 50%;
-
-  /* ── Shadow (NOOP-376 additions) ─────────────────────────────────── */
-  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.24);
-  --shadow-slide: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 44px -12px rgba(0, 0, 0, 0.8);
-
-  /* ── Icon geometry (NOOP-376 additions) ──────────────────────────
-     Consumed by packages/web/src/icons/Icon.tsx; --icon-stroke unifies
-     shell.css's 1.4 (play.css's 15px/1.5 pairing is one of the frozen
-     literals this ticket does not touch — see the PR body). */
-  --icon-inline: 14px;
   --icon-control: 15px;
-  --icon-command: 20px;
-  --icon-stroke: 1.4;
-
-  /* ── Motion (NOOP-376 additions) ──────────────────────────────────
-     Three tiers by what's animating, not by where. --dur-micro and
-     --dur-panel are chosen to equal stage.css's/play.css's existing
-     literal durations so a future migration of those rules is
-     pixel-neutral; --dur-view has no existing literal to match and
-     takes a value inside its own ≤300ms budget. */
-  --dur-micro: 100ms; /* micro-interactions — ≤160ms */
-  --dur-panel: 180ms; /* panels / menus — ≤220ms */
-  --dur-view: 260ms; /* dialogs / view switches — ≤300ms */
-  --ease-micro: ease-out;
+  --dur-panel: 180ms;
   --ease-panel: ease;
-  --ease-view: ease-out;
+  /* --accent-hi 目前與 --focus-ring 同值，但生命週期不同：--focus-ring 是
+     新殼的焦點框，--accent-hi 是 canvas.ts 讀給 iframe 內選取框/把手用
+     的舊殼顏色，兩者未來會獨立變化，故不用 var(--focus-ring) 互相鏈接。 */
+  --accent-hi: #e03a56;
+  --s-titlebar: #201f1e;
+  --r: 3px;
+  --s-raised: #323130;
+  --line: #3b3a39;
+
+  /* ── 色彩 · 品牌／強調 ─────────────────────────────────────────── */
+  --brand-red: #c8233b;
+  --brand-red-hover: #a81c31;
+  --brand-red-tint: #fde8ea;
+  --brand-red-tint2: #fbd9dd;
+  --brand-red-ring: #f5c6cc;
+  --brand-red-glow: rgba(200, 35, 59, 0.28);
+
+  /* ── 色彩 · 外殼中性色（暖） ───────────────────────────────────── */
+  --surface-0: #fbf9f8;
+  --surface-1: #f5f1ef;
+  --surface-2: #ece5e2;
+  --surface-3: #f3edea;
+  --surface-white: #ffffff;
+  --ink-900: #1f1a1a;
+  --ink-800: #2b2424;
+  --ink-700: #3a322f;
+  --ink-600: #4b4341;
+  --ink-500: #6e635f;
+  --ink-400: #9a8f8c;
+  --ink-300: #b4a9a6;
+  --ink-200: #d9cfcb;
+
+  /* ── 色彩 · 舞台（深） ─────────────────────────────────────────── */
+  --well-bg: #3a3a3d;
+  --well-play: #000000;
+  --slide-bg-a: #14161a;
+  --slide-bg-b: #1b1d24;
+  --slide-ink: #f4f6f8;
+  --slide-ink-2: #e7e9ee;
+  --slide-muted: #a9b0b8;
+  --slide-line: rgba(255, 255, 255, 0.1);
+  --guide: #ff5c7a;
+
+  /* ── 色彩 · 語意 ───────────────────────────────────────────────
+     The doc's `ok` and `info` rows each pack more than one colour
+     into a single table cell ("`#3BA55D` / text `#2E7D4F` / bg
+     `#EAF6EE`") — a single CSS custom property can only hold one
+     value, so each is split by its own stated role. */
+  --ok: #3ba55d; /* Done 徽章的圖示／邊框色 */
+  --ok-text: #2e7d4f; /* Done 徽章文字 */
+  --ok-bg: #eaf6ee; /* Done 徽章底色 */
+  --info: #5b6dea; /* PDF+ 標籤、圖表第二色 */
+  --info-bg: #eef0fd;
+
+  /* ── 字體 ──────────────────────────────────────────────────────── */
+  --font-ui: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  --font-slide: var(--font-ui); /* 文件：「同 font.ui」 */
+
+  /* ── 字級（UI） ────────────────────────────────────────────────
+     Ranges resolved against docs/design/prototype/CoMotion (New
+     v3).dc.html's inline font-size values. Where the doc's own 用途
+     column names two distinct usages and the prototype uses two
+     distinct real values for them, the token is split. */
+  --text-2xs: 10px; /* BETA 徽章 */
+  --text-2xs-chart: 9.5px; /* 圖表類型標（chart type tab） */
+  --text-xs: 10.5px; /* 區塊標題（大寫 .06em） */
+  --text-xs-hint: 11px; /* 提示、快捷鍵（mi.key 等） */
+  --text-sm: 12px; /* 按鈕、chip、面板內文 */
+  --text-base: 12.5px; /* 主要 UI 文字、訊息 */
+  --text-md: 13.5px; /* 檔名（deck.name） */
+  --text-md-panel-title: 14px; /* 面板標題（ins.title） */
+  --text-lg: 18px; /* 總覽標題（Overview h2） */
+  --text-lg-dialog: 17px; /* 對話框標題（Templates 對話框 h2） */
+
+  /* ── 間距與尺寸 ────────────────────────────────────────────────
+     space.1..6 is the doc's compressed shorthand for six separate
+     tokens (space.1=4px … space.6=14px); expanded here one per
+     line. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-8: 16px; /* 面板 padding */
+  --space-gutter: 28px 36px; /* 舞台留白（上下 / 左右） */
+  --space-gutter-bottom: 76px; /* 舞台留白 · 底部工具列保留區 */
+  --titlebar-h: 48px;
+  --toolbar-h: 46px; /* 浮動玻璃 */
+  --statusbar-h: 36px;
+  --rail-w: 212px;
+  --panel-w: 340px;
+  --notes-h: 112px;
+  /* control.h's 30–34px range is genuinely two real values in the
+     prototype: 30px for the titlebar's own buttons (Open/Save/
+     Export…), 34px for certain dialog inputs. The doc only names a
+     "compact" second variant explicitly (28px), so --control-h takes
+     the more common/primary value (30px, also the range's lower
+     bound) rather than a third token for the 34px dialog-input
+     case. */
+  --control-h: 30px;
+  --control-h-compact: 28px;
+  --hit-min: 28px;
+
+  /* ── 圓角 ──────────────────────────────────────────────────────── */
+  --radius-xs: 5px; /* 標籤、pin 編號 */
+  --radius-sm: 8px; /* 按鈕、chip */
+  /* radius.md's 9–10px range is two real values for two named uses:
+     input fields render at 9px, segmented controls (role="tablist")
+     at 10px. */
+  --radius-md: 9px; /* 輸入框 */
+  --radius-md-segmented: 10px; /* segmented */
+  --radius-lg: 12px; /* 選單、卡片 */
+  /* radius.xl's 14–16px range is two real values for two named uses:
+     glass panels (backdrop-filter:blur(22px) saturate(1.5), matching
+     the 玻璃材質 recipe below) render at 14px; dialogs (box-shadow
+     matching --shadow-dialog) render at 16px. */
+  --radius-xl: 14px; /* 玻璃面板 */
+  --radius-xl-dialog: 16px; /* 對話框 */
+  /* radius.2xl's 18–20px range is two real values for two named uses:
+     the large "Templates" dialog (role="dialog", width:560px,
+     max-width:90vw) renders at 18px; the "Start with an outline"
+     empty-state card renders at 20px. */
+  --radius-2xl: 18px; /* 大型對話框 */
+  --radius-2xl-empty: 20px; /* 空狀態卡 */
+  --radius-pill: 999px; /* 徽章、播放控制列 */
+  --stage-radius: 6px; /* 投影片外框 */
+
+  /* ── 陰影 ──────────────────────────────────────────────────────── */
+  --shadow-seg: 0 1px 3px rgba(40, 20, 20, 0.12), 0 1px 2px rgba(40, 20, 20, 0.06); /* segmented 選中 */
+  --shadow-menu: 0 12px 32px rgba(40, 20, 20, 0.12);
+  --shadow-dialog: 0 24px 64px rgba(40, 20, 20, 0.25);
+  --shadow-red: 0 4px 12px rgba(200, 35, 59, 0.22); /* 主要 CTA、pin */
+  --shadow-stage: 0 1px 2px rgba(0, 0, 0, 0.4), 0 24px 64px -16px rgba(0, 0, 0, 0.7);
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 12px 32px rgba(0, 0, 0, 0.28);
+
+  /* ── 圖示（Icon） ─────────────────────────────────────────────
+     Sizes measured in the prototype: 15px in the titlebar (Open/Save/
+     Export/Play/undo/redo), 14px in the rail's New/Templates, 16–17px
+     on the glass dock. `--icon-control` (15px) is the old-shell compat
+     token above that play.css still reads; `inline`/`command` are the
+     two sizes the New v3 shell actually uses (Icon.tsx's size prop). */
+  --icon-inline: 15px; /* 標題列／側欄／狀態列內嵌圖示 */
+  --icon-command: 17px; /* Dock 指令按鈕圖示 */
+  --icon-stroke: 1.5; /* 文件 § 圖示：stroke-width 1.5 */
+
+  /* ── 玻璃材質（Glass） ─────────────────────────────────────────
+     Documented as prose + a CSS code block (§ 玻璃材質), not a
+     `token.path | value` table — these names are this file's own,
+     chosen to describe each literal the section calls out by role.
+     border-radius for glass panels is covered by --radius-xl /
+     --radius-xl-dialog above, not repeated here. */
+  --glass-bg: rgba(255, 255, 255, 0.72); /* 工具列玻璃底 */
+  --glass-bg-soft: rgba(255, 255, 255, 0.55); /* 情境列／留言框玻璃底 */
+  --glass-blur: blur(22px) saturate(1.5);
+  --glass-border: rgba(31, 26, 26, 0.1);
+  --glass-hover: rgba(31, 26, 26, 0.07); /* 玻璃內按鈕 hover */
+  --glass-divider: rgba(31, 26, 26, 0.1); /* 玻璃內分隔線 */
+  --glass-input-bg: rgba(255, 255, 255, 0.38);
+  --glass-input-bg-focus: rgba(255, 255, 255, 0.55);
+
+  /* ── 動效 ──────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); /* 進場、選單長出 */
+  --ease-in: cubic-bezier(0.4, 0, 0.8, 0.4); /* 頁面 exit */
+  /* dur.fast (100–150ms) resolves to its upper bound (150ms): the
+     prototype's own "選單" example (animation:hs-fade .15s ease) is
+     both the doc's named usage for this token and the most frequent
+     literal duration in the file. dur.base (180–260ms) resolves to
+     its lower bound (180ms): "面板切換" panels (animation:hs-grow /
+     hs-fade .18s, e.g. the Insert dialog and its sub-tab panels)
+     consistently use it. */
+  --dur-fast: 150ms; /* hover、選單 */
+  --dur-base: 180ms; /* 面板切換、總覽 */
 }
 
-/* Bundled Noto Sans TC subsets (ticket #49, extended by NOOP-376 to
-   400/500/700) — loaded from the app's own origin so the UI never
-   falls back to system-ui (which resolves to 蘋方 on macOS, 微軟正黑
-   on Windows, breaking cross-machine screenshot comparison) and never
-   depends on network access at runtime. Each subset is built by
-   scripts/build-font-subset.mjs and committed under src/assets/fonts/
-   — see README.md for the licence (SIL OFL 1.1) and source. */
+/* Bundled font subsets, self-hosted so the UI never depends on
+   network access at runtime and never falls back to system-ui
+   (which resolves to 蘋方 on macOS, 微軟正黑 on Windows, breaking
+   cross-machine screenshot comparison). Each subset is built by
+   scripts/build-font-subset.mjs (Noto Sans TC) and committed under
+   src/assets/fonts/ — see README.md for the licence (SIL OFL 1.1)
+   and source.
+
+   Plus Jakarta Sans's three weights below were subsetted from
+   @fontsource/plus-jakarta-sans (npm registry — reachable from this
+   sandbox) instead of Google Fonts: fonts.googleapis.com /
+   fonts.gstatic.com are on this sandbox's egress denylist, so
+   build-font-subset.mjs's fetch-from-Google-Fonts approach cannot
+   reach them. The @fontsource package was not added to package.json
+   (its static woff2 files were extracted from `npm pack`'s tarball
+   and re-subsetted through the already-available `subset-font`
+   dependency as a one-off, to stay inside this ticket's file
+   boundary) — regenerating these three files in the future needs
+   either adding @fontsource/plus-jakarta-sans as a real devDependency
+   and wiring it into build-font-subset.mjs, or repeating the same
+   npm-pack extraction. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("../assets/fonts/PlusJakartaSans-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("../assets/fonts/PlusJakartaSans-subset-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("../assets/fonts/PlusJakartaSans-subset-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
 @font-face {
   font-family: "Noto Sans TC";
   src: url("../assets/fonts/NotoSansTC-subset.woff2") format("woff2");
@@ -175,16 +313,16 @@
 
 /* ── 基礎樣式層：reduced-motion ──────────────────────────────────
    Two layers, both required: the token override below only helps
-   rules that already consume a --dur-* / --ease-* token; the `*` safety
-   net catches everything else (existing literal-second transitions,
-   canvas.ts's inline transition, and any future @keyframes loop —
+   rules that already consume a --dur-* token; the `*` safety net
+   catches everything else (literal-second transitions, inline
+   transitions, and any future @keyframes loop —
    `animation-iteration-count: 1` stops a looping animation after one
    pass instead of letting it run forever). */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --dur-micro: 0ms;
-    --dur-panel: 0ms;
-    --dur-view: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-panel: 0ms; /* 舊殼相容層（見上方 :root 區塊註解），play.css 的閒置淡出用它 */
   }
 
   *,

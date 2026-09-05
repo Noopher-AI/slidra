@@ -4,7 +4,14 @@ import { expect } from "vitest";
 import type { Page } from "playwright";
 import type { CommandRegistry } from "@co-motion/cli";
 import type { RunningServer } from "../../packages/server/src/serve.js";
-import type { RibbonCmdId } from "../../packages/web/src/shell/ribbon-commands.js";
+// NOOP-60/#197（New v3 殼重建）刪除了 ribbon-commands.ts，`RibbonCmdId` 已
+// 不存在——這整份 scenarios.ts 是針對舊殼（ribbon-menu／template-dialog／
+// 插入選單）寫的，且新殼對應的插入面板／Shape／Arrange 選單目前都是空容器
+// （本票明確排除的範圍，見 PR 報告），沒有東西可截圖比對。完整重寫這份
+// scenario 表格是後續票的範圍，不在這張骨架票；這裡只把型別改成
+// `Record<string, Scenario[]>` 讓 `npm run typecheck` 保持綠燈，不代表下
+// 面任何一個 scenario 在新殼上還有效——`npm run visual-qa`（非自動化必經
+// 關卡）在新殼插入面板真的有內容之前執行這份表格會全部失敗。
 
 const e2eDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -138,8 +145,8 @@ async function insertRectAndGetId(ctx: ScenarioContext): Promise<string> {
   return newId;
 }
 
-/** Covers all 19 `RibbonCmdId` values — a missing key fails `npm run typecheck`. */
-export const SCENARIOS: Record<RibbonCmdId, Scenario[]> = {
+/** 見上方檔頭的 NOOP-60/#197 註解：內容已針對舊殼過時，型別只求編譯得過。 */
+export const SCENARIOS: Record<string, Scenario[]> = {
   "new-slide": [
     {
       id: "new-slide-menu",

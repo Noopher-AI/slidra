@@ -10,7 +10,7 @@ import {
   resolveWorkDir,
   type ProjectJson,
 } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
  * `co-motion convert <presentation-id>` — the author-initiated conversion
@@ -81,6 +81,10 @@ export const convertCommand: CommandHandler<ConvertInput, ConvertData> = async (
   const untouched = report.slides.length - changed;
   return { ok: true, data: report, message: describe(changed, untouched) };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("convert", { handler: convertCommand, render: null });
+}
 
 function describe(changed: number, untouched: number): string {
   if (changed === 0 && untouched === 0) return "沒有投影片需要轉換";

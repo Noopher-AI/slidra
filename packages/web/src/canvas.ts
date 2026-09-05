@@ -75,6 +75,28 @@ import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 export type CanvasMode = "view" | "play";
 
 /**
+ * A `selection-runtime.js` wheel/pointer/keyboard event, already validated
+ * and — for every variant that carries a `point` — converted from the
+ * iframe's own client coordinates into this parent document's client
+ * coordinates (`toParentClientPoint` below). This is a pure relay: canvas.ts
+ * does zero zoom/pan geometry itself (Dev-Leader 裁決 NOOP-83 §2 決定 2) —
+ * `point`/`deltaX`/`deltaY` are handed to `subscribeStageInput`'s listener
+ * (Stage.tsx) in exactly the shape its existing local `handleWheel`/
+ * `handleMouseDown` math already expects from a real DOM `WheelEvent`/
+ * `MouseEvent` — Stage.tsx runs that same math unmodified against this
+ * event's `point`/`deltaX`/`deltaY`. Only emitted for on-slide input; the
+ * gutter (留白) area's own DOM listeners keep calling that math directly.
+ */
+export type StageInputEvent =
+  | { type: "wheel-zoom"; point: { x: number; y: number }; deltaY: number }
+  | { type: "wheel-pan"; deltaX: number; deltaY: number }
+  | { type: "pan-start"; point: { x: number; y: number } }
+  | { type: "pan-move"; point: { x: number; y: number } }
+  | { type: "pan-end" }
+  | { type: "space-down" }
+  | { type: "space-up" };
+
+/**
  * The elements the author currently has selected in view mode (NOOP-91
  * §4.8). Purely a front-end concept — never written to the presentation,
  * never affects a command's semantics beyond supplying `elementIds`.
@@ -228,6 +250,32 @@ export interface CanvasController {
    * the "never cache it" rule above still applies to any such caller.
    */
   readonly frameElement: HTMLIFrameElement;
+  /**
+   * Stage.tsx's on-slide wheel/pointer/Space relay (NOOP-83 §2 決定 2/§4).
+   * Fires only for `StageInputEvent`s the runtime reported that already
+   * passed validation and (where relevant) coordinate conversion — see
+   * that type's own doc comment. Returns an unsubscribe function, same
+   * shape as `subscribe`.
+   */
+  subscribeStageInput: (listener: (event: StageInputEvent) => void) => () => void;
+  /**
+   * Tells `selection-runtime.js` whether 抓取模式 (the ✋ toggle or a
+   * temporary Space-hold) is active — while true, the runtime hands every
+   * pointer to the pan relay above instead of starting a selection/drag
+   * gesture (§4.2). Re-sent automatically on the runtime's own
+   * "runtime-ready" report (§2.1(c)), so toggling ✋ on and then changing
+   * slides does not silently drop back to normal selection.
+   */
+  setStageHandMode: (hand: boolean) => void;
+  /**
+   * 05-INTERACTIONS.feature「抓取模式」's first "那麼": clears the current
+   * selection the same way `handleSelectionMessage`'s own "clear" case
+   * does (id/name/groupPath reset, notify, push the empty selection back
+   * to the runtime) — extracted here so Stage.tsx's `handleToggleHand` can
+   * call it directly instead of leaving the no-op gap NOOP-81 left behind.
+   * No-op while `mode !== "view"`.
+   */
+  clearSelection: () => void;
 }
 
 interface ProjectJson {
@@ -295,7 +343,21 @@ interface SelectionMessage {
     | "dblclick-textbox"
     | "text-edit-input"
     | "text-edit-commit"
-    | "text-edit-denied";
+    | "text-edit-denied"
+    // NOOP-83 §4: stage navigation relay (Dev-Leader 裁決核准的擴大範圍).
+    // `point` on these four is always in the RUNTIME's own iframe-local
+    // client coordinates, converted to this parent document's client
+    // coordinates by `toParentClientPoint` before ever reaching
+    // `subscribeStageInput`'s listener — never trusted as parent-space
+    // as-is.
+    | "stage-wheel"
+    | "stage-pan-start"
+    | "stage-pan-move"
+    | "stage-pan-end"
+    | "stage-space"
+    // Sent once, after the runtime's listeners are attached (§2.1(c)) —
+    // carries no payload of its own.
+    | "runtime-ready";
   id?: string;
   name?: string | null;
   /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
@@ -309,6 +371,13 @@ interface SelectionMessage {
   point?: { x: number; y: number };
   modifiers?: { shift: boolean; alt: boolean };
   cancelled?: boolean;
+  /** "stage-wheel" only — raw `WheelEvent.deltaX`/`deltaY`, unconverted (there is no coordinate to convert: a delta is already a magnitude, not a position). */
+  deltaX?: number;
+  deltaY?: number;
+  /** "stage-wheel" only — `event.ctrlKey || event.metaKey`, computed by the runtime so this side never re-derives it. */
+  zoomModifier?: boolean;
+  /** "stage-space" only. */
+  down?: boolean;
   /**
    * Present (and non-empty) only on a "select"/"clear" that entered or
    * stayed inside a group, and always on "group-path" — see
@@ -569,6 +638,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
   let dragSignal = 0;
+  // NOOP-83 §4/§2.1(c): Stage.tsx's subscribers to the on-slide wheel/
+  // pointer/Space relay, and the last 抓取模式 value `setStageHandMode` was
+  // told to apply — resent to the runtime whenever it reports
+  // "runtime-ready" (a slide change rebuilds the srcdoc and loses whatever
+  // the previous document's `stageHandMode` variable held).
+  const stageInputListeners = new Set<(event: StageInputEvent) => void>();
+  let stageHandMode = false;
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -729,11 +805,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
     if (message.event === "clear") {
-      selectionIds = [];
-      selectionNames = [];
-      selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
-      notify();
-      pushSelectionToRuntime(selectionIds);
+      clearSelectionState(isStringArray(message.groupPath) ? message.groupPath : []);
       return;
     }
     if (message.event === "drag-enter") {
@@ -834,6 +906,68 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       }
       return;
     }
+    if (message.event === "stage-wheel") {
+      if (!isValidPoint(message.point) || !isFiniteNumber(message.deltaX) || !isFiniteNumber(message.deltaY)) return;
+      const point = toParentClientPoint(message.point);
+      if (message.zoomModifier) emitStageInput({ type: "wheel-zoom", point, deltaY: message.deltaY });
+      else emitStageInput({ type: "wheel-pan", deltaX: message.deltaX, deltaY: message.deltaY });
+      return;
+    }
+    if (message.event === "stage-pan-start") {
+      if (!isValidPoint(message.point)) return;
+      emitStageInput({ type: "pan-start", point: toParentClientPoint(message.point) });
+      return;
+    }
+    if (message.event === "stage-pan-move") {
+      if (!isValidPoint(message.point)) return;
+      emitStageInput({ type: "pan-move", point: toParentClientPoint(message.point) });
+      return;
+    }
+    if (message.event === "stage-pan-end") {
+      emitStageInput({ type: "pan-end" });
+      return;
+    }
+    if (message.event === "stage-space") {
+      emitStageInput({ type: message.down ? "space-down" : "space-up" });
+      return;
+    }
+    if (message.event === "runtime-ready") {
+      // A fresh srcdoc (slide change) starts its own copy of
+      // selection-runtime.js with `stageHandMode = false` — re-push this
+      // side's last-known value so 抓取模式 does not silently drop on
+      // every slide change (§2.1(c)).
+      postToFrame({ command: "stage-mode", hand: stageHandMode });
+      return;
+    }
+  }
+
+  /**
+   * iframe-local client coordinates (as selection-runtime.js's own
+   * `event.clientX/clientY` see them) -> this parent document's client
+   * coordinates. `.stage`'s inline transform (translate/scale) sits between
+   * `.canvas` and the iframe, so `getBoundingClientRect()` already reflects
+   * the current zoom — `rect.width / offsetWidth` recovers that same scale
+   * factor from measured DOM sizes without reading `stage-view.ts`'s zoom
+   * value at all (NOOP-83 §3.4). This is the only geometry canvas.ts does
+   * for the stage relay: a unit conversion, never a zoom/pan decision.
+   */
+  function toParentClientPoint(point: { x: number; y: number }): { x: number; y: number } {
+    const rect = frame.getBoundingClientRect();
+    const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1;
+    return { x: rect.left + point.x * scale, y: rect.top + point.y * scale };
+  }
+
+  function emitStageInput(event: StageInputEvent): void {
+    for (const listener of stageInputListeners) listener(event);
+  }
+
+  /** Shared by handleSelectionMessage's "clear" case and the public clearSelection() (NOOP-83 §4.5) — same four steps either way. */
+  function clearSelectionState(groupPath: string[]): void {
+    selectionIds = [];
+    selectionNames = [];
+    selectionGroupPath = groupPath;
+    notify();
+    pushSelectionToRuntime(selectionIds);
   }
 
   /**
@@ -2262,9 +2396,24 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     get frameElement() {
       return frame;
     },
+    subscribeStageInput: (listener: (event: StageInputEvent) => void) => {
+      stageInputListeners.add(listener);
+      return () => {
+        stageInputListeners.delete(listener);
+      };
+    },
+    setStageHandMode: (hand: boolean) => {
+      stageHandMode = hand;
+      postToFrame({ command: "stage-mode", hand: stageHandMode });
+    },
+    clearSelection: () => {
+      if (mode !== "view") return;
+      clearSelectionState([]);
+    },
     destroy: () => {
       destroyed = true;
       listeners.clear();
+      stageInputListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React

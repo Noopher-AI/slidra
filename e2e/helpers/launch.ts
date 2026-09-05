@@ -112,7 +112,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
 export interface OpenAppOptions {
   /** Defaults to { width: 1440, height: 900 }. */
   viewport?: { width: number; height: number };
-  /** Wait for `.agent-dot` to contain "已連線". Defaults to `false`. */
+  /** Wait for `.agent-dot` to contain "connected". Defaults to `false`. */
   waitForAgent?: boolean;
   /** Wait for `document.fonts.ready`. Defaults to `false`. */
   waitForFonts?: boolean;
@@ -132,7 +132,7 @@ export async function openApp(browser: Browser, server: RunningServer, options: 
   if (waitForAgent) {
     await expect
       .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("已連線");
+      .toContain("connected");
   }
   if (waitForFonts) {
     await page.evaluate(() => document.fonts.ready);

@@ -1,5 +1,5 @@
 import { setElementText } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 export interface TextSetInput {
   id: string;
@@ -21,3 +21,7 @@ export const textSetCommand: CommandHandler<TextSetInput, TextSetData> = async (
     message: `已更新 ${input.slidePath} 的元素 ${input.elementId}`,
   };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("text set", { handler: textSetCommand, render: null });
+}

@@ -899,6 +899,11 @@
       // "pointerdown 落在被編輯元素之外" row) — this guard only matters for
       // a click with no preceding pointerdown at all (e.g. synthetic).
       if (editingId !== null) return;
+      // 抓取模式下放開拖曳後，瀏覽器仍會補發一次原生 click——不短路的話會
+      // 多選到／清掉一個元素（05-INTERACTIONS.feature「抓取模式」場景，
+      // NOOP-83 §4.2）。stage-pan-end 本身不設 suppressNextClick，因為那個
+      // 旗標是給「已經送出 gesture-end 的手勢」用的，這裡是完全不同的路徑。
+      if (stageHandMode) return;
       if (suppressNextClick) {
         suppressNextClick = false;
         return;
@@ -1062,6 +1067,66 @@
     return null;
   }
 
+  // --- Stage navigation relay (Dev-Leader 裁決核准的擴大範圍：舞台導航
+  // 5 場景，NOOP-83 §3.3/§4) ---
+  // Same posture as every other message in this file: report raw
+  // client-px coordinates and a wheel event's own ctrl/meta flag, do zero
+  // geometry here. The parent (canvas.ts) converts iframe-local client
+  // coordinates to parent-document client coordinates and calls
+  // stage-view.ts's zoomByWheel/panBy — this runtime never reads or
+  // computes zoom/pan itself.
+  var stageHandMode = false;
+  // The pointerId of an in-progress stage-pan drag, or null between drags
+  // — mirrors `gesture`'s own single-active-pointer tracking above, kept
+  // separate because a pan and an element gesture are mutually exclusive
+  // (stageHandMode gates which one a given pointerdown can start).
+  var stagePanPointerId = null;
+
+  window.addEventListener(
+    "wheel",
+    function (event) {
+      // Always relayed regardless of stageHandMode — wheel-zoom/pan works
+      // whether or not 抓取模式 is toggled on (05-INTERACTIONS.feature).
+      // preventDefault() is load-bearing for the ctrl/meta case: without
+      // it the browser treats ⌘/Ctrl+wheel as a page zoom instead of
+      // delivering the gesture here.
+      event.preventDefault();
+      post({
+        event: "stage-wheel",
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        zoomModifier: event.ctrlKey || event.metaKey,
+        point: { x: event.clientX, y: event.clientY },
+      });
+    },
+    { passive: false },
+  );
+
+  // Space 暫時抓取的中繼 (§4.4)：when focus has moved into this iframe
+  // (e.g. after clicking a slide element), the parent document's own
+  // window-level keydown listener (Stage.tsx) never sees Space at all —
+  // without this relay, temporary-grab would only work before the first
+  // click. Skipped while text-editing so Space still types a space
+  // character, matching Stage.tsx's own targetIsTextInput guard.
+  window.addEventListener("keydown", function (event) {
+    if (event.key !== " " && event.code !== "Space") return;
+    if (editingId !== null) return;
+    event.preventDefault();
+    post({ event: "stage-space", down: true });
+  });
+  window.addEventListener("keyup", function (event) {
+    if (event.key !== " " && event.code !== "Space") return;
+    if (editingId !== null) return;
+    post({ event: "stage-space", down: false });
+  });
+  // iframe losing focus while Space is physically still held (e.g. Alt-Tab)
+  // must not leave the parent stuck in temporary-grab forever — releaseSpace
+  // is idempotent host-side, so sending this unconditionally on every blur
+  // is safe even when Space was never down.
+  window.addEventListener("blur", function () {
+    post({ event: "stage-space", down: false });
+  });
+
   window.addEventListener(
     "pointerdown",
     function (event) {
@@ -1101,6 +1166,17 @@
         suppressNextClick = true;
         return;
       }
+      if (stageHandMode) {
+        // 抓取模式短路分支：no element gesture starts at all while the
+        // ✋ toggle (or temporary Space-hold) is active — this branch
+        // takes over the pointer completely instead of falling through
+        // to the hit-test/gesture logic below, which stays byte-for-byte
+        // unchanged for the handMode === false case.
+        stagePanPointerId = event.pointerId;
+        document.documentElement.style.cursor = "grabbing";
+        post({ event: "stage-pan-start", point: { x: event.clientX, y: event.clientY } });
+        return;
+      }
       var handleName = findHandleTarget(event);
       var hit = handleName ? null : resolveClickTargetAtEvent(event);
       gesture = {
@@ -1125,6 +1201,11 @@
         if (dragIdx === null) return;
         textarea.setSelectionRange(Math.min(textSelectDrag.anchor, dragIdx), Math.max(textSelectDrag.anchor, dragIdx));
         updateEditDecoration();
+        return;
+      }
+      if (stagePanPointerId !== null) {
+        if (event.pointerId !== stagePanPointerId) return;
+        post({ event: "stage-pan-move", point: { x: event.clientX, y: event.clientY } });
         return;
       }
       if (!gesture || event.pointerId !== gesture.pointerId) return;
@@ -1183,6 +1264,14 @@
         updateEditDecoration();
         return;
       }
+      if (stagePanPointerId !== null) {
+        if (event.pointerId === stagePanPointerId) {
+          stagePanPointerId = null;
+          document.documentElement.style.cursor = stageHandMode ? "grab" : "";
+          post({ event: "stage-pan-end" });
+        }
+        return;
+      }
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       var point = { x: event.clientX, y: event.clientY };
       var wasStarted = gesture.started;
@@ -1199,6 +1288,12 @@
   window.addEventListener("pointercancel", function (event) {
     if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
       textSelectDrag = null;
+      return;
+    }
+    if (stagePanPointerId !== null && event.pointerId === stagePanPointerId) {
+      stagePanPointerId = null;
+      document.documentElement.style.cursor = stageHandMode ? "grab" : "";
+      post({ event: "stage-pan-end" });
       return;
     }
     if (!gesture || event.pointerId !== gesture.pointerId) return;
@@ -1399,6 +1494,18 @@
       textboxHandlesEnabled = Boolean(data.textbox);
       groupPath = Array.isArray(data.groupPath) ? data.groupPath.slice() : [];
       updateBoxes();
+    } else if (data.command === "stage-mode") {
+      stageHandMode = Boolean(data.hand);
+      document.documentElement.style.cursor = stageHandMode ? "grab" : "";
     }
   });
+
+  // Tells the parent this document's listeners (including the one right
+  // above) are attached — a `postMessage` sent before that would be
+  // silently dropped (same race `selectOnceLoaded` in canvas.ts already
+  // works around for other host->runtime commands). The parent re-sends
+  // "stage-mode" on this signal so 抓取模式 survives a slide's srcdoc being
+  // rebuilt (e.g. navigating to another slide) instead of reverting to
+  // off on every new document.
+  post({ event: "runtime-ready" });
 })();

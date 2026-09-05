@@ -1,36 +1,18 @@
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
-import { appendMessage, type ChatMessage, type CommandStatus } from "./chat-messages.js";
+import { appendMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
-import { Ribbon, type RibbonMenuState } from "./shell/Ribbon.js";
-import { TemplateDialog, type TemplateCommandResult } from "./shell/TemplateDialog.js";
 import { Rail } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
-import { SidePanel } from "./shell/SidePanel.js";
+import { SidePanel } from "./shell/side/SidePanel.js";
+import { ChatPanel } from "./shell/side/ChatPanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
-import type { ShellView } from "./shell/view.js";
-import type { RibbonHandlers } from "./shell/ribbon-commands.js";
-import { INITIAL_PASTE_OFFSET_STATE, nextPasteOffset, clipboardWritten } from "./paste-offset.js";
-
-/**
- * `element insert`/`textbox add` render as plain black (SVG's own default)
- * when no `fill` is given — invisible against the `demo/` deck's near-black
- * background (NOOP-224/#133). `presentationInfo` carries no foreground/theme
- * color today, so these are literal defaults matching the light text/neutral
- * shape fills `demo/slides/*.svg` already uses, not a value read from the
- * presentation.
- */
-const DEFAULT_TEXT_FILL = "#f4f6f8";
-const DEFAULT_SHAPE_FILL = "#889";
-/** A `line` has no fill area, so it needs an explicit stroke to be visible at all — SVG's default is `stroke: none`. */
-const DEFAULT_SHAPE_STROKE = "#889";
-const DEFAULT_SHAPE_STROKE_WIDTH = 2;
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
@@ -137,13 +119,6 @@ export function App() {
     });
   }
 
-  // #55's reserved seam: the centre column's own view (normal/grid),
-  // orthogonal to canvasState.mode (view/play). "grid" is not reachable
-  // yet — no button sets it — but Stage/Notes already accept it so #55 can
-  // land its own button and its own Stage branch without reopening this
-  // file.
-  const [view, setView] = useState<ShellView>("normal");
-
   // #51's connection indicator: derived from the one real signal this app
   // has (chat-stream.ts's streamReady), never a fabricated vendor label —
   // see the PR body for the server-side gap this leaves (adapter label /
@@ -164,24 +139,17 @@ export function App() {
   // for the race this closes (review gate round 2, P2).
   const fullscreenRequestRef = useRef<Promise<void> | null>(null);
 
-  // T3/NOOP-142: 插入分頁的媒體匯入路徑 (拖曳／貼上／檔案選擇 共用).
-  // The hidden <input type="file"> the three 媒體 buttons drive; its
-  // `accept` is set right before each click() so the OS picker filters by
-  // kind, but the *inserted element's* kind always comes back from
-  // resolveAssetImport's own byte-detected `data.kind` (決定 2), never from
-  // which button was pressed — a mis-filtered pick is still handled
-  // correctly.
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // T3/NOOP-142: 拖放／貼上匯入媒體。這個路徑跟舊殼的 Ribbon 插入按鈕無
+  // 關（那三顆按鈕連同 openMediaPicker/隱藏的 <input type="file"> 已隨
+  // Ribbon.tsx 一起刪除——Insert 面板本身的內容是這張骨架票明確排除的範圍，
+  // 沒有 UI 入口會再呼叫檔案選擇器），但拖曳/貼上圖片到舞台是既有、獨立於
+  // Ribbon 的功能，維持原樣。
   // Whether the drop overlay (Stage.tsx) is currently showing. Two
   // independent triggers turn it on (the iframe's forwarded "drag-enter"
   // signal below, and a native dragenter over this parent document);
   // only the overlay's own onDrop/onDragLeave turn it off (決定 3).
   const [dropActive, setDropActive] = useState(false);
   const lastDragSignalRef = useRef(0);
-  // NOOP-275/#156: how far the next Ribbon paste should offset from its
-  // source. Lives outside React state — advancing it is a side effect of
-  // sending a command, not something a render should react to.
-  const pasteOffsetRef = useRef(INITIAL_PASTE_OFFSET_STATE);
 
   // canvasState.dragSignal is an edge counter (see its own comment in
   // canvas.ts) — this effect reacts to it *changing*, not to its value, so
@@ -251,7 +219,7 @@ export function App() {
     if (asset.kind === "image") {
       const width = 480;
       const height = 270;
-      await runRibbonCommand("element insert", {
+      await runCanvasCommand("element insert", {
         slidePath,
         kind: "image",
         x: (canvas.width - width) / 2,
@@ -266,7 +234,7 @@ export function App() {
     const width = asset.kind === "audio" ? 160 : 480;
     const height = asset.kind === "audio" ? 160 : 270;
     const fill = asset.kind === "audio" ? "#c66" : "#889";
-    await runRibbonCommand("element insert", {
+    await runCanvasCommand("element insert", {
       slidePath,
       kind: "rect",
       x: (canvas.width - width) / 2,
@@ -284,23 +252,6 @@ export function App() {
     if (result?.ok) {
       await insertImportedAsset(result.data);
     }
-  }
-
-  function openMediaPicker(accept: string): void {
-    if (!currentSlidePath() || !presentationInfo?.canvas) return;
-    const input = fileInputRef.current;
-    if (!input) return;
-    input.accept = accept;
-    input.value = "";
-    input.click();
-  }
-
-  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>): void {
-    const files = event.target.files;
-    // No file chosen (dialog cancelled) is the author changing their mind,
-    // not a failure — nothing to report.
-    if (!files || files.length === 0) return;
-    void importFile(files[0]);
   }
 
   function handleStageDragOver(event: DragEvent): void {
@@ -484,15 +435,28 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z (T5, NOOP-93/#110): undo/redo. Frozen
-  // while the agent's turn holds the lock — the request is never sent, not
-  // even to be told 409 by the server, matching the behaviour contract's
-  // "不發請求，顯示凍結狀態；不得拋出未捕捉錯誤" row. `editingFrozenRef`
-  // (not `editingFrozen` itself) is read inside the listener for the same
-  // reason `canvasStateRef` is above — this effect should not need to
-  // re-subscribe every time the frozen flag flips.
+  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z (T5, NOOP-93/#110) 與 TitleBar 的 ↶/↷
+  // 按鈕 (this ticket) 共用同一條路徑：`runUndoRedo` 是唯一真的送出
+  // /api/undo、/api/redo 的地方，避免兩份重複的 fetch 邏輯各自漂移。Frozen
+  // 期間兩條路徑都不送請求，連 409 都不用被告知——比照既有行為契約「不發
+  // 請求，顯示凍結狀態；不得拋出未捕捉錯誤」。`editingFrozenRef`（不是
+  // `editingFrozen` 本身）在監聽器裡讀，原因與上面的 `canvasStateRef` 相同
+  // ——這個 effect 不需要每次 frozen 翻轉就重新訂閱一次。
   const editingFrozenRef = useRef(editingFrozen);
   editingFrozenRef.current = editingFrozen;
+
+  function runUndoRedo(kind: "undo" | "redo"): void {
+    if (editingFrozenRef.current) return;
+    const path = kind === "redo" ? "/api/redo" : "/api/undo";
+    void fetch(path, { method: "POST" }).catch(() => {
+      // The server route itself already turns every failure (empty
+      // stack, a stale 409) into a JSON error response, not a rejected
+      // fetch — this only guards against a genuine network failure, and
+      // there is nothing more specific to show than what live reload's
+      // own liveReloadError already surfaces for a dead connection.
+    });
+  }
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (event.key !== "z" && event.key !== "Z") return;
@@ -500,15 +464,7 @@ export function App() {
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       event.preventDefault();
-      if (editingFrozenRef.current) return;
-      const path = event.shiftKey ? "/api/redo" : "/api/undo";
-      void fetch(path, { method: "POST" }).catch(() => {
-        // The server route itself already turns every failure (empty
-        // stack, a stale 409) into a JSON error response, not a rejected
-        // fetch — this only guards against a genuine network failure, and
-        // there is nothing more specific to show than what live reload's
-        // own liveReloadError already surfaces for a dead connection.
-      });
+      runUndoRedo(event.shiftKey ? "redo" : "undo");
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -724,254 +680,15 @@ export function App() {
     }
   }
 
-  // Ribbon 常用分頁的 7 顆按鈕 (NOOP-141). Handlers live here, not in
-  // Ribbon.tsx, because every one of them needs controllerRef/canvasState/
-  // presentationInfo — none of which Ribbon.tsx has (決定 6/7 in the plan).
-  // 新增投影片/圖案/排列 open a dropdown instead of running a command
-  // directly; its contents are computed here (they depend on `templates`,
-  // the current selection, and the canvas size) and simply rendered by
-  // Ribbon (決定 the popover assumption).
-  const [ribbonMenu, setRibbonMenu] = useState<RibbonMenuState | null>(null);
-  const closeRibbonMenu = () => setRibbonMenu(null);
-
-  async function runRibbonCommand(name: string, input: Record<string, unknown>): Promise<void> {
-    await controllerRef.current?.runCommand(name, input);
-  }
-
-  // 範本管理對話框 ([E4.T7]). Its three writes go through `runCommand` (the
-  // one write path) directly, unlike `runRibbonCommand` above, because the
-  // dialog needs the `{ ok, message }` result to display core's own error
-  // text in place (A5/A8's contract), not just fire-and-forget.
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-
-  async function handleTemplateSave(name: string): Promise<TemplateCommandResult> {
-    const slidePath = currentSlidePath();
-    if (!slidePath) return { ok: false, message: "目前沒有可另存的投影片" };
-    const result = await controllerRef.current?.runCommand("template add", { from: slidePath, name });
-    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
-  }
-
-  async function handleTemplateRename(templatePath: string, newName: string): Promise<TemplateCommandResult> {
-    const result = await controllerRef.current?.runCommand("template rename", { templatePath, newName });
-    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
-  }
-
-  async function handleTemplateDelete(templatePath: string): Promise<TemplateCommandResult> {
-    const result = await controllerRef.current?.runCommand("template delete", { templatePath });
-    return result ?? { ok: false, message: "canvas controller 尚未就緒" };
-  }
-
-  /** slidePath = the current slide's virtual path. Only ever read from a handler that fired while canPlay was true (button disabled otherwise), so currentIndex is never -1 here — but the lookup stays a real check, not an assumed cast. */
+  /** slidePath = the current slide's virtual path. */
   function currentSlidePath(): string | null {
     return canvasState.slides[canvasState.currentIndex] ?? null;
   }
 
-  /** Shared by 常用 tab's `shape` and 插入 tab's `insert-shape` (T3/NOOP-142's boundary explicitly forbids a second copy of this geometry) — only `anchor` differs, so the popover positions under whichever button was actually clicked. */
-  function openShapeMenu(anchor: "shape" | "insert-shape"): void {
-    const slidePath = currentSlidePath();
-    const canvas = presentationInfo?.canvas;
-    if (!slidePath || !canvas) return;
-    const insertShape = (kind: "rect" | "ellipse" | "line") => {
-      closeRibbonMenu();
-      if (kind === "line") {
-        const length = 200;
-        const y = canvas.height / 2;
-        const x1 = (canvas.width - length) / 2;
-        void runRibbonCommand("element insert", {
-          slidePath,
-          kind,
-          x1,
-          y1: y,
-          x2: x1 + length,
-          y2: y,
-          stroke: DEFAULT_SHAPE_STROKE,
-          strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
-        });
-        return;
-      }
-      const width = 200;
-      const height = 120;
-      void runRibbonCommand("element insert", {
-        slidePath,
-        kind,
-        x: (canvas.width - width) / 2,
-        y: (canvas.height - height) / 2,
-        width,
-        height,
-        fill: DEFAULT_SHAPE_FILL,
-      });
-    };
-    setRibbonMenu({
-      anchor,
-      groups: [
-        {
-          items: [
-            { key: "rect", label: "矩形", onSelect: () => insertShape("rect") },
-            { key: "ellipse", label: "橢圓", onSelect: () => insertShape("ellipse") },
-            { key: "line", label: "線", onSelect: () => insertShape("line") },
-          ],
-        },
-      ],
-    });
+  /** Runs a canvas command through the one write path (`controller.runCommand`) — used by the drag/drop/paste media-import flow above; the old Ribbon-specific command set (paste/cut/copy/insert-shape/insert-textbox/slide-number/transitions/…) had no other caller and is deleted with Ribbon.tsx (see the PR report). */
+  async function runCanvasCommand(name: string, input: Record<string, unknown>): Promise<void> {
+    await controllerRef.current?.runCommand(name, input);
   }
-
-  /** Shared by 常用 tab's `textbox` and 插入 tab's `insert-textbox` — identical parameters (決定 in the plan: "與 T2 的 textbox handler 完全相同的參數"), so this is the one place that inserts them. */
-  function insertDefaultTextbox(): void {
-    const slidePath = currentSlidePath();
-    const canvas = presentationInfo?.canvas;
-    if (!slidePath || !canvas) return;
-    const width = 300;
-    void runRibbonCommand("textbox add", {
-      slidePath,
-      x: (canvas.width - width) / 2,
-      y: canvas.height / 2 - 20,
-      width,
-      text: "文字方塊",
-      fill: DEFAULT_TEXT_FILL,
-    });
-  }
-
-  const ribbonHandlers: RibbonHandlers = {
-    "new-slide": () => {
-      const templates = presentationInfo?.templates ?? [];
-      setRibbonMenu({
-        anchor: "new-slide",
-        groups: [
-          {
-            items: [
-              {
-                key: "__blank__",
-                label: "空白",
-                onSelect: () => {
-                  closeRibbonMenu();
-                  void runRibbonCommand("slide add", {});
-                },
-              },
-              ...templates.map((template) => ({
-                key: template.file,
-                label: template.name,
-                onSelect: () => {
-                  closeRibbonMenu();
-                  void runRibbonCommand("slide add", { templatePath: template.file });
-                },
-              })),
-            ],
-          },
-        ],
-      });
-    },
-    template: () => setTemplateDialogOpen(true),
-    paste: () => {
-      const slidePath = currentSlidePath();
-      if (!slidePath) return;
-      // Advanced before the (async) command is sent, so two quick paste
-      // clicks each get their own dx/dy instead of racing on the same one.
-      const { dx, dy, next } = nextPasteOffset(pasteOffsetRef.current, slidePath);
-      pasteOffsetRef.current = next;
-      void runRibbonCommand("element paste", { slidePath, dx, dy });
-    },
-    cut: () => {
-      const slidePath = currentSlidePath();
-      if (!slidePath) return;
-      pasteOffsetRef.current = clipboardWritten(slidePath);
-      void runRibbonCommand("element cut", { slidePath, elementIds: canvasState.selection.ids });
-    },
-    copy: () => {
-      const slidePath = currentSlidePath();
-      if (!slidePath) return;
-      pasteOffsetRef.current = clipboardWritten(slidePath);
-      void runRibbonCommand("element copy", { slidePath, elementIds: canvasState.selection.ids });
-    },
-    textbox: () => insertDefaultTextbox(),
-    shape: () => openShapeMenu("shape"),
-    arrange: () => {
-      const slidePath = currentSlidePath();
-      if (!slidePath) return;
-      const elementIds = canvasState.selection.ids;
-      const runArrange = (name: string, input: Record<string, unknown>) => {
-        closeRibbonMenu();
-        void runRibbonCommand(name, { slidePath, elementIds, ...input });
-      };
-      setRibbonMenu({
-        anchor: "arrange",
-        groups: [
-          {
-            label: "對齊",
-            items: [
-              { key: "left", label: "靠左對齊", onSelect: () => runArrange("element align", { direction: "left" }) },
-              { key: "hcenter", label: "水平置中", onSelect: () => runArrange("element align", { direction: "hcenter" }) },
-              { key: "right", label: "靠右對齊", onSelect: () => runArrange("element align", { direction: "right" }) },
-              { key: "top", label: "靠上對齊", onSelect: () => runArrange("element align", { direction: "top" }) },
-              { key: "vcenter", label: "垂直置中", onSelect: () => runArrange("element align", { direction: "vcenter" }) },
-              { key: "bottom", label: "靠下對齊", onSelect: () => runArrange("element align", { direction: "bottom" }) },
-            ],
-          },
-          {
-            label: "分佈",
-            items: [
-              {
-                key: "horizontal",
-                label: "水平分佈",
-                onSelect: () => runArrange("element distribute", { axis: "horizontal" }),
-              },
-              {
-                key: "vertical",
-                label: "垂直分佈",
-                onSelect: () => runArrange("element distribute", { axis: "vertical" }),
-              },
-            ],
-          },
-          {
-            label: "順序",
-            items: [
-              { key: "front", label: "移到最上層", onSelect: () => runArrange("element order", { direction: "front" }) },
-              { key: "back", label: "移到最下層", onSelect: () => runArrange("element order", { direction: "back" }) },
-              { key: "up", label: "上移一層", onSelect: () => runArrange("element order", { direction: "up" }) },
-              { key: "down", label: "下移一層", onSelect: () => runArrange("element order", { direction: "down" }) },
-            ],
-          },
-        ],
-      });
-    },
-    // 插入分頁的 6 顆按鈕 (T3/NOOP-142). 圖片/影片/音訊 open the shared hidden
-    // <input type="file"> with a kind-specific `accept`; 圖案/文字方塊 reuse
-    // 常用 tab's own geometry via the two helpers above; 頁碼 is `textbox add`
-    // with the literal `{{ slide_number }}` variable (決定 4 — no core
-    // change, no replacement logic here either).
-    "insert-image": () => openMediaPicker("image/*"),
-    "insert-video": () => openMediaPicker("video/*"),
-    "insert-audio": () => openMediaPicker("audio/*"),
-    "insert-shape": () => openShapeMenu("insert-shape"),
-    "insert-textbox": () => insertDefaultTextbox(),
-    "slide-number": () => {
-      const slidePath = currentSlidePath();
-      const canvas = presentationInfo?.canvas;
-      if (!slidePath || !canvas) return;
-      // Wide enough that "{{ slide_number }}" (19 chars, default 24px font)
-      // never wraps onto a second line: substituteDynamicText only matches
-      // a placeholder that sits whole inside one <text>/<tspan> leaf
-      // (element-text.ts's collectTextLeafRanges splits wrapped lines into
-      // separate leaves), so a narrower box that wraps mid-token would
-      // silently break the substitution instead of ever showing a number.
-      const width = 220;
-      void runRibbonCommand("textbox add", {
-        slidePath,
-        x: canvas.width - width - 40,
-        y: canvas.height - 60,
-        width,
-        text: "{{ slide_number }}",
-        fill: DEFAULT_TEXT_FILL,
-      });
-    },
-    // 切換分頁的轉場設定 (T6). Simple presentation-level command, no popover —
-    // server overwrites `id`, so `runRibbonCommand` never passes one.
-    "transition-none": () => {
-      void runRibbonCommand("presentation transition set", { name: "none" });
-    },
-    "transition-fade": () => {
-      void runRibbonCommand("presentation transition set", { name: "fade" });
-    },
-  };
 
   const shellVisible = canvasState.mode !== "play";
 
@@ -980,46 +697,30 @@ export function App() {
       {shellVisible && (
         <TitleBar
           deckName={presentationInfo?.name ?? null}
-          canvasSize={presentationInfo?.canvas ?? null}
           agentConnection={agentConnection}
-        />
-      )}
-      {shellVisible && (
-        <Ribbon
+          editingFrozen={editingFrozen}
+          onUndo={() => runUndoRedo("undo")}
+          onRedo={() => runUndoRedo("redo")}
+          onPlay={() => void controllerRef.current?.play()}
           onPlayFromStart={() => {
             void (async () => {
               await controllerRef.current?.showSlide(0);
               await controllerRef.current?.play();
             })();
           }}
-          onPlayFromCurrent={() => void controllerRef.current?.play()}
-          onToggleFullscreen={() => void toggleFullscreen()}
           canPlay={hasSlides}
-          handlers={ribbonHandlers}
-          menu={ribbonMenu}
-          onCloseMenu={closeRibbonMenu}
-        />
-      )}
-      {shellVisible && templateDialogOpen && (
-        <TemplateDialog
-          templates={presentationInfo?.templates ?? []}
-          canSaveCurrent={currentSlidePath() !== null}
-          onClose={() => setTemplateDialogOpen(false)}
-          onSaveCurrent={handleTemplateSave}
-          onRename={handleTemplateRename}
-          onDelete={handleTemplateDelete}
         />
       )}
       {shellVisible && (
         <div className="app-notices">
           {liveReloadError && (
             <div role="alert" className="live-reload-banner">
-              即時預覽已停止：{liveReloadError}，請重新整理頁面
+              Live preview stopped: {liveReloadError} — reload the page
             </div>
           )}
           {presentationError && (
             <div role="alert" className="live-reload-banner">
-              簡報資訊載入失敗：{presentationError}
+              Deck info failed to load: {presentationError}
             </div>
           )}
           {canvasState.error && (
@@ -1028,23 +729,12 @@ export function App() {
             </div>
           )}
           {editingFrozen && (
-            <div className="live-reload-banner editing-frozen-banner">Agent 編輯中，暫時無法復原/重做</div>
+            <div className="live-reload-banner editing-frozen-banner">Agent editing · undo/redo paused</div>
           )}
         </div>
       )}
       <div className="body">
-        {/* #54 (wave 4): now absent from the DOM in 播放模式, unlike the
-            wave-2/wave-3 posture recorded in the comment this replaces.
-            That older comment's constraint — e2e/player-effect-error.test.ts
-            and e2e/player-media.test.ts clicking overview thumbnails
-            (button[aria-label="第 N 頁"]) *during* play mode as their only
-            way to change slides when a broken effect list leaves no
-            runtime alive to hear arrow keys — has been migrated onto
-            #54's own play-bar 上一步/下一步 buttons (controller.previous()/
-            next()), which work the same way with no runtime required. The
-            overview module's mount/unmount survives this: see the
-            overview-mounting effect's own comment above. */}
-        {shellVisible && <Rail containerRef={overviewRef} />}
+        {shellVisible && <Rail containerRef={overviewRef} slideCount={canvasState.slides.length} />}
         <div className="main">
           <Stage
             canvasRef={canvasRef}
@@ -1052,8 +742,6 @@ export function App() {
             canvasSize={presentationInfo?.canvas ?? null}
             state={canvasState}
             controller={controllerRef.current}
-            view={view}
-            onViewChange={setView}
             dropOverlay={{
               active: dropActive,
               onDragOver: handleStageDragOver,
@@ -1061,14 +749,6 @@ export function App() {
               onDragLeave: handleStageDragLeave,
             }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="visually-hidden"
-              tabIndex={-1}
-              aria-label="匯入媒體檔案"
-              onChange={handleFileInputChange}
-            />
             <PlayChrome
               state={canvasState}
               controller={controllerRef.current}
@@ -1078,101 +758,26 @@ export function App() {
               onExitPlay={() => void handleExitPlay()}
             />
           </Stage>
-          {shellVisible && <Notes hidden={view === "grid"} />}
+          {shellVisible && <Notes slideNumber={hasSlides ? canvasState.currentIndex + 1 : null} />}
         </div>
-        {/* 側邊面板分頁化 (NOOP-271/#154): 對話／樣式 share one container
-            and one shellVisible gate — same "absent from the DOM in 播放
-            模式" contract #54 set for the rest of this row. 對話 JSX passed
-            through unchanged; its state (`messages`/`draft`/…) stays here
-            in App.tsx so switching tabs never loses it (plan §3.4/§4.3). */}
         {shellVisible && (
           <SidePanel
             state={canvasState}
-            controller={controllerRef.current}
             chat={
-              <aside className="chat-sidebar">
-                <h2>對話</h2>
-                <div className="chat-messages">
-                  {messages.length === 0 && <p className="chat-placeholder">跟 agent 說說你想怎麼改這份簡報</p>}
-                  {messages.map((message) =>
-                    message.role === "notice" ? (
-                      <p key={message.id} className="chat-notice" role="alert">
-                        {message.text}
-                      </p>
-                    ) : message.role === "command" ? (
-                      <div
-                        key={message.id}
-                        className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
-                        role={message.status === "failed" ? "alert" : undefined}
-                      >
-                        <p className="chat-command-line">
-                          <span className="chat-command-status">
-                            {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
-                          </span>
-                          <code className="chat-command-text">{message.command}</code>
-                        </p>
-                        {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
-                      </div>
-                    ) : (
-                      <p key={message.id} className={`chat-message chat-message-${message.role}`}>
-                        {message.text}
-                      </p>
-                    ),
-                  )}
-                  {working && <p className="chat-working">agent 正在工作中…</p>}
-                  {!streamReady && <p className="chat-connecting">聊天連線建立中…</p>}
-                  {error && <p className="chat-error">{error}</p>}
-                </div>
-                <form
-                  className="chat-input"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void sendMessage();
-                  }}
-                >
-                  <input
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder={streamReady ? "輸入訊息給 agent…" : "聊天連線建立中，請稍候…"}
-                  />
-                  <button type="submit" disabled={!streamReady}>
-                    送出
-                  </button>
-                </form>
-              </aside>
+              <ChatPanel
+                messages={messages}
+                working={working}
+                streamReady={streamReady}
+                error={error}
+                draft={draft}
+                onDraftChange={setDraft}
+                onSubmit={() => void sendMessage()}
+              />
             }
           />
         )}
       </div>
-      {shellVisible && (
-        <StatusBar
-          state={canvasState}
-          controller={controllerRef.current}
-          view={view}
-          onViewChange={setView}
-          onExitPlay={() => void handleExitPlay()}
-        />
-      )}
+      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} />}
     </div>
   );
 }
-
-/**
- * What each ACP tool-call status means to the author. The status itself
- * stays ACP's own string all the way from the agent to here — this map is
- * the single place it becomes something a person reads.
- */
-/**
- * Shown instead of the status label when the stream died before the
- * command's outcome arrived (ticket #19). Not a `CommandStatus` value: we
- * do not know whether it worked, and "執行失敗" would be a made-up answer
- * to a question nobody ever answered.
- */
-const COMMAND_INTERRUPTED_LABEL = "結果不明";
-
-const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
-  pending: "準備執行",
-  in_progress: "執行中",
-  completed: "已完成",
-  failed: "執行失敗",
-};

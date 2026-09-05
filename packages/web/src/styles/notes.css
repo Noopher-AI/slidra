@@ -1,36 +1,45 @@
-/* 備忘稿 (#52). No ticket in this fleet wires real note content yet — this
-   pane always shows the same honest placeholder (Notes.tsx). */
+/* 備忘稿 (New v3 skeleton). No ticket in this fleet wires real note content
+   yet — Notes.tsx always shows the same honest placeholder, styled as the
+   prototype's notes box (white card, not an editable field). Height is the
+   design package's own `--notes-h` token. */
 .notes {
-  background: var(--s-panel);
-  border-top: 1px solid var(--line-soft);
-  padding: calc(var(--u) * 2) calc(var(--u) * 5);
+  grid-row: 2;
+  height: var(--notes-h);
+  background: var(--surface-0);
+  border-top: 1px solid var(--surface-2);
+  padding: var(--space-4) calc(var(--space-5) * 2) var(--space-6); /* 左右 24px（原型量測） */
   display: flex;
   flex-direction: column;
-  gap: var(--u);
+  gap: var(--space-2);
   box-sizing: border-box;
   overflow: hidden;
   min-height: 0;
 }
 .notes-label {
-  color: var(--ink-dim);
-  font-size: var(--fs-micro);
-  letter-spacing: var(--ls-label);
-  font-weight: var(--fw-medium);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--ink-400);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.notes-label-slide {
+  color: var(--ink-300);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 .notes-empty {
-  color: var(--ink-dim);
-  font-size: var(--fs-ui);
-  line-height: var(--lh-read);
-}
-
-@container main (width < 880px) {
-  .notes {
-    padding-inline: calc(var(--u) * 3);
-  }
-}
-
-@container main (width >= 1400px) {
-  .notes {
-    padding-inline: calc(var(--u) * 8);
-  }
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3) var(--space-5);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md-segmented);
+  color: var(--ink-400);
+  font-size: var(--text-base);
+  line-height: 1.55;
 }
