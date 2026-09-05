@@ -213,7 +213,12 @@
   color: var(--brand-red);
 }
 
-/* 縮圖右上留言鈕入口（T3 plan §2 邊界 2）：本票只渲染停用態的入口。 */
+/* 縮圖右上留言鈕入口（T3 plan §2 邊界 2）：本票只渲染停用態的入口。
+   可見度依 03-UI_RATIONALE.md B 表「滑入才顯示，避免噪音」與原型
+   comotion-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1。
+   F13 接上留言功能後，「該頁已有留言」會是第二個恆亮條件。
+   常駐可見會改變 rail 的靜止外觀，讓 shell-v3／selection 的既有基準
+   全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）。 */
 .overview-comment-button {
   position: absolute;
   top: var(--space-2);
@@ -226,8 +231,17 @@
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   color: var(--ink-500);
-  opacity: 0.6;
   pointer-events: none;
+}
+/* 用 `.overview-item .overview-comment-button` 的兩層 class 選擇器（而非單一
+   class）蓋過全域的 `button:disabled { opacity: 0.4 }`（shell.css:36）——那條
+   規則的優先度是 type+pseudo-class，比單一 class 選擇器高，靜止態若只寫
+   `.overview-comment-button { opacity: 0 }` 會被它蓋掉，算出來變成 0.4。 */
+.overview-item .overview-comment-button {
+  opacity: 0;
+}
+.overview-item:hover .overview-comment-button {
+  opacity: 1;
 }
 .overview-comment-button svg {
   width: var(--icon-inline);

@@ -518,6 +518,10 @@ it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮�
     // `--dur-fast` 歸零，animation 從一開始就不存在，不再依賴「快轉到終
     // 態」這個間接機制。
     await page.emulateMedia({ reducedMotion: "reduce" });
+    // 縮圖右上留言鈕靜止態 opacity:0、滑入該縮圖才變 1（rail.css）。截圖前
+    // 明確把滑鼠移到不在任何 .overview-item 上的座標，讓「鈕不可見」是刻意
+    // 保證的，不是「剛好還沒移過去」的巧合。
+    await page.mouse.move(0, 0);
     await settleForScreenshot(page);
     const railBox = await page.locator(".rail").boundingBox();
     if (!railBox) throw new Error("找不到 .rail");
@@ -541,6 +545,9 @@ it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮�
 
     await dragOver(page, 0, 2, "bottom");
     await expect.poll(() => page.locator(".overview-drop-line").count(), { timeout: 5_000 }).toBe(1);
+    // 拖曳模擬是合成 DragEvent（見上方 dragOver），不移動真實滑鼠；同一個
+    // 「明確移到中性座標」的理由見上方 rail 截圖前的註解。
+    await page.mouse.move(0, 0);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "drop-line", baselineDir, clip: railBox });
     await drop(page, 2, "bottom");
@@ -553,6 +560,26 @@ it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮�
     const contextMenuBox = await contextMenu.boundingBox();
     if (!contextMenuBox) throw new Error("找不到縮圖右鍵選單");
     await compareScreenshot(page, { name: "thumb-context-menu", baselineDir, clip: contextMenuBox });
+  } finally {
+    await cleanup();
+  }
+});
+
+it("縮圖留言鈕依 03-UI_RATIONALE.md「滑入才顯示」：靜止態不可見，滑入該縮圖才可見（T3 plan §5-I-3）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const pin = page.locator('.overview-item[data-index="0"] .overview-comment-button');
+
+    await page.mouse.move(0, 0);
+    await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+
+    await page.locator('.overview-item[data-index="0"]').hover();
+    await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+
+    // 滑入別的縮圖時，只有被滑入的那一項顯示，其餘維持 0。
+    await page.locator('.overview-item[data-index="1"]').hover();
+    await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
   } finally {
     await cleanup();
   }
