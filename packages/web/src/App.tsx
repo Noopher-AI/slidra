@@ -45,8 +45,8 @@ function isCanvasAreaFullscreen(container: Element | null): boolean {
   return fullscreenElement !== null && fullscreenElement === container;
 }
 
-/** Maps one `export` SSE event onto the dropdown's own UI state (NOOP-93 §4.7). `queued` has no frame counts yet — ExportPanel already treats `totalFrames === 0` as "still starting" and shows a bare "匯出中…". */
-function toExportUiState(event: ExportSseEvent): ExportUiState {
+/** Maps one `export` SSE event onto the dropdown's own UI state (NOOP-93 §4.7). `queued` has no frame counts yet — ExportPanel already treats `totalFrames === 0` as "still starting" and shows a bare "匯出中…". Exported so tests can cover this event→props conversion directly (NOOP-110r4) — component tests alone only exercise ExportPanel(props) → markup, which stays green even if this function's wiring is broken. */
+export function toExportUiState(event: ExportSseEvent): ExportUiState {
   switch (event.state) {
     case "queued":
       return { kind: "busy", format: event.format, completedFrames: 0, totalFrames: 0 };
