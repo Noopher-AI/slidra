@@ -13,6 +13,8 @@ import { scanDocument, type ScannedNode } from "./slide/scan.js";
 
 const NOTES_TAG = "comot:notes";
 const METADATA_TAG = "metadata";
+/** Same namespace URI `packages/web/src/effects.ts`'s `<comot:effects>` binds — an unbound `comot:` prefix is a fatal XML parse error, not a tolerated one. */
+const NOTES_NS = "https://co-motion.dev/ns";
 
 function requireSvgRoot(roots: readonly ScannedNode[]): ScannedNode {
   const svgRoot = roots.find((node) => node.tag === "svg");
@@ -38,14 +40,14 @@ export function setSlideNotes(svgContent: string, text: string): string {
 
   const metadata = svgRoot.children.find((child) => child.tag === METADATA_TAG);
   if (!metadata) {
-    const markup = `<${METADATA_TAG}><${NOTES_TAG}>${escaped}</${NOTES_TAG}></${METADATA_TAG}>`;
+    const markup = `<${METADATA_TAG}><${NOTES_TAG} xmlns:comot="${NOTES_NS}">${escaped}</${NOTES_TAG}></${METADATA_TAG}>`;
     const insertAt = svgRoot.contentStart;
     return svgContent.slice(0, insertAt) + markup + svgContent.slice(insertAt);
   }
 
   const notes = metadata.children.find((child) => child.tag === NOTES_TAG);
   if (!notes) {
-    const markup = `<${NOTES_TAG}>${escaped}</${NOTES_TAG}>`;
+    const markup = `<${NOTES_TAG} xmlns:comot="${NOTES_NS}">${escaped}</${NOTES_TAG}>`;
     const insertAt = metadata.contentStart;
     return svgContent.slice(0, insertAt) + markup + svgContent.slice(insertAt);
   }

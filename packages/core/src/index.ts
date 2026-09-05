@@ -3,6 +3,11 @@ export { generateOpaqueId, generateElementId } from "./id.js";
 export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./presentation.js";
 export { DEFAULT_FONT_FAMILY } from "./default-font.js";
 export { readDefaultFontBytes } from "./default-font-bytes.js";
+// [E2.T3]: the pure string -> string splice `setNotes` (below) wraps for
+// file I/O. Exported directly so `packages/web/test/notes.test.ts` can
+// round-trip it against `readSlideNotes` without touching a real
+// presentation on disk.
+export { setSlideNotes } from "./notes.js";
 export type { MinimalPresentationFiles } from "./presentation.js";
 export { validateProjectJson, readTemplateEntries, assertSupportedFormatVersion } from "./project-json.js";
 export type { ProjectJson, FontEntry, TemplateEntry } from "./project-json.js";

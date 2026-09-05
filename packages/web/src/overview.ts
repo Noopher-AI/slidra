@@ -14,6 +14,20 @@
  */
 import type { CanvasController } from "./canvas.js";
 
+/**
+ * [E2.T3]: the two behaviours that need a React tree to render into
+ * (the right-click menu, and — in a later ticket — the comment thread the
+ * top-right button opens) get reported up through here rather than grown a
+ * second DOM-manipulation path of their own. Drag/drop reordering does NOT
+ * need a hook — `canvas` (the `CanvasController` this module already holds)
+ * already has `runCommand`/`reload`/`showSlide`, everything a `slide move`
+ * needs (T3 plan §7 決定 7).
+ */
+export interface OverviewHooks {
+  /** A thumbnail was right-clicked. `x`/`y` are the event's clientX/clientY, for a fixed-position menu. */
+  onContextMenu?: (index: number, x: number, y: number) => void;
+}
+
 export interface OverviewController {
   destroy(): void;
   /**
@@ -29,10 +43,67 @@ export interface OverviewController {
   refresh(): void;
 }
 
-export function mountOverview(container: HTMLElement, canvas: CanvasController): OverviewController {
+export function mountOverview(container: HTMLElement, canvas: CanvasController, hooks: OverviewHooks = {}): OverviewController {
   const list = document.createElement("ol");
   list.className = "overview-list";
   container.appendChild(list);
+
+  // [E2.T3] 拖曳排序狀態（本模組自己的 closure state，不進 React）。
+  // `dragFromIndex` is the authoritative "from" — read out of
+  // `dataTransfer` at drop time (T3 plan §4.2's "格式錯誤" row), not just
+  // trusted from whatever dragstart happened to set, so a drop whose
+  // dataTransfer genuinely carries no parseable index is treated as a
+  // format error and abandoned rather than guessed at.
+  const dropLine = document.createElement("li");
+  dropLine.className = "overview-drop-line";
+  dropLine.setAttribute("aria-hidden", "true");
+  let dragFromIndex: number | null = null;
+
+  /** Prototype's own no-op rule (T3 plan §3.8): dropping on yourself, or on your own very next slot, changes nothing. */
+  function isDropNoop(from: number, to: number): boolean {
+    return from < 0 || from === to || from + 1 === to;
+  }
+
+  function clearDragState(): void {
+    dragFromIndex = null;
+    dropLine.remove();
+  }
+
+  /** `to` = insertion index in the array WITH the dragged item still present — the prototype's own `to` (T3 plan §3.8), also this module's insertBefore target: `items[to]` (or `null`/append when `to === items.length`). */
+  function showDropLineIfMeaningful(to: number): void {
+    if (dragFromIndex === null || isDropNoop(dragFromIndex, to)) {
+      dropLine.remove();
+      return;
+    }
+    list.insertBefore(dropLine, items[to] ?? null);
+  }
+
+  // This shell has no trailing "+" placeholder card (unlike the prototype)
+  // for "drop past the last thumbnail" — the empty space below the last
+  // `<li>`, inside the list's own bottom padding, is `list` itself as
+  // `event.target`. Attached once (not per rebuild): the list element's
+  // identity never changes across rebuildList() calls.
+  list.addEventListener("dragover", (event) => {
+    if (dragFromIndex === null || event.target !== list) return;
+    event.preventDefault();
+    showDropLineIfMeaningful(items.length);
+  });
+  list.addEventListener("drop", (event) => {
+    if (event.target !== list) return;
+    event.preventDefault();
+    const from = dropSourceIndex(event);
+    clearDragState();
+    if (from === null) return;
+    void commitMove(from, items.length);
+  });
+  // Leaving the rail entirely while dragging (T3 plan §4.2's "拖曳中途離開
+  // rail" row) clears the line — `relatedTarget` is null when the pointer
+  // leaves the browser window outright, which `!contains(null)` already
+  // treats as "outside".
+  container.addEventListener("dragleave", (event) => {
+    const related = (event as DragEvent).relatedTarget as Node | null;
+    if (!container.contains(related)) dropLine.remove();
+  });
 
   // The thumbnail box's aspect ratio comes from the presentation's real
   // canvas (project.json's `canvas.width`/`canvas.height`), not a
@@ -145,8 +216,47 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
     return a.length === b.length && a.every((path, index) => path === b[index]);
   }
 
+  /** Reads dragstart's own payload back out, rather than trusting the closure's `dragFromIndex` alone (T3 plan §4.2's "格式錯誤" row — a `dataTransfer` that carries no parseable index is a format error, not a guess). */
+  function dropSourceIndex(event: DragEvent): number | null {
+    const raw = event.dataTransfer?.getData("text/plain");
+    if (!raw) return null;
+    const index = Number(raw);
+    return Number.isInteger(index) && index >= 0 && index < slides.length ? index : null;
+  }
+
+  /** Cursor position within `li` decides "insert before this slide" vs. "insert before the next one" — the latter is how dropping past the last thumbnail (no trailing placeholder card in this shell) reaches `to === slides.length`. */
+  function dropTargetIndex(li: HTMLLIElement, clientY: number): number {
+    const index = Number(li.dataset.index);
+    const rect = li.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2 ? index : index + 1;
+  }
+
+  async function commitMove(from: number, to: number): Promise<void> {
+    if (isDropNoop(from, to)) return;
+    const newIndex = to > from ? to - 1 : to; // T3 plan §3.8: exactly core's `moveSlide` newIndex, no further adjustment.
+    const slidePath = slides[from];
+    const result = await canvas.runCommand("slide move", { slidePath, newIndex });
+    if (result.ok) {
+      // T3 plan §7 決定 6: an order-changing command always follows with an
+      // explicit reload()+showSlide() — plain reload() only clamps
+      // currentIndex into range, it never targets a specific page, and
+      // waiting for the write's own /api/events-triggered reload instead
+      // would race against this call.
+      await canvas.reload();
+      await canvas.showSlide(newIndex);
+    }
+    // A failed move leaves order unchanged; CanvasState.error already
+    // carries the message (canvas.ts's runCommand sets it before this
+    // await resolves) — nothing further to do here either way.
+  }
+
   function rebuildList(nextSlides: string[]): void {
     observer.disconnect();
+    // An external edit landing mid-drag invalidates whatever the gesture
+    // was pointed at (T3 plan §4.2's "拖曳中投影片被 /api/events 通知變更"
+    // row) — the gesture is abandoned, not applied on top of a deck that
+    // has already moved out from under it.
+    clearDragState();
     list.replaceChildren();
     items.length = 0;
     frames.length = 0;
@@ -158,6 +268,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       const li = document.createElement("li");
       li.className = "overview-item";
       li.dataset.index = String(index);
+      li.draggable = true;
 
       // The button doubles as the placeholder: the <li>'s aspect-ratio box
       // (style.css) gives it its size, so the scrollbar is honest and the
@@ -178,8 +289,45 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController):
       button.setAttribute("aria-label", `Slide ${index + 1}`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
+      // Comment entry point (T3 plan §2 邊界 2): the thread itself is
+      // F13's — this ticket only renders a disabled, labelled door to it.
+      const commentButton = document.createElement("button");
+      commentButton.type = "button";
+      commentButton.className = "overview-comment-button";
+      commentButton.setAttribute("aria-label", "Comment to agent");
+      commentButton.setAttribute("aria-disabled", "true");
+      commentButton.disabled = true;
+      commentButton.innerHTML =
+        '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 4h14v9H9l-4 3v-3H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+
+      li.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        hooks.onContextMenu?.(index, event.clientX, event.clientY);
+      });
+
+      li.addEventListener("dragstart", (event) => {
+        dragFromIndex = index;
+        event.dataTransfer?.setData("text/plain", String(index));
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      });
+      li.addEventListener("dragover", (event) => {
+        if (dragFromIndex === null) return;
+        event.preventDefault();
+        showDropLineIfMeaningful(dropTargetIndex(li, event.clientY));
+      });
+      li.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const from = dropSourceIndex(event);
+        const to = dropTargetIndex(li, event.clientY);
+        clearDragState();
+        if (from === null) return; // format error (T3 plan §4.2): abandon, never guess.
+        void commitMove(from, to);
+      });
+      li.addEventListener("dragend", clearDragState);
+
       li.appendChild(number);
       li.appendChild(button);
+      li.appendChild(commentButton);
       list.appendChild(li);
 
       items.push(li);

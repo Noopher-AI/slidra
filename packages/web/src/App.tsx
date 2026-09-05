@@ -6,7 +6,7 @@ import { startLiveReload } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
-import { Rail } from "./shell/Rail.js";
+import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
@@ -66,6 +66,11 @@ export function App() {
   const wellRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const overviewControllerRef = useRef<OverviewController | null>(null);
+  // [E2.T3]: overview.ts's own contextmenu handler (a vanilla DOM module)
+  // has no React tree of its own to render a menu into, so it reports the
+  // index + cursor position up through this state instead; `<Rail>` renders
+  // the actual `<ThumbContextMenu>`.
+  const [contextMenuRequest, setContextMenuRequest] = useState<ThumbContextMenuRequest | null>(null);
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
   // only mirrors it here so the paging chrome can render, and issues
   // commands back through the controller.
@@ -356,7 +361,9 @@ export function App() {
     const container = overviewRef.current;
     const controller = controllerRef.current;
     if (!container || !controller) return;
-    const overview = mountOverview(container, controller);
+    const overview = mountOverview(container, controller, {
+      onContextMenu: (index, x, y) => setContextMenuRequest({ index, x, y }),
+    });
     overviewControllerRef.current = overview;
     return () => {
       overview.destroy();
@@ -519,6 +526,61 @@ export function App() {
         void controller.orderSelection(event.shiftKey ? "back" : "down");
         return;
       }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // [E2.T3] ⌘D／Delete／PageUp／PageDown (T3 plan §4.3). Appended after the
+  // two keydown effects above, not merged into either — same
+  // text-field/contentEditable guard as both, copied verbatim (§3.7).
+  // `canvasStateRef` (declared above, next to the ArrowLeft/Right effect)
+  // is read here for the same reason that effect reads it: this listener
+  // must not re-subscribe on every canvasState change.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const controller = controllerRef.current;
+      if (!controller) return;
+      const state = canvasStateRef.current;
+
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        if (state.mode === "play") {
+          event.preventDefault();
+          controller.stepPlayer(event.key === "PageDown" ? "advance" : "retreat");
+          controller.focusPlayer();
+          return;
+        }
+        event.preventDefault();
+        void (event.key === "PageDown" ? controller.next() : controller.previous());
+        return;
+      }
+
+      // ⌘D／Delete belong to 檢視模式 only — 播放模式 already returns above
+      // for the two keys this effect otherwise cares about.
+      if (state.mode === "play") return;
+
+      const isDelete = event.key === "Delete" || event.key === "Backspace";
+      const isDuplicate =
+        (event.key === "d" || event.key === "D") && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
+      if (!isDelete && !isDuplicate) return;
+
+      // 有選取時兩鍵都留給 [E2.T2]／未來票 — 不 preventDefault，什麼都不做
+      // (T3 plan §2 邊界 5)。
+      if (state.selection.ids.length > 0) return;
+      if (state.slides.length === 0) return;
+
+      const slidePath = state.slides[state.currentIndex];
+      if (isDelete) {
+        event.preventDefault();
+        const newLength = state.slides.length - 1;
+        void runPageCommand("slide delete", { slidePath }, newLength === 0 ? null : Math.min(state.currentIndex, newLength - 1));
+        return;
+      }
+
+      event.preventDefault(); // isDuplicate — otherwise Chrome opens "Add bookmark".
+      void runPageCommand("slide duplicate", { slidePath }, state.currentIndex + 1);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -739,9 +801,33 @@ export function App() {
     return canvasState.slides[canvasState.currentIndex] ?? null;
   }
 
-  /** Runs a canvas command through the one write path (`controller.runCommand`) — used by the drag/drop/paste media-import flow above; the old Ribbon-specific command set (paste/cut/copy/insert-shape/insert-textbox/slide-number/transitions/…) had no other caller and is deleted with Ribbon.tsx (see the PR report). */
-  async function runCanvasCommand(name: string, input: Record<string, unknown>): Promise<void> {
-    await controllerRef.current?.runCommand(name, input);
+  type CommandResult = { ok: boolean; message: string; data?: unknown };
+
+  /** Runs a canvas command through the one write path (`controller.runCommand`) — used by the drag/drop/paste media-import flow above, and by `<Notes>`'s `slide notes set`. */
+  async function runCanvasCommand(name: string, input: Record<string, unknown>): Promise<CommandResult | undefined> {
+    return controllerRef.current?.runCommand(name, input);
+  }
+
+  /**
+   * [E2.T3]: `slide add`/`duplicate`/`move`/`delete` all change which page
+   * is "current" — plain `reload()` only clamps `currentIndex` into range
+   * on an external edit, it never jumps to a *specific* new page (T3 plan
+   * §7 決定 6). Waiting for the write's own `/api/events`-triggered reload
+   * instead of doing this explicitly would race: which one lands first is
+   * not guaranteed. `targetIndex === null` means "no page to land on"
+   * (deleting the deck down to zero slides).
+   */
+  async function runPageCommand(
+    name: string,
+    input: Record<string, unknown>,
+    targetIndex: number | null,
+  ): Promise<CommandResult | undefined> {
+    const result = await runCanvasCommand(name, input);
+    if (result?.ok) {
+      await controllerRef.current?.reload();
+      if (targetIndex !== null) await controllerRef.current?.showSlide(targetIndex);
+    }
+    return result;
   }
 
   const shellVisible = canvasState.mode !== "play";
@@ -788,7 +874,18 @@ export function App() {
         </div>
       )}
       <div className="body">
-        {shellVisible && <Rail containerRef={overviewRef} slideCount={canvasState.slides.length} />}
+        {shellVisible && (
+          <Rail
+            containerRef={overviewRef}
+            slideCount={canvasState.slides.length}
+            slides={canvasState.slides}
+            currentIndex={canvasState.currentIndex}
+            runCommand={runCanvasCommand}
+            runPageCommand={runPageCommand}
+            contextMenuRequest={contextMenuRequest}
+            onCloseContextMenu={() => setContextMenuRequest(null)}
+          />
+        )}
         <div className="main">
           <Stage
             canvasRef={canvasRef}
@@ -812,7 +909,13 @@ export function App() {
               onExitPlay={() => void handleExitPlay()}
             />
           </Stage>
-          {shellVisible && <Notes slideNumber={hasSlides ? canvasState.currentIndex + 1 : null} />}
+          {shellVisible && (
+            <Notes
+              slideNumber={hasSlides ? canvasState.currentIndex + 1 : null}
+              slidePath={currentSlidePath()}
+              onCommand={runCanvasCommand}
+            />
+          )}
         </div>
         {shellVisible && (
           <SidePanel

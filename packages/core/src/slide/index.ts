@@ -26,3 +26,10 @@ export type {
 } from "./format.js";
 export { normaliseSlideSvg } from "./normalise.js";
 export type { NormaliseOptions, NormaliseResult } from "./normalise.js";
+// [E2.T3] adds these three: the web-side speaker-notes reader
+// (`packages/web/src/notes.ts`) needs the offset-carrying scanner directly
+// — DOMParser is unusable there because it treats an unbound `comot:`
+// namespace prefix as a fatal parse error, and old on-disk notes predate
+// this ticket's xmlns fix.
+export { scanDocument, attributeOf } from "./scan.js";
+export type { ScannedNode } from "./scan.js";
