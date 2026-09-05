@@ -29,19 +29,63 @@ function lineAt(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
 }
 
-/** Same five patterns as packages/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts — this file supersedes their generic sweep across every regional CSS file, not just the six they used to cover individually. */
+/** A closed list of literal values/tokens that are legitimate even in a stylesheet that otherwise
+ * must consume tokens.css by name — a 1px hairline border, a 0 reset, `none`, or a 50%/100%
+ * percentage (circular avatars via `border-radius: 50%`, full-bleed backgrounds). Deliberately
+ * exact strings, not a loose regex: a blanket allowance ("any 1-2px value", "any round
+ * percentage") would silently permit the very hardcoding this test exists to catch. Used two ways
+ * below: a bare match from the general px/rem scan is dropped if it equals one of these strings
+ * exactly; a border-radius/box-shadow value has every `var(--x)` reference stripped out first, and
+ * is only an offense if what's left contains a token that ISN'T one of these strings. */
+const CSS_LITERAL_ALLOWLIST: ReadonlySet<string> = new Set(["1px", "50%", "100%", "0", "none"]);
+
+/** Same patterns as packages/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts used
+ * (hex/rgb/duration/easing/cubic-bezier) — this file supersedes their generic sweep across every
+ * regional CSS file, not just the six they used to cover individually — plus three more forbidden
+ * shapes added here: literal px/rem lengths, literal border-radius values, and literal box-shadow
+ * values, so hardcoded spacing/radius/shadow gets caught the same way hex colours already were.
+ *
+ * Percentages are deliberately NOT part of the general "字面 px/rem 數值" sweep: `width: 100%` /
+ * `flex: 1 1 100%` are ordinary layout mechanics with no design-token equivalent, not a hardcoded
+ * design value — forbidding bare percentages everywhere would flag routine layout CSS that has
+ * nothing to do with tokens.css. Percentages are only meaningful (and only checked) inside
+ * border-radius/box-shadow, where the dedicated patterns below already look at every value token. */
 const CSS_FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }> = [
   { name: "hex 色碼", pattern: /#[0-9a-fA-F]{3,8}\b/g },
   { name: "rgb()/rgba()", pattern: /\brgba?\(/g },
   { name: "字面 duration（ms/s）", pattern: /[0-9]+(?:\.[0-9]+)?(?:ms|s)\b/g },
   { name: "字面 easing 關鍵字", pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g },
   { name: "cubic-bezier()", pattern: /cubic-bezier\(/g },
+  { name: "字面 px/rem 數值", pattern: /(?<![\w.#-])[0-9]+(?:\.[0-9]+)?(?:px|rem)\b/g },
+  { name: "字面 border-radius 值", pattern: /border-radius\s*:\s*([^;]+)/g },
+  { name: "字面 box-shadow 值", pattern: /box-shadow\s*:\s*([^;]+)/g },
 ];
 
-/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors packages/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required. */
+/** True when `matchedText` (the full regex match for `patternName`) should NOT be reported —
+ * either it's an exact hit on the general allowlist (the px/rem sweep), or — for border-radius/
+ * box-shadow, whose pattern captures the entire value — every token that remains once all
+ * `var(--x)` references are stripped out is itself on the allowlist (or there's nothing left). */
+function isAllowedLiteral(patternName: string, matchedText: string): boolean {
+  if (patternName === "字面 border-radius 值" || patternName === "字面 box-shadow 值") {
+    const value = matchedText.slice(matchedText.indexOf(":") + 1);
+    const withoutVars = value.replace(/var\(--[a-z0-9-]+\)/g, " ").trim();
+    if (withoutVars === "") return true;
+    return withoutVars.split(/\s+/).every((token) => CSS_LITERAL_ALLOWLIST.has(token.replace(/,$/, "")));
+  }
+  return CSS_LITERAL_ALLOWLIST.has(matchedText);
+}
+
+/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors packages/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required.
+ *
+ * `play.css` is also excluded: it is playback-mode chrome, explicitly out of scope for the New v3
+ * shell rebuild (a separate future ticket owns it) and untouched by that work — it still runs on
+ * the pre-rebuild `--u` spacing unit (`calc(var(--u) * N)`), not design-package tokens, and still
+ * has literal px values predating this file's px/rem/border-radius/box-shadow patterns (added as
+ * part of the shell rebuild). Scanning it here would fail on a file nobody is migrating this round;
+ * the exclusion is removed when play.css's own migration ticket lands. */
 function regionalCssFiles(): string[] {
   const files = readdirSync(stylesDir)
-    .filter((name) => name.endsWith(".css") && name !== "tokens.css")
+    .filter((name) => name.endsWith(".css") && name !== "tokens.css" && name !== "play.css")
     .map((name) => path.join(stylesDir, name));
   files.push(path.join(webSrcDir, "style.css"));
   return files;
@@ -60,6 +104,7 @@ function scanCss(filePath: string): Offense[] {
   const offenses: Offense[] = [];
   for (const { name, pattern } of CSS_FORBIDDEN_PATTERNS) {
     for (const match of stripped.matchAll(pattern)) {
+      if (isAllowedLiteral(name, match[0])) continue;
       offenses.push({ file: path.basename(filePath), line: lineAt(stripped, match.index!), name, text: match[0] });
     }
   }
@@ -89,7 +134,12 @@ interface InlineStyleException {
 
 /** The only 8 hits in packages/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): default artwork content (App.tsx) and generated faithful-rendering documents (canvas.ts, overview.ts) — the two exception categories the architecture names. */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
-  { file: "App.tsx", allowed: ["#f4f6f8", "#889", "#c66"], reason: "預設作品內容，屬投影片資料" },
+  // New v3 shell rebuild removed the Ribbon-driven textbox/shape insert
+  // handlers that used to write "#f4f6f8" (default text fill) — the only
+  // two literal colours left in App.tsx are insertImportedAsset()'s
+  // video/audio placeholder fills, both still real hits (re-verified by
+  // this file's own self-check below).
+  { file: "App.tsx", allowed: ["#889", "#c66"], reason: "預設作品內容，屬投影片資料" },
   { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
 ];

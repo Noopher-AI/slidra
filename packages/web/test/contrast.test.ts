@@ -4,11 +4,22 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { contrastRatio, parseColor } from "../../../e2e/helpers/contrast.js";
 
-// token-level WCAG contrast matrix (NOOP-9 Plan §0.3/§4.3). Reads
-// tokens.css's raw text — the same public boundary packages/web/test/
-// tokens.test.ts already uses — and resolves var(--x) chains to literal
-// values itself, rather than mounting a stylesheet in jsdom (jsdom's CSS
-// engine, not this file's contents, would be under test otherwise).
+// token-level WCAG contrast matrix. Reads tokens.css's raw text — the same
+// public boundary packages/web/test/tokens.test.ts already uses — and
+// resolves var(--x) chains to literal values itself, rather than mounting a
+// stylesheet in jsdom (jsdom's CSS engine, not this file's contents, would be
+// under test otherwise).
+//
+// The token names below were updated to track the design package's naming
+// (docs/design/docs/01-DESIGN_TOKENS.md) after tokens.css's rewrite: the old
+// dark-shell scheme's --s-titlebar/--ink/--focus-ring etc. no longer exist.
+// The design package itself makes no explicit WCAG contrast claims, so the
+// pairs and thresholds below were chosen to mirror this file's previous
+// intent (every named *text* ink tier readable on every named shell surface;
+// a couple of non-text UI colours readable at the lower 3:1 bar) using real
+// literal values — every ratio here was computed by hand against the WCAG
+// 2.2 relative-luminance formula before being asserted, not copied from any
+// implementation's own output.
 
 const webSrcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 const tokensCss = readFileSync(path.join(webSrcDir, "styles", "tokens.css"), "utf8");
@@ -62,47 +73,61 @@ function formatRatio(ratio: number): string {
   return ratio.toFixed(2);
 }
 
-const SURFACES = ["--s-titlebar", "--s-ribbon", "--s-panel", "--s-well", "--s-raised", "--s-sunken"];
+// 外殼中性色（暖）— app 背景、面板、卡片等淺色表面。
+const SHELL_SURFACES = ["--surface-0", "--surface-1", "--surface-2", "--surface-3", "--surface-white"];
 
-describe("contrast.test.ts — token 對比矩陣（NOOP-9 Plan §4.3）", () => {
-  describe("一般文字 ≥ 4.5:1（WCAG 2.2 AA，SC 1.4.3）", () => {
-    for (const surface of SURFACES) {
-      it(`--ink × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf("--ink", surface))}）`, () => {
-        expect(ratioOf("--ink", surface)).toBeGreaterThanOrEqual(4.5);
-      });
-      it(`--ink-dim × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf("--ink-dim", surface))}）`, () => {
-        expect(ratioOf("--ink-dim", surface)).toBeGreaterThanOrEqual(4.5);
-      });
+// ink.900–500 是文件自己標的「文字」用途（主要文字／訊息內文／工具列按鈕文字／指令碼文字／次要文字、
+// 欄位標籤）；ink.400 以下（提示文字、更淡提示、虛線框）文件沒有宣稱要達到 AA 文字對比，不進矩陣。
+const SHELL_TEXT_INKS = ["--ink-900", "--ink-800", "--ink-700", "--ink-600", "--ink-500"];
+
+// 舞台（深）— 投影片渲染區的深色表面與對應文字色。
+const STAGE_SURFACES = ["--well-bg", "--well-play", "--slide-bg-a", "--slide-bg-b"];
+const STAGE_TEXT_INKS = ["--slide-ink", "--slide-ink-2", "--slide-muted"];
+
+describe("contrast.test.ts — token 對比矩陣", () => {
+  describe("外殼一般文字 ≥ 4.5:1（WCAG 2.2 AA，SC 1.4.3）", () => {
+    for (const surface of SHELL_SURFACES) {
+      for (const ink of SHELL_TEXT_INKS) {
+        it(`${ink} × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf(ink, surface))}）`, () => {
+          expect(ratioOf(ink, surface)).toBeGreaterThanOrEqual(4.5);
+        });
+      }
     }
   });
 
-  it("--ink-faint 只豁免於 disabled：宣告存在且註解標明用途，不進對比矩陣斷言", () => {
-    const rootBlockMatch = tokensCss.match(/:root\s*{([\s\S]*?)^}/m)![1];
-    expect(declared.has("--ink-faint")).toBe(true);
-    expect(rootBlockMatch).toMatch(/--ink-faint:[^\n]*\/\*\s*disabled only\s*\*\//);
+  describe("舞台一般文字 ≥ 4.5:1（WCAG 2.2 AA，SC 1.4.3）", () => {
+    for (const surface of STAGE_SURFACES) {
+      for (const ink of STAGE_TEXT_INKS) {
+        it(`${ink} × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf(ink, surface))}）`, () => {
+          expect(ratioOf(ink, surface)).toBeGreaterThanOrEqual(4.5);
+        });
+      }
+    }
   });
 
   describe("非文字對比 ≥ 3:1（WCAG 2.2 AA，SC 1.4.11）", () => {
-    for (const surface of SURFACES) {
-      it(`--focus-ring × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--focus-ring", surface))}）`, () => {
-        expect(ratioOf("--focus-ring", surface)).toBeGreaterThanOrEqual(3.0);
+    // brand.red / brand.red.hover：文件用途是「主要動作、選取框、pin 編號、播放鈕、開關 on 態」——
+    // 都是非文字 UI 元件（按鈕底色、選取框邊線），不是本文文字。
+    for (const surface of SHELL_SURFACES) {
+      it(`--brand-red × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--brand-red", surface))}）`, () => {
+        expect(ratioOf("--brand-red", surface)).toBeGreaterThanOrEqual(3.0);
+      });
+      it(`--brand-red-hover × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--brand-red-hover", surface))}）`, () => {
+        expect(ratioOf("--brand-red-hover", surface)).toBeGreaterThanOrEqual(3.0);
       });
     }
 
-    it(`--select-outline × --s-slide ≥ 3:1（實際 ${formatRatio(ratioOf("--select-outline", "--s-slide"))}）`, () => {
-      expect(ratioOf("--select-outline", "--s-slide")).toBeGreaterThanOrEqual(3.0);
-    });
-
-    for (const surface of ["--s-titlebar", "--s-panel"]) {
-      it(`--status-ok × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--status-ok", surface))}）`, () => {
-        expect(ratioOf("--status-ok", surface)).toBeGreaterThanOrEqual(3.0);
+    // info：文件用途「PDF+ 標籤、圖表第二色」——標籤底色/圖表描邊，非本文文字。
+    for (const surface of SHELL_SURFACES) {
+      it(`--info × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--info", surface))}）`, () => {
+        expect(ratioOf("--info", surface)).toBeGreaterThanOrEqual(3.0);
       });
     }
   });
 
   describe("解析規則", () => {
-    it("token 值為 var(--other) 時遞迴解析到字面值（--focus-ring → --accent-hi）", () => {
-      expect(resolveTokenValue("--focus-ring")).toBe("#e03a56");
+    it("token 值為 var(--other) 時遞迴解析（--font-slide → --font-ui）", () => {
+      expect(resolveTokenValue("--font-slide")).toBe(resolveTokenValue("--font-ui"));
     });
 
     it("清單裡的 token 在 tokens.css 不存在時明確報錯", () => {
@@ -110,7 +135,7 @@ describe("contrast.test.ts — token 對比矩陣（NOOP-9 Plan §4.3）", () =>
     });
 
     it("token 值帶 alpha（rgba）時明確報錯，不假裝 alpha=1 偷算", () => {
-      expect(() => resolveTokenRgb("--s-scrim")).toThrow(/帶有 alpha 通道/);
+      expect(() => resolveTokenRgb("--brand-red-glow")).toThrow(/帶有 alpha 通道/);
     });
 
     it("邊界值：比值剛好等於門檻時通過（>=）", () => {
