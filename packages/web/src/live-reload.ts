@@ -1,3 +1,29 @@
+import type { SaveState } from "@co-motion/core";
+
+/**
+ * NOOP-93 §4.4 — restated here rather than imported: `@co-motion/server`'s
+ * `export/job.ts` owns the canonical shape, but it is a Node-only package
+ * (Playwright, `node:*`) the browser bundle must never depend on. Same
+ * pattern `presentation.ts`'s `TemplateInfo` already uses for core's
+ * `TemplateEntry`.
+ */
+export type ExportFormat = "pdf" | "pdf-frames";
+export type ExportSseEvent =
+  | { jobId: string; format: ExportFormat; state: "queued" }
+  | { jobId: string; format: ExportFormat; state: "running"; totalFrames: number; completedFrames: number }
+  | { jobId: string; format: ExportFormat; state: "progress"; totalFrames: number; completedFrames: number }
+  | {
+      jobId: string;
+      format: ExportFormat;
+      state: "done";
+      totalFrames: number;
+      completedFrames: number;
+      pageCount: number;
+      fileName: string;
+      downloadPath: string;
+    }
+  | { jobId: string; format: ExportFormat; state: "error"; message: string };
+
 /**
  * Live reload (ticket #5): opens a one-way `/api/events` stream and calls
  * `onChange` whenever the server reports the presentation changed on disk.
@@ -37,6 +63,19 @@ const WATCH_ERROR_EVENT = "presentation-watch-error";
 // packages/server/src/changes.ts's `broadcast`).
 const EDITING_FROZEN_EVENT = "editing-frozen";
 const EDITING_UNFROZEN_EVENT = "editing-unfrozen";
+// NOOP-93 §4.2: fanned out over this same stream by `POST /api/save` and
+// `POST /api/open` — never by the generic disk watcher that feeds
+// `presentation-changed` (changes.ts stays untouched, see save-state.ts's
+// own comment). An ordinary edit (e.g. via /api/command) is instead picked
+// up by the caller reacting to `onChange` and re-fetching `/api/save-state`
+// itself, the same GET-refetch shape `onChange` already uses for
+// `/api/presentation`.
+const SAVE_STATE_EVENT = "save-state";
+// NOOP-93 §4.4: every state transition of the (at most one) active export
+// job, fanned out over this same stream. No GET counterpart exists for
+// this one (§4.7's table, "重新整理頁面後" row) — a reload deliberately
+// loses in-flight job UI state, so there is nothing to seed on mount.
+const EXPORT_EVENT = "export";
 const EVENTS_PATH = "/api/events";
 const DEFAULT_ERROR_MESSAGE = "即時預覽已中斷";
 
@@ -69,6 +108,16 @@ export function startLiveReload(options: {
    * called by the caller, not from this stream.
    */
   onFrozenChange?: (frozen: boolean) => void;
+  /**
+   * NOOP-93 §4.2: fired with the freshly-recomputed save state whenever the
+   * server broadcasts one (after `POST /api/save` or `POST /api/open`
+   * succeeds). Like `onFrozenChange`, the initial value on load/reconnect
+   * must come from a `GET /api/save-state` the caller makes itself — this
+   * stream carries no replay.
+   */
+  onSaveStateChange?: (state: SaveState) => void;
+  /** NOOP-93 §4.4: fired for every `export` SSE event — queued/running/progress/done/error, in that legal order, for at most one active job at a time. */
+  onExportEvent?: (event: ExportSseEvent) => void;
   eventSourceFactory?: (url: string) => EventSource;
 }): LiveReload {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
@@ -91,6 +140,16 @@ export function startLiveReload(options: {
 
   source.addEventListener(EDITING_UNFROZEN_EVENT, () => {
     options.onFrozenChange?.(false);
+  });
+
+  source.addEventListener(SAVE_STATE_EVENT, (event) => {
+    const state = parseSaveStateEventData(event);
+    if (state) options.onSaveStateChange?.(state);
+  });
+
+  source.addEventListener(EXPORT_EVENT, (event) => {
+    const parsed = parseExportEventData(event);
+    if (parsed) options.onExportEvent?.(parsed);
   });
 
   source.addEventListener(WATCH_ERROR_EVENT, (event) => {
@@ -130,4 +189,66 @@ function parseWatchErrorMessage(event: Event): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Parses a `save-state` SSE payload — same shape `GET /api/save-state` returns. An unparseable/malformed payload is dropped rather than fabricating a state (errors over fallbacks). */
+function parseSaveStateEventData(event: Event): SaveState | undefined {
+  const data = (event as MessageEvent).data;
+  if (typeof data !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null || !("known" in parsed)) return undefined;
+  const known = (parsed as { known: unknown }).known;
+  if (known === false) return { known: false };
+  if (known !== true) return undefined;
+  const { dirty, fileName } = parsed as { dirty?: unknown; fileName?: unknown };
+  if (typeof dirty !== "boolean" || typeof fileName !== "string") return undefined;
+  return { known: true, dirty, fileName };
+}
+
+/** Parses an `export` SSE payload — same shape `export/job.ts`'s `ExportEvent` sends. An unparseable/malformed payload (or an unrecognised `state`) is dropped, never fabricated (errors over fallbacks). */
+function parseExportEventData(event: Event): ExportSseEvent | undefined {
+  const data = (event as MessageEvent).data;
+  if (typeof data !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const record = parsed as Record<string, unknown>;
+  const { jobId, format, state } = record;
+  if (typeof jobId !== "string") return undefined;
+  if (format !== "pdf" && format !== "pdf-frames") return undefined;
+
+  if (state === "queued") return { jobId, format, state };
+  if (state === "running" || state === "progress") {
+    const { totalFrames, completedFrames } = record;
+    if (typeof totalFrames !== "number" || typeof completedFrames !== "number") return undefined;
+    return { jobId, format, state, totalFrames, completedFrames };
+  }
+  if (state === "done") {
+    const { totalFrames, completedFrames, pageCount, fileName, downloadPath } = record;
+    if (
+      typeof totalFrames !== "number" ||
+      typeof completedFrames !== "number" ||
+      typeof pageCount !== "number" ||
+      typeof fileName !== "string" ||
+      typeof downloadPath !== "string"
+    ) {
+      return undefined;
+    }
+    return { jobId, format, state, totalFrames, completedFrames, pageCount, fileName, downloadPath };
+  }
+  if (state === "error") {
+    const { message } = record;
+    if (typeof message !== "string") return undefined;
+    return { jobId, format, state, message };
+  }
+  return undefined;
 }

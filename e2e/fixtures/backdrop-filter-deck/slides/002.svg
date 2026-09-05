@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+  <rect id="el-bg-left" x="0" y="0" width="320" height="360" fill="#101418"/>
+  <rect id="el-bg-right" x="320" y="0" width="320" height="360" fill="#e0a020"/>
+  <foreignObject id="el-backdrop-probe" x="160" y="80" width="320" height="200">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:320px;height:200px;background:rgba(255,255,255,0.15)"></div>
+  </foreignObject>
+</svg>

@@ -6,21 +6,27 @@ import { fileURLToPath } from "node:url";
 import type { CommandRegistry } from "@co-motion/cli";
 import {
   CoMotionError,
+  CoMotionInvalidRequestError,
   readDefaultFontBytes,
   undoLastGroup,
   redoLastGroup,
-  validateProjectJson,
-  assertSupportedFormatVersion,
-  type ProjectJson,
+  readSaveState,
+  savePresentation,
+  resolveCoMotionHome,
 } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
-import { handleRawRequest } from "./raw.js";
 import { handleCommandPost } from "./command-endpoint.js";
 import { handleAssetPost } from "./asset-upload.js";
+import { handleOpenPost } from "./open-endpoint.js";
+import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
+import { handleFilesRoute, handlePresentationRoute, handleRawRoute, loadProject } from "./read-routes.js";
+import { ExportJobManager, type ExportFormat } from "./export/job.js";
+import { renderExportPdf } from "./export/render.js";
+import { exportFileName } from "./export/output-name.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -126,6 +132,16 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     editingLock.off("unfrozen", onUnfrozen);
   });
 
+  // NOOP-93 §4.4: one export job at a time, for this server's whole
+  // lifetime — a fresh manager per `startServe` call, never persisted.
+  // `serverAddress` starts with a placeholder port because the real one
+  // (`actualPort`, below) is not known until `listen()` resolves, but the
+  // object identity is fixed now so the request handler closure below can
+  // read whatever it holds *at request time* — by then `listen()` has long
+  // since resolved and the real value has been written into it.
+  const exportJobManager = new ExportJobManager();
+  const serverAddress = { host, port: 0 };
+
   const server = http.createServer((req, res) => {
     void handleRequest(
       registry,
@@ -135,6 +151,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       chatStreams,
       changeBroadcaster,
       editingLock,
+      exportJobManager,
+      serverAddress,
       req,
       res,
     );
@@ -142,6 +160,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
 
   await listen(server, port, host);
   const actualPort = (server.address() as AddressInfo).port;
+  serverAddress.port = actualPort;
 
   return {
     port: actualPort,
@@ -165,29 +184,6 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       });
     },
   };
-}
-
-async function loadProject(registry: CommandRegistry, id: string): Promise<ProjectJson> {
-  const result = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
-  if (!result.ok) {
-    // Reuse the registry's own message (e.g. "找不到識別碼對應的簡報：<id>")
-    // instead of inventing a second wording for the same failure.
-    throw new CoMotionError(result.message);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(result.data!.content);
-  } catch {
-    throw new CoMotionError("簡報的 project.json 無法解析");
-  }
-  // Structural validation is @co-motion/core's, not serve's own copy
-  // (ticket #12) — the same check `open` already ran when the container
-  // was first unpacked. Running it again here catches a work directory
-  // whose project.json was mutated after `open` (e.g. by a future write
-  // command) rather than trusting a shape that was only ever true once.
-  const project = validateProjectJson(parsed);
-  assertSupportedFormatVersion(project);
-  return project;
 }
 
 function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -220,6 +216,8 @@ async function handleRequest(
   chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
   editingLock: EditingLock,
+  exportJobManager: ExportJobManager,
+  serverAddress: { host: string; port: number },
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -289,6 +287,34 @@ async function handleRequest(
         await handleAssetPost(presentationId, req, res);
         return;
       }
+      if (url.pathname === "/api/open") {
+        // NOOP-93 §4.1: the GUI's Open action is a human write like
+        // /api/asset above — same "agent holds the floor" 409 gate, same
+        // call-site level.
+        if (editingLock.getState() === "agent") {
+          sendJson(res, 409, { error: new EditingLockConflictError().message });
+          return;
+        }
+        await handleOpenPost(presentationId, changeBroadcaster, req, res);
+        return;
+      }
+      if (url.pathname === "/api/save") {
+        if (editingLock.getState() === "agent") {
+          sendJson(res, 409, { error: new EditingLockConflictError().message });
+          return;
+        }
+        await handleSavePost(presentationId, changeBroadcaster, res);
+        return;
+      }
+      if (url.pathname === "/api/export") {
+        // NOOP-93 §4.4: deliberately NOT gated on editingLock — exporting
+        // reads the presentation, it never writes to it, so it is not part
+        // of the single-editor lock's "who may write right now" story
+        // (unlike /api/open, /api/save, /api/command, and /api/asset
+        // above). Do not "helpfully" add this gate later.
+        await handleExportPost(exportJobManager, registry, presentationId, serverAddress, changeBroadcaster, req, res);
+        return;
+      }
       if (url.pathname === "/api/undo") {
         await handleUndoRedoPost(editingLock, presentationId, undoLastGroup, res);
         return;
@@ -320,6 +346,22 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/save-state") {
+      // NOOP-93 §4.2: no-replay SSE (sse.ts) means the *initial* state on
+      // load/reconnect must come from a plain GET, same pattern as
+      // /api/editing above — never inferred from the last `save-state`
+      // event, which a fresh page load never saw.
+      const state = await readSaveState(presentationId);
+      sendJson(res, 200, state);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/export/") && url.pathname.endsWith("/file")) {
+      const jobId = url.pathname.slice("/api/export/".length, -"/file".length);
+      await handleExportFileGet(exportJobManager, jobId, res);
+      return;
+    }
+
     if (url.pathname === "/api/default-font") {
       // The one font every build ships (core's DEFAULT_FONT_FAMILY). The
       // browser needs its metrics to wrap a text box whose <text> declares
@@ -332,48 +374,13 @@ async function handleRequest(
     }
 
     if (url.pathname === "/api/presentation") {
-      const project = await loadProject(registry, presentationId);
-      sendJson(res, 200, project);
+      await handlePresentationRoute(registry, presentationId, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/files/")) {
-      // The virtual path space is the only path space (ADR-0004): whatever
-      // the caller asks for goes straight into `cat`'s virtual-path lookup,
-      // which structurally cannot resolve outside the presentation. There is
-      // no separate "escape" case to special-case here — it is just another
-      // not-found.
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      // A slide path is rendered for display — `{{ slide_number }}` and its
-      // siblings substituted (NOOP-90/T4) — while every other path
-      // (project.json, assets/*) keeps reading through `cat` unchanged.
-      // Loading the project to make this check is not a new failure mode:
-      // `loadProject` already dispatches "cat" on project.json the same way
-      // every other route on this server does before it can answer anything.
-      const project = await loadProject(registry, presentationId);
-      const commandName = project.slides.includes(virtualPath) ? "slide render" : "cat";
-      const result = await registry.dispatch<{ content: string }>(commandName, {
-        id: presentationId,
-        path: virtualPath,
-      });
-      if (!result.ok) {
-        // Same narrow classification `/api/raw/` uses (ticket #11): only a
-        // failure that positively proves absence is a 404. Everything else
-        // — an unreadable file, a corrupt registry, a failure kind nobody
-        // has taught this route about yet, or a handler that returned
-        // `{ ok: false }` with no kind at all — is a 500, because "not
-        // classified as not-found" is not evidence the file is missing.
-        // Telling the author "找不到檔案" when the real problem is a
-        // permission bit sends them looking in entirely the wrong place
-        // (ticket #14). The body stays `result.message` either way, which
-        // like every CoMotionError message never contains a real
-        // filesystem path (ADR-0004) — only the virtual path may appear.
-        const status = result.failureKind === "not-found" ? 404 : 500;
-        sendJson(res, status, { error: result.message });
-        return;
-      }
-      res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });
-      res.end(result.data!.content);
+      await handleFilesRoute(registry, presentationId, virtualPath, res);
       return;
     }
 
@@ -409,20 +416,11 @@ async function handleRequest(
         sendJson(res, 400, { error: "路徑編碼無效" });
         return;
       }
-      // The srcdoc iframe (canvas.ts) is an opaque-origin document (ADR-0009
-      // sandboxing), so its @font-face url("/api/raw/fonts/...") load is a
-      // cross-origin fetch even though it targets this same server —
-      // without this header the browser silently refuses to use the font,
-      // slides fall back to the system font, and A2/A5 (ticket #71) fail
-      // with no visible error. `*` is safe here: every /api/raw/ response
-      // is either public asset bytes gated only by knowing an opaque
-      // presentation id, or a 404, never anything credentialed.
-      res.setHeader("Access-Control-Allow-Origin", "*");
       // The Range header is read here, at the one place that has `req`, and
-      // handed on as a plain value: handleRawRequest stays a function of
+      // handed on as a plain value: handleRawRoute stays a function of
       // (path, response, range) rather than growing a dependency on the
       // whole request object it has no other use for (ticket #13).
-      await handleRawRequest(presentationId, virtualPath, res, req.headers.range);
+      await handleRawRoute(presentationId, virtualPath, res, req.headers.range);
       return;
     }
 
@@ -461,6 +459,117 @@ async function handleChatPost(
   }
   chatSession.sendMessage(text);
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/save` (NOOP-93 §4.2). Always actually packs — "nothing to
+ * save" is not special-cased into a skipped write, because a button that
+ * silently does nothing on some clicks and not others is worse than one
+ * that always does the same visible thing (§4.2's table, row 4).
+ */
+async function handleSavePost(
+  presentationId: string,
+  changeBroadcaster: ChangeBroadcaster,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    await savePresentation(presentationId);
+  } catch (error) {
+    if (error instanceof CoMotionInvalidRequestError) {
+      sendJson(res, 400, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof CoMotionError ? error.message : "儲存失敗" });
+    return;
+  }
+  sendJson(res, 200, { ok: true });
+  await broadcastSaveState(changeBroadcaster, presentationId);
+}
+
+/**
+ * `POST /api/export` (NOOP-93 §4.4). Starts a job through
+ * `ExportJobManager.start()` — which is also the whole 409 gate: the
+ * concurrency check and the start happen inside that one synchronous call,
+ * so nothing can race between "is one already running" and "start one".
+ * `run` (the closure passed in here) is where this route's own knowledge —
+ * the registry, the presentation id, this server's own address for
+ * `render.ts`'s Playwright to navigate to — meets `render.ts`'s generic
+ * "drive one headless page, produce a PDF" job.
+ */
+async function handleExportPost(
+  exportJobManager: ExportJobManager,
+  registry: CommandRegistry,
+  presentationId: string,
+  serverAddress: { host: string; port: number },
+  changeBroadcaster: ChangeBroadcaster,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    return;
+  }
+  const format = (body as { format?: unknown } | null)?.format;
+  if (format !== "pdf" && format !== "pdf-frames") {
+    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    return;
+  }
+
+  let jobId: string;
+  try {
+    jobId = exportJobManager.start(
+      format,
+      (event) => changeBroadcaster.broadcast("export", event),
+      async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
+        const project = await loadProject(registry, presentationId);
+        const fileName = exportFileName(project.name, jobFormat);
+        const outputPath = path.join(resolveCoMotionHome(), "exports", id, fileName);
+        const result = await renderExportPdf({
+          serverUrl: `http://${serverAddress.host}:${serverAddress.port}`,
+          format: jobFormat,
+          outputPath,
+          onRunning,
+          onProgress,
+        });
+        return { pageCount: result.pageCount, fileName, filePath: outputPath };
+      },
+    );
+  } catch {
+    sendJson(res, 409, { error: "已有匯出工作進行中" });
+    return;
+  }
+  sendJson(res, 202, { jobId });
+}
+
+/**
+ * `GET /api/export/:jobId/file` (NOOP-93 §4.4). 404 covers both "no such
+ * job" and "job exists but is not done yet" — `ExportJobManager.getFilePath`
+ * already collapses that distinction (see its own comment), and the table
+ * this route implements draws no distinction between them either.
+ */
+async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: string, res: ServerResponse): Promise<void> {
+  const filePath = exportJobManager.getFilePath(jobId);
+  if (!filePath) {
+    sendJson(res, 404, { error: "找不到匯出檔案" });
+    return;
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(filePath);
+  } catch {
+    sendJson(res, 404, { error: "找不到匯出檔案" });
+    return;
+  }
+  const fileName = path.basename(filePath);
+  res.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Length": bytes.length,
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+  });
+  res.end(bytes);
 }
 
 /**
@@ -580,12 +689,6 @@ function readBody(req: IncomingMessage): Promise<string> {
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
-}
-
-function contentTypeFor(virtualPath: string): string {
-  if (virtualPath.endsWith(".svg")) return "image/svg+xml; charset=utf-8";
-  if (virtualPath.endsWith(".json")) return "application/json; charset=utf-8";
-  return "text/plain; charset=utf-8";
 }
 
 /**

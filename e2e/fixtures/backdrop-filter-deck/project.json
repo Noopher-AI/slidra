@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "name": "backdrop-filter 例外測試簡報",
+  "canvas": {
+    "width": 640,
+    "height": 360
+  },
+  "slides": [
+    "slides/001.svg",
+    "slides/002.svg"
+  ]
+}

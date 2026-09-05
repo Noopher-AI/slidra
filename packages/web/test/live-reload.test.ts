@@ -191,6 +191,117 @@ describe("startLiveReload", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("calls onSaveStateChange with the parsed save-state payload (NOOP-93)", () => {
+    let fake: FakeEventSource | undefined;
+    const onSaveStateChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onSaveStateChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.comot" });
+    expect(onSaveStateChange).toHaveBeenNthCalledWith(1, { known: true, dirty: true, fileName: "deck.comot" });
+
+    fake!.emit("save-state", { known: false });
+    expect(onSaveStateChange).toHaveBeenNthCalledWith(2, { known: false });
+  });
+
+  it("save-state never triggers onChange — it is not a reload signal", () => {
+    let fake: FakeEventSource | undefined;
+    const onChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange,
+      onSaveStateChange: () => {},
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+    onChange.mockClear(); // drop the initial "open" call
+
+    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.comot" });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("calls onExportEvent for each export SSE event, in every legal shape (NOOP-93 §4.4)", () => {
+    let fake: FakeEventSource | undefined;
+    const onExportEvent = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onExportEvent,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("export", { jobId: "j1", format: "pdf", state: "queued" });
+    fake!.emit("export", { jobId: "j1", format: "pdf", state: "running", totalFrames: 3, completedFrames: 0 });
+    fake!.emit("export", { jobId: "j1", format: "pdf", state: "progress", totalFrames: 3, completedFrames: 2 });
+    fake!.emit("export", {
+      jobId: "j1",
+      format: "pdf",
+      state: "done",
+      totalFrames: 3,
+      completedFrames: 3,
+      pageCount: 3,
+      fileName: "deck.pdf",
+      downloadPath: "/api/export/j1/file",
+    });
+    fake!.emit("export", { jobId: "j2", format: "pdf-frames", state: "error", message: "模擬失敗" });
+
+    expect(onExportEvent).toHaveBeenNthCalledWith(1, { jobId: "j1", format: "pdf", state: "queued" });
+    expect(onExportEvent).toHaveBeenNthCalledWith(2, {
+      jobId: "j1",
+      format: "pdf",
+      state: "running",
+      totalFrames: 3,
+      completedFrames: 0,
+    });
+    expect(onExportEvent).toHaveBeenNthCalledWith(3, {
+      jobId: "j1",
+      format: "pdf",
+      state: "progress",
+      totalFrames: 3,
+      completedFrames: 2,
+    });
+    expect(onExportEvent).toHaveBeenNthCalledWith(4, {
+      jobId: "j1",
+      format: "pdf",
+      state: "done",
+      totalFrames: 3,
+      completedFrames: 3,
+      pageCount: 3,
+      fileName: "deck.pdf",
+      downloadPath: "/api/export/j1/file",
+    });
+    expect(onExportEvent).toHaveBeenNthCalledWith(5, { jobId: "j2", format: "pdf-frames", state: "error", message: "模擬失敗" });
+  });
+
+  it("drops a malformed export payload instead of fabricating a state", () => {
+    let fake: FakeEventSource | undefined;
+    const onExportEvent = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onExportEvent,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("export", { jobId: "j1", format: "docx", state: "queued" });
+    fake!.emit("export", { jobId: "j1", format: "pdf", state: "unknown-state" });
+    fake!.emit("export", { format: "pdf", state: "queued" }); // missing jobId
+
+    expect(onExportEvent).not.toHaveBeenCalled();
+  });
+
   it("ignores events of a different type", () => {
     let fake: FakeEventSource | undefined;
     const onChange = vi.fn();

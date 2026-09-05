@@ -43,6 +43,12 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.join(rootDir, "index.html"),
+        // NOOP-93: the export page loaded by `export/render.ts`'s headless
+        // Chromium. `<script type="module">` (export.html) can take a
+        // shared chunk without the classic-script trap
+        // vite.text-metrics.config.ts's header comment documents for that
+        // other, non-module entry.
+        export: path.join(rootDir, "export.html"),
       },
     },
   },

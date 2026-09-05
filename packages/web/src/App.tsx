@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
+import type { SaveState } from "@co-motion/core";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
-import { startLiveReload } from "./live-reload.js";
+import { startLiveReload, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
+import type { ExportUiState } from "./shell/ExportPanel.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
@@ -41,6 +43,21 @@ function isCanvasAreaFullscreen(container: Element | null): boolean {
   const doc = document as Document & { webkitFullscreenElement?: Element | null };
   const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
   return fullscreenElement !== null && fullscreenElement === container;
+}
+
+/** Maps one `export` SSE event onto the dropdown's own UI state (NOOP-93 §4.7). `queued` has no frame counts yet — ExportPanel already treats `totalFrames === 0` as "still starting" and shows a bare "匯出中…". */
+function toExportUiState(event: ExportSseEvent): ExportUiState {
+  switch (event.state) {
+    case "queued":
+      return { kind: "busy", format: event.format, completedFrames: 0, totalFrames: 0 };
+    case "running":
+    case "progress":
+      return { kind: "busy", format: event.format, completedFrames: event.completedFrames, totalFrames: event.totalFrames };
+    case "done":
+      return { kind: "done", fileName: event.fileName, pageCount: event.pageCount, downloadPath: event.downloadPath };
+    case "error":
+      return { kind: "error", message: event.message };
+  }
 }
 
 /**
@@ -96,6 +113,23 @@ export function App() {
   // must come from `GET /api/editing`, not from a stream event — see the
   // effect below.
   const [editingFrozen, setEditingFrozen] = useState(false);
+
+  // NOOP-93 §4.2: the titlebar's Save/Saved-vs-Unsaved story. `known:false`
+  // (the initial value) means "no opinion yet" — same as a pre-NOOP-93
+  // registry entry — so the titlebar falls back to `presentationInfo`'s
+  // name and shows no status text (§4.2's table) until the first
+  // `GET /api/save-state` in the mount effect below resolves.
+  const [saveState, setSaveState] = useState<SaveState>({ known: false });
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  // NOOP-93 §4.7: the Export dropdown's own open/closed state, and the
+  // job UI state derived from `export` SSE events (or set directly by
+  // handleExportPick for the 202/409 response itself, which arrives before
+  // any SSE event for a brand-new job could). No GET counterpart seeds this
+  // on mount/reconnect — §4.7's table says a reload loses in-flight
+  // progress on purpose.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportState, setExportState] = useState<ExportUiState>({ kind: "idle" });
 
   // #51's titlebar: the deck's name and canvas size, fetched separately
   // from canvas.ts's own CanvasState (which deliberately carries only
@@ -329,9 +363,18 @@ export function App() {
         // too — re-fetch the same way overview.ts's own refresh() re-reads
         // the aspect ratio.
         presentationLoaderRef.current?.load();
+        // NOOP-93 §4.2: "save-state" is only ever pushed over the SSE
+        // stream by /api/save and /api/open (see save-state.ts's own
+        // comment — changes.ts's generic disk watcher stays untouched).
+        // An ordinary edit reaches here as a plain presentation-changed
+        // event with no paired save-state push, so this re-fetches it the
+        // same GET-refetch way presentationLoaderRef does above.
+        void refreshSaveState();
       },
       onError: setLiveReloadError,
       onFrozenChange: setEditingFrozen,
+      onSaveStateChange: setSaveState,
+      onExportEvent: (event) => setExportState(toExportUiState(event)),
     });
     // The stream's own editing-frozen/editing-unfrozen carry no replay
     // (same reasoning as presentation-changed) — the state as of *this*
@@ -347,6 +390,7 @@ export function App() {
         // the next presentation-changed/editing-frozen event correct it.
       });
     presentationLoaderRef.current?.load();
+    void refreshSaveState();
     return () => {
       liveReload.stop();
       unsubscribe();
@@ -596,6 +640,121 @@ export function App() {
 
       event.preventDefault(); // isDuplicate — otherwise Chrome opens "Add bookmark".
       void runPageCommand("slide duplicate", { slidePath }, state.currentIndex + 1);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
+  async function refreshSaveState(): Promise<void> {
+    try {
+      const response = await fetch("/api/save-state");
+      if (!response.ok) return;
+      const data = (await response.json()) as SaveState;
+      setSaveState(data);
+    } catch {
+      // Network failure — same "say nothing, let the next signal correct
+      // it" rule /api/editing's own fetch above follows.
+    }
+  }
+
+  /**
+   * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
+   * same file with `x-co-motion-discard-unsaved: 1` after the author
+   * confirms losing the current unsaved changes — the one round-trip the
+   * table's 409 row describes.
+   */
+  async function handleOpenFile(file: File, discardUnsaved = false): Promise<void> {
+    setOpenError(null);
+    const bytes = await file.arrayBuffer();
+    let response: Response;
+    try {
+      response = await fetch("/api/open", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "x-co-motion-file-name": encodeURIComponent(file.name),
+          ...(discardUnsaved ? { "x-co-motion-discard-unsaved": "1" } : {}),
+        },
+        body: bytes,
+      });
+    } catch {
+      setOpenError(`「${file.name}」開啟失敗：連線已中斷`);
+      return;
+    }
+    if (response.status === 409 && !discardUnsaved) {
+      const proceed = window.confirm("目前的簡報有未儲存的變更，確定要放棄並開啟新檔案嗎？");
+      if (proceed) await handleOpenFile(file, true);
+      return;
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setOpenError(body.error ?? "開啟失敗");
+      return;
+    }
+    // /api/open already broadcasts presentation-changed + save-state on
+    // success (open-endpoint.ts) — this tab's own live-reload subscription
+    // picks both up the same way an external edit would. No extra refetch
+    // needed here.
+  }
+
+  /** `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this one path. Frozen guard matches runUndoRedo's: no request, no 409 to report, same as undo/redo. */
+  async function handleSave(): Promise<void> {
+    if (editingFrozenRef.current) return;
+    setOpenError(null);
+    let response: Response;
+    try {
+      response = await fetch("/api/save", { method: "POST" });
+    } catch {
+      setOpenError("儲存失敗：連線已中斷");
+      return;
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setOpenError(body.error ?? "儲存失敗");
+      return;
+    }
+    // The server broadcasts save-state itself (serve.ts's handleSavePost) —
+    // no client-side refetch needed on success.
+  }
+
+  /**
+   * `POST /api/export` (NOOP-93 §4.7). The panel closes and switches to
+   * "匯出中…" immediately, optimistically — every subsequent state
+   * transition (running/progress/done/error for a job that actually
+   * started) arrives over the `export` SSE event instead. A 409 (already
+   * one running) or a network failure overwrites that optimistic state with
+   * the real error immediately, using the same error strip a genuine
+   * mid-job `error` event would show.
+   */
+  async function handleExportPick(format: ExportFormat): Promise<void> {
+    setExportOpen(false);
+    setExportState({ kind: "busy", format, completedFrames: 0, totalFrames: 0 });
+    let response: Response;
+    try {
+      response = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format }),
+      });
+    } catch {
+      setExportState({ kind: "error", message: "匯出失敗：連線已中斷" });
+      return;
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setExportState({ kind: "error", message: body.error ?? "匯出失敗" });
+    }
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!(event.key === "s" || event.key === "S")) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      event.preventDefault();
+      void handleSave();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -851,11 +1010,19 @@ export function App() {
     <div className="app" data-mode={canvasState.mode}>
       {shellVisible && (
         <TitleBar
-          deckName={presentationInfo?.name ?? null}
+          deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
+          savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
           agentConnection={agentConnection}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
+          onOpenFile={(file) => void handleOpenFile(file)}
+          onSave={() => void handleSave()}
+          exportOpen={exportOpen}
+          onExportToggle={() => setExportOpen((open) => !open)}
+          onExportClose={() => setExportOpen(false)}
+          onExportPick={(format) => void handleExportPick(format)}
+          exportState={exportState}
           onPlay={() => void controllerRef.current?.play()}
           onPlayFromStart={() => {
             void (async () => {
@@ -885,6 +1052,11 @@ export function App() {
           )}
           {editingFrozen && (
             <div className="live-reload-banner editing-frozen-banner">Agent editing · undo/redo paused</div>
+          )}
+          {openError && (
+            <div role="alert" className="live-reload-banner">
+              {openError}
+            </div>
           )}
         </div>
       )}
