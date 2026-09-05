@@ -8,6 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * [E2.T3] `05-INTERACTIONS.feature`「頁面管理」的 New／Templates 與拖曳排
@@ -32,6 +33,7 @@ const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/page-management-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
+const baselineDir = path.join(e2eDir, "__screenshots__/page-management");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -103,6 +105,59 @@ async function startServerFor(): Promise<{
       await rm(comotDir, { recursive: true, force: true });
     },
   };
+}
+
+/**
+ * The CLI-only half of the GUI/CLI equivalence test (C): no server, no
+ * browser — a bare registry against its own copy of the fixture deck, the
+ * same shape `notes-transition.test.ts` uses for its CLI-side assertions.
+ */
+async function startRegistryFor(): Promise<{
+  registry: CommandRegistry;
+  presentationId: string;
+  cleanup: () => Promise<void>;
+}> {
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+
+  const registry: CommandRegistry = createDefaultRegistry();
+  const comotPath = path.join(comotDir, "deck.comot");
+  await packDirectory(deckDir, comotPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const presentationId = opened.data!.id;
+
+  return {
+    registry,
+    presentationId,
+    cleanup: async () => {
+      delete process.env.CO_MOTION_HOME;
+      await rm(coMotionHome, { recursive: true, force: true });
+      await rm(comotDir, { recursive: true, force: true });
+    },
+  };
+}
+
+/**
+ * Collapses every re-minted `el-*` id (`slide add --template`/`slide
+ * duplicate` both call `mintElementIds`, which is `crypto.randomUUID`-backed
+ * — never equal across two independent runs) to a stable, first-seen-order
+ * placeholder, so a GUI run and a CLI run of the same operation can be
+ * compared byte-for-byte on everything except the part that's random by
+ * design. Consistent across the whole document, so an id used twice (an
+ * attribute and a same-document reference) still normalizes to one value.
+ */
+function normalizeIds(svg: string): string {
+  const seen = new Map<string, string>();
+  let counter = 0;
+  return svg.replace(/el-[A-Za-z0-9_-]+/g, (match) => {
+    let placeholder = seen.get(match);
+    if (placeholder === undefined) {
+      placeholder = `el-NORMALIZED-${counter++}`;
+      seen.set(match, placeholder);
+    }
+    return placeholder;
+  });
 }
 
 async function openApp(server: RunningServer): Promise<Page> {
@@ -340,5 +395,340 @@ it("根因迴歸守門測試（T3 plan §0/§5-E）：slide notes set 之後進�
     );
   } finally {
     await cleanup();
+  }
+});
+
+it("備忘稿（T3 plan §4.1／§5-D）：打字 → blur → 檔案內容；換頁往返；跳脫字元往返", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const notes = page.getByRole("textbox", { name: "Speaker notes" });
+
+    await notes.click();
+    await notes.fill("第一頁的講稿");
+    await page.locator(".rail-slides-label").click(); // blur the textarea
+    await expect
+      .poll(async () => readSlide(registry, presentationId, "slides/001.svg"), { timeout: 10_000 })
+      .toEqual(expect.stringContaining('<comot:notes xmlns:comot="https://co-motion.dev/ns">第一頁的講稿</comot:notes>'));
+
+    // 換頁往返：切到第二頁（沒有備忘稿，顯示 placeholder），再切回第一頁，
+    // 欄位要顯示剛才存的內容——不是空的，也不是第二頁的草稿。
+    await page.locator('.overview-item[data-index="1"] .overview-thumb').click();
+    await expect.poll(() => notes.inputValue()).toBe("");
+    await page.locator('.overview-item[data-index="0"] .overview-thumb').click();
+    await expect.poll(() => notes.inputValue()).toBe("第一頁的講稿");
+
+    // 跳脫字元往返：檔案裡要轉義，UI 讀回要還原。
+    await notes.click();
+    await notes.fill("1 < 2 && true");
+    await page.locator(".rail-slides-label").click();
+    await expect
+      .poll(async () => readSlide(registry, presentationId, "slides/001.svg"), { timeout: 10_000 })
+      .toEqual(expect.stringContaining("1 &lt; 2 &amp;&amp; true"));
+    await page.reload();
+    await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBeGreaterThan(0);
+    await expect.poll(() => page.getByRole("textbox", { name: "Speaker notes" }).inputValue(), { timeout: 10_000 }).toBe(
+      "1 < 2 && true",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+it("鍵盤（T3 plan §4.3）：⌘D 複製目前頁、Delete 刪目前頁（皆限無選取）、PageUp／PageDown 換頁", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    // 先點一個不會把焦點送進投影片 iframe 的安全元素，讓 page.keyboard.press
+    // 送到 document 層級的 keydown effect，而不是播放器 runtime。
+    await page.locator(".rail-slides-label").click();
+
+    await page.keyboard.press("PageDown");
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("1");
+    await page.keyboard.press("PageUp");
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("0");
+
+    await page.keyboard.press("ControlOrMeta+d");
+    await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
+      5,
+    );
+    const afterDuplicate = await readProject(registry, presentationId);
+    expect(afterDuplicate.slides[1]).not.toBe("slides/002.svg"); // inserted right after the source, not appended
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("1");
+
+    await page.locator(".rail-slides-label").click();
+    await page.keyboard.press("Delete");
+    await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
+      4,
+    );
+    const afterDelete = await readProject(registry, presentationId);
+    expect(afterDelete.slides).toEqual(afterDuplicate.slides.filter((_, i) => i !== 1));
+  } finally {
+    await cleanup();
+  }
+});
+
+it("縮圖右鍵選單（T3 plan §3.9／§4.4）：開啟、Comment to agent 停用、Duplicate／Move／Delete 各自送出對應命令", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+
+    await page.locator('.overview-item[data-index="0"]').click({ button: "right" });
+    const menu = page.locator('[data-testid="thumb-context-menu"]');
+    await expect.poll(() => menu.isVisible()).toBe(true);
+    const commentItem = menu.getByRole("menuitem", { name: "Comment to agent" });
+    expect(await commentItem.getAttribute("aria-disabled")).toBe("true");
+    expect(await commentItem.isDisabled()).toBe(true);
+    // Move up is disabled on the first slide (T3 plan §4.4).
+    expect(await menu.getByRole("menuitem", { name: "Move up" }).isDisabled()).toBe(true);
+
+    await menu.getByRole("menuitem", { name: /^Duplicate slide/ }).click();
+    await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
+      5,
+    );
+    await expect.poll(() => menu.isVisible()).toBe(false); // menu closes after an action
+
+    await page.locator('.overview-item[data-index="0"]').click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Move down" }).click();
+    await expect
+      .poll(async () => (await readProject(registry, presentationId)).slides[1], { timeout: 10_000 })
+      .toBe("slides/001.svg");
+
+    await page.locator('.overview-item[data-index="1"]').click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Delete slide" }).click();
+    await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
+      4,
+    );
+    expect((await readProject(registry, presentationId)).slides).not.toContain("slides/001.svg");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮圖右鍵選單", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await settleForScreenshot(page);
+    const railBox = await page.locator(".rail").boundingBox();
+    if (!railBox) throw new Error("找不到 .rail");
+    await compareScreenshot(page, { name: "rail", baselineDir, clip: railBox });
+
+    await page.getByRole("button", { name: "New" }).click();
+    const newMenu = page.locator('[role="menu"][data-menu="new"]');
+    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
+    await settleForScreenshot(page);
+    const newPanelBox = await newMenu.boundingBox();
+    if (!newPanelBox) throw new Error("找不到 New 面板");
+    await compareScreenshot(page, { name: "new-panel", baselineDir, clip: newPanelBox });
+    await page.keyboard.press("Escape");
+
+    await dragOver(page, 0, 2, "bottom");
+    await expect.poll(() => page.locator(".overview-drop-line").count(), { timeout: 5_000 }).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "drop-line", baselineDir, clip: railBox });
+    await drop(page, 2, "bottom");
+    await dragEnd(page, 0);
+
+    await page.locator('.overview-item[data-index="0"]').click({ button: "right" });
+    const contextMenu = page.locator('[data-testid="thumb-context-menu"]');
+    await expect.poll(() => contextMenu.isVisible()).toBe(true);
+    await settleForScreenshot(page);
+    const contextMenuBox = await contextMenu.boundingBox();
+    if (!contextMenuBox) throw new Error("找不到縮圖右鍵選單");
+    await compareScreenshot(page, { name: "thumb-context-menu", baselineDir, clip: contextMenuBox });
+  } finally {
+    await cleanup();
+  }
+});
+
+it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對應 CLI 命令；agent 用同一命令可重現」）", async () => {
+  // 每個操作各自在一份全新的 fixture 副本上做一次 GUI 操作、再在另一份全新
+  // 副本上做一次等價的 registry.dispatch，比較兩邊的結果——而不是把五個操
+  // 作串在同一份簡報上：串起來之後 CLI 那一側要嘛重新讀 GUI 那一側寫出的
+  // 中繼狀態（等於在斷言「CLI 讀得懂 GUI 的輸出」而不是「兩條路徑本身等
+  // 價」），要嘛得手算五步的中繼索引——後者正是 slide-ops.ts 的索引語意已
+  // 經在單元測試裡覆蓋過的東西，這裡重複沒有增加驗證力道。「各做一次」照
+  // 字面：同一個操作，兩條路徑，同一份起始位元組。
+  //
+  // GUI 與 CLI 兩側絕不能同時開著：`CO_MOTION_HOME` 是行程層級的環境變數
+  // （`workspace.ts` 每次呼叫都重新讀一次，見它自己的說明），`startServerFor`
+  // 與 `startRegistryFor` 都會覆寫它。GUI 側必須先跑完、`cleanup()` 收尾之
+  // 後，CLI 側才能開始，否則兩邊的檔案操作會打到同一個暫存目錄。
+
+  // 1) slide add（Blank）：GUI 走 New > Blank，等價 CLI 是 `slide add --at 1`
+  //    （insertAt = hasSlides ? currentIndex+1 : 0，currentIndex 剛載入時是 0）。
+  {
+    const gui = await startServerFor();
+    let guiProject: { slides: string[] };
+    let guiContent: string;
+    try {
+      const page = await openApp(gui.server);
+      await page.getByRole("button", { name: "New" }).click();
+      const menu = page.locator('[role="menu"][data-menu="new"]');
+      await expect.poll(() => menu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
+      await menu.getByRole("menuitem", { name: "Blank" }).click();
+      await expect
+        .poll(async () => (await readProject(gui.registry, gui.presentationId)).slides.length, { timeout: 10_000 })
+        .toBe(5);
+      guiProject = await readProject(gui.registry, gui.presentationId);
+      guiContent = await readSlide(gui.registry, gui.presentationId, guiProject.slides[1]);
+    } finally {
+      await gui.cleanup();
+    }
+
+    const cli = await startRegistryFor();
+    try {
+      const cliResult = await cli.registry.dispatch<{ slidePath: string }>("slide add", {
+        id: cli.presentationId,
+        at: 1,
+      });
+      expect(cliResult.ok).toBe(true);
+      const cliProject = await readProject(cli.registry, cli.presentationId);
+      const cliContent = await readSlide(cli.registry, cli.presentationId, cliResult.data!.slidePath);
+
+      expect(cliProject).toEqual(guiProject);
+      expect(cliContent).toBe(guiContent); // blank slides carry no ids — no normalization needed
+    } finally {
+      await cli.cleanup();
+    }
+  }
+
+  // 2) slide duplicate：GUI 走縮圖右鍵選單，等價 CLI 是
+  //    `slide duplicate slides/001.svg`。複製會重鑄 element id，比對前先正規化。
+  {
+    const gui = await startServerFor();
+    let guiProject: { slides: string[] };
+    let guiContent: string;
+    try {
+      const page = await openApp(gui.server);
+      await page.locator('.overview-item[data-index="0"]').click({ button: "right" });
+      const menu = page.locator('[data-testid="thumb-context-menu"]');
+      await expect.poll(() => menu.isVisible()).toBe(true);
+      await menu.getByRole("menuitem", { name: /^Duplicate slide/ }).click();
+      await expect
+        .poll(async () => (await readProject(gui.registry, gui.presentationId)).slides.length, { timeout: 10_000 })
+        .toBe(5);
+      guiProject = await readProject(gui.registry, gui.presentationId);
+      guiContent = normalizeIds(await readSlide(gui.registry, gui.presentationId, guiProject.slides[1]));
+    } finally {
+      await gui.cleanup();
+    }
+
+    const cli = await startRegistryFor();
+    try {
+      const cliResult = await cli.registry.dispatch<{ slidePath: string }>("slide duplicate", {
+        id: cli.presentationId,
+        slidePath: "slides/001.svg",
+      });
+      expect(cliResult.ok).toBe(true);
+      const cliProject = await readProject(cli.registry, cli.presentationId);
+      const cliContent = normalizeIds(await readSlide(cli.registry, cli.presentationId, cliResult.data!.slidePath));
+
+      expect(cliProject).toEqual(guiProject);
+      expect(cliContent).toBe(guiContent);
+    } finally {
+      await cli.cleanup();
+    }
+  }
+
+  // 3) slide delete：GUI 走 Delete 鍵（無選取），等價 CLI 是 `slide delete slides/001.svg`。
+  {
+    const gui = await startServerFor();
+    let guiProject: { slides: string[] };
+    try {
+      const page = await openApp(gui.server);
+      await page.locator(".rail-slides-label").click();
+      await page.keyboard.press("Delete");
+      await expect
+        .poll(async () => (await readProject(gui.registry, gui.presentationId)).slides.length, { timeout: 10_000 })
+        .toBe(3);
+      guiProject = await readProject(gui.registry, gui.presentationId);
+    } finally {
+      await gui.cleanup();
+    }
+
+    const cli = await startRegistryFor();
+    try {
+      const cliResult = await cli.registry.dispatch("slide delete", {
+        id: cli.presentationId,
+        slidePath: "slides/001.svg",
+      });
+      expect(cliResult.ok).toBe(true);
+      const cliProject = await readProject(cli.registry, cli.presentationId);
+
+      expect(cliProject).toEqual(guiProject);
+    } finally {
+      await cli.cleanup();
+    }
+  }
+
+  // 4) slide move：GUI 拖曳（同 test B 的拖法：0 拖到 2 的下緣 → newIndex=2），
+  //    等價 CLI 是 `slide move slides/001.svg 2`。只動 project.json，不開 SVG。
+  {
+    const gui = await startServerFor();
+    let guiProject: { slides: string[] };
+    try {
+      const page = await openApp(gui.server);
+      await dragOver(page, 0, 2, "bottom");
+      await drop(page, 2, "bottom");
+      await dragEnd(page, 0);
+      await expect
+        .poll(async () => (await readProject(gui.registry, gui.presentationId)).slides, { timeout: 10_000 })
+        .toEqual(["slides/002.svg", "slides/003.svg", "slides/001.svg", "slides/004.svg"]);
+      guiProject = await readProject(gui.registry, gui.presentationId);
+    } finally {
+      await gui.cleanup();
+    }
+
+    const cli = await startRegistryFor();
+    try {
+      const cliResult = await cli.registry.dispatch("slide move", {
+        id: cli.presentationId,
+        slidePath: "slides/001.svg",
+        newIndex: 2,
+      });
+      expect(cliResult.ok).toBe(true);
+      const cliProject = await readProject(cli.registry, cli.presentationId);
+
+      expect(cliProject).toEqual(guiProject);
+    } finally {
+      await cli.cleanup();
+    }
+  }
+
+  // 5) slide notes set：GUI 打字＋blur，等價 CLI 是 `slide notes set slides/001.svg "…"`。
+  {
+    const text = "GUI／CLI 等價測試備忘稿";
+    const gui = await startServerFor();
+    let guiContent: string;
+    try {
+      const page = await openApp(gui.server);
+      const notes = page.getByRole("textbox", { name: "Speaker notes" });
+      await notes.click();
+      await notes.fill(text);
+      await page.locator(".rail-slides-label").click();
+      await expect
+        .poll(async () => readSlide(gui.registry, gui.presentationId, "slides/001.svg"), { timeout: 10_000 })
+        .toEqual(expect.stringContaining(text));
+      guiContent = await readSlide(gui.registry, gui.presentationId, "slides/001.svg");
+    } finally {
+      await gui.cleanup();
+    }
+
+    const cli = await startRegistryFor();
+    try {
+      const cliResult = await cli.registry.dispatch("slide notes set", {
+        id: cli.presentationId,
+        slidePath: "slides/001.svg",
+        text,
+      });
+      expect(cliResult.ok).toBe(true);
+      const cliContent = await readSlide(cli.registry, cli.presentationId, "slides/001.svg");
+
+      expect(cliContent).toBe(guiContent);
+    } finally {
+      await cli.cleanup();
+    }
   }
 });
