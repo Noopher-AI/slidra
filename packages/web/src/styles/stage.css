@@ -26,7 +26,15 @@
   position: relative;
   top: 50%;
   left: 50%;
-  background: var(--surface-white);
+  /* Transparent, not white: the slide document paints its own `#fff`
+     body (canvas.ts wrapSlideDocument/wrapSelectionDocument, #120), so a
+     background here is only ever visible in the sub-pixel row the
+     `translate(-50%, -50%)` centering leaves at the top/bottom edge
+     (e.g. y = 101.5 at 1280×720). With white it blended into a 1px light
+     seam along the bottom of every dark slide (measured rgb(139,139,139)
+     over the slide's rgb(16,20,24)); transparent lets the well show
+     through instead. */
+  background: transparent;
   border-radius: var(--stage-radius);
   box-shadow: var(--shadow-stage);
   overflow: hidden;
