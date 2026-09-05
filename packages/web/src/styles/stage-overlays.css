@@ -1,5 +1,7 @@
-/* 舞台疊層 (New v3 skeleton) — 四個都是空容器（見 stage-overlays/*.tsx 各自
-   的說明），這裡只確保根容器蓋滿舞台、不吃滑鼠事件。 */
+/* 舞台疊層 (NOOP-90/T2)：根容器與四個子層維持 `pointer-events: none`，蓋滿
+   舞台、不吃滑鼠事件——個別可互動元件（情境列按鈕、右鍵選單）自己在下面
+   開回 `pointer-events: auto`。CommentLayer 仍是空容器（留言 pin 是
+   NOOP-67 的範圍）。 */
 .stage-overlays {
   position: absolute;
   inset: 0;
@@ -12,4 +14,88 @@
 .guide-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+/* 名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取」；色值取自原型
+   docs/design/prototype 的選取標籤）。 */
+.selection-label {
+  position: absolute;
+  transform: translateY(-100%);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 拖曳吸附輔助線 — 畫在父文件（ADR-0011 amend），取代舊版 iframe 內
+   selection-runtime.js 的 `.guide`。 */
+.guide {
+  position: absolute;
+  background: var(--guide);
+  pointer-events: none;
+}
+.guide-v {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}
+.guide-h {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+/* 選取框下方的情境列（NOOP-90/T2 §0.3：本票只做容器/定位/Delete）。 */
+.context-bar {
+  position: absolute;
+  display: flex;
+  gap: var(--space-1);
+  pointer-events: auto;
+}
+.context-bar-item {
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--surface-white);
+  color: var(--brand-red);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* 元素右鍵選單（NOOP-90/T2 §4.5/§3.10）。 */
+.element-context-menu {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: calc(var(--panel-w) * 0.6);
+  padding: var(--space-1);
+  pointer-events: auto;
+}
+.element-context-menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.element-context-menu-item-danger {
+  color: var(--brand-red-hover);
+}
+.element-context-menu-shortcut {
+  opacity: 0.6;
+  font-size: var(--text-xs-hint);
+}
+.element-context-menu-divider {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: currentColor;
+  opacity: 0.15;
 }

@@ -248,6 +248,93 @@ describe("element scale", () => {
   });
 });
 
+describe("element resize", () => {
+  it("resizes a rect non-uniformly, anchored nw by default in the CLI dispatch shape", async () => {
+    const { id } = await openConvertedPresentation();
+    const a = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 10, y: 10, width: 100, height: 50,
+    });
+
+    const result = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 200, height: 50, anchor: "nw",
+    });
+
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(`id="${a.data!.elementId}" transform="translate(10 10)"`);
+    expect(svg).toContain(`width="200" height="50"`);
+  });
+
+  it("rejects width/height <= 0", async () => {
+    const { id } = await openConvertedPresentation();
+    const a = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+    });
+
+    const result = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 0, height: 10, anchor: "nw",
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a non-uniform resize of a <circle>, naming element scale as the alternative", async () => {
+    const { id } = await openConvertedPresentation();
+    const a = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "ellipse", x: 0, y: 0, width: 10, height: 10,
+    });
+    // ellipse is non-uniform-capable; swap the primitive tag by hand to get a <circle> to test against.
+    const svgBefore = await readSlide(id);
+    const withCircle = svgBefore.replace(/<ellipse[^/]*\/>/, '<circle cx="5" cy="5" r="5"/>');
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", withCircle);
+
+    const result = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 20, height: 10, anchor: "nw",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("element scale");
+  });
+
+  it("undo/redo round-trips a resize", async () => {
+    const { id } = await openConvertedPresentation();
+    const a = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+    });
+    const before = await readSlide(id);
+
+    await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 40, height: 20, anchor: "nw",
+    });
+    const after = await readSlide(id);
+    expect(after).not.toBe(before);
+
+    await registry.dispatch("undo", { id });
+    expect(await readSlide(id)).toBe(before);
+    await registry.dispatch("redo", { id });
+    expect(await readSlide(id)).toBe(after);
+  });
+
+  it("rejects a locked target without --force", async () => {
+    const { id } = await openConvertedPresentation();
+    const a = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+    });
+    await registry.dispatch("element lock", { id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId] });
+
+    const result = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 40, height: 20, anchor: "nw",
+    });
+    expect(result.ok).toBe(false);
+
+    const forced = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 40, height: 20, anchor: "nw", force: true,
+    });
+    expect(forced.ok).toBe(true);
+  });
+});
+
 describe("element rotate", () => {
   it("adds degrees to the existing rotation", async () => {
     const { id } = await openConvertedPresentation();

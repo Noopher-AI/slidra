@@ -172,6 +172,20 @@ export function parseArgv(argv: string[]): ParsedCommand {
         return { name: "element scale", input: { id, slidePath, elementIds, factor, force } };
       }
 
+      if (sub === "resize") {
+        const id = requirePositional(args, 0, "element resize", "presentation-id");
+        const slidePath = requirePositional(args, 1, "element resize", "slide-path");
+        const elementIds = requireIdList(args, 2, "element resize");
+        const width = requireNumberFlag(args, "--width", "element resize");
+        const height = requireNumberFlag(args, "--height", "element resize");
+        const anchor = optionalFlag(args, "--anchor") ?? "nw";
+        if (!["nw", "ne", "sw", "se"].includes(anchor)) {
+          throw new CoMotionError(`element resize 不支援的 anchor：${anchor}`);
+        }
+        const force = hasFlag(args, "--force");
+        return { name: "element resize", input: { id, slidePath, elementIds, width, height, anchor, force } };
+      }
+
       if (sub === "rotate") {
         const id = requirePositional(args, 0, "element rotate", "presentation-id");
         const slidePath = requirePositional(args, 1, "element rotate", "slide-path");

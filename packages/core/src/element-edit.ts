@@ -1,8 +1,9 @@
 import { CoMotionError } from "./errors.js";
 import { assertNotLocked, escapeXmlAttr, readTextFontInfo, resolveFont, rewrapTextBoxContent } from "./element-text.js";
-import { assertSlideCompliant, TEXT_WIDTH_ATTRIBUTE } from "./slide/format.js";
+import { assertSlideCompliant, parseSlide, TEXT_WIDTH_ATTRIBUTE, type SlideElement } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
-import { decomposeMatrix, formatTransform, parseTransform, type TransformParts } from "./geometry/transform.js";
+import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
+import { elementBounds } from "./geometry/bbox.js";
 import { formatSvgNumber } from "./svg-number.js";
 import type { FontMetrics } from "./text-metrics.js";
 
@@ -712,6 +713,266 @@ export function scaleElements(
   let current = svgContent;
   for (const id of elementIds) {
     current = scaleOneContainer(current, id, factor, fontBook, options.force);
+  }
+  return current;
+}
+
+// ---------------------------------------------------------------------------
+// element resize
+// ---------------------------------------------------------------------------
+
+export type ResizeAnchor = "nw" | "ne" | "sw" | "se";
+
+const RESIZE_ANCHORS: readonly ResizeAnchor[] = ["nw", "ne", "sw", "se"];
+
+/** The local corner of `box` that `anchor` names — "nw" is `(box.x, box.y)`, "se" is the opposite corner, etc. */
+function anchorCorner(anchor: ResizeAnchor, box: { x: number; y: number; width: number; height: number }): {
+  x: number;
+  y: number;
+} {
+  return {
+    x: anchor === "ne" || anchor === "se" ? box.x + box.width : box.x,
+    y: anchor === "sw" || anchor === "se" ? box.y + box.height : box.y,
+  };
+}
+
+/**
+ * Non-uniform counterpart to `buildPrimitiveScaleSplices`: `sx`/`sy` scale
+ * the x-ish and y-ish native attributes independently. Shapes whose data
+ * model has no non-uniform representation (`<text>`'s `font-size` is a
+ * single scalar; `<circle>`'s `r` likewise; a non-uniform `<path>` would
+ * need per-command axis-aware re-derivation this ticket does not implement)
+ * reject a non-uniform request outright rather than silently degrading to
+ * something else — when `sx === sy` they fall through to the existing
+ * uniform generator unchanged.
+ */
+function buildPrimitiveResizeSplices(node: ScannedNode, sx: number, sy: number, elementId: string): Splice[] {
+  switch (node.tag) {
+    case "rect":
+    case "image":
+      return [
+        scaleNumericAttr(node, "width", sx, elementId, true),
+        scaleNumericAttr(node, "height", sy, elementId, true),
+      ];
+    case "ellipse":
+      return [
+        scaleNumericAttr(node, "cx", sx, elementId, false),
+        scaleNumericAttr(node, "cy", sy, elementId, false),
+        scaleNumericAttr(node, "rx", sx, elementId, true),
+        scaleNumericAttr(node, "ry", sy, elementId, true),
+      ];
+    case "line":
+      return [
+        scaleNumericAttr(node, "x1", sx, elementId, false),
+        scaleNumericAttr(node, "y1", sy, elementId, false),
+        scaleNumericAttr(node, "x2", sx, elementId, false),
+        scaleNumericAttr(node, "y2", sy, elementId, false),
+      ];
+    case "text":
+      if (sx !== sy) {
+        throw new CoMotionError(`元素 ${elementId} 含 <text>，font-size 無法非等比縮放，請改用 element scale`);
+      }
+      return buildPrimitiveScaleSplices(node, sx, elementId);
+    case "circle":
+      if (sx !== sy) {
+        throw new CoMotionError(`元素 ${elementId} 是 <circle>，無法非等比縮放，請改用 element scale`);
+      }
+      return buildPrimitiveScaleSplices(node, sx, elementId);
+    case "path":
+      if (sx !== sy) {
+        throw new CoMotionError(`元素 ${elementId} 是 <path>，無法非等比縮放，請改用 element scale`);
+      }
+      return buildPrimitiveScaleSplices(node, sx, elementId);
+    default:
+      throw new CoMotionError(`不支援縮放的圖元 <${node.tag}>：${elementId}`);
+  }
+}
+
+/** Resize counterpart to `scaleLeafPrimitives` — a text box (single `font-size` scalar) only accepts a uniform `sx === sy` request and then reuses the exact same rewrap path. */
+function resizeLeafPrimitives(
+  svg: string,
+  container: ScannedNode,
+  sx: number,
+  sy: number,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  elementId: string,
+): string {
+  const textWidthAttr = attributeOf(container, TEXT_WIDTH_ATTRIBUTE);
+  if (textWidthAttr) {
+    if (sx !== sy) {
+      throw new CoMotionError(`元素 ${elementId} 含 <text>，font-size 無法非等比縮放，請改用 element scale`);
+    }
+    return scaleLeafPrimitives(svg, container, sx, fontBook, elementId);
+  }
+
+  const splices: Splice[] = [];
+  for (const primitive of meaningfulChildren(container)) {
+    splices.push(...buildPrimitiveResizeSplices(primitive, sx, sy, elementId));
+  }
+  return applySplices(svg, splices);
+}
+
+/**
+ * Resize counterpart to `scaleOneContainer`: same worklist/re-scan shape,
+ * `(sx, sy)` applied per axis instead of one `factor`. The target's own
+ * container `transform` is left untouched here too — `resizeOneTarget`
+ * applies the anchor-preserving translate delta afterward, once, the same
+ * way `scaleOneContainer` never touches it at all.
+ */
+function resizeOneContainer(
+  svg: string,
+  id: string,
+  sx: number,
+  sy: number,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  force: boolean | undefined,
+): string {
+  assertSubtreeNotLocked(svg, id, force);
+
+  let current = svg;
+  const worklist: Array<{ id: string; isTarget: boolean }> = [{ id, isTarget: true }];
+
+  while (worklist.length > 0) {
+    const { id: currentId, isTarget } = worklist.shift()!;
+    const roots = scanDocument(current);
+    const svgRoot = requireSvgRoot(roots);
+    const { node } = requireContainer(svgRoot, currentId);
+
+    if (!isTarget) {
+      current = applyTransformDelta(
+        current,
+        currentId,
+        (parts) => ({
+          ...parts,
+          translateX: parts.translateX * sx,
+          translateY: parts.translateY * sy,
+        }),
+        true,
+      );
+    }
+
+    const refreshedRoots = scanDocument(current);
+    const refreshedSvgRoot = requireSvgRoot(refreshedRoots);
+    const { node: refreshedNode } = requireContainer(refreshedSvgRoot, currentId);
+
+    if (isGroupContainer(refreshedNode)) {
+      for (const child of meaningfulChildren(refreshedNode)) {
+        const childId = attributeValue(child, "id");
+        if (!childId) {
+          throw new CoMotionError("群組子容器缺少 id，無法縮放");
+        }
+        worklist.push({ id: childId, isTarget: false });
+      }
+    } else {
+      current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
+    }
+  }
+
+  return current;
+}
+
+/** Depth-first search of a parsed slide model for `id` — resize only ever needs the element's own local matrix, never an ancestor chain (the anchor delta below is entirely local to the target's own container). */
+function findElementById(elements: readonly SlideElement[], id: string): SlideElement | undefined {
+  for (const element of elements) {
+    if (element.id === id) return element;
+    if (element.kind === "group") {
+      const found = findElementById(element.children, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resizes one target to exactly `(width, height)`, anchored so that the
+ * named corner of its bounding box — computed in the target's own local
+ * frame, i.e. with the target's own `transform` factored out via
+ * `invertMatrix` — lands on exactly the same spot after the resize.
+ *
+ * Native geometry is scaled by `(sx, sy)` about that local frame's origin
+ * (`resizeOneContainer`, mirroring `scaleOneContainer`'s single-`factor`
+ * version); the target's own container transform's rotation and any
+ * pre-existing scale are left alone, and only its translate is shifted by
+ * the delta the anchor corner moved by that scaling — expressed back
+ * through the target's own matrix so a rotated target still keeps its
+ * anchor corner fixed in the *parent's* frame (決定: "先非等比縮放再旋轉",
+ * matching how PowerPoint composes a resize with an existing rotation).
+ */
+function resizeOneTarget(
+  svg: string,
+  slidePath: string,
+  id: string,
+  width: number,
+  height: number,
+  anchor: ResizeAnchor,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  force: boolean | undefined,
+): string {
+  const model = parseSlide(svg, slidePath);
+  const element = findElementById(model.elements, id);
+  if (!element) {
+    throw new CoMotionError(`找不到元素：${id}`);
+  }
+
+  const localBox = elementBounds(element, { ancestors: [invertMatrix(element.matrix)], fonts: fontBook });
+  if (!(localBox.width > 0) || !(localBox.height > 0)) {
+    throw new CoMotionError(`元素 ${id} 沒有邊界框，無法縮放`);
+  }
+  const sx = width / localBox.width;
+  const sy = height / localBox.height;
+
+  const cornerBefore = anchorCorner(anchor, localBox);
+  const cornerAfter = { x: cornerBefore.x * sx, y: cornerBefore.y * sy };
+  const deltaLocal = { x: cornerBefore.x - cornerAfter.x, y: cornerBefore.y - cornerAfter.y };
+  // The target's own matrix's linear part (no translation) carries a local
+  // delta into the parent's frame — this is what makes a rotated target's
+  // anchor corner land correctly instead of only working axis-aligned.
+  const matrix = element.matrix;
+  const deltaParent = {
+    x: matrix.a * deltaLocal.x + matrix.c * deltaLocal.y,
+    y: matrix.b * deltaLocal.x + matrix.d * deltaLocal.y,
+  };
+
+  let current = resizeOneContainer(svg, id, sx, sy, fontBook, force);
+  current = applyTransformDelta(
+    current,
+    id,
+    (parts) => ({
+      ...parts,
+      translateX: parts.translateX + deltaParent.x,
+      translateY: parts.translateY + deltaParent.y,
+    }),
+    true,
+  );
+  return current;
+}
+
+/** Resizes every target to the same `(width, height)` (`co-motion element resize`, NOOP-90/T2 — new alongside the existing uniform `element scale`). */
+export function resizeElements(
+  svgContent: string,
+  slidePath: string,
+  elementIds: readonly string[],
+  width: number,
+  height: number,
+  anchor: ResizeAnchor,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  options: MutationOptions = {},
+): string {
+  assertSlideCompliant(svgContent, slidePath);
+  validateIdList(elementIds);
+  if (!Number.isFinite(width) || !(width > 0)) {
+    throw new CoMotionError("width 必須是大於 0 的數字");
+  }
+  if (!Number.isFinite(height) || !(height > 0)) {
+    throw new CoMotionError("height 必須是大於 0 的數字");
+  }
+  if (!RESIZE_ANCHORS.includes(anchor)) {
+    throw new CoMotionError(`anchor 必須是 ${RESIZE_ANCHORS.join("/")} 之一`);
+  }
+
+  let current = svgContent;
+  for (const id of elementIds) {
+    current = resizeOneTarget(current, slidePath, id, width, height, anchor, fontBook, options.force);
   }
   return current;
 }

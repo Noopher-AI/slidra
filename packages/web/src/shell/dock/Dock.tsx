@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { CanvasSelection } from "../../canvas.js";
+import type { CanvasController, CanvasSelection } from "../../canvas.js";
 import { Icon, type IconName } from "../../icons/index.js";
 import type { HandState, ZoomPanState } from "../stage-view.js";
 import { useCloseFloatingLayer } from "../use-floating-layer.js";
@@ -35,6 +35,7 @@ export interface DockProps {
   hand: HandState;
   onToggleHand(): void;
   selection: CanvasSelection;
+  controller: CanvasController | null;
 }
 
 interface CommandDef {
@@ -72,7 +73,7 @@ function isCommandDisabled(key: DockLayer, hasSelection: boolean): boolean {
  * 不是相對觸發它的那顆按鈕（05-INTERACTIONS.feature「縮放選單」／
  * 02-DESIGN_DOC.md §2.3「一律從同一個地方長出」）。
  */
-export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection }: DockProps) {
+export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection, controller }: DockProps) {
   const [openLayer, setOpenLayer] = useState<DockLayer | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
   const hasSelection = selection.ids.length > 0;
@@ -109,7 +110,7 @@ export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection }
       case "shape":
         return <ShapeMenu onClose={onClose} />;
       case "arrange":
-        return <ArrangeMenu onClose={onClose} />;
+        return <ArrangeMenu selection={selection} controller={controller} onClose={onClose} />;
       case "text":
         return <TextPanel onClose={onClose} />;
       case "image":

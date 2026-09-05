@@ -4,6 +4,7 @@ import { decomposeMatrix, formatTransform, type Matrix, type TransformParts } fr
 import { parseTransform } from "./geometry/transform.js";
 import { assertSlideCompliant, parseSlide, type SlideElement } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
+import type { FontMetrics } from "./text-metrics.js";
 
 /**
  * `element align` / `element distribute` (ADR-0012). Both commands only
@@ -133,7 +134,12 @@ interface Target {
  * (ADR-0012 groups can nest), since that outer transform never enters the
  * computation at all.
  */
-function resolveTargets(svgContent: string, slidePath: string, elementIds: readonly string[]): Target[] {
+function resolveTargets(
+  svgContent: string,
+  slidePath: string,
+  elementIds: readonly string[],
+  fontBook: ReadonlyMap<string, FontMetrics>,
+): Target[] {
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const found = elementIds.map((id) => ({ id, ...requireContainer(svgRoot, id) }));
@@ -149,7 +155,7 @@ function resolveTargets(svgContent: string, slidePath: string, elementIds: reado
     if (!path) {
       throw new CoMotionError(`找不到元素：${id}`);
     }
-    return { id, node, bounds: elementBounds(path.element, { ancestors: [] }) };
+    return { id, node, bounds: elementBounds(path.element, { ancestors: [], fonts: fontBook }) };
   });
 }
 
@@ -188,6 +194,7 @@ export function alignElements(
   slidePath: string,
   elementIds: readonly string[],
   direction: AlignDirection,
+  fontBook: ReadonlyMap<string, FontMetrics>,
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
@@ -195,7 +202,7 @@ export function alignElements(
     throw new CoMotionError("對齊至少需要兩個元素");
   }
 
-  const targets = resolveTargets(svgContent, slidePath, elementIds);
+  const targets = resolveTargets(svgContent, slidePath, elementIds, fontBook);
   const union = unionRects(targets.map((target) => target.bounds));
 
   let current = svgContent;
@@ -232,6 +239,7 @@ export function distributeElements(
   slidePath: string,
   elementIds: readonly string[],
   axis: DistributeAxis,
+  fontBook: ReadonlyMap<string, FontMetrics>,
 ): string {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
@@ -239,7 +247,7 @@ export function distributeElements(
     throw new CoMotionError("分佈至少需要三個元素");
   }
 
-  const targets = resolveTargets(svgContent, slidePath, elementIds);
+  const targets = resolveTargets(svgContent, slidePath, elementIds, fontBook);
   const centerOf = (bounds: Rect): number =>
     axis === "horizontal" ? bounds.x + bounds.width / 2 : bounds.y + bounds.height / 2;
 

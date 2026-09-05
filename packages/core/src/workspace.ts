@@ -22,6 +22,7 @@ import {
   lockElements,
   moveElements,
   reorderElements,
+  resizeElements,
   rotateElements,
   scaleElements,
   setElementStyle,
@@ -29,6 +30,7 @@ import {
   type InsertElementInput,
   type MutationOptions,
   type OrderDirection,
+  type ResizeAnchor,
 } from "./element-edit.js";
 import {
   commitSnapshotEntries,
@@ -606,6 +608,25 @@ export async function scaleSlideElements(
   await writePresentationFile(id, slidePath, updated);
 }
 
+export async function resizeSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+  width: number,
+  height: number,
+  anchor: ResizeAnchor,
+  options: MutationOptions = {},
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const updated = resizeElements(original, slidePath, elementIds, width, height, anchor, fontBook, options);
+  await writePresentationFile(id, slidePath, updated);
+}
+
 export async function setSlideElementStyle(
   id: string,
   slidePath: string,
@@ -808,7 +829,8 @@ export async function alignSlideElements(
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = alignElements(original, slidePath, elementIds, direction);
+  const fontBook = await resolvePresentationFonts(id);
+  const updated = alignElements(original, slidePath, elementIds, direction, fontBook);
   await writePresentationFile(id, slidePath, updated);
 }
 
@@ -823,7 +845,8 @@ export async function distributeSlideElements(
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = distributeElements(original, slidePath, elementIds, axis);
+  const fontBook = await resolvePresentationFonts(id);
+  const updated = distributeElements(original, slidePath, elementIds, axis, fontBook);
   await writePresentationFile(id, slidePath, updated);
 }
 

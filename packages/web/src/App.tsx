@@ -470,6 +470,54 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // ⌘A／Delete／Backspace／⌘D／⌘]／⌘[／⌘⇧]／⌘⇧[ (NOOP-90/T2 §4.4) — the
+  // PARENT document's own half of the keyboard relay. When focus sits
+  // INSIDE the sandboxed iframe (e.g. right after clicking a slide
+  // element), this listener never fires at all for that keypress — the
+  // browser delivers it to the iframe's own document — which is exactly
+  // why selection-runtime.js/canvas.ts's own "stage-key" relay
+  // (handleSelectionMessage) exists as this handler's other half; both
+  // paths call the same `controller` methods, so the two can never drift.
+  // Play mode disables every one of these, same as the ⌘Z effect above
+  // disables during a frozen edit.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const controller = controllerRef.current;
+      if (!controller || canvasStateRef.current.mode !== "view") return;
+      const withModifier = event.metaKey || event.ctrlKey;
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        void controller.deleteSelection();
+        return;
+      }
+      if (withModifier && event.key === "a") {
+        event.preventDefault();
+        controller.selectAll();
+        return;
+      }
+      if (withModifier && event.key === "d") {
+        event.preventDefault();
+        void controller.duplicateSelection();
+        return;
+      }
+      if (withModifier && event.key === "]") {
+        event.preventDefault();
+        void controller.orderSelection(event.shiftKey ? "front" : "up");
+        return;
+      }
+      if (withModifier && event.key === "[") {
+        event.preventDefault();
+        void controller.orderSelection(event.shiftKey ? "back" : "down");
+        return;
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // 全螢幕開關 (ticket #29): fullscreenchange only syncs UI state here — it
   // must never call exitPlay(). Leaving fullscreen (including Esc) returns
   // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是

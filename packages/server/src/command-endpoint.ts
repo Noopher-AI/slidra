@@ -63,6 +63,14 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "template list",
   "template rename",
   "template delete",
+  // NOOP-90/T2 的舞台選取與直接操作加入這三條：四角把手送
+  // `element resize`（新命令）；Delete/Backspace 與元素右鍵選單的 Delete
+  // 送 `element delete`；⌘D 與右鍵選單的 Duplicate 送 `element
+  // duplicate` —— 這兩條命令本來就存在於 registry，只是從未被這個端點
+  // 放行過，沒有這三條會被這個白名單本身 403 掉。
+  "element resize",
+  "element delete",
+  "element duplicate",
 ];
 
 /**

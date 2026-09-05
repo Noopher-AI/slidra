@@ -272,7 +272,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onDragLeave={dropOverlay.onDragLeave}
         />
       </div>
-      {shellVisible && <OverlayLayer />}
+      {shellVisible && <OverlayLayer controller={controller} wellRef={wellRef} />}
       {shellVisible && (
         <Dock
           zoomPan={zoomPan}
@@ -280,6 +280,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           hand={hand}
           onToggleHand={handleToggleHand}
           selection={state.selection}
+          controller={controller}
         />
       )}
       {children}

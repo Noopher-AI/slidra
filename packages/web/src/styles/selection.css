@@ -1,20 +1,16 @@
-/* 選取（選取/拖曳/縮放本身是這張骨架票明確排除的範圍，見 PR 報告）。
-   `.status-selection-chip b` 的樣式已經在 shell.css 裡（New v3 的狀態列一
-   併重寫），這裡不再重複同一條規則——這個檔案現在只留文件用途。
+/* 選取（選取本身的互動邏輯在 selection-runtime.js／canvas.ts，這個檔案只
+   留文件用途）。`.status-selection-chip b` 的樣式已經在 shell.css 裡（New
+   v3 的狀態列一併重寫），這裡不再重複同一條規則。
 
-   契約文件（沿用自舊殼，尚未過時）：畫布內選取／控制點／文字游標／文字選
-   取／對齊參考線的色彩，是 canvas.ts 用 getComputedStyle(document
-   .documentElement) 讀 `--accent-hi` / `--s-titlebar` 這兩個 CSS 自訂屬性
-   （canvas.ts:1958-1962 的 selectionColors()），序列化成
-   window.__COMOT_SELECTION_COLORS__ 注入投影片 iframe，selection-runtime.js
-   （shadow root 內的 <style>，零色碼字面值）再吃這兩個值——整條路徑完全
-   不在這張票的檔案範圍內（canvas.ts／selection-runtime.js 都明確排除）。
+   契約文件：畫布內選取／控制點／文字游標／文字選取／對齊參考線的色彩，是
+   canvas.ts 用 getComputedStyle(document.documentElement) 讀
+   `--brand-red` / `--surface-white` 這兩個 CSS 自訂屬性（canvas.ts 的
+   selectionColors()），序列化成 window.__COMOT_SELECTION_COLORS__ 注入投
+   影片 iframe，selection-runtime.js（shadow root 內的 <style>，零色碼字
+   面值）再吃這兩個值。
 
-   已知落差（繼承自更早、獨立落地的 design-tokens 票，不是這張票造成的）：
-   `--accent-hi` / `--s-titlebar` 這兩個舊 token 名稱已經不在新版
-   tokens.css 的字彙裡（該票整份重寫成 01-DESIGN_TOKENS.md 的新命名），
-   selectionColors() 現在讀到的是空字串。e2e/selection.test.ts 等既有測試
-   只斷言 display/position/zIndex，沒有斷言實際色值，所以不會被這個落差
-   影響而變紅；但畫布內選取框視覺上的顏色目前確實是「沒有顏色」而非設計稿
-   的紅框。修法會動到 canvas.ts（改讀新 token 名稱），不在這張票的檔案清
-   單內，留給下一張處理選取/拖曳的票——見 PR 報告「不確定與保留事項」。 */
+   NOOP-90/T2 之前讀的是 `--accent-hi` / `--s-titlebar` 這兩個舊殼相容層
+   token（tokens.css 為了不動舊呼叫方而暫留的舊值，`#e03a56`／
+   `#201f1e`——不是空字串，是舊殼的紅，這裡曾經誤記為「沒有顏色」）。本票
+   改讀設計包正式命名的 `--brand-red`（#c8233b）／`--surface-white`
+   （#ffffff），與原型（docs/design/prototype）的選取框/把手色一致。 */

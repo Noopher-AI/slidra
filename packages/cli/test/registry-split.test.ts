@@ -27,6 +27,7 @@ const EXPECTED_COMMAND_NAMES = [
   "element delete",
   "element move",
   "element scale",
+  "element resize",
   "element rotate",
   "element style set",
   "element order",
@@ -62,12 +63,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 41 known command names — no more, no fewer", () => {
+  it("registers exactly the 42 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(41);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(42);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

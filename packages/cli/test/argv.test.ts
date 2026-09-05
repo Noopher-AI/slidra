@@ -77,6 +77,45 @@ describe("parseArgv text set", () => {
   });
 });
 
+describe("parseArgv element resize (NOOP-90/T2, new alongside element scale)", () => {
+  it("parses width/height/anchor into structured input, comma-splitting the element-id list", () => {
+    const parsed = parseArgv([
+      "element", "resize", "p1", "slides/001.svg", "el-a,el-b", "--width", "200", "--height", "100", "--anchor", "se",
+    ]);
+
+    expect(parsed).toEqual({
+      name: "element resize",
+      input: { id: "p1", slidePath: "slides/001.svg", elementIds: ["el-a", "el-b"], width: 200, height: 100, anchor: "se", force: false },
+    });
+  });
+
+  it("defaults anchor to nw when --anchor is absent", () => {
+    const parsed = parseArgv(["element", "resize", "p1", "slides/001.svg", "el-a", "--width", "10", "--height", "10"]);
+    expect(parsed.input).toMatchObject({ anchor: "nw" });
+  });
+
+  it("rejects an anchor outside nw/ne/sw/se", () => {
+    expect(() =>
+      parseArgv(["element", "resize", "p1", "slides/001.svg", "el-a", "--width", "10", "--height", "10", "--anchor", "center"]),
+    ).toThrow("element resize 不支援的 anchor：center");
+  });
+
+  it("requires --width", () => {
+    expect(() => parseArgv(["element", "resize", "p1", "slides/001.svg", "el-a", "--height", "10"])).toThrow(CoMotionError);
+  });
+
+  it("requires --height", () => {
+    expect(() => parseArgv(["element", "resize", "p1", "slides/001.svg", "el-a", "--width", "10"])).toThrow(CoMotionError);
+  });
+
+  it("parses a trailing --force", () => {
+    const parsed = parseArgv([
+      "element", "resize", "p1", "slides/001.svg", "el-a", "--width", "10", "--height", "10", "--force",
+    ]);
+    expect(parsed.input).toMatchObject({ force: true });
+  });
+});
+
 describe("parseArgv convert", () => {
   it("parses the presentation id into { name: \"convert\", input: { id } }", () => {
     expect(parseArgv(["convert", "abc123"])).toEqual({ name: "convert", input: { id: "abc123" } });

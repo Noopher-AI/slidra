@@ -41,6 +41,7 @@ export {
   moveSlideElements,
   rotateSlideElements,
   scaleSlideElements,
+  resizeSlideElements,
   setSlideElementStyle,
   reorderSlideElements,
   renderSlideForDisplay,
@@ -65,13 +66,14 @@ export {
   moveElements,
   rotateElements,
   scaleElements,
+  resizeElements,
   setElementStyle,
   reorderElements,
   lockElements,
   unlockElements,
   STYLE_ATTRIBUTE_WHITELIST,
 } from "./element-edit.js";
-export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOptions } from "./element-edit.js";
+export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOptions, ResizeAnchor } from "./element-edit.js";
 export { groupElements, ungroupElements, setElementName } from "./element-group.js";
 export { alignElements, distributeElements } from "./element-arrange.js";
 export type { AlignDirection, DistributeAxis } from "./element-arrange.js";

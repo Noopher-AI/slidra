@@ -16,6 +16,7 @@ export { elementInsertCommand, type ElementInsertInput, type ElementInsertData }
 export { elementDeleteCommand, type ElementDeleteInput, type ElementDeleteData } from "./delete.js";
 export { elementMoveCommand, type ElementMoveInput, type ElementMoveData } from "./move.js";
 export { elementScaleCommand, type ElementScaleInput, type ElementScaleData } from "./scale.js";
+export { elementResizeCommand, type ElementResizeInput, type ElementResizeData } from "./resize.js";
 export { elementRotateCommand, type ElementRotateInput, type ElementRotateData } from "./rotate.js";
 export { elementStyleSetCommand, type ElementStyleSetInput, type ElementStyleSetData } from "./style-set.js";
 export { elementOrderCommand, type ElementOrderInput, type ElementOrderData } from "./order.js";
@@ -35,6 +36,7 @@ import { elementInsertCommand } from "./insert.js";
 import { elementDeleteCommand } from "./delete.js";
 import { elementMoveCommand } from "./move.js";
 import { elementScaleCommand } from "./scale.js";
+import { elementResizeCommand } from "./resize.js";
 import { elementRotateCommand } from "./rotate.js";
 import { elementStyleSetCommand } from "./style-set.js";
 import { elementOrderCommand } from "./order.js";
@@ -55,6 +57,7 @@ export function register(registry: CommandRegistry): void {
   registry.register("element delete", { handler: elementDeleteCommand, render: null });
   registry.register("element move", { handler: elementMoveCommand, render: null });
   registry.register("element scale", { handler: elementScaleCommand, render: null });
+  registry.register("element resize", { handler: elementResizeCommand, render: null });
   registry.register("element rotate", { handler: elementRotateCommand, render: null });
   registry.register("element style set", { handler: elementStyleSetCommand, render: null });
   registry.register("element order", { handler: elementOrderCommand, render: null });

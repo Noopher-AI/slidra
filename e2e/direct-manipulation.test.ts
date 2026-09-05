@@ -1,4 +1,4 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -149,6 +149,18 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
+/** `<CO_MOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — 驗收條件第四條「拖曳 100 次不產生 100 筆歷史；一次拖曳一筆」的直接讀法。`startServerFor` sets `process.env.CO_MOTION_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
+async function undoCount(presentationId: string): Promise<number> {
+  const home = process.env.CO_MOTION_HOME!;
+  try {
+    const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
+    return (JSON.parse(raw).undo ?? []).length;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
+}
+
 /** The main-canvas `<svg>`'s bounding box in PAGE (viewport) coordinates — what `page.mouse` expects. */
 async function svgBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
   const svg = page.frameLocator("iframe.slide-frame").locator("svg").first();
@@ -258,12 +270,19 @@ async function handleCenter(page: Page, name: string): Promise<{ x: number; y: n
 }
 
 /** Drags from one exact page point to another (unlike `dragBy`, which takes fixture user-space coordinates) — for handle-driven gestures, whose start point must land on a small (9px) handle element rather than anywhere inside the target's own bounds. */
-async function dragPageTo(page: Page, from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
+async function dragPageTo(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  options: { shift?: boolean } = {},
+): Promise<void> {
+  if (options.shift) await page.keyboard.down("Shift");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 5 });
   await page.waitForTimeout(80);
   await page.mouse.up();
+  if (options.shift) await page.keyboard.up("Shift");
   await page.waitForTimeout(150);
 }
 
@@ -308,6 +327,61 @@ it("拖曳單一元素放手後：預覽字串與寫入檔案的字串逐字元�
   }
 });
 
+it("驗收條件第四條 (a)：一次拖曳、中間 100 個 mouse-move 步，只產生一筆歷史", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const beforeUndoCount = await undoCount(presentationId);
+
+    const box = await svgBox(page);
+    const from = toPagePoint(box, 180, 150); // inside el-a
+    const to = toPagePoint(box, 240, 190);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 100 });
+    await page.waitForTimeout(80);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+
+    expect(await readSlide(registry, presentationId)).not.toBe(before);
+    expect(await undoCount(presentationId)).toBe(beforeUndoCount + 1);
+  } finally {
+    await cleanup();
+  }
+}, 30_000);
+
+// 驗收條件第四條 (b) 原文要求「連續 100 次獨立拖曳，undo.length 恰好 +100」，
+// 但 history.ts 的 UNDO_STACK_CAP = 50（既有、與本票無關的常數：舊條目超過
+// 50 筆會被逐出，`history.test.ts` 自己也有一條「51st edit」的既有測試）在
+// 100 次之後只會留下最後 50 筆——從 0 筆歷史開始跑，「+100」這個數字本身
+// 不可能達成。這裡改用安全遠低於上限的 20 次，驗證同一個「不做去重/合併」
+// 的不變量（每次獨立拖曳都各自算一格），不去踩到跟這張票無關的既有上限。
+it("驗收條件第四條 (b)：連續 20 次獨立拖曳，恰好產生 20 筆歷史（不多不少、不合併）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const beforeUndoCount = await undoCount(presentationId);
+
+    // Alternates +10/-10 user units (safely above the runtime's 3px drag
+    // threshold at this viewport's render scale) so el-a's own position
+    // stays put overall and never drifts outside the slide across every
+    // iteration. Alt disables snapping — without it, every other landing
+    // spot coincidentally snapped back to the exact pre-drag position
+    // (roundsToZero's own no-history-for-nothing guard), silently halving
+    // the count this test means to prove is NOT silently deduplicated.
+    const REPEATS = 20;
+    for (let i = 0; i < REPEATS; i++) {
+      const dx = i % 2 === 0 ? 10 : -10;
+      await dragBy(page, { x: 180, y: 150 }, { x: dx, y: 0 }, { alt: true });
+    }
+
+    expect(await undoCount(presentationId)).toBe(beforeUndoCount + REPEATS);
+  } finally {
+    await cleanup();
+  }
+}, 30_000);
+
 it("拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左緣完全相等，且畫出/清除輔助線", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
@@ -324,6 +398,9 @@ it("拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左�
     const dx = targetLeft - 100; // el-a starts at x=100
     const dy = 250; // deliberately not aligned with anything, to isolate the x-axis snap
 
+    // NOOP-90/T2 ADR-0011 amend: guides are drawn by the parent document's
+    // own `.guide-layer` (GuideLayer.tsx) now, not inside the sandboxed
+    // iframe's shadow root — `page.evaluate`, not `frame.evaluate`.
     let guidesSeenDuringDrag = false;
     await dragBy(
       page,
@@ -331,11 +408,7 @@ it("拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左�
       { x: dx, y: dy },
       {
         onMidDrag: async () => {
-          const frame = await canvasFrame(page);
-          const guideCount = await frame.evaluate(() => {
-            const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-            return host?.shadowRoot?.querySelectorAll(".guide").length ?? 0;
-          });
+          const guideCount = await page.evaluate(() => document.querySelectorAll(".guide-layer .guide").length);
           guidesSeenDuringDrag = guideCount > 0;
         },
       },
@@ -351,12 +424,7 @@ it("拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左�
     expect(movedA.x).toBe(b.x);
 
     // Guides never persist past the gesture.
-    const frame = await canvasFrame(page);
-    const guideCountAfter = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-      const guides = host?.shadowRoot?.querySelectorAll(".guide") ?? [];
-      return [...guides].filter((el) => (el as HTMLElement).style.display !== "none").length;
-    });
+    const guideCountAfter = await page.evaluate(() => document.querySelectorAll(".guide-layer .guide").length);
     expect(guideCountAfter).toBe(0);
   } finally {
     await cleanup();
@@ -523,6 +591,11 @@ it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣�
     // same result as the text candidate.
     const dy = -140;
 
+    // NOOP-90/T2 ADR-0011 amend: guides are drawn by the parent document's
+    // own `.guide-layer` (GuideLayer.tsx), positioned relative to
+    // `.canvas-area`'s own box (its nearest positioned ancestor) — so the
+    // expected "left" is the page-viewport x (same space `svgBox`/
+    // `toPagePoint` already work in) minus `.canvas-area`'s own left edge.
     let sawVerticalGuideAt950 = false;
     await dragBy(
       page,
@@ -530,24 +603,18 @@ it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣�
       { x: dx, y: dy },
       {
         onMidDrag: async () => {
-          const frame = await canvasFrame(page);
-          const guides = await frame.evaluate(() => {
-            const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-            const els = host?.shadowRoot?.querySelectorAll(".guide") ?? [];
-            return Array.from(els).map((el) => ({
-              vertical: el.classList.contains("v"),
-              left: (el as HTMLElement).style.left,
-            }));
-          });
-          const svgRect = await frame.evaluate(() => {
-            const r = document.querySelector("svg")!.getBoundingClientRect();
-            return { x: r.x, width: r.width };
-          });
-          // Mirrors canvas.ts's own userXToClient: user-space x=950 -> the
-          // iframe-local screen px a "left: <n>px" guide would carry.
-          const expectedClientLeft = svgRect.x + (targetLeft / VIEWBOX.width) * svgRect.width;
+          const guides = await page.evaluate(() =>
+            Array.from(document.querySelectorAll<HTMLElement>(".guide-layer .guide")).map((el) => ({
+              vertical: el.classList.contains("guide-v"),
+              left: el.style.left,
+            })),
+          );
+          const canvasAreaBox = await page.locator(".canvas-area").boundingBox();
+          if (!canvasAreaBox) throw new Error("量不到 .canvas-area 的邊界框");
+          const expectedPageLeft = toPagePoint(box, targetLeft, 0).x;
+          const expectedLocalLeft = expectedPageLeft - canvasAreaBox.x;
           sawVerticalGuideAt950 = guides.some(
-            (g) => g.vertical && Math.abs(parseFloat(g.left) - expectedClientLeft) < 1,
+            (g) => g.vertical && Math.abs(parseFloat(g.left) - expectedLocalLeft) < 1,
           );
         },
       },
@@ -562,7 +629,7 @@ it("拖曳到與文字元素左緣相距在吸附半徑內：貼齊文字邊緣�
   }
 });
 
-it("拖曳右下角縮放把手放手：scale 依 factor 縮放、translate 完全不變、只產生一條命令", async () => {
+it("按住 Shift 拖曳右下角把手放手：scale 依 factor 縮放、translate 完全不變、只產生一條命令", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -578,8 +645,11 @@ it("拖曳右下角縮放把手放手：scale 依 factor 縮放、translate 完�
     const factor = 1.5;
     // Drag straight along the origin(100,100)->se(260,200) ray so the
     // projection formula's own factor comes out to exactly `factor`.
+    // Holding Shift is what selects the UNIFORM path (NOOP-90/T2 決定 4) —
+    // without it, the same drag now goes through `element resize` instead
+    // (see the dedicated resize test below).
     const target = toPagePoint(box, 100 + factor * 160, 100 + factor * 100);
-    await dragPageTo(page, seHandle, target);
+    await dragPageTo(page, seHandle, target, { shift: true });
 
     const after = await readSlide(registry, presentationId);
     // `element scale` (element-edit.ts's scaleOneContainer/buildPrimitiveScaleSplices)
@@ -607,6 +677,55 @@ it("拖曳右下角縮放把手放手：scale 依 factor 縮放、translate 完�
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("拖曳右下角把手放手（不按 Shift）：走 element resize，非等比縮放、anchor 是對角 nw、只產生一條命令", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator("#el-a").click();
+    const box = await svgBox(page);
+    // el-a: translate(100 100), rect 0 0 160 100 -> local bbox (own
+    // transform factored out) is exactly the rect's own geometry: nw=(0,0),
+    // se=(160,100). Dragging se to local (240, 130) — width ×1.5, height
+    // ×1.3, deliberately DIFFERENT ratios so a uniform scale could never
+    // produce this result — must anchor the OPPOSITE corner (nw), leaving
+    // the container's own translate untouched.
+    const seHandle = await handleCenter(page, "se");
+    const target = toPagePoint(box, 100 + 240, 100 + 130);
+    await dragPageTo(page, seHandle, target);
+
+    const after = await readSlide(registry, presentationId);
+    const rectMatch = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(after);
+    expect(rectMatch).not.toBeNull();
+    expect(Math.abs(Number(rectMatch![3]) - 240)).toBeLessThan(5);
+    expect(Math.abs(Number(rectMatch![4]) - 130)).toBeLessThan(5);
+    // nw anchored: the container's own translate is untouched, byte for byte.
+    expect(readTransformAttr(after, "el-a")).toBe("translate(100 100)");
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+
+    // GUI-did-once -> agent-runs-same-CLI spot check (驗收條件第三條): undo
+    // above already restored `before`; running the equivalent `element
+    // resize` CLI command must reproduce byte-for-byte the same `after`.
+    const cliResult = await registry.dispatch("element resize", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      elementIds: ["el-a"],
+      width: Number(rectMatch![3]),
+      height: Number(rectMatch![4]),
+      anchor: "nw",
+    });
+    expect(cliResult.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(after);
   } finally {
     await cleanup();
   }
@@ -646,7 +765,7 @@ it("拖曳旋轉把手放手：rotate 改變了預期的 delta、translate/scale
   }
 });
 
-it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖先的平移（Reviewer round-1 FAIL 的原始重現）", async () => {
+it("雙擊進入平移群組後按住 Shift 拖曳子元素的縮放把手：原點套用祖先的平移（Reviewer round-1 FAIL 的原始重現）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -672,7 +791,8 @@ it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖�
       origin.x + factor * (seTopLevel.x - origin.x),
       origin.y + factor * (seTopLevel.y - origin.y),
     );
-    await dragPageTo(page, seHandle, target);
+    // Shift selects the uniform path — see the plain se-handle test above.
+    await dragPageTo(page, seHandle, target, { shift: true });
 
     const after = await readSlide(registry, presentationId);
     const rect = readRect(after, "el-group-child");
@@ -689,7 +809,7 @@ it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖�
   }
 });
 
-it("雙擊進入旋轉群組後拖曳子元素的縮放把手：原點套用祖先的旋轉，縮放與旋轉共用同一套 core matrix 路徑", async () => {
+it("雙擊進入旋轉群組後按住 Shift 拖曳子元素的縮放把手：原點套用祖先的旋轉，縮放與旋轉共用同一套 core matrix 路徑", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -721,7 +841,8 @@ it("雙擊進入旋轉群組後拖曳子元素的縮放把手：原點套用祖�
     const targetLocal = { x: downLocal.x * factor, y: downLocal.y * factor };
     const targetTopVec = rotateVector(targetLocal, rotateDeg);
     const target = toPagePoint(box, origin.x + targetTopVec.x, origin.y + targetTopVec.y);
-    await dragPageTo(page, seHandle, target);
+    // Shift selects the uniform path — see the plain se-handle test above.
+    await dragPageTo(page, seHandle, target, { shift: true });
 
     const after = await readSlide(registry, presentationId);
     const rect = readRect(after, "el-group-rotate-child");
@@ -888,6 +1009,168 @@ it("按 Esc 退出群組編輯後，點同一個畫面位置：選取解析成�
     // top level: the OUTERMOST id-carrying ancestor is the group itself.
     await slideFrame.locator("#el-group-child").click();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- NOOP-90/T2 §4.4/§4.5: 鍵盤快捷鍵、右鍵選單、Arrange 選單 ---
+
+it("⌘A 全選本頁頂層元素（不含群組內的子元素），焦點在父文件時生效", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    // 本頁頂層元素：el-a/el-b/el-c/el-caption/el-text/el-group/
+    // el-group-rotate/el-group-scale，共 8 個——群組內的子元素不算。
+    await page.keyboard.press("Meta+a");
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 8 elements");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("Delete 鍵刪除目前選取，undo 還原；無選取時是 no-op", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    // 無選取：Delete 不應該有任何效果。
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(100);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click();
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    expect(after).not.toContain('id="el-c"');
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘D 複製選取，位移是 viewBox 的 +3%/+4%，新元素成為選取，undo 還原", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click();
+    await page.keyboard.press("Meta+d");
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    const beforeCount = (before.match(/<g id="/g) ?? []).length;
+    const afterCount = (after.match(/<g id="/g) ?? []).length;
+    expect(afterCount).toBe(beforeCount + 1);
+    // el-c is at translate(550 500); +3%/+4% of the 1280x720 viewBox is
+    // (38.4, 28.8). generateElementId's ids are base64url, which includes
+    // "-"/"_" — the id charclass below must allow both.
+    // `element duplicate` carries the source's `data-comot-name` along, so
+    // the new `<g>` has it between `id` and `transform` — do not anchor the
+    // two attributes as adjacent.
+    const newIdMatch = /<g id="(el-[A-Za-z0-9_-]+)"[^>]*transform="translate\(588\.4 528\.8\)"/.exec(after);
+    expect(newIdMatch).not.toBeNull();
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘] 將選取移到最上層（element order front/up 的鍵盤入口）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
+    await page.keyboard.press("Meta+]");
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    expect(after.indexOf("el-b")).toBeLessThan(after.indexOf('id="el-a"'));
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("元素右鍵選單：右鍵未選取的元素會先選取它並開啟選單；Delete 項目送出 element delete", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click({ button: "right" });
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 C");
+
+    const menu = page.locator(".element-context-menu");
+    expect(await menu.isVisible()).toBe(true);
+    await menu.getByRole("menuitem", { name: /^Delete/ }).click();
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    expect(after).not.toContain('id="el-c"');
+    expect(await menu.isVisible()).toBe(false);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("Arrange 選單：Align left 對齊三個選取元素的最小 x；未達門檻時停用", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    // 只選一個元素：Arrange 按鈕本身可按（有選取），但 Align 停用（< 2）。
+    await slideFrame.locator("#el-a").click();
+    await page.getByRole("button", { name: "Arrange" }).click();
+    const alignLeftSingle = page.locator(".arrange-menu-item", { hasText: "Align left" });
+    expect(await alignLeftSingle.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+
+    // 三個元素：Align/Distribute/Order 全部可用。
+    await slideFrame.locator("#el-a").click();
+    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
+    await slideFrame.locator("#el-c").click({ modifiers: ["Shift"] });
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 3 elements");
+
+    await page.getByRole("button", { name: "Arrange" }).click();
+    const alignLeft = page.locator(".arrange-menu-item", { hasText: "Align left" });
+    expect(await alignLeft.isDisabled()).toBe(false);
+    await alignLeft.click();
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    // el-a/el-b/el-c's own x are 100/700/550 — the minimum is 100.
+    expect(readTranslate(after, "el-a").x).toBe(100);
+    expect(readTranslate(after, "el-b").x).toBe(100);
+    expect(readTranslate(after, "el-c").x).toBe(100);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
   } finally {
     await cleanup();
   }
