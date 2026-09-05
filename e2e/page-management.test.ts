@@ -509,6 +509,15 @@ it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    // `.rail-menu` 進場有一個 translateY/opacity 的 CSS `animation`
+    // （rail.css `rail-menu-in`，`--dur-fast`）；`compareScreenshot` 的
+    // `animations: "disabled"` 理論上會把動畫快轉到結束態，但實測在 CI 上
+    // 兩次各自捕捉的 New 面板截圖仍有肉眼不可見、pixelmatch 抓得到的
+    // 一致性差異（608/37932，遠高於其餘無動畫元素的雜訊量級）——換成
+    // `reducedMotion: "reduce"` 讓 tokens.css 的 reduced-motion 層直接把
+    // `--dur-fast` 歸零，animation 從一開始就不存在，不再依賴「快轉到終
+    // 態」這個間接機制。
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await settleForScreenshot(page);
     const railBox = await page.locator(".rail").boundingBox();
     if (!railBox) throw new Error("找不到 .rail");
