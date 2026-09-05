@@ -1,5 +1,5 @@
 import { addTemplate, listTemplates, renameTemplate, deleteTemplate, type TemplateEntry } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
  * `template add` (T3, ADR-0013). The only door a template ever comes into
@@ -61,3 +61,10 @@ export const templateDeleteCommand: CommandHandler<TemplateDeleteInput, void> = 
   await deleteTemplate(input.id, input.templatePath);
   return { ok: true, message: `已刪除範本 ${input.templatePath}` };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("template add", { handler: templateAddCommand, render: null });
+  registry.register("template list", { handler: templateListCommand, render: null });
+  registry.register("template rename", { handler: templateRenameCommand, render: null });
+  registry.register("template delete", { handler: templateDeleteCommand, render: null });
+}

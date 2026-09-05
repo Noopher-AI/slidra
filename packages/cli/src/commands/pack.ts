@@ -1,5 +1,5 @@
 import { packPresentation } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 export interface PackInput {
   id: string;
@@ -16,3 +16,7 @@ export const packCommand: CommandHandler<PackInput, PackData> = async (input) =>
     message: "已完成打包",
   };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("pack", { handler: packCommand, render: null });
+}

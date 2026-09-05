@@ -1,5 +1,5 @@
 import { listPresentationEntries } from "@co-motion/core";
-import type { CommandHandler, TerminalRenderer } from "../registry.js";
+import type { CommandHandler, CommandRegistry, TerminalRenderer } from "../registry.js";
 
 export interface LsInput {
   id: string;
@@ -26,3 +26,7 @@ export const lsCommand: CommandHandler<LsInput, LsData> = async (input) => {
  */
 export const renderLs: TerminalRenderer<LsData> = (data) =>
   data.entries.map((entry) => `${entry}\n`).join("");
+
+export function register(registry: CommandRegistry): void {
+  registry.register("ls", { handler: lsCommand, render: renderLs });
+}

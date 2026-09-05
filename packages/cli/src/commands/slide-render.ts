@@ -1,6 +1,6 @@
 import { renderSlideForDisplay } from "@co-motion/core";
 import { renderCat } from "./cat.js";
-import type { CommandHandler, TerminalRenderer } from "../registry.js";
+import type { CommandHandler, CommandRegistry, TerminalRenderer } from "../registry.js";
 
 export interface SlideRenderInput {
   id: string;
@@ -30,3 +30,7 @@ export const slideRenderCommand: CommandHandler<SlideRenderInput, SlideRenderDat
 };
 
 export const renderSlideRender: TerminalRenderer<SlideRenderData> = renderCat;
+
+export function register(registry: CommandRegistry): void {
+  registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });
+}

@@ -1,5 +1,5 @@
 import { undoLastGroup } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 export interface UndoInput {
   id: string;
@@ -17,3 +17,7 @@ export const undoCommand: CommandHandler<UndoInput, UndoData> = async (input) =>
     message: "已復原上一步操作",
   };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("undo", { handler: undoCommand, render: null });
+}

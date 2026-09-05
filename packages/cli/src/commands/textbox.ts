@@ -1,5 +1,5 @@
 import { addTextBox, setTextBoxWidth } from "@co-motion/core";
-import type { CommandHandler } from "../registry.js";
+import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
  * `co-motion textbox add` / `co-motion textbox width` (#76, W1-R5/W1-R9).
@@ -77,3 +77,8 @@ export const textBoxWidthCommand: CommandHandler<TextBoxWidthInput, TextBoxWidth
     message: `已調整 ${input.elementId} 的文字框寬度（重新換行為 ${lines} 行）`,
   };
 };
+
+export function register(registry: CommandRegistry): void {
+  registry.register("textbox add", { handler: textBoxAddCommand, render: null });
+  registry.register("textbox width", { handler: textBoxWidthCommand, render: null });
+}

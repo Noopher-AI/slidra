@@ -1,50 +1,20 @@
 import { CommandRegistry } from "./registry.js";
-import { newCommand } from "./commands/new.js";
-import { openCommand } from "./commands/open.js";
-import { packCommand } from "./commands/pack.js";
-import { catCommand, renderCat } from "./commands/cat.js";
-import { lsCommand, renderLs } from "./commands/ls.js";
-import { textSetCommand } from "./commands/text-set.js";
-import { textBoxAddCommand, textBoxWidthCommand } from "./commands/textbox.js";
-import { convertCommand } from "./commands/convert.js";
-import { undoCommand } from "./commands/undo.js";
-import { redoCommand } from "./commands/redo.js";
-import {
-  elementInsertCommand,
-  elementDeleteCommand,
-  elementMoveCommand,
-  elementScaleCommand,
-  elementRotateCommand,
-  elementStyleSetCommand,
-  elementOrderCommand,
-  elementLockCommand,
-  elementUnlockCommand,
-  elementGroupCommand,
-  elementUngroupCommand,
-  elementAlignCommand,
-  elementDistributeCommand,
-  elementNameSetCommand,
-  elementCopyCommand,
-  elementCutCommand,
-  elementPasteCommand,
-  elementDuplicateCommand,
-} from "./commands/element.js";
-import { slideRenderCommand, renderSlideRender } from "./commands/slide-render.js";
-import { assetImportCommand } from "./commands/asset-import.js";
-import {
-  slideAddCommand,
-  slideDeleteCommand,
-  slideDuplicateCommand,
-  slideMoveCommand,
-  slideNotesSetCommand,
-} from "./commands/slide.js";
-import {
-  templateAddCommand,
-  templateListCommand,
-  templateRenameCommand,
-  templateDeleteCommand,
-} from "./commands/template.js";
-import { presentationTransitionSetCommand } from "./commands/presentation.js";
+import { register as registerNew } from "./commands/new.js";
+import { register as registerOpen } from "./commands/open.js";
+import { register as registerPack } from "./commands/pack.js";
+import { register as registerCat } from "./commands/cat.js";
+import { register as registerLs } from "./commands/ls.js";
+import { register as registerTextSet } from "./commands/text-set.js";
+import { register as registerTextbox } from "./commands/textbox.js";
+import { register as registerConvert } from "./commands/convert.js";
+import { register as registerUndo } from "./commands/undo.js";
+import { register as registerRedo } from "./commands/redo.js";
+import { register as registerElement } from "./commands/element/index.js";
+import { register as registerSlideRender } from "./commands/slide-render.js";
+import { register as registerAssetImport } from "./commands/asset-import.js";
+import { register as registerSlide } from "./commands/slide.js";
+import { register as registerTemplate } from "./commands/template.js";
+import { register as registerPresentation } from "./commands/presentation.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -59,49 +29,33 @@ import { presentationTransitionSetCommand } from "./commands/presentation.js";
  * mimic a Unix tool's raw output. This is the single place a future command
  * author must confront the rendering question — `register`'s `render`
  * field is required, not optional.
+ *
+ * Each command family owns its own `register(registry)` function,
+ * colocated with its handlers in `./commands/<family>.ts` (or
+ * `./commands/element/index.ts` for the many-sub-command `element` family)
+ * — this function just runs all of them against one registry.
  */
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  registry.register("new", { handler: newCommand, render: null });
-  registry.register("open", { handler: openCommand, render: null });
-  registry.register("pack", { handler: packCommand, render: null });
-  registry.register("cat", { handler: catCommand, render: renderCat });
-  registry.register("ls", { handler: lsCommand, render: renderLs });
-  registry.register("text set", { handler: textSetCommand, render: null });
-  registry.register("textbox add", { handler: textBoxAddCommand, render: null });
-  registry.register("textbox width", { handler: textBoxWidthCommand, render: null });
-  registry.register("convert", { handler: convertCommand, render: null });
-  registry.register("undo", { handler: undoCommand, render: null });
-  registry.register("redo", { handler: redoCommand, render: null });
-  registry.register("element insert", { handler: elementInsertCommand, render: null });
-  registry.register("element delete", { handler: elementDeleteCommand, render: null });
-  registry.register("element move", { handler: elementMoveCommand, render: null });
-  registry.register("element scale", { handler: elementScaleCommand, render: null });
-  registry.register("element rotate", { handler: elementRotateCommand, render: null });
-  registry.register("element style set", { handler: elementStyleSetCommand, render: null });
-  registry.register("element order", { handler: elementOrderCommand, render: null });
-  registry.register("element group", { handler: elementGroupCommand, render: null });
-  registry.register("element ungroup", { handler: elementUngroupCommand, render: null });
-  registry.register("element align", { handler: elementAlignCommand, render: null });
-  registry.register("element distribute", { handler: elementDistributeCommand, render: null });
-  registry.register("element name set", { handler: elementNameSetCommand, render: null });
-  registry.register("element copy", { handler: elementCopyCommand, render: null });
-  registry.register("element cut", { handler: elementCutCommand, render: null });
-  registry.register("element paste", { handler: elementPasteCommand, render: null });
-  registry.register("element duplicate", { handler: elementDuplicateCommand, render: null });
-  registry.register("slide render", { handler: slideRenderCommand, render: renderSlideRender });
-  registry.register("asset import", { handler: assetImportCommand, render: null });
-  registry.register("element lock", { handler: elementLockCommand, render: null });
-  registry.register("element unlock", { handler: elementUnlockCommand, render: null });
-  registry.register("slide add", { handler: slideAddCommand, render: null });
-  registry.register("slide delete", { handler: slideDeleteCommand, render: null });
-  registry.register("slide duplicate", { handler: slideDuplicateCommand, render: null });
-  registry.register("slide move", { handler: slideMoveCommand, render: null });
-  registry.register("slide notes set", { handler: slideNotesSetCommand, render: null });
-  registry.register("template add", { handler: templateAddCommand, render: null });
-  registry.register("template list", { handler: templateListCommand, render: null });
-  registry.register("template rename", { handler: templateRenameCommand, render: null });
-  registry.register("template delete", { handler: templateDeleteCommand, render: null });
-  registry.register("presentation transition set", { handler: presentationTransitionSetCommand, render: null });
+  for (const register of [
+    registerNew,
+    registerOpen,
+    registerPack,
+    registerCat,
+    registerLs,
+    registerTextSet,
+    registerTextbox,
+    registerConvert,
+    registerUndo,
+    registerRedo,
+    registerElement,
+    registerSlideRender,
+    registerAssetImport,
+    registerSlide,
+    registerTemplate,
+    registerPresentation,
+  ]) {
+    register(registry);
+  }
   return registry;
 }
