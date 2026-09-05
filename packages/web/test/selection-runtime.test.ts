@@ -50,12 +50,20 @@ function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window
  * window, excluding `"viewport"` (NOOP-91 §4.1) — jsdom's own async iframe
  * load can fire the runtime's `load` listener at an unpredictable point
  * relative to a test's click, and these tests are about hit resolution and
- * the select/clear contract, not the viewport report.
+ * the select/clear contract, not the viewport report — and excluding
+ * `"runtime-ready"` (NOOP-83 §2.1(c)) for the same reason it needs the same
+ * treatment: `boot()` always runs before this function is called, so the
+ * `postMessage` it fires at the very end of the runtime's IIFE is still
+ * in-flight (postMessage delivery is asynchronous) when the listener below
+ * attaches, and is delivered before whatever the test itself triggers next
+ * — deterministically the first message every caller of `boot()` would
+ * otherwise see, and irrelevant to what every test in this file asserts.
  */
 function collectMessages(): { messages: unknown[]; stop: () => void } {
   const messages: unknown[] = [];
   const handler = (event: MessageEvent) => {
-    if ((event.data as { event?: unknown })?.event === "viewport") return;
+    const eventName = (event.data as { event?: unknown })?.event;
+    if (eventName === "viewport" || eventName === "runtime-ready") return;
     messages.push(event.data);
   };
   window.addEventListener("message", handler);

@@ -741,6 +741,7 @@ export function App() {
             wellRef={wellRef}
             canvasSize={presentationInfo?.canvas ?? null}
             state={canvasState}
+            controller={controllerRef.current}
             dropOverlay={{
               active: dropActive,
               onDragOver: handleStageDragOver,

@@ -35,17 +35,20 @@
    ═══════════════════════════════════════════════════════════════ */
 :root {
   /* ── 舊殼相容層（暫留，非設計包 token） ───────────────────────────
-     PlayChrome.tsx／play.css（播放模式，本票明確排除、留給後續票）仍以
-     `var(--x)` 消費 S1 舊殼的一整組 token，不是只有 `--u`。整份
-     tokens.css 改採設計包 token 後，這些名字都不在任何設計包分類裡，但
-     刪掉任何一個都會讓 play.css 對應的規則解不出值（CSS `var()`
-     解析失敗時整條屬性宣告失效，不是留空）——`.play-bar` 的版位、底色、
-     邊框、字級、圓角、焦點框全部要靠它們，缺一個播放列在畫面上就會消失
-     或跑位（e2e player-effect-error/player-media/play-appearance 三個受
-     影響；已逐一核對每個名字對 play.css/PlayChrome.tsx 的實際引用，見
-     兩者的 `grep -oh 'var(--[a-z0-9-]+)'`）。值原封不動抄自 base
-     （b0de47f）的舊 tokens.css，不是重新設計。播放模式整體改版時，這整
-     塊連同 play.css／PlayChrome.tsx 的引用一併淘汰。 */
+     整份 tokens.css 改採設計包 token 後，這些名字都不在任何設計包分類
+     裡，但刪掉任何一個都會讓消費它的規則解不出值（CSS `var()` 解析失敗
+     時整條屬性宣告失效，不是留空）。三種消費者：
+       1. play.css／PlayChrome.tsx（播放模式，本票明確排除、留給後續
+          票）——`.play-bar` 的版位、底色、邊框、字級、圓角、焦點框。
+       2. style.css 的 `.player-error-notice`（同樣是播放模式 UI）——
+          `--r`／`--s-raised`／`--line`／`--ink`／`--fs-small`／`--u`。
+       3. canvas.ts 的 `selectionColors()`——用 JS `getPropertyValue()`
+          讀 `--accent-hi`／`--s-titlebar`，餵給 iframe 內的
+          selection-runtime.js 組出選取框/把手/輔助線/文字游標的 inline
+          style；這一種是機械掃描 CSS 檔案找不到的用法，容易漏。
+     值原封不動抄自 base（b0de47f）的舊 tokens.css，不是重新設計。播放
+     模式整體改版時，這整塊連同 play.css／PlayChrome.tsx／
+     .player-error-notice 的引用一併淘汰。 */
   --u: 4px;
   --ink: #f3f2f1;
   --ink-dim: #a19f9d;
@@ -57,13 +60,21 @@
   --s-overlay-raised: rgba(255, 255, 255, 0.09);
   --line-overlay: rgba(255, 255, 255, 0.1);
   --line-overlay-strong: rgba(255, 255, 255, 0.12);
-  --focus-ring: #e03a56; /* 舊 --accent-hi 的值，鏈只有這裡用得到，直接展開 */
+  --focus-ring: #e03a56;
   --focus-ring-width: 1px;
   --r-control: 2px;
   --r-pill: 5px;
   --icon-control: 15px;
   --dur-panel: 180ms;
   --ease-panel: ease;
+  /* --accent-hi 目前與 --focus-ring 同值，但生命週期不同：--focus-ring 是
+     新殼的焦點框，--accent-hi 是 canvas.ts 讀給 iframe 內選取框/把手用
+     的舊殼顏色，兩者未來會獨立變化，故不用 var(--focus-ring) 互相鏈接。 */
+  --accent-hi: #e03a56;
+  --s-titlebar: #201f1e;
+  --r: 3px;
+  --s-raised: #323130;
+  --line: #3b3a39;
 
   /* ── 色彩 · 品牌／強調 ─────────────────────────────────────────── */
   --brand-red: #c8233b;

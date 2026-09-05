@@ -9,7 +9,7 @@ import {
   type RefObject,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import type { CanvasState } from "../canvas.js";
+import type { CanvasController, CanvasState } from "../canvas.js";
 import { Dock } from "./dock/Dock.js";
 import { OverlayLayer } from "./stage-overlays/OverlayLayer.js";
 import {
@@ -33,6 +33,14 @@ export interface StageProps {
   /** 舞台比例來源；null 時吃 CSS 的 16/9 fallback。 */
   canvasSize: { width: number; height: number } | null;
   state: CanvasState;
+  /**
+   * NOOP-83 §2.1/§4：投影片本體上的滾輪縮放/平移、抓取模式拖曳、Space 暫時
+   * 抓取都經由 canvas.ts 的 `subscribeStageInput`/`setStageHandMode`/
+   * `clearSelection` 轉發（selection-runtime.js 是實際來源）。`null`（首次
+   * render，比照既有 `PlayChrome` 的 `controllerRef.current` 用法）時舞台
+   * 導航僅在留白區生效，不報錯、等下一次 render 拿到非 null 的值。
+   */
+  controller: CanvasController | null;
   /** T3/NOOP-142 既有的拖放匯入媒體 overlay（與這張骨架票無關，維持原樣）。 */
   dropOverlay: { active: boolean; onDragOver: (event: DragEvent) => void; onDrop: (event: DragEvent) => void; onDragLeave: (event: DragEvent) => void };
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
@@ -64,7 +72,7 @@ function isOnStageChrome(target: EventTarget | null): boolean {
  * （平移+縮放），這對 canvas.ts 完全透明——它的座標數學全部發生在 iframe
  * 自己的文件座標系裡，祖先層的 CSS transform 不影響那個座標系。
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, children }: StageProps) {
   const [zoomPan, setZoomPan] = useState<ZoomPanState>(initialZoomPan);
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
@@ -74,6 +82,13 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, chil
   // shellVisible 一起從 DOM 消失，比照 App.tsx 對 Titlebar/Rail/側欄的既有
   // 作法（播放模式時整組不掛載，不是 CSS 隱藏）。
   const shellVisible = state.mode !== "play";
+
+  // 給 stage-input relay 用的「最新值」讀取口——effect 只在 controller 變
+  // 動時重新訂閱一次（見下方），訂閱期間收到的每個事件都要讀到當下的
+  // zoomPan，不是訂閱那一刻的舊值，所以用 ref 而非直接關閉 zoomPan 這個
+  // state 變數。
+  const zoomPanRef = useRef(zoomPan);
+  zoomPanRef.current = zoomPan;
 
   // Space 暫時抓取 (05-INTERACTIONS.feature「暫時抓取」)：按住等同抓取模
   // 式，放開恢復原本的 hand 狀態；視窗失焦視同放開（不會卡在抓取模式）；
@@ -103,20 +118,63 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, chil
     };
   }, [shellVisible]);
 
+  // 抓取模式（✋ 或 Space 暫時抓取）狀態變動時同步推給 canvas.ts——它是唯一
+  // 知道要不要把這個狀態重推給 selection-runtime.js（切頁後、
+  // "runtime-ready"）的一方，這裡只管把最新值交給它（NOOP-83 §2.1(c)）。
+  useEffect(() => {
+    controller?.setStageHandMode(isHandActive(hand));
+  }, [controller, hand]);
+
+  // 投影片本體上的滾輪縮放/平移、抓取模式拖曳（NOOP-83 §2/§4，Dev-Leader
+  // 裁決核准的擴大範圍）：canvas.ts 已經把 selection-runtime.js 回報的
+  // iframe 內座標換算成這個文件的 client 座標，所以下面的數學跟
+  // handleWheel／handleMouseDown 對留白區做的完全一樣，不重寫一份。
+  useEffect(() => {
+    if (!controller || !shellVisible) return;
+    return controller.subscribeStageInput((event) => {
+      switch (event.type) {
+        case "wheel-zoom": {
+          const rect = wellRef.current?.getBoundingClientRect();
+          const anchor = rect
+            ? { x: event.point.x - rect.left - rect.width / 2, y: event.point.y - rect.top - rect.height / 2 }
+            : { x: 0, y: 0 };
+          setZoomPan((current) => zoomByWheel(current, event.deltaY, anchor));
+          return;
+        }
+        case "wheel-pan":
+          setZoomPan((current) => panBy(current, -event.deltaX, -event.deltaY));
+          return;
+        case "pan-start":
+          dragRef.current = { startX: event.point.x, startY: event.point.y, startPan: zoomPanRef.current.pan };
+          setDragging(true);
+          return;
+        case "pan-move": {
+          const drag = dragRef.current;
+          if (!drag) return;
+          setZoomPan((current) => ({
+            zoom: current.zoom,
+            pan: { x: drag.startPan.x + (event.point.x - drag.startX), y: drag.startPan.y + (event.point.y - drag.startY) },
+          }));
+          return;
+        }
+        case "pan-end":
+          dragRef.current = null;
+          setDragging(false);
+          return;
+        case "space-down":
+          setHand((current) => pressSpace(current));
+          return;
+        case "space-up":
+          setHand((current) => releaseSpace(current));
+          return;
+      }
+    });
+  }, [controller, shellVisible, wellRef]);
+
   /**
-   * 已知缺口（本票驗證時發現，計畫沒預期到，寫在這裡讓下一個動這段程式碼
-   * 的人不必重新踩一次）：`.canvas` 是一個 sandboxed iframe，滑鼠事件一旦
-   * 落在它渲染的矩形範圍內就完全由 iframe 自己的文件收下，不會冒泡到這個
-   * React `onWheel` handler——已用 Playwright 實測驗證：wheel 落在
-   * `.canvas-area` 的留白（padding）背景上會被這裡收到，落在 `.stage`／
-   * iframe 範圍內則完全收不到事件（見 NOOP-81 Execute 交付留言的驗證紀
-   * 錄）。也就是說滾輪縮放/平移目前只在使用者滑鼠剛好停在投影片周圍留白
-   * 才生效，停在投影片本體上（畫面絕大部分面積）不會有反應。修法是比照
-   * `canvas.ts` 既有的 `dragSignal` postMessage relay（selection-runtime.js
-   * 在 iframe 內監聽再轉發），幫 wheel 事件也做一份——但這需要擴充
-   * `CanvasState` 的形狀並改 selection-runtime.js，兩者都在這張骨架票明
-   * 確畫定的「canvas.ts/selection-runtime.js 不得修改」範圍之外，所以本票
-   * 不動它，只補這個註解與 PR 報告裡的風險項目。
+   * 留白區（`.canvas-area` 的 padding 背景）自己的滾輪/拖曳處理——投影片
+   * 本體上的同一批操作走上面 `subscribeStageInput` 的 relay，見該 effect
+   * 的註解。兩條路徑共用這裡的縮放/平移數學，沒有重複一份。
    */
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>): void {
     if (!shellVisible || isOnStageChrome(event.target)) return;
@@ -168,11 +226,9 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, chil
     const { state: next, selectionCleared } = toggleHand(hand);
     setHand(next);
     if (selectionCleared) {
-      // 05-INTERACTIONS.feature「抓取模式」：開啟時清除目前選取。
-      // canvas.ts 沒有提供獨立的「清除選取」API——選取/拖曳/縮放整組是這張
-      // 骨架票明確排除的範圍（見 ticket 說明），這裡先把訊號接住、留一個
-      // 目前沒有動作的分支，等未來票把選取狀態搬進來時在這裡補上真正的呼
-      // 叫。見 PR 報告「不確定與保留事項」。
+      // 05-INTERACTIONS.feature「抓取模式」：開啟時清除目前選取
+      // (NOOP-83 §2.1(b)/§4.5)。
+      controller?.clearSelection();
     }
   }
 

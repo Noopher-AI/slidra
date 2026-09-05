@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -8,16 +8,6 @@ import { describe, expect, it } from "vitest";
 // own markdown) with node:fs and regex; they deliberately do not mount
 // the stylesheet in jsdom and read computed style, which would test
 // jsdom's CSS engine instead of this file's contents.
-//
-// This file used to also assert "every var(--x) used by a regional
-// stylesheet (shell.css, stage.css, …) is declared in tokens.css's
-// :root" — that check is retired here, not weakened: tokens.css was
-// just rewritten wholesale to the design package's naming (see the file
-// itself), and every regional stylesheet still speaks the *old* names
-// (a parallel, separate ticket owns rewriting/deleting them). Re-adding
-// that check now would just assert a known, out-of-scope fact for this
-// ticket. Whoever migrates the regional stylesheets should reinstate an
-// equivalent check once both sides use the same vocabulary.
 
 const webSrcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 const tokensPath = path.join(webSrcDir, "styles", "tokens.css");
@@ -159,6 +149,11 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--icon-control",
   "--dur-panel",
   "--ease-panel",
+  "--accent-hi",
+  "--s-titlebar",
+  "--r",
+  "--s-raised",
+  "--line",
 ]);
 
 /** Every CSS custom property name tokens.css's :root may legally declare: either the direct
@@ -305,5 +300,65 @@ describe("tokens.css — prefers-reduced-motion", () => {
     expect(block).toMatch(/--dur-fast:\s*0ms/);
     expect(block).toMatch(/--dur-base:\s*0ms/);
     expect(block).toMatch(/animation-iteration-count:\s*1\s*!important/);
+  });
+});
+
+// `--overview-aspect-ratio` is set at runtime by overview.ts on individual
+// elements (element.style.setProperty), not declared in tokens.css's
+// :root — its two consumers both carry a `, 16 / 9` fallback. It is the
+// one deliberate exemption from "every var() must resolve in tokens.css".
+const RUNTIME_SET_TOKENS = new Set(["--overview-aspect-ratio"]);
+
+function regionalCssFiles(): string[] {
+  const stylesDir = path.join(webSrcDir, "styles");
+  const files = readdirSync(stylesDir)
+    .filter((name) => name.endsWith(".css") && name !== "tokens.css")
+    .map((name) => path.join(stylesDir, name));
+  files.push(path.join(webSrcDir, "style.css"));
+  return files;
+}
+
+function usedVarNames(css: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of css.matchAll(/var\((--[a-z0-9-]+)/g)) names.add(match[1]);
+  return names;
+}
+
+describe("tokens.css — 區域 CSS 消費的每個 var(--x) 都要有定義", () => {
+  it("區域 CSS 用到的每一個 var(--x)（豁免 --overview-aspect-ratio）都在 tokens.css 的 :root 有定義", () => {
+    const declared = declaredRootTokenNames();
+    const missing = new Set<string>();
+    for (const file of regionalCssFiles()) {
+      const css = readFileSync(file, "utf8");
+      for (const name of usedVarNames(css)) {
+        if (RUNTIME_SET_TOKENS.has(name)) continue;
+        if (!declared.has(name)) missing.add(`${name}（${path.basename(file)}）`);
+      }
+    }
+    expect([...missing]).toEqual([]);
+  });
+
+  it("packages/web/src 下 JS 端 getPropertyValue(\"--x\") 讀的每個字面 token 名稱也都在 :root 有定義", () => {
+    const declared = declaredRootTokenNames();
+    const missing = new Set<string>();
+    const srcFiles: string[] = [];
+    function walk(dir: string): void {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "assets") continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) srcFiles.push(full);
+      }
+    }
+    walk(webSrcDir);
+    for (const file of srcFiles) {
+      const content = readFileSync(file, "utf8");
+      for (const match of content.matchAll(/getPropertyValue\(\s*["'](--[a-z0-9-]+)["']\s*\)/g)) {
+        const name = match[1];
+        if (RUNTIME_SET_TOKENS.has(name)) continue;
+        if (!declared.has(name)) missing.add(`${name}（${path.relative(webSrcDir, file)}）`);
+      }
+    }
+    expect([...missing]).toEqual([]);
   });
 });
