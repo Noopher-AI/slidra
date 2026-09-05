@@ -8,15 +8,14 @@ import "./styles/tokens.css";
 import "./style.css";
 import "./styles/shell.css";
 import "./styles/stage.css";
+import "./styles/stage-overlays.css";
+import "./styles/dock.css";
 import "./styles/rail.css";
 import "./styles/notes.css";
 import "./styles/chat.css";
 import "./styles/play.css";
-import "./styles/grid.css";
 import "./styles/selection.css";
-import "./styles/style-panel.css";
 import "./styles/side-panel.css";
-import "./styles/template-dialog.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

@@ -1,124 +1,161 @@
 /* ═══════════════════════════════════════════════════════════════
-   縮圖軌 (#52). Rules moved here from ../style.css, restyled onto tokens;
-   selector names are overview.ts's own contract (li.overview-item,
-   button.overview-thumb, iframe.overview-frame, span.overview-number) and
-   are not renamed to match base-shell.html's .rail/.thumb-row/.thumb —
-   overview.ts owns those class names (see AGENTS/軍令 #3, ADR-0001/0002).
+   左欄 (New v3 skeleton): New/Templates 按鈕 + 縮圖 rail。
+   `.overview*` 系列 class 名稱是 overview.ts 自己的既有契約（不因這張骨架
+   票重新命名），這裡只把顏色/間距換成新 token 集合。
    ═══════════════════════════════════════════════════════════════ */
 
+.rail {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--surface-2);
+  background: var(--surface-1);
+  box-sizing: border-box;
+}
+
+.rail-actions {
+  position: relative;
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-1);
+}
+
+.rail-action-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-700);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  white-space: nowrap;
+}
+.rail-action-button:hover {
+  border-color: var(--ink-300);
+}
+.rail-action-button[aria-expanded="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+}
+
+.rail-menu {
+  position: absolute;
+  top: 100%;
+  left: var(--space-4);
+  z-index: 20;
+  min-width: calc(var(--panel-w) * 0.6);
+  min-height: var(--control-h);
+  padding: var(--space-2);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+  animation: rail-menu-in var(--dur-fast) var(--ease-out);
+}
+@keyframes rail-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rail-slides-label {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-6) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+}
+
 .overview {
-  width: var(--w-rail);
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--line-soft);
-  background: var(--s-panel);
-  /* Inline size is pinned to --w-rail across all three supported
-     viewports (shell.css's `.body` grid), so an inline-size query here
-     would never fire. Height is the only axis that actually varies —
-     `container-type: size` is safe because `.overview`'s own height
-     comes from `.body`'s grid stretch, not from its own content. */
-  container-type: size;
-  container-name: rail;
 }
 
 .overview-list {
   list-style: none;
   margin: 0;
-  padding: calc(var(--u) * 2) 0;
+  padding: var(--space-3) 0;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--u) * 1.5);
+  gap: var(--space-4);
 }
 
 .overview-item {
   display: grid;
-  grid-template-columns: calc(var(--u) * 5) 1fr;
-  gap: calc(var(--u) * 2);
+  grid-template-columns: var(--space-8) 1fr;
+  gap: var(--space-3);
   align-items: start;
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  padding: var(--space-2) var(--space-6);
   position: relative;
-  transition: background-color var(--dur-micro) var(--ease-micro);
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
-
 .overview-item:hover {
-  background: var(--s-raised);
+  background: var(--surface-2);
 }
 
-/* Current slide's second, non-colour signal: a left-edge marker. Absolutely
-   positioned so it doesn't shift the thumbnail's own box (keeps the
-   overview-current-thumb.png baseline untouched). */
 .overview-item-current::before {
   content: "";
   position: absolute;
   left: 0;
-  top: calc(var(--u) * 1.5);
-  bottom: calc(var(--u) * 1.5);
-  width: calc(var(--u) * 0.75);
-  background: var(--accent-hi);
-  border-radius: 0 var(--r-control) var(--r-control) 0;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: var(--space-1);
+  background: var(--brand-red);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
   pointer-events: none;
 }
 
 .overview-number {
   text-align: right;
-  padding-top: calc(var(--u) * 1);
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  padding-top: var(--space-1);
+  color: var(--ink-400);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
-
 .overview-item-current .overview-number {
-  color: var(--ink);
-  /* Current slide's third, non-colour signal: a heavier page number. */
-  font-weight: var(--fw-medium);
+  color: var(--ink-900);
+  font-weight: 700;
 }
 
 .overview-thumb {
-  /* The box's real ratio comes from project.json's canvas via the custom
-     property overview.ts sets on the list (a custom property inherits, so
-     this selector reading it directly needs no property on .overview-item
-     itself); 16:9 is only the pre-data placeholder so the scrollbar
-     reflects the real slide count even before /api/presentation has
-     answered. */
   aspect-ratio: var(--overview-aspect-ratio, 16 / 9);
   display: block;
   width: 100%;
   height: auto;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  /* #000 (not a token) is copied verbatim from base-shell.html's own
-     .thumb rule — the placeholder colour before a thumbnail's iframe has
-     painted anything, same literal-copy exception used in shell.css's
-     .stage/.canvas-area:fullscreen comments. */
-  background: var(--s-blackout);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--well-play);
   cursor: pointer;
   overflow: hidden;
-  outline: 2px solid transparent;
+  outline: calc(var(--space-1) / 2) solid transparent;
   outline-offset: 1px;
-  /* Only border-color transitions — not outline-color, for the same
-     reason as shell.css's .cmd rules: outline is reserved for the
-     current-slide indicator, and fading it from currentColor would make
-     keyboard focus look grey for a moment before it settles. */
-  transition: border-color var(--dur-micro) var(--ease-micro);
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
-
 .overview-thumb:active {
-  border-color: var(--accent-hi);
+  border-color: var(--brand-red);
 }
-
-/* box-shadow, not outline: `outline` on this element is reserved for the
-   "current slide" indicator (see .overview-item-current .overview-thumb
-   below, locked by e2e/shell.test.ts). */
 .overview-thumb:focus-visible {
-  box-shadow: 0 0 0 calc(var(--focus-ring-width) * 2) var(--focus-ring);
+  box-shadow: 0 0 0 var(--space-1) var(--brand-red-ring);
 }
-
 .overview-item-current .overview-thumb {
-  /* The template's mapping is explicit: 縮圖外框 is one of the accent's two
-     jobs ("現在在哪") — ticket #49's settled mapping for the old #2a6fb0. */
-  border-color: var(--accent);
-  outline-color: var(--accent);
+  border-color: var(--brand-red);
+  outline-color: var(--brand-red);
 }
 
 .overview-frame {
@@ -126,28 +163,4 @@
   height: 100%;
   border: 0;
   pointer-events: none;
-}
-
-/* `.overview`'s inline size is a fixed `--w-rail` at every supported
-   viewport (shell.css's `.body` grid columns), so height is the only axis
-   worth querying. 1440×900 (the middle of the three supported sizes)
-   falls between these two thresholds on purpose, so its baseline
-   screenshot stays pixel-identical. */
-@container rail (height < 620px) {
-  .overview-list {
-    gap: var(--u);
-    padding-block: var(--u);
-  }
-  .overview-item {
-    padding-block: var(--u);
-  }
-}
-
-@container rail (height >= 1100px) {
-  .overview-list {
-    gap: calc(var(--u) * 2.5);
-  }
-  .overview-item {
-    padding-block: calc(var(--u) * 2.5);
-  }
 }

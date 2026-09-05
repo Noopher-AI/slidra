@@ -30,6 +30,15 @@ const baselineDir = path.join(e2eDir, "__screenshots__/stage");
 const VIEWPORT = { width: 1440, height: 900 };
 // demo/project.json's real canvas — the ratio the stage must match.
 const CANVAS_RATIO = 1280 / 720;
+// New v3 shell rebuild: `.canvas-area`'s padding is no longer uniform on
+// every side. `--space-gutter` (28px 上下/左右) is overridden on the
+// bottom edge by `--space-gutter-bottom` (76px) to reserve room for the
+// floating Dock (packages/web/src/styles/shell.css's `.canvas-area` rule) —
+// 01-DESIGN_TOKENS.md's own token, not a value invented here. The stage is
+// therefore centred left/right but pushed 76-28=48px above true vertical
+// centre; the two "仍置中" assertions below check for exactly that offset
+// instead of a symmetric margin.
+const DOCK_RESERVATION = 76 - 28;
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -225,14 +234,15 @@ it("視窗大小改變時舞台重新計算，仍然置中且完整可見、不�
   expect(after.well.scrollWidth).toBe(after.well.clientWidth);
   expect(after.well.scrollHeight).toBe(after.well.clientHeight);
 
-  // Still centred inside the well (equal margins left/right, top/bottom
-  // within a small tolerance for rounding).
+  // Still centred left/right (equal margins within a small tolerance for
+  // rounding). Top/bottom is intentionally *not* symmetric any more — see
+  // the next assertion's comment (New v3 shell rebuild).
   const leftMargin = after.stage.x - after.well.x;
   const rightMargin = after.well.x + after.well.width - (after.stage.x + after.stage.width);
   expect(Math.abs(leftMargin - rightMargin)).toBeLessThan(1.5);
   const topMargin = after.stage.y - after.well.y;
   const bottomMargin = after.well.y + after.well.height - (after.stage.y + after.stage.height);
-  expect(Math.abs(topMargin - bottomMargin)).toBeLessThan(1.5);
+  expect(Math.abs(bottomMargin - topMargin - DOCK_RESERVATION)).toBeLessThan(1.5);
 });
 
 it("矮視窗（1440×600，高度會夾住舞台）：比例不跑掉、不出現文件捲軸、舞台完整落在視窗內、仍置中", async () => {
@@ -257,13 +267,13 @@ it("矮視窗（1440×600，高度會夾住舞台）：比例不跑掉、不出�
   expect(stage.y).toBeGreaterThanOrEqual(0);
   expect(stage.y + stage.height).toBeLessThanOrEqual(viewportHeight + 0.5);
 
-  // 仍置中於留白區內。
+  // 左右仍置中；上下刻意不對稱，見 DOCK_RESERVATION 的說明（New v3 殼重建）。
   const leftMargin = stage.x - well.x;
   const rightMargin = well.x + well.width - (stage.x + stage.width);
   expect(Math.abs(leftMargin - rightMargin)).toBeLessThan(1.5);
   const topMargin = stage.y - well.y;
   const bottomMargin = well.y + well.height - (stage.y + stage.height);
-  expect(Math.abs(topMargin - bottomMargin)).toBeLessThan(1.5);
+  expect(Math.abs(bottomMargin - topMargin - DOCK_RESERVATION)).toBeLessThan(1.5);
 });
 
 it("基準截圖：標準檢視的舞台（深色投影片、可辨的邊界）", async () => {

@@ -1,34 +1,23 @@
 /* ═══════════════════════════════════════════════════════════════
-   舞台 (#50). 投影片以簡報畫布比例置中、自動縮放到完整可見、四周留白、
-   有看得出來的邊界 — Stage.tsx 決定比例（canvasSize → 內嵌 aspect-ratio
-   蓋掉下面的 fallback），這裡只放版面與外觀。`.canvas-area`（舞台底、
-   置中留白）在 shell.css，因為它同時也是 #29 的全螢幕目標。
+   舞台 (New v3 skeleton). `.canvas-area` (the well, padding/background/
+   fullscreen target) lives in shell.css — this file owns `.stage` (the
+   slide's own box) and the drag/drop overlay. The zoom/pan `transform` is
+   set inline by Stage.tsx (computed from stage-view.ts's state, not a
+   design-token value), so it is not repeated here.
    ═══════════════════════════════════════════════════════════════ */
 
-/* `aspect-ratio: 1280 / 720` 只是 canvasSize 尚未從 /api/presentation 落地
-   時的 CSS fallback（Stage.tsx 用內嵌 style 蓋掉它）——逐字照抄
-   docs/design/base-shell.html:199-208 的 `.stage` 規則。背景、邊框、陰影
-   改用 tokens.css 的 `--s-slide`／`--line-slide`／`--shadow-slide`（E1.T3
-   新增）——三者的值與這裡原本的字面值逐字相同，是像素中性的 token 化，
-   不是新的視覺決定。間距（width/height/max-width/max-height）都是尺寸
-   算式，不受影響。
-
-   `width: auto`（gate round 2 finding，取代原本的 `width: 100%`）＋
-   `top/left: 50%; transform: translate(-50%, -50%)`：原本 `width: 100%`
-   把寬度釘死在 `.canvas-area` 的滿版寬，只有高度會被 `max-height: 100%`
-   夾。視窗夠矮時（.canvas-area 的可用高度小於「滿版寬 ÷ 16:9」算出來的
-   高度）夾出來的高就會比寬窄，寬高比跟著跑掉——這正是這一輪 review gate
-   抓到的問題，量測後確認是真的（見 PR body/報告），舊的四個測試從沒測過
-   會咬到這條邊的視窗。`width: auto` 讓寬跟高一起交給 `aspect-ratio` +
-   `max-width`/`max-height` 算，兩軸各自被夾住的那一軸決定實際尺寸，比例
-   任何時候都不跑掉（已用 1024×720〜1600×480 多組視窗量測驗證）。
-   `.canvas-area` 這時是 stretch 對齊（見 shell.css 的說明），舞台盒子的
-   起點會貼齊可用框的左上角，不再自動置中；`top/left:50%` 是相對容器算
-   的百分比，`translate(-50%,-50%)` 是相對舞台盒子自己算的百分比，兩者疊
-   起來剛好把盒子（不論實際尺寸）移到容器正中央，且不影響上面 stretch
-   演算出來的尺寸（transform 是排版之後才套用的視覺位移）。 */
+/* `width: auto` + `top/left: 50%` (not `width: 100%` + `place-items:
+   center`): `.canvas-area`'s grid track is stretch-aligned (see that
+   file's own comment on why), so `.stage` fills the track on both axes
+   independently and `aspect-ratio` + `max-width`/`max-height` pick
+   whichever axis is actually the tighter constraint — a window narrower or
+   shorter than 16:9 both letterbox correctly. `top/left: 50%` is relative
+   to `.canvas-area`'s own stretch-sized box; Stage.tsx's inline `transform`
+   starts with `translate(-50%, -50%)` (undoing this offset against
+   `.stage`'s own size, the standard self-centering trick) and then composes
+   the pan/zoom transform after it — see that file's own comment. */
 .stage {
-  aspect-ratio: 1280 / 720;
+  aspect-ratio: 16 / 9;
   width: auto;
   height: auto;
   max-width: 100%;
@@ -37,38 +26,33 @@
   position: relative;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--s-slide);
-  border: 1px solid var(--line-slide);
-  box-shadow: var(--shadow-slide);
+  background: var(--surface-white);
+  border-radius: var(--stage-radius);
+  box-shadow: var(--shadow-stage);
+  overflow: hidden;
 }
 
-/* 全螢幕下比例框必須失效，iframe 照舊撐滿螢幕 — #29 的既有回歸契約優先於
-   #50 的視覺（波 3 brief 裁決 2；e2e/player-fullscreen.test.ts:200-202
-   斷言 frameSize[0] === screenSize[0] 且 frameSize[1] >
-   screenSize[1] * 0.85）。寬高都給明確值（不再是 auto），`aspect-ratio`
-   因此不再有作用（規範規定兩個維度都明確時 aspect-ratio 不生效），不需要
-   額外覆蓋它或用 `!important` 蓋掉 Stage.tsx 的內嵌樣式。邊框與陰影一併
-   移除：全螢幕沒有「舞台立在深色背景上」這件事，螢幕本身就是背景。
-   `.canvas-area:fullscreen` 本身（尺寸、padding、背景）在 shell.css。 */
+/* 全螢幕下比例框失效，iframe 撐滿螢幕 — #29 既有回歸契約優先於這張骨架票
+   的視覺（e2e/player-fullscreen.test.ts 斷言 frameSize[0] === screenSize[0]）。 */
 .canvas-area:fullscreen .stage,
 .canvas-area:-webkit-full-screen .stage {
   width: 100%;
   height: 100%;
   max-width: none;
   max-height: none;
-  border: none;
+  border-radius: 0;
   box-shadow: none;
 }
 
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* T3/NOOP-142: drag/drop asset-import overlay. Absolutely positioned over
-   `.stage` (which is `position: relative`), so it exactly matches the
-   slide's own box regardless of scale. `pointer-events` toggles between
-   "none" (default — clicks/drags pass through to the iframe underneath,
-   NOOP-91's direct manipulation) and "auto" (only while a drag is in
-   progress) via Stage.tsx's inline style; the visible dashed-border cue
-   below keys off the same `data-active` attribute Stage.tsx sets, so the
-   two never fall out of sync with each other. */
+   `.stage` (position: relative), so it exactly matches the slide's own box
+   regardless of zoom. `pointer-events` toggles via Stage.tsx's inline style. */
 .drop-overlay {
   position: absolute;
   inset: 0;
@@ -77,49 +61,12 @@
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 2px dashed transparent;
+  border: calc(var(--space-1) / 2) dashed transparent;
   transition:
-    background-color var(--dur-micro) var(--ease-micro),
-    border-color var(--dur-micro) var(--ease-micro);
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
-
 .drop-overlay[data-active="true"] {
-  background: var(--accent-wash);
-  border-color: var(--accent);
-}
-
-/* T3/NOOP-142's hidden <input type="file"> (image/video/audio pickers) —
-   off-screen rather than `display: none`, so a screen reader and
-   `page.setInputFiles` in tests can both still reach it. */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* E1.T3: `.canvas-area`'s layout rules live in shell.css (it's also #29's
-   fullscreen target), but this file owns the stage's own appearance —
-   its density response belongs here, not there, since shell.css's
-   authorised changes are limited to two existing rules (see shell.css's
-   own comment on `.canvas-area`). `container-type`/`container-name` are
-   declared on `.canvas-area` in shell.css; main.tsx imports shell.css
-   before stage.css, so at equal specificity these rules win. 1440×900
-   (the middle supported viewport) falls between the two thresholds on
-   purpose, keeping its padding — and baseline screenshot — unchanged. */
-@container main (width < 880px) {
-  .canvas-area {
-    padding: calc(var(--u) * 4);
-  }
-}
-
-@container main (width >= 1400px) {
-  .canvas-area {
-    padding: calc(var(--u) * 10);
-  }
+  background: var(--brand-red-tint);
+  border-color: var(--brand-red);
 }

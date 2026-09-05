@@ -122,7 +122,7 @@ it("全螢幕開關只在播放模式提供，檢視模式不存在這個控制�
   // 檢視模式：控制項不存在（不是隱藏，是不在 DOM 裡）。
   expect(await page.locator(".fullscreen-toggle-button").count()).toBe(0);
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   await expect.poll(() => page.locator(".fullscreen-toggle-button").count()).toBe(1);
@@ -180,7 +180,7 @@ it("點按鈕真的進入全螢幕（容器撐滿螢幕、iframe 在容器內）
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   // Sandbox posture asserted, never just commented (ADR-0010): allow-scripts
   // for the runtime, never allow-same-origin alongside it. Unaffected by
@@ -242,7 +242,7 @@ it("兩種狀態下方向鍵推進都正常運作；Esc 觸發的離開全螢幕
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   // 等播放模式真的接手畫面（兩個 enter 元素被 runtime 隱藏）再送出方向鍵，
   // 否則按鍵可能搶在新的播放 iframe 就緒之前發出.
   await expectHidden(fadeText);
@@ -302,7 +302,7 @@ it("換頁時全螢幕存活：iframe 元素本身沒被換掉，只有 srcdoc �
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expectHidden(fadeText);
   await expectHidden(appearText);
 
@@ -358,7 +358,7 @@ it("全螢幕狀態下離開播放：真的點按鈕就能退出，文件不會�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expectHidden(fadeText);
 
   await page.locator(".fullscreen-toggle-button").click();
@@ -398,7 +398,7 @@ it("成功地從外部離開全螢幕後，舊的全螢幕失敗訊息會被清�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // 進到真正的全螢幕狀態，這樣「退出」才有真實意義（不是憑空捏造 isFullscreen）。
@@ -463,7 +463,7 @@ it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // Delays the real underlying requestFullscreen() call itself, not just
@@ -562,7 +562,7 @@ it("離開播放時若 requestFullscreen() 仍在 pending，文件最終不會�
   }
 
   // 離開播放本身也必須真的完成，不是卡住半途：畫面回到檢視模式的「播放」按鈕.
-  await expect.poll(() => page.locator('.view-btn[data-view="play"]').count()).toBe(1);
+  await expect.poll(() => page.locator('.play-button').count()).toBe(1);
 });
 
 it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播放器（review gate round 2, P2）", async () => {
@@ -575,7 +575,7 @@ it("兩個全螢幕 API 都不存在時，點下開關仍會把焦點交回播�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // #68 撤掉焦點提示後，播放器有沒有焦點改讀 .play-bar 的 data-player-focus
@@ -620,7 +620,7 @@ it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   // 兩次呼叫各給不同的延遲：第一次 100ms 先落地，第二次 600ms 後落地——
@@ -699,7 +699,7 @@ it("先發後至：較早的請求先 settle 時不會清掉還在飛行中的�
     expect(await readFullscreen()).toBe(false);
   }
 
-  await expect.poll(() => page.locator('.view-btn[data-view="play"]').count()).toBe(1);
+  await expect.poll(() => page.locator('.play-button').count()).toBe(1);
 });
 
 it("即時重載把最後一張投影片移除時，離開播放與全螢幕開關仍然看得到、點得到（review gate round 4, P2）", async () => {
@@ -712,7 +712,7 @@ it("即時重載把最後一張投影片移除時，離開播放與全螢幕開�
     })
     .toBe("播放第一頁");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
   await page.locator(".fullscreen-toggle-button").click();

@@ -402,7 +402,7 @@ it("Shift 點兩個元素後一起拖曳：兩個元素各自的位移量相同�
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
 
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
 
     // Multi-select only ever supports move — the scale/rotate/textbox-width
@@ -454,7 +454,7 @@ it("從空白處拖出框選矩形：與框相交的元素全部選中，且簡�
     // 300..390) but not el-c (550..670, 500..580) or the caption.
     await dragBy(page, { x: 40, y: 40 }, { x: 850, y: 420 });
 
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
 
     expect(await readSlide(registry, presentationId)).toBe(before);
@@ -487,7 +487,7 @@ it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer r
     // stage width.
     await dragBy(page, { x: 900, y: 50 }, { x: 370, y: 150 }); // -> (1270, 200)
 
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     // el-text carries no `data-comot-name`, so the status bar falls back to
     // the raw id (StatusBar.tsx).
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：el-text");
@@ -654,7 +654,7 @@ it("雙擊進入平移群組後拖曳子元素的縮放把手：原點套用祖�
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
     await slideFrame.locator("#el-group-child").dblclick();
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
 
     const box = await svgBox(page);
@@ -697,7 +697,7 @@ it("雙擊進入旋轉群組後拖曳子元素的縮放把手：原點套用祖�
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
     await slideFrame.locator("#el-group-rotate-child").dblclick();
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：旋轉群組子元素");
 
     const box = await svgBox(page);
@@ -746,7 +746,7 @@ it("雙擊進入縮放群組後拖曳子元素的旋轉把手：原點套用祖�
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
     await slideFrame.locator("#el-group-scale-child").dblclick();
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：縮放群組子元素");
 
     const box = await svgBox(page);
@@ -844,7 +844,7 @@ it("雙擊進入群組後拖曳群組內的單一子元素：只有子元素的 
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
     await slideFrame.locator("#el-group-child").dblclick();
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
 
     // el-group: translate(300 550); el-group-child: translate(0 0), rect
@@ -874,7 +874,7 @@ it("按 Esc 退出群組編輯後，點同一個畫面位置：選取解析成�
   try {
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-group-child").dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：群組子元素");
@@ -951,7 +951,7 @@ it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-a").click();
     await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
-    const selName = page.locator(".status .sel-name");
+    const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("已選取：2 個元素");
     await page.waitForTimeout(50);
     await settleForScreenshot(page);

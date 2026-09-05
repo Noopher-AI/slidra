@@ -7,23 +7,26 @@ import { relativeLuminance, parseColor } from "./contrast.js";
 /**
  * Cross-engine structural smoke check (NOOP-9 Plan §1/§4.5): Firefox and
  * WebKit only ever run this — no pixel baselines, "not required to match
- * Chromium pixel-for-pixel" per the parent ticket's own AC. Every wait
- * condition and selector below is copied from e2e/play-grid-visual.test.ts
- * / e2e/side-panel-visual.test.ts / e2e/responsive-shell.test.ts, all of
- * which already run on Chromium in CI — nothing here is a new interaction
- * pattern, only a re-execution on two more engines.
+ * Chromium pixel-for-pixel" per the parent ticket's own AC.
+ *
+ * New v3 shell rebuild (this ticket): every selector below was updated onto
+ * the new shell (Ribbon/GridView/TemplateDialog all deleted — see that
+ * ticket's PR report). The "core flow" section no longer exercises grid
+ * view or the template dialog (neither exists any more); it now opens/
+ * closes the Dock's zoom menu instead — structurally the same kind of check
+ * (a UI layer appears, then disappears) against the one Dock floating layer
+ * this ticket ships fully wired.
  */
 export async function runSmoke(browser: Browser, server: RunningServer, viewport: { width: number; height: number }): Promise<void> {
   const page = await openApp(browser, server, { viewport });
   try {
     // ── 1. Core flow ──────────────────────────────────────────────────
-    await page.locator('.view-btn[data-view="grid"]').click();
-    await expect.poll(() => page.locator(".grid-view").count()).toBe(1);
+    await page.locator(".dock-zoom-control").click();
+    await expect.poll(() => page.locator(".floating-layer").count()).toBe(1);
+    await page.locator(".dock-zoom-control").click();
+    await expect.poll(() => page.locator(".floating-layer").count()).toBe(0);
 
-    await page.locator('.view-btn[data-view="normal"]').click();
-    await expect.poll(() => page.locator(".grid-view").count()).toBe(0);
-
-    await page.locator('.view-btn[data-view="play"]').click();
+    await page.locator(".play-button").click();
     await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("play");
     // Unlike e2e/play-grid-visual.test.ts's switchToPlay (Chromium-only), this file also
     // runs on WebKit, where data-player-focus reaching "true" is not reliably observed
@@ -36,11 +39,10 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
 
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => page.locator(".status .sel-name").textContent()).toContain("已選取");
+    await expect.poll(() => page.locator(".status-selection-chip").textContent()).toContain("已選取");
 
     // ── 2. Operability: every non-disabled control is ≥24×24 and fully on-screen ──
-    await page.locator('.tab:has-text("常用")').click();
-    for (const selector of [".view-btn", ".slide-nav-button", ".side-panel-tab", ".cmd"]) {
+    for (const selector of [".slide-nav-button", ".side-panel-tab", ".dock-command", ".dock-hand-button", ".dock-zoom-control"]) {
       const boxes = await page
         .locator(`${selector}:not([disabled])`)
         .evaluateAll((els, vp) =>
@@ -62,16 +64,17 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     }
 
     // ── 3. No overlap between the shell's major chrome regions ─────────
-    const regionSelectors = [".titlebar", ".ribbon", ".overview", ".canvas-area", ".side-panel", ".status"];
+    // `.ribbon` 已經沒有對應物（Dock 浮在舞台上，不佔獨立的版面軌道），
+    // `.overview` 換成外層的 `.rail`（縮圖軌現在只是 Rail 的其中一段）。
+    const regionSelectors = [".titlebar", ".rail", ".canvas-area", ".side-panel", ".status"];
     const regionBoxes: Array<{ selector: string; x: number; y: number; width: number; height: number }> = [];
     for (const selector of regionSelectors) {
       const box = await page.locator(selector).boundingBox();
       if (box) regionBoxes.push({ selector, ...box });
     }
     // 1px 容忍：相鄰區塊理論上零 gap 貼合，Firefox 對同一個 grid 版面的次像素
-    // 捨入跟 Chromium 不完全一致，CI 上實測 .overview × .canvas-area 邊界曾算出
-    // <1px 的假重疊——這是引擎間的次像素渲染差，不是版面真的重疊（同一個既有
-    // 慣例見 e2e/responsive-shell.test.ts 的 `scrollWidth <= clientWidth + 1`）。
+    // 捨入跟 Chromium 不完全一致（同一個既有慣例見 e2e/responsive-shell.test.ts
+    // 的 `scrollWidth <= clientWidth + 1`，NOOP-9 Plan §221 沿用）。
     const OVERLAP_TOLERANCE = 1;
     for (let i = 0; i < regionBoxes.length; i++) {
       for (let j = i + 1; j < regionBoxes.length; j++) {
@@ -87,29 +90,17 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     }
 
     // ── 4/5. No unexpected clipping, at every screen state ──────────────
-    // NOOP-51: the original version of this check ran `expect` per-region
-    // inside the loop, so the first violation threw and aborted the test —
-    // every region/state after the first offender was never exercised, on
-    // both the region and the page-overflow check. Two rounds in a row each
-    // fixed exactly the one selector the aborted run happened to reach and
-    // shipped with the rest still unmeasured. `measureOverflowAt` below
-    // only *collects* violations; nothing throws until every state has been
-    // visited and reported in one shot (violations aggregated, see below).
+    // `measureOverflowAt` only *collects* violations; nothing throws until
+    // every state has been visited and reported in one shot.
     const violations: string[] = [];
     await measureOverflowAt(page, "normal-selected", violations);
 
-    await page.locator('.view-btn[data-view="grid"]').click();
-    await expect.poll(() => page.locator(".grid-view").count()).toBe(1);
-    await measureOverflowAt(page, "grid", violations);
-    await page.locator('.view-btn[data-view="normal"]').click();
-    await expect.poll(() => page.locator(".grid-view").count()).toBe(0);
-
-    await page.locator('.view-btn[data-view="play"]').click();
+    await page.locator(".play-button").click();
     await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("play");
     // Play mode intentionally unmounts the editor chrome (App.tsx) — these
-    // five regions are expected to be absent here, not a fallback for a
+    // four regions are expected to be absent here, not a fallback for a
     // selector that failed to resolve.
-    await measureOverflowAt(page, "play", violations, [".titlebar", ".ribbon", ".overview", ".side-panel", ".status"]);
+    await measureOverflowAt(page, "play", violations, [".titlebar", ".rail", ".side-panel", ".status"]);
     await page.locator(".play-bar .play-toggle-button.leave").click();
     await expect.poll(() => page.locator(".app").getAttribute("data-mode")).toBe("view");
 
@@ -117,21 +108,28 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
     await measureOverflowAt(page, "side-panel-style", violations);
     await page.locator('.side-panel-tab[data-tab="chat"]').click();
 
-    await page.locator('.tab:has-text("常用")').click();
-    await page.locator('.cmd:has-text("範本")').click();
-    await expect.poll(() => page.locator('[aria-label="範本管理"]').count()).toBe(1);
-    await measureOverflowAt(page, "template-dialog", violations);
+    await page.locator(".dock-zoom-control").click();
+    await expect.poll(() => page.locator(".floating-layer").count()).toBe(1);
+    await measureOverflowAt(page, "zoom-menu-open", violations);
+    await page.locator(".dock-zoom-control").click();
 
     // ── 6. Not a light-mode break: .app's own painted background is dark ──
     // (not document.body — body itself carries no background rule; .app is
-    // the themed root that paints --s-well, see packages/web/src/styles/
-    // shell.css:18-32.) Pushed onto the same `violations` array as §4/5
-    // instead of asserting here directly, so an overflow/clipping violation
-    // earlier in the run doesn't short-circuit this check (NOOP-52).
-    const appBackground = await page.locator(".app").evaluate((el) => getComputedStyle(el).backgroundColor);
-    const appLuminance = relativeLuminance(parseColor(appBackground));
-    if (appLuminance >= 0.2) {
-      violations.push(`背景不是深色 - relativeLuminance=${appLuminance}`);
+    // the themed root that paints --surface-1, see packages/web/src/styles/
+    // shell.css.) Pushed onto the same `violations` array as §4/5 instead of
+    // asserting here directly, so an overflow/clipping violation earlier in
+    // the run doesn't short-circuit this check (NOOP-52).
+    //
+    // New v3's `.app` background is the warm-white `--surface-1` (the shell
+    // chrome), not the dark stage well `--well-bg` — 02-DESIGN_DOC.md §2
+    // ("舞台優先：外殼淺、舞台深") makes the *shell* light on purpose, unlike
+    // the old all-dark shell this check used to guard. The dark-surface
+    // guarantee that still holds in New v3 is `.canvas-area` (the stage
+    // well), so that is what this check now measures.
+    const wellBackground = await page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).backgroundColor);
+    const wellLuminance = relativeLuminance(parseColor(wellBackground));
+    if (wellLuminance >= 0.2) {
+      violations.push(`舞台底不是深色 - relativeLuminance=${wellLuminance}`);
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
@@ -152,12 +150,12 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
  * on that list is itself a violation, not a silently skipped region.
  */
 async function measureOverflowAt(page: Page, screen: string, violations: string[], expectedAbsent: string[] = []): Promise<void> {
-  const regionSelectors = [".titlebar", ".ribbon", ".overview", ".canvas-area", ".side-panel", ".status"];
+  const regionSelectors = [".titlebar", ".rail", ".canvas-area", ".side-panel", ".status"];
   for (const selector of regionSelectors) {
     // `.locator(selector).boundingBox()` auto-waits the full default
     // timeout for a selector that resolves to zero elements instead of
-    // returning null immediately — play mode legitimately has five of
-    // these six selectors absent, so that call would hang ~30s per
+    // returning null immediately — play mode legitimately has four of
+    // these five selectors absent, so that call would hang ~30s per
     // selector instead of reporting "absent" right away. `.count()` never
     // waits; it is the existence check this loop actually wants.
     const count = await page.locator(selector).count();

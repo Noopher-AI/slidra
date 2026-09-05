@@ -309,7 +309,7 @@ it("凍結期間仍可翻頁、進出播放模式；解凍後標題確實已更�
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
 
     // 進播放模式：凍結不擋瀏覽。
-    await page.locator('.view-btn[data-view="play"]').click();
+    await page.locator('.play-button').click();
     await page.locator(".play-bar-position").waitFor({ timeout: 30_000 });
     expect(await editingFrozen(page)).toBe(true);
 

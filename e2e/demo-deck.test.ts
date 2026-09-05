@@ -174,7 +174,7 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
     .poll(() => textOf(playFrame().locator("#el-title")).catch(() => null), { timeout: 30_000 })
     .toBe("驗收用簡報");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await waitForPlayerFocus(page);
 
   // 第 1 頁沒有效果，按一次方向鍵直接換到第 2 頁。

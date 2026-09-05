@@ -1,0 +1,185 @@
+/* ═══════════════════════════════════════════════════════════════
+   底部玻璃工具列 (New v3 skeleton). 02-DESIGN_DOC.md §6「玻璃：所有舞台浮
+   層統一材質」——`.floating-layer` 是那個共用材質 + 由 dock 正上方中央長
+   出的動畫，Dock 底下每一種面板/選單（ZoomMenu 是唯一整個可用的；其餘是
+   空容器）都套這一個 class，不各自重寫一份動畫。
+   ═══════════════════════════════════════════════════════════════ */
+
+.dock {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-6);
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - var(--space-8));
+  height: var(--toolbar-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-xl);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.dock-left,
+.dock-center,
+.dock-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+.dock-center {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dock-divider {
+  width: 1px;
+  align-self: stretch;
+  margin-block: var(--space-2);
+  background: var(--glass-divider);
+  flex: none;
+}
+
+.dock-hand-button {
+  width: var(--control-h);
+  height: var(--control-h-compact);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--ink-700);
+  flex: none;
+}
+.dock-hand-button:hover {
+  background: var(--glass-hover);
+}
+.dock-hand-button[aria-pressed="true"] {
+  background: var(--ink-900);
+  color: var(--surface-white);
+}
+
+.dock-zoom-control {
+  min-width: calc(var(--control-h) * 1.4);
+  height: var(--control-h-compact);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs-hint);
+  font-weight: 700;
+  color: var(--ink-900);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.dock-zoom-control:hover,
+.dock-zoom-control[aria-expanded="true"] {
+  background: var(--glass-hover);
+}
+
+.dock-command {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-h);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs-hint);
+  font-weight: 600;
+  color: var(--ink-700);
+  white-space: nowrap;
+}
+.dock-command:not(:disabled):hover,
+.dock-command[aria-expanded="true"] {
+  background: var(--glass-hover);
+  color: var(--ink-900);
+}
+
+/* ── 共用浮層材質 + 動畫（02-DESIGN_DOC.md §2.3「一律從同一個地方長出」） ──
+   每一個 Dock 浮層（面板／選單，含 ZoomMenu）都套這個 class：由 dock 正
+   上方中央長出，8px-up + scale(.96→1)，用 --dur-fast/--ease-out。 */
+.floating-layer {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--space-4));
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  z-index: 20;
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+  animation: floating-layer-in var(--dur-fast) var(--ease-out);
+}
+@keyframes floating-layer-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(var(--space-3)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* 空容器（Insert 面板／Shape／Arrange）：內容是未來票的範圍，這裡只給一個
+   看得出邊界的最小尺寸，方便手動驗證「有沒有從正確位置長出來」。 */
+.dock-panel,
+.dock-menu {
+  min-width: calc(var(--panel-w) * 0.7);
+  min-height: calc(var(--control-h) * 3);
+}
+
+/* ── 縮放選單（唯一完整可用的浮層） ────────────────────────────────── */
+.zoom-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  white-space: nowrap;
+}
+.zoom-menu-step {
+  width: var(--control-h-compact);
+  height: var(--control-h-compact);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-md-panel-title);
+  color: var(--ink-700);
+}
+.zoom-menu-step:hover {
+  background: var(--surface-1);
+}
+.zoom-menu-current {
+  min-width: calc(var(--control-h) * 1.5);
+  text-align: center;
+  font-size: var(--text-base);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-red);
+}
+.zoom-menu-divider {
+  width: 1px;
+  align-self: stretch;
+  margin-inline: var(--space-1);
+  background: var(--surface-2);
+}
+.zoom-menu-preset {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.zoom-menu-preset:hover {
+  background: var(--surface-1);
+}
+.zoom-menu-preset[data-active] {
+  color: var(--brand-red);
+}

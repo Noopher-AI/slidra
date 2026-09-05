@@ -1,554 +1,354 @@
 /* ═══════════════════════════════════════════════════════════════
-   Shell skeleton, titlebar, ribbon, status bar (tickets #51, #53).
-   Every value below comes from tokens.css's :root — see AGENTS/軍令 #2.
+   New v3 shell skeleton — app grid, titlebar, status bar.
+   Every value below comes from tokens.css's :root (docs/design/docs/
+   01-DESIGN_TOKENS.md). This file replaces the old ribbon-based shell.css
+   wholesale: the old token vocabulary it used (--u, --s-well, --ink, …) no
+   longer exists (01-DESIGN_TOKENS.md's token set landed separately and
+   deliberately does not carry those names forward — see tokens.css's own
+   file header), so every rule here is written fresh against the new names,
+   not a mechanical find/replace of the old file.
    ═══════════════════════════════════════════════════════════════ */
 
-/* `.app` is a CSS Grid with *named* areas, not row auto-placement (NOOP-4
-   E1.T2). Auto-placement assigns each child the next numbered row in DOM
-   order; the number of children varies (播放模式 drops
-   TitleBar/Ribbon/.app-notices/StatusBar down to just `.body`, and the
-   notices wrapper itself is conditional even outside play mode), so a
-   fixed N-track grid with unnamed rows silently misassigns rows the
-   moment the child count isn't exactly N — this was measured while
-   building an earlier version of this file: `.body` ended up squeezed
-   into the 36px titlebar row track. Named areas don't have that failure
-   mode: an absent child just leaves its own area's track empty (`auto`
-   collapses to 0), every other child still lands on the area it was
-   assigned regardless of who else is present. */
+/* Named grid areas (not row auto-placement): 播放模式 drops titlebar/
+   notices/status to just `.body`, and `.app-notices` itself is conditional
+   even outside play mode — a fixed N-track grid would misassign rows the
+   moment the child count isn't exactly N. An absent child just leaves its
+   own area's track empty (`auto` collapses to 0). */
 .app {
   height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "titlebar"
-    "ribbon"
     "notices"
     "body"
     "status";
-  font-family: var(--font);
-  font-size: var(--fs-ui);
-  color: var(--ink);
-  background: var(--s-well);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--ink-900);
+  background: var(--surface-1);
 }
-/* `.app` must never gain `container-type`: it would make `.app` the
-   containing block for `.template-dialog-backdrop`'s `position: fixed`
-   (template-dialog.css) instead of the viewport. Currently harmless only
-   because `.app` happens to be 100vh — that's a coincidence, not a
-   guarantee, so don't rely on it while adding future rules here. */
 
-/* ── 標題列 (#51) ─────────────────────────────────────────────── */
+/* Global disabled-state convention (02-DESIGN_DOC.md §7: "停用態以 disabled
+   + 40% 透明"), one rule for every control in the New v3 shell instead of
+   repeating `opacity` per component. */
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── 標題列 ───────────────────────────────────────────────────── */
 .titlebar {
   grid-area: titlebar;
-  container-type: inline-size;
-  container-name: titlebar;
-  height: var(--h-titlebar);
-  background: var(--s-titlebar);
-  border-bottom: 1px solid var(--line-soft);
+  height: var(--titlebar-h);
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--surface-2);
   display: flex;
   align-items: center;
-  padding-inline: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
-  gap: calc(var(--u) * 3);
+  gap: var(--space-5);
+  padding-inline: var(--space-8);
   box-sizing: border-box;
 }
-/* ≥1800px: 標題列在 2560×1440 這類寬視窗下確實會觸發，多留一點呼吸空間。
-   <720px：低於本票支援範圍（1280–2560）的安全網，不是功能。 */
-@container titlebar (width >= 1800px) {
-  .titlebar {
-    gap: calc(var(--u) * 5);
-  }
-}
-@container titlebar (width < 720px) {
-  .titlebar {
-    gap: calc(var(--u) * 2);
-  }
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
 }
 .mark {
-  font-size: var(--fs-small);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--ls-brand);
-  color: var(--accent-text);
+  font-size: var(--text-md-panel-title);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--brand-red);
+}
+.titlebar-beta {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--brand-red);
+  background: var(--brand-red-tint);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.04em;
+}
+.titlebar-history {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  flex: none;
+}
+.titlebar-icon-button {
+  width: var(--control-h);
+  height: var(--control-h-compact);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--ink-700);
+}
+.titlebar-icon-button:not(:disabled):hover {
+  background: var(--surface-2);
 }
 .deck-name {
-  color: var(--ink);
-  font-size: var(--fs-ui);
+  color: var(--ink-900);
+  font-size: var(--text-md);
+  font-weight: 600;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.deck-meta {
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
-  flex-shrink: 0;
+.titlebar-frozen-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+  font-size: var(--text-xs-hint);
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
 }
-.titlebar .spacer {
+.titlebar .spacer,
+.status .spacer {
   flex: 1;
 }
 .agent-dot {
   display: flex;
   align-items: center;
-  gap: calc(var(--u) * 1.5);
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  gap: var(--space-2);
+  color: var(--ink-500);
+  font-size: var(--text-xs-hint);
   flex-shrink: 0;
 }
 .agent-dot i {
-  width: calc(var(--u) * 1.5);
-  height: calc(var(--u) * 1.5);
-  border-radius: var(--r-round);
-  background: var(--ink-faint);
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--ink-300);
 }
-/* "已連線" only — the one state base-shell.html itself shows.
-   "connecting"/"disconnected" have no template precedent, so they stay on
-   existing ink tokens instead of inventing amber/red. */
 .agent-dot-connected i {
-  background: var(--status-ok);
-  box-shadow: 0 0 0 2px var(--status-ok-glow);
+  background: var(--ok);
+  box-shadow: 0 0 0 var(--space-1) var(--ok-bg);
 }
 .agent-dot-connecting i {
-  background: var(--ink-dim);
+  background: var(--ink-400);
 }
 .agent-dot-disconnected i {
-  background: var(--ink-faint);
+  background: var(--ink-300);
 }
-
-/* ── ribbon (#51) ───────────────────────────────────────────────── */
-.ribbon {
-  grid-area: ribbon;
-  container-type: inline-size;
-  container-name: ribbon;
-  position: relative;
-  /* `container-type: inline-size` applies `contain: layout`, which makes
-     `.ribbon` a new stacking context — without an explicit z-index here,
-     `.ribbon-menu`'s z-index:20 (below) would be trapped inside that
-     context and lose to `.canvas-area` (position:relative, opaque
-     background, later in DOM). 10 sits above every canvas-area-side layer
-     (stage selection layer is 5) and below `.template-dialog-backdrop`
-     (20, fixed — outside this stacking context anyway). */
-  z-index: 10;
-  background: var(--s-ribbon);
-  border-bottom: 1px solid var(--line);
-}
-.tabs {
-  height: var(--h-tabs);
-  display: flex;
-  align-items: stretch;
-  padding: 0 calc(var(--u) * 2);
-  border-bottom: 1px solid var(--line-soft);
-}
-.tab {
-  padding: 0 calc(var(--u) * 3);
-  min-height: calc(var(--u) * 7);
-  color: var(--ink-dim);
-  border-bottom: calc(var(--u) / 2) solid transparent;
-  font-size: var(--fs-ui);
-}
-
-.groups {
-  height: var(--h-ribbon);
-  display: flex;
-  align-items: stretch;
-  padding-inline: clamp(var(--u), 0.6cqi, calc(var(--u) * 4));
-}
-/* 支援範圍內（1280–2560）不會觸發；低於支援範圍時讓命令換行而不是把它們
-   裁掉或縮小（AC 明文禁止用縮小文字/點擊區換空間）。880px 取自「常用」
-   頁籤（8 顆 .cmd，最寬的一頁）實測 scrollWidth 後留出的餘裕。 */
-@container ribbon (width < 880px) {
-  .groups {
-    height: auto;
-    min-height: var(--h-ribbon);
-    flex-wrap: wrap;
-    align-content: flex-start;
-  }
-}
-.group {
+.titlebar-actions {
   display: flex;
   align-items: center;
-  gap: var(--u);
-  padding-inline: clamp(calc(var(--u) * 2), 0.5cqi, calc(var(--u) * 4));
-  padding-block-end: calc(var(--u) * 4);
-  position: relative;
+  gap: var(--space-2);
+  flex: none;
 }
-.group + .group::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: calc(var(--u) * 2);
-  bottom: calc(var(--u) * 5.5);
-  border-left: 1px solid var(--line-soft);
-}
-.group-label {
-  position: absolute;
-  bottom: var(--u);
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: var(--fs-micro);
-  color: var(--ink-dim);
-}
-
-/* 72×58 是刻意的定值，不隨視窗放大：螢幕變大時應該是舞台變大，不是工具
-   列跟著變大——那只是把浪費從邊界移到按鈕上，AC「一般圖示控制項至少
-   28×28px」也因此在三個支援尺寸下都是同一個固定值，不是隨視窗浮動的
-   數字。 */
-.cmd {
-  width: 72px;
-  height: 58px;
-  display: flex;
-  flex-direction: column;
+.titlebar-button {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: calc(var(--u) * 1.5);
-  border-radius: var(--r);
-  color: var(--ink);
-  font-size: var(--fs-small);
-  line-height: var(--lh-tight);
-  text-align: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-700);
+  white-space: nowrap;
 }
-/* 新增投影片 / 圖案 / 排列 下拉選單 (NOOP-141). Anchored to the owning .group
-   (already `position: relative`), so it needs no measurement — it simply
-   drops below that group's own buttons. */
-.ribbon-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 20;
+.titlebar-button:not(:disabled):hover {
+  border-color: var(--ink-300);
+  background: var(--surface-0);
+}
+.titlebar-play-group {
   display: flex;
-  flex-direction: column;
-  min-width: 140px;
-  padding: calc(var(--u) * 1.5);
-  background: var(--s-panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-pop);
+  flex: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-red);
+  margin-left: var(--space-1);
 }
-.ribbon-menu-group + .ribbon-menu-group {
-  margin-top: calc(var(--u) * 1.5);
-  padding-top: calc(var(--u) * 1.5);
-  border-top: 1px solid var(--line-soft);
+.play-button,
+.play-from-start-button {
+  height: var(--control-h);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
 }
-.ribbon-menu-group-label {
-  padding: 0 calc(var(--u) * 1);
-  font-size: var(--fs-micro);
-  color: var(--ink-faint);
+.play-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-5) var(--space-4);
 }
-.ribbon-menu-item {
-  min-height: calc(var(--u) * 7);
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-  border-radius: var(--r);
-  color: var(--ink);
-  font-size: var(--fs-small);
-  text-align: left;
-  box-sizing: border-box;
+.play-from-start-button {
+  padding-inline: var(--space-3);
+  border-left: 1px solid var(--glass-border);
 }
-.ribbon-notice {
-  position: absolute;
-  right: calc(var(--u) * 2);
-  bottom: calc(var(--u) * 2);
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
-  background: var(--s-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--ink);
-  font-size: var(--fs-small);
+.play-button:not(:disabled):hover,
+.play-from-start-button:not(:disabled):hover {
+  background: var(--brand-red-hover);
 }
 
-/* 全域通知 wrapper（NOOP-4 E1.T2 新增）：`.app` 只有一格 `notices` grid
-   area，而四條 live-reload-banner（即時預覽/簡報資訊/canvas 錯誤/編輯
-   凍結）可以同時成立——不包起來會全部疊在同一格互相覆蓋。純版面用途，
-   本身不參與任何 e2e 選擇器，內部無可聚焦元素，不影響 Tab 順序。 */
+/* ── 全域通知 (未改動的既有行為，見 App.tsx) ─────────────────────── */
 .app-notices {
   grid-area: notices;
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
-
-/* 即時預覽/簡報資訊 錯誤橫幅 — carried forward from wave 1's gate finding:
-   was hard-coded #5c1a1a/#fff/rem, now token-driven like every other error
-   surface in the app (same neutral-raised pattern as .player-error-notice
-   in ../style.css — no dedicated error-red token exists to invent one
-   with). Stacked inside `.app-notices`, between the ribbon and the body. */
 .live-reload-banner {
-  padding: calc(var(--u) * 2) calc(var(--u) * 3);
-  background: var(--s-raised);
-  border-bottom: 1px solid var(--line);
-  color: var(--ink);
-  font-size: var(--fs-small);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--surface-2);
+  color: var(--ink-900);
+  font-size: var(--text-sm);
 }
 
-/* ── 中段三欄 ────────────────────────────────────────────────── */
-/* 左右兩欄維持 `var(--w-rail)` / `var(--w-chat)` 定值，不做 clamp()：兩者
-   內部元素（縮圖、對話面板）目前是定寬版面，讓軌道流動會讓它們溢出。
-   讓縮圖軌／側欄本身可流動是後續票（E1.T4/E1.T5）的事，屆時 `.body` 需
-   改用具名 grid area（見下方 auto-placement 的說明）。中間那條是本票唯一
-   要響應式的軌道。 auto-placement（沒有具名 area）在這裡是安全的：三個
-   子元素（.overview / .main / .side-panel）共用同一個 shellVisible 閘門
-   （見 App.tsx），要嘛三個都在、要嘛只剩 `.main`——後者已由 play.css 的
-   `.app[data-mode="play"] .body { grid-template-columns: 1fr }` 覆蓋成單
-   欄，不受這裡影響。 */
+/* ── 中段三欄（Rail｜Main｜Side panel） ───────────────────────────── */
 .body {
   grid-area: body;
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--w-rail) minmax(0, 1fr) var(--w-chat);
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--panel-w);
 }
-
-/* `min-height: 0`（gate round 2 finding, #50）：沒有這行，`.main` 作為
-   `.body` 那顆隱含 grid row 的 item，其自動最小尺寸取決於內容的
-   min-content（`.canvas-area` 裡 `.stage` 靠 aspect-ratio 撐出的高度），
-   使 `.main` 永遠不會縮到比內容矮——視窗變矮時 `.body`（實際可用高度已
-   被上層 grid 夾在視窗內）容不下，`.main` 溢出到文件底部，長出
-   document-level 捲軸，`.stage` 的下緣因此掉出視窗（違反 #50 AC 2）。量測
-   證實：1440×600 時 `.main` 卡在 650.5px 高，`.body` 只給了 422px。加這行
-   後 `.main` 才會真的隨可用空間縮小。
-
-   兩列維持定義：第一列（舞台可用區）用 `minmax(0, 1fr)` 吸收所有多出來
-   的垂直空間，第二列（備忘稿）維持 `var(--h-notes)` 定值——多出來的空間
-   全部給舞台，不是給備忘稿。這是本票交付給 E1.T3 的既定介面：`.main` 是
-   兩列 grid，`.canvas-area` 是它的直接子元素，中間不得插入 wrapper（見
-   `.canvas-area` 上面的 `grid.css:105` `:has()` 直接子代選擇器約束）。
-   `grid.css`／`play.css` 會把這兩列覆蓋成 `1fr`，這沒問題：`.canvas-area`
-   自己已有 `min-height: 0`，`1fr` 與 `minmax(0,1fr)` 在此等價。 */
 .main {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) var(--h-notes);
+  grid-template-rows: minmax(0, 1fr) var(--notes-h);
   min-width: 0;
   min-height: 0;
-  container-type: inline-size;
-  container-name: main;
 }
 
 /* 舞台底＝全螢幕目標＝播放黑幕容器 (#29 契約，見 App.tsx 的 wellRef 註解)。
-   #50 起，舞台比例框（`.stage`，見 styles/stage.css）鋪在這裡面；
-   `.canvas-area` 自己等同樣板的 `.well`：置中、留白、裁切溢出，版面規則
-   （`padding: calc(var(--u) * 7)`、`overflow: hidden`）逐字沿用
-   docs/design/base-shell.html:190-196。`background: var(--s-well)` 同時
-   滿足「舞台底是全 app 最深的表面」——`--s-well` 就是五階表面裡最深的
-   那一階。
-
-   `grid-template-columns/rows: minmax(0, 1fr)`（gate round 2 finding，取代
-   樣板原本的 `place-items: center`）：沒有明確的軌道，這個隱含的單一
-   grid row 預設用 `auto`，會照 `.stage` 的內容尺寸撐開，而不是縮進
-   `.canvas-area` 自己被夾出來的框（同一個 min-content 溢出問題，往下
-   一層）。`minmax(0, 1fr)` 讓軌道真的等於 `.canvas-area` 的內容框，
-   `.stage` 的 `max-width/max-height: 100%`（見 styles/stage.css）才有
-   確定的基準可以量。改用 `minmax(0,1fr)` 之後 item 預設是 stretch 對齊
-   （不再是 `place-items: center` 的 center），置中改交給 `.stage` 自己的
-   `top/left/transform`（見 styles/stage.css 的說明）——center 對齊會讓
-   `.stage` 這種沒有實際內容、只有 `aspect-ratio` 的空盒子改用
-   fit-content 演算，量到的結果是瀏覽器對「無法決定尺寸」盒子的預設值
-   （約 300×150），完全無視 `max-width/max-height`，box 因此崩塌成一個
-   跟可用空間無關的小方塊。stretch 對齊沒有這個問題。
-
-   已知的殘留副作用（回報給指揮官，見 PR body/報告）：這條規則讓
-   `.canvas-area` 自己畫出背景並裁切溢出，緊鄰它的 `.overview`（縮圖軌）
-   右邊界 1px border-right 落在兩者共享的次像素邊界上——量測發現這會讓
-   `e2e/__screenshots__/shell/rail-and-notes.png`（wave 2 的凍結基準）在
-   那一欄單像素上出現極小的反鋸齒色差（最大單一色版差 10/255，僅那一欄，
-   肉眼實質不可辨）。已試過：改用 flex 而非 grid、拿掉 overflow:hidden、
-   拿掉 background、插入額外的 `.well` 包裹層把背景/overflow 移開
-   `.canvas-area` 自己的盒子——同一個色差都還在，可見它是這個 ticket
-   合法必須做的改動（舞台底變成有背景、有溢出裁切的可見表面）造成的次
-   像素重繪副作用，不是本單元的程式錯誤，也不是可以在自己檔案內迴避的
-   東西。依照波 3 brief 的規則（wave 2 的三張基準若改變必須停手回報，不
-   得自行重繪），這裡不重繪 `rail-and-notes.png`，留給指揮官決定。 */
+   `.stage`（styles/stage.css）鋪在這裡面；`--well-bg` 是設計包定義的深色
+   中性灰（02-DESIGN_DOC.md §6：「舞台：#3A3A3D 中性灰」）。 */
+/* `display: grid` + implicit stretch alignment (NOT `place-items: center` /
+   flex `align-items: center`) is load-bearing here, not a style choice: an
+   empty box with only `aspect-ratio` + `max-width/max-height: 100%` (no
+   intrinsic content forcing a size — `.stage` in stage.css) collapses to
+   the browser's own "cannot determine size" fallback (~300×150 in
+   Chromium) under *any* centering alignment mode, completely ignoring
+   max-width/max-height — measured while building this file (e2e/stage.test
+   .ts's window-resize and short-viewport assertions both failed against a
+   flex-centered first draft, `.stage`'s measured width stuck at exactly
+   300px regardless of window size). `minmax(0, 1fr)` tracks give `.stage`
+   a real, bounded box to stretch into; centering itself is `.stage`'s own
+   `top/left: 50%` + `transform: translate(-50%, -50%)` in stage.css/
+   Stage.tsx (composed with the pan/zoom transform), same technique the
+   pre-New-v3 shell.css already used for the same reason. */
 .canvas-area {
   position: relative;
   min-height: 0;
   min-width: 0;
+  overflow: clip;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  padding: calc(var(--u) * 7);
-  /* `overflow: clip`（NOOP-9r2 回歸修正；不是 `overflow: hidden`）：
-     `.stage`（stage.css）用 `position:relative; top/left:50%;
-     transform:translate(-50%,-50%)` 置中，畫面上完全置中、沒有任何裁切
-     （已用 debug dump 逐像素核對），但 Firefox 把 `.canvas-area` 的
-     scrollable overflow（`scrollWidth`/`scrollHeight`）算成 `.stage`
-     **套用 transform 之前**的版面位置＋尺寸，完全無視 transform 把它移回
-     中心這件事，导致 `scrollWidth` 比 `clientWidth` 大了一整個盒子的位移
-     量（cross-browser-smoke.test.ts 三個尺寸都量到，CI run
-     33858549752／33866052700，數字精確對得上：368(pre-transform
-     left)+711.117(.stage 寬)+16(padding)=1095.117 ≈ 實測 1095）。
-     `overflow: hidden` 的元素仍然會維護一個（即使視覺上不可見的）
-     scrollable overflow 矩形供 `scrollTo()` 之類的 API 使用，這正是
-     Firefox 那個位移算法會誤算的對象；`overflow: clip` 讓元素完全不成為
-     scroll container，規格上不追蹤 scrollable overflow，
-     `scrollWidth`/`scrollHeight` 因此直接等於 `clientWidth`/
-     `clientHeight`，繞開這整個計算路徑——視覺結果不變（沒有
-     `overflow-clip-margin`，裁切邊界跟 `hidden` 一樣落在 padding
-     edge）。曾嘗試改用 `margin: auto` 取代 transform 置中 `.stage`
-     本身：確實能讓 Firefox 的 scrollWidth 轉綠，但同一輪 CI
-     （run 33868036355，兩次重跑一致重現）測出它讓 `.stage` 的實際版面
-     位置與原本的 transform 版有極小但足以累積的差異，連帶造成
-     text-edit.test.ts 的跨行選取分塊、direct-manipulation.test.ts 的吸附
-     ／旋轉 delta、以及十個外觀基準截圖全部改變——影響面遠超出這張票的
-     範圍，因此改採這個不動 `.stage` 定位方式的修法。 */
-  overflow: clip;
-  background: var(--s-well);
-  container-type: inline-size;
-  container-name: well;
+  padding: var(--space-gutter);
+  padding-bottom: var(--space-gutter-bottom);
+  background: var(--well-bg);
+  box-sizing: border-box;
 }
-.canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* 全螢幕開關 (ticket #29 第二輪, #51/#53 的裁決：檢視與播放模式都適用；
-   #50 補上 padding:0 讓比例框的失效規則真的貼齊螢幕邊，見
-   styles/stage.css 的 `.canvas-area:fullscreen .stage`):
-   `:fullscreen` 明確給尺寸，不吃 UA 預設盒子，並蓋上不透明背景避免看穿到
-   app 的一般背景。#000（不是 token）逐字照抄樣板自己的播放模式規則
-   （`.play { background: #000; }`）——純黑滿版是樣板自己的字面決定，不是
-   這裡新引入的值。留白（`.canvas-area` 平常的 padding）與 letterbox 只在
-   一般檢視成立——`#29` 既有的回歸契約
-   （e2e/player-fullscreen.test.ts:200-202 斷言
-   frameSize[0] === screenSize[0]）優先於 `#50` 的舞台視覺，`#48` 也從未
-   要求全螢幕時仍留白（波 3 brief 裁決 2）。 */
 .canvas-area:fullscreen,
 .canvas-area:-webkit-full-screen {
   width: 100vw;
   height: 100vh;
-  background: var(--s-blackout);
   padding: 0;
+  background: var(--well-play);
 }
 
-/* ── 狀態列 (#53) ─────────────────────────────────────────────── */
+/* ── 狀態列 ───────────────────────────────────────────────────── */
 .status {
   grid-area: status;
-  container-type: inline-size;
-  container-name: status;
-  /* --h-status 是 26px，早於 AC 的 28px 點擊區下限；tokens.css 不在本票
-     改動範圍，所以地板寫在這裡。max() 讓 --h-status 一旦調大會自動接手，
-     不代表這裡偷改了 token 的語意。 */
-  min-height: max(var(--h-status), calc(var(--u) * 8));
-  background: var(--s-titlebar);
-  border-top: 1px solid var(--line-soft);
+  min-height: var(--statusbar-h);
+  background: var(--surface-0);
+  border-top: 1px solid var(--surface-2);
   display: flex;
   align-items: center;
-  gap: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
-  padding-inline: clamp(calc(var(--u) * 3), 1cqi, calc(var(--u) * 6));
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  gap: var(--space-5);
+  padding-inline: var(--space-8);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
   box-sizing: border-box;
 }
-@container status (width < 640px) {
-  .status {
-    gap: calc(var(--u) * 2);
-  }
-}
-.status .spacer {
-  flex: 1;
-}
-/* D7：極長的選取名稱過去會把 .slide-nav-*／.views 推出視窗 */
-.status .sel-name {
-  color: var(--ink);
+.status-selection-chip {
+  color: var(--ink-900);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.views {
+.status-selection-chip b {
+  color: var(--brand-red);
+  font-weight: 600;
+}
+.status-hints {
+  color: var(--ink-400);
+  font-size: var(--text-xs-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-page {
   display: flex;
-  gap: calc(var(--u) / 4);
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
 }
-.view-btn {
-  width: calc(var(--u) * 7);
-  height: calc(var(--u) * 7);
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-control);
-  color: var(--ink-dim);
-}
-
-/* 檢視模式的 ‹ › 翻頁鈕：偏離 base-shell.html 的狀態列版面（樣板沒有它們）
-   — 見 PR body 的「與樣板的偏離」說明，class 名稱沿用 #25/#29 既有的
-   e2e 契約，原樣移入。 */
 .slide-nav-button {
-  min-inline-size: calc(var(--u) * 7);
-  min-block-size: calc(var(--u) * 7);
+  min-width: var(--hit-min);
+  min-height: var(--hit-min);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding-inline: calc(var(--u) * 2);
+  padding-inline: var(--space-3);
   box-sizing: border-box;
-  font-size: var(--fs-lead);
-  line-height: var(--lh-ui);
-  cursor: pointer;
-  color: var(--ink-dim);
-  border-radius: var(--r);
+  font-size: var(--text-md-panel-title);
+  color: var(--ink-500);
+  border-radius: var(--radius-sm);
+}
+.slide-nav-button:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--ink-900);
 }
 .slide-nav-position {
-  font-size: var(--fs-ui);
-  color: var(--ink-dim);
+  font-size: var(--text-sm);
+  color: var(--ink-500);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-/* ── 互動狀態 (NOOP-4 E1.T2)：default/hover/active/focus-visible/selected/
-   disabled 統一經由共用語意 token 套用，涵蓋標題列以下所有互動控制項。
-   只過場顏色類屬性 → 互動結果不等待動畫（AC 最後一條）。
-   prefers-reduced-motion 由 tokens.css 的兩層機制（token 歸零 + `*` 安全
-   網）自動處理，這裡不需要也不應該再寫一個 @media。 ─────────────── */
-.tab,
-.cmd,
-.ribbon-menu-item,
-.view-btn,
-.slide-nav-button {
+/* ── 共用互動狀態 ─────────────────────────────────────────────── */
+.titlebar-icon-button,
+.titlebar-button,
+.play-button,
+.play-from-start-button,
+.slide-nav-button,
+.rail-action-button,
+.dock-command,
+.dock-hand-button,
+.dock-zoom-control {
   transition:
-    background-color var(--dur-micro) var(--ease-micro),
-    color var(--dur-micro) var(--ease-micro),
-    border-color var(--dur-micro) var(--ease-micro);
-  /* outline-color is deliberately not transitioned: the ring would fade in
-     from currentColor, so a keyboard focus reads as grey before it turns
-     --accent. */
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
-
-.tab:hover {
-  color: var(--ink);
-}
-.cmd:not(:disabled):hover,
-.view-btn:not(:disabled):hover,
-.slide-nav-button:not(:disabled):hover,
-.ribbon-menu-item:hover {
-  background: var(--s-raised);
-  color: var(--ink);
-}
-
-.cmd:not(:disabled):active,
-.view-btn:not(:disabled):active,
-.slide-nav-button:not(:disabled):active,
-.ribbon-menu-item:active {
-  background: var(--s-sunken);
-}
-
-.tab:focus-visible,
-.cmd:focus-visible,
-.ribbon-menu-item:focus-visible,
-.view-btn:focus-visible,
-.slide-nav-button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
+.titlebar-icon-button:focus-visible,
+.titlebar-button:focus-visible,
+.play-button:focus-visible,
+.play-from-start-button:focus-visible,
+.slide-nav-button:focus-visible,
+.rail-action-button:focus-visible,
+.dock-command:focus-visible,
+.dock-hand-button:focus-visible,
+.dock-zoom-control:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
-}
-
-.tab[aria-selected="true"] {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
-}
-.view-btn[aria-pressed="true"] {
-  background: var(--s-raised);
-  color: var(--accent-hi);
-}
-
-.cmd:disabled,
-.view-btn:disabled,
-.slide-nav-button:disabled {
-  color: var(--ink-faint);
-  cursor: default;
-}
-.cmd:disabled svg {
-  opacity: 0.55;
 }

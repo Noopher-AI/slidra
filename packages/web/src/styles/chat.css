@@ -1,39 +1,34 @@
 /* ═══════════════════════════════════════════════════════════════
-   對話側欄. Moved verbatim from ../style.css onto its own file — the JSX
-   itself stays inline in App.tsx (see 1.6 in the plan / PR body's known
-   limitation: this ticket does not change chat behaviour, only unifies it
-   onto the token set — no shell/Chat.tsx in this unit's file list).
-   NOOP-271/#154: width/border/background/height now live on the
-   `.side-panel` container that wraps this tabpanel; this class only styles
-   its own contents and fills the container via flex.
+   對話分頁 (New v3 skeleton). Markup now lives in shell/side/ChatPanel.tsx
+   (moved verbatim out of App.tsx, class names unchanged — see that file's
+   own comment for why: e2e/freeze.test.ts drives `.chat-input`
+   input/button directly). Kept as its own file rather than folded into
+   side-panel.css — Chat is one of three side-panel tabs but its own rules
+   are large enough (message bubbles, command states) to stay legible on
+   their own; side-panel.css owns only the shared tab chrome.
    ═══════════════════════════════════════════════════════════════ */
 
 .chat-sidebar {
   flex: 1;
   min-height: 0;
-  /* [E1.T4/#183] clamp() saturates to its own upper bound (12px) at every
-     width the panel is today (`--w-chat` is fixed at 316px across all
-     three formal viewports — see side-panel.css's file header) and only
-     starts shrinking once the container genuinely narrows below what a
-     4cqi share of 316px would give (~12.6px). */
-  padding: clamp(calc(var(--u) * 2), 4cqi, calc(var(--u) * 3));
+  padding: var(--space-8);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  color: var(--ink);
+  color: var(--ink-900);
 }
 
 .chat-sidebar h2 {
-  margin: 0 0 calc(var(--u) * 2);
-  font-size: var(--fs-small);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--ls-label);
-  color: var(--ink-dim);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-500);
   text-transform: none;
 }
 
 .chat-placeholder {
-  color: var(--ink-dim);
+  color: var(--ink-500);
 }
 
 .chat-messages {
@@ -41,14 +36,14 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--u) * 2);
-  margin-bottom: calc(var(--u) * 3);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .chat-message {
   margin: 0;
-  padding: calc(var(--u) * 2) calc(var(--u) * 2.5);
-  border-radius: var(--r);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-lg);
   white-space: pre-wrap;
   word-break: break-word;
   max-width: 88%;
@@ -57,87 +52,69 @@
 
 .chat-message-author {
   align-self: flex-end;
-  background: var(--accent-wash);
-  border: 1px solid var(--accent);
+  background: var(--brand-red-tint);
+  border: 1px solid var(--brand-red-ring);
 }
 
 .chat-message-agent {
   align-self: flex-start;
-  background: var(--s-sunken);
-  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  border: 1px solid var(--surface-2);
 }
 
-/* A command is neither the author speaking nor the agent speaking — it is
-   the work itself, so it sits full width between them rather than taking
-   either side's bubble.
-   [E1.T4/#183] Each of the five command states carries a *second*,
-   non-colour cue on `border-left-style` (dashed/solid/groove/double/
-   dotted, one per state) so the state reads even without colour vision —
-   spec #180's "loading / success / error must not depend on colour alone"
-   applies to these just as much as to the chat-level error banner below;
-   in particular "in progress" (solid) and "completed" (groove) must stay
-   distinguishable from each other, not just from failed/pending, since
-   both are otherwise --ink-dim/--accent-toned neutrals. --accent still
-   marks "in progress" (the one state that is genuinely "現在在哪"); the
-   failed state's border and status text both move to a colour that meets
-   AA (4.5:1) as *text* — --accent-hi measured at 3.85:1 on --s-panel this
-   round (Plan §3.5), which is why the status text stays --ink and only
-   the border itself carries --accent-hi. */
+/* 一筆指令既不是作者也不是 agent 的發言，用滿版呈現。五種狀態各自在
+   `border-left-style` 上有第二個非色彩線索（dashed/solid/groove/double/
+   dotted），色弱／色盲也能分辨。 */
 .chat-command {
   align-self: stretch;
-  border-left: calc(var(--u) / 2) solid var(--line);
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-  background: var(--s-sunken);
-  font-size: var(--fs-small);
+  border-left: 1px solid var(--ink-200);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  font-size: var(--text-sm);
 }
 
 .chat-command-pending {
   border-left-style: dashed;
-  border-left-color: var(--line);
 }
 
 .chat-command-in_progress {
-  border-left-color: var(--accent);
+  border-left-style: solid;
+  border-left-color: var(--brand-red);
 }
 
 .chat-command-completed {
-  border-left-width: calc(var(--u) * 0.75);
   border-left-style: groove;
-  border-left-color: var(--ink-dim);
+  border-left-color: var(--ink-500);
 }
 
 .chat-command-failed {
-  border-left-width: calc(var(--u) * 0.75);
   border-left-style: double;
-  border-left-color: var(--accent-hi);
+  border-left-color: var(--brand-red-hover);
 }
 
-/* Outcome unknown, not failed (ticket #19) — kept visually distinct from
-   both "in progress" (--accent, solid) and "failed" (--accent-hi, double)
-   by staying at the dimmer --ink-dim with a dotted style. */
+/* 結果不明（串流中斷，ticket #19）：跟「執行中」（紅、實線）與「失敗」
+   （深紅、double）都不同，維持在較淡的中性色 + dotted。 */
 .chat-command-interrupted {
   border-left-style: dotted;
-  border-left-color: var(--ink-dim);
+  border-left-color: var(--ink-400);
 }
-
 .chat-command-interrupted .chat-command-status {
-  color: var(--ink-dim);
+  color: var(--ink-500);
 }
 
 .chat-command-line {
   margin: 0;
   display: flex;
-  gap: calc(var(--u) * 2);
+  gap: var(--space-4);
   align-items: baseline;
 }
 
 .chat-command-status {
-  color: var(--ink-dim);
+  color: var(--ink-500);
   white-space: nowrap;
 }
-
 .chat-command-failed .chat-command-status {
-  color: var(--ink);
+  color: var(--ink-900);
 }
 
 .chat-command-text {
@@ -145,55 +122,49 @@
 }
 
 .chat-command-output {
-  margin: calc(var(--u) * 1.5) 0 0;
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-  background: var(--s-well);
-  border-radius: var(--r);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: calc(var(--u) * 48);
   overflow-y: auto;
-  color: var(--ink-dim);
+  color: var(--ink-500);
 }
 
-/* A break in the conversation itself (ticket #19) — said by nobody, so it
-   reads as neither the author's nor the agent's speech. Same neutral
-   treatment as the command states above — see that block's comment. */
+/* 對話裡的一則系統通知（ticket #19）：不是任何一方的發言。 */
 .chat-notice {
   align-self: stretch;
   margin: 0;
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-  border-left: calc(var(--u) / 2) solid var(--ink-dim);
-  background: var(--s-sunken);
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--ink-400);
+  background: var(--surface-1);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
 }
 
 .chat-working {
   margin: 0;
   display: flex;
   align-items: center;
-  gap: calc(var(--u) * 1.5);
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  gap: var(--space-3);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
   font-style: italic;
 }
 
-/* An empty ring, not a text character — "agent 正在工作中…" already says
-   everything a reader needs; the ring is a supplementary in-progress cue,
-   the one kind of looping motion spec #180 allows. `tokens.css`'s reduced-
-   motion layer caps `animation-iteration-count` to 1 automatically, so
-   this stops spinning (rather than looping forever) under
-   prefers-reduced-motion without any extra rule here. */
+/* 一個空心圈，不是文字：「agent 正在工作中…」已經說明一切，圈只是補充的
+   進行中線索。`prefers-reduced-motion` 由 tokens.css 的 `*` 安全網自動把
+   `animation-iteration-count` 收成 1，這裡不用再寫一次媒體查詢。 */
 .chat-working::before {
   content: "";
-  width: calc(var(--u) * 3);
-  height: calc(var(--u) * 3);
+  width: var(--space-5);
+  height: var(--space-5);
   flex-shrink: 0;
-  border-radius: var(--r-round);
-  border: 2px solid var(--line);
-  border-top-color: var(--ink-dim);
-  animation: chat-working-spin calc(var(--dur-view) * 3) var(--ease-panel) infinite;
+  border-radius: var(--radius-pill);
+  border: calc(var(--space-1) / 2) solid var(--surface-2);
+  border-top-color: var(--ink-400);
+  animation: chat-working-spin calc(var(--dur-base) * 4) var(--ease-out) infinite;
 }
 
 @keyframes chat-working-spin {
@@ -204,95 +175,72 @@
 
 .chat-connecting {
   margin: 0;
-  color: var(--ink-dim);
-  font-size: var(--fs-small);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
 }
 
 .chat-error {
   align-self: stretch;
   margin: 0;
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
-  border-left: calc(var(--u) / 2) solid var(--accent-hi);
-  background: var(--s-sunken);
-  color: var(--ink);
-  font-size: var(--fs-small);
+  padding: var(--space-3) var(--space-4);
+  border-left: 1px solid var(--brand-red-hover);
+  background: var(--surface-1);
+  color: var(--ink-900);
+  font-size: var(--text-sm);
 }
 
 .chat-input {
   display: flex;
-  gap: calc(var(--u) * 2);
+  gap: var(--space-3);
 }
 
 .chat-input input {
   flex: 1;
-  /* [NOOP-51] Firefox measured .chat-input's submit button rendered
-     19.5–20px past .side-panel's right edge at every viewport (335 vs
-     315 clientWidth) whenever this input is on screen — Chromium/WebKit
-     stayed at delta=0 in the same states. Firefox gives a bare <input>'s
-     flex-item automatic minimum size its size=20 intrinsic width rather
-     than shrinking it to fit, so it doesn't yield the space the button
-     needs; min-width: 0 lets it shrink like Chromium/WebKit already do. */
+  /* Firefox min-width fix (NOOP-51): a bare <input> keeps its size=20
+     intrinsic width as its flex-item automatic minimum unless told
+     otherwise, so it doesn't yield the space the submit button needs. */
   min-width: 0;
-  padding: calc(var(--u) * 1.5) calc(var(--u) * 2);
+  padding: var(--space-3) var(--space-4);
   box-sizing: border-box;
-  background: var(--s-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--ink);
+  background: var(--surface-1);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+  color: var(--ink-900);
   font: inherit;
-  transition: background var(--dur-micro) var(--ease-micro);
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
-
 .chat-input input:hover {
-  background: var(--s-raised);
+  background: var(--surface-0);
 }
-
 .chat-input input::placeholder {
-  color: var(--ink-dim);
+  color: var(--ink-400);
   opacity: 1;
 }
-
 .chat-input input:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
-  border-color: var(--accent);
+  border-color: var(--brand-red);
 }
 
 .chat-input button {
-  padding: 0 calc(var(--u) * 3);
+  padding: 0 var(--space-5);
   border: none;
-  border-radius: var(--r);
-  background: var(--accent);
-  color: var(--ink);
+  border-radius: var(--radius-md);
+  background: var(--brand-red);
+  color: var(--surface-white);
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
-  transition: background var(--dur-micro) var(--ease-micro);
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
-
 .chat-input button:not(:disabled):hover {
-  background: var(--accent-hi);
+  background: var(--brand-red-hover);
 }
-
-.chat-input button:not(:disabled):active {
-  background: var(--accent);
-}
-
 .chat-input button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
 }
-
 .chat-input button:disabled {
-  background: var(--s-raised);
-  color: var(--ink-faint);
-  cursor: default;
-}
-
-/* Density safety net (see side-panel.css's file header) — not reachable
-   at today's fixed 316px panel width. */
-@container side-panel (width < 280px) {
-  .chat-messages {
-    gap: var(--u);
-    margin-bottom: calc(var(--u) * 2);
-  }
+  background: var(--surface-2);
+  color: var(--ink-400);
 }

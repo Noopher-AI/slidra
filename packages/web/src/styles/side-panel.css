@@ -1,41 +1,25 @@
 /* ═══════════════════════════════════════════════════════════════
-   側邊面板分頁化 (NOOP-271/#154). Every value below comes from
-   tokens.css's :root — see AGENTS/軍令 #2. The container holds the width/
-   border/background that .chat-sidebar and .style-panel used to carry on
-   their own (plan §1/§7.3) — those two now only style their own contents.
-
-   [E1.T4/#183] `container-type: inline-size` below makes `.side-panel` a
-   query container so its contents (chat.css/style-panel.css) can react to
-   the panel's own width rather than the viewport. At today's three formal
-   viewports the panel is always exactly `--w-chat` (316px) — see
-   `e2e/side-panel-visual.test.ts` — so the `@container` rules in this file
-   and in chat.css/style-panel.css never actually trigger yet; they are a
-   safety net for when the parent grid track becomes fluid, written now so
-   that day doesn't require touching this file again (same precedent as
-   shell.css's `.titlebar` `@container … (width < 720px)`). Safe against
-   the `.app` `container-type` warning in shell.css: `TemplateDialog` is
-   not a descendant of `.side-panel` (it mounts directly under `.app`, see
-   App.tsx), so its `position: fixed` backdrop is unaffected.
+   右欄 (New v3 skeleton): 3 個主分頁（對話/樣式/動畫）+ 樣式/動畫底下的
+   Page/Object 子分頁 (SidePanel.tsx 的狀態機)。
    ═══════════════════════════════════════════════════════════════ */
 
 .side-panel {
-  width: var(--w-chat);
+  grid-column: 3;
+  width: var(--panel-w);
   flex-shrink: 0;
-  border-left: 1px solid var(--line-soft);
-  background: var(--s-panel);
+  border-left: 1px solid var(--surface-2);
+  background: var(--surface-0);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   height: 100%;
-  container-type: inline-size;
-  container-name: side-panel;
 }
 
 .side-panel-tabs {
   flex-shrink: 0;
   display: flex;
-  height: var(--h-tabs);
-  border-bottom: 1px solid var(--line-soft);
+  height: var(--control-h);
+  border-bottom: 1px solid var(--surface-2);
 }
 
 .side-panel-tab {
@@ -43,71 +27,69 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--u) * 1.5);
+  gap: var(--space-2);
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: calc(var(--space-1) / 2) solid transparent;
   background: transparent;
-  color: var(--ink-dim);
+  color: var(--ink-500);
   font: inherit;
-  font-size: var(--fs-ui);
-  font-weight: var(--fw-regular);
+  font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
   transition:
-    color var(--dur-micro) var(--ease-micro),
-    border-color var(--dur-micro) var(--ease-micro);
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
-
 .side-panel-tab:hover {
-  color: var(--ink);
+  color: var(--ink-900);
 }
-
-.side-panel-tab:active {
-  background: var(--s-sunken);
-}
-
 .side-panel-tab:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
 }
-
-/* Selected reads through colour *and* weight (decision #7) — the border
-   accent alone would fail for anyone who can't distinguish the underline
-   colour from the transparent default. */
+/* 選中同時吃顏色與粗細（不能只靠底線色分辨）。 */
 .side-panel-tab[aria-selected="true"] {
-  color: var(--ink);
-  border-bottom-color: var(--accent);
-  font-weight: var(--fw-medium);
+  color: var(--ink-900);
+  border-bottom-color: var(--brand-red);
+  font-weight: 700;
 }
 
-.side-panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: calc(var(--u) * 4);
-  height: calc(var(--u) * 4);
-  padding: 0 calc(var(--u) / 2);
-  border-radius: calc(var(--u) * 2);
-  background: var(--accent);
-  color: var(--ink);
-  font-size: var(--fs-small);
-  line-height: 1;
+.side-panel-subtabs {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--space-1);
+  margin: var(--space-3) var(--space-5) 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-md-segmented);
+  background: var(--surface-1);
+}
+.side-panel-subtab {
+  flex: 1;
+  height: var(--control-h-compact);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-500);
+  background: transparent;
+}
+.side-panel-subtab[aria-selected="true"] {
+  background: var(--surface-white);
+  color: var(--ink-900);
+  box-shadow: var(--shadow-seg);
 }
 
-/* Tab switch is a conditional remount, not a display:none toggle (A1), so
-   an *entrance* animation on mount is the correct tool — a `transition`
-   needs a property change on a persisting element, which this isn't. */
 .side-panel-tabpanel {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  animation: side-panel-tabpanel-in var(--dur-panel) var(--ease-panel);
+  animation: side-panel-tabpanel-in var(--dur-base) var(--ease-out);
 }
 
 @keyframes side-panel-tabpanel-in {
   from {
     opacity: 0;
-    transform: translateY(calc(var(--u) * 1));
+    transform: translateY(var(--space-1));
   }
   to {
     opacity: 1;
@@ -115,10 +97,12 @@
   }
 }
 
-/* Density safety net (see file header) — not reachable at today's fixed
-   316px panel width. */
-@container side-panel (width < 280px) {
-  .side-panel-tab {
-    gap: var(--u);
-  }
+/* 樣式/動畫的 Page/Object 空容器（未來票的內容） — 佔滿分頁區，方便未來
+   票直接在裡面鋪東西，不用回來改這個檔案的版面規則。 */
+.style-page-panel,
+.style-object-panel,
+.animate-page-panel,
+.animate-object-panel {
+  flex: 1;
+  min-height: 0;
 }

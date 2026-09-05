@@ -1,0 +1,15 @@
+/* 舞台疊層 (New v3 skeleton) — 四個都是空容器（見 stage-overlays/*.tsx 各自
+   的說明），這裡只確保根容器蓋滿舞台、不吃滑鼠事件。 */
+.stage-overlays {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.selection-overlay,
+.context-bar-layer,
+.comment-layer,
+.guide-layer {
+  position: absolute;
+  inset: 0;
+}

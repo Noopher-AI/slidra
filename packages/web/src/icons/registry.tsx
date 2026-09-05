@@ -35,7 +35,39 @@ export type IconName =
   // viewBox 0 0 16 16, coordinates below are ×1.25 onto the 20×20 canonical grid.
   | "view-normal"
   | "view-grid"
-  | "view-play";
+  | "view-play"
+  // New v3 shell (this ticket) — every path below is copied verbatim from
+  // docs/design/prototype/comotion-logic-v3.js's `ICONS` constant (already
+  // 0 0 20 20), or from the prototype HTML inline SVGs for the titlebar
+  // buttons that have no `ICONS` entry (undo/redo/open/save/export/play/
+  // hand — noted per-icon below).
+  | "hand" // prototype HTML titlebar toolbar button, not in the ICONS constant
+  | "undo" // prototype HTML titlebar, not in the ICONS constant
+  | "redo" // prototype HTML titlebar, not in the ICONS constant
+  | "open" // prototype HTML titlebar "Open…" button, not in the ICONS constant
+  | "save" // prototype HTML titlebar "Save" button, not in the ICONS constant
+  | "export" // prototype HTML titlebar "Export" button, not in the ICONS constant
+  | "play" // prototype HTML titlebar "Play" button (filled triangle), not in the ICONS constant
+  | "table"
+  | "chart"
+  | "rect"
+  | "ellipse"
+  | "line"
+  | "spark" // Animate
+  | "group"
+  | "trash"
+  | "dup"
+  | "comment"
+  | "alignL"
+  | "alignC"
+  | "alignR"
+  | "alignT"
+  | "alignM"
+  | "alignB"
+  | "distH"
+  | "distV"
+  | "front"
+  | "back";
 
 /**
  * Canonical grid for every icon is `0 0 20 20` (Icon.tsx always renders
@@ -162,4 +194,87 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   ),
   // view-play: "M4 2.5 L13 8 L4 13.5 Z" × 1.25
   "view-play": <path d="M5 3.125 L16.25 10 L5 16.875 Z" />,
+
+  // ── New v3 shell — paths copied verbatim from docs/design/prototype/
+  // comotion-logic-v3.js's `ICONS` constant, or (where noted above in
+  // IconName) from the prototype HTML's own inline titlebar SVGs. ──
+  hand: <path d="M7 11V4.5a1.2 1.2 0 012.4 0V9M9.4 9V3.5a1.2 1.2 0 012.4 0V9M11.8 9V4.5a1.2 1.2 0 012.4 0V10M14.2 10V6.5a1.2 1.2 0 012.4 0V13c0 3-2 5.5-5.5 5.5S9 17 7.5 15.5L4.2 11.6a1.2 1.2 0 011.9-1.5L7 11" />,
+  undo: (
+    <>
+      <path d="M7 6L3.5 9.5 7 13" />
+      <path d="M4 9.5h8a4 4 0 010 8H9" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="M13 6l3.5 3.5L13 13" />
+      <path d="M16 9.5H8a4 4 0 000 8h3" />
+    </>
+  ),
+  open: (
+    <>
+      <path d="M2.5 6.5V4.5h5l1.5 2h8.5v9h-15z" />
+      <path d="M2.5 8.5h15" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M3 3h11l3 3v11H3z" />
+      <path d="M6 3v5h7V3" />
+      <rect x={6} y={11.5} width={8} height={5.5} />
+    </>
+  ),
+  export: (
+    <>
+      <path d="M10 12V3M6.5 6.5L10 3l3.5 3.5" />
+      <path d="M3.5 12v4.5h13V12" />
+    </>
+  ),
+  play: <path d="M5 4l9 6-9 6z" fill="currentColor" stroke="none" />,
+  table: (
+    <>
+      <rect x={2.5} y={3.5} width={15} height={13} rx={1.5} />
+      <path d="M2.5 8h15M7.5 8v8.5M12.5 8v8.5" />
+    </>
+  ),
+  chart: <path d="M3 17h14M5 14V9M9 14V5M13 14v-3M17 14V7" />,
+  rect: <rect x={3} y={4} width={14} height={12} rx={1.5} />,
+  ellipse: <ellipse cx={10} cy={10} rx={7.5} ry={6} />,
+  line: <path d="M3 16L17 4" />,
+  spark: <path d="M10 2l1.8 5.2L17 9l-5.2 1.8L10 16l-1.8-5.2L3 9l5.2-1.8z" />,
+  group: (
+    <>
+      <rect x={2.5} y={2.5} width={7} height={7} rx={1.5} />
+      <rect x={10.5} y={10.5} width={7} height={7} rx={1.5} />
+      <path d="M2.5 13v4.5h4M17.5 7V2.5h-4" strokeDasharray="2 2" />
+    </>
+  ),
+  trash: <path d="M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11" />,
+  dup: (
+    <>
+      <rect x={6} y={6} width={11} height={11} rx={2} />
+      <path d="M3 14V3h11" />
+    </>
+  ),
+  comment: <path d="M3 4h14v9H9l-4 3v-3H3z" />,
+  alignL: <path d="M4 3v14M8 6h8v3H8zM8 11h5v3H8z" />,
+  alignC: <path d="M10 3v14M6 6h8v3H6zM7.5 11h5v3h-5z" />,
+  alignR: <path d="M16 3v14M4 6h8v3H4zM7 11h5v3H7z" />,
+  alignT: <path d="M3 4h14M6 8h3v8H6zM11 8h3v5h-3z" />,
+  alignM: <path d="M3 10h14M6 6h3v8H6zM11 7.5h3v5h-3z" />,
+  alignB: <path d="M3 16h14M6 4h3v8H6zM11 7h3v5h-3z" />,
+  distH: <path d="M3 3v14M17 3v14M7.5 7h5v6h-5z" />,
+  distV: <path d="M3 3h14M3 17h14M7 7.5h6v5H7z" />,
+  front: (
+    <>
+      <rect x={3} y={3} width={10} height={10} rx={1.5} />
+      <path d="M8 17h9V8" />
+    </>
+  ),
+  back: (
+    <>
+      <rect x={7} y={7} width={10} height={10} rx={1.5} />
+      <path d="M12 3H3v9" />
+    </>
+  ),
 };

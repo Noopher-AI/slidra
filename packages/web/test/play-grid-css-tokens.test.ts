@@ -12,7 +12,10 @@ import { describe, expect, it } from "vitest";
 
 const stylesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
 
-const FILES = ["play.css", "grid.css"];
+// grid.css was deleted (New v3 shell rebuild — GridView.tsx/網格檢視整個拿
+// 掉，見該張票的 PR 報告): C1/F4 below now only apply to play.css, the one
+// file left that still renders presentation content inside its own iframe.
+const FILES = ["play.css"];
 
 /** Strips /* ... *\/ comments first — issue references in prose comments
  * (`#54`, `#55`, …) would otherwise false-positive the hex-colour scan. */

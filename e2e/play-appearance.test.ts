@@ -119,7 +119,7 @@ async function openApp(deckDir: string, prefix: string): Promise<{ page: Page; c
  * has no listener to reach.
  */
 async function enterPlay(page: Page): Promise<void> {
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expect
     .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
@@ -296,7 +296,7 @@ it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 cli
 it("兩種浮動通知（播放錯誤／全螢幕錯誤）並列可見、不互相覆蓋，且在控制列隱去後依然顯示", async () => {
   const { page, cleanup } = await openApp(brokenEffectsDeckDir, "play-appearance-notices");
   try {
-    await page.locator('.view-btn[data-view="play"]').click();
+    await page.locator('.play-button').click();
 
     // 播放錯誤：這份 deck 第 1 頁的效果清單解析必定失敗（見
     // e2e/player-effect-error.test.ts）。canvas.ts 的解析失敗路徑（見
@@ -365,7 +365,7 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
     // 可見性——#54 明文要求「不在 DOM 裡」，`display:none`／`opacity:0`
     // 都不算數，只有 querySelector/count 為 0 才算數。
     expect(await page.locator(".titlebar").count()).toBe(1);
-    expect(await page.locator(".ribbon").count()).toBe(1);
+    expect(await page.locator(".dock").count()).toBe(1);
     expect(await page.locator(".overview").count()).toBe(1);
     expect(await page.locator(".overview-list").count()).toBe(1);
     expect(await page.locator(".chat-sidebar").count()).toBe(1);
@@ -375,7 +375,7 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
     await enterPlay(page);
 
     expect(await page.locator(".titlebar").count()).toBe(0);
-    expect(await page.locator(".ribbon").count()).toBe(0);
+    expect(await page.locator(".dock").count()).toBe(0);
     expect(await page.locator(".overview").count()).toBe(0);
     expect(await page.locator(".overview-list").count()).toBe(0);
     expect(await page.locator(".chat-sidebar").count()).toBe(0);
@@ -432,7 +432,7 @@ it("離開播放模式後，總覽縮圖軌重新掛載且可點擊換頁（over
     // 進入播放，再離開——`<Rail>` 卸載又重掛載一次。
     await enterPlay(page);
     await page.locator(".play-bar .play-toggle-button.leave").click();
-    await expect.poll(() => page.locator(".view-btn[data-view='play']").count(), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => page.locator(".play-button").count(), { timeout: 10_000 }).toBe(1);
 
     // 只數元素不足以證明模組還活著（見波簡報的「陷阱」一節）：必須點
     // 一下縮圖，實際觀察投影片真的換了。

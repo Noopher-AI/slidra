@@ -127,7 +127,7 @@ it("完整播放路徑：進入播放、逐步推進、換頁、離開播放，�
   // view 模式的投影片就是它的靜態最終長相 (ADR-0009)。
   await expectVisible(fadeText);
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
 
   // 播放模式的 iframe 有 allow-scripts，沒有 allow-same-origin.
   const sandbox = await page.locator("iframe.slide-frame").getAttribute("sandbox");
@@ -197,7 +197,7 @@ it("焦點被搶到播放器外時，方向鍵照樣推進，不必先去把焦�
 
   await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expectHidden(fadeText);
 
@@ -239,7 +239,7 @@ it("播放器握著焦點時，一次方向鍵只推進一步——父文件不�
 
   await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
 
-  await page.locator('.view-btn[data-view="play"]').click();
+  await page.locator('.play-button').click();
   await expect
     .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
     .toBe("true");

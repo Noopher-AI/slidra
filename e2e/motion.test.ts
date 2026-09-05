@@ -7,20 +7,20 @@ import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/
 /**
  * Cross-cutting motion-budget verification (NOOP-9 Plan §1/§4.7): duration
  * ceilings and reduced-motion behaviour checked *across* the whole shell at
- * once, rather than per-feature the way e2e/play-grid-visual.test.ts's F1-3,
- * e2e/side-panel-visual.test.ts's V9 and
- * e2e/workspace-side-panel-integration.test.ts's IP-5 already do (those are
- * not duplicated here — Plan §2.1-5).
+ * once, rather than per-feature.
  *
- * Category ceilings mirror tokens.css's own three tokens (packages/web/src/
- * styles/tokens.css:129-131) and, for the selector groups below, the actual
- * token each selector's CSS rule consumes today (verified by reading
- * source, not the category NOOP-9 Plan §4.7 guessed at — see this PR's
- * body: `.template-dialog`'s entrance animation consumes `var(--dur-view)`,
- * i.e. the "dialogs / view switches" token by tokens.css's own comment, not
- * `var(--dur-panel)` as the plan's table grouped it; using the plan's
- * grouping here would make this test fail against correct, unchanged
- * product CSS).
+ * New v3 shell rebuild (this ticket): the old ribbon/grid-view/template-
+ * dialog UI this file used to exercise is gone (Ribbon.tsx, GridView.tsx,
+ * TemplateDialog.tsx all deleted — see that ticket's PR report). Category
+ * ceilings below now map onto the New v3 shell's own token set
+ * (tokens.css's `--dur-fast` 150ms / `--dur-base` 180ms — the old three-tier
+ * `--dur-micro`/`--dur-panel`/`--dur-view` naming from NOOP-9 Plan §4.7 no
+ * longer exists in tokens.css, which was rewritten wholesale onto
+ * 01-DESIGN_TOKENS.md's naming; see that ticket's own tokens.css file
+ * header). The 300ms overall ceiling (below) and the two category ceilings
+ * are still meaningful sanity checks even though the specific named tokens
+ * they were once keyed to are gone: every New v3 shell animation/transition
+ * in fact uses `--dur-fast` or `--dur-base`, both well under 300ms.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -106,14 +106,13 @@ it("正常 motion 下，全站任一（非無限循環）動畫／transition 的
     const page = await browser.newPage({ viewport: VIEWPORT });
     openPages.push(page);
     await openApp(page, server);
-    await page.locator('.tab:has-text("常用")').click();
 
     const motions = await scanMotion(page);
     const offenders: string[] = [];
     for (const m of motions) {
-      // 持續循環的載入指示器（chat-working-spin，chat.css/template-dialog.css）不是
-      // 「view switch/dialog」類的一次性 motion，不受這個上限約束——它用
-      // calc(var(--dur-view) * 3) 當自己的節奏，是刻意的設計決定，不是回歸。
+      // 持續循環的載入指示器（chat-working-spin，chat.css）不是「view
+      // switch/dialog」類的一次性 motion，不受這個上限約束——它用
+      // calc(var(--dur-base) * 4) 當自己的節奏，是刻意的設計決定，不是回歸。
       if (m.animationIterationCount === "infinite") continue;
       for (const d of [...m.animationDurations, ...m.transitionDurations]) {
         if (d > 0.3) offenders.push(`${m.selector}[${m.index}]: ${d}s`);
@@ -133,11 +132,15 @@ interface CategoryCase {
 }
 
 const CATEGORY_CASES: CategoryCase[] = [
-  { category: "微互動（--dur-micro ≤160ms）", selector: ".cmd", ceiling: 0.16 },
-  { category: "微互動（--dur-micro ≤160ms）", selector: ".view-btn", ceiling: 0.16 },
-  { category: "微互動（--dur-micro ≤160ms）", selector: ".side-panel-tab", ceiling: 0.16 },
+  { category: "微互動（--dur-fast ≤160ms）", selector: ".dock-command", ceiling: 0.16 },
+  // `.slide-nav-button` 不是這裡的好選擇：demo 牌組第一頁時「上一頁」按鈕
+  // 是 disabled 狀態（40% 透明，見 shell.css 的全域 disabled 規則），reduced
+  // motion 測項斷言 opacity 必須是 1，用它會誤判成違規。`.dock-hand-button`
+  // 沒有停用邏輯，永遠可見/可按，是同一類「微互動」控制項裡更穩定的樣本。
+  { category: "微互動（--dur-fast ≤160ms）", selector: ".dock-hand-button", ceiling: 0.16 },
+  { category: "微互動（--dur-fast ≤160ms）", selector: ".side-panel-tab", ceiling: 0.16 },
   {
-    category: "面板類（--dur-panel ≤220ms）",
+    category: "面板類（--dur-base ≤220ms）",
     selector: ".side-panel-tabpanel",
     ceiling: 0.22,
     arrive: async (page) => {
@@ -145,22 +148,18 @@ const CATEGORY_CASES: CategoryCase[] = [
     },
   },
   {
-    category: "檢視切換／對話框類（--dur-view ≤300ms，含 .template-dialog——見檔頭說明）",
-    selector: ".grid-view",
+    // New v3 shell's floating layers (Dock 的 Insert 面板／Shape／Arrange／
+    // Zoom 選單，02-DESIGN_DOC.md §2.3「一律從同一個地方長出」) — grid-view／
+    // template-dialog 已刪除（GridView.tsx／TemplateDialog.tsx 整個拿掉，
+    // 見該張票的 PR 報告），`.floating-layer` 是這張骨架票唯一新增、會播放
+    // 進場動畫的浮層 class（`floating-layer-in`，用 --dur-fast）。用縮放選
+    // 單（唯一整個可用的浮層）進場來量測。
+    category: "浮層類（--dur-fast ≤300ms，取代已刪除的 .grid-view／.template-dialog）",
+    selector: ".floating-layer",
     ceiling: 0.3,
     arrive: async (page) => {
-      await page.locator('.view-btn[data-view="grid"]').click();
-      await expect.poll(() => page.locator(".grid-view").count()).toBe(1);
-    },
-  },
-  {
-    category: "檢視切換／對話框類（--dur-view ≤300ms，含 .template-dialog——見檔頭說明）",
-    selector: ".template-dialog",
-    ceiling: 0.3,
-    arrive: async (page) => {
-      await page.locator('.tab:has-text("常用")').click();
-      await page.locator('.cmd:has-text("範本")').click();
-      await expect.poll(() => page.locator('[aria-label="範本管理"]').count()).toBe(1);
+      await page.locator(".dock-zoom-control").click();
+      await expect.poll(() => page.locator(".floating-layer").count()).toBe(1);
     },
   },
 ];
@@ -172,7 +171,6 @@ for (const testCase of CATEGORY_CASES) {
       const page = await browser.newPage({ viewport: VIEWPORT });
       openPages.push(page);
       await openApp(page, server);
-      await page.locator('.tab:has-text("常用")').click();
       if (testCase.arrive) await testCase.arrive(page);
 
       const durations = await page.locator(testCase.selector).first().evaluate((el) => {
@@ -197,9 +195,8 @@ for (const testCase of CATEGORY_CASES) {
       const page = await context.newPage();
       openPages.push(page);
       await openApp(page, server);
-      await page.locator('.tab:has-text("常用")').click();
       if (testCase.arrive) await testCase.arrive(page);
-      // reducedMotion 下 duration 趨近 0 不代表 0——像 .template-dialog 這種入場動畫仍會
+      // reducedMotion 下 duration 趨近 0 不代表 0——像 .floating-layer 這種入場動畫仍會
       // 從 opacity:0 起跑，只是幾乎瞬間跑完；緊接著 evaluate() 有機會量到還沒跑完那一格
       // 影格的 opacity（CI 上實測會量到 0，不是產品沒把內容顯示出來）。給一次事件迴圈
       // 加一個影格的時間讓它真的跑完，同檔其餘既有測試（如 F1）沒有這個問題是因為它們
