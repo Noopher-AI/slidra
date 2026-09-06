@@ -507,7 +507,7 @@ describe("element delete cleans up dangling effect references (ADR-0009 minimal 
   it("removes a <comot:effect> whose target names a deleted element", async () => {
     const slideSvg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects">' +
+      '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
       '<comot:effect target="el-a" kind="fade"/><comot:effect target="el-b" kind="fade"/>' +
       "</comot:effects></metadata>" +
       '<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>' +

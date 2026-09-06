@@ -66,6 +66,11 @@ export {
   pasteSlideClipboard,
   duplicateSlideElements,
   cutSlideElements,
+  addSlideEffects,
+  removeSlideEffects,
+  moveSlideEffect,
+  setSlideEffect,
+  listSlideEffects,
 } from "./workspace.js";
 export type { AddTextBoxInput, SaveState } from "./workspace.js";
 export {
@@ -97,6 +102,16 @@ export type { FontMetrics } from "./text-metrics.js";
 export * from "./geometry/index.js";
 export * from "./slide/index.js";
 export * from "./text/index.js";
+export * from "./effects/index.js";
+export {
+  readEffectList,
+  addEffects,
+  removeEffects,
+  moveEffect,
+  setEffect,
+  removeEffectsTargeting,
+} from "./effects/edit.js";
+export type { AddEffectInput, SetEffectInput } from "./effects/edit.js";
 export {
   recordSnapshot,
   beginHistoryGroup,

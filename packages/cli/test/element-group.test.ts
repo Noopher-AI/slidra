@@ -356,14 +356,14 @@ async function openTwoSlidePresentation(
   options: { slide1Effects?: string; slide2Effects?: string } = {},
 ): Promise<{ id: string }> {
   const effectsBlock = options.slide1Effects
-    ? `<metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects">${options.slide1Effects}</comot:effects></metadata>`
+    ? `<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">${options.slide1Effects}</comot:effects></metadata>`
     : "";
   const slide1 =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">${effectsBlock}` +
     '<g id="el-a" transform="translate(10 20)"><rect x="0" y="0" width="5" height="5"/></g>' +
     "</svg>";
   const slide2Effects = options.slide2Effects
-    ? `<metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects">${options.slide2Effects}</comot:effects></metadata>`
+    ? `<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">${options.slide2Effects}</comot:effects></metadata>`
     : "";
   const slide2 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">${slide2Effects}</svg>`;
   const { zipSync } = await import("fflate");

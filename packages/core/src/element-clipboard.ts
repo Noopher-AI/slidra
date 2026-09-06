@@ -2,6 +2,7 @@ import { CoMotionError } from "./errors.js";
 import { composeMatrices, decomposeMatrix, formatTransform, multiplyMatrix, parseTransform, type Matrix, type TransformParts } from "./geometry/transform.js";
 import { assertSlideCompliant } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
+import { EFFECTS_NS } from "./effects/index.js";
 
 /**
  * `element copy` / `element paste` / `element duplicate` (決定 5-7). Pure
@@ -225,7 +226,17 @@ function appendMarkup(svgContent: string, markup: string): string {
   return svgContent.slice(0, svgRoot.contentEnd) + markup + svgContent.slice(svgRoot.contentEnd);
 }
 
-const EFFECTS_XMLNS = "https://schemas.comotion.app/effects";
+/**
+ * [E2.T7]/D2: this used to be the literal `https://schemas.comotion.app/effects`
+ * — a different value than every other reader/writer of `<comot:effects>`
+ * uses (`https://co-motion.dev/ns`, `packages/web/src/effects.ts`'s
+ * `EFFECTS_NS`, `packages/core/src/effects/index.ts`'s `EFFECTS_NS`,
+ * `packages/core/src/notes.ts`'s `NOTES_NS`). Because the web reader
+ * matches by namespace URI, pasting onto a slide with no prior effect list
+ * created one the player would silently treat as empty — the pasted
+ * effects vanished with no error. Now imports the single shared constant.
+ */
+const EFFECTS_XMLNS = EFFECTS_NS;
 
 /** Inserts `effectMarkups`, joined, at the end of the target slide's effect list — creating `<metadata><comot:effects>` if the slide has none yet. */
 function appendEffects(svgContent: string, effectMarkups: readonly string[]): string {
