@@ -133,7 +133,11 @@ export function SidePanel({ state, controller, chat, side, sub, onSideChange, on
         {side === "chat" && chat}
         {side === "style" && (sub === "page" ? <StylePagePanel /> : <StyleObjectPanel />)}
         {side === "animate" &&
-          (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel state={state} controller={controller} />)}
+          (sub === "page" ? (
+            <AnimatePagePanel state={state} controller={controller} />
+          ) : (
+            <AnimateObjectPanel state={state} controller={controller} />
+          ))}
       </div>
     </div>
   );

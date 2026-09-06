@@ -550,7 +550,11 @@ export function App() {
   canvasStateRef.current = canvasState;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // [E2.T11]: Space is play-mode-only (§4.5's own scope — "→／Space／
+      // 點畫面前進" only ever lists it for 播放模式). In 檢視模式 it falls
+      // through to the same early return every other unhandled key does,
+      // leaving the browser's default Space behaviour untouched there.
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== " ") return;
       // Never steal an arrow key from a text field — the author is moving
       // the caret in the chat box, not paging the deck.
       const target = event.target as HTMLElement | null;
@@ -560,12 +564,13 @@ export function App() {
       const state = canvasStateRef.current;
       if (state.mode === "play") {
         event.preventDefault();
-        controller.stepPlayer(event.key === "ArrowRight" ? "advance" : "retreat");
+        controller.stepPlayer(event.key === "ArrowLeft" ? "retreat" : "advance");
         // Hand focus back so every following key press takes the runtime's
         // own path, transient activation and all.
         controller.focusPlayer();
         return;
       }
+      if (event.key === " ") return;
       event.preventDefault();
       void (event.key === "ArrowRight" ? controller.next() : controller.previous());
     }
@@ -713,6 +718,29 @@ export function App() {
 
       event.preventDefault(); // isDuplicate — otherwise Chrome opens "Add bookmark".
       void runPageCommand("slide duplicate", { slidePath }, state.currentIndex + 1);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // [E2.T11] §4.5: Esc leaves 播放模式 — but only when the document is not
+  // ALSO fullscreen right now. Fullscreen owns Esc first: the browser is
+  // already exiting fullscreen on its own by the time this fires, and
+  // `isCanvasAreaFullscreen` here (checked before calling handleExitPlay(),
+  // not inside it) is what keeps that a "leave fullscreen, stay in play
+  // mode" transition rather than dropping out of both at once (the same
+  // rule canvas.ts's onWindowMessage applies to the runtime's own
+  // "exit-play" message — the other route to this same call). `handleExitPlay`
+  // is a hoisted function declaration, so referencing it here (defined
+  // further down this component) is safe.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      if (canvasStateRef.current.mode !== "play") return;
+      if (isCanvasAreaFullscreen(wellRef.current)) return;
+      void handleExitPlay();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);

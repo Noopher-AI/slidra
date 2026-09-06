@@ -501,7 +501,50 @@ it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動�
   }
 });
 
-it("A17：基準截圖三張（Animate 面板／Animate ›Object 清單／舞台編號徽章）", async () => {
+it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all slides；agent 用同一條 slide transition set --all 可重現", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    // 造第二頁，證明 --all 真的套用到「每一張」，不是只有目前這頁。
+    const added = await registry.dispatch<{ slidePath: string }>("slide add", { id: presentationId });
+    expect(added.ok).toBe(true);
+    const secondSlidePath = added.data!.slidePath;
+
+    const page = await openApp(server);
+    await page.locator('[role="tab"][data-tab="animate"]').click();
+    const panel = page.locator(".animate-page-panel");
+    await panel.waitFor();
+    // 沒有選取任何元素——停在預設的 Page 子分頁，不是 Object。
+    expect(await page.locator('[role="tab"][data-subtab="page"]').getAttribute("aria-selected")).toBe("true");
+
+    await panel.locator('[data-edge="enter"] .animate-page-effect-card', { hasText: "Fade" }).click();
+
+    await expect
+      .poll(async () => (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content)
+      .toContain('enter="fade"');
+    // 還沒按 Apply to all slides——第二頁不受影響。
+    expect(
+      (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: secondSlidePath })).data!.content,
+    ).not.toContain("comot:transition");
+
+    await panel.locator(".animate-page-apply-all").click();
+
+    await expect
+      .poll(async () => (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: secondSlidePath })).data!.content)
+      .toContain('enter="fade"');
+
+    // agent 用同一條命令可重現：CLI 版的 --all 在另一張全新簡報上產生一致的結果。
+    const cliResult = await registry.dispatch("slide transition set", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      all: true,
+    });
+    expect(cliResult.ok).toBe(true);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞台編號徽章／Animate ›Page，[E2.T11] 新增第四張）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -521,6 +564,11 @@ it("A17：基準截圖三張（Animate 面板／Animate ›Object 清單／舞�
 
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
     await compareScreenshot(page, { name: "stage-anim-badges", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
+
+    // [E2.T11]/[A16]：Animate › Page（無選取，回到 Page 子分頁）。
+    await page.locator('[role="tab"][data-subtab="page"]').click();
+    await page.locator(".animate-page-panel").waitFor();
+    await compareScreenshot(page, { name: "animate-page", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
   } finally {
     await cleanup();
   }

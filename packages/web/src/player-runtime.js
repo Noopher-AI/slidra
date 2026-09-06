@@ -566,14 +566,27 @@
   }
 
   document.addEventListener("keydown", function (event) {
-    if (event.key === "ArrowRight") {
+    // [E2.T11]: Space/PageDown mirror ArrowRight (「前進一步」), PageUp
+    // mirrors ArrowLeft (「後退一步」) — App.tsx's own keydown listeners
+    // already forward these same keys when focus sits in the PARENT
+    // document; this is the other half, for when focus is inside this
+    // iframe (the common case right after entering play mode).
+    if (event.key === "ArrowRight" || event.key === " " || event.key === "PageDown") {
       event.preventDefault();
       advance();
       return;
     }
-    if (event.key === "ArrowLeft") {
+    if (event.key === "ArrowLeft" || event.key === "PageUp") {
       event.preventDefault();
       retreat();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      // canvas.ts decides whether this actually leaves play mode — it may
+      // instead be fullscreen's Esc (§4.5), which this runtime has no way
+      // to know about.
+      post({ event: "exit-play" });
       return;
     }
   });

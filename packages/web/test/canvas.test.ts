@@ -1147,14 +1147,159 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 // controller (play()/next()/previous()/showSlide()) and assert on the
 // <iframe> element's own inline style, never on the internal renderPlay()
 // function itself.
-// [E2.T11] 移除：presentation-level T6 fade 被逐頁的 <comot:transition>
-// 取代（project.json.transition 廢除）。這裡原本的六條測項——讀取端三例
-// 視為 none／"none" 瞬切／"fade" 前進換頁淡入／倒退換頁瞬切／play() 進入
-// 播放瞬切／殘留 inline style 不污染下一次——全數併入下一個 commit 新增
-// 的「mountCanvas 的頁面進出場轉場」describe，同一組關切點（讀取端預設值、
-// 換頁時的 iframe inline style）換了新的資料來源（逐頁 metadata 而非
-// project.json）繼續守；「play() 進入播放瞬切」這條在新殼下行為本身改變
-// （enter 現在會播），新測項的名字會標明這是刻意的行為變更，不是回歸。
+describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
+  function frame(): HTMLIFrameElement {
+    return container.querySelector("iframe") as HTMLIFrameElement;
+  }
+
+  /** Each entry is one slide's raw markup (with or without its own `<comot:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
+  function stubTransitionDeck(markup: Record<string, string>): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(deck), { status: 200 });
+        }
+        const match = /\/api\/files\/(.+)$/.exec(url);
+        if (match && markup[match[1]]) {
+          return new Response(markup[match[1]], { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  function slideWithTransition(testId: string, transitionAttrs?: string): string {
+    const metadata = transitionAttrs ? `<metadata><comot:transition ${NS} ${transitionAttrs}/></metadata>` : "";
+    return `<svg data-testid="${testId}">${metadata}</svg>`;
+  }
+
+  it.each([
+    ["沒有 <metadata>", slideWithTransition("s1")],
+    ["有 <metadata> 但沒有 <comot:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
+    ["enter/exit 都明寫 none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
+  ] as const)("讀取端：%s → 前進換頁瞬切，不拋錯", async (_label, firstSlideMarkup) => {
+    stubTransitionDeck({ ...deckMarkup, "slides/001.svg": firstSlideMarkup, "slides/002.svg": slideWithTransition("s2") });
+    controller = mountCanvas(container);
+    await expect(controller.reload()).resolves.toBeUndefined();
+    await controller.play();
+
+    await controller.next();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+    expect(frame().style.transform).toBe("");
+  });
+
+  it("[A9] enter=\"fade\" 時抵達該頁：inline style 先是 opacity:0，下一個 animation frame 變成 opacity:1 且 transition 字串含該頁的 enter 時長", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.8" exit="none" exit-duration="0.5"'),
+    });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    await controller.next();
+
+    expect(frame().style.opacity).toBe("0");
+    expect(frame().style.transition).toBe("none");
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(frame().style.opacity).toBe("1");
+    expect(frame().style.transition).toBe("opacity 800ms var(--ease-out), transform 800ms var(--ease-out)");
+  });
+
+  it("[A10] exit=\"fade\" 時前進換頁：離開頁先同步淡出（opacity:0，transition 字串含 exit 時長），時長跑完才真的換成下一頁的 srcdoc", async () => {
+    vi.useFakeTimers();
+    try {
+      stubTransitionDeck({
+        ...deckMarkup,
+        "slides/001.svg": slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+        "slides/002.svg": slideWithTransition("s2"),
+      });
+      controller = mountCanvas(container);
+      await controller.reload();
+      await controller.play();
+
+      const advancePromise = controller.next();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // (a) 同步設定的確定性斷言：opacity 立刻變 0，transition 字串含 1000ms。
+      expect(frame().style.opacity).toBe("0");
+      expect(frame().style.transition).toContain("1000ms");
+      // (b) 此時仍是第一頁的內容，尚未換頁。
+      expect(frame().srcdoc).toContain('data-testid="s1"');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await advancePromise;
+
+      // (c) exit 播完才換成第二頁，且 opacity 回到非 0（enter 為預設 none，瞬切到 1 = removeProperty）。
+      expect(frame().srcdoc).toContain('data-testid="s2"');
+      expect(frame().style.opacity).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("[A11] 倒退換頁不播離開頁的 exit（瞬切離開）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+    });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+    await controller.next();
+
+    await controller.previous();
+
+    // 沒有任何 exit 動畫發生過：回到第一頁（enter="none"）之後，inline style 全清空。
+    expect(frame().srcdoc).toContain('data-testid="s1"');
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+
+  it("play() 進入播放會播該頁的 enter（行為變更：T6 時代這裡是瞬切）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    await controller.play();
+
+    expect(frame().style.opacity).toBe("0");
+    expect(frame().style.transition).toBe("none");
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(frame().style.opacity).toBe("1");
+  });
+
+  it("上一次 enter 淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+    await controller.next();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(frame().style.opacity).toBe("1");
+
+    await controller.previous();
+
+    expect(frame().style.opacity).toBe("");
+    expect(frame().style.transition).toBe("");
+  });
+});
 
 // Gate review round 3, P2: target ids come straight from untrusted slide
 // content (ADR-0010). A target containing "<!--<script>" (after XML entity

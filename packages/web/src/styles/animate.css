@@ -330,6 +330,71 @@
   background: var(--surface-white);
 }
 
+/* ── Animate › Page（[E2.T11]/#207 §4.7）────────────────────────────
+   PageTransitionView.tsx 的版面：Enter/Exit 各一節效果卡＋時長滑桿，最後
+   Apply to all slides。沿用上方 Object 面板同一組 token，不另起爐灶。 */
+.animate-page-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
+  overflow-y: auto;
+}
+.animate-page-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.animate-page-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.animate-page-duration-value {
+  font-weight: 400;
+  color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+.animate-page-effect-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+.animate-page-effect-card {
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.animate-page-effect-card.selected {
+  border-color: var(--brand-red);
+  background: var(--brand-red);
+  color: var(--surface-white);
+}
+.animate-page-duration-slider {
+  width: 100%;
+}
+.animate-page-apply-all {
+  align-self: flex-start;
+  height: var(--control-h-compact);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .badge-layer {
   position: absolute;
   inset: 0;
