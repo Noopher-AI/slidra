@@ -76,6 +76,34 @@ describe("elementBounds 的 <text> 支援", () => {
     expect(bounds.height).toBeCloseTo(2 * lineHeightAt(40), 10);
   });
 
+  it("文字框帶 data-comot-text-height 時，高度直接取那個值，即使它與 tspan 行數 × 行高算出的不一致（NOOP-65 決定 C：烘進去的值是事實來源）", () => {
+    const model = parseSlide(
+      slide(
+        '<g id="el-box" data-comot-text-width="440" data-comot-text-height="999" transform="translate(200 120)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="0" y="36">文字框有寬度，文字寫滿</tspan>' +
+          '<tspan x="0" y="94">就折到下一行。</tspan>' +
+          "</text></g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.height).toBe(999);
+    expect(bounds.height).not.toBeCloseTo(2 * lineHeightAt(40), 10);
+  });
+
+  it("文字框沒有 data-comot-text-height 時（舊檔相容），高度退回行數 × 行高", () => {
+    const model = parseSlide(
+      slide(
+        '<g id="el-box" data-comot-text-width="440" transform="translate(200 120)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="0" y="36">A</tspan><tspan x="0" y="94">B</tspan><tspan x="0" y="152">C</tspan>' +
+          "</text></g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.height).toBeCloseTo(3 * lineHeightAt(40), 10);
+  });
+
   it("空字串的 <text>：寬 0，高一行", () => {
     const model = parseSlide(
       slide('<g id="el-t"><text font-family="Noto Sans TC" font-size="40" x="10" y="50"></text></g>'),
@@ -120,5 +148,31 @@ describe("elementBounds 的 <text> 支援", () => {
       ),
     );
     expect(() => elementBounds(model.elements[0], { fonts })).toThrow(CoMotionError);
+  });
+
+  it("列表符號的 marker <text>（NOOP-65 決定 E）不貢獻自己的邊界框，只有內容 <text> 的框算數", () => {
+    // No explicit data-comot-text-height, so a correctly-excluded marker
+    // leaves the box's height as content's own 1×lineHeight(40). The marker
+    // deliberately declares a much larger font-size (200): if it were
+    // wrongly measured as its own text box, textBounds falls back to
+    // `lineCount × lineHeight` computed from ITS OWN font-size attribute
+    // (not the container's), so a bogus inclusion would blow the height up
+    // to 1×lineHeight(200) — a difference no rounding tolerance could hide.
+    const model = parseSlide(
+      slide(
+        '<g id="el-list" data-comot-text-width="440" transform="translate(50 60)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="18" y="36">一</tspan></text>' +
+          '<text data-comot-list-marker="true" font-family="Noto Sans TC" font-size="200" xml:space="preserve">' +
+          '<tspan x="0" y="36">•</tspan></text>' +
+          "</g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.x).toBeCloseTo(50, 10);
+    expect(bounds.y).toBeCloseTo(60, 10);
+    expect(bounds.width).toBeCloseTo(440, 10);
+    expect(bounds.height).toBeCloseTo(lineHeightAt(40), 10);
+    expect(bounds.height).not.toBeCloseTo(lineHeightAt(200), 1);
   });
 });

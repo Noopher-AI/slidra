@@ -197,6 +197,59 @@ describe("parseSlide", () => {
     expect(model.elements[0].primitives.map((primitive) => primitive.tag)).toEqual(["circle", "path"]);
   });
 
+  // NOOP-65r3 §2a — `textAlign`: absent defaults to "left" (every rewrap
+  // path's own default, ADR-0017 決定 D), an explicit value reads back
+  // verbatim, an illegal one throws with `readTextAlign`'s own wording, and
+  // a non-text element gets the meaningless-but-present "left" default.
+  it("reads data-comot-text-align into textAlign, defaulting to left, and rejects an illegal value", () => {
+    const model = parseSlide(
+      wrap(
+        '  <g id="el-left"><text x="0" y="0"><tspan x="0" y="0">A</tspan></text></g>\n' +
+          '  <g id="el-center" data-comot-text-align="center"><text x="0" y="0"><tspan x="0" y="0">A</tspan></text></g>\n' +
+          '  <g id="el-right" data-comot-text-align="right"><text x="0" y="0"><tspan x="0" y="0">A</tspan></text></g>\n' +
+          '  <g id="el-shape"><rect x="0" y="0" width="1" height="1"/></g>',
+      ),
+    );
+    expect(model.elements.map((el) => [el.id, el.textAlign])).toEqual([
+      ["el-left", "left"],
+      ["el-center", "center"],
+      ["el-right", "right"],
+      ["el-shape", "left"],
+    ]);
+
+    expect(() =>
+      parseSlide(
+        wrap('  <g id="el-bad" data-comot-text-align="middle"><text x="0" y="0">A</text></g>'),
+      ),
+    ).toThrow(CoMotionError);
+  });
+
+  // NOOP-65r3 §2a — `SlidePrimitive.runs`: read back from nested run tspans
+  // via the same `readTextBoxRuns` `rewrapTextBoxContent` uses (not a
+  // second implementation); `[]` for a plain `<text>` and for every
+  // non-text primitive.
+  it("reads nested run tspans into a text primitive's runs", () => {
+    const model = parseSlide(
+      wrap(
+        '  <g id="el-runs"><text x="0" y="0" xml:space="preserve">' +
+          '<tspan x="0" y="10">粗<tspan font-weight="bold">體字</tspan></tspan>' +
+          "</text></g>",
+      ),
+    );
+    expect(model.elements[0].primitives[0].runs).toEqual([{ start: 1, end: 3, fontWeight: "bold" }]);
+  });
+
+  it("gives runs: [] to a plain <text> with no nested tspans, and to every non-text primitive", () => {
+    const model = parseSlide(
+      wrap(
+        '  <g id="el-plain"><text x="0" y="0">plain</text></g>\n' +
+          '  <g id="el-shape"><rect x="0" y="0" width="1" height="1"/></g>',
+      ),
+    );
+    expect(model.elements[0].primitives[0].runs).toEqual([]);
+    expect(model.elements[1].primitives[0].runs).toEqual([]);
+  });
+
   it("refuses to model a non-compliant slide", () => {
     expect(() => parseSlide(wrap('  <rect width="1" height="1"/>'))).toThrow(CoMotionError);
   });

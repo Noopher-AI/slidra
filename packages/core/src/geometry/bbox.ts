@@ -1,5 +1,5 @@
 import { CoMotionError } from "../errors.js";
-import { resolveFont } from "../element-text.js";
+import { resolveFont, LIST_MARKER_ATTRIBUTE } from "../element-text.js";
 import { measureTextWidth, type FontMetrics } from "../text-metrics.js";
 import type { SlideElement, SlidePrimitive } from "../slide/format.js";
 import {
@@ -106,6 +106,14 @@ export interface TextBoundsContext {
   fonts: ReadonlyMap<string, FontMetrics>;
   /** The owning element's `textWidth`; `null` when it is not a text box. */
   textWidth: number | null;
+  /**
+   * The owning element's baked-in `data-comot-text-height` (NOOP-65 決定
+   * C); `null` when absent (every text box written before this attribute
+   * existed, or never rewrapped since). The baked value is the source of
+   * truth when present — never recomputed from `tspanCount`, matching
+   * "the wrap result is baked into the SVG, never recomputed by a viewer".
+   */
+  textHeight: number | null;
   /** Only ever used to name the element in an error message. */
   elementId: string;
 }
@@ -225,7 +233,8 @@ function textBounds(primitive: SlidePrimitive, context: TextBoundsContext): Rect
   const lineCount = primitive.tspanCount === 0 ? 1 : primitive.tspanCount;
 
   if (context.textWidth !== null) {
-    return { x: 0, y: 0, width: context.textWidth, height: lineCount * lineHeight };
+    const height = context.textHeight ?? lineCount * lineHeight;
+    return { x: 0, y: 0, width: context.textWidth, height };
   }
   if (primitive.tspanCount > 0) {
     throw new CoMotionError(
@@ -501,9 +510,19 @@ function boundsWithin(
   // is the CONTAINER's attribute, and it is this element's own — never an
   // ancestor's.
   const textContext: TextBoundsContext | undefined =
-    fonts === undefined ? undefined : { fonts, textWidth: element.textWidth, elementId: element.id };
+    fonts === undefined
+      ? undefined
+      : { fonts, textWidth: element.textWidth, textHeight: element.textHeight, elementId: element.id };
+  // A list-marker `<text>` (NOOP-65 決定 E) is a second primitive alongside
+  // the real content `<text>` — it has no `data-comot-text-width`/`-height`
+  // of its own, so measuring it against the CONTAINER's own textWidth/
+  // textHeight (`textContext`, shared by every primitive here) would treat
+  // it as a second, bogus text box and distort the union. It never
+  // contributes its own geometry; the content `<text>`'s box already covers
+  // the area it decorates.
+  const measurable = element.primitives.filter((primitive) => primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true");
   return unionRects(
-    element.primitives.map((primitive) =>
+    measurable.map((primitive) =>
       transformRect(matrix, primitiveBounds(primitive, textContext)),
     ),
   );

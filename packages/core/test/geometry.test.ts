@@ -231,6 +231,7 @@ const element = (over: Partial<SlideElement> & Pick<SlideElement, "id" | "kind">
   children: [],
   primitives: [],
   textWidth: null,
+  textHeight: null,
   ...over,
 });
 
