@@ -6,6 +6,8 @@ export interface ContextBarProps {
   union: { x: number; y: number; width: number; height: number } | null;
   /** The overlay's own bounding box (well size) — decides the below/above flip and the horizontal clamp. */
   bounds: { width: number; height: number };
+  /** Hidden while a drag is in progress (`OverlayState.dragging`). */
+  dragging: boolean;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -13,7 +15,8 @@ export interface ContextBarProps {
 
 /**
  * Placement constants, mirroring the prototype's `place()`
- * (comotion-logic-v3.js:416): the bar is centred under the selection, kept
+ * (comotion-logic-v3.js:416), except horizontally: the bar is left-aligned
+ * with the selection box (review decision) instead of centred, kept
  * MARGIN px inside the well, flips above the selection when it would run into
  * the DOCK_RESERVE strip the floating Dock lives in (--space-gutter-bottom),
  * and never sinks into that strip either way. BAR_HEIGHT matches
@@ -42,24 +45,22 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * 共用）；Comment to AI／Edit style 是佈局佔位按鈕，功能分屬 NOOP-67／NOOP-69。
  * 原型的 Edit animation 只在元素已有動畫時出現，判斷來源屬 NOOP-66，尚未渲染。
  */
-export function ContextBar({ union, bounds, onOrder, onDuplicate, onDelete }: ContextBarProps) {
+export function ContextBar({ union, bounds, dragging, onOrder, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
-  const unionWidth = union?.width ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
-  // so it is applied after layout: centre under the selection, then clamp
-  // inside the well so a selection near the right edge never pushes the bar
-  // under the side panel.
+  // so it is applied after layout: left-aligned with the selection box, then
+  // clamped inside the well so a selection near the right edge never pushes
+  // the bar under the side panel.
   useLayoutEffect(() => {
     const bar = barRef.current;
     if (!bar) return;
     const width = bar.offsetWidth;
-    const centred = unionX + (unionWidth - width) / 2;
-    const left = Math.max(MARGIN, Math.min(centred, bounds.width - width - MARGIN));
+    const left = Math.max(MARGIN, Math.min(unionX, bounds.width - width - MARGIN));
     bar.style.left = `${Math.round(left)}px`;
-  }, [unionX, unionWidth, bounds.width]);
+  }, [unionX, bounds.width, dragging]);
 
-  if (!union) return <div className="context-bar-layer" />;
+  if (!union || dragging) return <div className="context-bar-layer" />;
   const below = union.y + union.height + GAP;
   const fitsBelow = below + BAR_HEIGHT <= bounds.height - DOCK_RESERVE;
   const top = Math.min(fitsBelow ? below : Math.max(MARGIN, union.y - GAP - BAR_HEIGHT), bounds.height - DOCK_RESERVE - BAR_HEIGHT);

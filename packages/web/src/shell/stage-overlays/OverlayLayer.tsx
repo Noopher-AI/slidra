@@ -12,7 +12,7 @@ export interface OverlayLayerProps {
   children?: ReactNode;
 }
 
-const EMPTY_OVERLAY: OverlayState = { boxes: [], union: null, label: null, guides: [] };
+const EMPTY_OVERLAY: OverlayState = { boxes: [], union: null, label: null, guides: [], dragging: false };
 
 /** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer (NOOP-91 round-2 FAIL #4). */
 export function toLocalPoint(
@@ -78,6 +78,7 @@ export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProp
       <ContextBar
         union={union}
         bounds={bounds}
+        dragging={overlay.dragging}
         onOrder={(direction) => void controller?.orderSelection(direction)}
         onDuplicate={() => void controller?.duplicateSelection()}
         onDelete={() => void controller?.deleteSelection()}

@@ -431,6 +431,35 @@ it("驗收條件第四條 (b)：連續 20 次獨立拖曳，恰好產生 20 筆�
   }
 }, 30_000);
 
+it("拖曳中情境列隱藏；放手並重載後選取狀態與情境列都保留（review 要求）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const bar = page.locator(".context-bar");
+    const selName = page.locator(".status-selection-chip");
+
+    let barVisibleMidDrag: boolean | null = null;
+    await dragBy(page, { x: 180, y: 150 }, { x: 60, y: 40 }, {
+      onMidDrag: async () => {
+        barVisibleMidDrag = await bar.isVisible();
+      },
+    });
+    expect(barVisibleMidDrag).toBe(false);
+
+    // The committed write reloads the slide; the selection must survive it.
+    await expect.poll(() => selName.textContent().then((t) => t?.trim()), { timeout: 5_000 }).toBe("Selected: 方塊 A");
+    await expect.poll(() => bar.isVisible(), { timeout: 5_000 }).toBe(true);
+    expect(readTranslate(await readSlide(registry, presentationId), "el-a")).not.toEqual({ x: 100, y: 100 });
+
+    // Bar is left-aligned with the selection box.
+    const selBox = await page.frameLocator("iframe.slide-frame").locator(".sel").first().boundingBox();
+    const barBox = await bar.boundingBox();
+    expect(Math.abs(barBox!.x - selBox!.x)).toBeLessThanOrEqual(1);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("拖曳到與另一元素左緣相距在吸附半徑內：放手後兩者左緣完全相等，且畫出/清除輔助線", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {

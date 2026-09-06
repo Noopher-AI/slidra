@@ -146,7 +146,8 @@ export interface OverlayState {
   label: { text: string; path: string[] } | null;
   /** Snap guide lines from the in-progress move gesture, parent-document client px; empty between drags. */
   guides: { orientation: "v" | "h"; position: number }[];
-  /** The open element context menu (NOOP-90/T2 §4.5), or `null` when closed. `point` is parent-document client px. */
+  /** `true` while a move/scale/rotate/textbox-width gesture is in progress — the context bar hides itself during a drag (the selection box and label stay). */
+  dragging: boolean;
 }
 
 export interface CanvasState {
@@ -1191,6 +1192,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       union: overlayUnion ? toParentClientRect(overlayUnion) : null,
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
+      dragging: activeGesture !== null && activeGesture.kind !== "marquee",
     };
   }
 
@@ -1639,6 +1641,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     postToFrame({ command: "preview", items });
   }
 
+  /**
+   * A committed gesture's write comes back over /api/events and drives a full
+   * render(), which would otherwise drop the selection (and with it the
+   * context bar). Park the current ids so that render() re-selects them once
+   * the reloaded slide is up — same channel `runCommand`'s SELECT_AFTER_COMMAND
+   * uses for insert/paste/duplicate. Group drill-in depth is not preserved
+   * (selectOnceLoaded resets groupPath), same as those commands.
+   */
+  function keepSelectionAcrossReload(): void {
+    if (selectionIds.length > 0) pendingSelectionIds = [...selectionIds];
+  }
+
   async function endMoveGesture(cancelled: boolean): Promise<void> {
     const gesture = activeGesture;
     activeGesture = null;
@@ -1675,6 +1689,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
     // Success: the preview already shows the final position. The write
     // this command just made will arrive back over /api/events and drive
     // reload() on its own — this module deliberately adds no second
@@ -1882,6 +1897,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         notify();
         return;
       }
+      keepSelectionAcrossReload();
       // Success: same "no second refresh path" reasoning as endMoveGesture.
       return;
     }
@@ -1911,6 +1927,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
     // Success: same "no second refresh path" reasoning as endMoveGesture.
   }
 
@@ -2008,6 +2025,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
   }
 
   // --- Textbox-width handles (§4.4) ---
@@ -2130,6 +2148,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
   }
 
   // --- In-place text editing (NOOP-91/#70 US1, T5) ---

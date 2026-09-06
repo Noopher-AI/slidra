@@ -75,7 +75,7 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
 
 describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則翻到上方）」）", () => {
   it("沒有選取（union 為 null）：渲染空容器，不含 .context-bar", () => {
-    const markup = renderToStaticMarkup(createElement(ContextBar, { union: null, bounds: { width: 1280, height: 720 }, onOrder: () => {}, onDuplicate: () => {}, onDelete: () => {} }));
+    const markup = renderToStaticMarkup(createElement(ContextBar, { union: null, bounds: { width: 1280, height: 720 }, dragging: false, onOrder: () => {}, onDuplicate: () => {}, onDelete: () => {} }));
     expect(markup).not.toContain("context-bar\"");
   });
 
@@ -84,6 +84,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 720 },
+        dragging: false,
         onOrder: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
@@ -101,6 +102,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       createElement(ContextBar, {
         union: { x: 100, y: 570, width: 160, height: 50 },
         bounds: { width: 1280, height: 720 },
+        dragging: false,
         onOrder: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
@@ -110,11 +112,26 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:521px");
   });
 
+  it("拖曳中（dragging）：不渲染情境列，只留空容器", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ContextBar, {
+        union: { x: 100, y: 100, width: 160, height: 100 },
+        bounds: { width: 1280, height: 720 },
+        dragging: true,
+        onOrder: () => {},
+        onDuplicate: () => {},
+        onDelete: () => {},
+      }),
+    );
+    expect(markup).not.toContain("context-bar\"");
+  });
+
   it("玻璃容器：Comment to AI ｜ Edit style ｜ 前後層四項（圖示） ｜ Duplicate ｜ Delete", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 720 },
+        dragging: false,
         onOrder: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
@@ -134,6 +151,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       createElement(ContextBar, {
         union: { x: 0, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 325 }, // 100+100+13+36+76 = 325
+        dragging: false,
         onOrder: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
