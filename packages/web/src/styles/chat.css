@@ -367,7 +367,7 @@
   place-items: center;
   width: var(--space-8);
   height: var(--space-8);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: var(--brand-red);
   color: var(--surface-white);
   font-size: var(--text-xs-hint);
