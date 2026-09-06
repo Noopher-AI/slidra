@@ -615,6 +615,7 @@
           valueEnd: valueIdx + domLen + (hasBreak ? 1 : 0),
           domStart: domIdx,
           domEnd: domIdx + domLen,
+          hardBreak: hasBreak,
           rect: tspan.getBoundingClientRect(),
         });
         valueIdx += domLen + (hasBreak ? 1 : 0);
@@ -622,7 +623,7 @@
       }
     } else {
       var n = textEl.getNumberOfChars();
-      lines.push({ valueStart: 0, valueEnd: n, domStart: 0, domEnd: n, rect: textEl.getBoundingClientRect() });
+      lines.push({ valueStart: 0, valueEnd: n, domStart: 0, domEnd: n, hardBreak: false, rect: textEl.getBoundingClientRect() });
     }
     return lines;
   }
@@ -650,7 +651,8 @@
    * guessed index). Horizontal placement uses the midpoint of each
    * character's box — `clientX` past the midpoint lands the index after
    * that character — and a point past a line's last character resolves to
-   * that line's end.
+   * that line's end: the slot BEFORE the line's virtual hard-break
+   * character, never after it (that slot is the next line's start).
    */
   function indexAtPoint(clientX, clientY) {
     if (editingId === null) return null;
@@ -668,7 +670,7 @@
       var end = toClientPoint(ctm, textEl.getEndPositionOfChar(domI));
       if (clientX < (start.x + end.x) / 2) return line.valueStart + (domI - line.domStart);
     }
-    return line.valueEnd;
+    return line.valueEnd - (line.hardBreak ? 1 : 0);
   }
 
   /**
@@ -689,7 +691,14 @@
     for (var li = 0; li < lines.length; li++) {
       var line = lines[li];
       if (i >= line.valueStart && i < line.valueEnd) {
-        var domI = Math.min(line.domStart + (i - line.valueStart), line.domEnd);
+        var domI = line.domStart + (i - line.valueStart);
+        if (domI >= line.domEnd) {
+          // `i` is the line's virtual hard-break slot (no DOM char of its
+          // own): the caret sits after the line's last real character.
+          if (line.domEnd === line.domStart) return { x: line.rect.left, top: line.rect.top, height: line.rect.height };
+          var lineEnd = toClientPoint(ctm, textEl.getEndPositionOfChar(line.domEnd - 1));
+          return { x: lineEnd.x, top: line.rect.top, height: line.rect.height };
+        }
         var start = toClientPoint(ctm, textEl.getStartPositionOfChar(domI));
         return { x: start.x, top: line.rect.top, height: line.rect.height };
       }
@@ -716,7 +725,9 @@
       var e = Math.min(end, line.valueEnd);
       if (s >= e) continue;
       var domS = Math.min(line.domStart + (s - line.valueStart), line.domEnd);
-      var domELast = line.domStart + (e - line.valueStart) - 1;
+      // Clamp: `e` may include the line's virtual hard-break char, which has
+      // no DOM index — reading `domEnd` would measure the NEXT line's first char.
+      var domELast = Math.min(line.domStart + (e - line.valueStart) - 1, line.domEnd - 1);
       if (domELast < domS || line.domEnd === 0) {
         var edgePoint = domS < line.domEnd
           ? toClientPoint(ctm, textEl.getStartPositionOfChar(domS))

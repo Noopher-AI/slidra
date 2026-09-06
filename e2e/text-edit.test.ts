@@ -540,6 +540,81 @@ it("A16：有硬換行時，點第 2 行第 1 個字，游標落在點到的字�
   }
 });
 
+// A17：A16 的另一側——硬換行那一行的「行尾」。點該行最後一個字的右半邊，
+// 游標要停在 "\n" 之前（該行結尾），不是 "\n" 之後（下一行開頭）；caret 也
+// 要畫在該行最後一個字的右側，不是下一行、也不是該行最左邊。
+it("A17：有硬換行時，點第 1 行最後一個字的右半邊，游標停在該行結尾（\\n 之前），caret 畫在該字右側", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+
+    await page.keyboard.type("AAA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("BBB");
+    await page.waitForTimeout(150);
+    // DOM "HiAAA"+"BBB"; value "HiAAA\nBBB". DOM index 4 is line 1's last
+    // char; its right half must resolve to value index 5 (before "\n"),
+    // not 6 (line 2's start).
+    const last = await charClientRect(page, "el-text", 4);
+    const offset = await iframeOffset(page);
+    await page.mouse.click(offset.x + last.startX + (last.endX - last.startX) * 0.75, offset.y + last.top + last.height / 2);
+    await page.waitForTimeout(80);
+    expect((await readSelection(page)).start).toBe(5);
+
+    const caret = await readCaretRect(page);
+    expect(caret).not.toBeNull();
+    expect(Math.abs(caret!.left - last.endX)).toBeLessThan(3);
+    expect(Math.abs(caret!.top - last.top)).toBeLessThan(3);
+
+    await page.keyboard.type("X");
+    await page.waitForTimeout(80);
+    const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+    expect(value).toBe("HiAAAX\nBBB");
+  } finally {
+    await cleanup();
+  }
+});
+
+// A18：跨硬換行拖曳選取——"\n" 前那一行的反白區塊必須從起點畫到該行最後一個
+// 字的右側，不能因為範圍含虛擬的 "\n" 而量到下一行第 1 個字的位置。
+it("A18：跨硬換行拖曳選取，第 1 行的反白區塊從起點畫到該行行尾", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+
+    await page.keyboard.type("AAA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("BBB");
+    await page.waitForTimeout(150);
+
+    // DOM 2 ("A", line 1) → DOM 6 ("B", line 2's 2nd char): value 2..7.
+    await dragSelectChars(page, "el-text", 2, 6);
+    const sel = await readSelection(page);
+    expect(sel.start).toBe(2);
+    expect(sel.end).toBe(7);
+
+    const c2 = await charClientRect(page, "el-text", 2);
+    const c4 = await charClientRect(page, "el-text", 4);
+    const c5 = await charClientRect(page, "el-text", 5);
+    const blocks = await readSelectionBlockRects(page);
+    expect(blocks.length).toBe(2);
+    expect(Math.abs(blocks[0].left - c2.startX)).toBeLessThan(3);
+    expect(Math.abs(blocks[0].right - c4.endX)).toBeLessThan(3);
+    expect(Math.abs(blocks[1].left - c5.startX)).toBeLessThan(3);
+    expect(Math.abs(blocks[1].right - c5.endX)).toBeLessThan(3);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", async () => {
   const { server, cleanup } = await startServerFor();
   try {
