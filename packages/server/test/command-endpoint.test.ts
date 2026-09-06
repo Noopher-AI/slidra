@@ -360,6 +360,45 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
+it("E2.T14：表格的 14 條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
+  const id = await openDeck("table-whitelist.comot");
+  const server = await serve(id);
+
+  for (const name of [
+    "table create",
+    "table cell set",
+    "table cell style set",
+    "table merge",
+    "table col width",
+    "table col insert",
+    "table col delete",
+    "table row insert",
+    "table row delete",
+    "table theme set",
+    "table header set",
+    "table bind",
+    "table refresh",
+    "table set",
+  ]) {
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
+    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
+  }
+});
+
+it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("table-create.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "table create",
+    input: { slidePath: "slides/001.svg", rows: 2, cols: 2, x: 10, y: 10 },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-type="table"');
+});
+
 it("presentation transition set：白名單內的合法值回 2xx，並寫進 project.json", async () => {
   const id = await openDeck("transition-fade.comot");
   const server = await serve(id);
