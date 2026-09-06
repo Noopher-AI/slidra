@@ -49,6 +49,13 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  *   - "Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至也被退出為止"
  *   - "拖曳作用對象與選取層級一致：..."
  *   - "基準截圖：群組編輯中的虛線框"／"基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）"
+ * - 功能「群組（含巢狀）」› 場景「成組」「巢狀」「解組」（[E2.T15]/#205，Dock
+ *   的 Group/Ungroup 按鈕；「停用態」矩陣本身測在
+ *   packages/web/test/dock.test.ts，這裡只測按鈕真的接到命令、檔案真的變了）:
+ *   - "成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並顯示 toast"
+ *     （含基準截圖 group-toast）
+ *   - "巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再包一層，既有群組原封不動"
+ *   - "解組：整組選取後按 Ungroup，只解目前這一層——內層群組與其動畫皆保留在外的那一層被移除"
  *
  * 其餘測項（沙箱 sandbox 屬性、播放模式互動）不對應本檔案上述場景，各自的
  * 測項名稱已自我描述。
@@ -675,6 +682,12 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
     await page.frameLocator("iframe.slide-frame").locator("#el-child-left rect").click();
 
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
+    // 功能「群組（含巢狀）」› 場景「選取群組」：標籤顯示群組的顯示名稱（此處
+    // 選取停在頂層，groupPath 是 []，所以標籤沒有「A › B」路徑前綴，就是名稱本身）。
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("群組");
+
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "group-selected", baselineDir });
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -1031,6 +1044,213 @@ it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", as
     await page.waitForTimeout(50);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "drill-in-label", baselineDir });
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+// --- [E2.T15]/#205: 成組／解組 (Dock 的 Group/Ungroup 按鈕) ----------------
+
+/** How many effect items the slide currently has, straight off the server (independent of what the GUI has rendered). */
+async function effectCount(registry: CommandRegistry, presentationId: string): Promise<number> {
+  const result = await registry.dispatch<{ effects: unknown[] }>("effect list", { id: presentationId, slidePath: "slides/001.svg" });
+  return result.ok ? result.data!.effects.length : -1;
+}
+
+// Two same-layer elements, both above the vertical midline — the "group-
+// toast" screenshot below clips to the dock ∪ toast union, and needs
+// whatever sits *behind* that strip (through the glass blur) to be the same
+// blank space before and after the reload `element group` triggers (see
+// that test's own comment for why).
+async function makeGroupCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  return makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-a" data-comot-name="矩形A">\n' +
+      '    <rect x="200" y="80" width="160" height="120" fill="#c66"/>\n' +
+      "  </g>\n" +
+      '  <g id="el-b" data-comot-name="矩形B">\n' +
+      '    <rect x="500" y="80" width="160" height="120" fill="#69c"/>\n' +
+      "  </g>\n" +
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">成組測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+}
+
+it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並顯示 toast", async () => {
+  const deck = await makeGroupCommandDeck();
+  const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
+  try {
+    // el-a carries an animation of its own before grouping — [E2.T7]: a
+    // member's individual animation does not carry over into the new group.
+    const added = await registry.dispatch("effect add", {
+      id: presentationId, slidePath: "slides/001.svg", elementIds: ["el-a"],
+      family: "enter", effect: "fade", start: "on-click", duration: 0.5, delay: 0,
+    });
+    expect(added.ok).toBe(true);
+    expect(await effectCount(registry, presentationId)).toBe(1);
+
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    const selName = page.locator(".status-selection-chip");
+    const groupButton = page.locator('.dock-command[aria-label="Group"]');
+
+    await slideFrame.locator("#el-a").click();
+    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
+    expect(await groupButton.isDisabled()).toBe(false);
+
+    await groupButton.click();
+
+    const toast = page.locator(".dock-toast");
+    await expect.poll(() => toast.textContent()).toBe("Grouped 2 elements · their animations were removed");
+
+    // 基準截圖：toast（clip 到 dock ∪ toast 的聯集，四邊取整——見
+    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。不等 reload 完成：
+    // toast 一出現就立刻截圖，reload 進度不影響這塊裁切區域的像素
+    // （fixture 的所有內容都在上半部）。
+    await settleForScreenshot(page);
+    const dockBox = await page.locator(".dock").boundingBox();
+    const toastBox = await toast.boundingBox();
+    if (!dockBox || !toastBox) throw new Error("量不到 .dock 或 .dock-toast 的邊界框");
+    const x = Math.floor(Math.min(dockBox.x, toastBox.x));
+    const y = Math.floor(Math.min(dockBox.y, toastBox.y));
+    const right = Math.ceil(Math.max(dockBox.x + dockBox.width, toastBox.x + toastBox.width));
+    const bottom = Math.ceil(Math.max(dockBox.y + dockBox.height, toastBox.y + toastBox.height));
+    await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
+
+    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
+    expect(await effectCount(registry, presentationId)).toBe(0);
+
+    const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
+    const groupMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
+    if (!groupMatch) throw new Error("找不到新群組的 <g data-comot-name=\"Group 1\">");
+    expect(svg.indexOf('id="el-a"')).toBeGreaterThan(groupMatch.index);
+    expect(svg.indexOf('id="el-b"')).toBeGreaterThan(groupMatch.index);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+// A pre-existing group (el-group ⊃ el-child) sitting next to a lone element
+// (el-extra), both direct children of <svg> — selecting "one existing group
+// + one element" and grouping them is the 巢狀 scenario (05-INTERACTIONS
+// .feature「群組（含巢狀）」).
+async function makeNestingCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  return makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-group" data-comot-name="子群組">\n' +
+      '    <g id="el-child" data-comot-name="子項">\n' +
+      '      <rect x="150" y="80" width="120" height="100" fill="#c66"/>\n' +
+      "    </g>\n" +
+      "  </g>\n" +
+      '  <g id="el-extra" data-comot-name="額外元素">\n' +
+      '    <rect x="450" y="80" width="120" height="100" fill="#69c"/>\n' +
+      "  </g>\n" +
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">巢狀成組測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+}
+
+it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再包一層，既有群組原封不動", async () => {
+  const deck = await makeNestingCommandDeck();
+  const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    const selName = page.locator(".status-selection-chip");
+    const groupButton = page.locator('.dock-command[aria-label="Group"]');
+
+    // Clicking el-child resolves to its outermost id-carrying ancestor,
+    // el-group — selecting the whole pre-existing group.
+    await slideFrame.locator("#el-child").click();
+    await slideFrame.locator("#el-extra").click({ modifiers: ["Shift"] });
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
+    expect(await groupButton.getAttribute("aria-label")).toBe("Group");
+    expect(await groupButton.isDisabled()).toBe(false);
+
+    await groupButton.click();
+    await expect.poll(() => page.locator(".dock-toast").textContent()).toBe("Grouped 2 elements");
+
+    const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
+    // The pre-existing group and its own child are untouched; a new outer
+    // group wraps el-group (as a whole) and el-extra.
+    expect(svg).toContain('id="el-group"');
+    expect(svg).toContain('id="el-child"');
+    const outerMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
+    if (!outerMatch) throw new Error("找不到新的外層群組");
+    expect(svg.indexOf('id="el-group"')).toBeGreaterThan(outerMatch.index);
+    expect(svg.indexOf('id="el-extra"')).toBeGreaterThan(outerMatch.index);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+// `makeNestedGroupDeck`（group-frame 系列測試用）刻意在 el-outer 底下混了一
+// 個沒有 id 的裝飾用 <rect>——ADR-0012 合規規則要求容器的子節點「全部是
+// <g>，或全部是圖元」，這個 fixture 只在 selection-runtime 的畫面層合法，
+// 送進 `element group/ungroup`（走 assertSlideCompliant）會直接 403：「容器
+// 同時含有圖元與子容器」。這裡另外做一份三層都合規的巢狀 deck。
+async function makeCompliantNestedDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  return makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-outer" data-comot-name="外層群組">\n' +
+      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 60)">\n' +
+      '      <g id="el-leaf" data-comot-name="葉節點">\n' +
+      '        <rect width="200" height="200" fill="#c66"/>\n' +
+      "      </g>\n" +
+      "    </g>\n" +
+      "  </g>\n" +
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">解組測試</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+}
+
+it("解組：整組選取後按 Ungroup，只解目前這一層——內層群組與其動畫皆保留在外的那一層被移除", async () => {
+  const deck = await makeCompliantNestedDeck();
+  const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
+  try {
+    // el-outer (the level about to be dissolved) carries its own animation.
+    const added = await registry.dispatch("effect add", {
+      id: presentationId, slidePath: "slides/001.svg", elementIds: ["el-outer"],
+      family: "enter", effect: "fade", start: "on-click", duration: 0.5, delay: 0,
+    });
+    expect(added.ok).toBe(true);
+
+    const page = await openApp(server);
+    const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
+    const selName = page.locator(".status-selection-chip");
+    const groupButton = page.locator('.dock-command[aria-label="Ungroup"]');
+
+    // Not yet drilled into anything: clicking the leaf resolves to the
+    // outermost group at top scope, el-outer.
+    await slideLeaf.click();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 外層群組");
+    expect(await groupButton.getAttribute("aria-label")).toBe("Ungroup");
+    expect(await groupButton.isDisabled()).toBe(false);
+
+    await groupButton.click();
+    await expect.poll(() => page.locator(".dock-toast").textContent()).toBe("Ungrouped · the group animation was removed");
+
+    // D4.2：解組後選取變成被解散群組的直接子節點——el-outer 唯一的直接
+    // 子節點是 el-inner。
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    expect(await effectCount(registry, presentationId)).toBe(0);
+
+    const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
+    expect(svg).not.toContain('id="el-outer"');
+    // 只解目前這一層：內層群組（及其葉節點）原封不動保留。
+    expect(svg).toContain('id="el-inner"');
+    expect(svg).toContain('id="el-leaf"');
   } finally {
     await cleanup();
     await deck.cleanup();

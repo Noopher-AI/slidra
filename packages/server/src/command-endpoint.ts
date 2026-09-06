@@ -76,6 +76,10 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element resize",
   "element delete",
   "element duplicate",
+  // [E2.T15] 的 Dock Group/Ungroup 按鈕加入這兩條——`element name set`
+  // 不加：本票沒有 GUI 改名入口（見 Plan D6）。
+  "element group",
+  "element ungroup",
   // [E2.T7] 的 Animate 面板／時間軸／情境列 Edit animation 加入這四條；
   // `effect list` 不在其中——GUI 的清單狀態走一般的檔案讀取路徑
   // （`GET /api/files/`），不需要透過命令端點。

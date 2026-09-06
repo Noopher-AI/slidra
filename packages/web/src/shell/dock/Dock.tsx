@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CanvasController, CanvasSelection } from "../../canvas.js";
 import { Icon, type IconName } from "../../icons/index.js";
 import type { HandState, ZoomPanState } from "../stage-view.js";
@@ -18,14 +18,12 @@ import { AnimatePanel } from "./panels/AnimatePanel.js";
 
 /**
  * Every floating layer the dock can open. `"zoom"` is the one fully wired
- * behaviour this ticket ships (see ZoomMenu.tsx); every insert panel and the
- * shape/arrange menus are empty containers — their contents are a future
- * ticket (see the PR report). There is no `"group"` entry: 05-INTERACTIONS
- * .feature's Group command has no assigned panel/menu component in this
- * ticket's file list, so this skeleton renders it as a permanently
- * disabled button (see the JSX below) — the prototype's dock ends with
- * `Animate Arrange Group`, and 03-UI_RATIONALE.md §D says the three
- * form one group with no divider between them.
+ * behaviour that ticket shipped (see ZoomMenu.tsx); every insert panel and
+ * the shape/arrange menus are empty containers — their contents are a
+ * future ticket (see the PR report). There is no `"group"` entry: Group/
+ * Ungroup ([E2.T15]/#205) is not a floating layer — it sends `element
+ * group`/`element ungroup` straight through `controller.runCommand` and
+ * shows a toast, it never opens anything under `openLayer`.
  */
 export type DockLayer = "zoom" | "shape" | "arrange" | "text" | "image" | "video" | "audio" | "table" | "chart" | "animate";
 
@@ -70,6 +68,50 @@ function isCommandDisabled(key: DockLayer, hasSelection: boolean): boolean {
   return (key === "animate" || key === "arrange") && !hasSelection;
 }
 
+export interface GroupButtonState {
+  label: "Group" | "Ungroup";
+  disabled: boolean;
+}
+
+/**
+ * D5: Group/Ungroup is one button that flips label by what's selected
+ * (03-UI_RATIONALE.md §D). 05-INTERACTIONS.feature「停用態」requires ≥2
+ * elements, or exactly one group, to enable it; a `null` entry in
+ * `selection.elements` (a reload racing the selection) is treated as "not
+ * a group", never as a group.
+ */
+export function computeGroupButtonState(
+  selection: CanvasSelection,
+  controller: CanvasController | null,
+  slidePath: string | null,
+  pending: boolean,
+): GroupButtonState {
+  const n = selection.ids.length;
+  const isGroupSelected = n === 1 && selection.elements[0]?.kind === "group";
+  const label: GroupButtonState["label"] = isGroupSelected ? "Ungroup" : "Group";
+  const disabled = pending || controller === null || slidePath === null || n === 0 || (n === 1 && !isGroupSelected);
+  return { label, disabled };
+}
+
+/** D3/D4: toast text, copied verbatim from the prototype (docs/design/prototype/comotion-logic-v3.js:192-193). */
+export function groupToastText(action: "group" | "ungroup", n: number, removedEffects: number): string {
+  if (action === "group") {
+    return removedEffects > 0 ? `Grouped ${n} elements · their animations were removed` : `Grouped ${n} elements`;
+  }
+  return removedEffects > 0 ? "Ungrouped · the group animation was removed" : "Ungrouped";
+}
+
+const TOAST_DURATION_MS = 2500;
+
+/** D3: lives inside `.dock`, not a global toast service — see Dock's own comment on why. */
+export function DockToast({ text }: { text: string }) {
+  return (
+    <div role="status" className="dock-toast">
+      {text}
+    </div>
+  );
+}
+
 /**
  * 底部玻璃工具列 (New v3 skeleton)。left/center/right 三段：✋ + 縮放（left）、
  * Insert 群組（center）、Edit 群組（right）。互斥規則（02-DESIGN_DOC.md §4.3）
@@ -94,10 +136,46 @@ export function Dock({
   const dockRef = useRef<HTMLDivElement | null>(null);
   const hasSelection = selection.ids.length > 0;
 
+  const [toast, setToast] = useState<string | null>(null);
+  const [groupPending, setGroupPending] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useCloseFloatingLayer(openLayer !== null, [dockRef], () => setOpenLayer(null));
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+    },
+    [],
+  );
 
   function toggle(key: DockLayer): void {
     setOpenLayer((current) => (current === key ? null : key));
+  }
+
+  function showToast(text: string): void {
+    if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+    setToast(text);
+    toastTimerRef.current = setTimeout(() => setToast(null), TOAST_DURATION_MS);
+  }
+
+  const groupButton = computeGroupButtonState(selection, controller, slidePath, groupPending);
+
+  /** D1/D2/D3: sends `element group`/`element ungroup` straight through `runCommand`, then toasts off its `removedEffects`. A failure surfaces through the existing `CanvasState.error` channel — no toast for it (4.3). */
+  async function handleGroupCommand(): Promise<void> {
+    if (groupButton.disabled || controller === null || slidePath === null) return;
+    const action = groupButton.label === "Ungroup" ? "ungroup" : "group";
+    const n = selection.ids.length;
+    setGroupPending(true);
+    const result = await controller.runCommand(action === "group" ? "element group" : "element ungroup", {
+      slidePath,
+      elementIds: [...selection.ids],
+    });
+    setGroupPending(false);
+    if (!result.ok) return;
+    const data = result.data as { removedEffects?: unknown } | undefined;
+    const removedEffects = typeof data?.removedEffects === "number" ? data.removedEffects : 0;
+    showToast(groupToastText(action, n, removedEffects));
   }
 
   function renderCommand(cmd: CommandDef) {
@@ -165,13 +243,20 @@ export function Dock({
       {/* Insert 與 Edit 群組之間沒有分隔線（03-UI_RATIONALE.md §D：右段三者「不加分隔線以表示同類」，原型也只在 ✋/縮放後面畫一條）。 */}
       <div className="dock-right">
         {EDIT_COMMANDS.map(renderCommand)}
-        {/* 外觀佔位：Group 尚無面板/指令可接（見檔頭註解），一律停用。 */}
-        <button type="button" className="dock-command" title="Group" aria-label="Group" disabled>
+        <button
+          type="button"
+          className="dock-command"
+          title={groupButton.label}
+          aria-label={groupButton.label}
+          disabled={groupButton.disabled}
+          onClick={() => void handleGroupCommand()}
+        >
           <Icon name="group" size="command" />
-          <span>Group</span>
+          <span>{groupButton.label}</span>
         </button>
       </div>
       {openLayer !== null && renderOpenLayer()}
+      {toast !== null && <DockToast text={toast} />}
     </div>
   );
 }

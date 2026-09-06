@@ -1543,6 +1543,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
     ["element duplicate", "elementIds"],
+    // [E2.T15]/#205 4.2: grouping selects the new group itself; ungrouping
+    // selects the dissolved group's released children (`data.elementIds`,
+    // D2's new return value).
+    ["element group", "elementId"],
+    ["element ungroup", "elementIds"],
   ]);
 
   /**

@@ -106,6 +106,26 @@
   color: var(--ink-900);
 }
 
+/* ── 成組／解組提示（[E2.T15]/#205 D3/D4，原型 comotion-logic-v3.js:446 的
+   toast()，位置抄自 CoMotion (New v3).dc.html:427）── 固定顯示在 dock 正上
+   方，2500ms 後由 Dock.tsx 的計時器自動收掉，不堆疊、不可關閉。 */
+.dock-toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--space-4));
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md-segmented);
+  background: var(--ink-900);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-menu);
+  pointer-events: none;
+}
+
 /* ── 共用浮層材質 + 動畫（02-DESIGN_DOC.md §2.3「一律從同一個地方長出」） ──
    每一個 Dock 浮層（面板／選單，含 ZoomMenu）都套這個 class：由 dock 正
    上方中央長出，8px-up + scale(.96→1)，用 --dur-fast/--ease-out。 */

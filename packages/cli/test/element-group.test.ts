@@ -66,8 +66,9 @@ describe("element group", () => {
     expect(result.ok).toBe(true);
     const groupId = result.data!.elementId;
     const svg = await readSlide(id);
-    expect(svg).toContain(`<g id="${groupId}">`);
-    expect(svg).not.toContain(`<g id="${groupId}" transform`);
+    // D1: a freshly created group gets an auto-assigned "Group 1" (first on this slide).
+    expect(svg).toContain(`<g id="${groupId}" data-comot-name="Group 1">`);
+    expect(svg).not.toContain(`<g id="${groupId}" data-comot-name="Group 1" transform`);
     expect(svg).toContain(`id="${a.data!.elementId}" transform="translate(10 10)"`);
     expect(svg).toContain(`id="${b.data!.elementId}" transform="translate(100 100)"`);
 
@@ -115,11 +116,14 @@ describe("element ungroup", () => {
     const beforeGroup = before.elements.find((element) => element.id === "el-group")!;
     const beforeBounds = elementBounds(beforeGroup);
 
-    const result = await registry.dispatch("element ungroup", {
+    const result = await registry.dispatch<{ elementIds: string[]; removedEffects: number }>("element ungroup", {
       id, slidePath: "slides/001.svg", elementIds: ["el-group"],
     });
 
     expect(result.ok).toBe(true);
+    // D2: the dissolved group's direct children come back, in document order, for the GUI to reselect.
+    expect(result.data!.elementIds).toEqual(["el-child-a", "el-child-b"]);
+    expect(result.data!.removedEffects).toBe(0);
     const svg = await readSlide(id);
     expect(svg).not.toContain('id="el-group"');
     // The group's translate(100 50) is folded into each child's own translate.
@@ -165,8 +169,8 @@ describe("element group then element scale (matches docs/multi-element-addressin
 
     expect(result.ok).toBe(true);
     const svg = await readSlide(id);
-    expect(svg).toContain(`<g id="${groupId}">`);
-    expect(svg).not.toContain(`<g id="${groupId}" transform`);
+    expect(svg).toContain(`<g id="${groupId}" data-comot-name="Group 1">`);
+    expect(svg).not.toContain(`<g id="${groupId}" data-comot-name="Group 1" transform`);
     expect(svg).toContain(`id="${a.data!.elementId}" transform="translate(10 10)"`);
     expect(svg).toContain(`id="${b.data!.elementId}" transform="translate(40 40)"`);
     expect(svg).toContain('width="20" height="20"');
