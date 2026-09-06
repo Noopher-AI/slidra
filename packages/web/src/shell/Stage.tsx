@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 import { Dock } from "./dock/Dock.js";
-import { OverlayLayer } from "./stage-overlays/OverlayLayer.js";
+import { OverlayLayer, type CommentOverlayProps } from "./stage-overlays/OverlayLayer.js";
 import type { SideId } from "./side/SidePanel.js";
 import {
   initialHandState,
@@ -48,6 +48,8 @@ export interface StageProps {
   side: SideId;
   /** T3/NOOP-142 既有的拖放匯入媒體 overlay（與這張骨架票無關，維持原樣）。 */
   dropOverlay: { active: boolean; onDragOver: (event: DragEvent) => void; onDrop: (event: DragEvent) => void; onDragLeave: (event: DragEvent) => void };
+  /** [E2.T8]：留言 pin／留言框狀態，整包轉交給 `OverlayLayer`（App.tsx 是唯一解析選取與留言清單的地方）。 */
+  comment: CommentOverlayProps;
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
   children?: ReactNode;
 }
@@ -77,7 +79,7 @@ function isOnStageChrome(target: EventTarget | null): boolean {
  * （平移+縮放），這對 canvas.ts 完全透明——它的座標數學全部發生在 iframe
  * 自己的文件座標系裡，祖先層的 CSS transform 不影響那個座標系。
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, side, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, side, comment, children }: StageProps) {
   const [zoomPan, setZoomPan] = useState<ZoomPanState>(initialZoomPan);
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
@@ -303,6 +305,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           wellRef={wellRef}
           onEditAnimation={onEditAnimation}
           showBadges={side === "animate" && state.mode === "view"}
+          comment={comment}
         />
       )}
       {shellVisible && (

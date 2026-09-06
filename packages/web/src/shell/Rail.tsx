@@ -30,6 +30,8 @@ export interface RailProps {
   /** overview.ts 的縮圖右鍵事件，掛載在 App.tsx（見它自己的 mountOverview hooks 注解）。 */
   contextMenuRequest: ThumbContextMenuRequest | null;
   onCloseContextMenu: () => void;
+  /** [E2.T8] §4.8：`OutlineModal`「Draft with agent」——送出大綱原文，App.tsx 組固定前綴並送出聊天訊息。 */
+  onDraftWithAgent: (outline: string) => void;
 }
 
 type RailMenu = "new" | "templates" | null;
@@ -51,6 +53,7 @@ export function Rail({
   runPageCommand,
   contextMenuRequest,
   onCloseContextMenu,
+  onDraftWithAgent,
 }: RailProps) {
   const [menu, setMenu] = useState<RailMenu>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -183,7 +186,15 @@ export function Rail({
           {...contextMenuHandlers(contextMenuRequest.index)}
         />
       )}
-      {outlineOpen && <OutlineModal onClose={() => setOutlineOpen(false)} />}
+      {outlineOpen && (
+        <OutlineModal
+          onClose={() => setOutlineOpen(false)}
+          onSubmit={(outline) => {
+            setOutlineOpen(false);
+            onDraftWithAgent(outline);
+          }}
+        />
+      )}
     </aside>
   );
 }

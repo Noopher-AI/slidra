@@ -62,6 +62,10 @@ const EXPECTED_COMMAND_NAMES = [
   "effect move",
   "effect set",
   "effect list",
+  "comment add",
+  "comment edit",
+  "comment delete",
+  "comment list",
 ];
 
 /** Reads the registry's private definition map without changing registry.ts's public API. */
@@ -71,12 +75,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 49 known command names — no more, no fewer", () => {
+  it("registers exactly the 53 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(49);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(53);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

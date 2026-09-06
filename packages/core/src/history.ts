@@ -396,22 +396,27 @@ export async function recordSnapshot(id: string, virtualPaths: string[]): Promis
 
 /**
  * Opens a group that spans multiple commands (an agent's turn, AC 2) so
- * they undo together as one step. Nests are refused rather than reference
- * counted (no known need for it). The caller MUST call `endHistoryGroup` in
- * a `finally` block — a group left open by a crash or an early return stays
- * open forever and silently absorbs the next command's snapshot into it.
- * Wiring this to the server's actual turn lifecycle is out of scope for
- * this unit (see #91, "凍結").
+ * they undo together as one step. Returns `true` when this call is the one
+ * that opened the group — the caller owns it and MUST call
+ * `endHistoryGroup` in a `finally` block. Returns `false` when a group was
+ * already open (same process or another) — the caller has joined it and
+ * MUST NOT close it; its snapshots are appended to the owner's group by
+ * `commitSnapshotEntries`, and the owner closes it. A group left open by an
+ * owner's crash or early return stays open forever and silently absorbs the
+ * next command's snapshot into it — the next turn's owner joins it and
+ * closes it when that turn ends (self-heals). Wiring this to the server's
+ * actual turn lifecycle is out of scope for this unit (see #91, "凍結").
  */
-export async function beginHistoryGroup(id: string): Promise<void> {
+export async function beginHistoryGroup(id: string): Promise<boolean> {
   const home = resolveCoMotionHome();
   await resolveWorkDir(id);
   const stack = await readStack(home, id);
   if (stack.openGroup) {
-    throw new CoMotionError("已經有開啟中的復原群組");
+    return false;
   }
   stack.openGroup = { groupId: generateOpaqueId(), entries: [] };
   await writeStack(home, id, stack);
+  return true;
 }
 
 /**

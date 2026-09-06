@@ -22,8 +22,20 @@ export {
   deleteTemplate,
   setNotes,
   setTransition,
+  addComment,
+  editComment,
+  deleteComment,
+  listComments,
+  listAllComments,
 } from "./slide-ops.js";
-export type { AddSlideInput, AddSlideResult, DuplicateSlideResult, AddTemplateInput, AddTemplateResult } from "./slide-ops.js";
+export type {
+  AddSlideInput,
+  AddSlideResult,
+  DuplicateSlideResult,
+  AddTemplateInput,
+  AddTemplateResult,
+  SlideCommentWithPath,
+} from "./slide-ops.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
 export { resolveAssetImport, sanitizeAssetBaseName, resolveConflictFreeFilename } from "./asset-import.js";

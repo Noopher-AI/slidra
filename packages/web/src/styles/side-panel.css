@@ -14,6 +14,10 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Grid item: without this the panel's auto min-height lets a long chat
+     transcript stretch it past the row, so .chat-messages never scrolls
+     and .chat-input gets pushed below the viewport. */
+  min-height: 0;
 }
 
 .side-panel-tabs {

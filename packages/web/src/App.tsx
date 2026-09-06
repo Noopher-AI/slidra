@@ -5,6 +5,7 @@ import { appendMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
 import { mountOverview, type OverviewController } from "./overview.js";
+import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
@@ -88,6 +89,24 @@ export function App() {
   // index + cursor position up through this state instead; `<Rail>` renders
   // the actual `<ThumbContextMenu>`.
   const [contextMenuRequest, setContextMenuRequest] = useState<ThumbContextMenuRequest | null>(null);
+  // [E2.T8]: the deck-wide comment list, sorted/numbered (comments.ts's
+  // sortComments) — reloaded on mount and on every presentation-changed
+  // event (an agent's own `comment add`/`edit`/`delete` reaches here the
+  // same way a GUI-originated write does, both go through the same file).
+  const [comments, setComments] = useState<NumberedComment[]>([]);
+  // Read inside handlers registered from an effect that doesn't re-run on
+  // every render (the overview-mount effect below, keyed on play-mode
+  // only) — same "latest ref" reasoning as `canvasStateRef`'s own comment.
+  const commentsRef = useRef(comments);
+  commentsRef.current = comments;
+  // The open composer's own state: `target` is `null` while closed, an
+  // element id or the literal "page" while open. `draft`/`editingCommentId`
+  // are separate from `comments` above — an in-progress edit must survive
+  // a comment-list reload triggered by an unrelated write elsewhere in the
+  // deck (§4.7 of the plan never says a reload should discard a draft).
+  const [commentComposerTarget, setCommentComposerTarget] = useState<string | null>(null);
+  const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
   // The canvas module owns the selected slide (ADR-0001/ADR-0002); React
   // only mirrors it here so the paging chrome can render, and issues
   // commands back through the controller.
@@ -388,6 +407,10 @@ export function App() {
         // event with no paired save-state push, so this re-fetches it the
         // same GET-refetch way presentationLoaderRef does above.
         void refreshSaveState();
+        // [E2.T8]: an agent's own `comment add`/`edit`/`delete` reaches
+        // here the same way any other file write does — this is what
+        // makes Pinned context update itself without a page refresh.
+        void refreshComments();
       },
       onError: setLiveReloadError,
       onFrozenChange: setEditingFrozen,
@@ -409,6 +432,7 @@ export function App() {
       });
     presentationLoaderRef.current?.load();
     void refreshSaveState();
+    void refreshComments();
     return () => {
       liveReload.stop();
       unsubscribe();
@@ -440,13 +464,37 @@ export function App() {
     if (!container || !controller) return;
     const overview = mountOverview(container, controller, {
       onContextMenu: (index, x, y) => setContextMenuRequest({ index, x, y }),
+      onComment: (index) => void openCommentForPage(index),
     });
     overviewControllerRef.current = overview;
+    // A fresh mount (mode toggling back to view, or the component's very
+    // first mount) starts with no idea which pages have comments — apply
+    // whatever `refreshComments` last computed, rather than waiting for
+    // the next reload to paint the red dots in.
+    overview.setSlidesWithComments(
+      new Set(
+        commentsRef.current
+          .map((comment) => canvasStateRef.current.slides.indexOf(comment.slidePath))
+          .filter((index) => index !== -1),
+      ),
+    );
     return () => {
       overview.destroy();
       overviewControllerRef.current = null;
     };
   }, [canvasState.mode !== "play"]);
+
+  // [E2.T8]: `slides` changing (initial load, or add/delete/move) always
+  // means the deck-wide comment list needs re-reading, even with no
+  // presentation-changed event at all yet (the very first `mountCanvas`
+  // reload, before any external edit has ever happened) — `onChange`
+  // above only fires on an *external* edit, and a comment write never
+  // itself changes `slides`, so the two triggers are complementary rather
+  // than redundant.
+  useEffect(() => {
+    void refreshComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasState.slides]);
 
   // Arrow keys in 檢視模式 page the deck (ticket #28). Legitimate on the
   // parent document: the view-mode iframe is sandboxed with no scripts, so
@@ -958,9 +1006,15 @@ export function App() {
     }
   }, [streamReady]);
 
-  async function sendMessage(): Promise<void> {
-    const text = draft.trim();
-    if (!text) return;
+  /**
+   * The one path that actually posts to `/api/chat` — `sendMessage()`
+   * (the chat input) and `draftWithAgent()` ([E2.T8]'s `Draft with agent`)
+   * both fun through here so the honest-failure handling below is written
+   * once. `text` is exactly what appears in the conversation as the
+   * author's own message (`Draft with agent`'s fixed prefix included —
+   * §4.8 of the plan: the author sees what was actually sent).
+   */
+  async function sendChatText(text: string): Promise<void> {
     if (!streamReady) {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
@@ -970,7 +1024,6 @@ export function App() {
     }
     const id = nextMessageIdRef.current++;
     setMessages((prev) => appendMessage(prev, id, "author", text));
-    setDraft("");
     setError(null);
     try {
       const response = await fetch("/api/chat", {
@@ -985,14 +1038,35 @@ export function App() {
     } catch {
       // `fetch` rejects (rather than resolving with a non-OK response) when
       // the connection drops entirely — e.g. the server going away between
-      // `streamReady` and this call. The draft is already cleared and the
-      // message already rendered above by this point, so without this catch
-      // the author would see their message sitting in the conversation as
-      // if it had been delivered, when it was not — fabricating success is
-      // forbidden here. Reuses the same `error` state the non-OK branch
-      // above uses, naming the message so it is clear which one failed.
+      // `streamReady` and this call. The message is already rendered above
+      // by this point, so without this catch the author would see their
+      // message sitting in the conversation as if it had been delivered,
+      // when it was not — fabricating success is forbidden here. Reuses
+      // the same `error` state the non-OK branch above uses, naming the
+      // message so it is clear which one failed.
       setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
+  }
+
+  async function sendMessage(): Promise<void> {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    await sendChatText(text);
+  }
+
+  /**
+   * [E2.T8] §4.8: `OutlineModal`'s `Draft with agent` — a plain chat
+   * message with a fixed prefix naming the current page and the insertion
+   * point, sent through the exact same path a hand-typed message takes
+   * (architecture 拍板: no separate API, no client-side outline parsing).
+   */
+  async function draftWithAgent(outline: string): Promise<void> {
+    const index = canvasState.currentIndex;
+    const slidePath = canvasState.slides[index];
+    if (slidePath === undefined) return; // No current slide to insert after — nothing this can mean.
+    const prefix = `【從大綱草擬新頁】請依下面的大綱，用 co-motion slide add 在第 ${index + 1} 頁（${slidePath}）之後依序插入新頁，每一行大綱一頁；縮排的行是上一行那一頁的副標。插入後請用 textbox add 把文字放進新頁。`;
+    await sendChatText(`${prefix}\n\n${outline}`);
   }
 
   /** slidePath = the current slide's virtual path. */
@@ -1027,6 +1101,123 @@ export function App() {
       if (targetIndex !== null) await controllerRef.current?.showSlide(targetIndex);
     }
     return result;
+  }
+
+  // --- [E2.T8]: comments ---
+
+  /**
+   * Reloads the deck-wide comment list — mount, and every
+   * presentation-changed event (an agent's own `comment add`/`edit`/`delete`
+   * reaches here over the exact same channel a GUI-originated write does).
+   * A per-slide fetch/parse failure surfaces once through the existing
+   * `CanvasState.error` channel (`reportError`) rather than being read as
+   * "no comments" (§4.7 of the plan).
+   */
+  async function refreshComments(): Promise<void> {
+    const slides = canvasStateRef.current.slides;
+    const { comments: fetched, errors } = await fetchDeckComments(slides);
+    setComments(sortComments(fetched, slides));
+    const withComments = new Set(
+      fetched.map((comment) => slides.indexOf(comment.slidePath)).filter((index) => index !== -1),
+    );
+    overviewControllerRef.current?.setSlidesWithComments(withComments);
+    if (errors.length > 0) controllerRef.current?.reportError(errors[0]);
+  }
+
+  function findComment(slidePath: string, target: string): NumberedComment | undefined {
+    return commentsRef.current.find((comment) => comment.slidePath === slidePath && comment.target === target);
+  }
+
+  function openComposerFor(slidePath: string, target: string): void {
+    const existing = findComment(slidePath, target);
+    setCommentComposerTarget(target);
+    setCommentEditingId(existing?.id ?? null);
+    setCommentDraft(existing?.text ?? "");
+  }
+
+  /** ContextBar's "Comment to AI": target is the single selected element, or "page" for 0/2+ selected (§4.7 of the plan). */
+  function openCommentForSelection(): void {
+    const slidePath = canvasStateRef.current.slides[canvasStateRef.current.currentIndex];
+    if (slidePath === undefined) return;
+    const ids = canvasStateRef.current.selection.ids;
+    openComposerFor(slidePath, ids.length === 1 ? ids[0] : "page");
+  }
+
+  /** overview.ts's thumbnail comment button: jump to that page, clear selection, open a whole-page composer (§4.7). */
+  async function openCommentForPage(index: number): Promise<void> {
+    await controllerRef.current?.showSlide(index);
+    controllerRef.current?.clearSelection();
+    const slidePath = canvasStateRef.current.slides[index];
+    if (slidePath === undefined) return;
+    openComposerFor(slidePath, "page");
+  }
+
+  /** `.comment-pin` click, and Pinned context's own row click land here once the target slide/selection are already in place — opens that exact comment for editing. */
+  function openCommentForEdit(comment: NumberedComment): void {
+    setCommentComposerTarget(comment.target);
+    setCommentEditingId(comment.id);
+    setCommentDraft(comment.text);
+  }
+
+  /** Pinned context row click (§4.7): jump to its slide, select its target (or clear selection for a page-level one), then open it for editing. */
+  async function openPinnedComment(comment: NumberedComment): Promise<void> {
+    const index = canvasStateRef.current.slides.indexOf(comment.slidePath);
+    if (index !== -1) {
+      // `showSlide` resets selection and re-navigates the iframe even
+      // when `index` is already current — `selectAfter` is the only
+      // race-safe way to select something once that settles (see
+      // canvas.ts's own `showSlide` comment: calling the separate
+      // `selectElement` right after this promise resolves would race the
+      // iframe's navigation and be silently dropped, NOOP-227).
+      // `clearSelection` needs no such care — it never depends on the
+      // runtime reporting a bounding box back.
+      await controllerRef.current?.showSlide(index, comment.target === "page" ? undefined : [comment.target]);
+    }
+    if (comment.target === "page") controllerRef.current?.clearSelection();
+    openCommentForEdit(comment);
+  }
+
+  function closeCommentComposer(): void {
+    setCommentComposerTarget(null);
+    setCommentEditingId(null);
+    setCommentDraft("");
+  }
+
+  async function submitComment(): Promise<void> {
+    const slidePath = canvasStateRef.current.slides[canvasStateRef.current.currentIndex];
+    const target = commentComposerTarget;
+    const text = commentDraft.trim();
+    if (slidePath === undefined || target === null || text === "") return;
+    const result =
+      commentEditingId !== null
+        ? await runCanvasCommand("comment edit", { slidePath, commentId: commentEditingId, text })
+        : await runCanvasCommand("comment add", { slidePath, target, text });
+    // Failure (including the agent's editing lock, 409) leaves the composer
+    // open with the draft intact so the author can retry (§4.7's table).
+    if (result?.ok) closeCommentComposer();
+  }
+
+  /** The open composer's own Delete button. */
+  async function deleteOpenComment(): Promise<void> {
+    const slidePath = canvasStateRef.current.slides[canvasStateRef.current.currentIndex];
+    if (slidePath === undefined || commentEditingId === null) return;
+    const result = await runCanvasCommand("comment delete", { slidePath, commentId: commentEditingId });
+    if (result?.ok) closeCommentComposer();
+  }
+
+  /** Pinned context's own ✕ (§4.7): deletes immediately, no confirmation, never touches the composer. */
+  async function deletePinnedComment(comment: NumberedComment): Promise<void> {
+    await runCanvasCommand("comment delete", { slidePath: comment.slidePath, commentId: comment.id });
+  }
+
+  /** `SelectionOverlay`'s pin (§3.9/§4.7): only for a single-element selection, and only when that element already has a comment on the current slide. */
+  function resolvePinForSelection(): { commentId: string; number: number; onClick(): void } | null {
+    if (canvasState.selection.ids.length !== 1) return null;
+    const slidePath = currentSlidePath();
+    if (slidePath === null) return null;
+    const found = findComment(slidePath, canvasState.selection.ids[0]);
+    if (!found) return null;
+    return { commentId: found.id, number: found.number, onClick: () => openCommentForEdit(found) };
   }
 
   const shellVisible = canvasState.mode !== "play";
@@ -1097,6 +1288,7 @@ export function App() {
             runPageCommand={runPageCommand}
             contextMenuRequest={contextMenuRequest}
             onCloseContextMenu={() => setContextMenuRequest(null)}
+            onDraftWithAgent={(outline) => void draftWithAgent(outline)}
           />
         )}
         <div className="main">
@@ -1113,6 +1305,17 @@ export function App() {
               onDragOver: handleStageDragOver,
               onDrop: handleStageDrop,
               onDragLeave: handleStageDragLeave,
+            }}
+            comment={{
+              pin: resolvePinForSelection(),
+              target: commentComposerTarget,
+              editingCommentId: commentEditingId,
+              draft: commentDraft,
+              onDraftChange: setCommentDraft,
+              onOpenForSelection: openCommentForSelection,
+              onSubmit: () => void submitComment(),
+              onDelete: () => void deleteOpenComment(),
+              onClose: closeCommentComposer,
             }}
           >
             <PlayChrome
@@ -1149,6 +1352,12 @@ export function App() {
                 draft={draft}
                 onDraftChange={setDraft}
                 onSubmit={() => void sendMessage()}
+                comments={comments}
+                onPinnedClick={(comment) => void openPinnedComment(comment)}
+                onPinnedRemove={(commentId) => {
+                  const comment = comments.find((c) => c.id === commentId);
+                  if (comment) void deletePinnedComment(comment);
+                }}
               />
             }
           />

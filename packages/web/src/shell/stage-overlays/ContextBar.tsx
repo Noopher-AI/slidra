@@ -12,6 +12,8 @@ export interface ContextBarProps {
   hasAnimation: boolean;
   /** [E2.T7]: switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
   onEditAnimation(): void;
+  /** [E2.T8]: "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
+  onComment(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -53,7 +55,7 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
  * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
  * 送任何命令、不改選取。 */
-export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onOrder, onDuplicate, onDelete }: ContextBarProps) {
+export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onComment, onOrder, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
@@ -75,8 +77,7 @@ export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimat
   return (
     <div className="context-bar-layer">
       <div ref={barRef} className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
-        {/* NOOP-67 wires this up. */}
-        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI">
+        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI" onClick={onComment}>
           <Icon name="comment" size="control" />
           Comment to AI
         </button>

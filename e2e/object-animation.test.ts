@@ -345,6 +345,10 @@ it("A12：enter 家族——推進到該步驟後，元素真的產生了動畫�
     const page = await openApp(server);
     await page.locator(".play-button").click();
     const slideFrame = await canvasFrame(page);
+    // Wait for the player to have applied the enter-family hide rule before
+    // pressing: a keypress that lands before the player is ready never
+    // advances the step, so nothing animates (flaked when run in sequence).
+    await expect.poll(() => slideFrame.locator("#el-a").evaluate((el) => getComputedStyle(el).opacity).catch(() => "")).toBe("0");
     await page.keyboard.press("ArrowRight");
 
     await expect

@@ -8,6 +8,7 @@ import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
+import { buildCommentContext } from "../../src/agent/session.js";
 
 // Seam B (issue #1): start the real server, drive it over HTTP, with a
 // scripted fake ACP agent — a real subprocess speaking ACP over stdio,
@@ -200,6 +201,25 @@ class SseReader {
   }
 }
 
+describe("[E2.T8] buildCommentContext", () => {
+  it("no comments: null (so runTurn sends the author's text with no prefix at all — AC13)", () => {
+    expect(buildCommentContext([])).toBeNull();
+  });
+
+  it("formats each comment as '<slidePath> <target> <commentId>：<text>', one per line, in the given order", () => {
+    const result = buildCommentContext([
+      { id: "c-1", slidePath: "slides/001.svg", target: "el-a", author: "author", created: "t1", text: "第一則" },
+      { id: "c-2", slidePath: "slides/002.svg", target: "page", author: "author", created: "t2", text: "第二則" },
+    ]);
+    expect(result).toBe(
+      "【作者釘選的留言】\n" +
+        "以下是作者釘在這份簡報上的留言，隨這則訊息一起給你。每一行的格式是「投影片路徑 目標 留言識別碼」，冒號之後是留言原文；目標是元素識別碼，或 page（代表整頁）。\n" +
+        "slides/001.svg el-a c-1：第一則\n" +
+        "slides/002.svg page c-2：第二則",
+    );
+  });
+});
+
 describe("chat: the 編輯規約 and prompt shape", () => {
   it("sends the 編輯規約 as the very first session/prompt, as a one-text-block content array", async () => {
     const id = await openFreshPresentation();
@@ -217,6 +237,53 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     expect(prompts.length).toBeGreaterThanOrEqual(2);
     expect(prompts[0].prompt).toEqual([{ type: "text", text: buildEditorialBrief(id) }]);
     expect(prompts[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
+  });
+
+  it("[E2.T8] AC14: with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
+    const id = await openFreshPresentation();
+    // The fresh presentation's default `slides/001.svg` carries a bare
+    // `<text>` title — not `assertSlideCompliant` until `convert` runs
+    // (unrelated pre-existing state) — so `comment add`'s own compliance
+    // check needs a blank `slide add` slide instead, same posture
+    // `packages/cli/test/comment.test.ts` takes.
+    const added = await registry.dispatch<{ slidePath: string }>("slide add", { id });
+    const slidePath = added.data!.slidePath;
+    const textbox = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath,
+      x: 10,
+      y: 10,
+      width: 100,
+      text: "box",
+    });
+    const elementId = textbox.data!.elementId;
+
+    const elementComment = await registry.dispatch<{ commentId: string }>("comment add", {
+      id,
+      slidePath,
+      target: elementId,
+      text: "把這個標題改短一點",
+    });
+    const pageComment = await registry.dispatch<{ commentId: string }>("comment add", {
+      id,
+      slidePath,
+      target: "page",
+      text: "整頁重寫成三個要點",
+    });
+
+    const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "麻煩照留言處理");
+    await done;
+    await sse.close();
+
+    const prompts = promptEntries(await readFakeAgentLog());
+    const sentText = (prompts[1].prompt[0] as { text: string }).text;
+    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}：把這個標題改短一點`);
+    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}：整頁重寫成三個要點`);
+    expect(sentText.endsWith("【作者的訊息】\n麻煩照留言處理")).toBe(true);
   });
 
   it("reuses the same sessionId across two separate messages", async () => {
@@ -754,7 +821,12 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
   it("honours line (1-based) and limit (max line count) per ACP semantics", async () => {
     const id = await openFixturePresentation({
       "project.json": fixtureProjectJson(["slides/001.svg"]),
-      "slides/001.svg": "line1\nline2\nline3\nline4\n",
+      // [E2.T8]: every chat turn now reads this file's comments (`<svg>`-rooted,
+      // per `readSlideComments`) before relaying the prompt, so "line1" is
+      // wrapped in a self-contained `<svg>` root to stay parseable — line 2/3/4
+      // are untouched plain text, preserving the exact line/limit semantics
+      // this test is actually about.
+      "slides/001.svg": '<svg xmlns="http://www.w3.org/2000/svg">line1</svg>\nline2\nline3\nline4\n',
     });
     const server = await serve(
       fakeAgent({
