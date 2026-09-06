@@ -1566,6 +1566,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const raw = shape === "elementId" ? [data?.elementId] : data?.elementIds;
       const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
       if (ids.length > 0) pendingSelectionIds = ids;
+    } else if (result.ok) {
+      // Every other successful GUI write (effect add/set/move/remove, text
+      // set, …) lands back over /api/events and drives a reload() that
+      // drops the selection. Park it so the author keeps what they had —
+      // otherwise the right rail's Page/Object sub-tab (keyed on "is
+      // anything selected") snaps back to Page after every edit.
+      keepSelectionAcrossReload();
     }
     notify();
     return result;

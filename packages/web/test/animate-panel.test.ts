@@ -4,11 +4,10 @@ import { describe, expect, it } from "vitest";
 import type { Effect } from "../src/effects.js";
 import { buildCards, cardLabel, EffectCard, type EffectCardData } from "../src/shell/side/animate/cards.js";
 import { ObjectList } from "../src/shell/side/animate/ObjectList.js";
-import { Timeline } from "../src/shell/side/animate/Timeline.js";
 import type { TargetInfo } from "../src/shell/side/animate/useSlideEffects.js";
 
 /**
- * [E2.T7]/NOOP-66/#206 §6.4: the panel/timeline's public boundary is
+ * [E2.T7]/NOOP-66/#206 §6.4: the panel's public boundary is
  * `renderToStaticMarkup` output (same convention `stage-overlays.test.ts`
  * already uses) — never an internal call count or React fibre inspection.
  */
@@ -110,41 +109,5 @@ describe("EffectCard", () => {
     );
     expect(markup).toContain('value="1.2"');
     expect(markup).toContain('value="0.3"');
-  });
-});
-
-describe("Timeline", () => {
-  it("空清單顯示同一份空態文案", () => {
-    const markup = renderToStaticMarkup(
-      createElement(Timeline, { cards: [], onMove: noop, onChangeDelay: noop, onChangeDuration: noop }),
-    );
-    expect(markup).toContain("No animations on this slide.");
-  });
-
-  it("bar 的 left/width 依 delay/duration × 80px/秒 計算", () => {
-    const cards = buildCards([effect({ delay: 0.5, duration: 1 })], new Map());
-    const markup = renderToStaticMarkup(
-      createElement(Timeline, { cards, onMove: noop, onChangeDelay: noop, onChangeDuration: noop }),
-    );
-    // delay 0.5s * 80 = 40px; duration 1s * 80 = 80px.
-    expect(markup).toContain("left:40px");
-    expect(markup).toContain("width:80px");
-  });
-
-  it("duration 極短時 bar 寬度不小於最小可視寬度（24px）", () => {
-    const cards = buildCards([effect({ duration: 0 })], new Map());
-    const markup = renderToStaticMarkup(
-      createElement(Timeline, { cards, onMove: noop, onChangeDelay: noop, onChangeDuration: noop }),
-    );
-    expect(markup).toContain("width:24px");
-  });
-
-  it("每一行標示卡片編號與 label", () => {
-    const cards = buildCards([effect({ index: 0 }), effect({ target: "el-b", index: 1 })], new Map());
-    const markup = renderToStaticMarkup(
-      createElement(Timeline, { cards, onMove: noop, onChangeDelay: noop, onChangeDuration: noop }),
-    );
-    const numbers = [...markup.matchAll(/animate-timeline-bar-number">(\d+)</g)].map((m) => m[1]);
-    expect(numbers).toEqual(["1", "2"]);
   });
 });

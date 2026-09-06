@@ -321,9 +321,11 @@
    * could not animate. `duringReplay` (settled decision #4, extended by
    * [E2.T7]): every family runs with `duration: 0`/`delay: 0` — a step's
    * final state applies instantly — and media is skipped entirely (a
-   * replay never plays sound).
+   * replay never plays sound). `offsetSeconds` is the step-clock start
+   * `scheduleStep` computed for this effect (with/after-previous); the
+   * effect's own `delay` is added on top of it.
    */
-  function applyEffect(effect, duringReplay) {
+  function applyEffect(effect, duringReplay, offsetSeconds) {
     if (effect.family === "media") {
       if (duringReplay) return null;
       if (effect.effect === "play") {
@@ -356,7 +358,7 @@
     if (effect.family === "enter") unhideForEnter(effect.target);
 
     var duration = duringReplay ? 0 : Math.round((effect.duration || 0) * 1000);
-    var delay = duringReplay ? 0 : Math.round((effect.delay || 0) * 1000);
+    var delay = duringReplay ? 0 : Math.round(((offsetSeconds || 0) + (effect.delay || 0)) * 1000);
 
     if (effect.family === "path") {
       return animatePath(el, effect, duration, delay);
@@ -381,11 +383,30 @@
    * the animations finish). See `playEffectsAwaitable` for the one caller
    * that does (Preview).
    */
-  function applyStep(step, duringReplay) {
-    var effects = step.effects;
+  /**
+   * Schedules one step's effects on a shared clock (PPTX mental model):
+   * `on-click` opens the step at 0, `with-previous` starts together with
+   * the previous effect, `after-previous` starts once the previous effect
+   * has ended (its start + duration). Each effect's own `delay` is added
+   * on top of that start. Calls `fn(effect, offsetSeconds)` in file order.
+   */
+  function scheduleStep(effects, fn) {
+    var prevStart = 0;
+    var prevEnd = 0;
     for (var i = 0; i < effects.length; i++) {
-      applyEffect(effects[i], duringReplay);
+      var effect = effects[i];
+      var base = effect.start === "after-previous" ? prevEnd : effect.start === "with-previous" ? prevStart : 0;
+      fn(effect, base);
+      var start = base + (effect.delay || 0);
+      prevStart = start;
+      prevEnd = start + (effect.duration || 0);
     }
+  }
+
+  function applyStep(step, duringReplay) {
+    scheduleStep(step.effects, function (effect, offset) {
+      applyEffect(effect, duringReplay, offset);
+    });
   }
 
   /**
@@ -490,8 +511,8 @@
   /** Runs every effect in `effects` (real timing, not a replay) and resolves once every one of them that produced a WAAPI `Animation` has finished — a rejected `.finished` (e.g. cancelled by a `resetToStep` racing this preview) is swallowed, never left unhandled. */
   function playEffectsAwaitable(effects) {
     var pending = [];
-    for (var i = 0; i < effects.length; i++) {
-      var result = applyEffect(effects[i], false);
+    scheduleStep(effects, function (effect, offset) {
+      var result = applyEffect(effect, false, offset);
       if (result && result.finished && typeof result.finished.then === "function") {
         pending.push(
           result.finished.catch(function () {
@@ -499,7 +520,7 @@
           }),
         );
       }
-    }
+    });
     return Promise.all(pending);
   }
 

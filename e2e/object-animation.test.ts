@@ -14,7 +14,7 @@ import { compareScreenshot } from "./helpers/screenshot.js";
  * [E2.T7]/NOOP-66/#206: `05-INTERACTIONS.feature`「物件動畫（PPTX 心智）」
  * end to end, against a real Chromium — same `startServerFor`/`openApp`
  * shape as e2e/direct-manipulation.test.ts. This is the ONE e2e file this
- * ticket's plan allows opening (§6.3): every family, the timeline, the
+ * ticket's plan allows opening (§6.3): every family, the
  * badges, the Edit animation entry, and the GUI↔CLI equivalence all live
  * here rather than one file each.
  *
@@ -196,6 +196,13 @@ it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一�
     // 右欄自動切到 Animate › Object，新卡在清單末端。
     await expect.poll(() => objectCards(page).count()).toBe(1);
     expect(await page.locator('[role="tab"][data-tab="animate"]').getAttribute("aria-selected")).toBe("true");
+    // …and stays on Object once the write's own reload has landed: the
+    // selection survives (badge back on stage), so the sub-tab is not
+    // snapped back to Page by the "no selection → Page" rule.
+    await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
+    await page.waitForTimeout(300);
+    expect(await page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
+    expect(await page.locator(".context-bar").count()).toBe(1);
 
     const afterGui = await readEffects(registry, presentationId);
     expect(afterGui).toHaveLength(1);
@@ -424,36 +431,6 @@ it("A12：path 家族——推進後元素沿著 d 位移（transform 不再是�
   }
 });
 
-it("A13：時間軸拖曳 bar 右緣改變 duration，投影片檔案裡真的變了", async () => {
-  const { server, registry, presentationId, cleanup } = await startServerFor();
-  try {
-    await registry.dispatch("effect add", {
-      id: presentationId, slidePath: "slides/001.svg", elementIds: ["el-a"], family: "enter", effect: "fade", duration: 0.5,
-    });
-
-    const page = await openApp(server);
-    const slideFrame = await canvasFrame(page);
-    await slideFrame.locator("#el-a").click();
-    await page.locator('[role="tab"][data-tab="animate"]').click();
-    await expect.poll(() => objectCards(page).count()).toBe(1);
-    await page.locator('.animate-object-view-toggle [role="tab"]:has-text("Timeline")').click();
-
-    const handle = page.locator(".animate-timeline-handle").first();
-    const box = await handle.boundingBox();
-    if (!box) throw new Error("量不到時間軸把手的邊界框");
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 5 });
-    await page.mouse.up();
-
-    await expect
-      .poll(async () => (await readEffects(registry, presentationId))[0]?.duration)
-      .toBeGreaterThan(0.5);
-  } finally {
-    await cleanup();
-  }
-});
-
 it("A14：舞台徽章與清單同步——清單按 ↑ 之後，徽章的數字順序跟著換", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
@@ -524,7 +501,7 @@ it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動�
   }
 });
 
-it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／時間軸／舞台編號徽章）", async () => {
+it("A17：基準截圖三張（Animate 面板／Animate ›Object 清單／舞台編號徽章）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -541,9 +518,6 @@ it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／時�
     await page.locator('[role="tab"][data-tab="animate"]').click();
     await expect.poll(() => objectCards(page).count()).toBe(1);
     await compareScreenshot(page, { name: "animate-object-list", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
-
-    await page.locator('.animate-object-view-toggle [role="tab"]:has-text("Timeline")').click();
-    await compareScreenshot(page, { name: "animate-object-timeline", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
 
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
     await compareScreenshot(page, { name: "stage-anim-badges", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });

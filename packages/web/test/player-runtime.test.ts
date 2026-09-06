@@ -231,6 +231,32 @@ describe("player-runtime.js", () => {
     expect(animationsFor(animations, "el-b")[0].options).toMatchObject({ duration: 0 });
   });
 
+  it("同一步裡 with-previous 對齊前一個的起點、after-previous 對齊前一個的終點（各自的 delay 再疊上去）", () => {
+    const plan: StubPlan = {
+      steps: [
+        {
+          effects: [
+            enter("el-a", "fade", { duration: 0.4, delay: 0.1 }),
+            enter("el-b", "fade", { start: "after-previous", duration: 0.2, delay: 0.05 }),
+            enter("el-c", "fade", { start: "with-previous", duration: 0.3 }),
+            enter("el-d", "fade", { start: "after-previous", duration: 0.1 }),
+          ],
+        },
+      ],
+      hidden: ["el-a", "el-b", "el-c", "el-d"],
+    };
+    const { win, animations } = boot(plan, ["el-a", "el-b", "el-c", "el-d"]);
+
+    press(win, "ArrowRight");
+
+    // a: starts at 0.1, ends at 0.5. b (after a): 0.5 + 0.05 = 0.55, ends 0.75.
+    // c (with b): starts with b at 0.55. d (after c): 0.55 + 0.3 = 0.85.
+    expect(animationsFor(animations, "el-a")[0].options).toMatchObject({ delay: 100 });
+    expect(animationsFor(animations, "el-b")[0].options).toMatchObject({ delay: 550 });
+    expect(animationsFor(animations, "el-c")[0].options).toMatchObject({ delay: 550 });
+    expect(animationsFor(animations, "el-d")[0].options).toMatchObject({ delay: 850 });
+  });
+
   it("逐步推進，一次只套用一步；推進到最後一步再按，改為送出 advance-past-end", async () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }],

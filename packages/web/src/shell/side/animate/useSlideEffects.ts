@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CanvasState } from "../../../canvas.js";
 import { parseEffects, type Effect } from "../../../effects.js";
 
-/** `target` id -> what the Object list/Timeline need to label its card that `parseEffects` itself does not carry: its `data-comot-name`, and — only when `target` is an actual group `<g>` with ≥2 `<g>` children (ADR-0012's own group-vs-leaf distinction) — how many members it has (D5's "Group N (n)" card). */
+/** `target` id -> what the Object list needs to label its card that `parseEffects` itself does not carry: its `data-comot-name`, and — only when `target` is an actual group `<g>` with ≥2 `<g>` children (ADR-0012's own group-vs-leaf distinction) — how many members it has (D5's "Group N (n)" card). */
 export interface TargetInfo {
   name: string | null;
   groupMemberCount: number | null;

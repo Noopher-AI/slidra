@@ -2,16 +2,13 @@
    [E2.T7]/NOOP-66/#206：物件動畫與時間軸。
    - Animate 插入面板（Dock 的 Add animation 入口）：`.animate-panel`，套用
      既有的 `.floating-layer .dock-panel` 材質（dock.css），不重寫一份。
-   - Animate › Object（側欄）：清單視圖 `.animate-object-list`／時間軸視圖
-     `.animate-timeline`，共用 `.animate-object-panel` 容器（side-panel.css
-     已把它排進 flex:1 規則，這裡不重複）。
+   - Animate › Object（側欄）：清單視圖 `.animate-object-list`，放在
+     `.animate-object-panel` 容器裡（side-panel.css 已把它排進 flex:1 規則，
+     這裡不重複）。
    - 舞台編號徽章：`.badge-layer`／`.animation-badge`（stage-overlays 的
      pointer-events:none 根容器下，個別可互動元件自己開回 auto，同一慣例
      見 ContextBar/GuideLayer）。
-   全部只透過 var() 消費 tokens.css 的 token（design-contract.test.ts 的規則）；
-   時間軸 bar 的 left/width 是唯一例外（D13：inline style 的 px，不禁長度，
-   只禁色值/duration/easing——那兩個屬性寫在 Timeline.tsx 的 inline style
-   裡，不在這個檔案）。
+   全部只透過 var() 消費 tokens.css 的 token（design-contract.test.ts 的規則）。
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Animate 插入面板 ────────────────────────────────────────────── */
@@ -219,33 +216,9 @@
 .animate-object-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-6) 0;
-}
-.animate-object-view-toggle {
-  display: flex;
-  gap: calc(var(--space-1) / 2);
-  padding: calc(var(--space-2) / 2);
-  border-radius: var(--radius-md-segmented);
-  background: var(--surface-1);
-}
-.animate-object-view-toggle button {
-  height: var(--control-h-compact);
-  padding-inline: var(--space-4);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-500);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-.animate-object-view-toggle button[aria-selected="true"] {
-  background: var(--surface-white);
-  color: var(--ink-900);
-  box-shadow: var(--shadow-seg);
 }
 .animate-object-preview-all {
   height: var(--control-h-compact);
@@ -356,64 +329,6 @@
   color: var(--ink-900);
   background: var(--surface-white);
 }
-
-/* ── Animate › Object：時間軸視圖 ────────────────────────────────── */
-
-.animate-timeline {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: var(--space-4) var(--space-6);
-}
-.animate-timeline-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  height: var(--space-8);
-}
-.animate-timeline-row-label {
-  flex: none;
-  width: calc(var(--panel-w) * 0.28);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-xs);
-  color: var(--ink-500);
-}
-.animate-timeline-track {
-  position: relative;
-  flex: 1;
-  height: 100%;
-}
-.animate-timeline-bar {
-  position: absolute;
-  top: calc(var(--space-1) / 2);
-  bottom: calc(var(--space-1) / 2);
-  display: flex;
-  align-items: center;
-  border-radius: var(--radius-xs);
-  background: var(--brand-red-tint2);
-  border: 1px solid var(--brand-red);
-  cursor: grab;
-  touch-action: none;
-}
-.animate-timeline-bar-number {
-  padding-inline-start: var(--space-2);
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  color: var(--brand-red);
-}
-.animate-timeline-handle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--space-2);
-  cursor: ew-resize;
-  touch-action: none;
-}
-
-/* ── 舞台編號徽章 (D9) ───────────────────────────────────────────── */
 
 .badge-layer {
   position: absolute;

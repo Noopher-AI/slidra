@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { EffectName, EffectStart } from "@co-motion/core/effects";
 import type { CanvasController, CanvasState } from "../../canvas.js";
 import { buildCards } from "./animate/cards.js";
 import { ObjectList } from "./animate/ObjectList.js";
-import { Timeline } from "./animate/Timeline.js";
 import { useSlideEffects } from "./animate/useSlideEffects.js";
 
 export interface AnimateObjectPanelProps {
@@ -11,17 +10,14 @@ export interface AnimateObjectPanelProps {
   controller: CanvasController | null;
 }
 
-type View = "list" | "timeline";
-
 /**
- * 動畫 › Object（NOOP-66/#206 §4.5）：清單視圖與時間軸視圖共用同一份卡片
- * 資料（`useSlideEffects`），每個操作即時送出對應的 `effect` 命令並立即
+ * 動畫 › Object（NOOP-66/#206 §4.5）：清單視圖（`useSlideEffects` 供卡片
+ * 資料），每個操作即時送出對應的 `effect` 命令並立即
  * 入歷史（D14：一次命令＝一次 `writePresentationFile`＝一筆 undo，這裡不寫
  * 任何 undo 程式碼）。命令成功後呼叫 `refresh()` 重新讀檔——不等下一次不
  * 相干的 reload() 才看到自己剛做的改動。
  */
 export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProps) {
-  const [view, setView] = useState<View>("list");
   const { effects, targetInfo, refresh } = useSlideEffects(state);
   const slidePath = state.currentIndex >= 0 ? state.slides[state.currentIndex] : null;
 
@@ -75,14 +71,6 @@ export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProp
   return (
     <div className="animate-object-panel" role="tabpanel" aria-label="動畫 · Object">
       <div className="animate-object-toolbar">
-        <div className="animate-object-view-toggle" role="tablist" aria-label="List / Timeline">
-          <button type="button" role="tab" aria-selected={view === "list"} onClick={() => setView("list")}>
-            List
-          </button>
-          <button type="button" role="tab" aria-selected={view === "timeline"} onClick={() => setView("timeline")}>
-            Timeline
-          </button>
-        </div>
         <button
           type="button"
           className="animate-object-preview-all"
@@ -92,20 +80,16 @@ export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProp
           Preview
         </button>
       </div>
-      {view === "list" ? (
-        <ObjectList
-          cards={cards}
-          onChangeEffect={handleChangeEffect}
-          onChangeStart={handleChangeStart}
-          onChangeDuration={handleChangeDuration}
-          onChangeDelay={handleChangeDelay}
-          onMove={handleMove}
-          onRemove={handleRemove}
-          onPreview={handlePreviewCard}
-        />
-      ) : (
-        <Timeline cards={cards} onMove={handleMove} onChangeDelay={handleChangeDelay} onChangeDuration={handleChangeDuration} />
-      )}
+      <ObjectList
+        cards={cards}
+        onChangeEffect={handleChangeEffect}
+        onChangeStart={handleChangeStart}
+        onChangeDuration={handleChangeDuration}
+        onChangeDelay={handleChangeDelay}
+        onMove={handleMove}
+        onRemove={handleRemove}
+        onPreview={handlePreviewCard}
+      />
     </div>
   );
 }
