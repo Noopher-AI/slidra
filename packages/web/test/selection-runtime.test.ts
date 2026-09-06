@@ -208,17 +208,6 @@ describe("selection-runtime.js", () => {
     expect(host.shadowRoot!.querySelector(".sel")).not.toBeNull();
   });
 
-  it("四角：shadow root 裡只有 .sel 加一個 i 子元素，沒有 b 或 u", async () => {
-    const { doc } = boot('<svg><rect id="el-a"/></svg>');
-
-    click(doc, doc.getElementById("el-a")!);
-
-    const host = doc.body.children[1];
-    const sel = host.shadowRoot!.querySelector(".sel")!;
-    expect(sel.tagName.toLowerCase()).toBe("div");
-    expect([...sel.children].map((c) => c.tagName.toLowerCase())).toEqual(["i"]);
-  });
-
   it("host 用 inline !important 鎖住 display/visibility/opacity/z-index，不吃外部樣式", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 

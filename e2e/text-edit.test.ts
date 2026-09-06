@@ -241,6 +241,16 @@ async function readSelection(page: Page): Promise<{ start: number; end: number }
   });
 }
 
+/** The `.edit-frame` overlay div's own `display` value ("block" while editing, "none" otherwise). */
+async function readEditFrameDisplay(page: Page): Promise<string> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  return frame.locator("body").evaluate((body) => {
+    const doc = body.ownerDocument as Document;
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    return (host.shadowRoot!.querySelector(".edit-frame") as HTMLElement).style.display;
+  });
+}
+
 /** The `.edit-caret` overlay div's own client rect, or `null` when hidden. */
 async function readCaretRect(page: Page): Promise<{ left: number; top: number; height: number } | null> {
   const frame = page.frameLocator("iframe.slide-frame");
@@ -456,8 +466,10 @@ it("A1：ArrowLeft 依序左移游標，caret 畫面位置與 textarea.selection
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
+    expect(await readEditFrameDisplay(page)).not.toBe("block"); // Nothing being edited yet.
     await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
     await waitForEditTextareaFocus(page);
+    expect(await readEditFrameDisplay(page)).toBe("block"); // Editing frame is now shown.
     // Fixture's initial text is "Hi" (len 2) — type more so there is enough
     // room to walk the caret left several steps.
     await page.keyboard.type("ABCD");
