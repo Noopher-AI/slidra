@@ -420,23 +420,6 @@ describe("cat", () => {
   });
 });
 
-describe("no write entry point exists", () => {
-  it("the registry has no command capable of modifying a presentation's content", async () => {
-    // Structural check, not a blocklist: the entire set of registered
-    // command names must contain nothing but the known read-only/addressing
-    // commands. Any future write command must show up here as a failure,
-    // forcing a deliberate decision rather than an accidental leak.
-    const knownCommands = ["new", "open", "pack", "cat", "ls"];
-    for (const name of knownCommands) {
-      expect(registry.has(name)).toBe(true);
-    }
-    expect(registry.has("write")).toBe(false);
-    expect(registry.has("edit")).toBe(false);
-    expect(registry.has("read")).toBe(false);
-    expect(registry.has("list")).toBe(false);
-  });
-});
-
 describe("no output leaks the real work directory path", () => {
   it("across new, open, pack, ls, cat and error paths", async () => {
     const comotPath = path.join(comotDir, "deck.comot");

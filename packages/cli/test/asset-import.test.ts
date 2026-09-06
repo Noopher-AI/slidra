@@ -134,13 +134,6 @@ describe("asset import — URL source", () => {
         res.end(PNG_BYTES);
         return;
       }
-      if (req.url === "/lying.png") {
-        // Content-Type claims PNG, but the bytes are plain text — magic
-        // bytes must win over the header (ADR-0010/0015).
-        res.writeHead(200, { "Content-Type": "image/png" });
-        res.end("not actually a png");
-        return;
-      }
       if (req.url === "/error-page") {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end("<html>not media</html>");
@@ -170,15 +163,16 @@ describe("asset import — URL source", () => {
     expect(result.data).toEqual({ path: "assets/photo.png", mimeType: "image/png", kind: "image" });
   });
 
-  it("rejects a response whose Content-Type lies about the bytes", async () => {
-    const { id } = await openFreshPresentation();
-
-    const result = await registry.dispatch("asset import", { id, source: `${baseUrl}/lying.png` });
-
-    expect(result.ok).toBe(false);
-  });
-
-  it("rejects a non-media response (e.g. an HTML error page)", async () => {
+  // E2.T14 test-prune (計畫 §6.1): merged from two separate tests
+  // ("rejects a response whose Content-Type lies about the bytes" /
+  // "rejects a non-media response (e.g. an HTML error page)") — both drove
+  // the exact same input path (bytes that are not a recognised media
+  // format get rejected) and asserted the same outcome; the only
+  // difference between them was a `Content-Type` header this code path
+  // never reads. Keeping the HTML sample since a lying `image/png` header
+  // and a genuine `text/html` response are the two realistic shapes of
+  // "server claims media, isn't."
+  it("拒絕非媒體回應，且完全不看 Content-Type", async () => {
     const { id } = await openFreshPresentation();
 
     const result = await registry.dispatch("asset import", { id, source: `${baseUrl}/error-page` });
