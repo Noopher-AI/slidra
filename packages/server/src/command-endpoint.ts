@@ -48,6 +48,11 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "textbox width",
   "text set",
   "slide add",
+  // [E2.T3] 的頁面管理與備忘稿加入這四條。
+  "slide delete",
+  "slide duplicate",
+  "slide move",
+  "slide notes set",
   "element copy",
   "element cut",
   "element paste",

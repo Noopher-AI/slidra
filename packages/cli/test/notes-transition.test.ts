@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { JSDOM } from "jsdom";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
 import { checkSlideCompliance } from "@co-motion/core";
@@ -52,7 +53,7 @@ describe("slide notes set", () => {
     });
     expect(result.ok).toBe(true);
     const content = await slideContent(id);
-    expect(content).toContain("<comot:notes>第一版備忘稿</comot:notes>");
+    expect(content).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns">第一版備忘稿</comot:notes>');
   });
 
   it("已有 <comot:notes> 時整個取代", async () => {
@@ -60,7 +61,7 @@ describe("slide notes set", () => {
     await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "版本一" });
     await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "版本二" });
     const content = await slideContent(id);
-    expect(content).toContain("<comot:notes>版本二</comot:notes>");
+    expect(content).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns">版本二</comot:notes>');
     expect(content).not.toContain("版本一");
   });
 
@@ -70,7 +71,7 @@ describe("slide notes set", () => {
     const result = await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "" });
     expect(result.ok).toBe(true);
     const content = await slideContent(id);
-    expect(content).toContain("<comot:notes></comot:notes>");
+    expect(content).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns"></comot:notes>');
   });
 
   it("含 <、& 等字元一律做 XML 跳脫，寫回去能被讀回", async () => {
@@ -89,6 +90,43 @@ describe("slide notes set", () => {
     await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text });
     const content = await slideContent(id);
     expect(content).toContain("第一行\n第二行");
+  });
+
+  it("寫入後的整份 SVG 是 namespace-well-formed 的 XML（unbound comot: 前綴會讓播放模式的 parseEffects 直接判定損毀）", async () => {
+    const id = await openFreshPresentation();
+    await registry.dispatch("slide notes set", { id, slidePath: "slides/001.svg", text: "備忘稿" });
+    const content = await slideContent(id);
+    const doc = new (new JSDOM().window.DOMParser)().parseFromString(content, "image/svg+xml");
+    expect(doc.getElementsByTagName("parsererror").length).toBe(0);
+  });
+
+  it("既有 <comot:notes> 缺 xmlns:comot（舊檔，本次修正前寫入的）：重寫後補上，不再是 parsererror", async () => {
+    // Round 1 只補了「沒有 <metadata>」與「有 <metadata> 但沒有 <comot:notes>」兩個分支，
+    // 第三個分支（<comot:notes> 已存在）只換內容、不碰開標籤，於是任何在修正前就已經下過
+    // `slide notes set` 的簡報，其 <comot:notes> 永遠缺 xmlns:comot —— 這裡手動重現那個舊檔狀態。
+    const id = await openFreshPresentation();
+    const legacySvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      "  <metadata><comot:notes>舊的備忘稿</comot:notes></metadata>\n" +
+      '  <g id="el-a"><rect x="0" y="0" width="10" height="10"/></g>\n' +
+      "</svg>\n";
+    const { writePresentationFile } = await import("@co-motion/core");
+    await writePresentationFile(id, "slides/001.svg", legacySvg);
+
+    const result = await registry.dispatch("slide notes set", {
+      id,
+      slidePath: "slides/001.svg",
+      text: "作者在 GUI 裡改過的新備忘稿",
+    });
+
+    expect(result.ok).toBe(true);
+    const content = await slideContent(id);
+    expect(content).toContain(
+      '<comot:notes xmlns:comot="https://co-motion.dev/ns">作者在 GUI 裡改過的新備忘稿</comot:notes>',
+    );
+    expect(content).not.toContain("舊的備忘稿");
+    const doc = new (new JSDOM().window.DOMParser)().parseFromString(content, "image/svg+xml");
+    expect(doc.getElementsByTagName("parsererror").length).toBe(0);
   });
 
   it("路徑不是投影片：不是投影片", async () => {
@@ -133,7 +171,7 @@ describe("slide notes set", () => {
     // the actual T3 parent AC (「既有 effects 一個位元組都不動」), not just
     // "compliance still passes".
     expect(content).toContain(effectsBlock);
-    expect(content).toContain("<comot:notes>備忘稿</comot:notes>");
+    expect(content).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns">備忘稿</comot:notes>');
     expect(checkSlideCompliance(content)).toEqual([]);
   });
 });

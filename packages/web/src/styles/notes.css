@@ -1,7 +1,6 @@
-/* 備忘稿 (New v3 skeleton). No ticket in this fleet wires real note content
-   yet — Notes.tsx always shows the same honest placeholder, styled as the
-   prototype's notes box (white card, not an editable field). Height is the
-   design package's own `--notes-h` token. */
+/* 備忘稿 (T3 [E2.T3])：真的 textarea，blur 送 `slide notes set`
+   （Notes.tsx）。styled as the prototype's notes box (white card). Height
+   is the design package's own `--notes-h` token. */
 .notes {
   grid-row: 2;
   height: var(--notes-h);
@@ -31,7 +30,7 @@
   letter-spacing: normal;
   text-transform: none;
 }
-.notes-empty {
+.notes-textarea {
   flex: 1;
   min-height: 0;
   padding: var(--space-3) var(--space-5);
@@ -39,7 +38,21 @@
   background: var(--surface-white);
   border: 1px solid var(--surface-2);
   border-radius: var(--radius-md-segmented);
-  color: var(--ink-400);
+  color: var(--ink-700);
+  font: inherit;
   font-size: var(--text-base);
   line-height: 1.55;
+  resize: none;
+}
+.notes-textarea::placeholder {
+  color: var(--ink-400);
+}
+.notes-textarea:disabled,
+.notes-textarea:read-only {
+  color: var(--ink-400);
+  background: var(--surface-1);
+}
+.notes-error {
+  color: var(--brand-red);
+  font-size: var(--text-sm);
 }

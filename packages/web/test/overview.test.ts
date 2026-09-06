@@ -6,14 +6,20 @@ import type { CanvasController, CanvasState } from "../src/canvas.js";
 // showSlide() from the real controller (see AGENTS instructions — the seam
 // is mountOverview's public behaviour, not canvas.ts internals). Kept
 // minimal and hand-wired rather than mocking the whole module.
-function fakeCanvas(initial: CanvasState): {
+function fakeCanvas(
+  initial: CanvasState,
+  options: { runCommandResult?: { ok: boolean; message: string } } = {},
+): {
   controller: CanvasController;
   setState: (state: CanvasState) => void;
   showSlideCalls: number[];
+  runCommandCalls: Array<{ name: string; input: Record<string, unknown> }>;
 } {
   const listeners = new Set<(state: CanvasState) => void>();
   let state = initial;
   const showSlideCalls: number[] = [];
+  const runCommandCalls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const runCommandResult = options.runCommandResult ?? { ok: true, message: "ok" };
   const controller: CanvasController = {
     reload: vi.fn(async () => {}),
     showSlide: vi.fn(async (index: number) => {
@@ -27,7 +33,18 @@ function fakeCanvas(initial: CanvasState): {
       return () => listeners.delete(listener);
     },
     destroy: vi.fn(),
-  };
+    // [E2.T3]: overview.ts's drag/drop reordering calls this directly
+    // (T3 plan §7 決定 7 — no separate hook needed, the controller it
+    // already holds is enough). The rest of `CanvasController`'s surface
+    // (play/exitPlay/focusPlayer/stepPlayer/beginTextEdit/importAsset/
+    // reportError) stays unimplemented here, matching this file's existing
+    // convention — packages/web/tsconfig.json excludes `test/` from
+    // type-checking, and nothing above this ticket ever needed them either.
+    runCommand: vi.fn(async (name: string, input: Record<string, unknown>) => {
+      runCommandCalls.push({ name, input });
+      return runCommandResult;
+    }),
+  } as CanvasController;
   return {
     controller,
     setState: (next) => {
@@ -35,6 +52,7 @@ function fakeCanvas(initial: CanvasState): {
       for (const listener of listeners) listener(next);
     },
     showSlideCalls,
+    runCommandCalls,
   };
 }
 
@@ -459,6 +477,160 @@ describe("mountOverview", () => {
 
     expect(container.querySelector("ol.overview-list")).toBeNull();
     expect(() => setState({ slides: ["slides/001.svg", "slides/002.svg"], currentIndex: 1 })).not.toThrow();
+  });
+
+  // [E2.T3] 拖曳排序。jsdom 沒有 DragEvent／DataTransfer 建構子
+  // （已驗證：`new window.DragEvent(...)` 會丟「not a constructor」），所以
+  // 這裡用一般 `Event` 手動掛上 `dataTransfer`／`clientX`／`clientY` 屬性
+  // 後 dispatch——overview.ts 的監聽器只讀這幾個屬性，不會注意到事件的真
+  // 實建構子是什麼。真的原生 HTML5 拖放（含視覺的插入線顏色）在
+  // `e2e/page-management.test.ts` 用真 Chromium 驗證。
+  describe("拖曳排序", () => {
+    function fakeDataTransfer(): { setData: (type: string, value: string) => void; getData: (type: string) => string } {
+      const store: Record<string, string> = {};
+      return {
+        setData: (type, value) => {
+          store[type] = value;
+        },
+        getData: (type) => store[type] ?? "",
+      };
+    }
+
+    function fireDrag(
+      el: Element,
+      type: string,
+      options: { dataTransfer: unknown; clientY?: number },
+    ): void {
+      const event = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+        dataTransfer?: unknown;
+        clientX?: number;
+        clientY?: number;
+      };
+      event.dataTransfer = options.dataTransfer;
+      event.clientX = 0;
+      event.clientY = options.clientY ?? 0;
+      el.dispatchEvent(event);
+    }
+
+    function stubRect(el: Element, top: number, height: number): void {
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 100,
+        width: 100,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      });
+    }
+
+    async function tick(): Promise<void> {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const FOUR_SLIDES = ["slides/001.svg", "slides/002.svg", "slides/003.svg", "slides/004.svg"];
+
+    it("drop 在目標項上緣：送 slide move 且 newIndex 正確；成功後 reload()+showSlide(newIndex)（T3 plan §3.8/§7 決定 6）", async () => {
+      const { controller, runCommandCalls, showSlideCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
+      mountOverview(container, controller);
+      await tick();
+
+      const items = container.querySelectorAll<HTMLLIElement>(".overview-item");
+      stubRect(items[2], 200, 80); // top half: [200, 240)
+
+      const dt = fakeDataTransfer();
+      fireDrag(items[0], "dragstart", { dataTransfer: dt });
+      fireDrag(items[2], "dragover", { dataTransfer: dt, clientY: 205 }); // top half -> to=2
+      fireDrag(items[2], "drop", { dataTransfer: dt, clientY: 205 });
+      fireDrag(items[0], "dragend", { dataTransfer: dt });
+      await tick();
+
+      // from=0, to=2 -> newIndex = to>from ? to-1 : to = 1.
+      expect(runCommandCalls).toEqual([{ name: "slide move", input: { slidePath: "slides/001.svg", newIndex: 1 } }]);
+      expect(showSlideCalls).toEqual([1]);
+    });
+
+    it("拖到目標項下緣：插在它後面，newIndex 也正確（T3 plan §5-B 的期望結果 [2,3,1,4]）", async () => {
+      const { controller, runCommandCalls, showSlideCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
+      mountOverview(container, controller);
+      await tick();
+
+      const items = container.querySelectorAll<HTMLLIElement>(".overview-item");
+      stubRect(items[2], 200, 80); // bottom half: [240, 280)
+
+      const dt = fakeDataTransfer();
+      fireDrag(items[0], "dragstart", { dataTransfer: dt });
+      fireDrag(items[2], "dragover", { dataTransfer: dt, clientY: 275 }); // bottom half -> to=3
+      fireDrag(items[2], "drop", { dataTransfer: dt, clientY: 275 });
+      fireDrag(items[0], "dragend", { dataTransfer: dt });
+      await tick();
+
+      // from=0, to=3 -> newIndex = to-1 = 2.
+      expect(runCommandCalls).toEqual([{ name: "slide move", input: { slidePath: "slides/001.svg", newIndex: 2 } }]);
+      expect(showSlideCalls).toEqual([2]);
+    });
+
+    it("no-op：拖到自己身上，不畫插入線、不送命令", async () => {
+      const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
+      mountOverview(container, controller);
+      await tick();
+
+      const items = container.querySelectorAll<HTMLLIElement>(".overview-item");
+      stubRect(items[0], 0, 80);
+
+      const dt = fakeDataTransfer();
+      fireDrag(items[0], "dragstart", { dataTransfer: dt });
+      fireDrag(items[0], "dragover", { dataTransfer: dt, clientY: 5 }); // to=0=from
+      expect(container.querySelector(".overview-drop-line")).toBeNull();
+      fireDrag(items[0], "drop", { dataTransfer: dt, clientY: 5 });
+      fireDrag(items[0], "dragend", { dataTransfer: dt });
+      await tick();
+
+      expect(runCommandCalls).toEqual([]);
+    });
+
+    it("no-op：拖到自己的正下一個位置，不畫插入線、不送命令", async () => {
+      const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
+      mountOverview(container, controller);
+      await tick();
+
+      const items = container.querySelectorAll<HTMLLIElement>(".overview-item");
+      stubRect(items[1], 80, 80);
+
+      const dt = fakeDataTransfer();
+      fireDrag(items[0], "dragstart", { dataTransfer: dt });
+      fireDrag(items[1], "dragover", { dataTransfer: dt, clientY: 85 }); // top half of item1 -> to=1=from+1
+      expect(container.querySelector(".overview-drop-line")).toBeNull();
+      fireDrag(items[1], "drop", { dataTransfer: dt, clientY: 85 });
+      fireDrag(items[0], "dragend", { dataTransfer: dt });
+      await tick();
+
+      expect(runCommandCalls).toEqual([]);
+    });
+
+    it("格式錯誤：drop 時 dataTransfer 讀不到來源索引，放棄這次 drop，不猜一個索引（T3 plan §4.2）", async () => {
+      const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
+      mountOverview(container, controller);
+      await tick();
+
+      const items = container.querySelectorAll<HTMLLIElement>(".overview-item");
+      stubRect(items[2], 200, 80);
+
+      const dt = fakeDataTransfer();
+      fireDrag(items[0], "dragstart", { dataTransfer: dt }); // sets store["text/plain"] = "0"
+      fireDrag(items[2], "dragover", { dataTransfer: dt, clientY: 205 });
+      // Corrupt the transfer between dragover and drop — a real-world stand-in
+      // for "the browser genuinely has no parseable payload at drop time".
+      (dt as { getData: () => string }).getData = () => "";
+      fireDrag(items[2], "drop", { dataTransfer: dt, clientY: 205 });
+      fireDrag(items[0], "dragend", { dataTransfer: dt });
+      await tick();
+
+      expect(runCommandCalls).toEqual([]);
+    });
   });
 });
 

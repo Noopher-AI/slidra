@@ -147,6 +147,39 @@ it("白名單外的命令回 403，而且根本不會進 dispatch：投影片位
   expect(await readSlide(id)).toBe(before);
 });
 
+it("[E2.T3] slide delete／duplicate／move／notes set 四條新命令不再回 403", async () => {
+  const id = await openDeck("whitelist-page-management.comot");
+  const server = await serve(id);
+
+  const notes = await postCommand(server, {
+    name: "slide notes set",
+    input: { slidePath: "slides/001.svg", text: "講稿" },
+  });
+  expect(notes.status).not.toBe(403);
+  expect(notes.status).toBe(200);
+
+  const duplicate = await postCommand(server, {
+    name: "slide duplicate",
+    input: { slidePath: "slides/001.svg" },
+  });
+  expect(duplicate.status).not.toBe(403);
+  expect(duplicate.status).toBe(200);
+
+  const move = await postCommand(server, {
+    name: "slide move",
+    input: { slidePath: "slides/002.svg", newIndex: 0 },
+  });
+  expect(move.status).not.toBe(403);
+  expect(move.status).toBe(200);
+
+  const del = await postCommand(server, {
+    name: "slide delete",
+    input: { slidePath: "slides/002.svg" },
+  });
+  expect(del.status).not.toBe(403);
+  expect(del.status).toBe(200);
+});
+
 it("input 帶了自己的 id 也沒用：server 一律覆寫成自己啟動時的 presentationId", async () => {
   const idA = await openDeck("a.comot");
   const idB = await openDeck("b.comot");

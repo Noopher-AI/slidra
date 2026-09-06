@@ -335,7 +335,7 @@ describe("slide duplicate", () => {
     const sourceIds = [...source.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
     const copyIds = [...copy.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
     expect(sourceIds.some((sid) => copyIds.includes(sid))).toBe(false);
-    expect(copy).toContain("<comot:notes>講者備忘稿</comot:notes>");
+    expect(copy).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns">講者備忘稿</comot:notes>');
   });
 
   it("範本路徑：拒絕，提示改用 template add --from", async () => {
