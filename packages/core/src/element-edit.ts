@@ -294,6 +294,28 @@ function findDanglingEffectRanges(svgRoot: ScannedNode, removedIds: ReadonlySet<
 }
 
 /**
+ * [E2.T8]'s `<comot:comments>` list, same shape as `findDanglingEffectRanges`
+ * above: finds every `<comot:comment>` whose `target` names an id being
+ * removed. `target="page"` is never in `removedIds`, so page-level comments
+ * are never touched by this.
+ */
+function findDanglingCommentRanges(svgRoot: ScannedNode, removedIds: ReadonlySet<string>): Splice[] {
+  const metadata = svgRoot.children.find((child) => child.tag === "metadata");
+  if (!metadata) return [];
+  const commentsList = metadata.children.find((child) => child.tag === "comot:comments");
+  if (!commentsList) return [];
+  const ranges: Splice[] = [];
+  for (const comment of commentsList.children) {
+    if (comment.tag !== "comot:comment") continue;
+    const target = attributeValue(comment, "target");
+    if (target !== null && removedIds.has(target)) {
+      ranges.push({ start: comment.start, end: comment.end, text: "" });
+    }
+  }
+  return ranges;
+}
+
+/**
  * Deletes every element named in `elementIds` (`co-motion element delete`,
  * #104). All-or-nothing: every id is confirmed present before any byte is
  * removed. A target that turns out to be a descendant of another target is
@@ -330,7 +352,8 @@ export function deleteElements(
   const roots = scanDocument(current);
   const svgRoot = requireSvgRoot(roots);
   const effectRanges = findDanglingEffectRanges(svgRoot, removedIds);
-  return applySplices(current, effectRanges);
+  const commentRanges = findDanglingCommentRanges(svgRoot, removedIds);
+  return applySplices(current, [...effectRanges, ...commentRanges]);
 }
 
 // ---------------------------------------------------------------------------

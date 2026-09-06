@@ -1,9 +1,17 @@
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
-import { generateElementId } from "./id.js";
+import { generateElementId, generateOpaqueId } from "./id.js";
 import { validateProjectJson, readTemplateEntries, type ProjectJson, type TemplateEntry } from "./project-json.js";
 import { FORMAT_VERSION } from "./presentation.js";
 import { scanDocument, attributeOf, type ScannedNode } from "./slide/scan.js";
 import { setSlideNotes } from "./notes.js";
+import {
+  addSlideComment,
+  deleteSlideComment,
+  editSlideComment,
+  readSlideComments,
+  type SlideComment,
+} from "./slide/comments.js";
+import { assertSlideCompliant, parseSlide, type SlideElement } from "./slide/format.js";
 import {
   createPresentationFile,
   deletePresentationFile,
@@ -87,7 +95,17 @@ export function buildBlankSlideSvg(canvas: { width: number; height: number }): s
  * id in the same pass, so the copy never carries a metadata reference to an
  * id that no longer exists anywhere in its own document.
  */
-export function mintElementIds(svgContent: string, generateId: () => string = generateElementId): string {
+export function mintElementIds(
+  svgContent: string,
+  generateId: () => string = generateElementId,
+  /**
+   * [E2.T8]: comment ids live in their own namespace (`c-` prefix, never
+   * `el-`) — re-minting them with `generateId` would hand a duplicated
+   * slide's comments an element-shaped id. Separately injectable for the
+   * same reason `generateId` is: deterministic tests.
+   */
+  generateCommentId: () => string = () => `c-${generateOpaqueId()}`,
+): string {
   const roots = scanDocument(svgContent);
   const svgRoot = roots.find((node) => node.tag === "svg");
   if (!svgRoot) {
@@ -102,7 +120,13 @@ export function mintElementIds(svgContent: string, generateId: () => string = ge
     if (attributeOf(node, "id")) idNodes.push(node);
     for (const child of node.children) collectIdNodes(child);
   };
-  for (const child of svgRoot.children) collectIdNodes(child);
+  // `<metadata>` never carries an element id to re-mint — its `<comot:effect>`
+  // / `<comot:comment>` children only ever *reference* one via `target`, and
+  // are remapped below, not re-minted here.
+  for (const child of svgRoot.children) {
+    if (child.tag === "metadata") continue;
+    collectIdNodes(child);
+  }
 
   const mapping = new Map<string, string>();
   for (const node of idNodes) {
@@ -129,6 +153,31 @@ export function mintElementIds(svgContent: string, generateId: () => string = ge
       const targetAttr = attributeOf(effect, "target");
       if (targetAttr && mapping.has(targetAttr.value)) {
         splices.push({ start: targetAttr.start, end: targetAttr.end, text: `target="${mapping.get(targetAttr.value)}"` });
+      }
+    }
+  }
+
+  // [E2.T8]: a duplicated slide's comments follow the same rule as its
+  // effects — `target` is remapped when it names a re-minted element id
+  // (`target="page"` is never in `mapping`, so it's left alone) — plus a
+  // freshly minted `id` of their own, so the copy never carries a comment
+  // id byte-identical to the source's.
+  const commentsList = metadata?.children.find((child) => child.tag === "comot:comments");
+  if (commentsList) {
+    for (const comment of commentsList.children) {
+      if (comment.tag !== "comot:comment") continue;
+      const targetAttr = attributeOf(comment, "target");
+      if (targetAttr && mapping.has(targetAttr.value)) {
+        splices.push({ start: targetAttr.start, end: targetAttr.end, text: `target="${mapping.get(targetAttr.value)}"` });
+      }
+      const idAttr = attributeOf(comment, "id");
+      if (idAttr) {
+        let candidate: string;
+        do {
+          candidate = generateCommentId();
+        } while (usedIds.has(candidate));
+        usedIds.add(candidate);
+        splices.push({ start: idAttr.start, end: idAttr.end, text: `id="${candidate}"` });
       }
     }
   }
@@ -425,6 +474,110 @@ export async function setNotes(id: string, slidePath: string, text: string): Pro
   const original = await readPresentationFile(id, slidePath);
   const updated = setSlideNotes(original, text);
   await writePresentationFile(id, slidePath, updated);
+}
+
+/** A comment read back out with the slide it lives on — `comment list`'s and `listAllComments`'s output shape. */
+export interface SlideCommentWithPath extends SlideComment {
+  slidePath: string;
+}
+
+function requireSlidePath(project: ProjectJson, slidePath: string): void {
+  if (!project.slides.includes(slidePath)) {
+    throw new CoMotionError(`不是投影片：${slidePath}`);
+  }
+}
+
+function findElementById(elements: readonly SlideElement[], target: string): boolean {
+  for (const element of elements) {
+    if (element.id === target) return true;
+    if (findElementById(element.children, target)) return true;
+  }
+  return false;
+}
+
+/**
+ * [E2.T8] `co-motion comment add`: `target` is an element id or the literal
+ * `"page"`. Slides only (a template's comments have no display-time
+ * meaning, same rule `setNotes` follows). Rejects a dangling `target` up
+ * front — `element delete`'s dangling-comment cleanup only promises to
+ * clean up comments *created* pointing at something real, not to repair
+ * comments that never did.
+ */
+export async function addComment(id: string, slidePath: string, target: string, text: string, author = "agent"): Promise<string> {
+  const project = await readProject(id);
+  requireSlidePath(project, slidePath);
+  if (author.trim() === "") {
+    throw new CoMotionError("author 不可為空");
+  }
+  if (text.trim() === "") {
+    throw new CoMotionError("留言內容不可為空");
+  }
+  const original = await readPresentationFile(id, slidePath);
+  assertSlideCompliant(original, slidePath);
+  if (target !== "page") {
+    const slide = parseSlide(original, slidePath);
+    if (!findElementById(slide.elements, target)) {
+      throw new CoMotionError(`投影片 ${slidePath} 裡沒有元素 ${target}`);
+    }
+  }
+  const commentId = `c-${generateOpaqueId()}`;
+  const updated = addSlideComment(original, {
+    id: commentId,
+    target,
+    author,
+    created: new Date().toISOString(),
+    text,
+  });
+  await writePresentationFile(id, slidePath, updated);
+  return commentId;
+}
+
+/** [E2.T8] `co-motion comment edit`: replaces a comment's text; `created` is left untouched. Unknown `commentId` propagates `CoMotionNotFoundError`. */
+export async function editComment(id: string, slidePath: string, commentId: string, text: string): Promise<void> {
+  const project = await readProject(id);
+  requireSlidePath(project, slidePath);
+  if (text.trim() === "") {
+    throw new CoMotionError("留言內容不可為空");
+  }
+  const original = await readPresentationFile(id, slidePath);
+  const updated = editSlideComment(original, commentId, text);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+/** [E2.T8] `co-motion comment delete`. Unknown `commentId` propagates `CoMotionNotFoundError`. */
+export async function deleteComment(id: string, slidePath: string, commentId: string): Promise<void> {
+  const project = await readProject(id);
+  requireSlidePath(project, slidePath);
+  const original = await readPresentationFile(id, slidePath);
+  const updated = deleteSlideComment(original, commentId);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+/** [E2.T8] `co-motion comment list <id> <slide-path>`: one slide's comments, in document order. */
+export async function listComments(id: string, slidePath: string): Promise<SlideCommentWithPath[]> {
+  const project = await readProject(id);
+  requireSlidePath(project, slidePath);
+  const raw = await readPresentationFile(id, slidePath);
+  return readSlideComments(raw).map((comment) => ({ ...comment, slidePath }));
+}
+
+/**
+ * [E2.T8] `co-motion comment list <id>` (no `slide-path`): every slide's
+ * comments, deck-wide, in `project.json`'s `slides` order (then document
+ * order within a slide) — the same order `/api/chat`'s context prefix
+ * (server's `session.ts`) and the front end's Pinned context numbering
+ * (`sortComments`) both rely on.
+ */
+export async function listAllComments(id: string): Promise<SlideCommentWithPath[]> {
+  const project = await readProject(id);
+  const all: SlideCommentWithPath[] = [];
+  for (const slidePath of project.slides) {
+    const raw = await readPresentationFile(id, slidePath);
+    for (const comment of readSlideComments(raw)) {
+      all.push({ ...comment, slidePath });
+    }
+  }
+  return all;
 }
 
 const VALID_TRANSITIONS = ["none", "fade"] as const;
