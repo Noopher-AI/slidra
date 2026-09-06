@@ -110,7 +110,9 @@
     ".sel::after{right:-4px;top:-4px;}" +
     ".sel i::before{left:-4px;bottom:-4px;}" +
     ".sel i::after{right:-4px;bottom:-4px;}" +
-    ".sel-multi{position:fixed;box-sizing:border-box;outline:2px solid " +
+    // 多選是單一虛線聯集框（05-INTERACTIONS.feature「多選」，取代舊版「每個
+    // 元素各畫一個框」），與單選的實線框（`.sel`）區分開來。
+    ".sel-multi{position:fixed;box-sizing:border-box;outline:2px dashed " +
     colors.accent +
     ";background:color-mix(in srgb, " +
     colors.accent +
@@ -123,11 +125,6 @@
     ".group-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
     colors.accent +
     ";pointer-events:none;display:none;}" +
-    ".guide{position:fixed;background:" +
-    colors.accent +
-    ";pointer-events:none;}" +
-    ".guide.v{width:1px;top:0;bottom:0;}" +
-    ".guide.h{height:1px;left:0;right:0;}" +
     ".handle{position:fixed;box-sizing:border-box;width:9px;height:9px;margin:-4px 0 0 -4px;background:" +
     colors.handle +
     ";border:1px solid " +
@@ -156,7 +153,7 @@
   shadow.appendChild(style);
 
   // One handle div per role, created once and repositioned/hidden on every
-  // updateBoxes() call — same reuse pattern as multiBoxEls/guideEls below.
+  // updateBoxes() call — same reuse pattern as the handle pool below.
   // "nw"/"ne"/"sw"/"se" are the four corner scale handles, "rotate" sits
   // above top-center, "width-left"/"width-right" are the textbox mid-edge
   // handles.
@@ -274,13 +271,15 @@
   // positionGroupFrames() below.
   var groupFrameEls = [];
 
-  // Pool of plain outline boxes for a multi-selection (>1 ids) — no corner
-  // decorations, so acceptance criterion 9 ("多選看不到把手") holds simply
-  // because these elements never carry any. Reused across updateBoxes()
-  // calls rather than recreated, to keep resize-driven repositioning cheap.
-  var multiBoxEls = [];
-  // Guide-line divs, reused the same way; count varies 0-2 per frame.
-  var guideEls = [];
+  // Single dashed box for a multi-selection (>1 ids) — the union of every
+  // selected element's own rect (05-INTERACTIONS.feature「多選」: one
+  // dashed frame, not one box per element, replacing the old per-element
+  // pool). No corner decorations, so acceptance criterion 9 ("多選看不到
+  // 把手") holds simply because this element never carries any.
+  var multiBoxEl = document.createElement("div");
+  multiBoxEl.className = "sel-multi";
+  multiBoxEl.style.display = "none";
+  shadow.appendChild(multiBoxEl);
 
   // The ids currently selected, in selection order. Single source of truth
   // for what showBox()/showMultiBoxes() paint — kept in sync with the
@@ -460,34 +459,32 @@
   }
 
   function hideMultiBoxes() {
-    for (var i = 0; i < multiBoxEls.length; i++) multiBoxEls[i].style.display = "none";
+    multiBoxEl.style.display = "none";
   }
 
+  /** Draws one dashed box around the union of every id in `ids` that still resolves to a live element — missing ids are simply skipped, never thrown on (the same "reload made a selected element vanish" tolerance `updateBoxes()`'s single-selection path already has). */
   function showMultiBoxes(ids) {
-    while (multiBoxEls.length < ids.length) {
-      var el = document.createElement("div");
-      el.className = "sel-multi";
-      shadow.appendChild(el);
-      multiBoxEls.push(el);
-    }
-    for (var i = 0; i < multiBoxEls.length; i++) {
-      if (i >= ids.length) {
-        multiBoxEls[i].style.display = "none";
-        continue;
-      }
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var found = false;
+    for (var i = 0; i < ids.length; i++) {
       var target = document.getElementById(ids[i]);
-      if (!target) {
-        multiBoxEls[i].style.display = "none";
-        continue;
-      }
+      if (!target) continue;
       var rect = target.getBoundingClientRect();
-      var el2 = multiBoxEls[i];
-      el2.style.display = "block";
-      el2.style.left = rect.left + "px";
-      el2.style.top = rect.top + "px";
-      el2.style.width = rect.width + "px";
-      el2.style.height = rect.height + "px";
+      found = true;
+      minX = Math.min(minX, rect.left);
+      minY = Math.min(minY, rect.top);
+      maxX = Math.max(maxX, rect.left + rect.width);
+      maxY = Math.max(maxY, rect.top + rect.height);
     }
+    if (!found) {
+      multiBoxEl.style.display = "none";
+      return;
+    }
+    multiBoxEl.style.display = "block";
+    multiBoxEl.style.left = minX + "px";
+    multiBoxEl.style.top = minY + "px";
+    multiBoxEl.style.width = maxX - minX + "px";
+    multiBoxEl.style.height = maxY - minY + "px";
   }
 
   /**
@@ -759,6 +756,57 @@
     editCaret.style.height = (caretRect ? caretRect.height : rect.height) + "px";
   }
 
+  /**
+   * The chain of id-carrying ancestor containers from (but not including)
+   * `el` up to (but not including) the `<svg>` root, outermost first —
+   * NOOP-90/T2 §4.6's `bounds` event payload, and the source F9 (群組) will
+   * read for its "Group 2 › Group 1" drill-in label. Every container in the
+   * normal form carries an `id` (ADR-0012), so this never needs to guess at
+   * a missing one the way `findSelectable`'s upward walk defensively does.
+   */
+  function ancestorChain(el) {
+    var chain = [];
+    var current = el.parentElement;
+    while (current && current.tagName && current.tagName.toLowerCase() !== "svg") {
+      if (current.hasAttribute && current.hasAttribute("id")) {
+        chain.unshift({ id: current.getAttribute("id"), name: current.getAttribute("data-comot-name") || null });
+      }
+      current = current.parentElement;
+    }
+    return chain;
+  }
+
+  /**
+   * Reports each selected element's own precise `getBoundingClientRect()`
+   * (client px, no conversion done here — `canvas.ts`'s `toParentClientPoint`
+   * owns that) plus its ancestor chain, and the union of every box — ADR-0011
+   * amend: this is what lets the parent draw name/group labels and snap
+   * guides without re-deriving geometry itself. A selected id no longer
+   * present in the DOM (a reload raced the selection) is simply skipped, not
+   * reported as an error — the same tolerance `updateBoxes()`'s single-
+   * selection path already has for a vanished element.
+   */
+  function reportBounds() {
+    var items = [];
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < selectedIds.length; i++) {
+      var el = document.getElementById(selectedIds[i]);
+      if (!el) continue;
+      var rect = el.getBoundingClientRect();
+      items.push({
+        id: selectedIds[i],
+        rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        ancestors: ancestorChain(el),
+      });
+      minX = Math.min(minX, rect.left);
+      minY = Math.min(minY, rect.top);
+      maxX = Math.max(maxX, rect.left + rect.width);
+      maxY = Math.max(maxY, rect.top + rect.height);
+    }
+    var union = items.length === 0 ? null : { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    post({ event: "bounds", items: items, union: union });
+  }
+
   function updateBoxes() {
     updateEditDecoration();
     positionGroupFrames();
@@ -766,17 +814,20 @@
       hideBox();
       hideMultiBoxes();
       hideAllHandles();
+      reportBounds();
       return;
     }
     if (selectedIds.length === 1) {
       hideMultiBoxes();
       showBox();
       positionHandles();
+      reportBounds();
       return;
     }
     hideBox();
     hideAllHandles();
     showMultiBoxes(selectedIds);
+    reportBounds();
   }
 
   // Hit resolution: walk up from `el` and return the OUTERMOST ancestor
@@ -1340,11 +1391,61 @@
   // A right-click while a gesture is in progress cancels it instead of
   // opening the browser's context menu (§4.2's "拖曳中按 Esc" row extends
   // naturally to the other cancel gesture named in §4.1's gesture-end row).
+  // Otherwise: right-click on an element selects it (if not already part of
+  // the current selection) and suppresses the browser's own menu — there is
+  // no element context menu any more (issue 198 review: its items moved into
+  // the parent's left-click context bar). Right-click on blank canvas is
+  // left alone entirely.
   window.addEventListener("contextmenu", function (event) {
     if (gesture && gesture.started) {
       event.preventDefault();
       endGesture(gesture.lastClient, true);
+      return;
     }
+    if (editingId !== null || stageHandMode) return;
+    var target = resolveClickTargetAtEvent(event);
+    if (!target) return;
+    event.preventDefault();
+    var id = target.getAttribute("id");
+    if (selectedIds.indexOf(id) === -1) {
+      selectedIds = [id];
+      updateBoxes();
+      post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-comot-name"), additive: false }));
+    }
+  });
+
+  // Keyboard relay for the shortcuts that must work even when focus is
+  // inside this iframe (NOOP-90/T2 §4.4's "焦點在投影片 iframe 內" row —
+  // the parent document's own window-level keydown listener never sees a
+  // keypress that landed in here). Whitelisted to exactly the keys the
+  // parent has shortcuts for: this ticket's four, plus ⌘Z/⇧⌘Z (issue 198;
+  // written without the hash so the no-hex-colour source check stays
+  // honest) — once a click on the stage has moved focus in here, App.tsx's
+  // document-level undo/redo listener would otherwise go deaf. Everything
+  // else (⌘S, arrow
+  // keys, Tab, …) is untouched and falls through to whatever this iframe's
+  // own default handling already does. Never relayed while editing text or
+  // mid-gesture — same posture as the existing Space relay above — nor in
+  // play mode, which the parent itself already gates before acting on
+  // `stage-key`.
+  function isRelayedStageKey(event) {
+    if (event.key === "Delete" || event.key === "Backspace") return true;
+    var withModifier = event.metaKey || event.ctrlKey;
+    if (!withModifier) return false;
+    return event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" || event.key === "z" || event.key === "Z";
+  }
+  window.addEventListener("keydown", function (event) {
+    if (!isRelayedStageKey(event)) return;
+    if (editingId !== null || gesture) return;
+    event.preventDefault();
+    post({
+      event: "stage-key",
+      key: event.key,
+      meta: event.metaKey,
+      ctrl: event.ctrlKey,
+      shift: event.shiftKey,
+      alt: event.altKey,
+    });
   });
 
   // --- Host -> runtime commands (parent has already done all the math) ---
@@ -1419,31 +1520,6 @@
     updateBoxes();
   }
 
-  function drawGuides(lines) {
-    if (!Array.isArray(lines)) lines = [];
-    while (guideEls.length < lines.length) {
-      var el = document.createElement("div");
-      shadow.appendChild(el);
-      guideEls.push(el);
-    }
-    for (var i = 0; i < guideEls.length; i++) {
-      var guideEl = guideEls[i];
-      if (i >= lines.length) {
-        guideEl.style.display = "none";
-        continue;
-      }
-      var line = lines[i];
-      if (!line || (line.orientation !== "h" && line.orientation !== "v") || typeof line.position !== "number") {
-        guideEl.style.display = "none";
-        continue;
-      }
-      guideEl.className = "guide " + line.orientation;
-      guideEl.style.display = "block";
-      if (line.orientation === "v") guideEl.style.left = line.position + "px";
-      else guideEl.style.top = line.position + "px";
-    }
-  }
-
   function drawMarquee(rect) {
     if (!rect || typeof rect.x !== "number" || typeof rect.y !== "number") {
       marqueeBox.style.display = "none";
@@ -1476,8 +1552,6 @@
       if (started) {
         if (Array.isArray(data.lines)) applyPreviewTextbox(data.id, data.lines, data.width);
       } else post({ event: "text-edit-denied", id: data.id });
-    } else if (data.command === "guides") {
-      drawGuides(data.lines);
     } else if (data.command === "marquee") {
       drawMarquee(data.rect);
     } else if (data.command === "selection") {

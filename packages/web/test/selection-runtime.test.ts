@@ -58,12 +58,15 @@ function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window
  * attaches, and is delivered before whatever the test itself triggers next
  * — deterministically the first message every caller of `boot()` would
  * otherwise see, and irrelevant to what every test in this file asserts.
+ * `"bounds"` (NOOP-90/T2 §4.6) is excluded the same way: `updateBoxes()`
+ * fires it on every selection change alongside `select`/`clear`, and it has
+ * its own dedicated assertions further down this file.
  */
 function collectMessages(): { messages: unknown[]; stop: () => void } {
   const messages: unknown[] = [];
   const handler = (event: MessageEvent) => {
     const eventName = (event.data as { event?: unknown })?.event;
-    if (eventName === "viewport" || eventName === "runtime-ready") return;
+    if (eventName === "viewport" || eventName === "runtime-ready" || eventName === "bounds") return;
     messages.push(event.data);
   };
   window.addEventListener("message", handler);
@@ -446,5 +449,201 @@ describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-s
     // stops being "viewport" (or disappears entirely).
     const lastTwo = messages.slice(-2).map((message) => message.event);
     expect(lastTwo).toEqual(["viewport", "gesture-start"]);
+  });
+});
+
+/** Sends the host's `"selection"` command the same authenticated-source way `beginTextEdit` above sends `"begin-text-edit"`. */
+async function sendSelectionCommand(win: Window, ids: string[]): Promise<void> {
+  const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+  win.dispatchEvent(
+    new MessageEventCtor("message", {
+      data: { source: "comot-host", command: "selection", ids, handles: ids.length === 1 ? "full" : "move-only" },
+      source: win.parent as unknown as MessageEventSource,
+    }),
+  );
+  await tick();
+}
+
+describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
+  it("回報每個選取元素的祖先鏈，最外層在前；union 是所有選取元素的聯集", async () => {
+    const { win } = boot(
+      '<svg><g id="el-outer" data-comot-name="外層"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
+    );
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    await sendSelectionCommand(win, ["el-leaf"]);
+
+    window.removeEventListener("message", handler);
+    const bounds = messages.filter((m) => m.event === "bounds").pop() as any;
+    expect(bounds.items).toEqual([
+      {
+        id: "el-leaf",
+        rect: { x: 0, y: 0, width: 0, height: 0 },
+        ancestors: [
+          { id: "el-outer", name: "外層" },
+          { id: "el-inner", name: null },
+        ],
+      },
+    ]);
+    expect(bounds.union).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+  });
+
+  it("清空選取時回報空 items 與 null union", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    await sendSelectionCommand(win, []);
+
+    window.removeEventListener("message", handler);
+    const bounds = messages.filter((m) => m.event === "bounds").pop() as any;
+    expect(bounds.items).toEqual([]);
+    expect(bounds.union).toBeNull();
+  });
+
+  it("選取的 id 在 DOM 中已不存在時，該筆略過，不拋錯", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    await sendSelectionCommand(win, ["el-does-not-exist"]);
+
+    window.removeEventListener("message", handler);
+    const bounds = messages.filter((m) => m.event === "bounds").pop() as any;
+    expect(bounds.items).toEqual([]);
+    expect(bounds.union).toBeNull();
+  });
+});
+
+describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTIONS.feature「多選」）", () => {
+  it("⇧點第二個元素後，shadow root 裡只有一個 .sel-multi 顯示，不是每個元素各一個", async () => {
+    const { doc } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
+
+    click(doc, doc.getElementById("el-a")!);
+    const win = doc.defaultView as Window;
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    doc.getElementById("el-b")!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+
+    const host = doc.body.children[doc.body.children.length - 1];
+    const boxes = [...host.shadowRoot!.querySelectorAll<HTMLElement>(".sel-multi")];
+    expect(boxes.length).toBe(1);
+    expect(boxes[0].style.display).toBe("block");
+  });
+
+  it("⇧點取消回到單選後，.sel-multi 收起", async () => {
+    const { doc } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
+    click(doc, doc.getElementById("el-a")!);
+    const win = doc.defaultView as Window;
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    doc.getElementById("el-b")!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+
+    // Shift-click el-b again removes it from the selection, back to a single el-a.
+    doc.getElementById("el-b")!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+
+    const host = doc.body.children[doc.body.children.length - 1];
+    const box = host.shadowRoot!.querySelector(".sel-multi") as HTMLElement;
+    expect(box.style.display).toBe("none");
+  });
+});
+
+describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，項目併入父文件的情境列）", () => {
+  it("在未選取的元素上按右鍵：選取它、壓掉瀏覽器原生選單，不再回報 contextmenu 事件", async () => {
+    const { win, doc } = boot('<svg><rect id="el-a" data-comot-name="矩形"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 42, clientY: 24 });
+    doc.getElementById("el-a")!.dispatchEvent(event);
+    await tick();
+
+    window.removeEventListener("message", handler);
+    expect(event.defaultPrevented).toBe(true);
+    expect(messages).toContainEqual({ source: "comot-selection", event: "select", id: "el-a", name: "矩形", additive: false });
+    expect(messages.some((m) => m.event === "contextmenu")).toBe(false);
+  });
+
+  it("在空白處按右鍵：no-op，不壓掉原生選單、不發任何事件", async () => {
+    const { win, doc } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 });
+    doc.querySelector("svg")!.dispatchEvent(event);
+    await tick();
+
+    window.removeEventListener("message", handler);
+    expect(event.defaultPrevented).toBe(false);
+    expect(messages.some((m) => m.event === "select" || m.event === "contextmenu")).toBe(false);
+  });
+});
+
+describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）", () => {
+  it("白名單鍵（含修飾鍵）在編輯與手勢之外會被中繼；沒有修飾鍵的 a/d 不會", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "a", metaKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Delete", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "]", metaKey: true, shiftKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "a", cancelable: true }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "a", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Delete", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "]", meta: true, ctrl: false, shift: true, alt: false },
+    ]);
+  });
+
+  it("⌘Z 與 ⇧⌘Z 會被中繼（#198）；沒有修飾鍵的 z 不會", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "z", metaKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Z", ctrlKey: true, shiftKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "z", cancelable: true }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "z", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Z", meta: false, ctrl: true, shift: true, alt: false },
+    ]);
+  });
+
+  it("編輯期間不中繼任何白名單鍵", async () => {
+    const { win } = boot('<svg><g id="el-text"><text font-size="20">Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Delete", cancelable: true }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+    expect(messages.some((m) => m.event === "stage-key")).toBe(false);
   });
 });

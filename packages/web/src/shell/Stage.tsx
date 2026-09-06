@@ -125,6 +125,15 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     controller?.setStageHandMode(isHandActive(hand));
   }, [controller, hand]);
 
+  // 縮放/平移後疊層（名稱標籤、情境列、右鍵選單）要跟著投影片走：runtime 回
+  // 報的座標是 iframe 自己的 client px，不受 `.stage` 的 transform 影響，只
+  // 有父文件這邊的換算會過期，所以 zoomPan 一變就請 controller 用新的 frame
+  // 位置重算一次（useEffect 在 transform 已 commit 之後跑）。
+  useEffect(() => {
+    if (!shellVisible) return;
+    controller?.refreshOverlay();
+  }, [controller, shellVisible, zoomPan]);
+
   // 投影片本體上的滾輪縮放/平移、抓取模式拖曳（NOOP-83 §2/§4，Dev-Leader
   // 裁決核准的擴大範圍）：canvas.ts 已經把 selection-runtime.js 回報的
   // iframe 內座標換算成這個文件的 client 座標，所以下面的數學跟
@@ -253,7 +262,18 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   const wellCursor = dragging ? "grabbing" : isHandActive(hand) ? "grab" : undefined;
 
   return (
-    <div className="canvas-area" ref={wellRef} onWheel={handleWheel} onMouseDown={handleMouseDown} style={{ cursor: wellCursor }}>
+    <div
+      className="canvas-area"
+      ref={wellRef}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      style={{ cursor: wellCursor }}
+      // Grab mode (✋ or Space held): the context bar stops intercepting the
+      // pointer (stage-overlays.css) so a drag that starts over it still
+      // reaches the slide and pans — `isOnStageChrome` would otherwise swallow
+      // that mousedown as "UI chrome".
+      data-grab={isHandActive(hand) ? "true" : undefined}
+    >
       <div className="stage" style={stageStyle}>
         <div ref={canvasRef} className="canvas" />
         {/* T3/NOOP-142: pointer-events stays "none" until App.tsx sets
@@ -272,7 +292,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onDragLeave={dropOverlay.onDragLeave}
         />
       </div>
-      {shellVisible && <OverlayLayer />}
+      {shellVisible && <OverlayLayer controller={controller} wellRef={wellRef} />}
       {shellVisible && (
         <Dock
           zoomPan={zoomPan}
@@ -280,6 +300,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           hand={hand}
           onToggleHand={handleToggleHand}
           selection={state.selection}
+          controller={controller}
         />
       )}
       {children}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
-import type { CanvasController, CanvasState } from "../src/canvas.js";
+import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.js";
 
 // Finding P1: slide markup must render inside a sandboxed, opaque-origin
 // iframe rather than being injected into this document with innerHTML.
@@ -1737,5 +1737,194 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
 
     const textboxCalls = commandCalls.filter((call) => call.name === "textbox width");
     expect(textboxCalls).toEqual([]);
+  });
+});
+
+// NOOP-91 round-2 FAIL #4: `computeOverlayLabel`/`notifyOverlay` (the data
+// `SelectionOverlay.tsx`/`ContextBar.tsx` render) had zero test coverage —
+// only the *rendering* of that data was ever exercised manually. These test
+// black-box through `subscribeOverlay`, the same postMessage-protocol
+// boundary every other canvas.ts test in this file uses, rather than
+// reaching into module-private state.
+describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算（NOOP-91 round-2 FAIL #4）", () => {
+  function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
+    const frameWindow = controllerFrame.contentWindow as unknown as Window;
+    window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+  }
+
+  it("單選一個元素：label 用顯示名稱、path 為空；boxes/union 來自 bounds 事件", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+
+    expect(latest?.label).toEqual({ text: "方塊 A", path: [] });
+    expect(latest?.boxes).toEqual([rect]);
+    expect(latest?.union).toEqual(rect);
+  });
+
+  it("refreshOverlay：frame 移動/縮放後（zoom/pan）用新的 frame 位置重算 union／boxes，不需要新的 bounds 事件", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion.
+    expect(latest?.union).toEqual(rect);
+
+    // The parent's `.stage` transform moved the frame to (100, 200) and
+    // doubled it (rect.width 400 against layout offsetWidth 200).
+    const frame = controller.frameElement;
+    Object.defineProperty(frame, "offsetWidth", { value: 200, configurable: true });
+    frame.getBoundingClientRect = () => ({ x: 100, y: 200, left: 100, top: 200, width: 400, height: 225, right: 500, bottom: 425, toJSON: () => ({}) });
+    controller.refreshOverlay();
+
+    expect(latest?.union).toEqual({ x: 120, y: 240, width: 60, height: 80 });
+    expect(latest?.boxes).toEqual([{ x: 120, y: 240, width: 60, height: 80 }]);
+  });
+
+  it("鑽入群組後選取子元素：label.path 依 bounds 回報的祖先鏈由外到內排列", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "select",
+      id: "el-group-child",
+      name: "群組子元素",
+      additive: false,
+      groupPath: ["el-group"],
+    });
+    const rect = { x: 0, y: 0, width: 10, height: 10 };
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "bounds",
+      items: [
+        {
+          id: "el-group-child",
+          rect,
+          ancestors: [
+            { id: "el-group", name: "群組" },
+            { id: "el-group-2", name: null },
+          ],
+        },
+      ],
+      union: rect,
+    });
+
+    // Outermost ancestor first; a nameless ancestor falls back to its id
+    // (computeOverlayLabel's own doc comment).
+    expect(latest?.label).toEqual({ text: "群組子元素", path: ["群組", "el-group-2"] });
+  });
+
+  it("多選：label 顯示『N elements』，不含 path（即使 bounds 回報了祖先鏈也忽略）", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-b", name: "方塊 B", additive: true });
+    const rectA = { x: 0, y: 0, width: 10, height: 10 };
+    const rectB = { x: 20, y: 20, width: 10, height: 10 };
+    send(controller.frameElement, {
+      source: "comot-selection",
+      event: "bounds",
+      items: [
+        { id: "el-a", rect: rectA, ancestors: [{ id: "should-be-ignored", name: "多選時忽略祖先鏈" }] },
+        { id: "el-b", rect: rectB, ancestors: [] },
+      ],
+      union: { x: 0, y: 0, width: 30, height: 30 },
+    });
+
+    expect(latest?.label).toEqual({ text: "2 elements", path: [] });
+    expect(latest?.boxes).toEqual([rectA, rectB]);
+  });
+
+  it("清除選取後（runtime 隨即回報空 bounds，如真實 runtime 的 updateBoxes 一樣）：label/union/boxes 全部清空", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    expect(latest?.label).not.toBeNull();
+
+    // selection-runtime.js's updateBoxes() always calls reportBounds() right
+    // after any selection change, including the empty-selection branch — a
+    // "clear" is never sent without an immediate follow-up "bounds".
+    send(controller.frameElement, { source: "comot-selection", event: "clear" });
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [], union: null });
+
+    expect(latest?.label).toBeNull();
+    expect(latest?.union).toBeNull();
+    expect(latest?.boxes).toEqual([]);
+  });
+});
+
+describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHandler 註冊的處理器（#198）", () => {
+  function relayStageKey(key: string, shift: boolean): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "stage-key", key, meta: true, ctrl: false, shift, alt: false },
+        source: controller!.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+  }
+
+  it("⌘Z 呼叫處理器一次，參數是 undo", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const handler = vi.fn();
+    controller.setUndoRedoHandler(handler);
+
+    relayStageKey("z", false);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("undo");
+  });
+
+  it("⇧⌘Z 呼叫處理器一次，參數是 redo", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const handler = vi.fn();
+    controller.setUndoRedoHandler(handler);
+
+    relayStageKey("Z", true);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("redo");
+  });
+
+  it("尚未註冊處理器時收到 ⌘Z 不拋錯，也不自己送出任何請求", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const callsBefore = fetchMock.mock.calls.length;
+
+    expect(() => relayStageKey("z", false)).not.toThrow();
+
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
   });
 });

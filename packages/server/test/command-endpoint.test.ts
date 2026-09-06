@@ -240,10 +240,49 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element distribute",
     "element order",
     "presentation transition set",
+    "element resize",
+    "element delete",
+    "element duplicate",
   ]) {
     const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade" } });
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
   }
+});
+
+it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("resize.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "element resize",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], width: 100, height: 100, anchor: "nw" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('width="100" height="100"');
+});
+
+it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("delete-duplicate.comot");
+  const server = await serve(id);
+
+  const duplicated = await postCommand(server, {
+    name: "element duplicate",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], dx: 5, dy: 5 },
+  });
+  expect(duplicated.status).toBe(200);
+  expect(duplicated.json.ok).toBe(true);
+  const afterDuplicate = await readSlide(id);
+  expect(afterDuplicate).toContain('id="el-a"');
+  expect((afterDuplicate.match(/<g id=/g) ?? []).length).toBe(2);
+
+  const deleted = await postCommand(server, {
+    name: "element delete",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"] },
+  });
+  expect(deleted.status).toBe(200);
+  expect(await readSlide(id)).not.toContain('id="el-a"');
 });
 
 it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實際改到 project.json", async () => {

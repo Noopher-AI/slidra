@@ -1,5 +1,7 @@
-/* 舞台疊層 (New v3 skeleton) — 四個都是空容器（見 stage-overlays/*.tsx 各自
-   的說明），這裡只確保根容器蓋滿舞台、不吃滑鼠事件。 */
+/* 舞台疊層 (NOOP-90/T2)：根容器與四個子層維持 `pointer-events: none`，蓋滿
+   舞台、不吃滑鼠事件——個別可互動元件（情境列按鈕、右鍵選單）自己在下面
+   開回 `pointer-events: auto`。CommentLayer 仍是空容器（留言 pin 是
+   NOOP-67 的範圍）。 */
 .stage-overlays {
   position: absolute;
   inset: 0;
@@ -12,4 +14,117 @@
 .guide-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+/* 名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取」；色值取自原型
+   docs/design/prototype 的選取標籤）。 */
+.selection-label {
+  position: absolute;
+  transform: translateY(-100%);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 拖曳吸附輔助線 — 畫在父文件（ADR-0011 amend），取代舊版 iframe 內
+   selection-runtime.js 的 `.guide`。 */
+.guide {
+  position: absolute;
+  background: var(--guide);
+  pointer-events: none;
+}
+.guide-v {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}
+.guide-h {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+/* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型，內容含原右鍵選單的 Order／Duplicate；
+   Comment to AI／Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
+   按鈕高 --control-h-compact（28px）、容器高 36px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
+   玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
+.context-bar {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  box-sizing: border-box;
+  /* --control-h-compact (28px) buttons + --space-1 padding each side = 36px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
+  height: calc(var(--control-h-compact) + 2 * var(--space-1));
+  max-width: calc(100% - var(--space-8));
+  pointer-events: auto;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  animation: context-bar-in var(--dur-fast) var(--ease-out);
+}
+/* 抓取模式（✋／按住 Space）：情境列讓路，讓從它上面開始的拖曳穿透到投影片去平移。 */
+.canvas-area[data-grab="true"] .context-bar {
+  pointer-events: none;
+}
+@keyframes context-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.context-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h-compact);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-xs); /* same size as .selection-label */
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.context-bar-item:hover {
+  background: var(--surface-1);
+  color: var(--ink-900);
+}
+/* Comment to AI: the prototype's own red-tint hover, and a touch more padding. */
+.context-bar-item-comment {
+  padding: 0 var(--space-4);
+}
+.context-bar-item-comment:hover {
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+}
+/* Icon-only Order buttons: square, no label. */
+.context-bar-item-icon {
+  padding: 0 var(--space-2);
+}
+.context-bar-item-danger {
+  color: var(--brand-red-hover);
+}
+.context-bar-divider {
+  width: 1px;
+  height: calc(var(--control-h-compact) - var(--space-5));
+  margin: 0 var(--space-1);
+  background: var(--glass-divider);
 }

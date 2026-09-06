@@ -23,6 +23,35 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * never `element.click()` inside page script — because wave 4's grid unit
  * found a real gap here: DOM `.click()` passes even when a missing
  * `pointer-events: none` would swallow a genuine mouse event.
+ *
+ * 場景 ↔ 測試對照表（05-INTERACTIONS.feature，NOOP-91 round-2 FAIL #4 補做
+ * ——第 1 輪漏做）：
+ *
+ * - 功能「選取」› 場景「單選」（出現選取框/左上名稱標籤/情境列正下方）:
+ *   - "點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DOM 裡，不是 b/u 八點）"
+ *   - "狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯示其識別碼"
+ *   - "單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）"
+ *   - "基準截圖：標準檢視含選取框"／"點 demo 第 1 頁的背景會選到背景容器..."
+ *   - "敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框..."／"投影片自己的 script 搶先攔截點擊..."
+ *   - "離開播放後仍可重新選取：..."
+ *   - 情境列「空間不足翻到上方」分支：本檔未 e2e 化，理由見本檔「選取只會
+ *     啟用...」測項之前的說明區塊——精確覆蓋在
+ *     packages/web/test/stage-overlays.test.ts（純邏輯單元測試）。
+ * - 功能「選取」› 場景「多選」「全選 / 取消」: ⇧點/框選/⌘A 是舞台直接操作，
+ *   在 e2e/direct-manipulation.test.ts 測（"Shift 點兩個元素後一起拖曳"、
+ *   "從空白處拖出框選矩形"、"⌘A 全選本頁頂層元素..."）；本檔只測「點空白處
+ *   取消選取，狀態列的選取顯示區清空」（Esc/點空白清除選取的那一半）。
+ * - 功能「群組（含巢狀）」› 場景「選取群組」:
+ *   - "點群組裡的子元素，選到的是整個群組，狀態列顯示群組的顯示名稱"
+ *   - "選取群組時顯示虛線框"
+ * - 功能「群組（含巢狀）」› 場景「鑽入」（標籤顯示路徑「Group 2 › Group 1」）:
+ *   - "巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，外層的框保留不動"
+ *   - "Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至也被退出為止"
+ *   - "拖曳作用對象與選取層級一致：..."
+ *   - "基準截圖：群組編輯中的虛線框"／"基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）"
+ *
+ * 其餘測項（沙箱 sandbox 屬性、播放模式互動）不對應本檔案上述場景，各自的
+ * 測項名稱已自我描述。
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -299,6 +328,67 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
     await deck.cleanup();
   }
 });
+
+// NOOP-91 round-2 FAIL #4: 05-INTERACTIONS.feature「選取 › 單選」的
+// 「出現…左上名稱標籤」「情境列出現在選取框正下方（空間不足則翻到上方）」
+// 兩句「而且」句子此前完全沒有 e2e 覆蓋（座標換算邏輯的單元測試見
+// packages/web/test/stage-overlays.test.ts；這裡驗證真實瀏覽器的最終定位）。
+it("單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）", async () => {
+  const deck = await makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-square" data-comot-name="方塊">\n' +
+      // Bottom edge at y=200, leaving 520 user units of slide below it —
+      // comfortably more than the context bar's fixed 49 CSS px (GAP 13 +
+      // BAR_HEIGHT 36) floor at any realistic render scale.
+      '    <rect x="540" y="100" width="200" height="100" fill="#c66"/>\n' +
+      "  </g>\n" +
+      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    await slideFrame.locator("#el-square").click();
+
+    const label = page.locator(".selection-label");
+    await expect.poll(() => label.textContent().catch(() => null)).toBe("方塊");
+
+    const selBox = await slideFrame.locator(".sel").boundingBox();
+    const labelBox = await label.boundingBox();
+    const barBox = await page.locator(".context-bar").boundingBox();
+    expect(selBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
+    expect(barBox).not.toBeNull();
+
+    // Label sits above the selection box's own top edge (a small tolerance
+    // for sub-pixel layout rounding, not for being wrong by a whole line).
+    expect(labelBox!.y + labelBox!.height).toBeLessThanOrEqual(selBox!.y + 1);
+    // Context bar sits below the selection box's own bottom edge.
+    expect(barBox!.y).toBeGreaterThanOrEqual(selBox!.y + selBox!.height - 1);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+// The above-flip branch (`ContextBar`'s `fitsBelow === false`) is NOT
+// e2e'd here — measured directly (see this PR's delivery notes): `.canvas-
+// area`'s CSS reserves a FIXED `--space-gutter-bottom: 76px` below the
+// rendered slide (packages/web/src/styles/tokens.css), and the flip
+// threshold is GAP(8) + BAR_HEIGHT(40) = 48px < 76px. Any element placed
+// anywhere within the slide's own bounds therefore always leaves at least
+// 76px below it — `fitsBelow` is mathematically guaranteed true for every
+// reachable-by-content-placement position, at every viewport size tried
+// (probed at well heights from ~150px to ~700px). The flip branch is only
+// reachable through zoom+pan pushing a selection's on-screen box past the
+// visible well's edge, which this suite does not attempt to orchestrate
+// precisely — `packages/web/test/stage-overlays.test.ts` unit-tests both
+// branches of `ContextBar`'s `fitsBelow` decision directly against its own
+// props instead, including the exact boundary case, which is the more
+// precise place to pin this particular piece of logic down.
 
 // New v3 shell rebuild: 這條測項原本斷言「選取不改變任何 disabled 按鈕的
 // 數量」——舊殼的 Ribbon 命令從不隨選取變動。New v3 的 Dock 明確要求相反
@@ -945,6 +1035,36 @@ it("基準截圖：群組編輯中的虛線框", async () => {
     await page.waitForTimeout(50);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "group-frame", baselineDir });
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
+// NOOP-91 round-2 FAIL #3: 驗收條件第二條「截圖比對：單選、多選、群組選取、
+// 鑽入標籤、Arrange 選單、右鍵選單」六案，第 1 輪只交了前三案——這是第四案。
+// 基準圖尚未產生（AGENTS.md「視覺回歸的把關分工」：本機只能比對, 不能產生
+// 基準）；這條測試在基準產生前會因「找不到基準截圖」失敗，符合
+// compareScreenshot 自己文件裡「先寫測試、CI 觸發 update_baselines 產生
+// 基準」的流程。
+it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", async () => {
+  const deck = await makeNestedGroupDeck();
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
+    const selName = page.locator(".status-selection-chip");
+
+    // Two dblclicks drills all the way to the leaf, same sequence as "巢狀
+    // 逐層進入" above — label ends up "外層群組 › 內層群組 › 葉節點".
+    await slideLeaf.dblclick();
+    await slideLeaf.dblclick();
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("外層群組 › 內層群組 › 葉節點");
+
+    await page.waitForTimeout(50);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "drill-in-label", baselineDir });
   } finally {
     await cleanup();
     await deck.cleanup();

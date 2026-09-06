@@ -35,6 +35,7 @@ co-motion element order <id> <slide-path> el-abc,el-def front
 | `element delete` | 清單裡每個 id 各自被刪除；若某 id 是群組，整個子樹一併刪除。清單中的 id 若剛好是另一個清單成員的子孫，視為已被涵蓋，不重複處理、不報錯。 |
 | `element move` | 同一組 `(dx, dy)` 套用到每個目標各自的容器 `transform`（各自的 `translateX`/`translateY` 各自加上這組值），不計算整體邊界框位移。 |
 | `element scale` | 同一個 `factor` 套用到每個目標，各自獨立以自己容器的 local origin（`translate` 落點）為錨點縮放；群組遞迴套用到子孫。見下方「決定：相對變化量，各自獨立套用」。 |
+| `element resize`（NOOP-90/T2，新命令）| 同一組 `(width, height, anchor)` 套用到每個目標，**各自獨立**依自己當下的邊界框算出自己的 `(sx, sy)`（不是共用同一組縮放比例）：每個目標各自被縮放到同樣的 `width × height`，錨點角落（`nw`/`ne`/`sw`/`se`）各自在自己的父座標系內固定不動。群組遞迴套用（子孫容器的 `translateX`/`translateY` 各自乘上該目標自己的 `(sx, sy)`）。含 `<text>`、`<circle>`、`<path>` 圖元的目標只接受 `sx === sy`（等比），非等比一律報錯並提示改用 `element scale`。 |
 | `element rotate` | 同一個 `degrees` 差量套用到每個目標的 `rotation`，其餘 transform 分量不變，各自獨立。 |
 | `element style set` | 同一個屬性名/屬性值套用到清單裡每一個元素。 |
 | `element order` | `front`/`back`：清單裡的目標各自在自己的父容器裡被移到最上/最下，多個目標之間保留清單給定的順序（`front` 時，清單最後一個 id 疊在最上面；`back` 時，清單最後一個 id 疊在最下面）。`up`/`down`：依清單順序逐一處理，每處理完一個就重新查詢一次兄弟關係再處理下一個（不是一次性算好位移量）。跨父容器的目標各自在自己的父容器內移動，互不影響。 |

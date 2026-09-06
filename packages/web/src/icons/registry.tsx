@@ -58,6 +58,9 @@ export type IconName =
   | "trash"
   | "dup"
   | "comment"
+  | "edit" // Context bar: Edit style
+  | "forward" // Context bar: Bring forward
+  | "backward" // Context bar: Send backward
   | "alignL"
   | "alignC"
   | "alignR"
@@ -257,6 +260,12 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
     </>
   ),
   comment: <path d="M3 4h14v9H9l-4 3v-3H3z" />,
+  edit: (
+    <>
+      <path d="M4 16h3l9-9-3-3-9 9z" />
+      <path d="M11.5 5.5l3 3" />
+    </>
+  ),
   alignL: <path d="M4 3v14M8 6h8v3H8zM8 11h5v3H8z" />,
   alignC: <path d="M10 3v14M6 6h8v3H6zM7.5 11h5v3h-5z" />,
   alignR: <path d="M16 3v14M4 6h8v3H4zM7 11h5v3H7z" />,
@@ -265,6 +274,18 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   alignB: <path d="M3 16h14M6 4h3v8H6zM11 7h3v5h-3z" />,
   distH: <path d="M3 3v14M17 3v14M7.5 7h5v6h-5z" />,
   distV: <path d="M3 3h14M3 17h14M7 7.5h6v5H7z" />,
+  forward: (
+    <>
+      <rect x={5} y={7} width={10} height={10} rx={1.5} />
+      <path d="M10 5V1.5M7.5 4L10 1.5 12.5 4" />
+    </>
+  ),
+  backward: (
+    <>
+      <rect x={5} y={3} width={10} height={10} rx={1.5} />
+      <path d="M10 15v3.5M7.5 16l2.5 2.5 2.5-2.5" />
+    </>
+  ),
   front: (
     <>
       <rect x={3} y={3} width={10} height={10} rx={1.5} />

@@ -199,23 +199,34 @@ describe("element align", () => {
     expect(svg).toContain(`id="${c.data!.elementId}" transform="translate(10 40)"`);
   });
 
-  it("fails with a text-box target, mentioning the bounding box, leaving the SVG unchanged", async () => {
+  it("aligns a text-box target using its measured bounding box (NOOP-90/T2: align/distribute now pass a fontBook through)", async () => {
     const { id } = await openConvertedPresentation();
     const a = await registry.dispatch<{ elementId: string }>("element insert", {
-      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
+      id, slidePath: "slides/001.svg", kind: "rect", x: 30, y: 0, width: 10, height: 10,
     });
     const textBox = await registry.dispatch<{ elementId: string }>("textbox add", {
       id, slidePath: "slides/001.svg", x: 0, y: 0, width: 100, text: "abc", fontSize: 20, fontFamily: "Noto Sans TC",
     });
-    const before = await readSlide(id);
+
+    const { parseSlide, elementBounds, resolvePresentationFonts } = await import("@co-motion/core");
+    const findElement = (elements: any[], elementId: string): any =>
+      elements.find((e) => e.id === elementId) ?? elements.flatMap((e) => e.children ?? []).find((e: any) => e.id === elementId);
+    const fontBook = await resolvePresentationFonts(id);
+    const before = parseSlide(await readSlide(id), "slides/001.svg");
+    const beforeA = elementBounds(findElement(before.elements, a.data!.elementId), { fonts: fontBook });
+    const beforeText = elementBounds(findElement(before.elements, textBox.data!.elementId), { fonts: fontBook });
+    const expectedLeft = Math.min(beforeA.x, beforeText.x);
 
     const result = await registry.dispatch("element align", {
       id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId, textBox.data!.elementId], direction: "left",
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toContain("邊界框");
-    expect(await readSlide(id)).toBe(before);
+    expect(result.ok).toBe(true);
+    const after = parseSlide(await readSlide(id), "slides/001.svg");
+    const afterA = elementBounds(findElement(after.elements, a.data!.elementId), { fonts: fontBook });
+    const afterText = elementBounds(findElement(after.elements, textBox.data!.elementId), { fonts: fontBook });
+    expect(afterA.x).toBeCloseTo(expectedLeft, 3);
+    expect(afterText.x).toBeCloseTo(expectedLeft, 3);
   });
 
   it("inside a scaled parent group, moves the target's own local translate — not the absolute position", async () => {

@@ -1,5 +1,7 @@
 # 檢視模式也開 `allow-scripts`，為了讓作者點得到元素
 
+> **已修訂（NOOP-90/T2）**：「Considered Options」第一項當年拒絕「父文件疊一層命中層」的理由——「算不準：transform、文字排版、filter 外擴都會讓框偏掉」——現在不成立了：runtime（selection-runtime.js）改為額外用 `getBoundingClientRect()` 精確回報每個選取元素的邊界框與祖先鏈（`bounds` 事件），父文件據此畫名稱/群組/鑽入路徑標籤與吸附輔助線，不再自己用 SVG 算框。**其餘條款原封不動仍然成立**：`sandbox="allow-scripts"`、**絕不加 `allow-same-origin`**、選取框／四角把手／框選矩形仍然畫在 iframe 的 Shadow DOM 裡（下方「選取框必須畫在 Shadow DOM 裡」那一條，只窄化成「選取框本身」，不含標籤/輔助線）、server 拒絕 `Origin: null` 的防護不變、總覽縮圖維持零 token。詳見 NOOP-90/T2 的 Plan 與 PR 說明。
+
 作者要能點畫布上的元素把它選起來。檢視模式的 iframe 是零 token sandbox（ADR-0010），父文件因此**收不到裡面的任何一次點擊**——沒有 script、沒有 `allow-same-origin`，事件不會冒泡出來，DOM 也讀不到。這不是難做，是零可能。
 
 決定：**檢視模式改為 `sandbox="allow-scripts"`**，隨 `srcdoc` 注入一支只做兩件事的 script——回報「被點到的是哪個元素」，以及在該元素上畫選取框。選中的識別碼經 `postMessage` 回報給父文件。**絕不加 `allow-same-origin`**，這一點與播放模式一字不差：安全模型沒有放鬆，只是把播放模式早就在用的姿態延伸到檢視模式。
@@ -15,5 +17,5 @@
 
 - ADR-0010 中「檢視模式不需要任何 script……sandbox 維持零 token」一句，就主畫布而言由本 ADR 取代；就總覽縮圖而言仍然成立。
 - `wrapSlideDocument` 不再產生純靜態文件。檢視與播放的差別從「有沒有 script」變成「注入哪一支 script」。
-- **選取框必須畫在 Shadow DOM 裡。** 它活在不受信任的文件中，投影片自己的 CSS 有辦法把它蓋掉或藏起來——作者會看到「點了沒反應」。Shadow root 是讓它畫在箱子裡又不被箱子干擾的唯一便宜做法。
+- **選取框必須畫在 Shadow DOM 裡。** 它活在不受信任的文件中，投影片自己的 CSS 有辦法把它蓋掉或藏起來——作者會看到「點了沒反應」。Shadow root 是讓它畫在箱子裡又不被箱子干擾的唯一便宜做法。（NOOP-90/T2 修訂：這條只約束選取框、四角把手、框選矩形——名稱/群組標籤與吸附輔助線改畫在父文件，見上方橫幅。）
 - server 拒絕 `Origin: null` 的防護，現在對檢視模式同樣必要。過去這項防護與 `allow-scripts` 是「同一件事的兩半」，而那件事只發生在播放模式；現在檢視模式也需要它，任何時候都不再有「反正這個模式不跑 script」的餘地。

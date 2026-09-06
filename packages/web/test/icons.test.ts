@@ -30,11 +30,14 @@ const ALL_ICON_NAMES: IconName[] = [
   "view-normal",
   "view-grid",
   "view-play",
+  "edit",
+  "forward",
+  "backward",
 ];
 
 describe("Icon（NOOP-376 驗收）", () => {
-  it("22 個 IconName 都能渲染出含 viewBox 與 aria-hidden 的 svg", () => {
-    expect(ALL_ICON_NAMES).toHaveLength(22);
+  it("25 個 IconName 都能渲染出含 viewBox 與 aria-hidden 的 svg", () => {
+    expect(ALL_ICON_NAMES).toHaveLength(25);
     for (const name of ALL_ICON_NAMES) {
       const markup = renderToStaticMarkup(createElement(Icon, { name }));
       expect(markup).toContain('viewBox="0 0 20 20"');

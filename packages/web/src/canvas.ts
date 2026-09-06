@@ -124,6 +124,32 @@ export interface CanvasSelection {
   elements: (SlideElement | null)[];
 }
 
+/**
+ * High-frequency overlay geometry (NOOP-90/T2 §4.6/§8 決定 1): name/group
+ * labels, snap guides, and the element context menu are painted by the
+ * PARENT document now (`shell/stage-overlays/`), not inside the sandboxed
+ * iframe — everything here is already converted into THIS document's
+ * client px (`toParentClientPoint`'s own space), ready to use as a `left`/
+ * `top` CSS value once an overlay component subtracts its own positioned
+ * ancestor's `getBoundingClientRect()`. Delivered through `subscribeOverlay`
+ * rather than `CanvasState`/`subscribe` because it can update many times a
+ * second during a drag — routing it through React state on every frame
+ * would force a re-render storm for something no component needs to
+ * `useState` over.
+ */
+export interface OverlayState {
+  /** One rect per still-resolvable selected id, parent-document client px. */
+  boxes: Rect[];
+  /** The union of every `boxes[]` entry; `null` when nothing is selected. */
+  union: Rect | null;
+  /** `null` when nothing is selected; `"N elements"` for a multi-selection (no path); the single selected element's own name/id and ancestor-chain names (outermost first) otherwise — F9 (群組) reads `path` for its "Group 2 › Group 1" drill-in label. */
+  label: { text: string; path: string[] } | null;
+  /** Snap guide lines from the in-progress move gesture, parent-document client px; empty between drags. */
+  guides: { orientation: "v" | "h"; position: number }[];
+  /** `true` while a move/scale/rotate/textbox-width gesture is in progress — the context bar hides itself during a drag (the selection box and label stay). */
+  dragging: boolean;
+}
+
 export interface CanvasState {
   /** Slide virtual paths, in project.json's own order. */
   slides: string[];
@@ -276,6 +302,41 @@ export interface CanvasController {
    * No-op while `mode !== "view"`.
    */
   clearSelection: () => void;
+  /**
+   * Overlay geometry: name/group labels and snap guides (NOOP-90/T2 §4.6). See `OverlayState`'s own doc comment
+   * for why this is a separate channel from `subscribe`/`CanvasState`.
+   */
+  subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
+  /**
+   * Re-emits the current overlay state with the frame's *current*
+   * position/scale (issue 198 review). The runtime reports bounds in its own
+   * iframe client px, which a zoom/pan of the parent's `.stage` transform
+   * never changes — only the parent-side conversion goes stale. Stage.tsx
+   * calls this after every zoomPan change so labels/context bar/context menu
+   * follow the slide instead of waiting for the next selection change.
+   */
+  refreshOverlay: () => void;
+  /** ⌘A (§4.1): selects every top-level element on the current slide, clearing `groupPath`. No-op on an empty slide. No-op outside view mode. */
+  selectAll: () => void;
+  /** Delete/Backspace, or the context bar's Delete (§4.4): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
+  deleteSelection: () => Promise<void>;
+  /** ⌘D, or the context bar's Duplicate (§4.4): sends `element duplicate` with the prototype's own +3%/+4% offset, selecting the new copy on success. No-op with no selection. */
+  duplicateSelection: () => Promise<void>;
+  /** ⌘]/⌘[/⌘⇧]/⌘⇧[, the Arrange menu's Order column, or the context bar's four Order buttons (§4.4): sends `element order` for the current selection. No-op with no selection. */
+  orderSelection: (direction: "up" | "down" | "front" | "back") => Promise<void>;
+  /** Arrange menu's Align column (§3.9): sends `element align`. No-op below the command's own ≥2-target minimum. */
+  alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
+  /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
+  distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
+  /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
+  /**
+   * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
+   * controller never POSTs /api/undo|redo itself — App.tsx registers its own
+   * `runUndoRedo` here so the document-level shortcut and the relayed one
+   * share the single fetch path (and its editingFrozen gate). A relayed ⌘Z
+   * before any handler is registered is dropped.
+   */
+  setUndoRedoHandler: (handler: ((kind: "undo" | "redo") => void) | null) => void;
 }
 
 interface ProjectJson {
@@ -355,6 +416,16 @@ interface SelectionMessage {
     | "stage-pan-move"
     | "stage-pan-end"
     | "stage-space"
+    // NOOP-90/T2 §4.6: precise per-selected-element bounding boxes plus
+    // each one's ancestor chain, replacing the old host-computed "guides"
+    // approach (ADR-0011 amend) — the runtime measures with
+    // `getBoundingClientRect()`, this side only converts coordinate spaces.
+    | "bounds"
+    // NOOP-90/T2 §4.5: right-click on an element (never on blank canvas —
+    // out of scope this ticket).
+    // NOOP-90/T2 §4.4: the keyboard relay for shortcuts that must work even
+    // when focus is inside the iframe.
+    | "stage-key"
     // Sent once, after the runtime's listeners are attached (§2.1(c)) —
     // carries no payload of its own.
     | "runtime-ready";
@@ -385,6 +456,50 @@ interface SelectionMessage {
    * than sent empty on the common top-level case.
    */
   groupPath?: string[];
+  /** "bounds" only — one entry per still-resolvable selected id, in the runtime's own iframe-local client px. */
+  items?: unknown;
+  /** "bounds" only — the union of every `items[]` rect, iframe-local client px; `null` when `items` is empty. */
+  union?: unknown;
+  /** "stage-key" only — `event.metaKey`/`ctrlKey`/`shiftKey`/`altKey`. */
+  meta?: boolean;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  /** "stage-key" only — the relayed `KeyboardEvent.key`. */
+  key?: string;
+}
+
+/** One `bounds` event item, already shape-validated (see `isBoundsItem`). */
+interface BoundsItem {
+  id: string;
+  rect: Rect;
+  ancestors: { id: string; name: string | null }[];
+}
+
+function isAncestorList(value: unknown): value is { id: string; name: string | null }[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as { id?: unknown }).id === "string" &&
+        ((entry as { name?: unknown }).name === null || typeof (entry as { name?: unknown }).name === "string"),
+    )
+  );
+}
+
+/** Loosened `isValidRect`: a bounding box may legitimately be zero-width or zero-height (e.g. a perfectly horizontal `<line>`), which the plain `isValidRect` (used for `svgRect`/`viewBox`, which never are) rejects. */
+function isNonNegativeRect(value: unknown): value is Rect {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  return isFiniteNumber(r.x) && isFiniteNumber(r.y) && isFiniteNumber(r.width) && isFiniteNumber(r.height) && r.width >= 0 && r.height >= 0;
+}
+
+function isBoundsItem(value: unknown): value is BoundsItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as { id?: unknown; rect?: unknown; ancestors?: unknown };
+  return typeof item.id === "string" && isNonNegativeRect(item.rect) && isAncestorList(item.ancestors);
 }
 
 function isSelectionMessage(data: unknown): data is SelectionMessage {
@@ -454,29 +569,63 @@ interface MarqueeGesture {
 }
 
 /**
- * Uniform scale anchored at the element's own local origin (§4.2-follow-up
- * "Scale handles"). `origin` lives in the element's PARENT coordinate
- * space (its matrix's own translate) — the same space `decomposeMatrix`
- * already reports it in. `startUser`/every subsequent pointer point is
- * reported in the top-level viewBox's user units, so it is run through
- * `parentInverse` (the inverse of the composed ancestor chain, NOOP-91
- * follow-up round 2) before being compared against `origin`, putting both
- * ends of the ray in the same frame regardless of how many
- * translate/rotate/scale ancestors sit between the element and the slide
- * root.
+ * A four-corner handle drag (NOOP-90/T2 §4.2, extending the original
+ * uniform-only "Scale handles"). Two sub-paths share one gesture object,
+ * chosen live every frame by the current Shift state (`updateScaleGesture`)
+ * — Figma-style continuous toggling, not a choice locked in at gesture
+ * start, since the runtime's `gesture-start` message carries no modifiers
+ * to decide with anyway:
+ *
+ *  - **uniform** (Shift held, or `forceUniform`): send `element scale`,
+ *    same math as before — `origin` (the element's own local origin, its
+ *    matrix's own translate) lives in the element's PARENT coordinate
+ *    space, and `startUser`/every subsequent point is mapped into that
+ *    space via `parentInverse` before being compared against `origin`.
+ *
+ *  - **non-uniform** (the default, decision 4): send `element resize`.
+ *    `localBox`/`anchorLocal` are computed with the element's OWN
+ *    transform factored out (`invertMatrix(element.matrix)` composed as
+ *    the sole "ancestor", the same trick `packages/core`'s own
+ *    `resizeOneTarget` uses) — the fixed corner (opposite the dragged
+ *    handle) in that local frame never moves as long as native geometry is
+ *    scaled about the local origin, which is exactly what the live preview
+ *    below does (a temporary non-uniform `scale(sx sy)` on the transform —
+ *    visually identical to the real command's native-attribute resize, and
+ *    the ONLY way to preview a size change through the existing
+ *    `{command:"preview", items:[{id,transform}]}` protocol, which never
+ *    changes native attributes). `fullInverse` maps a top-level user point
+ *    into that same local frame, so a live pointer position becomes a
+ *    local-frame corner comparable against `anchorLocal`. `null` when the
+ *    element's local box could not be computed at gesture start (an
+ *    unmeasurable `<text>`, a degenerate ancestor chain) — `forceUniform`
+ *    is then also true, so the non-uniform path is never reached.
+ *
+ * `original`/`originalMatrix` — the element's own transform decomposed,
+ * and its raw `Matrix`, both captured once at gesture start — are shared by
+ * both sub-paths; `originalMatrix`'s linear part (no translation) is what
+ * carries a local anchor-preserving delta into the parent frame for the
+ * resize path, the same computation `resizeOneTarget` does server-side.
  */
 interface ScaleGesture {
   kind: "scale";
   id: string;
+  corner: "nw" | "ne" | "sw" | "se";
   original: OriginalTransform;
-  /** The element's own local origin (its matrix's translate), in its PARENT's coordinate units. */
+  originalMatrix: Matrix;
+  /** True when the target (or, for a group, any descendant) contains a `<text>`/`<circle>`/`<path>` primitive — none has a non-uniform representation (core's `element resize` rejects all three), so the non-uniform path is never offered regardless of Shift. */
+  forceUniform: boolean;
   origin: { x: number; y: number };
-  /** Pointer-down point, mapped into the element's PARENT coordinate space — the ray's other end. */
   startUser: { x: number; y: number };
-  /** Maps a top-level user-unit point into the element's parent coordinate space; the inverse of the composed ancestor chain (`entry.ancestors`) captured at gesture start. */
   parentInverse: Matrix;
-  /** Last factor actually applied to the preview; used only to decide "did anything change" at release. */
+  localBox: Rect | null;
+  /** The FIXED corner (opposite the dragged handle) in the element's own local frame, from the gesture-start `localBox`. */
+  anchorLocal: { x: number; y: number };
+  fullInverse: Matrix | null;
+  /** Which sub-path actually produced the last applied preview — read by `endScaleGesture` to decide which command to send, since the trailing `gesture-end` message carries no modifiers of its own. */
+  lastMode: "scale" | "resize";
   lastFactor: number;
+  lastWidth: number;
+  lastHeight: number;
 }
 
 /**
@@ -601,6 +750,31 @@ function subtreeIds(element: SlideElement, out: Set<string>): void {
   for (const child of element.children) subtreeIds(child, out);
 }
 
+/** True when `element` (or, recursively for a group, any descendant) contains a `<text>`, `<circle>`, or `<path>` primitive — none has a non-uniform representation (`packages/core`'s `element resize` rejects all three; ADR-0012's "compound" holds several primitives, so it is checked one by one). Used by the four-corner handle to decide whether the non-uniform resize path applies at all, regardless of Shift. */
+function subtreeForcesUniformScale(element: SlideElement): boolean {
+  if (element.kind === "group") return element.children.some(subtreeForcesUniformScale);
+  if (element.kind === "text" || element.kind === "circle" || element.kind === "path") return true;
+  if (element.kind === "compound") {
+    return element.primitives.some((primitive) => primitive.tag === "text" || primitive.tag === "circle" || primitive.tag === "path");
+  }
+  return false;
+}
+
+const OPPOSITE_CORNER: Record<"nw" | "ne" | "sw" | "se", "nw" | "ne" | "sw" | "se"> = {
+  nw: "se",
+  ne: "sw",
+  sw: "ne",
+  se: "nw",
+};
+
+/** The named corner of `box` — "nw" is `(box.x, box.y)`, "se" is the opposite corner, etc. Same formula as `packages/core`'s own `anchorCorner` (element-edit.ts), duplicated here because this module cannot import a Node-only core module and the formula is three lines. */
+function cornerPoint(corner: "nw" | "ne" | "sw" | "se", box: Rect): { x: number; y: number } {
+  return {
+    x: corner === "ne" || corner === "se" ? box.x + box.width : box.x,
+    y: corner === "sw" || corner === "se" ? box.y + box.height : box.y,
+  };
+}
+
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
   // The selected slide lives here, not in React (ADR-0001/ADR-0002): the
@@ -634,6 +808,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Extended by NOOP-275/#156 from a single id to a list, so a multi-element
   // paste selects everything it created rather than just the first one.
   let pendingSelectionIds: string[] | null = null;
+  // True from a committed gesture until render() has re-selected
+  // `pendingSelectionIds` — reported as `OverlayState.dragging` so the
+  // context bar stays hidden across the reload (see keepSelectionAcrossReload).
+  let overlaySettling = false;
   // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
@@ -645,6 +823,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // the previous document's `stageHandMode` variable held).
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
+  // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
+  // bounds/ancestors, kept in the runtime's OWN
+  // iframe client px — the conversion to this parent document's client px
+  // happens in `buildOverlayState()` at emit time, so a later zoom/pan only
+  // needs `refreshOverlay()` to re-emit, not a fresh "bounds" round trip.
+  // See `OverlayState`'s own doc comment for why this is a separate,
+  // high-frequency channel rather than `CanvasState`.
+  const overlayListeners = new Set<(state: OverlayState) => void>();
+  let overlayBoxes: Rect[] = [];
+  let overlayUnion: Rect | null = null;
+  let overlayAncestors: { id: string; name: string | null }[] = [];
+  let overlayGuides: { orientation: "v" | "h"; position: number }[] = [];
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -681,6 +871,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // editingId set, so the two never coexist in practice, but nothing here
   // relies on that for correctness.
   let editingState: TextEditState | null = null;
+  // App.tsx's `runUndoRedo`, once registered — see `setUndoRedoHandler`.
+  let undoRedoHandler: ((kind: "undo" | "redo") => void) | null = null;
   // Timestamp (ms) of the last `POST /api/editing/begin` fired for the
   // human lease (T5/NOOP-110, editing-lock.ts). Read by gesture-move to
   // throttle lease renewal to once per HUMAN_RENEW_THROTTLE_MS — gesture-
@@ -826,6 +1018,25 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    if (message.event === "bounds") {
+      const items = Array.isArray(message.items) ? message.items.filter(isBoundsItem) : [];
+      overlayBoxes = items.map((item) => item.rect);
+      overlayUnion = isNonNegativeRect(message.union) ? message.union : null;
+      overlayAncestors = items.length === 1 ? items[0].ancestors : [];
+      notifyOverlay();
+      return;
+    }
+    if (message.event === "stage-key") {
+      if (typeof message.key !== "string") return;
+      const modifiers = { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) };
+      if (message.key === "Delete" || message.key === "Backspace") void deleteSelection();
+      else if (message.key === "a" && (modifiers.meta || modifiers.ctrl)) selectAll();
+      else if (message.key === "d" && (modifiers.meta || modifiers.ctrl)) void duplicateSelection();
+      else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
+      else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
+      else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
+      return;
+    }
     if (message.event === "gesture-start") {
       if (!isValidPoint(message.point)) return;
       if (message.kind === "move") beginMoveGesture(message.point);
@@ -844,7 +1055,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const modifiers = { shift: Boolean(message.modifiers?.shift), alt: Boolean(message.modifiers?.alt) };
       if (activeGesture?.kind === "move") updateMoveGesture(message.point, modifiers);
       else if (activeGesture?.kind === "marquee") updateMarqueeGesture(message.point);
-      else if (activeGesture?.kind === "scale") updateScaleGesture(message.point);
+      else if (activeGesture?.kind === "scale") updateScaleGesture(message.point, modifiers);
       else if (activeGesture?.kind === "rotate") updateRotateGesture(message.point);
       else if (activeGesture?.kind === "textbox-width") updateTextboxWidthGesture(message.point);
       if (
@@ -867,11 +1078,25 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       }
       const cancelled = Boolean(message.cancelled);
       const gesture = activeGesture;
-      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(endEditingLease);
+      // Keep the context bar hidden through the gesture's tail: the end
+      // handlers null `activeGesture` and notify the overlay *before* their
+      // command round-trips, and a committed write then reloads the slide.
+      // `settle` lifts it only when no reload is coming (cancelled, no-op,
+      // or failed — nothing was parked in pendingSelectionIds); otherwise
+      // render()/selectOnceLoaded clear it once the re-selection has landed.
+      if (gesture && gesture.kind !== "marquee") overlaySettling = true;
+      const settle = () => {
+        if (pendingSelectionIds === null && activeGesture === null) {
+          overlaySettling = false;
+          notifyOverlay();
+        }
+        endEditingLease();
+      };
+      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(settle);
       else if (gesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
-      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(endEditingLease);
-      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(endEditingLease);
-      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(endEditingLease);
+      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(settle);
+      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(settle);
+      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(settle);
       // activeGesture is already null (e.g. a stray gesture-end with no
       // matching start) — still release the lease so it does not sit until
       // HUMAN_LEASE_MAX_MS expires.
@@ -955,6 +1180,43 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const rect = frame.getBoundingClientRect();
     const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1;
     return { x: rect.left + point.x * scale, y: rect.top + point.y * scale };
+  }
+
+  /** Same conversion as `toParentClientPoint`, applied to a whole rect — width/height scale by the same factor the corner point does (uniform iframe scaling, never a separate X/Y factor). Used for the "bounds" event's per-item/union rects (§4.6). */
+  function toParentClientRect(rect: Rect): Rect {
+    const frameRect = frame.getBoundingClientRect();
+    const scale = frame.offsetWidth > 0 ? frameRect.width / frame.offsetWidth : 1;
+    return {
+      x: frameRect.left + rect.x * scale,
+      y: frameRect.top + rect.y * scale,
+      width: rect.width * scale,
+      height: rect.height * scale,
+    };
+  }
+
+  /** `OverlayState.label` (§4.6): `null` with nothing selected, `"N elements"` (no path) for a multi-selection, or the single selected element's own name/id plus its ancestor-chain names (outermost first, from the runtime's last-reported `bounds` event) otherwise. */
+  function computeOverlayLabel(): { text: string; path: string[] } | null {
+    if (selectionIds.length === 0) return null;
+    if (selectionIds.length > 1) return { text: `${selectionIds.length} elements`, path: [] };
+    const text = selectionNames[0] ?? selectionIds[0];
+    const path = overlayAncestors.map((ancestor) => ancestor.name ?? ancestor.id);
+    return { text, path };
+  }
+
+  /** Converts the stored runtime-px overlay geometry to parent client px against the frame's rect *right now* — the one place that conversion happens, shared by `notifyOverlay` and `subscribeOverlay`'s initial push. Guides are the exception: they only exist mid-drag and are converted where they are computed. */
+  function buildOverlayState(): OverlayState {
+    return {
+      boxes: overlayBoxes.map(toParentClientRect),
+      union: overlayUnion ? toParentClientRect(overlayUnion) : null,
+      label: computeOverlayLabel(),
+      guides: [...overlayGuides],
+      dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlaySettling,
+    };
+  }
+
+  function notifyOverlay(): void {
+    const state = buildOverlayState();
+    for (const listener of overlayListeners) listener(state);
   }
 
   function emitStageInput(event: StageInputEvent): void {
@@ -1099,6 +1361,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["textbox add", "elementId"],
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
+    ["element duplicate", "elementIds"],
   ]);
 
   /**
@@ -1234,6 +1497,55 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     postToFrame({ command: "selection", ids: [...ids], ...computeHandleFlags(ids), groupPath: [...selectionGroupPath] });
   }
 
+  // --- Select all / delete / duplicate / order (NOOP-90/T2 §4.4/§4.5) ---
+  // Shared by App.tsx's own document-level keydown listener, the runtime's
+  // relayed "stage-key" (handleSelectionMessage above), and the element
+  // context menu — one place decides what each of these four actually
+  // does, so the three trigger paths can never drift apart.
+
+  /** ⌘A: every TOP-LEVEL element on the current slide — never a group's own children, matching `05-INTERACTIONS.feature`'s "本頁頂層所有元素" wording. `groupPath` resets to top level, same as any other host-driven selection change. */
+  function selectAll(): void {
+    if (mode !== "view" || !currentSlideModel) return;
+    if (currentSlideModel.elements.length === 0) return;
+    selectionIds = currentSlideModel.elements.map((element) => element.id);
+    selectionNames = currentSlideModel.elements.map((element) => element.name);
+    selectionGroupPath = [];
+    notify();
+    pushSelectionToRuntime(selectionIds);
+  }
+
+  async function deleteSelection(): Promise<void> {
+    if (mode !== "view" || selectionIds.length === 0) return;
+    const result = await runCommand("element delete", { slidePath: slides[currentIndex], elementIds: [...selectionIds] });
+    if (result.ok) clearSelectionState([]);
+  }
+
+  /** `+3% / +4%` of the viewBox (prototype's own `comotion-logic-v3.js` offset) — `runCommand`'s existing `SELECT_AFTER_COMMAND` entry for `"element duplicate"` selects the new copy on success. */
+  async function duplicateSelection(): Promise<void> {
+    if (mode !== "view" || selectionIds.length === 0 || !viewport) return;
+    await runCommand("element duplicate", {
+      slidePath: slides[currentIndex],
+      elementIds: [...selectionIds],
+      dx: 0.03 * viewport.viewBox.width,
+      dy: 0.04 * viewport.viewBox.height,
+    });
+  }
+
+  async function orderSelection(direction: "up" | "down" | "front" | "back"): Promise<void> {
+    if (mode !== "view" || selectionIds.length === 0) return;
+    await runCommand("element order", { slidePath: slides[currentIndex], elementIds: [...selectionIds], direction });
+  }
+
+  async function alignSelection(direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom"): Promise<void> {
+    if (mode !== "view" || selectionIds.length < 2) return;
+    await runCommand("element align", { slidePath: slides[currentIndex], elementIds: [...selectionIds], direction });
+  }
+
+  async function distributeSelection(axis: "horizontal" | "vertical"): Promise<void> {
+    if (mode !== "view" || selectionIds.length < 3) return;
+    await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selectionIds], axis });
+  }
+
   // --- Drag-to-move (§4.2) ---
 
   function beginMoveGesture(point: { x: number; y: number }): void {
@@ -1328,13 +1640,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return { id, transform: formatTransform(parts) };
     });
     postToFrame({ command: "preview", items });
-    postToFrame({
-      command: "guides",
-      lines: guides.map((guide) => ({
-        orientation: guide.orientation,
-        position: guide.orientation === "v" ? userXToClient(guide.position) : userYToClient(guide.position),
-      })),
-    });
+    // NOOP-90/T2 ADR-0011 amend: guides are drawn by the PARENT document's
+    // own GuideLayer overlay now, not inside the sandboxed iframe — a
+    // client-px position converts the same way a point's own coordinate
+    // does (toParentClientPoint), just for one axis at a time.
+    overlayGuides = guides.map((guide) => ({
+      orientation: guide.orientation,
+      position:
+        guide.orientation === "v"
+          ? toParentClientPoint({ x: userXToClient(guide.position), y: 0 }).x
+          : toParentClientPoint({ x: 0, y: userYToClient(guide.position) }).y,
+    }));
+    notifyOverlay();
   }
 
   function revertMovePreview(gesture: MoveGesture): void {
@@ -1342,11 +1659,30 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     postToFrame({ command: "preview", items });
   }
 
+  /**
+   * A committed gesture's write comes back over /api/events and drives a full
+   * render(), which would otherwise drop the selection (and with it the
+   * context bar). Park the current ids so that render() re-selects them once
+   * the reloaded slide is up — same channel `runCommand`'s SELECT_AFTER_COMMAND
+   * uses for insert/paste/duplicate. Group drill-in depth is not preserved
+   * (selectOnceLoaded resets groupPath), same as those commands.
+   */
+  function keepSelectionAcrossReload(): void {
+    if (selectionIds.length === 0) return;
+    pendingSelectionIds = [...selectionIds];
+    // The context bar stays down until that re-selection has landed (see the
+    // gesture-end handler) — otherwise it flashes: shown the instant the
+    // gesture ends, gone when the reload drops the selection, shown again
+    // once it is restored.
+    overlaySettling = true;
+  }
+
   async function endMoveGesture(cancelled: boolean): Promise<void> {
     const gesture = activeGesture;
     activeGesture = null;
     if (!gesture || gesture.kind !== "move") return;
-    postToFrame({ command: "guides", lines: [] });
+    overlayGuides = [];
+    notifyOverlay();
 
     if (cancelled) {
       revertMovePreview(gesture);
@@ -1377,6 +1713,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
     // Success: the preview already shows the final position. The write
     // this command just made will arrive back over /api/events and drive
     // reload() on its own — this module deliberately adds no second
@@ -1385,8 +1722,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   // --- Scale handles (§4.2-follow-up) ---
 
-  function beginScaleGesture(point: { x: number; y: number }, _corner: "nw" | "ne" | "sw" | "se"): void {
-    void _corner; // The corner only ever affected the runtime's own handle-cursor styling — every corner drives the identical uniform-scale-from-origin math.
+  function beginScaleGesture(point: { x: number; y: number }, corner: "nw" | "ne" | "sw" | "se"): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
     // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
     if (!viewport) return;
@@ -1409,14 +1745,43 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     const startUser = applyMatrixToPoint(parentInverse, toUserPoint(point));
     if (startUser.x === origin.x && startUser.y === origin.y) return; // No ray to project onto.
+
+    let forceUniform = subtreeForcesUniformScale(entry.element);
+    let localBox: Rect | null = null;
+    let fullInverse: Matrix | null = null;
+    let anchorLocal = { x: 0, y: 0 };
+    if (!forceUniform) {
+      try {
+        fullInverse = invertMatrix(composeMatrices([...entry.ancestors, entry.element.matrix]));
+        localBox = elementBounds(entry.element, { ancestors: [invertMatrix(entry.element.matrix)], fonts: resolvedFonts });
+        anchorLocal = cornerPoint(OPPOSITE_CORNER[corner], localBox);
+      } catch {
+        // Unmeasurable (e.g. an arc path) or a degenerate own-matrix — the
+        // non-uniform path is not computable; fall back to uniform-only
+        // rather than refusing the gesture outright.
+        forceUniform = true;
+        localBox = null;
+        fullInverse = null;
+      }
+    }
+
     activeGesture = {
       kind: "scale",
       id,
+      corner,
       original: { transform: entry.element.transform, parts },
+      originalMatrix: entry.element.matrix,
+      forceUniform,
       origin,
       startUser,
       parentInverse,
+      localBox,
+      anchorLocal,
+      fullInverse,
+      lastMode: "scale",
       lastFactor: 1,
+      lastWidth: localBox?.width ?? 0,
+      lastHeight: localBox?.height ?? 0,
     };
   }
 
@@ -1436,9 +1801,79 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     postToFrame({ command: "preview", items: [{ id: gesture.id, transform: gesture.original.transform ?? "" }] });
   }
 
-  function updateScaleGesture(point: { x: number; y: number }): void {
+  /** Minimum size a live resize preview/commit is clamped to — 3% of the slide's own width, 0.6% of its height (05-INTERACTIONS.feature「縮放」). The command layer does not enforce this (決定 7: purely a GUI usability floor). */
+  function minResizeSize(): { width: number; height: number } {
+    return { width: 0.03 * viewport!.viewBox.width, height: 0.006 * viewport!.viewBox.height };
+  }
+
+  /**
+   * Clamps a slide-frame (viewBox-space) point to the slide's own boundary —
+   * 05-INTERACTIONS.feature「縮放」's "不超出投影片": dragging a resize
+   * handle past the visible edge of the slide must not push the dragged
+   * corner any further than that edge, no matter how the target itself is
+   * rotated or nested. Same GUI-only floor as `minResizeSize` (決定 7).
+   */
+  function clampToViewBox(point: { x: number; y: number }): { x: number; y: number } {
+    const box = viewport!.viewBox;
+    return {
+      x: Math.min(Math.max(point.x, box.x), box.x + box.width),
+      y: Math.min(Math.max(point.y, box.y), box.y + box.height),
+    };
+  }
+
+  /**
+   * The non-uniform resize path's live preview: computes `(sx, sy)` against
+   * the gesture-start `localBox`, then the SAME anchor-preserving translate
+   * delta `packages/core`'s `resizeOneTarget` computes server-side — but
+   * expressed as a temporary `scale(sx sy)` transform component rather than
+   * a native-attribute change, since that is all the existing `preview`
+   * protocol can show (see `ScaleGesture`'s doc comment for why this is
+   * visually identical to the real thing). Returns `false` (no preview
+   * applied) when the dragged corner has not moved past the origin at all —
+   * `updateScaleGesture` then simply holds last frame's preview, the same
+   * "freeze rather than show garbage" posture the uniform path already has.
+   */
+  function applyResizePreview(gesture: ScaleGesture, point: { x: number; y: number }): boolean {
+    if (!gesture.localBox || !gesture.fullInverse) return false;
+    const draggedLocal = applyMatrixToPoint(gesture.fullInverse, clampToViewBox(toUserPoint(point)));
+    const { width: minWidth, height: minHeight } = minResizeSize();
+    const width = Math.max(Math.abs(draggedLocal.x - gesture.anchorLocal.x), minWidth);
+    const height = Math.max(Math.abs(draggedLocal.y - gesture.anchorLocal.y), minHeight);
+    if (!(width > 0) || !(height > 0)) return false;
+
+    const sx = width / gesture.localBox.width;
+    const sy = height / gesture.localBox.height;
+    const cornerLocalNew = { x: gesture.anchorLocal.x * sx, y: gesture.anchorLocal.y * sy };
+    const deltaLocal = { x: gesture.anchorLocal.x - cornerLocalNew.x, y: gesture.anchorLocal.y - cornerLocalNew.y };
+    const m = gesture.originalMatrix;
+    // The matrix's linear part only (no translation) — deltaLocal is a
+    // vector, not a point, so `m.e`/`m.f` must not be added in.
+    const deltaParent = { x: m.a * deltaLocal.x + m.c * deltaLocal.y, y: m.b * deltaLocal.x + m.d * deltaLocal.y };
+
+    gesture.lastMode = "resize";
+    gesture.lastWidth = width;
+    gesture.lastHeight = height;
+    const parts: TransformParts = {
+      ...gesture.original.parts,
+      translateX: gesture.original.parts.translateX + deltaParent.x,
+      translateY: gesture.original.parts.translateY + deltaParent.y,
+      scaleX: gesture.original.parts.scaleX * sx,
+      scaleY: gesture.original.parts.scaleY * sy,
+    };
+    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: formatTransform(parts) }] });
+    return true;
+  }
+
+  function updateScaleGesture(point: { x: number; y: number }, modifiers: { shift: boolean; alt: boolean }): void {
     const gesture = activeGesture;
     if (!gesture || gesture.kind !== "scale") return;
+    if (!(gesture.forceUniform || modifiers.shift)) {
+      if (applyResizePreview(gesture, point)) return;
+      // Not computable this frame (e.g. dragged exactly onto the anchor) —
+      // fall through to holding the last preview rather than freezing on a
+      // stale non-uniform frame while the user is still trying to drag.
+      return;
+    }
     const factor = computeScaleFactor(gesture, point);
     // Non-positive, NaN or infinite: dragged past the origin (would flip)
     // or otherwise invalid. Freeze the preview at the last valid factor
@@ -1446,6 +1881,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // recomputes from the final point and aborts explicitly if it is
     // still invalid there.
     if (!(factor > 0) || !Number.isFinite(factor)) return;
+    gesture.lastMode = "scale";
     gesture.lastFactor = factor;
     const parts: TransformParts = {
       ...gesture.original.parts,
@@ -1464,6 +1900,32 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       revertScalePreview(gesture);
       return;
     }
+
+    if (gesture.lastMode === "resize" && gesture.localBox) {
+      if (roundsToZero(gesture.lastWidth - gesture.localBox.width) && roundsToZero(gesture.lastHeight - gesture.localBox.height)) {
+        revertScalePreview(gesture);
+        return;
+      }
+      const thisGeneration = generation;
+      const result = await postCommand("element resize", {
+        slidePath: slides[currentIndex],
+        elementIds: [gesture.id],
+        width: gesture.lastWidth,
+        height: gesture.lastHeight,
+        anchor: OPPOSITE_CORNER[gesture.corner],
+      });
+      if (destroyed || thisGeneration !== generation) return;
+      if (!result.ok) {
+        revertScalePreview(gesture);
+        error = result.message;
+        notify();
+        return;
+      }
+      keepSelectionAcrossReload();
+      // Success: same "no second refresh path" reasoning as endMoveGesture.
+      return;
+    }
+
     const factor = computeScaleFactor(gesture, point);
     if (!(factor > 0) || !Number.isFinite(factor)) {
       revertScalePreview(gesture);
@@ -1489,6 +1951,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
     // Success: same "no second refresh path" reasoning as endMoveGesture.
   }
 
@@ -1586,6 +2049,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
   }
 
   // --- Textbox-width handles (§4.4) ---
@@ -1708,6 +2172,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return;
     }
+    keepSelectionAcrossReload();
   }
 
   // --- In-place text editing (NOOP-91/#70 US1, T5) ---
@@ -2000,7 +2465,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionNames = [];
     selectionGroupPath = [];
     viewport = null;
+    overlayBoxes = [];
+    overlayUnion = null;
+    overlayAncestors = [];
+    overlayGuides = [];
     notify();
+    notifyOverlay();
 
     if (mode === "play") {
       await renderPlay(thisGeneration);
@@ -2021,6 +2491,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // must not leak into some later, unrelated render().
     const selectAfterLoad = pendingSelectionIds;
     pendingSelectionIds = null;
+    // Nothing to re-select after this render → nothing to wait for either.
+    if (!selectAfterLoad) overlaySettling = false;
 
     if (currentIndex === -1) {
       currentSlideModel = null;
@@ -2065,6 +2537,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const targetFrame = frame;
     const onLoad = () => {
       targetFrame.removeEventListener("load", onLoad);
+      // Whatever happens next, the wait is over — never leave the context
+      // bar stuck hidden behind a stale `overlaySettling`.
+      overlaySettling = false;
       if (destroyed || thisGeneration !== generation || mode !== "view") return;
       // Only the ids that still resolve are selected — a paste of several
       // elements where one was concurrently deleted still gives feedback
@@ -2072,7 +2547,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const entries = elementIds
         .map((id) => [id, elementIndex().get(id)] as const)
         .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== undefined);
-      if (entries.length === 0) return;
+      if (entries.length === 0) {
+        notifyOverlay();
+        return;
+      }
       selectionIds = entries.map(([id]) => id);
       selectionNames = entries.map(([, entry]) => entry.element.name);
       selectionGroupPath = [];
@@ -2089,11 +2567,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * has to hard-code them (ADR-0011). Read fresh on every render() call
    * rather than cached, so a future token change takes effect immediately.
    */
+  /** NOOP-90/T2 §0: reads the design package's own tokens (`--brand-red`/`--surface-white`, tokens.css), replacing the old-shell compatibility values (`--accent-hi`/`--s-titlebar`) this used to read — see `styles/selection.css`'s updated contract note. */
   function selectionColors(): { accent: string; handle: string } {
     const rootStyle = getComputedStyle(document.documentElement);
     return {
-      accent: rootStyle.getPropertyValue("--accent-hi").trim(),
-      handle: rootStyle.getPropertyValue("--s-titlebar").trim(),
+      accent: rootStyle.getPropertyValue("--brand-red").trim(),
+      handle: rootStyle.getPropertyValue("--surface-white").trim(),
     };
   }
 
@@ -2221,7 +2700,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionNames = [];
     selectionGroupPath = [];
     viewport = null;
+    overlayBoxes = [];
+    overlayUnion = null;
+    overlayAncestors = [];
+    overlayGuides = [];
     notify();
+    notifyOverlay();
     if (mode === "play") {
       await renderPlay(thisGeneration, "first", forward);
     } else {
@@ -2253,8 +2737,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionNames = [];
     selectionGroupPath = [];
     viewport = null;
+    overlayBoxes = [];
+    overlayUnion = null;
+    overlayAncestors = [];
+    overlayGuides = [];
     rebuildFrame("allow-scripts");
     notify();
+    notifyOverlay();
     await renderPlay(thisGeneration);
   }
 
@@ -2272,8 +2761,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionNames = [];
     selectionGroupPath = [];
     viewport = null;
+    overlayBoxes = [];
+    overlayUnion = null;
+    overlayAncestors = [];
+    overlayGuides = [];
     rebuildFrame("allow-scripts");
     notify();
+    notifyOverlay();
     await render(thisGeneration);
   }
 
@@ -2410,10 +2904,30 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (mode !== "view") return;
       clearSelectionState([]);
     },
+    setUndoRedoHandler: (handler: ((kind: "undo" | "redo") => void) | null) => {
+      undoRedoHandler = handler;
+    },
+    subscribeOverlay: (listener: (state: OverlayState) => void) => {
+      overlayListeners.add(listener);
+      listener(buildOverlayState());
+      return () => {
+        overlayListeners.delete(listener);
+      };
+    },
+    refreshOverlay: () => {
+      notifyOverlay();
+    },
+    selectAll,
+    deleteSelection,
+    duplicateSelection,
+    orderSelection,
+    alignSelection,
+    distributeSelection,
     destroy: () => {
       destroyed = true;
       listeners.clear();
       stageInputListeners.clear();
+      overlayListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React
