@@ -43,12 +43,11 @@ export function toLocalRect(
  * 鈕的情境列（ContextBar，見該檔案的範圍裁決）、元素右鍵選單（ContextMenu，
  * 新檔）。CommentLayer 維持空容器（留言 pin 是 NOOP-67 的範圍）。
  *
- * 已知限制：這裡的座標只在 `controller.subscribeOverlay` 真的推送新狀態
- * （選取變化、拖曳中的每一幀）時重新讀 `wellRef` 的框——單純縮放/平移舞台
- * （Stage.tsx 自己的 zoomPan state）不會觸發 overlay 更新，所以標籤/情境
- * 列/輔助線在「選取後只縮放不動選取」的當下會暫時跟不上，直到下一次選取
- * 變化。修好它要讓 Stage.tsx 的 zoomPan 變化也推一次 overlay 刷新，這張票
- * 沒有做（見 PR 報告「不確定與保留事項」）。
+ * 座標只在 `controller.subscribeOverlay` 推送新狀態時重新讀 `wellRef` 的框。
+ * 單純縮放/平移舞台（Stage.tsx 的 zoomPan state）不會讓 runtime 重發
+ * bounds，所以 Stage.tsx 在 zoomPan 變化後呼叫 `controller.refreshOverlay()`
+ * 讓 canvas.ts 用新的 frame 位置重算並再推一次——標籤/情境列/右鍵選單因此
+ * 跟著投影片走，不用等下一次選取變化。
  */
 export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);

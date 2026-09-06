@@ -1769,6 +1769,34 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.union).toEqual(rect);
   });
 
+  it("refreshOverlay：frame 移動/縮放後（zoom/pan）用新的 frame 位置重算 union／boxes／右鍵選單座標，不需要新的 bounds 事件", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    let latest: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      latest = state;
+    });
+
+    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    const rect = { x: 10, y: 20, width: 30, height: 40 };
+    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    send(controller.frameElement, { source: "comot-selection", event: "contextmenu", id: "el-a", point: { x: 15, y: 25 } });
+    // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion.
+    expect(latest?.union).toEqual(rect);
+    expect(latest?.contextMenu?.point).toEqual({ x: 15, y: 25 });
+
+    // The parent's `.stage` transform moved the frame to (100, 200) and
+    // doubled it (rect.width 400 against layout offsetWidth 200).
+    const frame = controller.frameElement;
+    Object.defineProperty(frame, "offsetWidth", { value: 200, configurable: true });
+    frame.getBoundingClientRect = () => ({ x: 100, y: 200, left: 100, top: 200, width: 400, height: 225, right: 500, bottom: 425, toJSON: () => ({}) });
+    controller.refreshOverlay();
+
+    expect(latest?.union).toEqual({ x: 120, y: 240, width: 60, height: 80 });
+    expect(latest?.boxes).toEqual([{ x: 120, y: 240, width: 60, height: 80 }]);
+    expect(latest?.contextMenu?.point).toEqual({ x: 130, y: 250 });
+  });
+
   it("鑽入群組後選取子元素：label.path 依 bounds 回報的祖先鏈由外到內排列", async () => {
     controller = mountCanvas(container);
     await controller.reload();
@@ -1855,5 +1883,51 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.label).toBeNull();
     expect(latest?.union).toBeNull();
     expect(latest?.boxes).toEqual([]);
+  });
+});
+
+describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHandler 註冊的處理器（#198）", () => {
+  function relayStageKey(key: string, shift: boolean): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "stage-key", key, meta: true, ctrl: false, shift, alt: false },
+        source: controller!.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+  }
+
+  it("⌘Z 呼叫處理器一次，參數是 undo", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const handler = vi.fn();
+    controller.setUndoRedoHandler(handler);
+
+    relayStageKey("z", false);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("undo");
+  });
+
+  it("⇧⌘Z 呼叫處理器一次，參數是 redo", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const handler = vi.fn();
+    controller.setUndoRedoHandler(handler);
+
+    relayStageKey("Z", true);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("redo");
+  });
+
+  it("尚未註冊處理器時收到 ⌘Z 不拋錯，也不自己送出任何請求", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const callsBefore = fetchMock.mock.calls.length;
+
+    expect(() => relayStageKey("z", false)).not.toThrow();
+
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
   });
 });

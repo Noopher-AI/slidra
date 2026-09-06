@@ -113,6 +113,29 @@ it("快捷鍵：⌘Z/⇧⌘Z 走同一條路徑", async () => {
   }
 });
 
+it("快捷鍵：點過舞台元素（焦點在 iframe 內）後直接按 ⌘Z 仍可 undo（#198）", async () => {
+  const { started, page } = await start("undo-redo-shortcut-after-stage-click");
+  try {
+    await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
+    await setTitle(started.registry, started.presentationId, NEW_TEXT);
+    await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(NEW_TEXT);
+
+    // 點 iframe 內的元素把鍵盤焦點留在 iframe 裡——不點 .titlebar，這正是
+    // 既有那條「快捷鍵」測試繞開的坑。等狀態列的選取 chip 出現，確認點擊
+    // 真的落在舞台上。
+    await page.frameLocator("iframe.slide-frame").locator(`#${ELEMENT_ID}`).click();
+    await expect.poll(() => page.locator(".status-selection-chip").textContent().then((t) => t?.trim() ?? null)).toContain("Selected:");
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(ORIGINAL_TEXT);
+
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(NEW_TEXT);
+  } finally {
+    await started.cleanup();
+  }
+});
+
 it("CLI ↔ GUI 同步：agent 執行 co-motion undo（registry.dispatch(\"undo\")）後，不重新整理頁面 GUI 也自己變回原值", async () => {
   const { started, page } = await start("undo-redo-cli-sync");
   try {

@@ -285,6 +285,12 @@ export function App() {
     if (!container) return;
     const controller = mountCanvas(container);
     controllerRef.current = controller;
+    // ⌘Z pressed while focus sits inside the stage iframe arrives as a
+    // relayed "stage-key" instead of a document keydown (#198) — hand the
+    // controller the same `runUndoRedo` so both routes share one fetch path
+    // and one editingFrozen gate. Registering the first render's closure is
+    // fine: it only reads `editingFrozenRef`, never state directly.
+    controller.setUndoRedoHandler(runUndoRedo);
     const unsubscribe = controller.subscribe(setCanvasState);
     // Live reload (ticket #5): the server pushes a `presentation-changed`
     // event over /api/events whenever a slide is modified externally;

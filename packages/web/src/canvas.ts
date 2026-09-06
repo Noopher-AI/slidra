@@ -308,6 +308,15 @@ export interface CanvasController {
    * for why this is a separate channel from `subscribe`/`CanvasState`.
    */
   subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
+  /**
+   * Re-emits the current overlay state with the frame's *current*
+   * position/scale (issue 198 review). The runtime reports bounds in its own
+   * iframe client px, which a zoom/pan of the parent's `.stage` transform
+   * never changes — only the parent-side conversion goes stale. Stage.tsx
+   * calls this after every zoomPan change so labels/context bar/context menu
+   * follow the slide instead of waiting for the next selection change.
+   */
+  refreshOverlay: () => void;
   /** ⌘A (§4.1): selects every top-level element on the current slide, clearing `groupPath`. No-op on an empty slide. No-op outside view mode. */
   selectAll: () => void;
   /** Delete/Backspace, or the context menu's Delete (§4.4/§4.5): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
@@ -322,6 +331,14 @@ export interface CanvasController {
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   closeContextMenu: () => void;
+  /**
+   * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
+   * controller never POSTs /api/undo|redo itself — App.tsx registers its own
+   * `runUndoRedo` here so the document-level shortcut and the relayed one
+   * share the single fetch path (and its editingFrozen gate). A relayed ⌘Z
+   * before any handler is registered is dropped.
+   */
+  setUndoRedoHandler: (handler: ((kind: "undo" | "redo") => void) | null) => void;
 }
 
 interface ProjectJson {
@@ -806,8 +823,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
-  // bounds/ancestors, already converted to this parent document's client
-  // px — see `OverlayState`'s own doc comment for why this is a separate,
+  // bounds/ancestors and context-menu point, kept in the runtime's OWN
+  // iframe client px — the conversion to this parent document's client px
+  // happens in `buildOverlayState()` at emit time, so a later zoom/pan only
+  // needs `refreshOverlay()` to re-emit, not a fresh "bounds" round trip.
+  // See `OverlayState`'s own doc comment for why this is a separate,
   // high-frequency channel rather than `CanvasState`.
   const overlayListeners = new Set<(state: OverlayState) => void>();
   let overlayBoxes: Rect[] = [];
@@ -851,6 +871,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // editingId set, so the two never coexist in practice, but nothing here
   // relies on that for correctness.
   let editingState: TextEditState | null = null;
+  // App.tsx's `runUndoRedo`, once registered — see `setUndoRedoHandler`.
+  let undoRedoHandler: ((kind: "undo" | "redo") => void) | null = null;
   // Timestamp (ms) of the last `POST /api/editing/begin` fired for the
   // human lease (T5/NOOP-110, editing-lock.ts). Read by gesture-move to
   // throttle lease renewal to once per HUMAN_RENEW_THROTTLE_MS — gesture-
@@ -998,15 +1020,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "bounds") {
       const items = Array.isArray(message.items) ? message.items.filter(isBoundsItem) : [];
-      overlayBoxes = items.map((item) => toParentClientRect(item.rect));
-      overlayUnion = isNonNegativeRect(message.union) ? toParentClientRect(message.union) : null;
+      overlayBoxes = items.map((item) => item.rect);
+      overlayUnion = isNonNegativeRect(message.union) ? message.union : null;
       overlayAncestors = items.length === 1 ? items[0].ancestors : [];
       notifyOverlay();
       return;
     }
     if (message.event === "contextmenu") {
       if (typeof message.id !== "string" || !isValidPoint(message.point)) return;
-      overlayContextMenu = { ids: [message.id], point: toParentClientPoint(message.point) };
+      overlayContextMenu = { ids: [message.id], point: message.point };
       notifyOverlay();
       return;
     }
@@ -1018,6 +1040,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       else if (message.key === "d" && (modifiers.meta || modifiers.ctrl)) void duplicateSelection();
       else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
       else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
+      else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
       return;
     }
     if (message.event === "gesture-start") {
@@ -1179,14 +1202,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return { text, path };
   }
 
-  function notifyOverlay(): void {
-    const state: OverlayState = {
-      boxes: [...overlayBoxes],
-      union: overlayUnion,
+  /** Converts the stored runtime-px overlay geometry to parent client px against the frame's rect *right now* — the one place that conversion happens, shared by `notifyOverlay` and `subscribeOverlay`'s initial push. Guides are the exception: they only exist mid-drag and are converted where they are computed. */
+  function buildOverlayState(): OverlayState {
+    return {
+      boxes: overlayBoxes.map(toParentClientRect),
+      union: overlayUnion ? toParentClientRect(overlayUnion) : null,
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
-      contextMenu: overlayContextMenu,
+      contextMenu: overlayContextMenu ? { ids: overlayContextMenu.ids, point: toParentClientPoint(overlayContextMenu.point) } : null,
     };
+  }
+
+  function notifyOverlay(): void {
+    const state = buildOverlayState();
     for (const listener of overlayListeners) listener(state);
   }
 
@@ -2854,18 +2882,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (mode !== "view") return;
       clearSelectionState([]);
     },
+    setUndoRedoHandler: (handler: ((kind: "undo" | "redo") => void) | null) => {
+      undoRedoHandler = handler;
+    },
     subscribeOverlay: (listener: (state: OverlayState) => void) => {
       overlayListeners.add(listener);
-      listener({
-        boxes: [...overlayBoxes],
-        union: overlayUnion,
-        label: computeOverlayLabel(),
-        guides: [...overlayGuides],
-        contextMenu: overlayContextMenu,
-      });
+      listener(buildOverlayState());
       return () => {
         overlayListeners.delete(listener);
       };
+    },
+    refreshOverlay: () => {
+      notifyOverlay();
     },
     selectAll,
     deleteSelection,

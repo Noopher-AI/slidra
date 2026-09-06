@@ -50,21 +50,75 @@
   right: 0;
 }
 
-/* 選取框下方的情境列（NOOP-90/T2 §0.3：本票只做容器/定位/Delete）。 */
+/* 選取框下方的情境列（NOOP-90/T2 §0.3：本票做玻璃容器/定位/Delete；其餘按鈕由
+   NOOP-67/69/66 填入 .context-bar-slot-*）。材質與尺寸照原型的情境列：
+   按鈕高 --control-h（30px）、容器高 40px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
+   玻璃底 --glass-bg-soft、blur、--shadow-glass、圓角 --radius-lg。 */
 .context-bar {
   position: absolute;
+  z-index: 3;
   display: flex;
+  align-items: center;
   gap: var(--space-1);
+  padding: var(--space-1);
+  box-sizing: border-box;
+  /* --control-h (30px) buttons + 5px breathing room each side = 40px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
+  height: calc(var(--control-h) + var(--space-4));
+  max-width: calc(100% - var(--space-8));
   pointer-events: auto;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-glass);
+  animation: context-bar-in var(--dur-fast) var(--ease-out);
+}
+@keyframes context-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .context-bar-item {
-  padding: var(--space-1) var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: none;
-  background: var(--surface-white);
-  color: var(--brand-red);
+  background: transparent;
+  color: var(--ink-700);
+  font: inherit;
   font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
+}
+.context-bar-item:hover {
+  background: var(--glass-hover);
+}
+.context-bar-item-danger {
+  color: var(--brand-red-hover);
+}
+.context-bar-divider {
+  width: 1px;
+  height: calc(var(--control-h) - var(--space-5));
+  margin: 0 var(--space-1);
+  background: var(--glass-divider);
+}
+/* Empty slots reserved for the other tickets' buttons: zero width so the two
+   dividers read as one until a button lands in between. */
+.context-bar-slot:empty {
+  display: none;
+}
+.context-bar-slot:empty + .context-bar-divider {
+  display: none;
 }
 
 /* 元素右鍵選單（NOOP-90/T2 §4.5/§3.10）。 */

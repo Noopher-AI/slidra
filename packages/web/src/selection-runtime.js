@@ -1419,16 +1419,22 @@
   // Keyboard relay for the shortcuts that must work even when focus is
   // inside this iframe (NOOP-90/T2 §4.4's "焦點在投影片 iframe 內" row —
   // the parent document's own window-level keydown listener never sees a
-  // keypress that landed in here). Whitelisted to exactly the keys this
-  // ticket's shortcuts use; everything else (⌘Z, ⌘S, arrow keys, Tab, …)
-  // is untouched and falls through to whatever this iframe's own default
-  // handling already does. Never relayed while editing text or mid-gesture
-  // — same posture as the existing Space relay above — nor in play mode,
-  // which the parent itself already gates before acting on `stage-key`.
+  // keypress that landed in here). Whitelisted to exactly the keys the
+  // parent has shortcuts for: this ticket's four, plus ⌘Z/⇧⌘Z (issue 198;
+  // written without the hash so the no-hex-colour source check stays
+  // honest) — once a click on the stage has moved focus in here, App.tsx's
+  // document-level undo/redo listener would otherwise go deaf. Everything
+  // else (⌘S, arrow
+  // keys, Tab, …) is untouched and falls through to whatever this iframe's
+  // own default handling already does. Never relayed while editing text or
+  // mid-gesture — same posture as the existing Space relay above — nor in
+  // play mode, which the parent itself already gates before acting on
+  // `stage-key`.
   function isRelayedStageKey(event) {
     if (event.key === "Delete" || event.key === "Backspace") return true;
     var withModifier = event.metaKey || event.ctrlKey;
-    return withModifier && (event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[");
+    if (!withModifier) return false;
+    return event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" || event.key === "z" || event.key === "Z";
   }
   window.addEventListener("keydown", function (event) {
     if (!isRelayedStageKey(event)) return;

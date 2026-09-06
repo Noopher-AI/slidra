@@ -125,6 +125,15 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     controller?.setStageHandMode(isHandActive(hand));
   }, [controller, hand]);
 
+  // 縮放/平移後疊層（名稱標籤、情境列、右鍵選單）要跟著投影片走：runtime 回
+  // 報的座標是 iframe 自己的 client px，不受 `.stage` 的 transform 影響，只
+  // 有父文件這邊的換算會過期，所以 zoomPan 一變就請 controller 用新的 frame
+  // 位置重算一次（useEffect 在 transform 已 commit 之後跑）。
+  useEffect(() => {
+    if (!shellVisible) return;
+    controller?.refreshOverlay();
+  }, [controller, shellVisible, zoomPan]);
+
   // 投影片本體上的滾輪縮放/平移、抓取模式拖曳（NOOP-83 §2/§4，Dev-Leader
   // 裁決核准的擴大範圍）：canvas.ts 已經把 selection-runtime.js 回報的
   // iframe 內座標換算成這個文件的 client 座標，所以下面的數學跟
