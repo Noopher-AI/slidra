@@ -8,8 +8,8 @@ export interface TextPanelProps {
   canvasSize: { width: number; height: number } | null;
 }
 
-type Align = "left" | "center" | "right";
-type Preset = "title" | "subtitle" | "body" | "caption";
+export type Align = "left" | "center" | "right";
+export type Preset = "title" | "subtitle" | "body" | "caption";
 
 interface PresetSpec {
   /** Percentage of the canvas WIDTH (原型的 cqw 單位). */
@@ -46,6 +46,46 @@ function positionPercent(align: Align, widthPercent: number): { tPercent: number
   return { tPercent: 42, lPercent };
 }
 
+/** `CanvasController.insertTextBox`'s own input shape — re-declared here (not imported from canvas.ts) so this pure function has no dependency on the canvas module, only on the values it computes. */
+export interface InsertTextBoxInput {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  fontWeight: number;
+  align: Align;
+}
+
+/**
+ * NOOP-65r3 §Step 3 — the preset/align → `insertTextBox` input conversion,
+ * extracted out of `insert()` below as a pure function so it has a unit
+ * test independent of React/DOM (this codebase's React component tests
+ * are all `renderToStaticMarkup`, with no testing-library — see
+ * `export-panel.test.ts`/`stage-overlays.test.ts` — so an interactive
+ * behaviour like this one can only be tested by pulling the computation
+ * itself out from under the JSX). Behaviour is unchanged: this is exactly
+ * what `insert()` used to compute inline.
+ */
+export function textPanelInsertInput(
+  preset: Preset,
+  align: Align,
+  text: string,
+  canvasSize: { width: number; height: number },
+): InsertTextBoxInput {
+  const spec = PRESETS[preset];
+  const { tPercent, lPercent } = positionPercent(align, spec.width);
+  return {
+    text: text.trim() === "" ? spec.placeholderText : text,
+    x: (canvasSize.width * lPercent) / 100,
+    y: (canvasSize.height * tPercent) / 100,
+    width: (canvasSize.width * spec.width) / 100,
+    fontSize: (canvasSize.width * spec.size) / 100,
+    fontWeight: spec.weight,
+    align,
+  };
+}
+
 /**
  * Text 插入面板（NOOP-65 §3.8/A9/A11）：一個 `rows=2` 的 textarea＋四個樣式
  * 預設＋三個對齊按鈕，`Enter`（無 Shift）直接插入，`Shift+Enter` 換行。每個
@@ -60,17 +100,7 @@ export function TextPanel({ onClose, controller, canvasSize }: TextPanelProps) {
 
   async function insert(): Promise<void> {
     if (!canInsert || !canvasSize) return;
-    const spec = PRESETS[preset];
-    const { tPercent, lPercent } = positionPercent(align, spec.width);
-    await controller!.insertTextBox({
-      text: text.trim() === "" ? spec.placeholderText : text,
-      x: (canvasSize.width * lPercent) / 100,
-      y: (canvasSize.height * tPercent) / 100,
-      width: (canvasSize.width * spec.width) / 100,
-      fontSize: (canvasSize.width * spec.size) / 100,
-      fontWeight: spec.weight,
-      align,
-    });
+    await controller!.insertTextBox(textPanelInsertInput(preset, align, text, canvasSize));
     onClose();
   }
 
