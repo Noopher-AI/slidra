@@ -47,7 +47,19 @@ export function StylePagePanel({ pageStyle, canvasSize, controller }: StylePageP
   }
 
   return (
-    <div className="style-page-panel" role="tabpanel" aria-label="Style · Page">
+    <div
+      className="style-page-panel"
+      role="tabpanel"
+      aria-label="Style · Page"
+      // The *live* prop, not a field's own draft — Width/Height are two
+      // separate fields over one command that needs both, so an e2e test
+      // driving them in quick succession needs a way to tell "the prop this
+      // render actually saw" apart from "what the user just typed" (the
+      // width field's own `input` value is already the new number the
+      // instant it is typed, whether or not this prop has caught up yet).
+      data-canvas-width={canvasSize.width}
+      data-canvas-height={canvasSize.height}
+    >
       <fieldset className="style-section" data-section="page-color">
         <legend>Page</legend>
         <StyleField

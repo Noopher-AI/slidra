@@ -2847,6 +2847,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       selectionColors(),
     );
 
+    // #200: `CanvasState.pageStyle` reads off `currentSlideModel`, just
+    // parsed above — and, unlike every other field this module notifies on,
+    // it has no selection to piggyback a notify() on (Style › Page has to
+    // work with nothing selected at all). Before this field existed nothing
+    // in `CanvasState` depended on `currentSlideModel` without a selection
+    // change also happening in the same call, so `render()` never needed
+    // its own notify() — reload()'s own notify() (before this function even
+    // runs) was always followed by SOME selection-changing call that
+    // notified again. `selectOnceLoaded` below still fires its own later
+    // notify() once the frame's `load` event lands; this one is what makes
+    // a plain navigation/reload with no pending selection visible at all.
+    notify();
+
     if (selectAfterLoad) selectOnceLoaded(selectAfterLoad, thisGeneration);
   }
 

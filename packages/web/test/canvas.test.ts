@@ -344,12 +344,20 @@ describe("mountCanvas 的多頁換頁", () => {
     const unsubscribe = controller.subscribe((state) => seen.push(state.currentIndex));
     expect(seen).toEqual([0]);
 
+    // #200: render() now notifies a second time once it has parsed the new
+    // slide's model (CanvasState.pageStyle depends on it, and — unlike
+    // every other field — has no selection change to piggyback a notify()
+    // on). One `next()` therefore reports the new index twice: once
+    // eagerly (index/selection reset, same as before this ticket) and once
+    // more once the slide model is ready. Both carry `currentIndex: 1`, so
+    // this array is an honest count of *notifications*, not evidence of a
+    // second navigation.
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
 
     unsubscribe();
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
   });
 
   it("沒有投影片時，狀態的索引是 -1，且翻頁不拋錯", async () => {
