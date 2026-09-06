@@ -100,9 +100,33 @@
   color: var(--ink-700);
   white-space: nowrap;
 }
+.export-status-done,
+.export-status-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
 .export-status-done a {
   color: var(--brand-red);
   font-weight: 600;
+}
+.export-status-dismiss {
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  color: var(--ink-400);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+/* The glyph lives in CSS so the strip's textContent stays exactly the event text (e2e/export-gui.test.ts records it). */
+.export-status-dismiss::before {
+  content: "×";
+}
+.export-status-dismiss:hover {
+  background: var(--surface-1);
+  color: var(--ink-700);
 }
 .export-status-error {
   color: var(--brand-red-hover);

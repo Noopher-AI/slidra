@@ -1023,6 +1023,7 @@ export function App() {
           onExportClose={() => setExportOpen(false)}
           onExportPick={(format) => void handleExportPick(format)}
           exportState={exportState}
+          onExportDismiss={() => setExportState({ kind: "idle" })}
           onPlay={() => void controllerRef.current?.play()}
           onPlayFromStart={() => {
             void (async () => {

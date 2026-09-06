@@ -32,6 +32,7 @@ export interface TitleBarProps {
   onExportClose(): void;
   onExportPick(format: ExportFormat): void;
   exportState: ExportUiState;
+  onExportDismiss(): void;
   /** 從目前頁播放（標題列主要的 ▶Play 按鈕）。 */
   onPlay(): void;
   /** 從第一頁播放（▶Play 旁的小按鈕）。 */
@@ -69,6 +70,7 @@ export function TitleBar({
   onExportClose,
   onExportPick,
   exportState,
+  onExportDismiss,
   onPlay,
   onPlayFromStart,
   canPlay,
@@ -156,6 +158,7 @@ export function TitleBar({
           onPick={onExportPick}
           canExport={canPlay}
           state={exportState}
+          onDismiss={onExportDismiss}
         />
         <div className="titlebar-play-group">
           <button type="button" className="play-button" data-view="play" disabled={!canPlay} onClick={onPlay}>

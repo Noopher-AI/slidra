@@ -9,7 +9,7 @@ import { ExportPanel, type ExportUiState } from "../src/shell/ExportPanel.js";
 // 沒有任何時序的方式把它擋掉。
 function markupFor(state: ExportUiState): string {
   return renderToStaticMarkup(
-    createElement(ExportPanel, { open: false, onToggle: () => {}, onClose: () => {}, onPick: () => {}, canExport: true, state }),
+    createElement(ExportPanel, { open: false, onToggle: () => {}, onClose: () => {}, onPick: () => {}, canExport: true, state, onDismiss: () => {} }),
   );
 }
 

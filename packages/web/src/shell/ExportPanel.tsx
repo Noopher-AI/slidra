@@ -25,6 +25,8 @@ export interface ExportPanelProps {
   /** Export 按鈕的停用條件與 Play 的 canPlay 共用同一個判斷（§4.7：「沒有投影片」）。 */
   canExport: boolean;
   state: ExportUiState;
+  /** Clears the done/error strip back to idle — it has no other way out (busy clears itself via the next SSE event). */
+  onDismiss(): void;
 }
 
 const EXPORT_ITEMS: ReadonlyArray<{ format: ExportFormat; tag: string; label: string; desc: string }> = [
@@ -33,7 +35,7 @@ const EXPORT_ITEMS: ReadonlyArray<{ format: ExportFormat; tag: string; label: st
 ];
 
 /** NOOP-93 §4.7 — the Export dropdown, its two format rows, and the progress/done/error strip beneath it. */
-export function ExportPanel({ open, onToggle, onClose, onPick, canExport, state }: ExportPanelProps) {
+export function ExportPanel({ open, onToggle, onClose, onPick, canExport, state, onDismiss }: ExportPanelProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   useCloseFloatingLayer(open, [menuRef, buttonRef], onClose);
@@ -83,14 +85,16 @@ export function ExportPanel({ open, onToggle, onClose, onPick, canExport, state 
       )}
       {state.kind === "done" && (
         <div className="export-status export-status-done">
-          <a href={state.downloadPath} download>
+          <a href={state.downloadPath} download onClick={onDismiss}>
             下載 {state.fileName}（{state.pageCount} 頁）
           </a>
+          <button type="button" className="export-status-dismiss" aria-label="關閉" onClick={onDismiss} />
         </div>
       )}
       {state.kind === "error" && (
         <div className="export-status export-status-error" role="alert">
           {state.message}
+          <button type="button" className="export-status-dismiss" aria-label="關閉" onClick={onDismiss} />
         </div>
       )}
     </div>
