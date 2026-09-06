@@ -76,6 +76,34 @@ describe("elementBounds 的 <text> 支援", () => {
     expect(bounds.height).toBeCloseTo(2 * lineHeightAt(40), 10);
   });
 
+  it("文字框帶 data-comot-text-height 時，高度直接取那個值，即使它與 tspan 行數 × 行高算出的不一致（NOOP-65 決定 C：烘進去的值是事實來源）", () => {
+    const model = parseSlide(
+      slide(
+        '<g id="el-box" data-comot-text-width="440" data-comot-text-height="999" transform="translate(200 120)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="0" y="36">文字框有寬度，文字寫滿</tspan>' +
+          '<tspan x="0" y="94">就折到下一行。</tspan>' +
+          "</text></g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.height).toBe(999);
+    expect(bounds.height).not.toBeCloseTo(2 * lineHeightAt(40), 10);
+  });
+
+  it("文字框沒有 data-comot-text-height 時（舊檔相容），高度退回行數 × 行高", () => {
+    const model = parseSlide(
+      slide(
+        '<g id="el-box" data-comot-text-width="440" transform="translate(200 120)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="0" y="36">A</tspan><tspan x="0" y="94">B</tspan><tspan x="0" y="152">C</tspan>' +
+          "</text></g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.height).toBeCloseTo(3 * lineHeightAt(40), 10);
+  });
+
   it("空字串的 <text>：寬 0，高一行", () => {
     const model = parseSlide(
       slide('<g id="el-t"><text font-family="Noto Sans TC" font-size="40" x="10" y="50"></text></g>'),
