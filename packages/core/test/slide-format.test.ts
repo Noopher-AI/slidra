@@ -138,6 +138,49 @@ describe("checkSlideCompliance", () => {
     expect(checkSlideCompliance(wrap('  <g id="whatever"><rect width="1" height="1"/></g>'))).toEqual([]);
   });
 
+  // E2.T12 §3.1 — before this branch existed, the chart container shape
+  // died here with two `unknown-tag` issues (`<comot:chart>` and `<svg>`).
+  it("accepts a chart container: data-comot-type=\"chart\" holding <comot:chart> and <svg>", () => {
+    const issues = checkSlideCompliance(
+      wrap(
+        '  <g id="el-chart" data-comot-type="chart" transform="translate(0 0)">' +
+          '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"></svg>' +
+          "</g>",
+      ),
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("still rejects a bare <svg> outside a data-comot-type=\"chart\" container", () => {
+    const issues = checkSlideCompliance(
+      wrap('  <g id="el-a"><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg></g>'),
+    );
+    expect(issues.map((issue) => issue.code)).toContain("unknown-tag");
+  });
+
+  it("reports invalid-chart-shape when a chart container is missing its <comot:chart> or its <svg>", () => {
+    const missingSvg = checkSlideCompliance(
+      wrap(
+        '  <g id="el-chart" data-comot-type="chart">' +
+          '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
+          "</g>",
+      ),
+    );
+    expect(missingSvg.map((issue) => issue.code)).toEqual(["invalid-chart-shape"]);
+
+    const twoCharts = checkSlideCompliance(
+      wrap(
+        '  <g id="el-chart" data-comot-type="chart">' +
+          '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
+          '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>' +
+          "</g>",
+      ),
+    );
+    expect(twoCharts.map((issue) => issue.code)).toEqual(["invalid-chart-shape"]);
+  });
+
   it("is not fooled by markup written inside a comment or a quoted attribute value", () => {
     expect(
       checkSlideCompliance(
@@ -248,6 +291,22 @@ describe("parseSlide", () => {
     );
     expect(model.elements[0].primitives[0].runs).toEqual([]);
     expect(model.elements[1].primitives[0].runs).toEqual([]);
+  });
+
+  // E2.T12 — `toElement`'s override: a chart container's kind is "chart"
+  // even though it holds two children (`<comot:chart>` + `<svg>`), not the
+  // generic "compound" a two-primitive container would otherwise get.
+  it("gives a chart container kind: \"chart\", not \"compound\"", () => {
+    const model = parseSlide(
+      wrap(
+        '  <g id="el-chart" data-comot-type="chart">' +
+          '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"></svg>' +
+          "</g>",
+      ),
+    );
+    expect(model.elements[0].kind).toBe("chart");
+    expect(model.elements[0].primitives.map((primitive) => primitive.tag)).toEqual(["comot:chart", "svg"]);
   });
 
   it("refuses to model a non-compliant slide", () => {

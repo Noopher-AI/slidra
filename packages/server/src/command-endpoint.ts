@@ -89,6 +89,15 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "comment add",
   "comment edit",
   "comment delete",
+  // E2.T12 的圖表插入面板、資料視窗與其八條命令。
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
 ];
 
 /**

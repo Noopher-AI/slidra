@@ -1,5 +1,44 @@
 # 每個元素包在一層 `<g transform>` 裡
 
+> **⚠️ 已被 E2.T12（圖表，#204）amend：圖表容器不是「一個或多個圖元」，而是「一個資料元素
+> `<comot:chart>` 加一個渲染結果 `<svg>`」，是這份 ADR 第一次出現的例外形狀。**
+>
+> ```xml
+> <g id="el-chart" data-comot-type="chart" transform="translate(691.2 115.2)">
+>   <comot:chart xmlns:comot="https://co-motion.dev/ns"
+>                type="bar" stacked="false" axes="single" palette="brand"
+>                legend="bottom" grid="true" labels="true"
+>                x-title="Week" y-title="ms" width="486.4" height="475.2">
+>     <comot:series name="TTFB (ms)" values="840,760,610,520,430,380" axis="left"/>
+>     <comot:categories values="W1,W2,W3,W4,W5,W6"/>
+>   </comot:chart>
+>   <svg xmlns="http://www.w3.org/2000/svg" width="486.4" height="475.2" viewBox="0 0 486.4 475.2">…</svg>
+> </g>
+> ```
+>
+> - `data-comot-type="chart"`（`CONTAINER_ATTRIBUTES` 尾端新增）標記這個容器走這個例外形狀；
+>   `packages/core/src/slide/format.ts` 的 `checkSlideCompliance` 在看到它時，把 ADR-0012 原本的
+>   「容器只能全是 `<g>` 或全是合法圖元」partition 換成「必須恰好一個 `<comot:chart>` 加一個
+>   `<svg>`」，其餘位置的裸 `<svg>` 仍是 `unknown-tag`，不受影響。
+> - `<comot:chart>` 是資料，`<svg>` 是渲染結果——兩者的關係跟 ADR-0009 的 `<comot:effects>`
+>   （資料）與播放時的視覺效果（衍生）一樣：**渲染結果只由 `packages/core/src/chart/render.ts`
+>   的 `renderChartSvg` 產生，每次 `chart` 命令重畫一次，GUI 或任何其他命令都不直接改它**——這
+>   正是本 ADR「位置只寫在一個地方」（見下方 Consequences）這條不變式延伸出的新結構守衛：
+>   `element style set`／`element scale`／`element resize` 對圖表容器一律明確報錯，理由同下方
+>   「`transform`/`x`/`y`/`width`/`height` 不得經由樣式命令寫入」——寫入 `<comot:chart>` 或內嵌
+>   `<svg>` 的正確路徑只有 `chart` 命令族，繞過它會讓兩者不同步。
+> - `<comot:chart>` 不貢獻 `getBBox()`／`primitiveBounds`；只有內嵌 `<svg>`（視為與 `rect`/`image`
+>   同式：`x`/`y` 預設 0，`width`/`height` 必填）貢獻邊界框——圖表因此像其他元素一樣可以搬移、
+>   群組、被效果清單指向，但本版不支援縮放／改尺寸（尺寸只在 `chart create` 或 `chart data set`
+>   等命令重畫時由 core 決定）。
+> - 內嵌 `<svg>` 與「單獨開啟的圖表 SVG」是同一串位元組：帶 `xmlns`/`width`/`height`/`viewBox`，
+>   不帶 `x`/`y`（位置只寫在容器 `transform`，與本 ADR 的既有規則完全一致，只是多了「圖元」換成
+>   「一整份自己也是合法 SVG 文件的渲染結果」這一種新形狀）。
+>
+> **沒有改變的部分**：容器仍然只有一層、位置與旋轉仍然只寫在容器的 `transform` 上、「投影片格式
+> 因此變嚴格，不合規的 SVG 不能被編輯命令操作」這條原則不變——只是圖表容器合規的判準是「兩個
+> 特定子元素」而不是「一個或多個圖元」。
+
 編輯功能要求四件事：搬移、縮放、旋轉、群組。現有的投影片 SVG 是裸圖元——`<text x y font-size>`、`<rect x y width height>`——每種圖形用自己的方式講位置，而且**沒有任何地方可以寫「我轉了幾度」**，因為在此之前沒有人需要。
 
 因此元素的正規形式改為：一層 `<g>` 容器包住一個或多個圖元，**位置與旋轉一律寫在容器的 `transform` 上**，尺寸仍走各圖元的原生屬性。

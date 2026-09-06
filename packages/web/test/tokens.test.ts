@@ -99,13 +99,18 @@ const SPLIT_TOKENS: Record<string, string[]> = {
   "radius.2xl": ["--radius-2xl", "--radius-2xl-empty"], // 大型對話框(18px) vs 空狀態卡(20px)
   "space.gutter": ["--space-gutter", "--space-gutter-bottom"], // "28px 36px" 對／"76px" 底部保留區
   "control.h": ["--control-h", "--control-h-compact"], // 30px 一般 vs 28px 緊湊版（doc 自己就分兩值）
+  // E2.T12: each `accent.palette.*` doc cell packs six hex colours into one
+  // token path — one CSS custom property cannot hold six values, so it
+  // splits the same way `ok`/`info` above do, six-ways instead of two.
+  "accent.palette.brand": [1, 2, 3, 4, 5, 6].map((n) => `--accent-palette-brand-${n}`),
+  "accent.palette.cool": [1, 2, 3, 4, 5, 6].map((n) => `--accent-palette-cool-${n}`),
+  "accent.palette.warm": [1, 2, 3, 4, 5, 6].map((n) => `--accent-palette-warm-${n}`),
 };
 
-/** `accent.palette.*` — chart colour palette, out of scope for this ticket (belongs to a future
- * chart ticket). These three ARE real design-package tokens (they parse out of the 語意色 table
- * above), so they must be explicitly excluded here rather than just never mentioned — otherwise
- * the "every token I decided to land is present" check below would (wrongly) demand them. */
-const EXCLUDED_DESIGN_TOKENS = new Set(["accent.palette.brand", "accent.palette.cool", "accent.palette.warm"]);
+/** No tokens excluded for this ticket. `accent.palette.*` was the one exclusion (chart colour
+ * palette, "belongs to a future chart ticket") and E2.T12 IS that future chart ticket — landed
+ * via the `SPLIT_TOKENS` six-way split above instead, not excluded. */
+const EXCLUDED_DESIGN_TOKENS = new Set<string>([]);
 
 /** 玻璃材質 (Glass material) is documented as prose + a CSS code block, not a `token.path | value`
  * table row — there is no doc-mechanical name to derive these from. Each entry below is this

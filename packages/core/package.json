@@ -19,6 +19,10 @@
     "./text-metrics": {
       "types": "./dist/text-metrics.d.ts",
       "default": "./dist/text-metrics.js"
+    },
+    "./chart": {
+      "types": "./dist/chart/index.d.ts",
+      "default": "./dist/chart/index.js"
     }
   }
 }

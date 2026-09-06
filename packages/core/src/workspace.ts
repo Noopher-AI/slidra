@@ -61,6 +61,23 @@ import {
   type SetEffectInput,
 } from "./effects/edit.js";
 import type { Effect } from "./effects/index.js";
+import {
+  createChartElement,
+  parseChartCsv,
+  setChartAxis,
+  setChartData,
+  setChartLegend,
+  setChartOption,
+  setChartPalette,
+  setChartStack,
+  setChartType,
+  type ChartAxesMode,
+  type ChartLegend,
+  type ChartOptionKey,
+  type ChartPalette,
+  type ChartType,
+  type CreateChartInput,
+} from "./chart/index.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -1275,4 +1292,172 @@ export async function duplicateSlideElements(
   const { updated, elementIds: newIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
   await writePresentationFile(id, slidePath, updated);
   return { elementIds: newIds };
+}
+
+// ---------------------------------------------------------------------------
+// chart (E2.T12) — same six-line shape as every other write path above:
+// resolve -> assert listed -> read -> pure core function -> write. `chart
+// data set`'s three data sources (`--categories`/`--series`, `--csv`,
+// `--csv-asset`) are resolved to a plain `{categories, series}` HERE, the
+// one place in the stack that is allowed to touch the real filesystem
+// (`readFile`) or a deck's virtual one (`readVirtualFile`) — `chart/edit.ts`
+// itself only ever sees already-parsed data.
+// ---------------------------------------------------------------------------
+
+export async function createSlideChart(
+  id: string,
+  slidePath: string,
+  input: CreateChartInput,
+): Promise<{ elementId: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const elementId = generateElementId();
+  const updated = createChartElement(original, slidePath, elementId, input);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+export interface SetSlideChartDataInput {
+  categories?: string[];
+  series?: { name: string; values: number[] }[];
+  /** A local filesystem path outside the presentation. */
+  csv?: string;
+  /** A virtual path INSIDE the presentation (e.g. `assets/data/quarterly.csv`). */
+  csvAsset?: string;
+}
+
+export async function setSlideChartData(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  input: SetSlideChartDataInput,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+
+  let categories: string[];
+  let series: { name: string; values: number[] }[];
+  if (input.csv !== undefined) {
+    let text: string;
+    try {
+      text = await readFile(input.csv, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new CoMotionNotFoundError(`找不到 CSV 檔案：${input.csv}`);
+      }
+      throw error;
+    }
+    ({ categories, series } = parseChartCsv(text));
+  } else if (input.csvAsset !== undefined) {
+    const text = await readVirtualFile(workDir, input.csvAsset);
+    ({ categories, series } = parseChartCsv(text));
+  } else {
+    if (input.categories === undefined || input.series === undefined) {
+      throw new CoMotionError("chart data set 必須提供 --categories/--series、--csv 或 --csv-asset 其中一種");
+    }
+    categories = input.categories;
+    series = input.series;
+  }
+
+  const updated = setChartData(original, slidePath, elementId, { categories, series });
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartType(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  type: ChartType,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartType(original, slidePath, elementId, type);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartPalette(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  palette: ChartPalette,
+  colorOverrides: ReadonlyMap<string, string>,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartPalette(original, slidePath, elementId, palette, colorOverrides);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartAxis(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  axes: ChartAxesMode,
+  rightSeriesNames: readonly string[],
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartAxis(original, slidePath, elementId, axes, rightSeriesNames);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartStack(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  stacked: boolean,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartStack(original, slidePath, elementId, stacked);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartLegend(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  legend: ChartLegend,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartLegend(original, slidePath, elementId, legend);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartOption(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  key: ChartOptionKey,
+  value: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartOption(original, slidePath, elementId, key, value);
+  await writePresentationFile(id, slidePath, updated);
 }

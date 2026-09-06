@@ -360,6 +360,39 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
+it("E2.T12：圖表的八條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
+  const id = await openDeck("chart-whitelist.comot");
+  const server = await serve(id);
+
+  for (const name of [
+    "chart create",
+    "chart data set",
+    "chart type set",
+    "chart palette set",
+    "chart axis set",
+    "chart stack set",
+    "chart legend set",
+    "chart option set",
+  ]) {
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
+    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
+  }
+});
+
+it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("chart-create.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "chart create",
+    input: { slidePath: "slides/001.svg" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-type="chart"');
+});
+
 it("presentation transition set：白名單內的合法值回 2xx，並寫進 project.json", async () => {
   const id = await openDeck("transition-fade.comot");
   const server = await serve(id);

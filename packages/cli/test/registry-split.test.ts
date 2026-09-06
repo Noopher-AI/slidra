@@ -66,6 +66,15 @@ const EXPECTED_COMMAND_NAMES = [
   "comment edit",
   "comment delete",
   "comment list",
+  // E2.T12: the chart command family (#204).
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
 ];
 
 /** Reads the registry's private definition map without changing registry.ts's public API. */
@@ -80,7 +89,7 @@ describe("createDefaultRegistry command surface", () => {
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(53);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(61);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });
