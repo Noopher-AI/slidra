@@ -11,6 +11,8 @@ import {
   readPresentationFile,
   beginHistoryGroup,
   endHistoryGroup,
+  listAllComments,
+  type SlideCommentWithPath,
 } from "@co-motion/core";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
@@ -25,6 +27,24 @@ import type { EditingLock } from "../editing-lock.js";
  */
 const WRITE_REFUSED_MESSAGE =
   "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
+
+/**
+ * [E2.T8]: builds the `/api/chat` prompt's comment-context prefix, or
+ * `null` when there are no comments — a message with nothing pinned to it
+ * must go out byte-identical to what the author typed (AC13, guarded by
+ * `chat.test.ts`'s existing "編輯規約" assertion). A standalone pure
+ * function, not a private method, so a unit test can verify the exact
+ * format without spinning up an ACP session.
+ */
+export function buildCommentContext(comments: readonly SlideCommentWithPath[]): string | null {
+  if (comments.length === 0) return null;
+  const lines = comments.map((comment) => `${comment.slidePath} ${comment.target} ${comment.id}：${comment.text}`);
+  return (
+    "【作者釘選的留言】\n" +
+    "以下是作者釘在這份簡報上的留言，隨這則訊息一起給你。每一行的格式是「投影片路徑 目標 留言識別碼」，冒號之後是留言原文；目標是元素識別碼，或 page（代表整頁）。\n" +
+    lines.join("\n")
+  );
+}
 
 /**
  * Everything needed to spawn one ACP adapter subprocess. Real production
@@ -229,12 +249,31 @@ export class AgentChatSession extends EventEmitter {
       return;
     }
 
+    // [E2.T8]: pinned comments ride along as a context prefix the author
+    // never types (§4.4 of the plan) — read fresh every turn, straight off
+    // disk, so a comment the agent itself wrote via `comment add` moments
+    // ago is included too. A read failure here must not silently fall back
+    // to sending the bare message: that would hand the agent a
+    // plausible-looking reply built on missing context instead of a loud
+    // failure the author can retry.
+    let prompt = text;
+    try {
+      const comments = await listAllComments(this.presentationId);
+      const context = buildCommentContext(comments);
+      if (context !== null) {
+        prompt = `${context}\n\n【作者的訊息】\n${text}`;
+      }
+    } catch (error) {
+      this.emitTyped("chat-error", { message: describeError(error) });
+      return;
+    }
+
     this.relayingCurrentTurn = true;
     try {
       const response = await this.withInterrupt(
         this.connection!.prompt({
           sessionId: this.sessionId!,
-          prompt: [{ type: "text", text }],
+          prompt: [{ type: "text", text: prompt }],
         }),
       );
       this.emitTyped("chat-done", { stopReason: response.stopReason });

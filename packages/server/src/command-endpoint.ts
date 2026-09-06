@@ -76,6 +76,12 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element resize",
   "element delete",
   "element duplicate",
+  // [E2.T8] 的留言框／Pinned context 加入這三條——建立、修改、刪除留言都是
+  // GUI 的寫入路徑；`comment list` 不必加，前端讀留言走 `/api/raw/`，不經
+  // 這個端點（見計畫 §4.3）。
+  "comment add",
+  "comment edit",
+  "comment delete",
 ];
 
 /**

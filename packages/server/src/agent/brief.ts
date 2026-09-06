@@ -6,7 +6,8 @@
  * This is part of CoMotion, not user configuration — it must never be read
  * from a config file or environment variable, and its command list must
  * only name commands that actually exist in `createDefaultRegistry()`
- * (currently `ls`, `cat`, `text set`). Kept in its own module so it stays
+ * (`ls`, `cat`, `text set`, `slide add`, `textbox add`, and — [E2.T8] —
+ * `comment add`/`edit`/`delete`/`list`). Kept in its own module so it stays
  * reviewable as prose, separate from the ACP wiring around it.
  *
  * Takes the presentation's opaque id (fix 2, ticket #7): `co-motion text
@@ -42,6 +43,14 @@ export function buildEditorialBrief(presentationId: string): string {
 - \`co-motion ls ${presentationId}\`：列出簡報裡的檔案。
 - \`co-motion cat ${presentationId} slides/001.svg\`：讀取某個檔案的完整內容（等同於直接讀檔，多一種方式而已）。
 - \`co-motion text set ${presentationId} slides/001.svg <元素識別碼> <新文字>\`：修改某個元素的文字內容。
+- \`co-motion slide add ${presentationId} [--at <索引>]\`：新增一張空白投影片，插在指定索引之後（省略則加到最後）。
+- \`co-motion textbox add ${presentationId} slides/001.svg --x <x> --y <y> --width <寬度> --text '<文字>'\`：在指定投影片上新增一個文字框。
+- \`co-motion comment add ${presentationId} slides/001.svg <元素識別碼或 page> '<留言內容>'\`：對某個元素或整頁新增一則留言。
+- \`co-motion comment edit ${presentationId} slides/001.svg <留言識別碼> '<新內容>'\`：修改一則既有留言。
+- \`co-motion comment delete ${presentationId} slides/001.svg <留言識別碼>\`：刪除一則留言。
+- \`co-motion comment list ${presentationId} [slides/001.svg]\`：列出某張投影片（或省略路徑列出全部投影片）的留言。
+
+作者釘在簡報上的留言會在每則訊息前自動附上，格式是「投影片路徑 目標 留言識別碼：留言原文」——你不需要自己呼叫 \`comment list\` 才看得到這些留言，但要回應留言、修改或刪除它時仍要用上面的命令。
 
 【規則】
 - 你可以執行 \`co-motion\` 開頭的命令，其他任何 shell 命令都會被拒絕執行——不會詢問作者，直接拒絕。
