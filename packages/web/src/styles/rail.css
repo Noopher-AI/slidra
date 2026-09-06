@@ -213,12 +213,13 @@
   color: var(--brand-red);
 }
 
-/* 縮圖右上留言鈕入口（T3 plan §2 邊界 2）：本票只渲染停用態的入口。
+/* 縮圖右上留言鈕入口（T3 plan §2 邊界 2，[E2.T8] 接上功能）。
    可見度依 03-UI_RATIONALE.md B 表「滑入才顯示，避免噪音」與原型
-   comotion-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1。
-   F13 接上留言功能後，「該頁已有留言」會是第二個恆亮條件。
+   comotion-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1；
+   該頁已有留言時（.has-comments）恆亮且底色轉紅，是第二個恆亮條件。
    常駐可見會改變 rail 的靜止外觀，讓 shell-v3／selection 的既有基準
-   全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）。 */
+   全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）——
+   所以「沒有留言」的縮圖仍然維持滑入才顯示，只有 .has-comments 例外。 */
 /* 定位相對 `.overview-item`（含 --space-1 內距），所以要再加上原型量測的
    縮圖內縮 8px，才會落在縮圖裡面而不是壓在縮圖圓角外緣。 */
 .overview-comment-button {
@@ -234,17 +235,22 @@
   background: var(--surface-1);
   color: var(--brand-red);
   box-shadow: var(--shadow-seg);
-  pointer-events: none;
+  pointer-events: auto;
 }
 /* 用 `.overview-item .overview-comment-button` 的兩層 class 選擇器（而非單一
-   class）蓋過全域的 `button:disabled { opacity: 0.4 }`（shell.css:36）——那條
-   規則的優先度是 type+pseudo-class，比單一 class 選擇器高，靜止態若只寫
-   `.overview-comment-button { opacity: 0 }` 會被它蓋掉，算出來變成 0.4。 */
+   class）維持既有的優先度慣例（見上方原本的理由：一律用兩層 class，不靠
+   單一 class 去蓋 shell.css 的全域規則）。 */
 .overview-item .overview-comment-button {
   opacity: 0;
 }
 .overview-item:hover .overview-comment-button {
   opacity: 1;
+}
+/* [E2.T8]：該頁已有留言 → 恆亮、紅底白圖示（原型 :601 的 pinBg/pinOpacity）。 */
+.overview-item .overview-comment-button.has-comments {
+  opacity: 1;
+  background: var(--brand-red);
+  color: var(--surface-1);
 }
 /* 原型：11px 圖示放在 20px 的鈕裡（不是側欄的 15px 內嵌圖示，那會塞滿整顆）。 */
 .overview-comment-button svg {

@@ -1,7 +1,8 @@
-/* 舞台疊層 (NOOP-90/T2)：根容器與四個子層維持 `pointer-events: none`，蓋滿
-   舞台、不吃滑鼠事件——個別可互動元件（情境列按鈕、右鍵選單）自己在下面
-   開回 `pointer-events: auto`。CommentLayer 仍是空容器（留言 pin 是
-   NOOP-67 的範圍）。 */
+/* 舞台疊層 (NOOP-90/T2)：根容器與子層維持 `pointer-events: none`，蓋滿
+   舞台、不吃滑鼠事件——個別可互動元件（情境列按鈕、右鍵選單、留言框、
+   comment pin）自己在下面開回 `pointer-events: auto`。`CommentLayer`
+   ([E2.T8]) 不再是空容器，渲染 `.comment-composer` 時自帶定位，不需要
+   額外的滿版容器層。 */
 .stage-overlays {
   position: absolute;
   inset: 0;
@@ -10,7 +11,6 @@
 }
 .selection-overlay,
 .context-bar-layer,
-.comment-layer,
 .guide-layer {
   position: absolute;
   inset: 0;
@@ -18,10 +18,18 @@
 }
 
 /* 名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取」；色值取自原型
-   docs/design/prototype 的選取標籤）。 */
-.selection-label {
+   docs/design/prototype 的選取標籤）。[E2.T8] 把定位從 `.selection-label`
+   本身移到這個新的 row 容器，讓留言 pin 能以 flex row 的第二個子項出現在
+   標籤右側（同一列，`comotion-logic-v3.js`.dc.html:219-224）。 */
+.selection-label-row {
   position: absolute;
   transform: translateY(-100%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+.selection-label {
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-xs);
   background: var(--brand-red);
@@ -29,7 +37,22 @@
   font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
-  pointer-events: none;
+}
+/* [E2.T8]：留言 pin，標籤同一列、右側（見上方 .selection-label-row）。 */
+.comment-pin {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  min-width: var(--space-8);
+  height: var(--space-8);
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 /* 拖曳吸附輔助線 — 畫在父文件（ADR-0011 amend），取代舊版 iframe 內
@@ -127,4 +150,75 @@
   height: calc(var(--control-h-compact) - var(--space-5));
   margin: 0 var(--space-1);
   background: var(--glass-divider);
+}
+
+/* [E2.T8] 玻璃留言框：材質照 ContextBar 的玻璃容器（同一套 --glass-* 令牌），
+   定位由 CommentComposer.tsx 的 useLayoutEffect 算好後直接寫 style.left/top。 */
+.comment-composer {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: var(--panel-w);
+  padding: var(--space-3);
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  animation: context-bar-in var(--dur-fast) var(--ease-out);
+}
+.comment-composer-input {
+  min-height: calc(var(--space-8) * 4);
+  padding: var(--space-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-900);
+  font: inherit;
+  font-size: var(--text-xs);
+  resize: vertical;
+}
+.comment-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.comment-composer-cancel,
+.comment-composer-delete,
+.comment-composer-submit {
+  height: var(--control-h-compact);
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.comment-composer-cancel {
+  background: transparent;
+  color: var(--ink-700);
+}
+.comment-composer-cancel:hover {
+  background: var(--surface-1);
+}
+.comment-composer-delete {
+  background: transparent;
+  color: var(--brand-red-hover);
+  margin-right: auto;
+}
+.comment-composer-delete:hover {
+  background: var(--brand-red-tint);
+}
+.comment-composer-submit {
+  background: var(--brand-red);
+  color: var(--surface-white);
+}
+.comment-composer-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

@@ -5,10 +5,34 @@ import { ContextBar } from "./ContextBar.js";
 import { CommentLayer } from "./CommentLayer.js";
 import { GuideLayer } from "./GuideLayer.js";
 
+/**
+ * [E2.T8]: the comment overlay's own state, resolved by `App.tsx` (it owns
+ * the deck-wide comment list and the current selection) and threaded down
+ * here so `OverlayLayer` only has to turn it into props for `ContextBar` /
+ * `SelectionOverlay` / `CommentLayer` — none of which know about comments
+ * on their own.
+ */
+export interface CommentOverlayProps {
+  /** The single selected element's own comment, or `null` when it has none (multi-selection is resolved to `null` by the caller too — no pin for 2+, `comotion-logic-v3.js:666`). */
+  pin: { commentId: string; number: number; onClick(): void } | null;
+  /** `null` = composer closed; an element id or `"page"` = open, targeting that. */
+  target: string | null;
+  /** The comment id being edited, or `null` for a brand-new one. */
+  editingCommentId: string | null;
+  draft: string;
+  onDraftChange(text: string): void;
+  /** "Comment to AI" click — resolves target/edit-mode from the live selection. */
+  onOpenForSelection(): void;
+  onSubmit(): void;
+  onDelete(): void;
+  onClose(): void;
+}
+
 export interface OverlayLayerProps {
   controller: CanvasController | null;
   /** `.canvas-area`'s own ref (Stage.tsx) — `.stage-overlays` is positioned relative to it, so every value `controller.subscribeOverlay` reports (parent-document client px) needs this element's own `getBoundingClientRect()` subtracted before it means anything as a `left`/`top` CSS value here. */
   wellRef: RefObject<HTMLDivElement | null>;
+  comment: CommentOverlayProps;
   children?: ReactNode;
 }
 
@@ -49,7 +73,7 @@ export function toLocalRect(
  * 讓 canvas.ts 用新的 frame 位置重算並再推一次——標籤/情境列/右鍵選單因此
  * 跟著投影片走，不用等下一次選取變化。
  */
-export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProps) {
+export function OverlayLayer({ controller, wellRef, comment, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
 
   useEffect(() => {
@@ -72,18 +96,31 @@ export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProp
     position: guide.orientation === "v" ? guide.position - offsetX : guide.position - offsetY,
   }));
 
+  const composerAnchor = comment.target !== null && comment.target !== "page" ? union : null;
+
   return (
     <div className="stage-overlays">
-      <SelectionOverlay union={union} label={overlay.label} />
+      <SelectionOverlay union={union} label={overlay.label} pin={comment.pin} />
       <ContextBar
         union={union}
         bounds={bounds}
         dragging={overlay.dragging}
+        onComment={comment.onOpenForSelection}
         onOrder={(direction) => void controller?.orderSelection(direction)}
         onDuplicate={() => void controller?.duplicateSelection()}
         onDelete={() => void controller?.deleteSelection()}
       />
-      <CommentLayer />
+      <CommentLayer
+        open={comment.target !== null}
+        anchor={composerAnchor}
+        bounds={bounds}
+        draft={comment.draft}
+        onDraftChange={comment.onDraftChange}
+        editingCommentId={comment.editingCommentId}
+        onSubmit={comment.onSubmit}
+        onDelete={comment.onDelete}
+        onClose={comment.onClose}
+      />
       <GuideLayer guides={guides} />
       {children}
     </div>

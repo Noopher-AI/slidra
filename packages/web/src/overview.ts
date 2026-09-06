@@ -26,6 +26,8 @@ import type { CanvasController } from "./canvas.js";
 export interface OverviewHooks {
   /** A thumbnail was right-clicked. `x`/`y` are the event's clientX/clientY, for a fixed-position menu. */
   onContextMenu?: (index: number, x: number, y: number) => void;
+  /** [E2.T8]: the thumbnail's own comment button was clicked — App.tsx jumps to that slide, clears selection, and opens a whole-page comment composer (§4.7 of the plan). */
+  onComment?: (index: number) => void;
 }
 
 export interface OverviewController {
@@ -41,6 +43,16 @@ export interface OverviewController {
    * refresh never pulls in the whole deck and defeats lazy loading.
    */
   refresh(): void;
+  /**
+   * [E2.T8]: toggles `.overview-comment-button.has-comments` for every
+   * index whose slide currently has at least one comment — a page-level
+   * comment or any element-level one, either counts (prototype's own rule,
+   * `comotion-logic-v3.js:601`: the button is only ever red or not, never
+   * counts how many). Called by App.tsx whenever its own comment list is
+   * (re)loaded; safe to call before `rebuildList` has ever run (a rebuild
+   * re-applies whatever set was last given here).
+   */
+  setSlidesWithComments(indices: ReadonlySet<number>): void;
 }
 
 export function mountOverview(container: HTMLElement, canvas: CanvasController, hooks: OverviewHooks = {}): OverviewController {
@@ -133,6 +145,10 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   void applyAspectRatio();
 
   let slides: string[] = [];
+  // [E2.T8]: the last set App.tsx handed `setSlidesWithComments` — kept
+  // across a `rebuildList` so a slide add/delete/move doesn't lose the
+  // red-dot state until the next comment reload happens to run.
+  let slidesWithComments = new Set<number>();
   const items: HTMLLIElement[] = [];
   // Sparse on purpose: a slot only gets an iframe once its <li> has been
   // observed to intersect (see loadThumbnail). Before that the slot is
@@ -289,14 +305,13 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       button.setAttribute("aria-label", `Slide ${index + 1}`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
-      // Comment entry point (T3 plan §2 邊界 2): the thread itself is
-      // F13's — this ticket only renders a disabled, labelled door to it.
+      // Comment entry point (T3 plan §2 邊界 2, wired by [E2.T8]).
       const commentButton = document.createElement("button");
       commentButton.type = "button";
       commentButton.className = "overview-comment-button";
       commentButton.setAttribute("aria-label", "Comment to agent");
-      commentButton.setAttribute("aria-disabled", "true");
-      commentButton.disabled = true;
+      commentButton.classList.toggle("has-comments", slidesWithComments.has(index));
+      commentButton.addEventListener("click", () => hooks.onComment?.(index));
       commentButton.innerHTML =
         '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 4h14v9H9l-4 3v-3H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
 
@@ -357,12 +372,23 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     updateHighlight(state.currentIndex);
   });
 
+  /** Re-applies `slidesWithComments` to every already-created `.overview-comment-button` — used both by `setSlidesWithComments` (a normal comment reload) and implicitly whenever `rebuildList` re-creates the buttons (it reads the same closure variable at creation time). */
+  function applyHasComments(): void {
+    items.forEach((li, index) => {
+      li.querySelector(".overview-comment-button")?.classList.toggle("has-comments", slidesWithComments.has(index));
+    });
+  }
+
   return {
     refresh() {
       void applyAspectRatio();
       requested.forEach((isRequested, index) => {
         if (isRequested) void fetchAndFillThumbnail(index);
       });
+    },
+    setSlidesWithComments(indices) {
+      slidesWithComments = new Set(indices);
+      applyHasComments();
     },
     destroy() {
       unsubscribe();

@@ -2,17 +2,16 @@ import { useEffect, useState, type MouseEvent } from "react";
 
 export interface OutlineModalProps {
   onClose: () => void;
+  /** [E2.T8]：`Draft with agent` 送出大綱原文（未加前綴——App.tsx 組固定前綴並送出聊天訊息，架構拍板：不解析大綱、不自己插頁）。呼叫端負責關閉這個 modal。 */
+  onSubmit: (outline: string) => void;
 }
 
 /**
  * `From outline…`／`New slides from outline…` 的輸入 UI（T3 plan §2 邊界
- * 3）。只做輸入；送出是 F13 的聊天訊息，所以 `Draft with agent` 永遠
- * `disabled`——這是「入口已備好、執行在別票」的誠實表現形式，不接受送聊
- * 天訊息、關掉 modal 假裝成功、或自己插頁這三種替代方案（T3 plan §7 決定
- * 5）。Cancel／Esc／點遮罩一律關閉並丟棄草稿，不保留到下次開啟——每次掛
- * 載都是全新的 `useState("")`，卸載即遺忘。
+ * 3，[E2.T8] 接上送出）。Cancel／Esc／點遮罩一律關閉並丟棄草稿，不保留到
+ * 下次開啟——每次掛載都是全新的 `useState("")`，卸載即遺忘。
  */
-export function OutlineModal({ onClose }: OutlineModalProps) {
+export function OutlineModal({ onClose, onSubmit }: OutlineModalProps) {
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
@@ -45,9 +44,8 @@ export function OutlineModal({ onClose }: OutlineModalProps) {
           <button
             type="button"
             className="outline-modal-submit"
-            disabled
-            aria-disabled="true"
-            title="Draft with agent runs in a later ticket — this entry point is not wired up yet"
+            disabled={draft.trim() === ""}
+            onClick={() => onSubmit(draft)}
           >
             Draft with agent
           </button>

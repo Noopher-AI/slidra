@@ -190,8 +190,16 @@ export type ImportAssetResult = { ok: true; message: string; data: ImportedAsset
 
 export interface CanvasController {
   reload: () => Promise<void>;
-  /** Throws when the index is out of range — that is a programming error, not user input. */
-  showSlide: (index: number) => Promise<void>;
+  /**
+   * Throws when the index is out of range — that is a programming error,
+   * not user input. `selectAfter` ([E2.T8]): re-selects these element ids
+   * once the newly navigated page has actually loaded — Pinned context's
+   * own row click needs this (jump to a different slide, then select the
+   * comment's target); calling the separate `selectElement` right after
+   * this promise resolves would race the iframe's own navigation and be
+   * silently dropped (see this function's own implementation comment).
+   */
+  showSlide: (index: number, selectAfter?: readonly string[]) => Promise<void>;
   /** No-op (and no throw) when already on the last slide. */
   next: () => Promise<void>;
   /** No-op (and no throw) when already on the first slide. */
@@ -302,6 +310,13 @@ export interface CanvasController {
    * No-op while `mode !== "view"`.
    */
   clearSelection: () => void;
+  /**
+   * [E2.T8] §4.7: selects a single element by id on the current slide,
+   * clearing `groupPath` — Pinned context's own row click (jump to the
+   * slide via `showSlide`, then this, then open the comment). No-op when
+   * `id` does not resolve on the current slide, or outside view mode.
+   */
+  selectElement: (id: string) => void;
   /**
    * Overlay geometry: name/group labels and snap guides (NOOP-90/T2 §4.6). See `OverlayState`'s own doc comment
    * for why this is a separate channel from `subscribe`/`CanvasState`.
@@ -1503,6 +1518,26 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // context menu — one place decides what each of these four actually
   // does, so the three trigger paths can never drift apart.
 
+  /**
+   * [E2.T8]: selects a single element by id — Pinned context's own row
+   * click (§4.7 of the plan: jump to the slide, select the target, open
+   * its comment). No-op when `id` does not resolve on the current slide
+   * (e.g. the element was deleted after the comment was written) — same
+   * "silently do nothing" posture `beginTextEdit` takes for the same
+   * reason, rather than throwing for a state the caller cannot always
+   * avoid racing.
+   */
+  function selectElement(id: string): void {
+    if (mode !== "view" || !currentSlideModel) return;
+    const entry = elementIndex().get(id);
+    if (!entry) return;
+    selectionIds = [id];
+    selectionNames = [entry.element.name];
+    selectionGroupPath = [];
+    notify();
+    pushSelectionToRuntime(selectionIds);
+  }
+
   /** ⌘A: every TOP-LEVEL element on the current slide — never a group's own children, matching `05-INTERACTIONS.feature`'s "本頁頂層所有元素" wording. `groupPath` resets to top level, same as any other host-driven selection change. */
   function selectAll(): void {
     if (mode !== "view" || !currentSlideModel) return;
@@ -2678,7 +2713,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
   }
 
-  async function showSlide(index: number): Promise<void> {
+  async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
     if (destroyed) return;
     if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
       throw new Error(`投影片索引超出範圍：${index}`);
@@ -2709,6 +2744,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (mode === "play") {
       await renderPlay(thisGeneration, "first", forward);
     } else {
+      // [E2.T8]: `selectAfter` reuses the exact same "reselect once the
+      // new document's `load` fires" mechanism `SELECT_AFTER_COMMAND`
+      // parks in `pendingSelectionIds` — calling the public `selectElement`
+      // immediately after this promise resolves would race `render()`'s
+      // `frame.srcdoc` navigation (NOOP-227: the runtime hasn't attached
+      // its `message` listener yet) and be silently dropped, exactly the
+      // failure `render()`'s own `selectOnceLoaded` exists to avoid.
+      if (selectAfter && selectAfter.length > 0) pendingSelectionIds = [...selectAfter];
       await render(thisGeneration);
     }
   }
@@ -2904,6 +2947,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (mode !== "view") return;
       clearSelectionState([]);
     },
+    selectElement,
     setUndoRedoHandler: (handler: ((kind: "undo" | "redo") => void) | null) => {
       undoRedoHandler = handler;
     },
