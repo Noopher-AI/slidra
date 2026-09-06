@@ -53,7 +53,7 @@
 /* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型；只有 Delete 有功能，Comment to AI／
    Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
    按鈕高 --control-h（30px）、容器高 40px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
-   玻璃底 --glass-bg-soft、blur、--shadow-glass、圓角 --radius-lg。 */
+   玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
 .context-bar {
   position: absolute;
   z-index: 3;
@@ -71,7 +71,6 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-glass);
   animation: context-bar-in var(--dur-fast) var(--ease-out);
 }
 @keyframes context-bar-in {
