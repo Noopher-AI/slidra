@@ -19,13 +19,13 @@ const BAR_HEIGHT = 40;
 const GAP = 8;
 
 /**
- * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決）：本票做的是設計稿的玻璃容器
- * （01-DESIGN_TOKENS「玻璃材質」：`--glass-bg-soft`／blur／`--shadow-glass`）、
- * 定位、以及 Delete 一顆按鈕。設計稿的完整內容是
- * 「Comment to AI ｜ Edit style · Edit animation ｜ Delete」
- * （03-UI_RATIONALE「情境列」）——Comment to AI／Edit style／Edit animation 三顆
- * 分屬 NOOP-67/69/66，各自往這個容器的 `.context-bar-slot-*` 位置加按鈕；
- * 分隔線已按設計稿放好，後續票只加按鈕、不動版面。
+ * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決，2026-09 review 修訂）：外觀與內容
+ * 照原型 `CoMotion (New v3).dc.html` 的 ctx bar 一模一樣——
+ * 「Comment to AI ｜ Edit style ｜ Delete」（03-UI_RATIONALE「情境列」）。
+ * 本票只有 Delete 接了功能；Comment to AI／Edit style 是原型外觀的佈局佔位
+ * 按鈕，按下沒有反應，功能分屬 NOOP-67／NOOP-69。原型的 Edit animation 只在
+ * 元素已有動畫時出現（07-DISCUSSION_LOG「無動畫時不顯示」），判斷來源屬
+ * NOOP-66，這裡尚未渲染。
  */
 export function ContextBar({ union, bounds, onDelete }: ContextBarProps) {
   if (!union) return <div className="context-bar-layer" />;
@@ -34,11 +34,17 @@ export function ContextBar({ union, bounds, onDelete }: ContextBarProps) {
   return (
     <div className="context-bar-layer">
       <div className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
-        {/* Comment to AI — NOOP-67 fills this slot. */}
-        <span className="context-bar-slot context-bar-slot-comment" />
+        {/* NOOP-67 wires this up. */}
+        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI">
+          <Icon name="comment" size="control" />
+          Comment to AI
+        </button>
         <span className="context-bar-divider" />
-        {/* Edit style · Edit animation — NOOP-69 / NOOP-66 fill this slot. */}
-        <span className="context-bar-slot context-bar-slot-edit" />
+        {/* NOOP-69 wires this up. */}
+        <button type="button" className="context-bar-item" title="Edit style">
+          <Icon name="edit" size="control" />
+          Edit style
+        </button>
         <span className="context-bar-divider" />
         <button type="button" className="context-bar-item context-bar-item-danger" title="Delete" onClick={onDelete}>
           <Icon name="trash" size="control" />

@@ -50,8 +50,8 @@
   right: 0;
 }
 
-/* 選取框下方的情境列（NOOP-90/T2 §0.3：本票做玻璃容器/定位/Delete；其餘按鈕由
-   NOOP-67/69/66 填入 .context-bar-slot-*）。材質與尺寸照原型的情境列：
+/* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型；只有 Delete 有功能，Comment to AI／
+   Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
    按鈕高 --control-h（30px）、容器高 40px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
    玻璃底 --glass-bg-soft、blur、--shadow-glass、圓角 --radius-lg。 */
 .context-bar {
@@ -101,7 +101,16 @@
   cursor: pointer;
 }
 .context-bar-item:hover {
-  background: var(--glass-hover);
+  background: var(--surface-1);
+  color: var(--ink-900);
+}
+/* Comment to AI: the prototype's own red-tint hover, and a touch more padding. */
+.context-bar-item-comment {
+  padding: 0 var(--space-4);
+}
+.context-bar-item-comment:hover {
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
 }
 .context-bar-item-danger {
   color: var(--brand-red-hover);
@@ -111,14 +120,6 @@
   height: calc(var(--control-h) - var(--space-5));
   margin: 0 var(--space-1);
   background: var(--glass-divider);
-}
-/* Empty slots reserved for the other tickets' buttons: zero width so the two
-   dividers read as one until a button lands in between. */
-.context-bar-slot:empty {
-  display: none;
-}
-.context-bar-slot:empty + .context-bar-divider {
-  display: none;
 }
 
 /* 元素右鍵選單（NOOP-90/T2 §4.5/§3.10）。 */

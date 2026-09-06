@@ -106,7 +106,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:602px");
   });
 
-  it("玻璃容器：Delete 帶 trash 圖示，並為 Comment to AI／Edit 兩組預留插槽與分隔線", () => {
+  it("玻璃容器：內容照原型「Comment to AI ｜ Edit style ｜ Delete」，Delete 帶 trash 圖示", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -115,12 +115,10 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       }),
     );
     expect(markup).toContain('role="toolbar"');
-    expect(markup).toContain("context-bar-slot-comment");
-    expect(markup).toContain("context-bar-slot-edit");
+    const labels = [...markup.matchAll(/<button[^>]*>[\s\S]*?<\/svg>([^<]+)<\/button>/g)].map((m) => m[1].trim());
+    expect(labels).toEqual(["Comment to AI", "Edit style", "Delete"]);
     expect(markup.match(/context-bar-divider/g)).toHaveLength(2);
     expect(markup).toContain("context-bar-item-danger");
-    expect(markup).toContain("<svg"); // the trash icon
-    expect(markup).toContain("Delete");
   });
 
   it("剛好卡在翻轉門檻上：貼齊 bounds.height 仍算「放得下」，不翻轉", () => {

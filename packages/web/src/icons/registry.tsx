@@ -58,6 +58,7 @@ export type IconName =
   | "trash"
   | "dup"
   | "comment"
+  | "edit" // Context bar: Edit style
   | "alignL"
   | "alignC"
   | "alignR"
@@ -257,6 +258,12 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
     </>
   ),
   comment: <path d="M3 4h14v9H9l-4 3v-3H3z" />,
+  edit: (
+    <>
+      <path d="M4 16h3l9-9-3-3-9 9z" />
+      <path d="M11.5 5.5l3 3" />
+    </>
+  ),
   alignL: <path d="M4 3v14M8 6h8v3H8zM8 11h5v3H8z" />,
   alignC: <path d="M10 3v14M6 6h8v3H6zM7.5 11h5v3h-5z" />,
   alignR: <path d="M16 3v14M4 6h8v3H4zM7 11h5v3H7z" />,
