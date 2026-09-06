@@ -14,6 +14,7 @@ import {
   resolvePresentationFonts,
   wrapText,
   type FontMetrics,
+  type TextRun,
   type WrappedText,
 } from "@co-motion/core";
 
@@ -59,6 +60,7 @@ let server: Server;
 let browser: Browser;
 let page: Page;
 let font: FontMetrics;
+let fontBytes: Buffer;
 let coMotionHome: string;
 let comotDir: string;
 
@@ -87,6 +89,7 @@ beforeAll(async () => {
   }
   font = resolved;
   const ttf = await readPresentationFileBytes(id, "fonts/NotoSansTC-Presentation.ttf");
+  fontBytes = ttf;
 
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -310,6 +313,203 @@ describe("純瀏覽器開檔——不經過 CoMotion server、不經過 runtime"
       }
     } finally {
       await plainPage.close();
+    }
+  });
+});
+
+/**
+ * Writes `svg` to a fresh temp file and opens it in a brand-new page,
+ * exactly the way `純瀏覽器開檔` above does — reused by every NOOP-65 case
+ * below (A2/A4/A5/A6/A7) so each test only supplies its own `evaluate`
+ * callback. Also doubles as each test's A8 proof: for content with no
+ * `{{ }}` dynamic-text placeholder, `slide render`'s output is byte-identical
+ * to the raw file (`renderSlideForDisplay`'s only transformation is
+ * substituting those placeholders — `packages/cli/src/commands/slide-render.ts`),
+ * so a plain `file://` open of this exact markup IS what `slide render`
+ * would show.
+ */
+async function openSvgPage(svg: string, tempDirs: string[]): Promise<Page> {
+  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-noop65-"));
+  tempDirs.push(dir);
+  // The real embedded font, alongside the SVG, referenced by an in-SVG
+  // `@font-face` (`boxSvg`/inline fixtures below all declare one pointing
+  // at "font.ttf") — without a REAL bold/italic-capable face loaded, a
+  // getComputedTextLength()/getComputedStyle() comparison between styled
+  // and unstyled text would be comparing two renders of whatever generic
+  // fallback font this sandbox happens to have, not proving anything about
+  // this repo's own font-weight/font-style handling.
+  await writeFile(path.join(dir, "font.ttf"), fontBytes);
+  const filePath = path.join(dir, "slide.svg");
+  await writeFile(filePath, svg, "utf-8");
+  const svgPage = await browser.newPage();
+  await svgPage.goto(`file://${filePath}`);
+  await svgPage.evaluate(
+    (family) => document.fonts.load(`100px "${family}"`).then(() => document.fonts.ready),
+    FAMILY,
+  );
+  return svgPage;
+}
+
+describe("NOOP-65：硬換行／自動高度／粗體／斜體／列表各自有 e2e，瀏覽器排版與 slide render 輸出一致 (A2/A4/A5/A6/A7/A8)", () => {
+  const tempDirs: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  function boxSvg(elementId: string, innerText: string, width: number, height: number, extraContainerAttrs = ""): string {
+    return (
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n` +
+      `  <style>@font-face{font-family:"${FAMILY}";src:url("font.ttf")}</style>\n` +
+      `  <g id="${elementId}" data-comot-text-width="${width}" data-comot-text-height="${height}"${extraContainerAttrs}>\n` +
+      `    <text font-family="${FAMILY}" font-size="40" xml:space="preserve">${innerText}</text>\n` +
+      `  </g>\n` +
+      "</svg>\n"
+    );
+  }
+
+  it("A2：硬換行——data-comot-break 標記的行與下一行的內容各自獨立、逐行量得出正確寬度", async () => {
+    const text = "第一段\n第二段";
+    const wrapped = nodeWrap(text, 40, WIDTH);
+    expect(wrapped.lines).toHaveLength(2);
+    expect(wrapped.lines[0].hardBreak).toBe(true);
+    const content = renderTextBoxContent(wrapped.lines);
+    expect(content).toContain('data-comot-break="1"');
+
+    const svg = boxSvg("el-a2", content, WIDTH, wrapped.height);
+    const svgPage = await openSvgPage(svg, tempDirs);
+    try {
+      const measured = await svgPage.evaluate(() => {
+        const tspans = Array.from(document.querySelectorAll("tspan"));
+        return tspans.map((t) => ({
+          text: t.textContent,
+          hasBreak: t.hasAttribute("data-comot-break"),
+          length: (t as unknown as SVGTextContentElement).getComputedTextLength(),
+        }));
+      });
+      expect(measured).toHaveLength(2);
+      expect(measured[0]).toMatchObject({ text: "第一段", hasBreak: true });
+      expect(measured[1]).toMatchObject({ text: "第二段", hasBreak: false });
+      measured.forEach((line) => expect(line.length).toBeGreaterThan(0));
+    } finally {
+      await svgPage.close();
+    }
+  });
+
+  it("A4：自動高度——文字從 1 段變 3 段後，data-comot-text-height 與瀏覽器實際量到的 bbox 高度都跟著等比例變高", async () => {
+    const oneLine = nodeWrap("一行", 40, WIDTH);
+    const threeLines = nodeWrap("一行\n二行\n三行", 40, WIDTH);
+    // Ground truth for "grew 3x", independent of the browser: core's own
+    // declared height for 3 lines is (within float rounding) exactly 3x
+    // its declared height for 1 line.
+    expect(threeLines.height).toBeCloseTo(3 * oneLine.height, 4);
+
+    const svg1 = boxSvg("el-a4-1", renderTextBoxContent(oneLine.lines), WIDTH, oneLine.height);
+    const svg3 = boxSvg("el-a4-3", renderTextBoxContent(threeLines.lines), WIDTH, threeLines.height);
+    const page1 = await openSvgPage(svg1, tempDirs);
+    const page3 = await openSvgPage(svg3, tempDirs);
+    try {
+      const measureBBoxHeight = (p: Page) =>
+        p.evaluate(() => (document.querySelector("text") as unknown as SVGGraphicsElement).getBBox().height);
+      const h1 = await measureBBoxHeight(page1);
+      const h3 = await measureBBoxHeight(page3);
+      expect(h1).toBeGreaterThan(0);
+      // getBBox() is the tight glyph box (ascent-to-descender of the actual
+      // rendered glyphs), not the hhea line-height box core's declared
+      // height uses — the two are never pixel-identical, so this asserts
+      // the SAME 3x growth the declared height has, with slack for that
+      // difference, rather than a false pixel-exact equivalence.
+      expect(h3 / h1).toBeGreaterThan(2.5);
+      expect(h3 / h1).toBeLessThan(3.5);
+    } finally {
+      await page1.close();
+      await page3.close();
+    }
+  });
+
+  it("A5：粗體——巢狀 tspan 帶 font-weight=\"bold\"，瀏覽器實際套用（getComputedStyle 為 bold，不只是寫了屬性）", async () => {
+    const text = "abc粗體def";
+    const runs: TextRun[] = [{ start: 3, end: 5, fontWeight: "bold" }];
+    const wrapped = nodeWrap(text, 40, WIDTH * 2); // wide enough for 1 line
+    const content = renderTextBoxContent(wrapped.lines, runs);
+    expect(content).toContain('<tspan font-weight="bold">粗體</tspan>');
+
+    const svg = boxSvg("el-a5", content, WIDTH * 2, wrapped.height);
+    const svgPage = await openSvgPage(svg, tempDirs);
+    try {
+      const measured = await svgPage.evaluate(() => {
+        const t = document.querySelector('tspan[font-weight="bold"]')!;
+        const style = getComputedStyle(t);
+        return { fontWeight: style.fontWeight, text: t.textContent };
+      });
+      expect(measured.text).toBe("粗體");
+      // "700" is what getComputedStyle normalizes the "bold" keyword to
+      // (CSS Fonts §fontWeightMapping) — this font has no distinct bold
+      // face to swap in (a single-weight static TTF), so Chromium's own
+      // faux-bold synthesis is what actually renders; getComputedTextLength()
+      // cannot detect that (synthetic bold thickens strokes without
+      // changing advance widths), which is why this asserts the resolved
+      // style instead.
+      expect(["bold", "700"]).toContain(measured.fontWeight);
+    } finally {
+      await svgPage.close();
+    }
+  });
+
+  it("A6：斜體——巢狀 tspan 帶 font-style=\"italic\"，getComputedStyle(tspan).fontStyle 為 italic", async () => {
+    const text = "abc斜體def";
+    const runs: TextRun[] = [{ start: 3, end: 5, fontStyle: "italic" }];
+    const wrapped = nodeWrap(text, 40, WIDTH * 2);
+    const content = renderTextBoxContent(wrapped.lines, runs);
+    expect(content).toContain('<tspan font-style="italic">斜體</tspan>');
+
+    const svg = boxSvg("el-a6", content, WIDTH * 2, wrapped.height);
+    const svgPage = await openSvgPage(svg, tempDirs);
+    try {
+      const fontStyle = await svgPage.evaluate(() => {
+        const t = document.querySelector('tspan[font-style="italic"]')!;
+        return getComputedStyle(t).fontStyle;
+      });
+      expect(fontStyle).toBe("italic");
+    } finally {
+      await svgPage.close();
+    }
+  });
+
+  it("A7：列表——marker <text> 的符號與內容 <text> 的縮排都渲染正確（bullet 與 number）", async () => {
+    const text = "第一項\n第二項";
+    const indent = 1.5 * 40; // LIST_INDENT_EM * fontSize
+    const wrapped = wrapText(text, { width: WIDTH, font, fontSizePx: 40, indents: [indent, indent] });
+    const content = renderTextBoxContent(wrapped.lines);
+    const markerMarkup =
+      `<text data-comot-list-marker="true" font-family="${FAMILY}" font-size="40" xml:space="preserve">` +
+      `<tspan x="0" y="${wrapped.lines[0].y}">•</tspan>` +
+      `<tspan x="0" y="${wrapped.lines[1].y}">1.</tspan>` +
+      "</text>";
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n` +
+      `  <g id="el-a7" data-comot-text-width="${WIDTH}" data-comot-text-height="${wrapped.height}" data-comot-list="bullet number">\n` +
+      `    <text font-family="${FAMILY}" font-size="40" xml:space="preserve">${content}</text>${markerMarkup}\n` +
+      `  </g>\n` +
+      "</svg>\n";
+
+    const svgPage = await openSvgPage(svg, tempDirs);
+    try {
+      const measured = await svgPage.evaluate(() => {
+        const texts = Array.from(document.querySelectorAll("text"));
+        const contentText = texts[0];
+        const markerText = texts[1];
+        return {
+          contentTspanXs: Array.from(contentText.querySelectorAll("tspan")).map((t) => t.getAttribute("x")),
+          markerGlyphs: Array.from(markerText.querySelectorAll("tspan")).map((t) => t.textContent),
+          markerIsMarked: markerText.hasAttribute("data-comot-list-marker"),
+        };
+      });
+      expect(measured.markerIsMarked).toBe(true);
+      expect(measured.markerGlyphs).toEqual(["•", "1."]);
+      measured.contentTspanXs.forEach((x) => expect(Number(x)).toBeCloseTo(indent, 4));
+    } finally {
+      await svgPage.close();
     }
   });
 });

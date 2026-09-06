@@ -296,7 +296,11 @@ async function tspanCount(page: Page, elementId: string): Promise<number> {
 function readTspans(svg: string, elementId: string): { text: string; y: number }[] {
   const containerMatch = new RegExp(`<g id="${elementId}"[^>]*>\\s*<text[^>]*>([\\s\\S]*?)</text>`).exec(svg);
   if (!containerMatch) throw new Error(`找不到 ${elementId} 的 <text>`);
-  const tspanRe = /<tspan x="0" y="([-\d.]+)">([^<]*)<\/tspan>/g;
+  // `data-comot-break="1"` (NOOP-65 決定 A) is an optional trailing attribute
+  // on a line that ends on a hard break — matched but not captured, so this
+  // helper's existing callers (none of which touch hard breaks) see no
+  // change in behaviour.
+  const tspanRe = /<tspan x="0" y="([-\d.]+)"(?: data-comot-break="1")?>([^<]*)<\/tspan>/g;
   const out: { text: string; y: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = tspanRe.exec(containerMatch[1])) !== null) {
@@ -694,6 +698,101 @@ it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元�
       ta.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
     });
     await page.waitForTimeout(50);
+  } finally {
+    await cleanup();
+  }
+});
+
+// NOOP-65 §4.4 — Enter's new meaning: hard-break insertion while editing,
+// keyboard-equivalent entry into editing when not, and ⌘Enter/Ctrl+Enter as
+// the one no-op exception. `05-INTERACTIONS.feature`「就地編輯」was updated
+// alongside this (the old "Enter 提交" line contradicted #199's multi-line
+// scope — see NOOP-126 §0.2).
+
+it("未編輯、選取單一文字框時按 Enter：進入編輯，游標在字串結尾（鍵盤等同雙擊）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").click();
+    await page.keyboard.press("Enter");
+    await waitForEditTextareaFocus(page);
+
+    const selection = await readSelection(page);
+    expect(selection.start).toBe(selection.end);
+    expect(selection.start).toBe("Hi".length);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("編輯中按 Enter：游標處插入硬換行，不 commit、不離開編輯——整段編輯結束時仍只送一條命令", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const before = await readSlide(registry, presentationId);
+    const page = await openApp(server);
+
+    let commandCount = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+    });
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+
+    await page.keyboard.type("AAA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("BBB");
+    await page.waitForTimeout(150);
+
+    // Still editing — Enter must not have committed or left the session.
+    expect(await isEditTextareaFocused(page)).toBe(true);
+    const linesWhileEditing = await tspanCount(page, "el-text");
+    expect(linesWhileEditing).toBeGreaterThanOrEqual(2); // the hard break forced at least 2 lines
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    expect(commandCount).toBe(1); // one `text set` for the whole session, not one per Enter
+    const after = await readSlide(registry, presentationId);
+    expect(after).toContain('data-comot-break="1"');
+    const lines = readTspans(after, "el-text");
+    expect(lines.map((l) => l.text)).toEqual(["HiAAA", "BBB"]);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("編輯中按 ⌘Enter／Ctrl+Enter：不插入換行、不 commit、不離開編輯", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+
+    let commandCount = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+    });
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await waitForEditTextareaFocus(page);
+
+    await page.keyboard.type("XYZ");
+    await page.keyboard.press("Control+Enter");
+    await page.keyboard.press("Meta+Enter");
+    await page.waitForTimeout(150);
+
+    expect(await isEditTextareaFocused(page)).toBe(true); // still editing
+    expect(await tspanCount(page, "el-text")).toBe(1); // no hard break was inserted
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    expect(commandCount).toBe(1);
+    const after = await readSlide(registry, presentationId);
+    expect(readTspans(after, "el-text").map((l) => l.text)).toEqual(["HiXYZ"]);
   } finally {
     await cleanup();
   }
