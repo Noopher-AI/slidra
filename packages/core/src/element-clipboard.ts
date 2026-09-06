@@ -2,7 +2,7 @@ import { CoMotionError } from "./errors.js";
 import { composeMatrices, decomposeMatrix, formatTransform, multiplyMatrix, parseTransform, type Matrix, type TransformParts } from "./geometry/transform.js";
 import { assertSlideCompliant } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
-import { EFFECTS_NS } from "./effects/index.js";
+import { EFFECTS_NS, type RawEffectAttributes } from "./effects/index.js";
 
 /**
  * `element copy` / `element paste` / `element duplicate` (決定 5-7). Pure
@@ -22,6 +22,8 @@ export interface ClipboardPayload {
   elements: string[];
   /** `<comot:effect>` markup, verbatim, in original document order. */
   effects: string[];
+  /** The source slide's `<svg viewBox>`, verbatim. `undefined` for a payload written before this field existed — `serializeClipboardSvg` falls back to `DEFAULT_CLIPBOARD_VIEWBOX` rather than erroring. */
+  viewBox?: string;
 }
 
 interface Splice {
@@ -168,7 +170,9 @@ export function extractElementsForCopy(
     }
   }
 
-  return { sourceSlidePath: slidePath, elements, effects };
+  const viewBox = attributeValue(svgRoot, "viewBox") ?? undefined;
+
+  return { sourceSlidePath: slidePath, elements, effects, viewBox };
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +261,192 @@ function appendEffects(svgContent: string, effectMarkups: readonly string[]): st
   return svgContent.slice(0, svgRoot.contentStart) + block + svgContent.slice(svgRoot.contentStart);
 }
 
+// ---------------------------------------------------------------------------
+// clipboard SVG (system clipboard exchange format, decided in [E2.T18]'s plan)
+// ---------------------------------------------------------------------------
+
+/** Marks the wrapper `<svg>` a paste should recognise as a co-motion element clipboard payload. */
+const CLIPBOARD_MARKER_ATTR = "data-comot-clipboard";
+const CLIPBOARD_MARKER_VALUE = "elements";
+const CLIPBOARD_SOURCE_ATTR = "data-comot-source";
+
+/** Used only to satisfy `assertSlideCompliant`'s `missing-viewbox` check while sanitising a fragment in isolation — never the payload's own `viewBox`. */
+const SANITIZE_PLACEHOLDER_VIEWBOX = "0 0 1280 720";
+
+/** Attribute values matching any of these schemes are never legal in pasted content — none of them can point at same-document data. */
+const DANGEROUS_SCHEME = /\b(javascript|data|file|ftp|blob):/i;
+/** An absolute or protocol-relative URL in an attribute value. */
+const ABSOLUTE_URL = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
+/** `url(...)` references — only a same-document fragment (`#foo`) is legal. */
+const URL_FUNCTION = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+/** Namespace-declaration attributes carry inert URIs (never fetched or executed) and are exempt from the URL/scheme rules above. */
+function isNamespaceDeclaration(attrName: string): boolean {
+  return attrName === "xmlns" || attrName.startsWith("xmlns:");
+}
+
+/** [E2.T18] 決定 4：`<comot:effect>` 的屬性白名單，從 `RawEffectAttributes` 的欄位推導，不手抄成常數。 */
+const EFFECT_ATTRIBUTE_WHITELIST: ReadonlySet<string> = new Set<keyof RawEffectAttributes>([
+  "target",
+  "family",
+  "effect",
+  "start",
+  "duration",
+  "delay",
+  "d",
+]);
+
+function isRelativeReference(value: string): boolean {
+  return value.startsWith("#") || (!ABSOLUTE_URL.test(value) && !DANGEROUS_SCHEME.test(value));
+}
+
+function checkAttributeValue(attrName: string, value: string, label: string): void {
+  if (isNamespaceDeclaration(attrName)) return;
+  if (DANGEROUS_SCHEME.test(value)) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
+  }
+  if (ABSOLUTE_URL.test(value)) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 是外部參照（${value}）`);
+  }
+  for (const match of value.matchAll(URL_FUNCTION)) {
+    const ref = match[2];
+    if (!ref.startsWith("#")) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
+    }
+  }
+  if ((attrName === "href" || attrName === "xlink:href" || attrName === "src") && !isRelativeReference(value)) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
+  }
+}
+
+function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean): void {
+  for (const attribute of node.attributes) {
+    if (/^on/i.test(attribute.name)) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 含有事件屬性 ${attribute.name}`);
+    }
+    checkAttributeValue(attribute.name, attribute.value, label);
+    if (isEffect && node.tag === "comot:effect" && !EFFECT_ATTRIBUTE_WHITELIST.has(attribute.name as keyof RawEffectAttributes)) {
+      throw new CoMotionError(`剪貼簿內容不可信：效果項含有不在白名單內的屬性 ${attribute.name}`);
+    }
+  }
+  for (const child of node.children) {
+    checkNodeAttributes(child, label, isEffect);
+  }
+}
+
+/**
+ * The one gate every pasted fragment — internal or from the system
+ * clipboard — must pass before it is spliced into a presentation (ADR-0010,
+ * [E2.T18] 決定 4). Never patches a bad fragment into something acceptable:
+ * every violation throws, none are silently stripped. Two layers:
+ *
+ * 1. Structural: wrapping the fragment so `assertSlideCompliant` can reuse
+ *    its existing tag whitelist/`<script>`/`<foreignObject>` sweep for free.
+ *    An `elements` fragment is wrapped as direct `<svg>` content (so the
+ *    normal-form checks — missing id, mixed children, unknown tag — apply);
+ *    an `effects` fragment is wrapped inside `<metadata><comot:effects>`,
+ *    where only the forbidden-tag sweep (which walks metadata too) applies —
+ *    `checkSlideCompliance` does not otherwise structurally inspect metadata.
+ * 2. Attribute-level (not covered by `assertSlideCompliant`, ADR-0010/0011
+ *    left that to the iframe sandbox for *rendering* — this is the
+ *    write-path guard #201's architecture decision added): no `on*` handler,
+ *    no `javascript:`/`data:`/`file:`/`ftp:`/`blob:` scheme, no absolute URL,
+ *    no `url(...)` outside a same-document fragment, `href`/`xlink:href`/`src`
+ *    limited to a fragment or relative path, and — for an effect item only —
+ *    no attribute outside `RawEffectAttributes`' fields.
+ *
+ * `<!DOCTYPE`/`<!ENTITY` are rejected directly on the raw string: `scanDocument`
+ * silently skips these constructs (by design, for `<!--`/`<![CDATA[`), which
+ * would otherwise let one ride through unexamined into the written file.
+ */
+export function sanitizeClipboardMarkup(markup: string, kind: "element" | "effect"): void {
+  if (/<!DOCTYPE|<!ENTITY/i.test(markup)) {
+    throw new CoMotionError("剪貼簿內容不可信：含有 DOCTYPE 或 ENTITY 宣告");
+  }
+
+  const label = kind === "element" ? "剪貼簿元素" : "剪貼簿效果項";
+  const wrapped =
+    kind === "element"
+      ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SANITIZE_PLACEHOLDER_VIEWBOX}">${markup}</svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${SANITIZE_PLACEHOLDER_VIEWBOX}"><metadata><comot:effects xmlns:comot="${EFFECTS_NS}">${markup}</comot:effects></metadata></svg>`;
+  assertSlideCompliant(wrapped, label);
+
+  const roots = scanDocument(markup);
+  for (const root of roots) {
+    checkNodeAttributes(root, label, kind === "effect");
+  }
+}
+
+/**
+ * Serialises a clipboard payload into the single exchange format both
+ * `text/plain` and `image/svg+xml` carry ([E2.T18] 決定 2): a standalone,
+ * self-describing `<svg>` — a legal document on its own (pastes into
+ * another app), and a compliant slide fragment (`assertSlideCompliant`
+ * accepts it) at the same time. Sanitises every element/effect first, so
+ * nothing this app ever *writes* to the system clipboard can itself be the
+ * unsafe half of a round trip.
+ */
+export function serializeClipboardSvg(payload: ClipboardPayload): string {
+  for (const element of payload.elements) sanitizeClipboardMarkup(element, "element");
+  for (const effect of payload.effects) sanitizeClipboardMarkup(effect, "effect");
+
+  const viewBox = payload.viewBox ?? SANITIZE_PLACEHOLDER_VIEWBOX;
+  const effectsBlock =
+    payload.effects.length > 0
+      ? `<metadata><comot:effects xmlns:comot="${EFFECTS_NS}">${payload.effects.join("")}</comot:effects></metadata>`
+      : "";
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:comot="${EFFECTS_NS}" viewBox="${viewBox}" ` +
+    `${CLIPBOARD_MARKER_ATTR}="${CLIPBOARD_MARKER_VALUE}" ${CLIPBOARD_SOURCE_ATTR}="${escapeAttr(payload.sourceSlidePath)}">` +
+    `${effectsBlock}${payload.elements.join("")}</svg>`
+  );
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/**
+ * `serializeClipboardSvg`'s exact inverse (round-trips: `parseClipboardSvg(serializeClipboardSvg(p))`
+ * deep-equals `p`). Returns `null` — never throws — when `markup` is not a
+ * co-motion element clipboard payload at all (wrong root marker, or not
+ * parseable): that is the ordinary "plain text/foreign SVG on the system
+ * clipboard" case a paste handler must treat as silent no-op or route
+ * elsewhere, not an error.
+ */
+export function parseClipboardSvg(markup: string): ClipboardPayload | null {
+  let roots: ScannedNode[];
+  try {
+    roots = scanDocument(markup);
+  } catch {
+    return null;
+  }
+  const svgRoot = roots.find((node) => node.tag === "svg");
+  if (!svgRoot) return null;
+  if (attributeValue(svgRoot, CLIPBOARD_MARKER_ATTR) !== CLIPBOARD_MARKER_VALUE) return null;
+
+  const sourceSlidePath = attributeValue(svgRoot, CLIPBOARD_SOURCE_ATTR);
+  if (sourceSlidePath === null) return null;
+
+  const viewBox = attributeValue(svgRoot, "viewBox") ?? undefined;
+
+  const effects: string[] = [];
+  const metadata = svgRoot.children.find((child) => child.tag === "metadata");
+  const effectsList = metadata?.children.find((child) => child.tag === "comot:effects");
+  if (effectsList) {
+    for (const effect of effectsList.children) {
+      if (effect.tag !== "comot:effect") continue;
+      effects.push(markup.slice(effect.start, effect.end));
+    }
+  }
+
+  const elements = svgRoot.children
+    .filter((child) => child.tag === "g")
+    .map((child) => markup.slice(child.start, child.end));
+
+  return { sourceSlidePath, elements, effects, viewBox };
+}
+
 export interface PasteResult {
   updated: string;
   /** The new ids assigned to `payload.elements`' top-level containers, in payload order (never a descendant's id). */
@@ -287,6 +477,8 @@ export function pasteElements(
   if (payload.elements.length === 0) {
     throw new CoMotionError("剪貼簿是空的");
   }
+  for (const element of payload.elements) sanitizeClipboardMarkup(element, "element");
+  for (const effect of payload.effects) sanitizeClipboardMarkup(effect, "effect");
 
   const idMap = new Map<string, string>();
   const pastedIds: string[] = [];

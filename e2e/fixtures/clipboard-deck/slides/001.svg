@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata>
+    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+      <comot:effect target="el-solo" family="enter" effect="fade" start="on-click"/>
+    </comot:effects>
+  </metadata>
+  <g id="el-solo" data-comot-name="單一元素" transform="translate(100 100)">
+    <rect x="0" y="0" width="120" height="80" fill="#c66"/>
+  </g>
+  <g id="el-group" data-comot-name="群組" transform="translate(400 100)">
+    <g id="el-group-a" data-comot-name="群組子元素 A" transform="translate(0 0)">
+      <rect x="0" y="0" width="60" height="60" fill="#6a6"/>
+    </g>
+    <g id="el-group-b" data-comot-name="群組子元素 B" transform="translate(80 0)">
+      <rect x="0" y="0" width="60" height="60" fill="#66c"/>
+    </g>
+  </g>
+  <g id="tbl-1" data-comot-name="表格" data-comot-type="table" transform="translate(100 300)">
+    <g id="cell-0-0" data-comot-cell="0,0"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">A1</text></g>
+    <g id="cell-0-1" data-comot-cell="0,1" transform="translate(120 0)"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">B1</text></g>
+    <g id="cell-0-2" data-comot-cell="0,2" transform="translate(240 0)"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">C1</text></g>
+    <g id="cell-1-0" data-comot-cell="1,0" transform="translate(0 48)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">A2</text></g>
+    <g id="cell-1-1" data-comot-cell="1,1" transform="translate(120 48)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">B2</text></g>
+    <g id="cell-1-2" data-comot-cell="1,2" transform="translate(240 48)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">C2</text></g>
+    <g id="cell-2-0" data-comot-cell="2,0" transform="translate(0 96)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">A3</text></g>
+    <g id="cell-2-1" data-comot-cell="2,1" transform="translate(120 96)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">B3</text></g>
+    <g id="cell-2-2" data-comot-cell="2,2" transform="translate(240 96)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">C3</text></g>
+  </g>
+</svg>

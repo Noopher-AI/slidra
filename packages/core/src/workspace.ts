@@ -50,7 +50,20 @@ import { renderTextBoxContent } from "./text/render.js";
 import { formatSvgNumber } from "./svg-number.js";
 import { groupElements, setElementName, ungroupElements } from "./element-group.js";
 import { alignElements, distributeElements, type AlignDirection, type DistributeAxis } from "./element-arrange.js";
-import { extractElementsForCopy, pasteElements, type ClipboardPayload } from "./element-clipboard.js";
+import {
+  extractElementsForCopy,
+  pasteElements,
+  parseClipboardSvg,
+  serializeClipboardSvg,
+  type ClipboardPayload,
+} from "./element-clipboard.js";
+import {
+  copyTableCellRange,
+  cutTableCellRange,
+  pasteTableCellRange,
+  type CellAnchor,
+  type CellRange,
+} from "./table-clipboard.js";
 import {
   addEffects,
   moveEffect,
@@ -1200,8 +1213,14 @@ async function writeClipboardFile(home: string, id: string, payload: ClipboardPa
   await writeFile(clipboardFilePath(home, id), JSON.stringify(payload), "utf-8");
 }
 
-/** Extracts `elementIds` into the presentation's clipboard file. Never mutates the presentation — no undo step recorded. */
-export async function copySlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+/**
+ * Extracts `elementIds` into the presentation's clipboard file. Never
+ * mutates the presentation — no undo step recorded. Also returns the same
+ * payload serialized as the system-clipboard exchange format ([E2.T18] 決定
+ * 2), so a CLI/agent caller can inspect or hand off exactly what a GUI ⌘C
+ * would have written to `navigator.clipboard`.
+ */
+export async function copySlideElements(id: string, slidePath: string, elementIds: string[]): Promise<{ svg: string }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
@@ -1209,6 +1228,7 @@ export async function copySlideElements(id: string, slidePath: string, elementId
   const original = await readVirtualFile(workDir, slidePath);
   const payload = extractElementsForCopy(original, slidePath, elementIds);
   await writeClipboardFile(home, id, payload);
+  return { svg: serializeClipboardSvg(payload) };
 }
 
 /**
@@ -1223,7 +1243,7 @@ export async function copySlideElements(id: string, slidePath: string, elementId
  * restores the deleted elements but does not restore the clipboard, same as
  * every real editor.
  */
-export async function cutSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+export async function cutSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<{ svg: string }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
@@ -1233,24 +1253,41 @@ export async function cutSlideElements(id: string, slidePath: string, elementIds
   const updated = deleteElements(original, slidePath, elementIds);
   await writeClipboardFile(home, id, payload);
   await writePresentationFile(id, slidePath, updated);
+  return { svg: serializeClipboardSvg(payload) };
 }
 
-/** Pastes the presentation's clipboard file into `slidePath`, which may differ from where it was copied from. */
+/**
+ * Pastes into `slidePath`, which may differ from where the clipboard was
+ * copied from. When `svg` is given (a system-clipboard exchange-format
+ * string — `element paste --svg-file`, or the GUI's own ⌘V), it is parsed
+ * and used directly; the presentation's internal clipboard file is neither
+ * read nor written in that case. Without `svg`, behaves exactly as before
+ * (決定 6 of the original ticket): reads the internal clipboard file.
+ */
 export async function pasteSlideClipboard(
   id: string,
   slidePath: string,
   dx: number,
   dy: number,
+  svg?: string,
 ): Promise<{ elementIds: string[] }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
-  const payload = await readClipboardFile(home, id);
+  const payload = svg !== undefined ? requireClipboardSvg(svg) : await readClipboardFile(home, id);
   const original = await readVirtualFile(workDir, slidePath);
   const { updated, elementIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
   await writePresentationFile(id, slidePath, updated);
   return { elementIds };
+}
+
+function requireClipboardSvg(svg: string): ClipboardPayload {
+  const payload = parseClipboardSvg(svg);
+  if (!payload) {
+    throw new CoMotionError("剪貼簿內容不是合法的 co-motion 元素剪貼簿格式");
+  }
+  return payload;
 }
 
 /**
@@ -1275,4 +1312,54 @@ export async function duplicateSlideElements(
   const { updated, elementIds: newIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
   await writePresentationFile(id, slidePath, updated);
   return { elementIds: newIds };
+}
+
+// ---------------------------------------------------------------------------
+// table cell copy / cut / paste ([E2.T18], soft dependency on [E2.T14]'s
+// table container shape — see table-clipboard.ts's own module comment).
+// The TSV never touches the presentation's element clipboard file: it is a
+// different exchange format for a different selection kind, kept in the
+// caller's own `text/plain` write, same posture as `duplicateSlideElements`
+// keeping its payload off the clipboard file.
+// ---------------------------------------------------------------------------
+
+/** `table cell copy` (CLI). Never mutates the presentation. */
+export async function copyTableCells(id: string, slidePath: string, tableElementId: string, range: CellRange): Promise<{ tsv: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const tsv = copyTableCellRange(original, slidePath, tableElementId, range);
+  return { tsv };
+}
+
+/** `table cell cut` (CLI). One `writePresentationFile` call = one undo step. */
+export async function cutTableCells(id: string, slidePath: string, tableElementId: string, range: CellRange): Promise<{ tsv: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const { tsv, updated } = cutTableCellRange(original, slidePath, tableElementId, range);
+  await writePresentationFile(id, slidePath, updated);
+  return { tsv };
+}
+
+/** `table cell paste` (CLI). */
+export async function pasteTableCells(
+  id: string,
+  slidePath: string,
+  tableElementId: string,
+  anchor: CellAnchor,
+  tsv: string,
+): Promise<{ cells: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const { updated, cells } = pasteTableCellRange(original, slidePath, tableElementId, anchor, tsv);
+  await writePresentationFile(id, slidePath, updated);
+  return { cells };
 }

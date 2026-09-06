@@ -73,6 +73,10 @@ import {
 import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
+import { extractElementsForCopy, serializeClipboardSvg } from "@co-motion/core/clipboard";
+import { INITIAL_PASTE_OFFSET_STATE, clipboardWritten, nextPasteOffset, type PasteOffsetState } from "./paste-offset.js";
+import { classifyClipboardText } from "./clipboard/payload.js";
+import { pasteCommandFor, type CellRangeProvider, type ClipboardTarget } from "./clipboard/dispatch.js";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -379,6 +383,14 @@ export interface CanvasController {
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
+  /** [E2.T18]: what ⌘C/the ContextBar Copy button would put on the system clipboard right now, computed synchronously and purely (no server round trip, no side effect) — `null` with no selection or before the first slide loads. */
+  clipboardTextForSelection: () => string | null;
+  /** ⌘C, or the ContextBar Copy button (計畫 §3.6/3.8): same computation as `clipboardTextForSelection`, plus resetting the paste-offset run (`paste-offset.ts`'s `clipboardWritten`). Never mutates the presentation. Returns the string the caller should write via `navigator.clipboard.writeText`, or `null` with no selection. */
+  copySelection: () => string | null;
+  /** ⌘X, or the ContextBar Cut button: same string as `copySelection`, plus an `element delete` for the cut elements — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection. */
+  cutSelection: () => Promise<string | null>;
+  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a co-motion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
+  pasteFromText: (text: string) => Promise<void>;
   /**
    * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
    * `textbox add` for the current slide, selecting the new box on success
@@ -908,6 +920,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
   // selectionIds/Names everywhere they are cleared (see that comment).
   let selectionGroupPath: string[] = [];
+  // [E2.T18]: `paste-offset.ts`'s own state, one instance per editor session
+  // (that module's own doc comment) — advanced by a successful `copySelection`/
+  // `cutSelection`/`pasteFromText`, never by a `table cell paste` (offsets
+  // are an element-clipboard-only concept).
+  let pasteOffsetState: PasteOffsetState = INITIAL_PASTE_OFFSET_STATE;
+  // [E2.T18] 計畫「補充 (b)」：儲存格範圍選取的路由縫，恆回 null 直到
+  // [E2.T14] 合併並換上真正的實作——見 `clipboard/dispatch.ts`'s
+  // `CellRangeProvider` doc comment.
+  const cellRangeProvider: CellRangeProvider = () => null;
   // NOOP-227: the element(s) a just-finished insert/paste command created,
   // still waiting for the reload()/render() its own write triggers over
   // /api/events. reload() would otherwise clear the selection like every
@@ -962,6 +983,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
   let currentSlideModel: SlideModel | null = null;
+  // [E2.T18]: the current slide's raw SVG text, kept so ⌘C/⌘X can call
+  // `@co-motion/core/clipboard`'s `extractElementsForCopy` synchronously,
+  // in-browser, without a round trip to the server — the whole reason this
+  // ticket's plan aliases that module straight to source (見 vite/vitest
+  // 設定). `null` before the first render() (no slide loaded yet).
+  let currentSlideMarkup: string | null = null;
   // Fonts this presentation embeds, as reported by /api/presentation
   // (project.json's own `fonts` field) — resolveBrowserFont() below reads
   // this to find the right font FILE for a family it hasn't fetched yet.
@@ -1168,6 +1195,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
       else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
+      // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
+      // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key
+      // 轉送」而不是父文件自己的 keydown——兩條路徑呼叫同一組 controller
+      // 方法，不會漂移。
+      else if (message.key === "c" && (modifiers.meta || modifiers.ctrl)) {
+        const svg = copySelection();
+        if (svg) void navigator.clipboard.writeText(svg);
+      } else if (message.key === "x" && (modifiers.meta || modifiers.ctrl)) {
+        void cutSelection().then((svg) => {
+          if (svg) void navigator.clipboard.writeText(svg);
+        });
+      } else if (message.key === "v" && (modifiers.meta || modifiers.ctrl)) {
+        void navigator.clipboard.readText().then((text) => pasteFromText(text));
+      }
       return;
     }
     if (message.event === "gesture-start") {
@@ -1762,6 +1803,65 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       dx: 0.03 * viewport.viewBox.width,
       dy: 0.04 * viewport.viewBox.height,
     });
+  }
+
+  /** Pure, synchronous — `extractElementsForCopy`/`serializeClipboardSvg` are Node-free (計畫 §3.8), so this never touches the network. */
+  function clipboardTextForSelection(): string | null {
+    if (mode !== "view" || selectionIds.length === 0 || !currentSlideMarkup || currentIndex === -1) return null;
+    try {
+      const payload = extractElementsForCopy(currentSlideMarkup, slides[currentIndex], [...selectionIds]);
+      return serializeClipboardSvg(payload);
+    } catch {
+      // A source slide the sanitizer/compliance check would reject cannot
+      // actually exist (every write path already asserts compliance) — this
+      // is defence, not an expected path, so it degrades to "nothing to
+      // copy" rather than surfacing a confusing error for a selection the
+      // author can plainly see.
+      return null;
+    }
+  }
+
+  function copySelection(): string | null {
+    const svg = clipboardTextForSelection();
+    if (svg && currentIndex !== -1) pasteOffsetState = clipboardWritten(slides[currentIndex]);
+    return svg;
+  }
+
+  /**
+   * Cutting is a mutation (`element delete`), unlike `copySelection` — the
+   * caller (a keydown handler, or the ContextBar's Cut button) awaits this
+   * before writing `navigator.clipboard`, since there is no synchronous
+   * ClipboardEvent to race against (計畫 §3.8/A0 記錄: headless Chromium
+   * 底下 keyboard-only ⌘X 不會觸發原生 `cut` 事件，改走非同步
+   * `navigator.clipboard` API，見 App.tsx 的 keydown handler)。
+   */
+  async function cutSelection(): Promise<string | null> {
+    const svg = clipboardTextForSelection();
+    if (!svg || currentIndex === -1) return null;
+    const slidePath = slides[currentIndex];
+    const elementIds = [...selectionIds];
+    const result = await runCommand("element delete", { slidePath, elementIds });
+    if (!result.ok) return null;
+    pasteOffsetState = clipboardWritten(slidePath);
+    clearSelectionState([]);
+    return svg;
+  }
+
+  function cellRangeTarget(): ClipboardTarget {
+    if (currentIndex === -1) return null;
+    const range = cellRangeProvider();
+    return range ? { kind: "cells", slidePath: slides[currentIndex], range } : null;
+  }
+
+  async function pasteFromText(text: string): Promise<void> {
+    if (mode !== "view" || currentIndex === -1) return;
+    const slidePath = slides[currentIndex];
+    const classified = classifyClipboardText(text);
+    const { dx, dy, next } = nextPasteOffset(pasteOffsetState, slidePath);
+    const command = pasteCommandFor(cellRangeTarget(), classified, slidePath, { dx, dy });
+    if (!command) return;
+    const result = await runCommand(command.name, command.input);
+    if (result.ok && command.name === "element paste") pasteOffsetState = next;
   }
 
   async function orderSelection(direction: "up" | "down" | "front" | "back"): Promise<void> {
@@ -2781,6 +2881,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (currentIndex === -1) {
       currentSlideModel = null;
+      currentSlideMarkup = null;
       currentSlideEffects = [];
       badgeTargets = [];
       overlayBadges = [];
@@ -2791,6 +2892,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
+    currentSlideMarkup = svgMarkup;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
     // A non-compliant slide (should not happen — every write path asserts
@@ -3314,6 +3416,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectElements,
     deleteSelection,
     duplicateSelection,
+    clipboardTextForSelection,
+    copySelection,
+    cutSelection,
+    pasteFromText,
     orderSelection,
     alignSelection,
     distributeSelection,

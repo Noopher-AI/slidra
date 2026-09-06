@@ -37,6 +37,12 @@ export default defineConfig({
       // declared Node-free too — effects.ts/player-plan.ts import it
       // straight from source, same reasoning as the three aliases above.
       "@co-motion/core/effects": path.join(rootDir, "../core/src/effects/index.ts"),
+      // [E2.T18]: element-clipboard.ts is declared Node-free too (its own
+      // header comment) — the clipboard write/read path calls
+      // extractElementsForCopy/serializeClipboardSvg/parseClipboardSvg
+      // straight from source, synchronously, same reasoning as the four
+      // aliases above.
+      "@co-motion/core/clipboard": path.join(rootDir, "../core/src/element-clipboard.ts"),
     },
   },
   build: {

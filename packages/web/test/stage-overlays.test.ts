@@ -147,7 +147,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).not.toContain("context-bar\"");
   });
 
-  it("玻璃容器：Comment to AI ｜ Edit style ｜ 前後層四項（圖示） ｜ Duplicate ｜ Delete", () => {
+  it("玻璃容器：Comment to AI ｜ Edit style ｜ 前後層四項（圖示） ｜ Copy／Cut／Paste（圖示） ｜ Duplicate ｜ Delete", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -157,15 +157,31 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
+        onCopy: () => {},
+        onCut: () => {},
+        onPaste: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
       }),
     );
     expect(markup).toContain('role="toolbar"');
     const titles = [...markup.matchAll(/<button[^>]*title="([^"]+)"/g)].map((m) => m[1]);
-    expect(titles).toEqual(["Comment to AI", "Edit style", "Bring to front", "Bring forward", "Send backward", "Send to back", "Duplicate", "Delete"]);
-    expect(markup.match(/context-bar-item-icon/g)).toHaveLength(4);
-    expect(markup.match(/context-bar-divider/g)).toHaveLength(3);
+    expect(titles).toEqual([
+      "Comment to AI",
+      "Edit style",
+      "Bring to front",
+      "Bring forward",
+      "Send backward",
+      "Send to back",
+      "Copy",
+      "Cut",
+      "Paste",
+      "Duplicate",
+      "Delete",
+    ]);
+    // [E2.T18]: +3 icon-only buttons (Copy/Cut/Paste), same class as the four Order buttons — 4 + 3 = 7.
+    expect(markup.match(/context-bar-item-icon/g)).toHaveLength(7);
+    expect(markup.match(/context-bar-divider/g)).toHaveLength(4);
     expect(markup).toContain("context-bar-item-danger");
     // [E2.T7]: hasAnimation: false — no Edit animation button at all (not merely disabled/hidden).
     expect(markup).not.toContain("Edit animation");
@@ -180,7 +196,11 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         dragging: false,
         hasAnimation: true,
         onEditAnimation: () => {},
+        onComment: () => {},
         onOrder: () => {},
+        onCopy: () => {},
+        onCut: () => {},
+        onPaste: () => {},
         onDuplicate: () => {},
         onDelete: () => {},
       }),
@@ -194,9 +214,40 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       "Bring forward",
       "Send backward",
       "Send to back",
+      "Copy",
+      "Cut",
+      "Paste",
       "Duplicate",
       "Delete",
     ]);
+  });
+
+  // [E2.T18] A9: Copy/Cut/Paste each render their OWN icon (registry.tsx's
+  // `copy`/`cut`/`paste` shapes are distinct enough to tell apart in raw
+  // markup) rather than three buttons accidentally sharing one icon.
+  it("Copy／Cut／Paste 三個按鈕各自用自己的 icon，不互相搞混", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ContextBar, {
+        union: { x: 100, y: 100, width: 160, height: 100 },
+        bounds: { width: 1280, height: 720 },
+        dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
+        onComment: () => {},
+        onOrder: () => {},
+        onCopy: () => {},
+        onCut: () => {},
+        onPaste: () => {},
+        onDuplicate: () => {},
+        onDelete: () => {},
+      }),
+    );
+    const copyButton = /<button[^>]*title="Copy"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
+    const cutButton = /<button[^>]*title="Cut"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
+    const pasteButton = /<button[^>]*title="Paste"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
+    expect(copyButton).toContain('width="9"');
+    expect(cutButton.match(/<circle/g)).toHaveLength(2);
+    expect(pasteButton).toContain('width="10"');
   });
 
   it("剛好卡在翻轉門檻上：貼齊 Dock 保留區上緣仍算「放得下」，不翻轉", () => {

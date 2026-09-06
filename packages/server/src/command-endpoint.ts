@@ -89,6 +89,11 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "comment add",
   "comment edit",
   "comment delete",
+  // [E2.T18] 的剪貼簿加入這三條：⌘C／⌘X／⌘V 對儲存格範圍的路由縫，走
+  // table 命令族（軟依賴 [E2.T14]，本輪只補這三條 cell-range 命令）。
+  "table cell copy",
+  "table cell cut",
+  "table cell paste",
 ];
 
 /**

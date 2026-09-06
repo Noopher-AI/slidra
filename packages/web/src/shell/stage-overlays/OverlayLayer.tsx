@@ -125,6 +125,21 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges,
         onEditAnimation={onEditAnimation}
         onComment={comment.onOpenForSelection}
         onOrder={(direction) => void controller?.orderSelection(direction)}
+        onCopy={() => {
+          // [E2.T18] 計畫 §3.8/A0：headless Chromium 實測，鍵盤與按鈕都一律
+          // 走非同步 `navigator.clipboard` API（見 canvas.ts controller 與
+          // App.tsx keydown handler 的說明）——這裡與 ⌘C 是同一組邏輯。
+          const svg = controller?.copySelection();
+          if (svg) void navigator.clipboard.writeText(svg);
+        }}
+        onCut={() => {
+          void controller?.cutSelection().then((svg) => {
+            if (svg) void navigator.clipboard.writeText(svg);
+          });
+        }}
+        onPaste={() => {
+          void navigator.clipboard.readText().then((text) => controller?.pasteFromText(text));
+        }}
         onDuplicate={() => void controller?.duplicateSelection()}
         onDelete={() => void controller?.deleteSelection()}
       />

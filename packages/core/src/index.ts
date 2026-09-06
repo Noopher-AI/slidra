@@ -80,6 +80,9 @@ export {
   pasteSlideClipboard,
   duplicateSlideElements,
   cutSlideElements,
+  copyTableCells,
+  cutTableCells,
+  pasteTableCells,
   addSlideEffects,
   removeSlideEffects,
   moveSlideEffect,
@@ -105,8 +108,10 @@ export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOpt
 export { groupElements, ungroupElements, setElementName } from "./element-group.js";
 export { alignElements, distributeElements } from "./element-arrange.js";
 export type { AlignDirection, DistributeAxis } from "./element-arrange.js";
-export { extractElementsForCopy, pasteElements } from "./element-clipboard.js";
+export { extractElementsForCopy, pasteElements, serializeClipboardSvg, parseClipboardSvg, sanitizeClipboardMarkup } from "./element-clipboard.js";
 export type { ClipboardPayload, PasteResult } from "./element-clipboard.js";
+export { copyTableCellRange, cutTableCellRange, pasteTableCellRange, parseCellRange, parseCellAnchor } from "./table-clipboard.js";
+export type { CellRange, CellAnchor } from "./table-clipboard.js";
 export { packDirectory } from "./container.js";
 export { watchPresentation } from "./watch.js";
 export type { PresentationWatcher } from "./watch.js";
