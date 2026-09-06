@@ -94,7 +94,7 @@
   background: transparent;
   color: var(--ink-700);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs); /* same size as .selection-label */
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
