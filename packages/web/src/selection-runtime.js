@@ -1586,23 +1586,35 @@
     updateBoxes();
   }
 
-  function applyPreviewTextbox(id, lines, width) {
+  /**
+   * Live preview for a text box: `markup` is a finished string of
+   * `<tspan>` markup — the exact output of core's own
+   * `renderTextBoxContent` (NOOP-65r3 §2). The runtime holds no knowledge
+   * of what attributes a line/run tspan carries; it only ever parses and
+   * transplants what the host already rendered, so a new field on the
+   * host side (like `data-comot-break`/`align`/nested run tspans) can
+   * never silently fail to reach here again (NOOP-65r2 FAIL 1).
+   *
+   * `markup` not being a usable string — wrong type, or it fails to parse
+   * as SVG — leaves the DOM untouched rather than clearing it: a
+   * malformed message must never blank out what's currently on screen,
+   * and throwing here would break the whole `message` listener for every
+   * other command in the same dispatch.
+   */
+  function applyPreviewTextbox(id, markup, width) {
     var container = document.getElementById(id);
     if (!container) return;
     var textEl = contentTextElement(container);
     if (!textEl) return;
+    if (typeof markup !== "string") return;
+    var doc = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg"><text xml:space="preserve">' + markup + "</text></svg>",
+      "image/svg+xml",
+    );
+    if (doc.getElementsByTagName("parsererror").length > 0) return;
+    var parsedText = doc.documentElement.firstChild;
     while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
-    if (Array.isArray(lines)) {
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        if (!line || typeof line.text !== "string" || typeof line.y !== "number") continue;
-        var tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-        tspan.setAttribute("x", "0");
-        tspan.setAttribute("y", String(line.y));
-        tspan.textContent = line.text;
-        textEl.appendChild(tspan);
-      }
-    }
+    for (var n = parsedText.firstChild; n; n = n.nextSibling) textEl.appendChild(document.importNode(n, true));
     if (typeof width === "number") container.setAttribute("data-comot-text-width", String(width));
     updateBoxes();
   }
@@ -1629,15 +1641,15 @@
     if (data.command === "preview") {
       applyPreview(data.items);
     } else if (data.command === "preview-textbox") {
-      applyPreviewTextbox(data.id, data.lines, data.width);
+      applyPreviewTextbox(data.id, data.markup, data.width);
     } else if (data.command === "preview-text") {
       applyPreviewText(data.id, data.text);
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
-      // No `lines` means a plain <text> (host side sends them only for a
+      // No `markup` means a plain <text> (host side sends it only for a
       // text box) — nothing to re-wrap, so the initial paint is a no-op.
       if (started) {
-        if (Array.isArray(data.lines)) applyPreviewTextbox(data.id, data.lines, data.width);
+        if (typeof data.markup === "string") applyPreviewTextbox(data.id, data.markup, data.width);
       } else post({ event: "text-edit-denied", id: data.id });
     } else if (data.command === "marquee") {
       drawMarquee(data.rect);

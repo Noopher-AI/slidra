@@ -498,18 +498,33 @@ it("A1：ArrowLeft 依序左移游標，caret 畫面位置與 textarea.selection
   }
 });
 
-it("A2：點文字中第 k 個字，游標停在該處；接著打字插在該處（AC2 的座標版本）", async () => {
+// A16（NOOP-65r3 §4 C2）：preview 通道 off-by-one 的原始重現情境——有硬換行
+//時，點第 2 行第 1 個字，游標必須落在點到的字，不是差一個字元。第 1、2 輪
+// FAIL 1 的根因是 canvas.ts 的 preview 從不帶 data-comot-break，讓
+// selection-runtime.js 的 textLineRanges（本身是對的）在編輯階段永遠拿不到
+// 硬換行標記，於是編輯期間的行邊界算錯。這是 A2 座標版本（clickChar →
+// selectionStart → 打字 → value）的嚴格超集，同一輸入路徑在更難的情境（跨
+// 硬換行）下做同一組斷言，所以取代 A2（單行、無硬換行的逐字元零偏移仍有
+// A1/A6 守著）。
+it("A16：有硬換行時，點第 2 行第 1 個字，游標落在點到的字（preview 通道 off-by-one 的機械重現，AC2 的硬換行版本）", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
     await waitForEditTextareaFocus(page);
-    await page.keyboard.type("ABCDE"); // "Hi" + "ABCDE" -> "HiABCDE" (len 7)
-    await page.waitForTimeout(80);
 
-    await clickChar(page, "el-text", 3); // "HiABCDE"[3] = "B"
+    await page.keyboard.type("AAA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("BBB");
+    await page.waitForTimeout(150);
+    // DOM string is "HiAAA"+"BBB" (8 DOM chars); value string is
+    // "HiAAA\nBBB" (9 chars) — the hard break counts as one value char but
+    // zero DOM chars. clickChar's index is DOM-space (fed straight to
+    // getStartPositionOfChar), so DOM index 5 ("B", the second line's
+    // first char) must map to value index 6 (§3.9 決定 A16 的索引換算).
+    await clickChar(page, "el-text", 5);
     await page.waitForTimeout(80);
-    expect((await readSelection(page)).start).toBe(3);
+    expect((await readSelection(page)).start).toBe(6);
 
     await page.keyboard.type("X");
     await page.waitForTimeout(80);
@@ -519,7 +534,7 @@ it("A2：點文字中第 k 個字，游標停在該處；接著打字插在該�
       const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
-    expect(value).toBe("HiAXBCDE"); // caret sits before index 3 ("B") — "A" | "X" | "BCDE"
+    expect(value).toBe("HiAAA\nXBBB"); // caret sits before value index 6 ("B") — "HiAAA\n" | "X" | "BBB"
   } finally {
     await cleanup();
   }

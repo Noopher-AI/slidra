@@ -124,6 +124,27 @@ async function beginTextEdit(win: Window, id: string, text: string): Promise<voi
   await tick();
 }
 
+/**
+ * Sends a `preview-textbox` host command the same way canvas.ts's
+ * `textboxPreviewMessage`/`postToFrame` pair does (NOOP-65r3 §2c) — same
+ * synthesized-`MessageEvent` reasoning as `beginTextEdit` above.
+ */
+async function sendPreviewTextbox(win: Window, id: string, markup: unknown, width?: number): Promise<void> {
+  const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+  win.dispatchEvent(
+    new MessageEventCtor("message", {
+      data: { source: "comot-host", command: "preview-textbox", id, markup, width },
+      source: win.parent as unknown as MessageEventSource,
+    }),
+  );
+  await tick();
+}
+
+/** The content `<text>`'s own outerHTML, for asserting on the rebuilt tspan tree. */
+function contentTextOuterHtml(doc: Document, id: string): string {
+  return doc.getElementById(id)!.querySelector("text")!.outerHTML;
+}
+
 /** The hidden `<textarea>` the runtime uses to capture keystrokes while editing — lazily created by `ensureTextarea()`, so only present once an edit session has started. */
 function editTextarea(doc: Document): HTMLTextAreaElement {
   const host = doc.body.children[doc.body.children.length - 1];
@@ -756,5 +777,44 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
 
     window.removeEventListener("message", handler);
     expect(messages.some((m) => m.event === "stage-key")).toBe(false);
+  });
+});
+
+// NOOP-65r3 §2d/C1/C5 — `applyPreviewTextbox` now takes a finished markup
+// STRING (core's own `renderTextBoxContent` output), not a `{ text, y }[]`
+// the runtime used to reconstruct into a hard-coded `x="0"` tspan with no
+// `data-comot-break`/nested runs (NOOP-65r2 FAIL 1). These two tests are
+// the first coverage this channel has ever had (`grep -rln
+// "preview-textbox|applyPreviewTextbox"` was empty before this ticket).
+describe("selection-runtime.js 的文字框 preview 通道（NOOP-65r3）", () => {
+  it("收到 markup 後，內容 <text> 的子節點含 data-comot-break、非零 x、巢狀 run tspan", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+
+    await sendPreviewTextbox(
+      win,
+      "el-text",
+      '<tspan x="12.5" y="16" data-comot-break="1">粗<tspan font-weight="bold">體字</tspan></tspan><tspan x="12.5" y="34">下一段</tspan>',
+      220,
+    );
+
+    const html = contentTextOuterHtml(doc, "el-text");
+    expect(html).toContain('data-comot-break="1"');
+    expect(html).toContain('x="12.5"');
+    expect(html).toContain('<tspan font-weight="bold">體字</tspan>');
+    expect(html).toContain("下一段");
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("220");
+  });
+
+  it("markup 不是字串、或解析失敗時，DOM 完全不動", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const before = contentTextOuterHtml(doc, "el-text");
+
+    await sendPreviewTextbox(win, "el-text", 12345, 999); // wrong type
+    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
+
+    await sendPreviewTextbox(win, "el-text", "<tspan>unterminated", 999); // fails to parse as SVG
+    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
   });
 });

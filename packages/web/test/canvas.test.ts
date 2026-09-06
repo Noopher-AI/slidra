@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
 import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.js";
@@ -1969,5 +1972,106 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     expect(() => relayStageKey("z", false)).not.toThrow();
 
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
+  });
+});
+
+// NOOP-65r3 §2c/C3/C4 — the preview channel's `textboxPreviewMessage`:
+// `begin-text-edit`'s `markup` must be core's OWN `renderTextBoxContent`
+// output (align/runs/hard-break included), not a host-side reconstruction
+// that only carries `{ text, y }` (NOOP-65r2 FAIL 1). Observed by spying
+// on `frameWindow.postMessage` — the host → runtime direction, mirroring
+// the runtime → host spy pattern already used above via
+// `window.dispatchEvent(new MessageEvent("message", …))`.
+describe("mountCanvas 的文字框編輯 preview 通道（NOOP-65r3）", () => {
+  const bundledFontBytes = readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../core/src/assets/fonts/NotoSansTC-Presentation.ttf",
+    ),
+  );
+
+  function stubFetchWithFont(slideMarkup: string): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideMarkup, { status: 200 });
+        }
+        if (url.endsWith("/api/default-font")) {
+          return new Response(bundledFontBytes, { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  /** Last `postMessage` call whose payload is a `begin-text-edit` command. */
+  function lastBeginTextEdit(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown> {
+    const call = spy.mock.calls.findLast(
+      (call) => (call[0] as Record<string, unknown>)?.command === "begin-text-edit",
+    );
+    if (!call) throw new Error("沒有送出 begin-text-edit 訊息");
+    return call[0] as Record<string, unknown>;
+  }
+
+  it("硬換行的 data-comot-break 在進入編輯的 markup 裡保留（C1）", async () => {
+    stubFetchWithFont(
+      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000">' +
+        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
+        '<tspan x="0" y="16" data-comot-break="1">Hi</tspan><tspan x="0" y="34">Bye</tspan>' +
+        "</text></g></svg>",
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const spy = vi.spyOn(frameWindow, "postMessage");
+
+    await controller.beginTextEdit("el-a");
+
+    const markup = lastBeginTextEdit(spy).markup as string;
+    expect(markup).toContain('data-comot-break="1"');
+    expect(markup.indexOf('data-comot-break="1"')).toBeLessThan(markup.indexOf("Bye"));
+  });
+
+  it("data-comot-text-align=\"center\" 的框進入編輯，markup 外層 tspan 的 x 不是 0（C3）", async () => {
+    stubFetchWithFont(
+      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000" data-comot-text-align="center">' +
+        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
+        '<tspan x="0" y="16">Hi</tspan>' +
+        "</text></g></svg>",
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const spy = vi.spyOn(frameWindow, "postMessage");
+
+    await controller.beginTextEdit("el-a");
+
+    const markup = lastBeginTextEdit(spy).markup as string;
+    const xMatch = /<tspan x="([^"]+)"/.exec(markup);
+    expect(xMatch).not.toBeNull();
+    expect(xMatch![1]).not.toBe("0");
+  });
+
+  it("巢狀 <tspan font-weight=\"bold\"> 的框進入編輯，markup 保留該巢狀 tspan（C4）", async () => {
+    stubFetchWithFont(
+      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000">' +
+        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
+        '<tspan x="0" y="16">粗<tspan font-weight="bold">體字</tspan></tspan>' +
+        "</text></g></svg>",
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const spy = vi.spyOn(frameWindow, "postMessage");
+
+    await controller.beginTextEdit("el-a");
+
+    const markup = lastBeginTextEdit(spy).markup as string;
+    expect(markup).toContain('<tspan font-weight="bold">體字</tspan>');
   });
 });
