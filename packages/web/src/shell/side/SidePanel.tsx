@@ -131,7 +131,8 @@ export function SidePanel({ state, controller, chat, side, sub, onSideChange, on
         aria-labelledby={`side-panel-tab-${side}`}
       >
         {side === "chat" && chat}
-        {side === "style" && (sub === "page" ? <StylePagePanel /> : <StyleObjectPanel />)}
+        {side === "style" &&
+          (sub === "page" ? <StylePagePanel /> : <StyleObjectPanel state={state} controller={controller} />)}
         {side === "animate" &&
           (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel state={state} controller={controller} />)}
       </div>

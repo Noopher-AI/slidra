@@ -357,6 +357,18 @@ export interface CanvasController {
    */
   subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
   /**
+   * Table cell hit reports (click/dblclick/contextmenu, E2.T14 §4.5) and
+   * the reply to `requestTableCells`. Returns an unsubscribe function, same
+   * shape as `subscribe`/`subscribeOverlay` — a transient event channel,
+   * not a snapshot: nothing is replayed to a listener that subscribes
+   * after an event already fired.
+   */
+  subscribeTable: (listener: (event: TableRuntimeEvent) => void) => () => void;
+  /** Asks the runtime for `id`'s current per-cell rects + its own box (`table-cells` command) — the reply arrives on `subscribeTable` as a `{type: "cells"}` event. No-op (silently) outside view mode. */
+  requestTableCells: (id: string) => void;
+  /** A column-width drag's live preview (`preview-table-cols` command, 決定 13: never re-wraps text) — `cols` is the FULL column-width array with the dragged column's candidate width substituted in. No-op outside view mode. */
+  previewTableCols: (id: string, cols: readonly number[]) => void;
+  /**
    * Re-emits the current overlay state with the frame's *current*
    * position/scale (issue 198 review). The runtime reports bounds in its own
    * iframe client px, which a zoom/pan of the parent's `.stage` transform
@@ -501,7 +513,13 @@ interface SelectionMessage {
     // [E2.T7]/D9: the reply to a host-issued `measure` command — bounds for
     // an arbitrary id list (the current slide's animation badge targets),
     // independent of `selectedIds`.
-    | "measured";
+    | "measured"
+    // E2.T14 §4.5: table cell hit reports (click/dblclick/contextmenu) and
+    // the reply to a host-issued `table-cells` command.
+    | "table-cell-click"
+    | "table-cell-dblclick"
+    | "table-cell-contextmenu"
+    | "table-cells";
   id?: string;
   name?: string | null;
   /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
@@ -540,6 +558,16 @@ interface SelectionMessage {
   alt?: boolean;
   /** "stage-key" only — the relayed `KeyboardEvent.key`. */
   key?: string;
+  /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
+  row?: number;
+  col?: number;
+  /** "table-cell-contextmenu" only — iframe-local client px, converted by `toParentClientPoint` before reaching `subscribeTable`'s listener. */
+  x?: number;
+  y?: number;
+  /** "table-cells" only — one entry per cell the runtime could still resolve. */
+  cells?: unknown;
+  /** "table-cells" only — the table container's own box, same coordinate space as `cells[].rect`. */
+  box?: unknown;
 }
 
 /** One `bounds` event item, already shape-validated (see `isBoundsItem`). */
@@ -586,6 +614,31 @@ function isMeasuredItem(value: unknown): value is MeasuredItem {
   const item = value as { id?: unknown; rect?: unknown };
   return typeof item.id === "string" && isNonNegativeRect(item.rect);
 }
+
+/** One `table-cells` event item (E2.T14, plan §4.5). */
+interface TableCellRectItem {
+  row: number;
+  col: number;
+  rect: Rect;
+}
+
+function isTableCellRectItem(value: unknown): value is TableCellRectItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as { row?: unknown; col?: unknown; rect?: unknown };
+  return isFiniteNumber(item.row) && isFiniteNumber(item.col) && isNonNegativeRect(item.rect);
+}
+
+/**
+ * A table cell hit report or the reply to `requestTableCells` (E2.T14, plan
+ * §4.5), already coordinate-converted to this parent document's client px
+ * (`toParentClientPoint`/`toParentClientRect`) — `subscribeTable`'s
+ * listener never sees an iframe-local coordinate.
+ */
+export type TableRuntimeEvent =
+  | { type: "cell-click"; id: string; row: number; col: number; additive: boolean }
+  | { type: "cell-dblclick"; id: string; row: number; col: number }
+  | { type: "cell-contextmenu"; id: string; row: number; col: number; x: number; y: number }
+  | { type: "cells"; id: string; cells: TableCellRectItem[]; box: Rect };
 
 function isSelectionMessage(data: unknown): data is SelectionMessage {
   return (
@@ -940,6 +993,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // See `OverlayState`'s own doc comment for why this is a separate,
   // high-frequency channel rather than `CanvasState`.
   const overlayListeners = new Set<(state: OverlayState) => void>();
+  /** E2.T14 §4.5: table cell hit reports and `table-cells` replies — transient events, same "listener set, no persisted state" shape as `subscribeStageInput`, not folded into `CanvasState`/`OverlayState` since neither is about a table specifically. */
+  const tableListeners = new Set<(event: TableRuntimeEvent) => void>();
   let overlayBoxes: Rect[] = [];
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
@@ -1311,6 +1366,46 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notifyOverlay();
       return;
     }
+    if (message.event === "table-cell-click") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
+        emitTableEvent({ type: "cell-click", id, row: message.row, col: message.col, additive: Boolean(message.additive) });
+      }
+      return;
+    }
+    if (message.event === "table-cell-dblclick") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
+        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col });
+      }
+      return;
+    }
+    if (message.event === "table-cell-contextmenu") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col) && isFiniteNumber(message.x) && isFiniteNumber(message.y)) {
+        const point = toParentClientPoint({ x: message.x, y: message.y });
+        emitTableEvent({ type: "cell-contextmenu", id, row: message.row, col: message.col, x: point.x, y: point.y });
+      }
+      return;
+    }
+    if (message.event === "table-cells") {
+      const id = typeof message.id === "string" ? message.id : null;
+      const cells = Array.isArray(message.cells) ? message.cells.filter(isTableCellRectItem) : [];
+      const box = isNonNegativeRect(message.box) ? message.box : null;
+      if (id !== null && box !== null) {
+        emitTableEvent({
+          type: "cells",
+          id,
+          cells: cells.map((cell) => ({ ...cell, rect: toParentClientRect(cell.rect) })),
+          box: toParentClientRect(box),
+        });
+      }
+      return;
+    }
+  }
+
+  function emitTableEvent(event: TableRuntimeEvent): void {
+    for (const listener of tableListeners) listener(event);
   }
 
   /**
@@ -1543,6 +1638,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
     ["element duplicate", "elementIds"],
+    ["table create", "elementId"],
   ]);
 
   /**
@@ -1672,11 +1768,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return new Map(entries.filter((entry): entry is [string, FontMetrics] => entry !== null));
   }
 
-  /** "full" (single selection: scale + rotate handles) / "move-only" (0 or 2+ selected) / "none" — the rendering condition the "selection" host->runtime command carries (§5's multi-select rule: this is computed here, never at click time in the runtime). */
+  /**
+   * "full" (single selection: scale + rotate handles) / "move-only" (0 or
+   * 2+ selected, OR a single table — E2.T14 §2 item 3: a table's only
+   * resize path is `table col width`, never a corner/rotate handle) /
+   * "none" — the rendering condition the "selection" host->runtime command
+   * carries (§5's multi-select rule: this is computed here, never at click
+   * time in the runtime).
+   */
   function computeHandleFlags(ids: readonly string[]): { handles: "full" | "move-only" | "none"; textbox: boolean } {
     if (ids.length === 0) return { handles: "none", textbox: false };
     if (ids.length > 1) return { handles: "move-only", textbox: false };
     const entry = elementIndex().get(ids[0]);
+    if (entry?.element.kind === "table") return { handles: "move-only", textbox: false };
     return { handles: "full", textbox: entry !== undefined && entry.element.textWidth !== null };
   }
 
@@ -3310,6 +3414,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     refreshOverlay: () => {
       notifyOverlay();
     },
+    subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
+      tableListeners.add(listener);
+      return () => {
+        tableListeners.delete(listener);
+      };
+    },
+    requestTableCells: (id: string) => {
+      if (mode !== "view") return;
+      postToFrame({ command: "table-cells", id });
+    },
+    previewTableCols: (id: string, cols: readonly number[]) => {
+      if (mode !== "view") return;
+      postToFrame({ command: "preview-table-cols", id, cols: [...cols] });
+    },
     selectAll,
     selectElements,
     deleteSelection,
@@ -3323,6 +3441,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       listeners.clear();
       stageInputListeners.clear();
       overlayListeners.clear();
+      tableListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React

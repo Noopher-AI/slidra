@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import type { CanvasController, OverlayState } from "../../canvas.js";
+import type { CanvasController, CanvasState, OverlayState } from "../../canvas.js";
 import { SelectionOverlay } from "./SelectionOverlay.js";
 import { ContextBar } from "./ContextBar.js";
 import { CommentLayer } from "./CommentLayer.js";
 import { GuideLayer } from "./GuideLayer.js";
 import { BadgeLayer } from "./BadgeLayer.js";
+import { TableOverlay } from "./TableOverlay.js";
 
 /**
  * [E2.T8]: the comment overlay's own state, resolved by `App.tsx` (it owns
@@ -88,6 +89,8 @@ export function toLocalRect(
  */
 export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges, comment, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
+  const [selection, setSelection] = useState<CanvasState["selection"] | null>(null);
+  const [slidePath, setSlidePath] = useState<string | null>(null);
 
   useEffect(() => {
     if (!controller) {
@@ -95,6 +98,22 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges,
       return;
     }
     return controller.subscribeOverlay(setOverlay);
+  }, [controller]);
+
+  // E2.T14 §0(b): a single selected table renders `TableOverlay` — this is
+  // the one place `OverlayLayer` looks at the raw selection/slide state
+  // (`OverlayState` itself has no element-kind info), self-contained so no
+  // new prop needs threading through `Stage.tsx`/`App.tsx`.
+  useEffect(() => {
+    if (!controller) {
+      setSelection(null);
+      setSlidePath(null);
+      return;
+    }
+    return controller.subscribe((state) => {
+      setSelection(state.selection);
+      setSlidePath(state.currentIndex >= 0 ? state.slides[state.currentIndex] : null);
+    });
   }, [controller]);
 
   const wellRect = wellRef.current?.getBoundingClientRect();
@@ -141,6 +160,15 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges,
       />
       <GuideLayer guides={guides} />
       <BadgeLayer badges={badges} onSelect={(target) => controller?.selectElements([target])} />
+      {selection && selection.ids.length === 1 && selection.elements[0]?.kind === "table" && selection.elements[0].table && (
+        <TableOverlay
+          controller={controller}
+          wellRef={wellRef}
+          slidePath={slidePath}
+          tableId={selection.ids[0]}
+          table={selection.elements[0].table}
+        />
+      )}
       {children}
     </div>
   );
