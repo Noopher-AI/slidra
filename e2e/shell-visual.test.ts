@@ -89,4 +89,19 @@ for (const viewport of VIEWPORTS) {
       await started.cleanup();
     }
   });
+
+  // A9（NOOP-65/#199 驗收條件第 3 條之一）：Text 插入面板的截圖比對。
+  it(`基準截圖：Text 插入面板開啟 (${label})`, async () => {
+    const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: `shell-visual-text-panel-${label}` });
+    try {
+      const page = await openApp(browser, started.server, { viewport });
+      openPages.push(page);
+      await page.getByRole("button", { name: "Text" }).click();
+      await expect.poll(() => page.locator(".text-panel").count()).toBe(1);
+      await settleForScreenshot(page);
+      await compareScreenshot(page, { name: `text-panel-${label}`, baselineDir });
+    } finally {
+      await started.cleanup();
+    }
+  });
 }
