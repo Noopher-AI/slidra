@@ -10,6 +10,7 @@ import { register as registerConvert } from "./commands/convert.js";
 import { register as registerUndo } from "./commands/undo.js";
 import { register as registerRedo } from "./commands/redo.js";
 import { register as registerElement } from "./commands/element/index.js";
+import { register as registerEffect } from "./commands/effect/index.js";
 import { register as registerSlideRender } from "./commands/slide-render.js";
 import { register as registerAssetImport } from "./commands/asset-import.js";
 import { register as registerSlide } from "./commands/slide.js";
@@ -49,6 +50,7 @@ export function createDefaultRegistry(): CommandRegistry {
     registerUndo,
     registerRedo,
     registerElement,
+    registerEffect,
     registerSlideRender,
     registerAssetImport,
     registerSlide,

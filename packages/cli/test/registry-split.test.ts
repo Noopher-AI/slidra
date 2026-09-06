@@ -54,6 +54,12 @@ const EXPECTED_COMMAND_NAMES = [
   "template rename",
   "template delete",
   "presentation transition set",
+  // [E2.T7]: the effect command family (NOOP-66/#206).
+  "effect add",
+  "effect remove",
+  "effect move",
+  "effect set",
+  "effect list",
 ];
 
 /** Reads the registry's private definition map without changing registry.ts's public API. */
@@ -63,12 +69,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 42 known command names — no more, no fewer", () => {
+  it("registers exactly the 47 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(42);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(47);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });
