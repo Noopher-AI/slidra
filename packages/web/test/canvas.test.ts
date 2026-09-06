@@ -608,6 +608,58 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('data-testid="s2"');
   });
 
+  // [E2.T11] §4.5: fullscreen owns Esc first. The runtime's own keydown
+  // forwards Escape as "exit-play" regardless of fullscreen state, so
+  // canvas.ts must re-check document.fullscreenElement itself before
+  // honoring it — otherwise a single Esc would drop the author out of
+  // both fullscreen and play mode at once.
+  it("全螢幕時收到 runtime 的 exit-play 不會離開播放；離開全螢幕後再收到同一則訊息才真的退出播放", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "fullscreenElement");
+    try {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: document.createElement("div"),
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Still in play mode: srcdoc keeps the play-only plan global.
+      expect(srcdoc()).toContain("window.__COMOT_PLAN__");
+
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(srcdoc()).not.toContain("__COMOT_PLAN__");
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, "fullscreenElement", originalDescriptor);
+      } else {
+        delete (document as { fullscreenElement?: unknown }).fullscreenElement;
+      }
+    }
+  });
+
   // #46: the runtime's own reverse-navigation route. currentIndex 0 -> 1
   // via advance-past-end, then retreat-past-start goes back to slide 1 and
   // must land on its *last* step (decision 五: "last", computed here since

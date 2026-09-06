@@ -263,8 +263,9 @@ describe("slide transition set（[E2.T11]，取代 presentation transition set�
     expect(matches).toBe(2);
   });
 
-  it("[A4] --all 之後每張投影片都拿到相同的四個屬性值；一次 undo 就把全部投影片還原（一格 undo）", async () => {
+  it("[A4] --all 之後每張投影片都拿到相同的四個屬性值；一次 undo 就把全部投影片還原（一格 undo，非逐頁 N 格）", async () => {
     const id = await openFreshPresentation();
+    await registry.dispatch("slide add", { id });
     await registry.dispatch("slide add", { id });
     await registry.dispatch("slide transition set", {
       id,
@@ -275,7 +276,10 @@ describe("slide transition set（[E2.T11]，取代 presentation transition set�
       exitDuration: 0.9,
     });
 
-    const before = await slideContent(id, "slides/002.svg");
+    const beforeBySlide = new Map<string, string>();
+    for (const slidePath of ["slides/001.svg", "slides/002.svg", "slides/003.svg"]) {
+      beforeBySlide.set(slidePath, await slideContent(id, slidePath));
+    }
     const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg", all: true });
     expect(result.ok).toBe(true);
 
@@ -286,7 +290,9 @@ describe("slide transition set（[E2.T11]，取代 presentation transition set�
     }
 
     await registry.dispatch("undo", { id });
-    expect(await slideContent(id, "slides/002.svg")).toBe(before);
+    for (const [slidePath, before] of beforeBySlide) {
+      expect(await slideContent(id, slidePath), slidePath).toBe(before);
+    }
   });
 
   it("presentation transition set 已不存在：registry.dispatch 對未註冊的命令名一律拋錯（UnknownCommandError），不是回傳 { ok: false }", async () => {
