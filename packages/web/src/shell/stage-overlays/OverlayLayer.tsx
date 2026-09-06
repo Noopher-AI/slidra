@@ -35,6 +35,8 @@ export interface OverlayLayerProps {
   wellRef: RefObject<HTMLDivElement | null>;
   /** [E2.T7]：情境列的 Edit animation 按鈕。 */
   onEditAnimation(): void;
+  /** #200 §4.5：情境列的 Edit style 按鈕。 */
+  onEditStyle(): void;
   /** [E2.T7]/D9：右欄停在 Animate 分頁且非播放／預覽模式時才顯示舞台編號徽章——這兩個條件都不屬於 `OverlayState`，由呼叫方（Stage.tsx）判斷後傳下來。 */
   showBadges: boolean;
   comment: CommentOverlayProps;
@@ -86,7 +88,7 @@ export function toLocalRect(
  * 讓 canvas.ts 用新的 frame 位置重算並再推一次——標籤/情境列/右鍵選單因此
  * 跟著投影片走，不用等下一次選取變化。
  */
-export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges, comment, children }: OverlayLayerProps) {
+export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle, showBadges, comment, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
 
   useEffect(() => {
@@ -123,6 +125,7 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, showBadges,
         dragging={overlay.dragging}
         hasAnimation={overlay.hasAnimation}
         onEditAnimation={onEditAnimation}
+        onEditStyle={onEditStyle}
         onComment={comment.onOpenForSelection}
         onOrder={(direction) => void controller?.orderSelection(direction)}
         onDuplicate={() => void controller?.duplicateSelection()}

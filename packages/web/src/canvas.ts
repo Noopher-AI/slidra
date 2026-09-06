@@ -70,7 +70,7 @@ import {
   type SnapCandidate,
   type SnapGuide,
 } from "@co-motion/core/geometry";
-import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
+import { parseSlide, type PageStyle, type SlideElement, type SlideModel } from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 
@@ -195,6 +195,13 @@ export interface CanvasState {
    * *changing*, never to its absolute value.
    */
   dragSignal: number;
+  /**
+   * #200 §4.4: the current slide's Page style, straight off
+   * `currentSlideModel.pageStyle` — `null` while there is no current slide
+   * (`currentIndex === -1`), never a fabricated `{background: null, accent:
+   * null}` for that case (Style › Page is disabled entirely then, §4.6).
+   */
+  pageStyle: PageStyle | null;
 }
 
 /**
@@ -304,6 +311,28 @@ export interface CanvasController {
    * own error-surfacing contract; the caller reverts whatever it painted.
    */
   setStyle: (attr: string, value: string) => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.1): the Text section's Align field. Sends `textbox
+   * align` once per currently-selected text box, sequentially (that command
+   * names a single element, unlike `element style set`'s list form) — for
+   * the common single-selection case this is one command, one undo step;
+   * a multi-box selection costs one undo step per box. Same failure
+   * contract as `setStyle`.
+   */
+  setTextAlign: (align: "left" | "center" | "right") => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3/§4.4): Style › Page's Background/Accent fields.
+   * Sends `slide style set` for the current slide. Same failure contract as
+   * `setStyle`. No-op (returns `false`) when there is no current slide.
+   */
+  setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
+   * Sends `presentation canvas set` — never occupies an undo step (the
+   * command's own contract), unlike every other style-panel write. Same
+   * failure contract as `setStyle` otherwise.
+   */
+  setCanvasSize: (width: number, height: number) => Promise<boolean>;
   /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
@@ -3215,6 +3244,53 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return true;
   }
 
+  async function setTextAlign(align: "left" | "center" | "right"): Promise<boolean> {
+    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    const thisGeneration = generation;
+    for (const elementId of selectionIds) {
+      const result = await postCommand("textbox align", {
+        slidePath: slides[currentIndex],
+        elementId,
+        align,
+      });
+      if (destroyed || thisGeneration !== generation) return false;
+      if (!result.ok) {
+        error = result.message;
+        notify();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function setPageStyle(update: { background?: string; accent?: string }): Promise<boolean> {
+    if (currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("slide style set", {
+      slidePath: slides[currentIndex],
+      ...update,
+    });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    return true;
+  }
+
+  async function setCanvasSize(width: number, height: number): Promise<boolean> {
+    const thisGeneration = generation;
+    const result = await postCommand("presentation canvas set", { width, height });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    return true;
+  }
+
   function notify(): void {
     // A fresh object per notification: listeners keep it as React state,
     // and handing out a mutable reference to internal arrays would let a
@@ -3232,6 +3308,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     };
     for (const listener of listeners) listener(state);
   }
@@ -3251,6 +3328,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     });
     return () => {
       listeners.delete(listener);
@@ -3279,6 +3357,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
     },
     setStyle,
+    setTextAlign,
+    setPageStyle,
+    setCanvasSize,
     get frameElement() {
       return frame;
     },
