@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AUDIO_EXTENSIONS,
   computePlayerPlan,
+  hideSelectorsFor,
   renderHideStyle,
   renderPlanScript,
   VIDEO_EXTENSIONS,
@@ -45,10 +46,19 @@ describe("computePlayerPlan", () => {
 
     expect(plan).toEqual({
       steps: [
-        { effects: [{ target: "el-a", family: "enter", effect: "fade", start: "on-click" }] },
-        { effects: [{ target: "el-b", family: "enter", effect: "appear", start: "on-click" }] },
+        {
+          effects: [
+            { target: "el-a", family: "enter", effect: "fade", start: "on-click", duration: 0.6, delay: 0, index: 0 },
+          ],
+        },
+        {
+          effects: [
+            { target: "el-b", family: "enter", effect: "appear", start: "on-click", duration: 0.6, delay: 0, index: 1 },
+          ],
+        },
       ],
       hidden: ["el-a", "el-b"],
+      hideSelectors: { "el-a": "#el-a", "el-b": "#el-b" },
       media: {},
     });
   });
@@ -65,17 +75,35 @@ describe("computePlayerPlan", () => {
     expect(computePlayerPlan(svg).hidden).toEqual(["el-a"]);
   });
 
+  // [E2.T7]/D12: hidden means "not on screen when the slide opens" — only
+  // true when a target's FIRST effect entry in the file is `enter`. An
+  // element that exits before it ever gets an entrance effect was already
+  // visible; pre-hiding it would be wrong.
+  it("D12：一個目標的第一筆效果若不是 enter，就不列進 hidden，即使稍後有 enter", () => {
+    const svg = slide(
+      [
+        '<comot:effect target="el-a" family="exit" effect="fade-out" start="on-click"/>',
+        '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>',
+      ].join("\n"),
+    );
+    expect(computePlayerPlan(svg).hidden).toEqual([]);
+  });
+
   it("沒有效果清單的投影片得到零步、空的 hidden", () => {
     expect(computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>')).toEqual({
       steps: [],
       hidden: [],
+      hideSelectors: {},
       media: {},
     });
   });
 
   it("剖析失敗時把 effects.ts 原本的錯誤訊息原樣拋出", () => {
-    const svg = slide('<comot:effect target="el-a" family="exit" effect="fade" start="on-click"/>');
-    expect(() => computePlayerPlan(svg)).toThrow(/family.*exit/);
+    // "build" is [E2.T7]'s stand-in fixture value for "a family this round
+    // still does not implement" (exit is now real, D4) — same role the old
+    // fixture's "exit" used to play.
+    const svg = slide('<comot:effect target="el-a" family="build" effect="fade" start="on-click"/>');
+    expect(() => computePlayerPlan(svg)).toThrow(/family.*build/);
   });
 });
 
@@ -84,13 +112,20 @@ describe("renderHideStyle", () => {
     expect(renderHideStyle([])).toBe("");
   });
 
-  it("把隱藏目標接成一條 CSS 規則，opacity 設為 0 且帶 !important", () => {
+  // [E2.T7]/D7: one rule per id (not one rule for a joined selector list)
+  // — the runtime removes a single id's rule by rewriting this exact
+  // stylesheet's textContent from `plan.hideSelectors`, so the two must
+  // agree on what "one id's rule" looks like. The `id="comot-hide"` on the
+  // `<style>` itself is what the runtime looks the element up by.
+  it("把每個隱藏目標各自接成一條 CSS 規則，opacity 設為 0 且帶 !important", () => {
     // !important is load-bearing (gate review round 2, P2): a slide
     // element can carry its own inline opacity, which normally beats an
     // injected stylesheet rule regardless of that rule's specificity —
     // without !important here, such an element would flash fully visible
     // at the very start of play, exactly the bug this rule exists to stop.
-    expect(renderHideStyle(["el-a", "el-b"])).toBe("<style>#el-a,#el-b{opacity:0 !important}</style>");
+    expect(renderHideStyle(["el-a", "el-b"])).toBe(
+      '<style id="comot-hide">#el-a{opacity:0 !important}#el-b{opacity:0 !important}</style>',
+    );
   });
 
   it("id 以數字開頭時，跳脫成合法的 CSS 識別碼", () => {
@@ -99,11 +134,24 @@ describe("renderHideStyle", () => {
     // selector `#1-title` — the browser drops the whole rule, and that
     // element starts visible (gate review round 2, P2). CSS identifiers
     // cannot start with an unescaped digit; it must be hex-escaped.
-    expect(renderHideStyle(["1-title"])).toBe("<style>#\\31 -title{opacity:0 !important}</style>");
+    expect(renderHideStyle(["1-title"])).toBe('<style id="comot-hide">#\\31 -title{opacity:0 !important}</style>');
   });
 
   it("id 就是單一個連字號時，跳脫成 \\-", () => {
-    expect(renderHideStyle(["-"])).toBe("<style>#\\-{opacity:0 !important}</style>");
+    expect(renderHideStyle(["-"])).toBe('<style id="comot-hide">#\\-{opacity:0 !important}</style>');
+  });
+});
+
+// [E2.T7]/D7: `plan.hideSelectors` is the same escaped-selector table
+// `renderHideStyle` derives its rules from — computed once, here, so the
+// runtime never re-implements `cssEscapeId`.
+describe("hideSelectorsFor", () => {
+  it("每個 id 對應到它自己已跳脫的 CSS id 選擇器", () => {
+    expect(hideSelectorsFor(["el-a", "1-title"])).toEqual({ "el-a": "#el-a", "1-title": "#\\31 -title" });
+  });
+
+  it("空清單得到空物件", () => {
+    expect(hideSelectorsFor([])).toEqual({});
   });
 });
 
@@ -160,37 +208,29 @@ describe("computePlayerPlan：media", () => {
   // that same accessor (a coincidence this test does not rely on).
   // hasOwnProperty is the direct, unambiguous check for "was this actually
   // stored as data".
-  it('target id 恰好是 "__proto__" 時，仍正確產生對應的 media cue（不是被原型污染吃掉的空物件）', () => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  // [E2.T7] 測試盤點 6.2.B: merged with the former "constructor" id test
+  // (same layer, same behaviour, only the string differed) — both ids now
+  // asserted here so neither input is lost. The layer that actually catches
+  // a real regression for "constructor" is player-runtime.test.ts:473,
+  // which is kept as-is.
+  it.each(["__proto__", "constructor"])(
+    'target id 恰好是 "%s" 時，仍正確產生對應的 media cue（不是被原型污染吃掉的空物件）',
+    (id) => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
     <comot:effects ${NS}>
-      <comot:effect target="__proto__" family="media" effect="play" start="on-click"/>
+      <comot:effect target="${id}" family="media" effect="play" start="on-click"/>
     </comot:effects>
   </metadata>
-  <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
+  <rect id="${id}" data-comot-media="assets/clip.mp4"/>
 </svg>`;
 
-    const plan = computePlayerPlan(svg);
+      const plan = computePlayerPlan(svg);
 
-    expect(Object.prototype.hasOwnProperty.call(plan.media, "__proto__")).toBe(true);
-    expect(plan.media["__proto__"]).toEqual({ src: "assets/clip.mp4", kind: "video" });
-  });
-
-  it('target id 恰好是 "constructor" 時，也正確產生對應的 media cue', () => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
-  <metadata>
-    <comot:effects ${NS}>
-      <comot:effect target="constructor" family="media" effect="play" start="on-click"/>
-    </comot:effects>
-  </metadata>
-  <rect id="constructor" data-comot-media="assets/narration.oga"/>
-</svg>`;
-
-    const plan = computePlayerPlan(svg);
-
-    expect(Object.prototype.hasOwnProperty.call(plan.media, "constructor")).toBe(true);
-    expect(plan.media["constructor"]).toEqual({ src: "assets/narration.oga", kind: "audio" });
-  });
+      expect(Object.prototype.hasOwnProperty.call(plan.media, id)).toBe(true);
+      expect(plan.media[id]).toEqual({ src: "assets/clip.mp4", kind: "video" });
+    },
+  );
 });
 
 describe("允許清單與 server 的 MIME 表必須一致（ticket #30 review round 2）", () => {

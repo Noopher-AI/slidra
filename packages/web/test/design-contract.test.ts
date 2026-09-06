@@ -142,6 +142,21 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   { file: "App.tsx", allowed: ["#889", "#c66"], reason: "預設作品內容，屬投影片資料" },
   { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
+  // [E2.T7]: same category the ms-only duration pattern below already
+  // structurally excuses this file for (see CODE_FORBIDDEN_PATTERNS'
+  // comment) — these "ease"/"linear" strings are WAAPI `easing` option
+  // values handed to `el.animate()` inside the sandboxed play iframe
+  // (D4.4), evaluated at runtime inside untrusted-origin slide content,
+  // never product-UI CSS/inline style. The duration pattern's structural
+  // (regex-level) exemption cannot equally narrow this one, because "ease"/
+  // "linear" are bare keywords with no numeric prefix to key off of — an
+  // explicit allowlist entry is the only way to excuse them without
+  // weakening the pattern for every other file.
+  {
+    file: "player-runtime.js",
+    allowed: ["ease", "linear"],
+    reason: "el.animate() 的 easing 參數，沙盒 iframe 執行期輸出，不是產品 UI",
+  },
 ];
 
 /** ms-only (not bare seconds) — deliberately narrower than the CSS scan's duration pattern. Runtime scripts injected into the presentation iframe (player-runtime.js, selection-runtime.js) write CSS transition strings like `"opacity 0.4s"`; those are rendered output, not product-UI source, so this pattern does not reach into `s`-only durations at all (NOOP-9 Plan §4.2's contract table names `\d+ms` explicitly). */

@@ -384,6 +384,71 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       throw new CoMotionError(`未知的子命令：element ${sub ?? ""}`);
     }
+    case "effect": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+
+      if (sub === "list") {
+        const id = requirePositional(args, 0, "effect list", "presentation-id");
+        const slidePath = requirePositional(args, 1, "effect list", "slide-path");
+        return { name: "effect list", input: { id, slidePath } };
+      }
+
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "effect add", "presentation-id");
+        const slidePath = requirePositional(args, 1, "effect add", "slide-path");
+        const elementIds = requireIdList(args, 2, "effect add");
+        const family = requireFlag(args, "--family", "effect add");
+        if (!["enter", "emphasis", "exit", "path", "media"].includes(family)) {
+          throw new CoMotionError(`effect add 不支援的 family：${family}`);
+        }
+        const effect = requireFlag(args, "--effect", "effect add");
+        const start = optionalFlag(args, "--start");
+        if (start !== undefined && !["on-click", "with-previous", "after-previous"].includes(start)) {
+          throw new CoMotionError(`effect add 不支援的 start：${start}`);
+        }
+        const duration = optionalNumberFlag(args, "--duration", "effect add");
+        const delay = optionalNumberFlag(args, "--delay", "effect add");
+        const d = optionalFlag(args, "--d");
+        const index = optionalNumberFlag(args, "--index", "effect add");
+        return { name: "effect add", input: { id, slidePath, elementIds, family, effect, start, duration, delay, d, index } };
+      }
+
+      if (sub === "remove") {
+        const id = requirePositional(args, 0, "effect remove", "presentation-id");
+        const slidePath = requirePositional(args, 1, "effect remove", "slide-path");
+        const indices = requireIndexList(args, 2, "effect remove");
+        return { name: "effect remove", input: { id, slidePath, indices } };
+      }
+
+      if (sub === "move") {
+        const id = requirePositional(args, 0, "effect move", "presentation-id");
+        const slidePath = requirePositional(args, 1, "effect move", "slide-path");
+        const index = requireIndex(args, 2, "effect move");
+        const direction = requirePositional(args, 3, "effect move", "direction");
+        if (!["up", "down"].includes(direction)) {
+          throw new CoMotionError(`effect move 不支援的方向：${direction}`);
+        }
+        return { name: "effect move", input: { id, slidePath, index, direction } };
+      }
+
+      if (sub === "set") {
+        const id = requirePositional(args, 0, "effect set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "effect set", "slide-path");
+        const index = requireIndex(args, 2, "effect set");
+        const effect = optionalFlag(args, "--effect");
+        const start = optionalFlag(args, "--start");
+        if (start !== undefined && !["on-click", "with-previous", "after-previous"].includes(start)) {
+          throw new CoMotionError(`effect set 不支援的 start：${start}`);
+        }
+        const duration = optionalNumberFlag(args, "--duration", "effect set");
+        const delay = optionalNumberFlag(args, "--delay", "effect set");
+        const d = optionalFlag(args, "--d");
+        return { name: "effect set", input: { id, slidePath, index, effect, start, duration, delay, d } };
+      }
+
+      throw new CoMotionError(`未知的子命令：effect ${sub ?? ""}`);
+    }
     case "slide": {
       const sub = rest[0];
       const args = rest.slice(1);
@@ -616,6 +681,28 @@ function requireIdList(args: string[], index: number, command: string): string[]
     throw new CoMotionError(`命令 ${command} 的元素清單格式錯誤：${raw}`);
   }
   return ids;
+}
+
+/** `effect remove`'s comma-separated 1-based index positional into a real number[] (mirrors `requireIdList`). */
+function requireIndexList(args: string[], index: number, command: string): number[] {
+  const raw = requirePositional(args, index, command, "index-list");
+  return raw.split(",").map((token) => {
+    const value = Number(token.trim());
+    if (!Number.isInteger(value)) {
+      throw new CoMotionError(`命令 ${command} 的效果項編號格式錯誤：${raw}`);
+    }
+    return value;
+  });
+}
+
+/** A single 1-based effect-item index positional (`effect move` / `effect set`). */
+function requireIndex(args: string[], index: number, command: string): number {
+  const raw = requirePositional(args, index, command, "index");
+  const value = Number(raw);
+  if (!Number.isInteger(value)) {
+    throw new CoMotionError(`命令 ${command} 的效果項編號不是合法整數：${raw}`);
+  }
+  return value;
 }
 
 /** A bare boolean flag with no value (`--force`, T3). Presence anywhere in `args` is enough — order relative to other flags does not matter. */

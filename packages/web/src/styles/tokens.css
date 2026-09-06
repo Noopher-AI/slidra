@@ -245,6 +245,12 @@
      consistently use it. */
   --dur-fast: 150ms; /* hover、選單 */
   --dur-base: 180ms; /* 面板切換、總覽 */
+  /* [E2.T7]: Animate 插入面板效果卡的循環預覽（animate.css）——不是一次性
+     view-switch/dialog 動畫，e2e/motion.test.ts 的 0.3s 上限本就排除
+     animation-iteration-count:infinite 的循環動畫，這個 token 因此不受它
+     約束；獨立命名而不是重用 --dur-fast/--dur-base，因為兩者的語意
+     （hover/選單、面板切換）都不是「內容預覽循環播放」。 */
+  --dur-preview-loop: 1.6s;
 }
 
 /* Bundled font subsets, self-hosted so the UI never depends on

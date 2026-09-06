@@ -162,6 +162,11 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--r",
   "--s-raised",
   "--line",
+  // [E2.T7]: the Animate insert panel's looping effect-preview thumbnail
+  // (animate.css) is a genuinely new UI concept the design package's token
+  // table has no row for — not a landed `dur.*` value, and not a one-shot
+  // view-switch/dialog duration `--dur-fast`/`--dur-base` already name.
+  "--dur-preview-loop",
 ]);
 
 /** Every CSS custom property name tokens.css's :root may legally declare: either the direct

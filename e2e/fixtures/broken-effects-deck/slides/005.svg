@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <!-- 損壞之處：family/effect 都合法，但 start="with-previous" 不在
-           SUPPORTED_STARTS（本輪只實作 on-click）。這是作者想讓元素跟前一
-           項同時出現時最可能誤用的屬性值。 -->
-      <comot:effect target="el-with-previous-target" family="enter" effect="fade" start="with-previous"/>
+      <!-- 損壞之處：family/effect 都合法，但 start="on-hover" 不在
+           SUPPORTED_STARTS（on-click／with-previous／after-previous 三種
+           全開，D3）。[E2.T7] 把 with-previous 改成真正實作的 start 值，不
+           能再拿來當「未實作」的反例；"on-hover" 是這輪的新守門值
+           （[E2.T7] 測試盤點）。 -->
+      <comot:effect target="el-with-previous-target" family="enter" effect="fade" start="on-hover"/>
     </comot:effects>
   </metadata>
   <rect x="0" y="0" width="1280" height="720" fill="#101418"/>

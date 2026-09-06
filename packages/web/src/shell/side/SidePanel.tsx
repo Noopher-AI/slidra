@@ -1,18 +1,30 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { CanvasState } from "../../canvas.js";
+import type { KeyboardEvent, ReactNode } from "react";
+import type { CanvasController, CanvasState } from "../../canvas.js";
 import { StylePagePanel } from "./StylePagePanel.js";
 import { StyleObjectPanel } from "./StyleObjectPanel.js";
 import { AnimatePagePanel } from "./AnimatePagePanel.js";
 import { AnimateObjectPanel } from "./AnimateObjectPanel.js";
 
+export type SideId = "chat" | "style" | "animate";
+export type SubId = "page" | "object";
+
 export interface SidePanelProps {
   state: CanvasState;
+  controller: CanvasController | null;
   /** 對話 UI（ChatPanel.tsx），原樣搬進來——App.tsx 仍然擁有它的 messages/draft 狀態，切分頁不會弄丟它。 */
   chat: ReactNode;
+  /**
+   * [E2.T7]/D10: 受控——App.tsx 是唯一的事實來源。Dock 的 Add animation
+   * 與情境列的 Edit animation 都要能把右欄切到 Animate › Object，兩者都在
+   * `Stage` 裡、`SidePanel` 在 `Stage` 外，狀態非得在共同的祖先（App.tsx）
+   * 不可。有無選取的自動切換 effect 也搬到 App.tsx，這裡只負責畫面與使用
+   * 者點擊/鍵盤操作。
+   */
+  side: SideId;
+  sub: SubId;
+  onSideChange(id: SideId): void;
+  onSubChange(id: SubId): void;
 }
-
-type SideId = "chat" | "style" | "animate";
-type SubId = "page" | "object";
 
 const SIDE_TABS: ReadonlyArray<{ id: SideId; label: string }> = [
   { id: "chat", label: "Chat" },
@@ -33,14 +45,8 @@ const SIDE_TABS: ReadonlyArray<{ id: SideId; label: string }> = [
  * 主分頁（`side`）永遠不會被這個 effect 動到：規格明講「changing selection
  * while side=chat 不自動切 side」，這裡索性讓 side 完全只受使用者點擊控制。
  */
-export function SidePanel({ state, chat }: SidePanelProps) {
-  const [side, setSide] = useState<SideId>("chat");
-  const [sub, setSub] = useState<SubId>("page");
+export function SidePanel({ state, controller, chat, side, sub, onSideChange, onSubChange }: SidePanelProps) {
   const hasSelection = state.selection.ids.length > 0;
-
-  useEffect(() => {
-    setSub(hasSelection ? "object" : "page");
-  }, [hasSelection]);
 
   function focusSideTab(id: SideId): void {
     document.getElementById(`side-panel-tab-${id}`)?.focus();
@@ -66,7 +72,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
     }
     event.preventDefault();
     const next = SIDE_TABS[nextIndex];
-    setSide(next.id);
+    onSideChange(next.id);
     focusSideTab(next.id);
   }
 
@@ -86,7 +92,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
             aria-selected={side === tab.id}
             aria-controls={`side-panel-panel-${tab.id}`}
             tabIndex={side === tab.id ? 0 : -1}
-            onClick={() => setSide(tab.id)}
+            onClick={() => onSideChange(tab.id)}
             onKeyDown={(event) => handleSideKeyDown(event, index)}
           >
             {tab.label}
@@ -101,7 +107,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
             role="tab"
             data-subtab="page"
             aria-selected={sub === "page"}
-            onClick={() => setSub("page")}
+            onClick={() => onSubChange("page")}
           >
             Page
           </button>
@@ -112,7 +118,7 @@ export function SidePanel({ state, chat }: SidePanelProps) {
             data-subtab="object"
             aria-selected={sub === "object"}
             disabled={!hasSelection}
-            onClick={() => setSub("object")}
+            onClick={() => onSubChange("object")}
           >
             Object
           </button>
@@ -126,7 +132,8 @@ export function SidePanel({ state, chat }: SidePanelProps) {
       >
         {side === "chat" && chat}
         {side === "style" && (sub === "page" ? <StylePagePanel /> : <StyleObjectPanel />)}
-        {side === "animate" && (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel />)}
+        {side === "animate" &&
+          (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel state={state} controller={controller} />)}
       </div>
     </div>
   );

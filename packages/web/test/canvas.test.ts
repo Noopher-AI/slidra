@@ -532,7 +532,7 @@ describe("mountCanvas 的播放模式", () => {
         if (url.endsWith("/api/files/slides/001.svg")) {
           return new Response(
             `<svg xmlns="http://www.w3.org/2000/svg">
-              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="exit" effect="fade" start="on-click"/></comot:effects></metadata>
+              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="build" effect="fade" start="on-click"/></comot:effects></metadata>
               <rect id="el-a"/>
             </svg>`,
             { status: 200 },
@@ -552,7 +552,7 @@ describe("mountCanvas 的播放模式", () => {
 
     await controller.play();
 
-    expect(state?.error).toMatch(/family.*exit/);
+    expect(state?.error).toMatch(/family.*build/);
     expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
     expect(srcdoc()).toContain('id="el-a"');
   });
@@ -954,7 +954,7 @@ describe("mountCanvas 的播放模式", () => {
   it("換到效果清單正常的投影片時，先前的 error 會被清掉並通知訂閱者", async () => {
     const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
     const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
-      <metadata><comot:effects ${NS}><comot:effect target="el-a" family="exit" effect="fade" start="on-click"/></comot:effects></metadata>
+      <metadata><comot:effects ${NS}><comot:effect target="el-a" family="build" effect="fade" start="on-click"/></comot:effects></metadata>
       <rect id="el-a"/>
     </svg>`;
     const fineMarkup = '<svg data-testid="fine"><rect id="el-b"/></svg>';
@@ -978,12 +978,167 @@ describe("mountCanvas 的播放模式", () => {
 
     const seenErrors: (string | null)[] = [];
     controller.subscribe((state) => seenErrors.push(state.error));
-    expect(seenErrors.at(-1)).toMatch(/family.*exit/);
+    expect(seenErrors.at(-1)).toMatch(/family.*build/);
 
     await controller.showSlide(1);
 
     expect(seenErrors.at(-1)).toBeNull();
     expect(srcdoc()).toContain('data-testid="fine"');
+  });
+});
+
+// [E2.T7]: OverlayState.hasAnimation/badges (D9) and Preview (D8) — driven
+// through the public controller/postMessage surface, same posture as the
+// selection tests above.
+describe("mountCanvas 的動畫（[E2.T7]）", () => {
+  function sendSelectionMessage(data: Record<string, unknown>): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", ...data },
+        source: controller!.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+  }
+
+  /** `select` alone never repaints the overlay (production always follows it with the runtime's own `bounds` report) — this mirrors that real sequence rather than reaching into internals. */
+  function selectAndReportBounds(id: string | null): void {
+    if (id === null) {
+      sendSelectionMessage({ event: "clear" });
+    } else {
+      sendSelectionMessage({ event: "select", id, name: null, additive: false });
+    }
+    sendSelectionMessage({
+      event: "bounds",
+      items: id === null ? [] : [{ id, rect: { x: 0, y: 0, width: 1, height: 1 }, ancestors: [] }],
+      union: id === null ? null : { x: 0, y: 0, width: 1, height: 1 },
+    });
+  }
+
+  it("選取有動畫的元素時 hasAnimation 為 true，選取沒有動畫的元素時為 false", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let overlay: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      overlay = state;
+    });
+
+    selectAndReportBounds("el-a");
+    expect(overlay?.hasAnimation).toBe(true);
+
+    selectAndReportBounds("el-bg");
+    expect(overlay?.hasAnimation).toBe(false);
+  });
+
+  it("runtime 回報 measured 之後，badges 帶著每個有效果的元素與其編號、換算過的 rect", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let overlay: OverlayState | undefined;
+    controller.subscribeOverlay((state) => {
+      overlay = state;
+    });
+
+    // Real sequence: the runtime announces itself, canvas.ts asks it to
+    // measure every badge target, the runtime replies.
+    sendSelectionMessage({ event: "runtime-ready" });
+    sendSelectionMessage({
+      event: "measured",
+      items: [{ id: "el-a", rect: { x: 1, y: 2, width: 3, height: 4 } }],
+    });
+
+    expect(overlay?.badges).toHaveLength(1);
+    expect(overlay?.badges[0]).toMatchObject({ target: "el-a", n: 1 });
+  });
+
+  it("previewEffects() 進入 preview 模式並把 preview 欄位嵌進 plan；preview-done 訊息回到 view 模式並還原選取", async () => {
+    // selectOnceLoaded (canvas.ts) only re-resolves an id through
+    // currentSlideModel's own <g>-container elements (ADR-0012) — unlike
+    // the other tests in this block, this one needs that resolution to
+    // succeed, so it uses a compliant fixture rather than playDeckMarkup's
+    // bare <rect>s.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify({ name: "preview 測試", slides: ["slides/001.svg"] }), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="enter" effect="fade" start="on-click"/></comot:effects></metadata>
+              <g id="el-a"><rect width="10" height="10"/></g>
+            </svg>`,
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    selectAndReportBounds("el-a");
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.previewEffects([0]);
+
+    expect(state?.mode).toBe("preview");
+    expect(srcdoc()).toContain('\\"preview\\":{\\"effectIndices\\":[0]}');
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-player", event: "preview-done" },
+        source: controller.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+    // exitPreview() kicks off render() without awaiting it (the message
+    // handler that calls exitPreview() is itself synchronous) — give its
+    // internal fetchText() a real tick to resolve before the iframe's own
+    // "load" is dispatched by hand (jsdom's srcdoc never fires it on its
+    // own; see the paste-feedback describe block above for the same,
+    // already-established workaround).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.frameElement.dispatchEvent(new Event("load"));
+    await Promise.resolve();
+
+    expect(state?.mode).toBe("view");
+    expect(state?.selection.ids).toEqual(["el-a"]);
+  });
+
+  it("previewEffects(null) 把 effectIndices 嵌成 null（整頁播放）", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    await controller.previewEffects(null);
+
+    expect(srcdoc()).toContain('\\"preview\\":{\\"effectIndices\\":null}');
+  });
+
+  it("exitPreview() 立即回到 view 模式，不需等 preview-done", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    await controller.previewEffects(null);
+    expect(state?.mode).toBe("preview");
+
+    controller.exitPreview();
+
+    expect(state?.mode).toBe("view");
   });
 });
 

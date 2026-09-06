@@ -70,7 +70,12 @@ export type IconName =
   | "distH"
   | "distV"
   | "front"
-  | "back";
+  | "back"
+  // [E2.T7]: Animate › Object 的清單重排／移除，原型與既有 22 個圖示都沒有
+  // 對應的字形——這兩個不是任何既有圖示的重新命名，是這次新增的最小集合。
+  | "chevron-up"
+  | "chevron-down"
+  | "close";
 
 /**
  * Canonical grid for every icon is `0 0 20 20` (Icon.tsx always renders
@@ -298,4 +303,7 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
       <path d="M12 3H3v9" />
     </>
   ),
+  "chevron-up": <path d="M5 12.5l5-5 5 5" />,
+  "chevron-down": <path d="M5 7.5l5 5 5-5" />,
+  close: <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" />,
 };

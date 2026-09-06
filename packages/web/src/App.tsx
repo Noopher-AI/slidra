@@ -13,7 +13,7 @@ import type { ExportUiState } from "./shell/ExportPanel.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
-import { SidePanel } from "./shell/side/SidePanel.js";
+import { SidePanel, type SideId, type SubId } from "./shell/side/SidePanel.js";
 import { ChatPanel } from "./shell/side/ChatPanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
 
@@ -196,6 +196,24 @@ export function App() {
   // real fullscreenElement — see isCanvasAreaFullscreen()'s comment above
   // for the race this closes (review gate round 2, P2).
   const fullscreenRequestRef = useRef<Promise<void> | null>(null);
+
+  // [E2.T7]/D10: side/sub lifted out of SidePanel.tsx (受控元件化) — the
+  // Dock's Add animation and the stage context bar's Edit animation both
+  // need to switch the right rail to Animate › Object, and both live
+  // outside SidePanel in the tree (inside Stage). The auto-switch effect
+  // (有選取 -> object；無選取 -> page) moves up here unchanged from
+  // SidePanel.tsx's own — same trigger (`hasSelection`), same reasoning in
+  // that file's header comment.
+  const [side, setSide] = useState<SideId>("chat");
+  const [sub, setSub] = useState<SubId>("page");
+  const hasSelection = canvasState.selection.ids.length > 0;
+  useEffect(() => {
+    setSub(hasSelection ? "object" : "page");
+  }, [hasSelection]);
+  function editSelectionAnimation(): void {
+    setSide("animate");
+    setSub("object");
+  }
 
   // T3/NOOP-142: 拖放／貼上匯入媒體。這個路徑跟舊殼的 Ribbon 插入按鈕無
   // 關（那三顆按鈕連同 openMediaPicker/隱藏的 <input type="file"> 已隨
@@ -1280,6 +1298,8 @@ export function App() {
             canvasSize={presentationInfo?.canvas ?? null}
             state={canvasState}
             controller={controllerRef.current}
+            onEditAnimation={editSelectionAnimation}
+            side={side}
             dropOverlay={{
               active: dropActive,
               onDragOver: handleStageDragOver,
@@ -1318,6 +1338,11 @@ export function App() {
         {shellVisible && (
           <SidePanel
             state={canvasState}
+            controller={controllerRef.current}
+            side={side}
+            sub={sub}
+            onSideChange={setSide}
+            onSubChange={setSub}
             chat={
               <ChatPanel
                 messages={messages}

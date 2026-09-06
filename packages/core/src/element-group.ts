@@ -3,6 +3,7 @@ import { escapeXmlAttr } from "./element-text.js";
 import { assertSlideCompliant } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, multiplyMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
+import { removeEffectsTargeting } from "./effects/edit.js";
 
 /**
  * `element group` / `element ungroup` / `element name set` — the container
@@ -112,6 +113,12 @@ function setTransformSplice(svg: string, node: ScannedNode, mutate: (parts: Tran
 // element group
 // ---------------------------------------------------------------------------
 
+export interface GroupElementsResult {
+  svg: string;
+  /** Effect items removed because they targeted one of the grouped members directly ([E2.T7]: a member's individual animation does not carry over into the new group). */
+  removedEffects: number;
+}
+
 /**
  * Wraps every target in a brand-new `<g id="newGroupId">` (`co-motion
  * element group`, ADR-0012). Targets must share the same immediate parent
@@ -120,13 +127,18 @@ function setTransformSplice(svg: string, node: ScannedNode, mutate: (parts: Tran
  * carries no `transform` of its own (決定 1) — children keep their exact
  * transforms, and it lands at the position of the topmost (last in document
  * order) target, so z-order among untouched siblings is unaffected.
+ *
+ * [E2.T7]: any effect item that directly targets one of `elementIds` is
+ * removed — grouping does not carry a member's own animation forward, and
+ * leaving a now-nested target in place would silently keep animating a
+ * member the GUI no longer shows as independently selectable.
  */
 export function groupElements(
   svgContent: string,
   slidePath: string,
   elementIds: readonly string[],
   newGroupId: string,
-): string {
+): GroupElementsResult {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
   if (elementIds.length < 2) {
@@ -155,7 +167,9 @@ export function groupElements(
     .map((entry) => ({ start: entry.node.start, end: entry.node.end, text: "" }));
   splices.push({ start: topmost.start, end: topmost.end, text: combinedMarkup });
 
-  return applySplices(svgContent, splices);
+  const grouped = applySplices(svgContent, splices);
+  const { updated, removedCount } = removeEffectsTargeting(grouped, slidePath, new Set(elementIds));
+  return { svg: updated, removedEffects: removedCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +182,10 @@ export function groupElements(
  * each child's (決定 1): `childMatrix' = groupMatrix ∘ childMatrix`, so the
  * absolute bounds of every child are unchanged. The group's own
  * `data-comot-name`/`data-comot-media` disappear with it.
+ *
+ * [E2.T7]: any effect item targeting the group `<g>` itself (a group
+ * animation, D5) is removed along with it — the id it pointed at no longer
+ * exists once the group is dissolved.
  */
 function ungroupOne(svgContent: string, slidePath: string, id: string): string {
   const roots = scanDocument(svgContent);
@@ -198,11 +216,12 @@ function ungroupOne(svgContent: string, slidePath: string, id: string): string {
     .map((child) => withFoldedTransforms.slice(child.start, child.end))
     .join("");
 
-  return (
+  const ungrouped =
     withFoldedTransforms.slice(0, refreshedNode.start) +
     childrenMarkup +
-    withFoldedTransforms.slice(refreshedNode.end)
-  );
+    withFoldedTransforms.slice(refreshedNode.end);
+
+  return removeEffectsTargeting(ungrouped, slidePath, new Set([id])).updated;
 }
 
 /**

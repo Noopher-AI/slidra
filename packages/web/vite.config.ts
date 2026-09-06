@@ -33,6 +33,10 @@ export default defineConfig({
       // `resizeTextBox` (element-text.ts, server-side) calls, so the
       // preview and the eventual write can never disagree.
       "@co-motion/core/text": path.join(rootDir, "../core/src/text/index.ts"),
+      // [E2.T7]: effects/index.ts (schema, value sets, deriveSteps) is
+      // declared Node-free too — effects.ts/player-plan.ts import it
+      // straight from source, same reasoning as the three aliases above.
+      "@co-motion/core/effects": path.join(rootDir, "../core/src/effects/index.ts"),
     },
   },
   build: {

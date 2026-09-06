@@ -36,6 +36,10 @@ export interface DockProps {
   onToggleHand(): void;
   selection: CanvasSelection;
   controller: CanvasController | null;
+  /** [E2.T7]：Add animation 送出的 `effect add` 需要目前投影片的路徑；沒有投影片時是 null。 */
+  slidePath: string | null;
+  /** [E2.T7]：Add animation 成功後把右欄切到 Animate › Object（GUI 行為表）。 */
+  onAnimationAdded(): void;
   /** The presentation's own canvas size (project.json's `canvas`) — TextPanel converts the prototype's percentage-based defaults into real pixels against it, instead of assuming 1280×720. `null` before `presentationInfo` has loaded. */
   canvasSize: { width: number; height: number } | null;
 }
@@ -75,7 +79,17 @@ function isCommandDisabled(key: DockLayer, hasSelection: boolean): boolean {
  * 不是相對觸發它的那顆按鈕（05-INTERACTIONS.feature「縮放選單」／
  * 02-DESIGN_DOC.md §2.3「一律從同一個地方長出」）。
  */
-export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection, controller, canvasSize }: DockProps) {
+export function Dock({
+  zoomPan,
+  onZoomPanChange,
+  hand,
+  onToggleHand,
+  selection,
+  controller,
+  slidePath,
+  onAnimationAdded,
+  canvasSize,
+}: DockProps) {
   const [openLayer, setOpenLayer] = useState<DockLayer | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
   const hasSelection = selection.ids.length > 0;
@@ -126,7 +140,15 @@ export function Dock({ zoomPan, onZoomPanChange, hand, onToggleHand, selection, 
       case "chart":
         return <ChartPanel onClose={onClose} />;
       case "animate":
-        return <AnimatePanel onClose={onClose} />;
+        return (
+          <AnimatePanel
+            selection={selection}
+            controller={controller}
+            slidePath={slidePath}
+            onAdded={onAnimationAdded}
+            onClose={onClose}
+          />
+        );
       default:
         return null;
     }

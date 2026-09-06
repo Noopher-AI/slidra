@@ -1,6 +1,7 @@
 import { CoMotionError } from "./errors.js";
 import { escapeXmlText } from "./element-text.js";
 import { attributeOf, scanDocument, type ScannedNode } from "./slide/scan.js";
+import { EFFECTS_NS } from "./effects/index.js";
 
 /**
  * Speaker notes (T3): a pure string -> string splice, modeled on
@@ -14,7 +15,7 @@ import { attributeOf, scanDocument, type ScannedNode } from "./slide/scan.js";
 const NOTES_TAG = "comot:notes";
 const METADATA_TAG = "metadata";
 /** Same namespace URI `packages/web/src/effects.ts`'s `<comot:effects>` binds — an unbound `comot:` prefix is a fatal XML parse error, not a tolerated one. */
-const NOTES_NS = "https://co-motion.dev/ns";
+const NOTES_NS = EFFECTS_NS;
 
 function requireSvgRoot(roots: readonly ScannedNode[]): ScannedNode {
   const svgRoot = roots.find((node) => node.tag === "svg");

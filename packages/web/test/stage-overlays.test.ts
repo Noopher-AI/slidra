@@ -75,7 +75,19 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
 
 describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則翻到上方）」）", () => {
   it("沒有選取（union 為 null）：渲染空容器，不含 .context-bar", () => {
-    const markup = renderToStaticMarkup(createElement(ContextBar, { union: null, bounds: { width: 1280, height: 720 }, dragging: false, onComment: () => {}, onOrder: () => {}, onDuplicate: () => {}, onDelete: () => {} }));
+    const markup = renderToStaticMarkup(
+      createElement(ContextBar, {
+        union: null,
+        bounds: { width: 1280, height: 720 },
+        dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
+        onComment: () => {},
+        onOrder: () => {},
+        onDuplicate: () => {},
+        onDelete: () => {},
+      }),
+    );
     expect(markup).not.toContain("context-bar\"");
   });
 
@@ -85,6 +97,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         union: { x: 100, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 720 },
         dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
         onDuplicate: () => {},
@@ -104,6 +118,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         union: { x: 100, y: 570, width: 160, height: 50 },
         bounds: { width: 1280, height: 720 },
         dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
         onDuplicate: () => {},
@@ -120,6 +136,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         union: { x: 100, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 720 },
         dragging: true,
+        hasAnimation: false,
+        onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
         onDuplicate: () => {},
@@ -135,6 +153,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         union: { x: 100, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 720 },
         dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
         onDuplicate: () => {},
@@ -147,6 +167,36 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup.match(/context-bar-item-icon/g)).toHaveLength(4);
     expect(markup.match(/context-bar-divider/g)).toHaveLength(3);
     expect(markup).toContain("context-bar-item-danger");
+    // [E2.T7]: hasAnimation: false — no Edit animation button at all (not merely disabled/hidden).
+    expect(markup).not.toContain("Edit animation");
+  });
+
+  // [E2.T7]/07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」
+  it("hasAnimation: true 時，Edit style 右側渲染 Edit animation（spark 圖示）", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ContextBar, {
+        union: { x: 100, y: 100, width: 160, height: 100 },
+        bounds: { width: 1280, height: 720 },
+        dragging: false,
+        hasAnimation: true,
+        onEditAnimation: () => {},
+        onOrder: () => {},
+        onDuplicate: () => {},
+        onDelete: () => {},
+      }),
+    );
+    const titles = [...markup.matchAll(/<button[^>]*title="([^"]+)"/g)].map((m) => m[1]);
+    expect(titles).toEqual([
+      "Comment to AI",
+      "Edit style",
+      "Edit animation",
+      "Bring to front",
+      "Bring forward",
+      "Send backward",
+      "Send to back",
+      "Duplicate",
+      "Delete",
+    ]);
   });
 
   it("剛好卡在翻轉門檻上：貼齊 Dock 保留區上緣仍算「放得下」，不翻轉", () => {
@@ -156,6 +206,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         union: { x: 0, y: 100, width: 160, height: 100 },
         bounds: { width: 1280, height: 325 }, // 100+100+13+36+76 = 325
         dragging: false,
+        hasAnimation: false,
+        onEditAnimation: () => {},
         onComment: () => {},
         onOrder: () => {},
         onDuplicate: () => {},

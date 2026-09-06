@@ -54,6 +54,8 @@
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
 import { computePlayerPlan, renderHideStyle, renderPlanScript } from "./player-plan.js";
+import { parseEffects } from "./effects.js";
+import type { Effect } from "./effects.js";
 import {
   decomposeMatrix,
   formatTransform,
@@ -72,7 +74,7 @@ import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 
-export type CanvasMode = "view" | "play";
+export type CanvasMode = "view" | "play" | "preview";
 
 /**
  * A `selection-runtime.js` wheel/pointer/keyboard event, already validated
@@ -148,6 +150,27 @@ export interface OverlayState {
   guides: { orientation: "v" | "h"; position: number }[];
   /** `true` while a move/scale/rotate/textbox-width gesture is in progress — the context bar hides itself during a drag (the selection box and label stay). */
   dragging: boolean;
+  /**
+   * [E2.T7]: whether at least one currently-selected id has an effect
+   * targeting it (parsed straight off the current slide markup, tolerating
+   * a parse failure as "no animations" — same posture the GUI table gives
+   * a broken effect list in view mode: no cards, no badges, no error
+   * toast). ContextBar's Edit animation entry (next to Edit style, `spark`
+   * icon) renders only when this is true; `hasAnimation = ids.some(...)`
+   * so a multi-selection with only some animated members still shows it.
+   */
+  hasAnimation: boolean;
+  /**
+   * [E2.T7]/D9: one entry per element that has at least one effect on the
+   * CURRENT slide (not just the selection) — the stage's numbered
+   * animation badges. `n` is 1-based: the position of that target's first
+   * effect entry in the file, matching Animate › Object's own card order.
+   * Measured on demand via a `measure`/`measured` round trip, deliberately
+   * kept out of the high-frequency `bounds` channel (see
+   * selection-runtime.js's `reportMeasured`) — empty whenever the slide has
+   * no effects, or outside view mode.
+   */
+  badges: { target: string; n: number; rect: Rect }[];
 }
 
 export interface CanvasState {
@@ -211,6 +234,17 @@ export interface CanvasController {
   play: () => Promise<void>;
   /** Rebuilds the iframe back to view mode's `allow-scripts` sandbox (ADR-0011). */
   exitPlay: () => Promise<void>;
+  /**
+   * [E2.T7]/D8: plays `effectIndices` (a specific card's own effect-list
+   * positions) or, when `null`, the whole slide's steps in sequence (the
+   * panel's Preview button) — via the play runtime, not a second animation
+   * engine. Returns to view mode on its own once the runtime reports
+   * completion; the promise itself resolves once the preview has STARTED
+   * rendering, not once it finishes. No-op outside view mode.
+   */
+  previewEffects: (effectIndices: number[] | null) => Promise<void>;
+  /** Ends Preview immediately (Esc / click-away) and restores the selection Preview was entered with. No-op outside preview mode. */
+  exitPreview: () => void;
   /** Sends focus to the player iframe. Safe to call outside play mode (no-op). */
   focusPlayer: () => void;
   /**
@@ -333,6 +367,8 @@ export interface CanvasController {
   refreshOverlay: () => void;
   /** ⌘A (§4.1): selects every top-level element on the current slide, clearing `groupPath`. No-op on an empty slide. No-op outside view mode. */
   selectAll: () => void;
+  /** [E2.T7]: selects exactly `ids` (a stage animation badge click) — ids that no longer resolve are dropped; a no-op if none resolve. No-op outside view mode. */
+  selectElements: (ids: readonly string[]) => void;
   /** Delete/Backspace, or the context bar's Delete (§4.4): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
   deleteSelection: () => Promise<void>;
   /** ⌘D, or the context bar's Duplicate (§4.4): sends `element duplicate` with the prototype's own +3%/+4% offset, selecting the new copy on success. No-op with no selection. */
@@ -399,7 +435,10 @@ const PAGE_FADE_MS = 400;
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
   source: "comot-player";
-  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error";
+  // [E2.T7]/D8: "preview-done" — the runtime's own signal that Preview has
+  // finished playing every effect it was asked to; only ever sent while
+  // `mode === "preview"`.
+  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done";
   hasFocus?: boolean;
   message?: string;
 }
@@ -458,7 +497,11 @@ interface SelectionMessage {
     | "stage-key"
     // Sent once, after the runtime's listeners are attached (§2.1(c)) —
     // carries no payload of its own.
-    | "runtime-ready";
+    | "runtime-ready"
+    // [E2.T7]/D9: the reply to a host-issued `measure` command — bounds for
+    // an arbitrary id list (the current slide's animation badge targets),
+    // independent of `selectedIds`.
+    | "measured";
   id?: string;
   name?: string | null;
   /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
@@ -486,7 +529,7 @@ interface SelectionMessage {
    * than sent empty on the common top-level case.
    */
   groupPath?: string[];
-  /** "bounds" only — one entry per still-resolvable selected id, in the runtime's own iframe-local client px. */
+  /** "bounds"/"measured" only — one entry per still-resolvable id, in the runtime's own iframe-local client px ("bounds": every selected id, with its ancestor chain; "measured": every id the host asked for, no ancestors). */
   items?: unknown;
   /** "bounds" only — the union of every `items[]` rect, iframe-local client px; `null` when `items` is empty. */
   union?: unknown;
@@ -530,6 +573,18 @@ function isBoundsItem(value: unknown): value is BoundsItem {
   if (typeof value !== "object" || value === null) return false;
   const item = value as { id?: unknown; rect?: unknown; ancestors?: unknown };
   return typeof item.id === "string" && isNonNegativeRect(item.rect) && isAncestorList(item.ancestors);
+}
+
+/** One `measured` event item (D9) — no `ancestors`, unlike `BoundsItem`. */
+interface MeasuredItem {
+  id: string;
+  rect: Rect;
+}
+
+function isMeasuredItem(value: unknown): value is MeasuredItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as { id?: unknown; rect?: unknown };
+  return typeof item.id === "string" && isNonNegativeRect(item.rect);
 }
 
 function isSelectionMessage(data: unknown): data is SelectionMessage {
@@ -838,6 +893,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
+  // [E2.T7]/D8: the selection Preview entered from, restored (top-level ids
+  // only — drill-in group scope is not preserved, a deliberate
+  // simplification) once the runtime posts "preview-done" and this module
+  // returns to view mode. `null` between previews.
+  let previewReturnSelectionIds: string[] | null = null;
   // The elements the author has selected in view mode (ADR-0011/#56,
   // extended by NOOP-91 to a list). Cleared (with notify()) whenever the
   // slide changes, reload() runs, play() is entered, or exitPlay()
@@ -884,6 +944,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
   let overlayGuides: { orientation: "v" | "h"; position: number }[] = [];
+  // [E2.T7]: the current slide's effect list, parsed fresh on every
+  // render() (never on gesture/selection changes — an effect list edit
+  // always comes back over /api/events -> reload() -> render() like any
+  // other write). A parse failure is treated as "no animations" (GUI table:
+  // view mode never surfaces the player's own parse error), not a thrown
+  // exception up through render().
+  let currentSlideEffects: Effect[] = [];
+  // [E2.T7]/D9: `{target, n}` for every distinct effect target on the
+  // current slide, in first-appearance order — computed alongside
+  // currentSlideEffects and re-sent to the runtime as a `measure` command
+  // once it reports "runtime-ready". `overlayBadges` holds the last
+  // successful `measured` reply, converted to parent client px.
+  let badgeTargets: { target: string; n: number }[] = [];
+  let overlayBadges: { target: string; n: number; rect: Rect }[] = [];
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -978,24 +1052,30 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (!isPlayerMessage(event.data)) return;
     // Player messages are only legitimate from the player runtime, which
-    // only ever runs while mode === "play" (wrapPlayDocument is the only
-    // place playerRuntimeSource is injected). A view-mode slide has no
-    // business sending any of these — reject the whole message rather
-    // than gating individual events, so a future new event type is safe
-    // by default instead of needing its own opt-in gate.
-    if (mode !== "play") return;
+    // only ever runs while mode === "play" or mode === "preview" ([E2.T7]/
+    // D8 — Preview reuses the exact same runtime/wrapPlayDocument, just
+    // with `plan.preview` set). A view-mode slide has no business sending
+    // any of these — reject the whole message rather than gating
+    // individual events, so a future new event type is safe by default
+    // instead of needing its own opt-in gate.
+    if (mode !== "play" && mode !== "preview") return;
 
     const message = event.data;
     if (message.event === "ready") {
       // Entering play mode hands focus to the player (acceptance
       // criterion); "ready" is the runtime's own signal that its listeners
       // are attached and it can actually receive the focus/keydown.
-      focusPlayer();
+      // Preview never takes focus (D8: the side panel stays interactive
+      // while it plays) — the runtime still posts "ready" as the last
+      // message of its own boot sequence regardless of mode.
+      if (mode === "play") focusPlayer();
       return;
     }
     if (message.event === "focus") {
-      playerHasFocus = Boolean(message.hasFocus);
-      notify();
+      if (mode === "play") {
+        playerHasFocus = Boolean(message.hasFocus);
+        notify();
+      }
       return;
     }
     if (message.event === "error") {
@@ -1004,11 +1084,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
     if (message.event === "advance-past-end") {
-      void advancePastEnd();
+      if (mode === "play") void advancePastEnd();
       return;
     }
     if (message.event === "retreat-past-start") {
-      void retreatPastStart();
+      if (mode === "play") void retreatPastStart();
+      return;
+    }
+    if (message.event === "preview-done") {
+      if (mode === "preview") exitPreview();
       return;
     }
   }
@@ -1211,6 +1295,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // side's last-known value so 抓取模式 does not silently drop on
       // every slide change (§2.1(c)).
       postToFrame({ command: "stage-mode", hand: stageHandMode });
+      // [E2.T7]/D9: a fresh document has never been asked to measure
+      // anything — re-request the current slide's badge targets so the
+      // overlay is not stuck showing the PREVIOUS slide's badge positions.
+      requestBadgeMeasurement();
+      return;
+    }
+    if (message.event === "measured") {
+      const items = Array.isArray(message.items) ? message.items.filter(isMeasuredItem) : [];
+      const rectByTarget = new Map(items.map((item) => [item.id, item.rect]));
+      overlayBadges = badgeTargets.flatMap((entry) => {
+        const rect = rectByTarget.get(entry.target);
+        return rect ? [{ target: entry.target, n: entry.n, rect: toParentClientRect(rect) }] : [];
+      });
+      notifyOverlay();
       return;
     }
   }
@@ -1260,7 +1358,41 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
       dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlaySettling,
+      hasAnimation: selectionIds.some((id) => currentSlideEffects.some((effect) => effect.target === id)),
+      badges: overlayBadges,
     };
+  }
+
+  /** `{target, n}` for every distinct effect target, in first-appearance (file) order — D9/[E2.T7]. */
+  function computeBadgeTargets(effects: readonly Effect[]): { target: string; n: number }[] {
+    const seen = new Set<string>();
+    const result: { target: string; n: number }[] = [];
+    effects.forEach((effect, index) => {
+      if (seen.has(effect.target)) return;
+      seen.add(effect.target);
+      result.push({ target: effect.target, n: index + 1 });
+    });
+    return result;
+  }
+
+  /**
+   * Re-measures every current badge target (D9) — called once per fresh
+   * view-mode `srcdoc` load (`runtime-ready`). A move/scale/rotate that
+   * shifts an animated element gets picked up for free the same way: a
+   * committed gesture's command round-trips through `/api/events` into
+   * `reload()`, which rebuilds the srcdoc and fires a fresh
+   * "runtime-ready" — there is no separate "re-measure after a drag" path
+   * to maintain. No-op outside view mode.
+   */
+  function requestBadgeMeasurement(): void {
+    if (mode !== "view") return;
+    badgeTargets = computeBadgeTargets(currentSlideEffects);
+    if (badgeTargets.length === 0) {
+      overlayBadges = [];
+      notifyOverlay();
+      return;
+    }
+    postToFrame({ command: "measure", ids: badgeTargets.map((entry) => entry.target) });
   }
 
   function notifyOverlay(): void {
@@ -1434,6 +1566,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const raw = shape === "elementId" ? [data?.elementId] : data?.elementIds;
       const ids = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
       if (ids.length > 0) pendingSelectionIds = ids;
+    } else if (result.ok) {
+      // Every other successful GUI write (effect add/set/move/remove, text
+      // set, …) lands back over /api/events and drives a reload() that
+      // drops the selection. Park it so the author keeps what they had —
+      // otherwise the right rail's Page/Object sub-tab (keyed on "is
+      // anything selected") snaps back to Page after every edit.
+      keepSelectionAcrossReload();
     }
     notify();
     return result;
@@ -1578,6 +1717,31 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (currentSlideModel.elements.length === 0) return;
     selectionIds = currentSlideModel.elements.map((element) => element.id);
     selectionNames = currentSlideModel.elements.map((element) => element.name);
+    selectionGroupPath = [];
+    notify();
+    pushSelectionToRuntime(selectionIds);
+  }
+
+  /**
+   * [E2.T7]: selects exactly `ids` (only the ones that still resolve in
+   * `currentSlideModel`, same tolerance `selectOnceLoaded` already gives a
+   * stale id) — the stage badge layer's click-to-select (D9's GUI table:
+   * "點徽章 → 選取該元素"), the one host-driven selection entry point that
+   * did not already exist (`selectAll` picks every top-level element,
+   * nothing picks one arbitrary id by name). Same shape as `selectAll`
+   * immediately above. `groupPath` resets to top level — a badge is drawn
+   * in document (not group-scoped) coordinates, so there is no meaningful
+   * "current group" to preserve.
+   */
+  function selectElements(ids: readonly string[]): void {
+    if (mode !== "view" || !currentSlideModel) return;
+    const index = elementIndex();
+    const entries = ids
+      .map((id) => [id, index.get(id)] as const)
+      .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== undefined);
+    if (entries.length === 0) return;
+    selectionIds = entries.map(([id]) => id);
+    selectionNames = entries.map(([, entry]) => entry.element.name);
     selectionGroupPath = [];
     notify();
     pushSelectionToRuntime(selectionIds);
@@ -2584,6 +2748,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
+    // [E2.T7]: the slide/mode is changing — the previous slide's badge
+    // targets and measured positions no longer apply, and render()/
+    // renderPlay() (or leaving view mode entirely) will repopulate them.
+    currentSlideEffects = [];
+    badgeTargets = [];
+    overlayBadges = [];
     notify();
     notifyOverlay();
 
@@ -2611,6 +2781,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (currentIndex === -1) {
       currentSlideModel = null;
+      currentSlideEffects = [];
+      badgeTargets = [];
+      overlayBadges = [];
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
       return;
     }
@@ -2627,6 +2800,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideModel = parseSlide(svgMarkup, slidePath);
     } catch {
       currentSlideModel = null;
+    }
+
+    // [E2.T7]: a slide whose effect list fails to parse is treated as
+    // having no animations at all in view mode (GUI table — the player's
+    // own parse error is a play-mode-only concern), never thrown up
+    // through render().
+    try {
+      currentSlideEffects = parseEffects(svgMarkup);
+    } catch {
+      currentSlideEffects = [];
     }
 
     frame.srcdoc = wrapSelectionDocument(
@@ -2719,6 +2902,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     thisGeneration?: number,
     startAt: "first" | "last" = "first",
     animate = false,
+    /**
+     * [E2.T7]/D8: `undefined` (every existing caller) means "not a
+     * Preview — never set `plan.preview`". A concrete value (only
+     * `previewEffects()` passes one) becomes `plan.preview.effectIndices`:
+     * a specific list plays just those effect-list positions, `null`
+     * plays the whole slide's steps in sequence.
+     */
+    previewEffectIndices?: number[] | null,
   ): Promise<void> {
     const captured = thisGeneration ?? generation;
     if (currentIndex === -1) {
@@ -2735,7 +2926,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     try {
       const plan = computePlayerPlan(svgMarkup);
       const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
-      planScript = renderPlanScript(plan, startStep);
+      const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
+      planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
@@ -2819,6 +3011,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
+    // [E2.T7]: the slide/mode is changing — the previous slide's badge
+    // targets and measured positions no longer apply, and render()/
+    // renderPlay() (or leaving view mode entirely) will repopulate them.
+    currentSlideEffects = [];
+    badgeTargets = [];
+    overlayBadges = [];
     notify();
     notifyOverlay();
     if (mode === "play") {
@@ -2864,6 +3062,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
+    // [E2.T7]: the slide/mode is changing — the previous slide's badge
+    // targets and measured positions no longer apply, and render()/
+    // renderPlay() (or leaving view mode entirely) will repopulate them.
+    currentSlideEffects = [];
+    badgeTargets = [];
+    overlayBadges = [];
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
@@ -2888,10 +3092,73 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
+    // [E2.T7]: the slide/mode is changing — the previous slide's badge
+    // targets and measured positions no longer apply, and render()/
+    // renderPlay() (or leaving view mode entirely) will repopulate them.
+    currentSlideEffects = [];
+    badgeTargets = [];
+    overlayBadges = [];
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
     await render(thisGeneration);
+  }
+
+  /**
+   * [E2.T7]/D8: plays either one card's specific effect-list positions
+   * (`effectIndices`, the card's own ▶) or the whole slide's steps in
+   * sequence (`null`, the panel's Preview button) — reusing `renderPlay`'s
+   * `wrapPlayDocument`/player-runtime.js path exactly like `play()` does,
+   * never a second animation engine. Side-panel focus is left alone (no
+   * `focusPlayer()` call anywhere in the preview path — see the
+   * `onWindowMessage` "ready" handler): Animate › Object stays interactive
+   * while the preview plays. No-op outside view mode.
+   */
+  async function previewEffects(effectIndices: number[] | null): Promise<void> {
+    if (destroyed || mode !== "view") return;
+    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
+    activeGesture = null;
+    const thisGeneration = ++generation;
+    mode = "preview";
+    previewReturnSelectionIds = [...selectionIds];
+    error = null;
+    selectionIds = [];
+    selectionNames = [];
+    selectionGroupPath = [];
+    viewport = null;
+    overlayBoxes = [];
+    overlayUnion = null;
+    overlayAncestors = [];
+    overlayGuides = [];
+    currentSlideEffects = [];
+    badgeTargets = [];
+    overlayBadges = [];
+    rebuildFrame("allow-scripts");
+    notify();
+    notifyOverlay();
+    await renderPlay(thisGeneration, "first", false, effectIndices);
+  }
+
+  /**
+   * Returns to view mode from Preview, restoring whatever selection was
+   * active before `previewEffects()` was called (top-level ids only —
+   * drill-in group scope is not preserved). Called from the runtime's own
+   * "preview-done" message (D8) or from the GUI on Esc/click-away
+   * (`CanvasController.exitPreview`'s public export — see App.tsx/
+   * AnimateObjectPanel's own Escape handling). No-op outside preview mode.
+   */
+  function exitPreview(): void {
+    if (destroyed || mode !== "preview") return;
+    const thisGeneration = ++generation;
+    mode = "view";
+    error = null;
+    const restoreIds = previewReturnSelectionIds ?? [];
+    previewReturnSelectionIds = null;
+    rebuildFrame("allow-scripts");
+    notify();
+    notifyOverlay();
+    pendingSelectionIds = restoreIds.length > 0 ? restoreIds : null;
+    void render(thisGeneration);
   }
 
   function focusPlayer(): void {
@@ -3000,6 +3267,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     subscribe,
     play,
     exitPlay,
+    previewEffects,
+    exitPreview,
     focusPlayer,
     stepPlayer,
     beginTextEdit: enterTextEdit,
@@ -3042,6 +3311,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notifyOverlay();
     },
     selectAll,
+    selectElements,
     deleteSelection,
     duplicateSelection,
     orderSelection,
