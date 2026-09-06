@@ -275,10 +275,22 @@ const SANITIZE_PLACEHOLDER_VIEWBOX = "0 0 1280 720";
 
 /** Attribute values matching any of these schemes are never legal in pasted content — none of them can point at same-document data. */
 const DANGEROUS_SCHEME = /\b(javascript|data|file|ftp|blob):/i;
-/** An absolute or protocol-relative URL in an attribute value. */
-const ABSOLUTE_URL = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
+/** An `http(s)://` reference anywhere in the value, or a protocol-relative URL at its start (Plan §4.2's rule table). Unanchored on purpose: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. */
+const ABSOLUTE_URL = /\bhttps?:\/\/|^\s*\/\//i;
 /** `url(...)` references — only a same-document fragment (`#foo`) is legal. */
 const URL_FUNCTION = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+
+const XML_NAMED_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+/** Decimal (`&#104;`), hex (`&#x68;`) and the five predefined XML entities — the only character references a browser's XML/SVG parser resolves. Attribute values are scanned *after* this decode so entity-encoding can't hide an external reference or a dangerous scheme from the checks below (e.g. `href="&#104;ttps://evil.example"`). */
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (whole, body: string) => {
+    if (body[0] === "#") {
+      const codePoint = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : whole;
+    }
+    return XML_NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
 
 /** Namespace-declaration attributes carry inert URIs (never fetched or executed) and are exempt from the URL/scheme rules above. */
 function isNamespaceDeclaration(attrName: string): boolean {
@@ -302,19 +314,23 @@ function isRelativeReference(value: string): boolean {
 
 function checkAttributeValue(attrName: string, value: string, label: string): void {
   if (isNamespaceDeclaration(attrName)) return;
-  if (DANGEROUS_SCHEME.test(value)) {
+
+  const decodedValue = decodeXmlEntities(value);
+  if (DANGEROUS_SCHEME.test(decodedValue)) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
   }
-  if (ABSOLUTE_URL.test(value)) {
+  if (ABSOLUTE_URL.test(decodedValue)) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 是外部參照（${value}）`);
   }
   for (const match of value.matchAll(URL_FUNCTION)) {
     const ref = match[2];
-    if (!ref.startsWith("#")) {
+    const decodedRef = decodeXmlEntities(ref);
+    if (decodedRef !== ref || !decodedRef.startsWith("#")) {
       throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
     }
   }
-  if ((attrName === "href" || attrName === "xlink:href" || attrName === "src") && !isRelativeReference(value)) {
+  const isUrlAttr = attrName === "href" || attrName === "xlink:href" || attrName === "src";
+  if (isUrlAttr && (decodedValue !== value || !isRelativeReference(decodedValue))) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
   }
 }
@@ -355,13 +371,16 @@ function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean
  *    limited to a fragment or relative path, and — for an effect item only —
  *    no attribute outside `RawEffectAttributes`' fields.
  *
- * `<!DOCTYPE`/`<!ENTITY` are rejected directly on the raw string: `scanDocument`
- * silently skips these constructs (by design, for `<!--`/`<![CDATA[`), which
- * would otherwise let one ride through unexamined into the written file.
+ * `<!DOCTYPE`/`<!ENTITY`/`<!--`/`<![CDATA[` are rejected directly on the raw
+ * string: `scanDocument` silently skips all four constructs by design, which
+ * would otherwise let one ride through unexamined into the written file (a
+ * `<![CDATA[<script>...]]>` or `<!--<script>...-->` payload does not execute,
+ * but it does get written verbatim — a legitimate pasted fragment has no
+ * reason to carry either).
  */
 export function sanitizeClipboardMarkup(markup: string, kind: "element" | "effect"): void {
-  if (/<!DOCTYPE|<!ENTITY/i.test(markup)) {
-    throw new CoMotionError("剪貼簿內容不可信：含有 DOCTYPE 或 ENTITY 宣告");
+  if (/<!DOCTYPE|<!ENTITY|<!\[CDATA\[|<!--/i.test(markup)) {
+    throw new CoMotionError("剪貼簿內容不可信：含有 DOCTYPE、ENTITY 宣告、CDATA 區塊或註解");
   }
 
   const label = kind === "element" ? "剪貼簿元素" : "剪貼簿效果項";

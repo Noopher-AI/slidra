@@ -134,4 +134,15 @@ describe("pasteTableCellRange", () => {
     const svg = tableSlide();
     expect(() => pasteTableCellRange(svg, "slides/001.svg", "tbl-1", { row: 9, col: 9 }, "x")).toThrow(/2 列 3 欄/);
   });
+
+  it("writes starting at a non-zero anchor, not from the table's own origin", () => {
+    const svg = tableSlide();
+    const { updated, cells } = pasteTableCellRange(svg, "slides/001.svg", "tbl-1", { row: 1, col: 1 }, "x\ty");
+    expect(cells).toBe(2);
+    expect(updated).toContain('<g id="cell-1-1" data-comot-cell="1,1"><text x="0" y="0">x</text></g>');
+    expect(updated).toContain('<g id="cell-1-2" data-comot-cell="1,2"><text x="0" y="0">y</text></g>');
+    // Cells outside the anchor's span are untouched, including row 0 — a naive `r = i` mistake would land here instead.
+    expect(updated).toContain('<g id="cell-0-0" data-comot-cell="0,0"><text x="0" y="0">r0c0</text></g>');
+    expect(updated).toContain('<g id="cell-0-1" data-comot-cell="0,1"><text x="0" y="0">r0c1</text></g>');
+  });
 });

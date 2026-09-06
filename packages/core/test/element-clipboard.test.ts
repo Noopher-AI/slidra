@@ -3,6 +3,7 @@ import { CoMotionError } from "../src/errors.js";
 import {
   extractElementsForCopy,
   parseClipboardSvg,
+  pasteElements,
   sanitizeClipboardMarkup,
   serializeClipboardSvg,
   type ClipboardPayload,
@@ -124,6 +125,69 @@ describe("sanitizeClipboardMarkup", () => {
   it("a <g> missing an id is rejected via the reused compliance check", () => {
     expect(() => sanitizeClipboardMarkup('<g><rect width="1" height="1"/></g>', "element")).toThrow(CoMotionError);
   });
+
+  it("rejects an href hiding an external URL behind decimal XML character references (&#104; -> 'h')", () => {
+    expect(() =>
+      sanitizeClipboardMarkup(
+        '<g id="el-a"><image href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
+        "element",
+      ),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects an href hiding an external URL behind hex XML character references (&#x68; -> 'h')", () => {
+    expect(() =>
+      sanitizeClipboardMarkup(
+        '<g id="el-a"><image href="&#x68;ttps://evil.example/x.png" width="1" height="1"/></g>',
+        "element",
+      ),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects a protocol-relative reference hidden behind entity-encoded slashes (&#x2f;&#x2f; -> '//')", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><image href="&#x2f;&#x2f;evil.example/x.png" width="1" height="1"/></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects xlink:href hiding an external URL behind entity encoding", () => {
+    expect(() =>
+      sanitizeClipboardMarkup(
+        '<g id="el-a"><image xlink:href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
+        "element",
+      ),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects an href hiding a javascript: scheme behind entity encoding", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><image href="&#106;avascript:alert(1)" width="1" height="1"/></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects an absolute https:// URL that appears mid-value, not just at the start", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><image href="x https://evil.example/y" width="1" height="1"/></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects a url(...) reference whose entity encoding changes it after decoding, even though it still starts with '#' either way (no legitimate reason to entity-encode a same-document url(...) reference)", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><rect style="fill:url(#&#x2f;&#x2f;evil.example)" width="1" height="1"/></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects a fragment containing a CDATA section (scanDocument silently skips it, which would let a <script> string ride through unexamined)", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0"><![CDATA[<script>alert(1)</script>]]></text></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects a fragment containing an HTML/XML comment for the same reason", () => {
+    expect(() =>
+      sanitizeClipboardMarkup('<g id="el-a"><!--<script>alert(1)</script>--><rect width="1" height="1"/></g>', "element"),
+    ).toThrow(CoMotionError);
+  });
 });
 
 describe("A6: serialized clipboard output never contains script or external references", () => {
@@ -135,5 +199,27 @@ describe("A6: serialized clipboard output never contains script or external refe
     );
     // A source slide this shape is already non-compliant and could never have been written by this app.
     expect(() => extractElementsForCopy(dirtySvg, "slides/001.svg", ["el-a"])).toThrow(CoMotionError);
+  });
+});
+
+describe("pasteElements sanitizes before splicing (the mount point every paste path shares, not only parseClipboardSvg)", () => {
+  it("rejects an unsafe element in the payload instead of splicing it into the target slide", () => {
+    const target = wrap('<g id="host"><rect width="1" height="1"/></g>');
+    const payload: ClipboardPayload = {
+      sourceSlidePath: "slides/001.svg",
+      elements: ['<g id="el-a"><rect width="10" height="10"/><script>alert(1)</script></g>'],
+      effects: [],
+    };
+    expect(() => pasteElements(target, "slides/002.svg", payload, 0, 0, () => "el-new")).toThrow(CoMotionError);
+  });
+
+  it("rejects an unsafe effect in the payload the same way", () => {
+    const target = wrap('<g id="host"><rect width="1" height="1"/></g>');
+    const payload: ClipboardPayload = {
+      sourceSlidePath: "slides/001.svg",
+      elements: ['<g id="el-a"><rect width="1" height="1"/></g>'],
+      effects: ['<comot:effect target="el-a" family="enter" effect="fade" start="on-click" onx="1"/>'],
+    };
+    expect(() => pasteElements(target, "slides/002.svg", payload, 0, 0, () => "el-new")).toThrow(CoMotionError);
   });
 });
