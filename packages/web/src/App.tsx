@@ -628,6 +628,13 @@ export function App() {
       // 有選取時兩鍵都留給 [E2.T2]／未來票 — 不 preventDefault，什麼都不做
       // (T3 plan §2 邊界 5)。
       if (state.selection.ids.length > 0) return;
+      // [E2.T5r2] 無選取時，「對目前頁」的意圖只在焦點確實落在 rail／縮圖區
+      // 才成立——頁面剛載入、或焦點還在畫布/iframe 上時維持 no-op，留給
+      // [E2.T2] 的 handler（什麼都不做）。修正 #214×#215 整合後的回歸：曾經
+      // 無條件送出 slide delete，導致沒有任何選取時按 Delete 會刪掉整張
+      // 投影片。
+      const activeElement = document.activeElement;
+      if (!(activeElement instanceof HTMLElement) || !activeElement.closest(".rail")) return;
       if (state.slides.length === 0) return;
 
       const slidePath = state.slides[state.currentIndex];

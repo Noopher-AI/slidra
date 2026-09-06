@@ -165,7 +165,10 @@ export function Rail({
           <TemplatesMenu menuRef={menuRef} runCommand={runCommand} onSelectTemplate={onSelectTemplate} />
         )}
       </div>
-      <div className="rail-slides-label">
+      {/* [E2.T5r2] tabIndex=-1：不進 Tab 循序順序，但點擊會成為
+          document.activeElement，讓 App.tsx 的鍵盤 Delete／⌘D handler能用
+          `activeElement.closest(".rail")` 判斷「焦點確實在 rail」。 */}
+      <div className="rail-slides-label" tabIndex={-1}>
         Slides
         <span className="rail-slides-count">{slideCount}</span>
       </div>

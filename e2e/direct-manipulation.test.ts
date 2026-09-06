@@ -1254,6 +1254,34 @@ it("Delete 鍵刪除目前選取，undo 還原；無選取時是 no-op", async (
   }
 });
 
+it("焦點曾經在 rail、之後移到 rail 以外：Delete／Backspace 完全不動投影片（#214×#215 整合回歸：曾經會刪掉整張投影片）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    // 先點 rail（跟「刪目前頁」那條測試一樣，focus 進 rail），再把焦點移到
+    // parent document 裡 rail 以外、無害的一個可聚焦元素（Undo 按鈕；stack
+    // 是空的，點下去只會送一個安全的 /api/undo 空棧錯誤，不影響投影片）。
+    // 這確保守門條件看的是「現在」的焦點，不是「曾經點過 rail」這種容易
+    // 失效的殘留狀態。
+    await page.locator(".rail-slides-label").click();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForTimeout(50);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(100);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(100);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("⌘D 複製選取，位移是 viewBox 的 +3%/+4%，新元素成為選取，undo 還原", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
