@@ -14,7 +14,9 @@ import {
   escapeXmlText,
   replaceElementText,
   resizeTextBox,
+  setTextRunStyle,
   substituteDynamicText,
+  type TextRunStyleUpdate,
 } from "./element-text.js";
 import {
   deleteElements,
@@ -580,6 +582,14 @@ export interface AddTextBoxInput {
   /** Purely a rendering attribute (#98's font model has no per-weight variants) — never read for measurement. */
   fontWeight?: number;
   fill?: string;
+  /**
+   * Baked into every line's `x` and never revisited (NOOP-65 決定: 對齊只
+   *在插入時) — no command ever changes an existing text box's alignment.
+   * Omitting it (or passing `"left"`) writes no `data-comot-text-align`
+   * attribute at all, so a box with no alignment opinion serializes
+   * exactly as it always has.
+   */
+  align?: "left" | "center" | "right";
 }
 
 /**
@@ -649,14 +659,17 @@ export async function addTextBox(
   // Errors over fallbacks: reject before any splice happens.
   const normalizedWidth = assertPositiveAfterRounding(input.width, "文字框寬度四捨五入後不是大於 0 的數字");
   const normalizedFontSize = assertPositiveAfterRounding(input.fontSize, "文字框的 font-size 四捨五入後不是大於 0 的數字");
-  const wrapped = wrapText(input.text, { width: normalizedWidth, font, fontSizePx: normalizedFontSize });
+  const align = input.align ?? "left";
+  const wrapped = wrapText(input.text, { width: normalizedWidth, font, fontSizePx: normalizedFontSize, align });
   const content = renderTextBoxContent(wrapped.lines);
 
   const elementId = generateElementId();
   const weightAttr = input.fontWeight === undefined ? "" : ` font-weight="${formatSvgNumber(input.fontWeight)}"`;
   const fillAttr = input.fill === undefined ? "" : ` fill="${escapeXmlAttr(input.fill)}"`;
+  const alignAttr = align === "left" ? "" : ` data-comot-text-align="${align}"`;
   const markup =
     `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(normalizedWidth)}" ` +
+    `data-comot-text-height="${formatSvgNumber(wrapped.height)}"${alignAttr} ` +
     `transform="translate(${formatSvgNumber(input.x)} ${formatSvgNumber(input.y)})">` +
     `<text font-family="${escapeXmlAttr(input.fontFamily)}" font-size="${formatSvgNumber(normalizedFontSize)}"` +
     `${weightAttr}${fillAttr} xml:space="preserve">${content}</text></g>`;
@@ -664,6 +677,31 @@ export async function addTextBox(
   const updated = appendElementToSvg(original, markup);
   await writePresentationFile(id, slidePath, updated);
   return { elementId, lines: wrapped.lines.length };
+}
+
+/**
+ * Sets or clears `font-weight`/`font-style` over a character range of a
+ * text box's content (NOOP-65 §4.2, `co-motion text style set`) — same
+ * shape as `setTextBoxWidth` above.
+ */
+export async function setSlideTextRunStyle(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  start: number,
+  end: number,
+  update: TextRunStyleUpdate,
+  options: MutationOptions = {},
+): Promise<{ runs: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const { updated, runs } = setTextRunStyle(original, elementId, start, end, update, fontBook, { force: options.force });
+  await writePresentationFile(id, slidePath, updated);
+  return { runs };
 }
 
 /**

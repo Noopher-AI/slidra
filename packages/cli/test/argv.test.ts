@@ -195,3 +195,107 @@ describe("parseArgv template add --name ([E4.T7])", () => {
     });
   });
 });
+
+describe("parseArgv textbox add — --font-weight/--fill/--align (NOOP-65)", () => {
+  it("parses --font-weight and --fill alongside the existing flags", () => {
+    const parsed = parseArgv([
+      "textbox", "add", "p1", "slides/001.svg",
+      "--x", "10", "--y", "20", "--width", "300", "--text", "Hi",
+      "--font-weight", "700", "--fill", "#111",
+    ]);
+    expect(parsed.input).toMatchObject({ fontWeight: 700, fill: "#111" });
+  });
+
+  it("leaves fontWeight/fill/align undefined when absent, unchanged from before this ticket", () => {
+    const parsed = parseArgv([
+      "textbox", "add", "p1", "slides/001.svg", "--x", "0", "--y", "0", "--width", "100", "--text", "x",
+    ]);
+    expect(parsed.input).toMatchObject({ fontWeight: undefined, fill: undefined, align: undefined });
+  });
+
+  it("parses --align center/right", () => {
+    const parsed = parseArgv([
+      "textbox", "add", "p1", "slides/001.svg", "--x", "0", "--y", "0", "--width", "100", "--text", "x", "--align", "center",
+    ]);
+    expect(parsed.input).toMatchObject({ align: "center" });
+  });
+
+  it("rejects an --align value outside left/center/right", () => {
+    expect(() =>
+      parseArgv([
+        "textbox", "add", "p1", "slides/001.svg", "--x", "0", "--y", "0", "--width", "100", "--text", "x", "--align", "justify",
+      ]),
+    ).toThrow("--align 必須是 left、center 或 right：justify");
+  });
+
+  it("rejects a non-numeric --font-weight", () => {
+    expect(() =>
+      parseArgv([
+        "textbox", "add", "p1", "slides/001.svg", "--x", "0", "--y", "0", "--width", "100", "--text", "x", "--font-weight", "bold",
+      ]),
+    ).toThrow(CoMotionError);
+  });
+});
+
+describe("parseArgv text style set (NOOP-65 §4.2)", () => {
+  it("parses --range and --font-weight into structured input", () => {
+    const parsed = parseArgv([
+      "text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "2:5", "--font-weight", "bold",
+    ]);
+    expect(parsed).toEqual({
+      name: "text style set",
+      input: {
+        id: "p1",
+        slidePath: "slides/001.svg",
+        elementId: "el-a",
+        rangeStart: 2,
+        rangeEnd: 5,
+        fontWeight: "bold",
+        fontStyle: undefined,
+        force: false,
+      },
+    });
+  });
+
+  it("parses --font-style alone, without requiring --font-weight", () => {
+    const parsed = parseArgv([
+      "text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "0:1", "--font-style", "italic",
+    ]);
+    expect(parsed.input).toMatchObject({ fontWeight: undefined, fontStyle: "italic" });
+  });
+
+  it("reports the missing --range", () => {
+    expect(() =>
+      parseArgv(["text", "style", "set", "p1", "slides/001.svg", "el-a", "--font-weight", "bold"]),
+    ).toThrow("命令 text style set 缺少參數：--range");
+  });
+
+  it("rejects a --range that is not digits:digits, echoing the original string", () => {
+    expect(() =>
+      parseArgv(["text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "2-5", "--font-weight", "bold"]),
+    ).toThrow("--range 格式錯誤，必須是 數字:數字：2-5");
+  });
+
+  it("rejects a --range whose start is not strictly less than its end", () => {
+    expect(() =>
+      parseArgv(["text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "5:5", "--font-weight", "bold"]),
+    ).toThrow("--range 的起點必須小於終點");
+  });
+
+  it("rejects when neither --font-weight nor --font-style is given", () => {
+    expect(() =>
+      parseArgv(["text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "0:1"]),
+    ).toThrow("命令 text style set 至少要給 --font-weight 或 --font-style");
+  });
+
+  it("parses the trailing --force flag", () => {
+    const parsed = parseArgv([
+      "text", "style", "set", "p1", "slides/001.svg", "el-a", "--range", "0:1", "--font-weight", "bold", "--force",
+    ]);
+    expect(parsed.input).toMatchObject({ force: true });
+  });
+
+  it("fails on an unknown text style subcommand", () => {
+    expect(() => parseArgv(["text", "style", "clear", "p1"])).toThrow();
+  });
+});

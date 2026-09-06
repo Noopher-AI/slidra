@@ -5,6 +5,7 @@ import { register as registerPack } from "./commands/pack.js";
 import { register as registerCat } from "./commands/cat.js";
 import { register as registerLs } from "./commands/ls.js";
 import { register as registerTextSet } from "./commands/text-set.js";
+import { register as registerTextStyle } from "./commands/text-style.js";
 import { register as registerTextbox } from "./commands/textbox.js";
 import { register as registerConvert } from "./commands/convert.js";
 import { register as registerUndo } from "./commands/undo.js";
@@ -44,6 +45,7 @@ export function createDefaultRegistry(): CommandRegistry {
     registerCat,
     registerLs,
     registerTextSet,
+    registerTextStyle,
     registerTextbox,
     registerConvert,
     registerUndo,

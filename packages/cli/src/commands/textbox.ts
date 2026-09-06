@@ -29,7 +29,9 @@ export interface TextBoxAddInput {
   text: string;
   fontSize?: number;
   fontFamily?: string;
+  fontWeight?: number;
   fill?: string;
+  align?: "left" | "center" | "right";
 }
 
 export interface TextBoxAddData {
@@ -45,7 +47,9 @@ export const textBoxAddCommand: CommandHandler<TextBoxAddInput, TextBoxAddData> 
     text: input.text,
     fontSize: input.fontSize ?? DEFAULT_FONT_SIZE,
     fontFamily: input.fontFamily ?? DEFAULT_FONT_FAMILY,
+    fontWeight: input.fontWeight,
     fill: input.fill,
+    align: input.align,
   });
   return {
     ok: true,

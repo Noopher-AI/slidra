@@ -291,4 +291,81 @@ describe("textbox add / textbox width / text set / undo (#76)", () => {
     expect(undoAdd.ok).toBe(true);
     expect(await readSlide(id)).toBe(originalSlide);
   });
+
+  it("textbox add bakes data-comot-text-height onto the container (NOOP-65 決定 C)", async () => {
+    const { id } = await openFreshPresentation();
+
+    const added = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440,
+      text: "Hi",
+      fontSize: 40,
+    });
+    const elementId = added.data!.elementId;
+
+    const svg = await readSlide(id);
+    expect(svg).toMatch(new RegExp(`<g id="${elementId}"[^>]*data-comot-text-height="[0-9.]+"`));
+  });
+
+  it("textbox add --align center/right bakes non-zero x into every tspan; left (the default) writes no data-comot-text-align at all", async () => {
+    const { id } = await openFreshPresentation();
+
+    const left = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440,
+      text: "Hi",
+      fontSize: 40,
+    });
+    const leftSvg = await readSlide(id);
+    expect(leftSvg).not.toContain("data-comot-text-align");
+    expect(extractTextBox(leftSvg, left.data!.elementId).tspans[0].y).toBeTruthy();
+
+    const centered = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440,
+      text: "Hi",
+      fontSize: 40,
+      align: "center",
+    });
+    const centeredSvg = await readSlide(id);
+    expect(centeredSvg).toContain('data-comot-text-align="center"');
+    expect(centeredSvg).toMatch(new RegExp(`<g id="${centered.data!.elementId}"[\\s\\S]*?<tspan x="(?!0")[0-9.]+"`));
+  });
+
+  it("textbox width preserves a run set by text style set, since the content itself never changed", async () => {
+    const { id } = await openFreshPresentation();
+
+    const added = await registry.dispatch<{ elementId: string }>("textbox add", {
+      id,
+      slidePath: "slides/001.svg",
+      x: 0,
+      y: 0,
+      width: 440,
+      text: "Hello",
+      fontSize: 40,
+    });
+    const elementId = added.data!.elementId;
+
+    await registry.dispatch("text style set", {
+      id,
+      slidePath: "slides/001.svg",
+      elementId,
+      rangeStart: 0,
+      rangeEnd: 2,
+      fontWeight: "bold",
+    });
+    await registry.dispatch("textbox width", { id, slidePath: "slides/001.svg", elementId, width: 200 });
+
+    const svg = await readSlide(id);
+    expect(svg).toContain('<tspan font-weight="bold">He</tspan>');
+  });
 });
