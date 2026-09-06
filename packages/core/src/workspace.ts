@@ -14,8 +14,10 @@ import {
   escapeXmlText,
   replaceElementText,
   resizeTextBox,
+  setParagraphList,
   setTextRunStyle,
   substituteDynamicText,
+  type ListKind,
   type TextRunStyleUpdate,
 } from "./element-text.js";
 import {
@@ -702,6 +704,35 @@ export async function setSlideTextRunStyle(
   const { updated, runs } = setTextRunStyle(original, elementId, start, end, update, fontBook, { force: options.force });
   await writePresentationFile(id, slidePath, updated);
   return { runs };
+}
+
+/**
+ * Sets one paragraph's list kind (NOOP-65 §4.3, `co-motion text list set`).
+ * `kind: "none"` on an already-`"none"` paragraph is a legal no-op (§4.3
+ * table) — `setParagraphList` signals that by returning `svgContent`
+ * completely unchanged, which this skips writing entirely so it occupies no
+ * undo step, the same posture `commitTextEdit` (canvas.ts) already has for
+ * an unchanged `text set`.
+ */
+export async function setSlideParagraphList(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  paragraph: number,
+  kind: ListKind,
+  options: MutationOptions = {},
+): Promise<{ paragraphs: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const { updated, paragraphs } = setParagraphList(original, elementId, paragraph, kind, fontBook, { force: options.force });
+  if (updated !== original) {
+    await writePresentationFile(id, slidePath, updated);
+  }
+  return { paragraphs };
 }
 
 /**

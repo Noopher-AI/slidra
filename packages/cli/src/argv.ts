@@ -111,6 +111,27 @@ export function parseArgv(argv: string[]): ParsedCommand {
           input: { id, slidePath, elementId, rangeStart, rangeEnd, fontWeight, fontStyle, force },
         };
       }
+      if (sub === "list") {
+        const subsub = rest[1];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：text list ${subsub ?? ""}`);
+        }
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "text list set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "text list set", "slide-path");
+        const elementId = requirePositional(args, 2, "text list set", "element-id");
+        const paragraphRaw = requireFlag(args, "--paragraph", "text list set");
+        const paragraph = Number(paragraphRaw);
+        if (!Number.isInteger(paragraph) || paragraph < 0) {
+          throw new CoMotionError(`--paragraph 不是合法的非負整數：${paragraphRaw}`);
+        }
+        const kind = requireFlag(args, "--kind", "text list set");
+        if (kind !== "bullet" && kind !== "number" && kind !== "none") {
+          throw new CoMotionError(`--kind 必須是 bullet、number 或 none：${kind}`);
+        }
+        const force = hasFlag(args, "--force");
+        return { name: "text list set", input: { id, slidePath, elementId, paragraph, kind, force } };
+      }
       throw new CoMotionError(`未知的子命令：text ${sub ?? ""}`);
     }
     case "textbox": {

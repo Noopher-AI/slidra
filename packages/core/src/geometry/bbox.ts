@@ -1,5 +1,5 @@
 import { CoMotionError } from "../errors.js";
-import { resolveFont } from "../element-text.js";
+import { resolveFont, LIST_MARKER_ATTRIBUTE } from "../element-text.js";
 import { measureTextWidth, type FontMetrics } from "../text-metrics.js";
 import type { SlideElement, SlidePrimitive } from "../slide/format.js";
 import {
@@ -513,8 +513,16 @@ function boundsWithin(
     fonts === undefined
       ? undefined
       : { fonts, textWidth: element.textWidth, textHeight: element.textHeight, elementId: element.id };
+  // A list-marker `<text>` (NOOP-65 決定 E) is a second primitive alongside
+  // the real content `<text>` — it has no `data-comot-text-width`/`-height`
+  // of its own, so measuring it against the CONTAINER's own textWidth/
+  // textHeight (`textContext`, shared by every primitive here) would treat
+  // it as a second, bogus text box and distort the union. It never
+  // contributes its own geometry; the content `<text>`'s box already covers
+  // the area it decorates.
+  const measurable = element.primitives.filter((primitive) => primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true");
   return unionRects(
-    element.primitives.map((primitive) =>
+    measurable.map((primitive) =>
       transformRect(matrix, primitiveBounds(primitive, textContext)),
     ),
   );

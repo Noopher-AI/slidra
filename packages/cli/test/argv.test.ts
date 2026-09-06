@@ -314,3 +314,45 @@ describe("parseArgv slide render (NOOP-65 A8 CLI entry point)", () => {
     expect(() => parseArgv(["slide", "render", "p1"])).toThrow("命令 slide render 缺少參數：slide-path");
   });
 });
+
+describe("parseArgv text list set (NOOP-65 §4.3, 決定 E)", () => {
+  it("parses --paragraph and --kind into structured input", () => {
+    const parsed = parseArgv(["text", "list", "set", "p1", "slides/001.svg", "el-a", "--paragraph", "0", "--kind", "bullet"]);
+    expect(parsed).toEqual({
+      name: "text list set",
+      input: { id: "p1", slidePath: "slides/001.svg", elementId: "el-a", paragraph: 0, kind: "bullet", force: false },
+    });
+  });
+
+  it("reports the missing --paragraph", () => {
+    expect(() =>
+      parseArgv(["text", "list", "set", "p1", "slides/001.svg", "el-a", "--kind", "bullet"]),
+    ).toThrow("命令 text list set 缺少參數：--paragraph");
+  });
+
+  it("rejects a negative or non-integer --paragraph", () => {
+    expect(() =>
+      parseArgv(["text", "list", "set", "p1", "slides/001.svg", "el-a", "--paragraph", "-1", "--kind", "bullet"]),
+    ).toThrow(CoMotionError);
+    expect(() =>
+      parseArgv(["text", "list", "set", "p1", "slides/001.svg", "el-a", "--paragraph", "1.5", "--kind", "bullet"]),
+    ).toThrow(CoMotionError);
+  });
+
+  it("rejects a --kind outside bullet/number/none, echoing the received value", () => {
+    expect(() =>
+      parseArgv(["text", "list", "set", "p1", "slides/001.svg", "el-a", "--paragraph", "0", "--kind", "star"]),
+    ).toThrow("--kind 必須是 bullet、number 或 none：star");
+  });
+
+  it("parses the trailing --force flag", () => {
+    const parsed = parseArgv([
+      "text", "list", "set", "p1", "slides/001.svg", "el-a", "--paragraph", "0", "--kind", "none", "--force",
+    ]);
+    expect(parsed.input).toMatchObject({ force: true });
+  });
+
+  it("fails on an unknown text list subcommand", () => {
+    expect(() => parseArgv(["text", "list", "clear", "p1"])).toThrow();
+  });
+});

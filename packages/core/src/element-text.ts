@@ -1,7 +1,7 @@
 import { CoMotionError } from "./errors.js";
 import { DEFAULT_FONT_FAMILY } from "./default-font.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedAttribute, type ScannedNode } from "./slide/scan.js";
-import { wrapText } from "./text/wrap.js";
+import { wrapText, type WrappedLine, type WrappedText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import { applyRunStyle, readTextBoxRuns } from "./text/runs.js";
 import type { FontMetrics } from "./text-metrics.js";
@@ -105,6 +105,157 @@ const TEXT_ALIGN_ATTRIBUTE = "data-comot-text-align";
  * already imports `unescapeXmlText` from this file.
  */
 const LOCK_ATTRIBUTE = "data-comot-lock";
+
+/**
+ * `data-comot-list` (NOOP-65 決定 E): lives on the CONTENT `<text>` (not the
+ * container), one whitespace-separated token per paragraph (`content.split("\n")`),
+ * each `"bullet" | "number" | "none"`. Absent means every paragraph is
+ * `"none"` — see `readListTokens`.
+ */
+const LIST_ATTRIBUTE = "data-comot-list";
+
+/**
+ * `data-comot-list-marker="true"` (NOOP-65 決定 E): marks the SECOND `<text>`
+ * a text box's container may carry — the list-bullet/number glyphs,
+ * rendered as their own `<text>` sibling so they never enter the content
+ * `<text>`'s character-index space (ADR-0017 amend). Always the container's
+ * last child when present; every place that looks for "the" content `<text>`
+ * must exclude a node carrying this attribute (`contentTextChildren` below).
+ */
+export const LIST_MARKER_ATTRIBUTE = "data-comot-list-marker";
+
+/** Left indent, in em (× font-size), for a list paragraph — a judgement value (no ADR/ticket names one); tune by changing this one constant. */
+const LIST_INDENT_EM = 1.5;
+
+export type ListKind = "bullet" | "number" | "none";
+
+const LIST_KINDS: readonly ListKind[] = ["bullet", "number", "none"];
+
+/** The container's content `<text>` children — every direct `<text>` child EXCEPT the list-marker one, if any (NOOP-65 決定 E). Every one of this module's "find the text child" call sites goes through this, not a raw `tag === "text"` filter, so a list marker never gets mistaken for (or counted alongside) the real content. */
+function contentTextChildren(container: ScannedNode): ScannedNode[] {
+  return container.children.filter(
+    (child) => child.tag === "text" && attributeValue(child, LIST_MARKER_ATTRIBUTE) !== "true",
+  );
+}
+
+/** The container's list-marker `<text>` child, or `undefined` when the box has no list markers at all. */
+function markerTextChild(container: ScannedNode): ScannedNode | undefined {
+  return container.children.find(
+    (child) => child.tag === "text" && attributeValue(child, LIST_MARKER_ATTRIBUTE) === "true",
+  );
+}
+
+/**
+ * Reads `data-comot-list` off the content `<text>`, padded/truncated to
+ * exactly `paragraphCount` tokens (a paragraph with no token, because the
+ * attribute is absent or has fewer tokens than paragraphs, defaults to
+ * `"none"` — NOOP-65 §4.5 compatibility: a legacy box with no attribute at
+ * all reads as "no list anywhere", byte-for-byte the pre-list behaviour).
+ */
+function readListTokens(textNode: ScannedNode, paragraphCount: number, elementId: string): ListKind[] {
+  const raw = attributeValue(textNode, LIST_ATTRIBUTE);
+  const tokens = raw === null || raw.trim() === "" ? [] : raw.trim().split(/\s+/);
+  for (const token of tokens) {
+    if (!LIST_KINDS.includes(token as ListKind)) {
+      throw new CoMotionError(`元素 ${elementId} 的 ${LIST_ATTRIBUTE} 含不合法的值：${token}`);
+    }
+  }
+  return Array.from({ length: paragraphCount }, (_, i) => (tokens[i] as ListKind | undefined) ?? "none");
+}
+
+/** `wrapText`'s `indents` option, one entry per paragraph — non-"none" paragraphs get `LIST_INDENT_EM * fontSize`, everything else 0. */
+function indentsForTokens(tokens: readonly ListKind[], fontSize: number): number[] {
+  return tokens.map((kind) => (kind === "none" ? 0 : LIST_INDENT_EM * fontSize));
+}
+
+/** The index, in `lines`, of the FIRST wrapped line of each paragraph — `lines[i].hardBreak` marks the end of a paragraph, so the line right after it starts the next one; index 0 always starts paragraph 0. Length always equals the paragraph count. */
+function firstLineIndexPerParagraph(lines: readonly WrappedLine[]): number[] {
+  const firsts = [0];
+  lines.forEach((line, i) => {
+    if (line.hardBreak) firsts.push(i + 1);
+  });
+  return firsts;
+}
+
+/**
+ * The marker glyph for each paragraph, or `null` for a `"none"` paragraph —
+ * `"•"` for `bullet`, `"1."`/`"2."`/… for `number` (NOOP-65 決定 E). The
+ * counter resets to 1 after any non-`"number"` paragraph (§4.3: numbering
+ * never carries across a bullet or a plain paragraph).
+ */
+function markerGlyphs(tokens: readonly ListKind[]): (string | null)[] {
+  let counter = 0;
+  return tokens.map((kind) => {
+    if (kind === "number") {
+      counter += 1;
+      return `${counter}.`;
+    }
+    counter = 0;
+    return kind === "bullet" ? "•" : null;
+  });
+}
+
+/**
+ * Builds the list-marker `<text>` element's full markup (open tag through
+ * close tag), or `null` when every paragraph is `"none"` (no marker element
+ * should exist at all). One `<tspan x="0" y="…">` per paragraph that has a
+ * glyph, `y` copied from that paragraph's first wrapped line — markers sit
+ * at `x=0`, never indented, since the indent exists to make room for them.
+ * `fontFamily`/`fontSize`/`fill` are copied from the content `<text>` so the
+ * marker matches it visually; a later `element style set fill` still
+ * updates it independently afterwards (that command splices every
+ * primitive's attribute, marker included).
+ */
+function buildMarkerMarkup(
+  tokens: readonly ListKind[],
+  wrapped: WrappedText,
+  fontFamily: string,
+  fontSize: number,
+  fill: string | null,
+): string | null {
+  const glyphs = markerGlyphs(tokens);
+  if (glyphs.every((glyph) => glyph === null)) return null;
+  const firsts = firstLineIndexPerParagraph(wrapped.lines);
+  const tspans = glyphs
+    .map((glyph, i) => {
+      if (glyph === null) return "";
+      const y = wrapped.lines[firsts[i]].y;
+      return `<tspan x="0" y="${formatSvgNumber(y)}">${escapeXmlText(glyph)}</tspan>`;
+    })
+    .join("");
+  const fillAttr = fill === null ? "" : ` fill="${escapeXmlAttr(fill)}"`;
+  return (
+    `<text ${LIST_MARKER_ATTRIBUTE}="true" font-family="${escapeXmlAttr(fontFamily)}" ` +
+    `font-size="${formatSvgNumber(fontSize)}"${fillAttr} xml:space="preserve">${tspans}</text>`
+  );
+}
+
+/**
+ * Splices `markup` (from `buildMarkerMarkup`) into place: replaces an
+ * existing marker node's full span, inserts a brand-new one right after the
+ * content `<text>` closes (so it stays the container's LAST child — NOOP-65
+ * 決定 E), or removes an existing marker entirely when `markup` is `null`.
+ * Returns `[]` when there is nothing to do (no markup, no existing marker).
+ */
+function listMarkerSplices(contentTextNode: ScannedNode, markerNode: ScannedNode | undefined, markup: string | null): Splice[] {
+  if (markup === null) {
+    return markerNode ? [{ start: markerNode.start, end: markerNode.end, text: "" }] : [];
+  }
+  if (markerNode) {
+    return [{ start: markerNode.start, end: markerNode.end, text: markup }];
+  }
+  return [{ start: contentTextNode.end, end: contentTextNode.end, text: markup }];
+}
+
+/** Removes `attr` from `node` entirely (including the whitespace right before it), or `null` when it is already absent — `setAttrSplice`'s missing inverse, needed only by list handling (`text list set --kind none` on every paragraph, and `text set`'s full-replace clearing). */
+function removeAttrSplice(svgContent: string, node: ScannedNode, attr: string): Splice | null {
+  const existing = attributeOf(node, attr);
+  if (!existing) return null;
+  const tagNameEnd = node.start + 1 + node.tag.length;
+  let start = existing.start;
+  while (start > tagNameEnd && /\s/.test(svgContent[start - 1])) start--;
+  return { start, end: existing.end, text: "" };
+}
 
 /**
  * A byte-range replacement against an `svgContent` string: `[start, end)`
@@ -293,7 +444,7 @@ function replaceContainerText(
   options: ReplaceElementTextOptions,
 ): string {
   const groupChildren = container.children.filter((child) => child.tag === "g");
-  const textChildren = container.children.filter((child) => child.tag === "text");
+  const textChildren = contentTextChildren(container);
   if (groupChildren.length > 0 || textChildren.length !== 1) {
     throw new CoMotionError(`元素不是文字元素：${elementId}`);
   }
@@ -318,12 +469,20 @@ function replaceContainerText(
     // `text set` replaces the whole content string, so any existing runs'
     // character ranges no longer have a defined meaning against the new
     // text (NOOP-65 判斷: a full replace has no way to remap them) — the
-    // new content is plain, exactly like a freshly inserted text box.
+    // new content is plain, exactly like a freshly inserted text box. The
+    // same reasoning drops any existing list state (決定 E): a paragraph
+    // index into text that no longer exists has no defined meaning either,
+    // so a full replace clears `data-comot-list` and removes the marker
+    // `<text>`, not just the content.
     const wrapped = wrapText(newText, { width, font, fontSizePx: fontSize, align });
     const content = renderTextBoxContent(wrapped.lines);
+    const listAttrRemoval = removeAttrSplice(svgContent, textNode, LIST_ATTRIBUTE);
+    const markerRemoval = listMarkerSplices(textNode, markerTextChild(container), null);
     return applySplices(svgContent, [
       { start: textNode.contentStart, end: textNode.contentEnd, text: content },
       setTrailingAttrSplice(container, TEXT_HEIGHT_ATTRIBUTE, formatSvgNumber(wrapped.height)),
+      ...(listAttrRemoval ? [listAttrRemoval] : []),
+      ...markerRemoval,
     ]);
   }
 
@@ -440,7 +599,7 @@ export function resizeTextBox(
   assertNotLocked(container, elementId, options.force);
 
   const groupChildren = container.children.filter((child) => child.tag === "g");
-  const textChildren = container.children.filter((child) => child.tag === "text");
+  const textChildren = contentTextChildren(container);
   if (groupChildren.length > 0 || textChildren.length !== 1) {
     throw new CoMotionError(`元素不是文字元素：${elementId}`);
   }
@@ -486,14 +645,24 @@ export function rewrapTextBoxContent(
   const { content: sourceText, runs } = readTextBoxRuns(textNode, svgContent);
   const align = readTextAlign(container, elementId);
   const font = resolveFont(fontBook, fontFamily, elementId);
-  const wrapped = wrapText(sourceText, { width: newWidth, font, fontSizePx: fontSize, align });
+  const paragraphCount = sourceText.split("\n").length;
+  const listTokens = readListTokens(textNode, paragraphCount, elementId);
+  const indents = indentsForTokens(listTokens, fontSize);
+  const wrapped = wrapText(sourceText, { width: newWidth, font, fontSizePx: fontSize, align, indents });
   const content = renderTextBoxContent(wrapped.lines, runs);
+  // The list attribute itself never changes here (only the content's own
+  // width/family/size did) — only the marker `<text>`'s glyphs' `y`
+  // positions need to resync with the freshly wrapped lines (決定 E carries
+  // list markers forward exactly like alignment, 決定 D).
+  const markerMarkup = buildMarkerMarkup(listTokens, wrapped, fontFamily, fontSize, attributeValue(textNode, "fill"));
+  const markerSplices = listMarkerSplices(textNode, markerTextChild(container), markerMarkup);
 
   const widthValue = formatSvgNumber(newWidth);
   const updated = applySplices(svgContent, [
     { start: textNode.contentStart, end: textNode.contentEnd, text: content },
     { start: widthAttr.start, end: widthAttr.end, text: `${TEXT_WIDTH_ATTRIBUTE}="${widthValue}"` },
     setTrailingAttrSplice(container, TEXT_HEIGHT_ATTRIBUTE, formatSvgNumber(wrapped.height)),
+    ...markerSplices,
   ]);
 
   return { updated, lines: wrapped.lines.length };
@@ -564,7 +733,7 @@ export function setTextRunStyle(
   assertNotLocked(container, elementId, options.force);
 
   const groupChildren = container.children.filter((child) => child.tag === "g");
-  const textChildren = container.children.filter((child) => child.tag === "text");
+  const textChildren = contentTextChildren(container);
   if (groupChildren.length > 0 || textChildren.length !== 1) {
     throw new CoMotionError(`元素不是文字元素：${elementId}`);
   }
@@ -587,15 +756,108 @@ export function setTextRunStyle(
   const align = readTextAlign(container, elementId);
   const font = resolveFont(fontBook, fontFamily, elementId);
   const width = Number(widthAttr.value);
-  const wrapped = wrapText(content, { width, font, fontSizePx: fontSize, align });
+  const paragraphCount = content.split("\n").length;
+  const listTokens = readListTokens(textNode, paragraphCount, elementId);
+  const indents = indentsForTokens(listTokens, fontSize);
+  const wrapped = wrapText(content, { width, font, fontSizePx: fontSize, align, indents });
   const renderedContent = renderTextBoxContent(wrapped.lines, nextRuns);
+  // Styling a character range never changes the paragraph count, so any
+  // existing list markers are carried forward unchanged in content — only
+  // their `y` needs resyncing with the (possibly reflowed) lines.
+  const markerMarkup = buildMarkerMarkup(listTokens, wrapped, fontFamily, fontSize, attributeValue(textNode, "fill"));
+  const markerSplices = listMarkerSplices(textNode, markerTextChild(container), markerMarkup);
 
   const updated = applySplices(svgContent, [
     { start: textNode.contentStart, end: textNode.contentEnd, text: renderedContent },
     setTrailingAttrSplice(container, TEXT_HEIGHT_ATTRIBUTE, formatSvgNumber(wrapped.height)),
+    ...markerSplices,
   ]);
 
   return { updated, runs: nextRuns.length };
+}
+
+/**
+ * `co-motion text list set`'s mutation primitive (NOOP-65 §4.3): sets one
+ * paragraph's list kind, re-wraps (a paragraph gaining/losing its indent is
+ * a layout change), and syncs the marker `<text>` accordingly. Every other
+ * paragraph's kind is read back from `data-comot-list` and carried forward
+ * unchanged — this only ever touches paragraph `paragraph`.
+ *
+ * `kind: "none"` on a paragraph that is already `"none"` is a legal no-op:
+ * returns `svgContent` completely unchanged (`updated === svgContent`) so
+ * the caller can skip the write and occupy no undo step (§4.3 table).
+ */
+export function setParagraphList(
+  svgContent: string,
+  elementId: string,
+  paragraph: number,
+  kind: ListKind,
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  options: { readonly force?: boolean } = {},
+): { updated: string; paragraphs: number } {
+  if (!Number.isInteger(paragraph) || paragraph < 0) {
+    throw new CoMotionError("--paragraph 必須是非負整數");
+  }
+  if (!LIST_KINDS.includes(kind)) {
+    throw new CoMotionError(`--kind 必須是 bullet、number 或 none：${kind}`);
+  }
+
+  const container = findNodeById(scanDocument(svgContent), elementId);
+  if (!container) {
+    throw new CoMotionError(`找不到元素：${elementId}`);
+  }
+  const widthAttr = attributeOf(container, TEXT_WIDTH_ATTRIBUTE);
+  if (!widthAttr) {
+    throw new CoMotionError(`元素不是文字框：${elementId}`);
+  }
+  assertNotLocked(container, elementId, options.force);
+
+  const groupChildren = container.children.filter((child) => child.tag === "g");
+  const textChildren = contentTextChildren(container);
+  if (groupChildren.length > 0 || textChildren.length !== 1) {
+    throw new CoMotionError(`元素不是文字元素：${elementId}`);
+  }
+  const textNode = textChildren[0];
+  if (textNode.selfClosing) {
+    throw new CoMotionError(`元素沒有文字內容：${elementId}`);
+  }
+
+  const { content, runs } = readTextBoxRuns(textNode, svgContent);
+  const paragraphCount = content.split("\n").length;
+  if (paragraph >= paragraphCount) {
+    throw new CoMotionError(`第 ${paragraph} 段不存在，這個文字框有 ${paragraphCount} 段：${elementId}`);
+  }
+
+  const existingTokens = readListTokens(textNode, paragraphCount, elementId);
+  if (existingTokens[paragraph] === kind && kind === "none") {
+    return { updated: svgContent, paragraphs: paragraphCount };
+  }
+  const nextTokens = existingTokens.slice();
+  nextTokens[paragraph] = kind;
+
+  const { fontFamily, fontSize } = readTextFontInfo(textNode, elementId);
+  const align = readTextAlign(container, elementId);
+  const font = resolveFont(fontBook, fontFamily, elementId);
+  const width = Number(widthAttr.value);
+  const indents = indentsForTokens(nextTokens, fontSize);
+  const wrapped = wrapText(content, { width, font, fontSizePx: fontSize, align, indents });
+  const renderedContent = renderTextBoxContent(wrapped.lines, runs);
+
+  const allNone = nextTokens.every((token) => token === "none");
+  const listAttrSplice = allNone
+    ? removeAttrSplice(svgContent, textNode, LIST_ATTRIBUTE)
+    : setAttrSplice(textNode, LIST_ATTRIBUTE, nextTokens.join(" "));
+  const markerMarkup = buildMarkerMarkup(nextTokens, wrapped, fontFamily, fontSize, attributeValue(textNode, "fill"));
+  const markerSplices = listMarkerSplices(textNode, markerTextChild(container), markerMarkup);
+
+  const updated = applySplices(svgContent, [
+    { start: textNode.contentStart, end: textNode.contentEnd, text: renderedContent },
+    setTrailingAttrSplice(container, TEXT_HEIGHT_ATTRIBUTE, formatSvgNumber(wrapped.height)),
+    ...(listAttrSplice ? [listAttrSplice] : []),
+    ...markerSplices,
+  ]);
+
+  return { updated, paragraphs: paragraphCount };
 }
 
 // `{{ variableName }}` — whitespace around the name is allowed, the name

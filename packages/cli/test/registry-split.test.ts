@@ -19,6 +19,7 @@ const EXPECTED_COMMAND_NAMES = [
   "ls",
   "text set",
   "text style set",
+  "text list set",
   "textbox add",
   "textbox width",
   "convert",
@@ -64,12 +65,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 43 known command names — no more, no fewer", () => {
+  it("registers exactly the 44 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(43);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(44);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

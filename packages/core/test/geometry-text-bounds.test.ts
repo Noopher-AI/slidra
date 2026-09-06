@@ -149,4 +149,30 @@ describe("elementBounds 的 <text> 支援", () => {
     );
     expect(() => elementBounds(model.elements[0], { fonts })).toThrow(CoMotionError);
   });
+
+  it("列表符號的 marker <text>（NOOP-65 決定 E）不貢獻自己的邊界框，只有內容 <text> 的框算數", () => {
+    // No explicit data-comot-text-height, so a correctly-excluded marker
+    // leaves the box's height as content's own 1×lineHeight(40). The marker
+    // deliberately declares a much larger font-size (200): if it were
+    // wrongly measured as its own text box, textBounds falls back to
+    // `lineCount × lineHeight` computed from ITS OWN font-size attribute
+    // (not the container's), so a bogus inclusion would blow the height up
+    // to 1×lineHeight(200) — a difference no rounding tolerance could hide.
+    const model = parseSlide(
+      slide(
+        '<g id="el-list" data-comot-text-width="440" transform="translate(50 60)">' +
+          '<text font-family="Noto Sans TC" font-size="40" xml:space="preserve">' +
+          '<tspan x="18" y="36">一</tspan></text>' +
+          '<text data-comot-list-marker="true" font-family="Noto Sans TC" font-size="200" xml:space="preserve">' +
+          '<tspan x="0" y="36">•</tspan></text>' +
+          "</g>",
+      ),
+    );
+    const bounds = elementBounds(model.elements[0], { fonts });
+    expect(bounds.x).toBeCloseTo(50, 10);
+    expect(bounds.y).toBeCloseTo(60, 10);
+    expect(bounds.width).toBeCloseTo(440, 10);
+    expect(bounds.height).toBeCloseTo(lineHeightAt(40), 10);
+    expect(bounds.height).not.toBeCloseTo(lineHeightAt(200), 1);
+  });
 });
