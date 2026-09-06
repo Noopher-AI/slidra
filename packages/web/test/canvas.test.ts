@@ -1147,116 +1147,14 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 // controller (play()/next()/previous()/showSlide()) and assert on the
 // <iframe> element's own inline style, never on the internal renderPlay()
 // function itself.
-describe("mountCanvas 的簡報層級轉場 (T6)", () => {
-  function frame(): HTMLIFrameElement {
-    return container.querySelector("iframe") as HTMLIFrameElement;
-  }
-
-  function stubTransitionDeck(transition?: string): void {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL) => {
-        const url = String(input);
-        if (url.endsWith("/api/presentation")) {
-          return new Response(
-            JSON.stringify({ ...deck, ...(transition === undefined ? {} : { transition }) }),
-            { status: 200 },
-          );
-        }
-        const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && deckMarkup[match[1]]) {
-          return new Response(deckMarkup[match[1]], { status: 200 });
-        }
-        throw new Error(`unexpected fetch: ${url}`);
-      }),
-    );
-  }
-
-  it.each([
-    ["缺少 transition 欄位", undefined],
-    ["空字串", ""],
-    ["未知的未來值", "wipe"],
-  ] as const)("讀取端：%s 視為 none，前進換頁瞬切，不拋錯", async (_label, value) => {
-    stubTransitionDeck(value);
-    controller = mountCanvas(container);
-    await expect(controller.reload()).resolves.toBeUndefined();
-    await controller.play();
-
-    await controller.next();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"none\" 時前進換頁瞬切", async () => {
-    stubTransitionDeck("none");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-
-    await controller.next();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"fade\" 時前進換頁先設 opacity:0，再於下一個 animation frame 淡入到 1", async () => {
-    stubTransitionDeck("fade");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-
-    await controller.next();
-
-    expect(frame().style.opacity).toBe("0");
-    expect(frame().style.transition).toBe("none");
-
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-
-    expect(frame().style.opacity).toBe("1");
-    expect(frame().style.transition).toBe(`opacity 400ms`);
-  });
-
-  it("transition: \"fade\" 時倒退換頁一律瞬切（retreat is instant）", async () => {
-    stubTransitionDeck("fade");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-    await controller.next();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-
-    await controller.previous();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"fade\" 時 play() 進入播放（非換頁）瞬切", async () => {
-    stubTransitionDeck("fade");
-    controller = mountCanvas(container);
-    await controller.reload();
-
-    await controller.play();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"fade\" 時上一次淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
-    stubTransitionDeck("fade");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-    await controller.next();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(frame().style.opacity).toBe("1");
-
-    await controller.previous();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-});
+// [E2.T11] 移除：presentation-level T6 fade 被逐頁的 <comot:transition>
+// 取代（project.json.transition 廢除）。這裡原本的六條測項——讀取端三例
+// 視為 none／"none" 瞬切／"fade" 前進換頁淡入／倒退換頁瞬切／play() 進入
+// 播放瞬切／殘留 inline style 不污染下一次——全數併入下一個 commit 新增
+// 的「mountCanvas 的頁面進出場轉場」describe，同一組關切點（讀取端預設值、
+// 換頁時的 iframe inline style）換了新的資料來源（逐頁 metadata 而非
+// project.json）繼續守；「play() 進入播放瞬切」這條在新殼下行為本身改變
+// （enter 現在會播），新測項的名字會標明這是刻意的行為變更，不是回歸。
 
 // Gate review round 3, P2: target ids come straight from untrusted slide
 // content (ADR-0010). A target containing "<!--<script>" (after XML entity

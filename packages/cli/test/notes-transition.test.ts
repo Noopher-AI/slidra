@@ -176,49 +176,9 @@ describe("slide notes set", () => {
   });
 });
 
-describe("presentation transition set", () => {
-  it("AC12: 設定 fade 後 project.json.transition === 'fade'", async () => {
-    const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "fade" });
-    expect(result.ok).toBe(true);
-    const project = await readProject(id);
-    expect(project.transition).toBe("fade");
-  });
-
-  it("設定 none 合法", async () => {
-    const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "none" });
-    expect(result.ok).toBe(true);
-  });
-
-  it("不支援的值明確報錯，不寫入、不預設回 none", async () => {
-    const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "spin" });
-    expect(result.ok).toBe(false);
-    const project = await readProject(id);
-    expect(project.transition).toBeUndefined();
-  });
-
-  it("slide move / duplicate / delete 之後 transition 值不變，且 SVG 內不含 transition 字樣", async () => {
-    const id = await openFreshPresentation();
-    await registry.dispatch("presentation transition set", { id, name: "fade" });
-    await registry.dispatch("slide add", { id });
-    await registry.dispatch("slide move", { id, slidePath: "slides/002.svg", newIndex: 0 });
-    await registry.dispatch("slide duplicate", { id, slidePath: "slides/001.svg" });
-    await registry.dispatch("slide delete", { id, slidePath: "slides/001.svg" });
-
-    const project = await readProject(id);
-    expect(project.transition).toBe("fade");
-
-    for (const slidePath of project.slides as string[]) {
-      const content = await slideContent(id, slidePath);
-      expect(content).not.toContain("transition");
-    }
-  });
-
-  it("簡報原本沒有 transition 欄位：讀取端視為 none，不因缺欄位而炸", async () => {
-    const id = await openFreshPresentation();
-    const project = await readProject(id);
-    expect(project.transition).toBeUndefined();
-  });
-});
+// [E2.T11] 移除：`presentation transition set` 整個命令被 `slide transition
+// set` 取代（架構決定 2026-09-05）。這裡原本的五條測項——AC12 設定
+// fade／設定 none／不支援的值報錯／slide move-duplicate-delete 後值不
+// 變／簡報原本沒有 transition 欄位——全數併入下一個 commit 新增的
+// `slide transition set` 測項，同一個關切點（設定與讀取頁面進出場、命令對
+// 頁面操作的存活性）換了新介面繼續守。

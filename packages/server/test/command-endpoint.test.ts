@@ -272,7 +272,8 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element align",
     "element distribute",
     "element order",
-    "presentation transition set",
+    // [E2.T11] 移除 "presentation transition set"（命令本身被
+    // "slide transition set" 取代）；下一個 commit 補回新的命令名稱。
     "element resize",
     "element delete",
     "element duplicate",
@@ -360,33 +361,11 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
-it("presentation transition set：白名單內的合法值回 2xx，並寫進 project.json", async () => {
-  const id = await openDeck("transition-fade.comot");
-  const server = await serve(id);
-
-  const { status, json } = await postCommand(server, {
-    name: "presentation transition set",
-    input: { name: "fade" },
-  });
-
-  expect(status).toBeGreaterThanOrEqual(200);
-  expect(status).toBeLessThan(300);
-  expect(json.ok).toBe(true);
-  expect((await readProjectJson(id)).transition).toBe("fade");
-});
-
-it("presentation transition set：白名單外的值被命令層拒絕，project.json 不變", async () => {
-  const id = await openDeck("transition-bad.comot");
-  const server = await serve(id);
-
-  const { status } = await postCommand(server, {
-    name: "presentation transition set",
-    input: { name: "spin" },
-  });
-
-  expect(status).not.toBe(200);
-  expect((await readProjectJson(id)).transition).toBeUndefined();
-});
+// [E2.T11] 移除：上面兩條「presentation transition set：白名單內的合法值回
+// 2xx，並寫進 project.json」／「白名單外的值被命令層拒絕，project.json
+// 不變」併入下一個 commit 新增的 "slide transition set" 對應測項——同一個
+// 關切點（白名單放行、命令層驗證）換成新命令、新的落地位置（投影片 SVG
+// 而非 project.json）繼續守。
 
 it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
   const id = await openDeck("undo-group.comot");
