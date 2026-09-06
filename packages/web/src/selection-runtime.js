@@ -807,6 +807,31 @@
     post({ event: "bounds", items: items, union: union });
   }
 
+  /**
+   * [E2.T7]/D9: reports `getBoundingClientRect()` for an ARBITRARY id list
+   * — not `selectedIds` — so the parent can position the stage's animation
+   * number badges over every element that has an effect, regardless of
+   * what is currently selected. Deliberately a separate on-demand command
+   * rather than folding into `reportBounds()`/the `bounds` event: that path
+   * runs on every selection change and drag frame, and widening it to cover
+   * every animated element (not just the selection) would turn a
+   * drag-time hot path into one that scales with the slide's total effect
+   * count instead of the (usually tiny) current selection (D9's own
+   * rationale — do not "fix" this into one shared function). An id not
+   * currently in the DOM is simply omitted, the same tolerance
+   * `reportBounds()` already gives a vanished selected id.
+   */
+  function reportMeasured(ids) {
+    var items = [];
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (!el) continue;
+      var rect = el.getBoundingClientRect();
+      items.push({ id: ids[i], rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } });
+    }
+    post({ event: "measured", items: items });
+  }
+
   function updateBoxes() {
     updateEditDecoration();
     positionGroupFrames();
@@ -1571,6 +1596,8 @@
     } else if (data.command === "stage-mode") {
       stageHandMode = Boolean(data.hand);
       document.documentElement.style.cursor = stageHandMode ? "grab" : "";
+    } else if (data.command === "measure") {
+      reportMeasured(Array.isArray(data.ids) ? data.ids : []);
     }
   });
 

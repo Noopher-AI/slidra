@@ -519,6 +519,53 @@ describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
   });
 });
 
+// [E2.T7]/D9: the stage's animation number badges need bounds for every
+// element that has an effect, not just the current selection — a separate
+// on-demand command from `bounds`, deliberately never folded into that
+// per-drag-frame path (see selection-runtime.js's own comment on
+// reportMeasured).
+describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
+  async function sendMeasureCommand(win: Window, ids: string[]): Promise<void> {
+    const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+    win.dispatchEvent(
+      new MessageEventCtor("message", {
+        data: { source: "comot-host", command: "measure", ids },
+        source: win.parent as unknown as MessageEventSource,
+      }),
+    );
+    await tick();
+  }
+
+  it("回報每個給定 id（不限於目前選取）的 getBoundingClientRect()", async () => {
+    const { win } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    await sendMeasureCommand(win, ["el-a", "el-b"]);
+
+    window.removeEventListener("message", handler);
+    const measured = messages.filter((m) => m.event === "measured").pop() as any;
+    expect(measured.items).toEqual([
+      { id: "el-a", rect: { x: 0, y: 0, width: 0, height: 0 } },
+      { id: "el-b", rect: { x: 0, y: 0, width: 0, height: 0 } },
+    ]);
+  });
+
+  it("給定的 id 在 DOM 中不存在時，該筆略過，不拋錯", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    await sendMeasureCommand(win, ["el-nope"]);
+
+    window.removeEventListener("message", handler);
+    const measured = messages.filter((m) => m.event === "measured").pop() as any;
+    expect(measured.items).toEqual([]);
+  });
+});
+
 describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTIONS.feature「多選」）", () => {
   it("⇧點第二個元素後，shadow root 裡只有一個 .sel-multi 顯示，不是每個元素各一個", async () => {
     const { doc } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');

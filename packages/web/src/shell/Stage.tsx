@@ -12,6 +12,7 @@ import {
 import type { CanvasController, CanvasState } from "../canvas.js";
 import { Dock } from "./dock/Dock.js";
 import { OverlayLayer } from "./stage-overlays/OverlayLayer.js";
+import type { SideId } from "./side/SidePanel.js";
 import {
   initialHandState,
   initialZoomPan,
@@ -41,6 +42,10 @@ export interface StageProps {
    * 導航僅在留白區生效，不報錯、等下一次 render 拿到非 null 的值。
    */
   controller: CanvasController | null;
+  /** [E2.T7]：情境列的 Edit animation 按鈕——只切右欄到 Animate › Object，狀態owner 是 App.tsx（D10）。 */
+  onEditAnimation(): void;
+  /** [E2.T7]/D9：右欄目前停在哪個主分頁——只用來決定舞台動畫徽章要不要顯示（見 OverlayLayer 的 showBadges）。 */
+  side: SideId;
   /** T3/NOOP-142 既有的拖放匯入媒體 overlay（與這張骨架票無關，維持原樣）。 */
   dropOverlay: { active: boolean; onDragOver: (event: DragEvent) => void; onDrop: (event: DragEvent) => void; onDragLeave: (event: DragEvent) => void };
   /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
@@ -72,7 +77,7 @@ function isOnStageChrome(target: EventTarget | null): boolean {
  * （平移+縮放），這對 canvas.ts 完全透明——它的座標數學全部發生在 iframe
  * 自己的文件座標系裡，祖先層的 CSS transform 不影響那個座標系。
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, side, children }: StageProps) {
   const [zoomPan, setZoomPan] = useState<ZoomPanState>(initialZoomPan);
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
@@ -292,7 +297,14 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onDragLeave={dropOverlay.onDragLeave}
         />
       </div>
-      {shellVisible && <OverlayLayer controller={controller} wellRef={wellRef} />}
+      {shellVisible && (
+        <OverlayLayer
+          controller={controller}
+          wellRef={wellRef}
+          onEditAnimation={onEditAnimation}
+          showBadges={side === "animate" && state.mode === "view"}
+        />
+      )}
       {shellVisible && (
         <Dock
           zoomPan={zoomPan}
@@ -301,6 +313,8 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onToggleHand={handleToggleHand}
           selection={state.selection}
           controller={controller}
+          slidePath={state.currentIndex >= 0 ? state.slides[state.currentIndex] : null}
+          onAnimationAdded={onEditAnimation}
         />
       )}
       {children}

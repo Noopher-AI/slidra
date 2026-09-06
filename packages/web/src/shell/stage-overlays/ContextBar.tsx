@@ -8,6 +8,10 @@ export interface ContextBarProps {
   bounds: { width: number; height: number };
   /** Hidden while a drag is in progress (`OverlayState.dragging`). */
   dragging: boolean;
+  /** [E2.T7]: `OverlayState.hasAnimation` — whether Edit animation renders at all (not merely disabled) next to Edit style. */
+  hasAnimation: boolean;
+  /** [E2.T7]: switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
+  onEditAnimation(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -40,12 +44,16 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決，issue 198 review 修訂）。外觀照原型
  * `CoMotion (New v3).dc.html` 的 ctx bar；內容是原型情境列加上原本元素右鍵選單
  * 的項目（review 決定拿掉右鍵選單、全部併到左鍵這一列）：
- * 「Comment to AI ｜ Edit style ｜ 前後層四項（只有圖示） ｜ Duplicate ｜ Delete」。
+ * 「Comment to AI ｜ Edit style ｜ Edit animation（僅選取元素有動畫時）｜
+ * 前後層四項（只有圖示） ｜ Duplicate ｜ Delete」。
  * Order／Duplicate／Delete 接到 controller 的同一組方法（鍵盤與 Arrange 選單
  * 共用）；Comment to AI／Edit style 是佈局佔位按鈕，功能分屬 NOOP-67／NOOP-69。
- * 原型的 Edit animation 只在元素已有動畫時出現，判斷來源屬 NOOP-66，尚未渲染。
- */
-export function ContextBar({ union, bounds, dragging, onOrder, onDuplicate, onDelete }: ContextBarProps) {
+ * [E2.T7]：Edit animation 只在 `hasAnimation` 為 true 時渲染（不是 disabled——
+ * 07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」），插入點固定在 Edit
+ * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
+ * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
+ * 送任何命令、不改選取。 */
+export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onOrder, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
@@ -78,6 +86,12 @@ export function ContextBar({ union, bounds, dragging, onOrder, onDuplicate, onDe
           <Icon name="edit" size="control" />
           Edit style
         </button>
+        {hasAnimation && (
+          <button type="button" className="context-bar-item" title="Edit animation" onClick={onEditAnimation}>
+            <Icon name="spark" size="control" />
+            Edit animation
+          </button>
+        )}
         <span className="context-bar-divider" />
         {ORDER_ITEMS.map((item) => (
           <button
