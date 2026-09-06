@@ -11,12 +11,12 @@ export interface ContextBarProps {
 /**
  * Context-bar height/gap for the below/above flip decision
  * (05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則
- * 翻到上方）」). Matches the prototype's glass bar exactly: 30px buttons +
- * 5px padding on each side = 40px — `.context-bar`'s CSS pins the same
- * numbers, so the two never drift.
+ * 翻到上方）」). Height matches `.context-bar`'s CSS exactly: 28px compact
+ * buttons + 4px padding each side = 36px. Gap is the prototype's 8px plus
+ * the 5px extra breathing room asked for in review.
  */
-const BAR_HEIGHT = 40;
-const GAP = 8;
+const BAR_HEIGHT = 36;
+const GAP = 13;
 
 /**
  * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決，2026-09 review 修訂）：外觀與內容

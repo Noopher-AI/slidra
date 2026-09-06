@@ -79,7 +79,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).not.toContain("context-bar\"");
   });
 
-  it("下方空間足夠：情境列出現在選取框正下方（top = union.y + union.height + 8）", () => {
+  it("下方空間足夠：情境列出現在選取框正下方（top = union.y + union.height + 13）", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -87,12 +87,12 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         onDelete: () => {},
       }),
     );
-    // union bottom edge = 200; +8 gap = 208.
+    // union bottom edge = 200; +13 gap = 213.
     expect(markup).toContain("left:100px");
-    expect(markup).toContain("top:208px");
+    expect(markup).toContain("top:213px");
   });
 
-  it("下方空間不足（選取框貼近畫布底部）：翻到上方（top = union.y - 8 - 40）", () => {
+  it("下方空間不足（選取框貼近畫布底部）：翻到上方（top = union.y - 13 - 36）", () => {
     // Well is only 720px tall; a selection whose bottom edge sits at 700
     // leaves only 20px below it — less than GAP(8) + BAR_HEIGHT(40) = 48.
     const markup = renderToStaticMarkup(
@@ -102,8 +102,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
         onDelete: () => {},
       }),
     );
-    // 650 - 8 - 40 = 602.
-    expect(markup).toContain("top:602px");
+    // 650 - 13 - 36 = 601.
+    expect(markup).toContain("top:601px");
   });
 
   it("玻璃容器：內容照原型「Comment to AI ｜ Edit style ｜ Delete」，Delete 帶 trash 圖示", () => {
@@ -126,10 +126,10 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 0, y: 100, width: 160, height: 100 },
-        bounds: { height: 248 }, // 100+100+8+40 = 248
+        bounds: { height: 249 }, // 100+100+13+36 = 249
         onDelete: () => {},
       }),
     );
-    expect(markup).toContain("top:208px"); // below, not flipped
+    expect(markup).toContain("top:213px"); // below, not flipped
   });
 });

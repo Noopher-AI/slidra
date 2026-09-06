@@ -52,7 +52,7 @@
 
 /* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型；只有 Delete 有功能，Comment to AI／
    Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
-   按鈕高 --control-h（30px）、容器高 40px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
+   按鈕高 --control-h-compact（28px）、容器高 36px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
    玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
 .context-bar {
   position: absolute;
@@ -62,8 +62,8 @@
   gap: var(--space-1);
   padding: var(--space-1);
   box-sizing: border-box;
-  /* --control-h (30px) buttons + 5px breathing room each side = 40px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
-  height: calc(var(--control-h) + var(--space-4));
+  /* --control-h-compact (28px) buttons + --space-1 padding each side = 36px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
+  height: calc(var(--control-h-compact) + 2 * var(--space-1));
   max-width: calc(100% - var(--space-8));
   pointer-events: auto;
   background: var(--glass-bg-soft);
@@ -87,7 +87,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: var(--control-h);
+  height: var(--control-h-compact);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: none;
@@ -116,7 +116,7 @@
 }
 .context-bar-divider {
   width: 1px;
-  height: calc(var(--control-h) - var(--space-5));
+  height: calc(var(--control-h-compact) - var(--space-5));
   margin: 0 var(--space-1);
   background: var(--glass-divider);
 }

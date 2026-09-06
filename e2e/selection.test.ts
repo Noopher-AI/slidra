@@ -338,8 +338,8 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
       '  <g id="el-square" data-comot-name="方塊">\n' +
       // Bottom edge at y=200, leaving 520 user units of slide below it —
-      // comfortably more than the context bar's fixed 48 CSS px (GAP 8 +
-      // BAR_HEIGHT 40) floor at any realistic render scale.
+      // comfortably more than the context bar's fixed 49 CSS px (GAP 13 +
+      // BAR_HEIGHT 36) floor at any realistic render scale.
       '    <rect x="540" y="100" width="200" height="100" fill="#c66"/>\n' +
       "  </g>\n" +
       '  <g id="el-caption" data-comot-name="說明">\n' +
