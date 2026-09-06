@@ -21,7 +21,7 @@ export {
   renameTemplate,
   deleteTemplate,
   setNotes,
-  setTransition,
+  setSlideTransitionOn,
   addComment,
   editComment,
   deleteComment,
@@ -35,6 +35,7 @@ export type {
   AddTemplateInput,
   AddTemplateResult,
   SlideCommentWithPath,
+  SetSlideTransitionOnInput,
 } from "./slide-ops.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";

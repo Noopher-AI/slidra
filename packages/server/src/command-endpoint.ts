@@ -62,7 +62,9 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element distribute",
   "element order",
   "element style set",
-  "presentation transition set",
+  // [E2.T11] replaces the presentation-wide `presentation transition set`
+  // with the per-slide `slide transition set`.
+  "slide transition set",
   // [E4.T7] 的範本管理對話框加入這四條。
   "template add",
   "template list",
