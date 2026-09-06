@@ -66,6 +66,24 @@ const EXPECTED_COMMAND_NAMES = [
   "comment edit",
   "comment delete",
   "comment list",
+  // E2.T14: the table command family (#203), including the four commands
+  // §0(a) of the plan added beyond #203's original architecture comment
+  // (row/col insert/delete) to give every cell-context-menu item in
+  // docs/design/docs/05-INTERACTIONS.feature a matching CLI command.
+  "table create",
+  "table cell set",
+  "table cell style set",
+  "table merge",
+  "table col width",
+  "table col insert",
+  "table col delete",
+  "table row insert",
+  "table row delete",
+  "table theme set",
+  "table header set",
+  "table bind",
+  "table refresh",
+  "table set",
 ];
 
 /** Reads the registry's private definition map without changing registry.ts's public API. */
@@ -80,7 +98,7 @@ describe("createDefaultRegistry command surface", () => {
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(53);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(67);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

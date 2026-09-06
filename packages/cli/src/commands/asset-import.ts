@@ -5,6 +5,7 @@ import {
   createPresentationFile,
   listPresentationEntries,
   resolveAssetImport,
+  resolveDataAssetImport,
   type MediaKind,
 } from "@co-motion/core";
 import type { CommandHandler, CommandRegistry } from "../registry.js";
@@ -22,13 +23,16 @@ export interface AssetImportInput {
   id: string;
   /** An absolute local filesystem path, or an http(s) URL. */
   source: string;
+  /** `"csv"` opts into the ADR-0015 data-asset hole (E2.T14, plan §0(c)); omitted, behaviour is byte-for-byte the pre-existing media-only path. */
+  as?: string;
 }
 
 export interface AssetImportData {
-  /** Virtual path of the imported file, e.g. "assets/photo-1.png". */
+  /** Virtual path of the imported file, e.g. "assets/photo-1.png" or "assets/data/sales.csv". */
   path: string;
   mimeType: string;
-  kind: MediaKind;
+  /** `"data"` only for a `--as csv` import (E2.T14) — never a `MediaKind`, so the JSON output never claims a CSV is an image/video/audio. */
+  kind: MediaKind | "data";
 }
 
 const URL_PATTERN = /^https?:\/\//i;
@@ -37,6 +41,15 @@ export const assetImportCommand: CommandHandler<AssetImportInput, AssetImportDat
   const bytes = URL_PATTERN.test(input.source)
     ? await downloadSource(input.source)
     : await readLocalSource(input.source);
+
+  if (input.as !== undefined) {
+    if (input.as !== "csv") {
+      throw new CoMotionError(`不支援的資料格式：${input.as}`);
+    }
+    const data = await importDataAssetBytes(input.id, sourceNameOf(input.source), bytes);
+    return { ok: true, data, message: `已匯入資料：${data.path}` };
+  }
+
   const data = await importAssetBytes(input.id, sourceNameOf(input.source), bytes);
   return { ok: true, data, message: `已匯入媒體：${data.path}` };
 };
@@ -65,6 +78,21 @@ export async function importAssetBytes(id: string, sourceName: string, bytes: Ui
   await createPresentationFile(id, virtualPath, Buffer.from(bytes));
 
   return { path: virtualPath, mimeType: format.mimeType, kind: format.kind };
+}
+
+/**
+ * The `--as csv` counterpart of `importAssetBytes`: destination is fixed to
+ * `assets/data/` (plan §4.3), never `assets/`, so a data asset and a media
+ * asset can never collide on the same conflict-free-filename sequence.
+ */
+export async function importDataAssetBytes(id: string, sourceName: string, bytes: Uint8Array): Promise<AssetImportData> {
+  const existingAssetNames = await listPresentationEntries(id, "assets/data");
+  const { fileName } = resolveDataAssetImport({ sourceName, bytes, existingAssetNames });
+
+  const virtualPath = `assets/data/${fileName}`;
+  await createPresentationFile(id, virtualPath, Buffer.from(bytes));
+
+  return { path: virtualPath, mimeType: "text/csv", kind: "data" };
 }
 
 function sourceNameOf(source: string): string {

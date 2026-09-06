@@ -449,6 +449,176 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       throw new CoMotionError(`未知的子命令：effect ${sub ?? ""}`);
     }
+    case "table": {
+      const level1 = rest[0];
+
+      if (level1 === "create") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table create", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table create", "slide-path");
+        const rows = requireNumberFlag(args, "--rows", "table create");
+        const cols = requireNumberFlag(args, "--cols", "table create");
+        const x = requireNumberFlag(args, "--x", "table create");
+        const y = requireNumberFlag(args, "--y", "table create");
+        const colWidth = optionalNumberFlag(args, "--col-width", "table create");
+        const theme = optionalFlag(args, "--theme");
+        const headerRaw = optionalFlag(args, "--header");
+        let header: boolean | undefined;
+        if (headerRaw !== undefined) {
+          if (headerRaw !== "true" && headerRaw !== "false") {
+            throw new CoMotionError(`--header 只能是 true 或 false：${headerRaw}`);
+          }
+          header = headerRaw === "true";
+        }
+        return { name: "table create", input: { id, slidePath, rows, cols, x, y, colWidth, theme, header } };
+      }
+
+      if (level1 === "refresh") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table refresh", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table refresh", "slide-path");
+        const elementId = requirePositional(args, 2, "table refresh", "element-id");
+        return { name: "table refresh", input: { id, slidePath, elementId } };
+      }
+
+      if (level1 === "bind") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table bind", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table bind", "slide-path");
+        const elementId = requirePositional(args, 2, "table bind", "element-id");
+        const source = requireFlag(args, "--source", "table bind");
+        const templateRow = optionalNumberFlag(args, "--template-row", "table bind");
+        return { name: "table bind", input: { id, slidePath, elementId, source, templateRow } };
+      }
+
+      if (level1 === "set") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table set", "slide-path");
+        const elementId = requirePositional(args, 2, "table set", "element-id");
+        const from = optionalFlag(args, "--from");
+        const markdown = optionalFlag(args, "--markdown");
+        const markdownFile = optionalFlag(args, "--markdown-file");
+        const given = (from !== undefined ? 1 : 0) + (markdown !== undefined ? 1 : 0) + (markdownFile !== undefined ? 1 : 0);
+        if (given !== 1) {
+          throw new CoMotionError("table set 必須恰好提供一種資料來源：--from、--markdown 或 --markdown-file");
+        }
+        return { name: "table set", input: { id, slidePath, elementId, from, markdown, markdownFile } };
+      }
+
+      if (level1 === "merge") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table merge", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table merge", "slide-path");
+        const elementId = requirePositional(args, 2, "table merge", "element-id");
+        const row = requireNumberFlag(args, "--row", "table merge");
+        const col = requireNumberFlag(args, "--col", "table merge");
+        const unmerge = hasFlag(args, "--unmerge");
+        const rowSpan = optionalNumberFlag(args, "--row-span", "table merge");
+        const colSpan = optionalNumberFlag(args, "--col-span", "table merge");
+        return { name: "table merge", input: { id, slidePath, elementId, row, col, rowSpan, colSpan, unmerge } };
+      }
+
+      const level2 = rest[1];
+      const level3 = rest[2];
+
+      if (level1 === "cell" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table cell set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell set", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell set", "element-id");
+        const row = requireNumberFlag(args, "--row", "table cell set");
+        const col = requireNumberFlag(args, "--col", "table cell set");
+        const text = requireFlag(args, "--text", "table cell set");
+        return { name: "table cell set", input: { id, slidePath, elementId, row, col, text } };
+      }
+
+      if (level1 === "cell" && level2 === "style" && level3 === "set") {
+        const args = rest.slice(3);
+        const id = requirePositional(args, 0, "table cell style set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell style set", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell style set", "element-id");
+        const row = requireNumberFlag(args, "--row", "table cell style set");
+        const col = requireNumberFlag(args, "--col", "table cell style set");
+        const rowEnd = optionalNumberFlag(args, "--row-end", "table cell style set");
+        const colEnd = optionalNumberFlag(args, "--col-end", "table cell style set");
+        const value = args[args.length - 1];
+        const attr = args[args.length - 2];
+        if (attr === undefined || value === undefined || isFlagLike(attr) || isFlagLike(value)) {
+          throw new CoMotionError("命令 table cell style set 缺少參數：attr/value");
+        }
+        return { name: "table cell style set", input: { id, slidePath, elementId, row, col, rowEnd, colEnd, attr, value } };
+      }
+
+      if (level1 === "col" && level2 === "width") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col width", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col width", "slide-path");
+        const elementId = requirePositional(args, 2, "table col width", "element-id");
+        const col = requireNumberFlag(args, "--col", "table col width");
+        const width = requireNumberFlag(args, "--width", "table col width");
+        return { name: "table col width", input: { id, slidePath, elementId, col, width } };
+      }
+
+      if (level1 === "col" && level2 === "insert") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col insert", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col insert", "slide-path");
+        const elementId = requirePositional(args, 2, "table col insert", "element-id");
+        const at = requireNumberFlag(args, "--at", "table col insert");
+        return { name: "table col insert", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "col" && level2 === "delete") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col delete", "slide-path");
+        const elementId = requirePositional(args, 2, "table col delete", "element-id");
+        const at = requireNumberFlag(args, "--at", "table col delete");
+        return { name: "table col delete", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "row" && level2 === "insert") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table row insert", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table row insert", "slide-path");
+        const elementId = requirePositional(args, 2, "table row insert", "element-id");
+        const at = requireNumberFlag(args, "--at", "table row insert");
+        return { name: "table row insert", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "row" && level2 === "delete") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table row delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table row delete", "slide-path");
+        const elementId = requirePositional(args, 2, "table row delete", "element-id");
+        const at = requireNumberFlag(args, "--at", "table row delete");
+        return { name: "table row delete", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "theme" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table theme set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table theme set", "slide-path");
+        const elementId = requirePositional(args, 2, "table theme set", "element-id");
+        const theme = requirePositional(args, 3, "table theme set", "theme");
+        return { name: "table theme set", input: { id, slidePath, elementId, theme } };
+      }
+
+      if (level1 === "header" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table header set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table header set", "slide-path");
+        const elementId = requirePositional(args, 2, "table header set", "element-id");
+        const value = requirePositional(args, 3, "table header set", "true|false");
+        if (value !== "true" && value !== "false") {
+          throw new CoMotionError(`table header set 不支援的值：${value}`);
+        }
+        return { name: "table header set", input: { id, slidePath, elementId, header: value === "true" } };
+      }
+
+      throw new CoMotionError(`未知的子命令：table ${rest.slice(0, 2).join(" ")}`);
+    }
     case "slide": {
       const sub = rest[0];
       const args = rest.slice(1);
