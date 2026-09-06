@@ -1391,12 +1391,11 @@
   // A right-click while a gesture is in progress cancels it instead of
   // opening the browser's context menu (§4.2's "拖曳中按 Esc" row extends
   // naturally to the other cancel gesture named in §4.1's gesture-end row).
-  // Otherwise (NOOP-90/T2 §4.5): right-click on an element selects it (if
-  // not already part of the current selection) and reports a `contextmenu`
-  // event for the parent to open the element menu at; right-click on blank
-  // canvas is a no-op this ticket (the slide's own context menu is out of
-  // scope) — the browser's default menu is left alone in that case, not
-  // suppressed.
+  // Otherwise: right-click on an element selects it (if not already part of
+  // the current selection) and suppresses the browser's own menu — there is
+  // no element context menu any more (issue 198 review: its items moved into
+  // the parent's left-click context bar). Right-click on blank canvas is
+  // left alone entirely.
   window.addEventListener("contextmenu", function (event) {
     if (gesture && gesture.started) {
       event.preventDefault();
@@ -1413,7 +1412,6 @@
       updateBoxes();
       post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-comot-name"), additive: false }));
     }
-    post({ event: "contextmenu", id: id, point: { x: event.clientX, y: event.clientY } });
   });
 
   // Keyboard relay for the shortcuts that must work even when focus is

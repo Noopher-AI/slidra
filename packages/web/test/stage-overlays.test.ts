@@ -75,7 +75,7 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
 
 describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則翻到上方）」）", () => {
   it("沒有選取（union 為 null）：渲染空容器，不含 .context-bar", () => {
-    const markup = renderToStaticMarkup(createElement(ContextBar, { union: null, bounds: { height: 720 }, onDelete: () => {} }));
+    const markup = renderToStaticMarkup(createElement(ContextBar, { union: null, bounds: { width: 1280, height: 720 }, onOrder: () => {}, onDuplicate: () => {}, onDelete: () => {} }));
     expect(markup).not.toContain("context-bar\"");
   });
 
@@ -83,7 +83,9 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
-        bounds: { height: 720 },
+        bounds: { width: 1280, height: 720 },
+        onOrder: () => {},
+        onDuplicate: () => {},
         onDelete: () => {},
       }),
     );
@@ -92,41 +94,48 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:213px");
   });
 
-  it("下方空間不足（選取框貼近畫布底部）：翻到上方（top = union.y - 13 - 36）", () => {
-    // Well is only 720px tall; a selection whose bottom edge sits at 700
-    // leaves only 20px below it — less than GAP(8) + BAR_HEIGHT(40) = 48.
+  it("下方空間不足（選取框貼近畫布底部的 Dock 保留區）：翻到上方（top = union.y - 13 - 36）", () => {
+    // Well is 720px tall, the bottom 76px belong to the Dock (DOCK_RESERVE);
+    // a selection whose bottom edge sits at 620 leaves 620+13+36 = 669 > 644.
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
-        union: { x: 100, y: 650, width: 160, height: 50 },
-        bounds: { height: 720 },
+        union: { x: 100, y: 570, width: 160, height: 50 },
+        bounds: { width: 1280, height: 720 },
+        onOrder: () => {},
+        onDuplicate: () => {},
         onDelete: () => {},
       }),
     );
-    // 650 - 13 - 36 = 601.
-    expect(markup).toContain("top:601px");
+    // 570 - 13 - 36 = 521.
+    expect(markup).toContain("top:521px");
   });
 
-  it("玻璃容器：內容照原型「Comment to AI ｜ Edit style ｜ Delete」，Delete 帶 trash 圖示", () => {
+  it("玻璃容器：Comment to AI ｜ Edit style ｜ 前後層四項（圖示） ｜ Duplicate ｜ Delete", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
-        bounds: { height: 720 },
+        bounds: { width: 1280, height: 720 },
+        onOrder: () => {},
+        onDuplicate: () => {},
         onDelete: () => {},
       }),
     );
     expect(markup).toContain('role="toolbar"');
-    const labels = [...markup.matchAll(/<button[^>]*>[\s\S]*?<\/svg>([^<]+)<\/button>/g)].map((m) => m[1].trim());
-    expect(labels).toEqual(["Comment to AI", "Edit style", "Delete"]);
-    expect(markup.match(/context-bar-divider/g)).toHaveLength(2);
+    const titles = [...markup.matchAll(/<button[^>]*title="([^"]+)"/g)].map((m) => m[1]);
+    expect(titles).toEqual(["Comment to AI", "Edit style", "Bring to front", "Bring forward", "Send backward", "Send to back", "Duplicate", "Delete"]);
+    expect(markup.match(/context-bar-item-icon/g)).toHaveLength(4);
+    expect(markup.match(/context-bar-divider/g)).toHaveLength(3);
     expect(markup).toContain("context-bar-item-danger");
   });
 
-  it("剛好卡在翻轉門檻上：貼齊 bounds.height 仍算「放得下」，不翻轉", () => {
-    // union.y + union.height + GAP + BAR_HEIGHT === bounds.height exactly.
+  it("剛好卡在翻轉門檻上：貼齊 Dock 保留區上緣仍算「放得下」，不翻轉", () => {
+    // union.y + union.height + GAP + BAR_HEIGHT === bounds.height - DOCK_RESERVE exactly.
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 0, y: 100, width: 160, height: 100 },
-        bounds: { height: 249 }, // 100+100+13+36 = 249
+        bounds: { width: 1280, height: 325 }, // 100+100+13+36+76 = 325
+        onOrder: () => {},
+        onDuplicate: () => {},
         onDelete: () => {},
       }),
     );

@@ -1769,7 +1769,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.union).toEqual(rect);
   });
 
-  it("refreshOverlay：frame 移動/縮放後（zoom/pan）用新的 frame 位置重算 union／boxes／右鍵選單座標，不需要新的 bounds 事件", async () => {
+  it("refreshOverlay：frame 移動/縮放後（zoom/pan）用新的 frame 位置重算 union／boxes，不需要新的 bounds 事件", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -1780,10 +1780,8 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
     send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
-    send(controller.frameElement, { source: "comot-selection", event: "contextmenu", id: "el-a", point: { x: 15, y: 25 } });
     // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion.
     expect(latest?.union).toEqual(rect);
-    expect(latest?.contextMenu?.point).toEqual({ x: 15, y: 25 });
 
     // The parent's `.stage` transform moved the frame to (100, 200) and
     // doubled it (rect.width 400 against layout offsetWidth 200).
@@ -1794,7 +1792,6 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
 
     expect(latest?.union).toEqual({ x: 120, y: 240, width: 60, height: 80 });
     expect(latest?.boxes).toEqual([{ x: 120, y: 240, width: 60, height: 80 }]);
-    expect(latest?.contextMenu?.point).toEqual({ x: 130, y: 250 });
   });
 
   it("鑽入群組後選取子元素：label.path 依 bounds 回報的祖先鏈由外到內排列", async () => {

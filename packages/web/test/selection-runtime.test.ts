@@ -553,56 +553,38 @@ describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTI
   });
 });
 
-describe("selection-runtime.js — 元素右鍵選單事件（NOOP-90/T2 §4.5）", () => {
-  it("在未選取的元素上按右鍵：先選取它，再回報 contextmenu 事件（含 id 與座標）", async () => {
+describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，項目併入父文件的情境列）", () => {
+  it("在未選取的元素上按右鍵：選取它、壓掉瀏覽器原生選單，不再回報 contextmenu 事件", async () => {
     const { win, doc } = boot('<svg><rect id="el-a" data-comot-name="矩形"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
     window.addEventListener("message", handler);
 
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
-    doc
-      .getElementById("el-a")!
-      .dispatchEvent(new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 42, clientY: 24 }));
+    const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 42, clientY: 24 });
+    doc.getElementById("el-a")!.dispatchEvent(event);
     await tick();
 
     window.removeEventListener("message", handler);
+    expect(event.defaultPrevented).toBe(true);
     expect(messages).toContainEqual({ source: "comot-selection", event: "select", id: "el-a", name: "矩形", additive: false });
-    expect(messages).toContainEqual({ source: "comot-selection", event: "contextmenu", id: "el-a", point: { x: 42, y: 24 } });
-  });
-
-  it("已經被選取的元素上按右鍵：不重複發 select，只回報 contextmenu", async () => {
-    const { win, doc } = boot('<svg><rect id="el-a"/></svg>');
-    click(doc, doc.getElementById("el-a")!);
-    await tick();
-
-    const messages: { event?: string }[] = [];
-    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
-    window.addEventListener("message", handler);
-
-    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
-    doc
-      .getElementById("el-a")!
-      .dispatchEvent(new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
-    await tick();
-
-    window.removeEventListener("message", handler);
-    expect(messages.some((m) => m.event === "select")).toBe(false);
-    expect(messages).toContainEqual({ source: "comot-selection", event: "contextmenu", id: "el-a", point: { x: 5, y: 5 } });
-  });
-
-  it("在空白處按右鍵：no-op，不回報 contextmenu（投影片右鍵選單不在本票範圍）", async () => {
-    const { win, doc } = boot('<svg><rect id="el-a"/></svg>');
-    const messages: { event?: string }[] = [];
-    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
-    window.addEventListener("message", handler);
-
-    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
-    doc.querySelector("svg")!.dispatchEvent(new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
-    await tick();
-
-    window.removeEventListener("message", handler);
     expect(messages.some((m) => m.event === "contextmenu")).toBe(false);
+  });
+
+  it("在空白處按右鍵：no-op，不壓掉原生選單、不發任何事件", async () => {
+    const { win, doc } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 });
+    doc.querySelector("svg")!.dispatchEvent(event);
+    await tick();
+
+    window.removeEventListener("message", handler);
+    expect(event.defaultPrevented).toBe(false);
+    expect(messages.some((m) => m.event === "select" || m.event === "contextmenu")).toBe(false);
   });
 });
 

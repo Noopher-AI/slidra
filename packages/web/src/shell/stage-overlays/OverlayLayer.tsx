@@ -4,7 +4,6 @@ import { SelectionOverlay } from "./SelectionOverlay.js";
 import { ContextBar } from "./ContextBar.js";
 import { CommentLayer } from "./CommentLayer.js";
 import { GuideLayer } from "./GuideLayer.js";
-import { ContextMenu } from "./ContextMenu.js";
 
 export interface OverlayLayerProps {
   controller: CanvasController | null;
@@ -13,7 +12,7 @@ export interface OverlayLayerProps {
   children?: ReactNode;
 }
 
-const EMPTY_OVERLAY: OverlayState = { boxes: [], union: null, label: null, guides: [], contextMenu: null };
+const EMPTY_OVERLAY: OverlayState = { boxes: [], union: null, label: null, guides: [] };
 
 /** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer (NOOP-91 round-2 FAIL #4). */
 export function toLocalPoint(
@@ -38,10 +37,11 @@ export function toLocalRect(
  * （`getBoundingClientRect()` 換算全部由這裡的 `toLocal*` 做，讀 `wellRef`
  * 當下的框）。
  *
- * NOOP-90/T2：四個子層從 T1 的空容器開始接上真正的內容——選取/群組/鑽入
- * 標籤（SelectionOverlay）、吸附輔助線（GuideLayer）、只有 Delete 一顆按
- * 鈕的情境列（ContextBar，見該檔案的範圍裁決）、元素右鍵選單（ContextMenu，
- * 新檔）。CommentLayer 維持空容器（留言 pin 是 NOOP-67 的範圍）。
+ * NOOP-90/T2：子層從 T1 的空容器開始接上真正的內容——選取/群組/鑽入標籤
+ * （SelectionOverlay）、吸附輔助線（GuideLayer）、情境列（ContextBar：Order／
+ * Duplicate／Delete 已接功能，其餘為佈局佔位；原本的元素右鍵選單在 issue 198
+ * review 時移除，項目併入這一列）。CommentLayer 維持空容器（留言 pin 是
+ * NOOP-67 的範圍）。
  *
  * 座標只在 `controller.subscribeOverlay` 推送新狀態時重新讀 `wellRef` 的框。
  * 單純縮放/平移舞台（Stage.tsx 的 zoomPan state）不會讓 runtime 重發
@@ -75,19 +75,15 @@ export function OverlayLayer({ controller, wellRef, children }: OverlayLayerProp
   return (
     <div className="stage-overlays">
       <SelectionOverlay union={union} label={overlay.label} />
-      <ContextBar union={union} bounds={bounds} onDelete={() => void controller?.deleteSelection()} />
+      <ContextBar
+        union={union}
+        bounds={bounds}
+        onOrder={(direction) => void controller?.orderSelection(direction)}
+        onDuplicate={() => void controller?.duplicateSelection()}
+        onDelete={() => void controller?.deleteSelection()}
+      />
       <CommentLayer />
       <GuideLayer guides={guides} />
-      {overlay.contextMenu && controller && (
-        <ContextMenu
-          point={toLocalPoint(overlay.contextMenu.point, offset)}
-          bounds={bounds}
-          onClose={() => controller.closeContextMenu()}
-          onDelete={() => void controller.deleteSelection()}
-          onDuplicate={() => void controller.duplicateSelection()}
-          onOrder={(direction) => void controller.orderSelection(direction)}
-        />
-      )}
       {children}
     </div>
   );

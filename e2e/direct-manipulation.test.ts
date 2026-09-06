@@ -37,7 +37,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  *   - "拖 se 把手拖出投影片右下角：...縮放不超出投影片"（FAIL #2：投影片邊界夾制）
  *   - 群組祖先鏈（平移/旋轉/縮放）三條 + 文字框寬度把手一條，見對應測項標題
  *
- * 其餘測項（⌘A/Delete/⌘D/⌘]/右鍵選單/Arrange 選單/群組進出/白名單）不對應
+ * 其餘測項（⌘A/Delete/⌘D/⌘]/情境列/Arrange 選單/群組進出/白名單）不對應
  * 05-INTERACTIONS.feature 這兩個場景，是 NOOP-61 驗收條件其餘各條（CLI 對應、
  * 截圖比對六案、GUI↔CLI 抽查）自己的覆蓋，各自的測項名稱已經自我描述。
  *
@@ -185,12 +185,22 @@ async function undoCount(presentationId: string): Promise<number> {
   }
 }
 
-/** The main-canvas `<svg>`'s bounding box in PAGE (viewport) coordinates — what `page.mouse` expects. */
+/**
+ * The main-canvas `<svg>`'s bounding box in PAGE (viewport) coordinates — what
+ * `page.mouse` expects. Every committed gesture makes the server rewrite the
+ * slide and live reload swap the iframe's srcdoc, so right after a drag the
+ * `<svg>` can be momentarily absent (boundingBox() → null); poll briefly for
+ * the reloaded document instead of failing on that instant.
+ */
 async function svgBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
   const svg = page.frameLocator("iframe.slide-frame").locator("svg").first();
-  const box = await svg.boundingBox();
-  if (!box) throw new Error("量不到主畫布 svg 的邊界框");
-  return box;
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    const box = await svg.boundingBox().catch(() => null);
+    if (box) return box;
+    if (Date.now() > deadline) throw new Error("量不到主畫布 svg 的邊界框");
+    await page.waitForTimeout(50);
+  }
 }
 
 /** Converts a point in the fixture's own user-unit space (viewBox 0 0 1280 720) to a page-viewport point. */
@@ -1173,7 +1183,7 @@ it("按 Esc 退出群組編輯後，點同一個畫面位置：選取解析成�
   }
 });
 
-// --- NOOP-90/T2 §4.4/§4.5: 鍵盤快捷鍵、右鍵選單、Arrange 選單 ---
+// --- NOOP-90/T2 §4.4: 鍵盤快捷鍵、情境列、Arrange 選單（右鍵選單已移除） ---
 
 it("⌘A 全選本頁頂層元素（不含群組內的子元素），焦點在父文件時生效", async () => {
   const { server, cleanup } = await startServerFor();
@@ -1267,28 +1277,51 @@ it("⌘] 將選取移到最上層（element order front/up 的鍵盤入口）", 
   }
 });
 
-it("元素右鍵選單：右鍵未選取的元素會先選取它並開啟選單；Delete 項目送出 element delete", async () => {
+it("情境列：點選元素後按情境列的 Delete 送出 element delete（右鍵選單已移除，項目併入情境列）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-c").click({ button: "right" });
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click();
     const selName = page.locator(".status-selection-chip");
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 C");
 
-    const menu = page.locator(".element-context-menu");
-    expect(await menu.isVisible()).toBe(true);
-    await menu.getByRole("menuitem", { name: /^Delete/ }).click();
+    const bar = page.locator(".context-bar");
+    expect(await bar.isVisible()).toBe(true);
+    await bar.getByRole("button", { name: "Delete" }).click();
     await page.waitForTimeout(150);
 
     const after = await readSlide(registry, presentationId);
     expect(after).not.toContain('id="el-c"');
-    expect(await menu.isVisible()).toBe(false);
+    // Nothing selected any more → the bar is gone with the selection.
+    expect(await bar.isVisible()).toBe(false);
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("情境列：Bring to front 送出 element order；右鍵元素只選取、不開任何選單", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    expect(before.indexOf('id="el-a"')).toBeLessThan(before.indexOf('id="el-c"'));
+
+    await page.frameLocator("iframe.slide-frame").locator("#el-a").click({ button: "right" });
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
+    expect(await page.locator(".element-context-menu").count()).toBe(0);
+
+    await page.locator(".context-bar").getByRole("button", { name: "Bring to front" }).click();
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    expect(after.indexOf('id="el-a"')).toBeGreaterThan(after.indexOf('id="el-c"'));
   } finally {
     await cleanup();
   }
@@ -1440,23 +1473,6 @@ it("基準截圖：Arrange 選單（三欄 Align / Distribute / Order）", async
     await page.waitForTimeout(50);
     await settleForScreenshot(page);
     await compareScreenshot(page, { name: "arrange-menu", baselineDir });
-  } finally {
-    await cleanup();
-  }
-});
-
-it("基準截圖：元素右鍵選單", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-
-    await page.frameLocator("iframe.slide-frame").locator("#el-c").click({ button: "right" });
-    const menu = page.locator(".element-context-menu");
-    await expect.poll(() => menu.isVisible()).toBe(true);
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "context-menu", baselineDir });
   } finally {
     await cleanup();
   }

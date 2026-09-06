@@ -50,8 +50,8 @@
   right: 0;
 }
 
-/* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型；只有 Delete 有功能，Comment to AI／
-   Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
+/* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型，內容含原右鍵選單的 Order／Duplicate；
+   Comment to AI／Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
    按鈕高 --control-h-compact（28px）、容器高 36px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
    玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
 .context-bar {
@@ -111,6 +111,10 @@
   background: var(--brand-red-tint);
   color: var(--brand-red-hover);
 }
+/* Icon-only Order buttons: square, no label. */
+.context-bar-item-icon {
+  padding: 0 var(--space-2);
+}
 .context-bar-item-danger {
   color: var(--brand-red-hover);
 }
@@ -119,37 +123,4 @@
   height: calc(var(--control-h-compact) - var(--space-5));
   margin: 0 var(--space-1);
   background: var(--glass-divider);
-}
-
-/* 元素右鍵選單（NOOP-90/T2 §4.5/§3.10）。 */
-.element-context-menu {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  min-width: calc(var(--panel-w) * 0.6);
-  padding: var(--space-1);
-  pointer-events: auto;
-}
-.element-context-menu-item {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-5);
-  padding: var(--space-2) var(--space-4);
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-.element-context-menu-item-danger {
-  color: var(--brand-red-hover);
-}
-.element-context-menu-shortcut {
-  opacity: 0.6;
-  font-size: var(--text-xs-hint);
-}
-.element-context-menu-divider {
-  height: 1px;
-  margin: var(--space-1) 0;
-  background: currentColor;
-  opacity: 0.15;
 }

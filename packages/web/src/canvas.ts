@@ -147,7 +147,6 @@ export interface OverlayState {
   /** Snap guide lines from the in-progress move gesture, parent-document client px; empty between drags. */
   guides: { orientation: "v" | "h"; position: number }[];
   /** The open element context menu (NOOP-90/T2 §4.5), or `null` when closed. `point` is parent-document client px. */
-  contextMenu: { ids: string[]; point: { x: number; y: number } } | null;
 }
 
 export interface CanvasState {
@@ -303,8 +302,7 @@ export interface CanvasController {
    */
   clearSelection: () => void;
   /**
-   * Overlay geometry: name/group labels, snap guides, and the element
-   * context menu (NOOP-90/T2 §4.6). See `OverlayState`'s own doc comment
+   * Overlay geometry: name/group labels and snap guides (NOOP-90/T2 §4.6). See `OverlayState`'s own doc comment
    * for why this is a separate channel from `subscribe`/`CanvasState`.
    */
   subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
@@ -319,18 +317,17 @@ export interface CanvasController {
   refreshOverlay: () => void;
   /** ⌘A (§4.1): selects every top-level element on the current slide, clearing `groupPath`. No-op on an empty slide. No-op outside view mode. */
   selectAll: () => void;
-  /** Delete/Backspace, or the context menu's Delete (§4.4/§4.5): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
+  /** Delete/Backspace, or the context bar's Delete (§4.4): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
   deleteSelection: () => Promise<void>;
-  /** ⌘D, or the context menu's Duplicate (§4.4/§4.5): sends `element duplicate` with the prototype's own +3%/+4% offset, selecting the new copy on success. No-op with no selection. */
+  /** ⌘D, or the context bar's Duplicate (§4.4): sends `element duplicate` with the prototype's own +3%/+4% offset, selecting the new copy on success. No-op with no selection. */
   duplicateSelection: () => Promise<void>;
-  /** ⌘]/⌘[/⌘⇧]/⌘⇧[, or the context menu's four Order items (§4.4/§4.5): sends `element order` for the current selection. No-op with no selection. */
+  /** ⌘]/⌘[/⌘⇧]/⌘⇧[, the Arrange menu's Order column, or the context bar's four Order buttons (§4.4): sends `element order` for the current selection. No-op with no selection. */
   orderSelection: (direction: "up" | "down" | "front" | "back") => Promise<void>;
   /** Arrange menu's Align column (§3.9): sends `element align`. No-op below the command's own ≥2-target minimum. */
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
-  closeContextMenu: () => void;
   /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
    * controller never POSTs /api/undo|redo itself — App.tsx registers its own
@@ -425,7 +422,6 @@ interface SelectionMessage {
     | "bounds"
     // NOOP-90/T2 §4.5: right-click on an element (never on blank canvas —
     // out of scope this ticket).
-    | "contextmenu"
     // NOOP-90/T2 §4.4: the keyboard relay for shortcuts that must work even
     // when focus is inside the iframe.
     | "stage-key"
@@ -823,7 +819,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
-  // bounds/ancestors and context-menu point, kept in the runtime's OWN
+  // bounds/ancestors, kept in the runtime's OWN
   // iframe client px — the conversion to this parent document's client px
   // happens in `buildOverlayState()` at emit time, so a later zoom/pan only
   // needs `refreshOverlay()` to re-emit, not a fresh "bounds" round trip.
@@ -834,7 +830,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
   let overlayGuides: { orientation: "v" | "h"; position: number }[] = [];
-  let overlayContextMenu: { ids: string[]; point: { x: number; y: number } } | null = null;
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -1026,12 +1021,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notifyOverlay();
       return;
     }
-    if (message.event === "contextmenu") {
-      if (typeof message.id !== "string" || !isValidPoint(message.point)) return;
-      overlayContextMenu = { ids: [message.id], point: message.point };
-      notifyOverlay();
-      return;
-    }
     if (message.event === "stage-key") {
       if (typeof message.key !== "string") return;
       const modifiers = { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) };
@@ -1045,13 +1034,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "gesture-start") {
       if (!isValidPoint(message.point)) return;
-      // A drag/marquee gesture starting closes whatever context menu was
-      // open — the same "opening one floating layer closes another"
-      // posture the Dock's own menus already have (02-DESIGN_DOC.md §4.3).
-      if (overlayContextMenu) {
-        overlayContextMenu = null;
-        notifyOverlay();
-      }
       if (message.kind === "move") beginMoveGesture(message.point);
       else if (message.kind === "marquee") beginMarqueeGesture(message.point);
       else if (message.kind === "scale" && isScaleHandle(message.handle)) beginScaleGesture(message.point, message.handle);
@@ -1209,7 +1191,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       union: overlayUnion ? toParentClientRect(overlayUnion) : null,
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
-      contextMenu: overlayContextMenu ? { ids: overlayContextMenu.ids, point: toParentClientPoint(overlayContextMenu.point) } : null,
     };
   }
 
@@ -1543,12 +1524,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   async function distributeSelection(axis: "horizontal" | "vertical"): Promise<void> {
     if (mode !== "view" || selectionIds.length < 3) return;
     await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selectionIds], axis });
-  }
-
-  function closeContextMenu(): void {
-    if (!overlayContextMenu) return;
-    overlayContextMenu = null;
-    notifyOverlay();
   }
 
   // --- Drag-to-move (§4.2) ---
@@ -2451,7 +2426,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
-    overlayContextMenu = null;
     notify();
     notifyOverlay();
 
@@ -2679,7 +2653,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
-    overlayContextMenu = null;
     notify();
     notifyOverlay();
     if (mode === "play") {
@@ -2717,7 +2690,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
-    overlayContextMenu = null;
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
@@ -2742,7 +2714,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlayUnion = null;
     overlayAncestors = [];
     overlayGuides = [];
-    overlayContextMenu = null;
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
@@ -2901,7 +2872,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     orderSelection,
     alignSelection,
     distributeSelection,
-    closeContextMenu,
     destroy: () => {
       destroyed = true;
       listeners.clear();

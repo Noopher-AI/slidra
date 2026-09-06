@@ -59,6 +59,8 @@ export type IconName =
   | "dup"
   | "comment"
   | "edit" // Context bar: Edit style
+  | "forward" // Context bar: Bring forward
+  | "backward" // Context bar: Send backward
   | "alignL"
   | "alignC"
   | "alignR"
@@ -272,6 +274,18 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   alignB: <path d="M3 16h14M6 4h3v8H6zM11 7h3v5h-3z" />,
   distH: <path d="M3 3v14M17 3v14M7.5 7h5v6h-5z" />,
   distV: <path d="M3 3h14M3 17h14M7 7.5h6v5H7z" />,
+  forward: (
+    <>
+      <rect x={5} y={7} width={10} height={10} rx={1.5} />
+      <path d="M10 5V1.5M7.5 4L10 1.5 12.5 4" />
+    </>
+  ),
+  backward: (
+    <>
+      <rect x={5} y={3} width={10} height={10} rx={1.5} />
+      <path d="M10 15v3.5M7.5 16l2.5 2.5 2.5-2.5" />
+    </>
+  ),
   front: (
     <>
       <rect x={3} y={3} width={10} height={10} rx={1.5} />
