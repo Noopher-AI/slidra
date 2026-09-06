@@ -139,6 +139,15 @@ describe("asset import — URL source", () => {
         res.end("<html>not media</html>");
         return;
       }
+      // 債 B（E2.T14r2 計畫 §0/§6.1）：header 說謊——宣稱 image/png，實際送
+      // HTML 位元組。`/error-page` 的 header 和內容本來就一致（text/html +
+      // HTML），從沒真的證明過匯入路徑「完全不看 Content-Type」；只有這條
+      // header 與位元組對不上的輸入，被拒才真的證明判斷依據是位元組本身。
+      if (req.url === "/lying-header") {
+        res.writeHead(200, { "Content-Type": "image/png" });
+        res.end("<html>not actually png</html>");
+        return;
+      }
       res.writeHead(404);
       res.end("not found");
     });
@@ -175,9 +184,13 @@ describe("asset import — URL source", () => {
   it("拒絕非媒體回應，且完全不看 Content-Type", async () => {
     const { id } = await openFreshPresentation();
 
-    const result = await registry.dispatch("asset import", { id, source: `${baseUrl}/error-page` });
+    const errorPage = await registry.dispatch("asset import", { id, source: `${baseUrl}/error-page` });
+    expect(errorPage.ok).toBe(false);
 
-    expect(result.ok).toBe(false);
+    // header 說謊（宣稱 image/png，實際送 HTML）也一樣被拒——這一條才是
+    // 「完全不看 Content-Type」的真正證據（債 B）。
+    const lyingHeader = await registry.dispatch("asset import", { id, source: `${baseUrl}/lying-header` });
+    expect(lyingHeader.ok).toBe(false);
   });
 
   it("fails with a clear error on a 404", async () => {
