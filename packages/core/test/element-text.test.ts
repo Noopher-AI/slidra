@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  realignTextBox,
   replaceElementText,
   resizeTextBox,
   setTextRunStyle,
@@ -563,5 +564,70 @@ describe("data-comot-text-align is carried forward through every rewrap path (NO
     const lineWidth = measureTextWidth(font, CHAR.repeat(6), FONT_SIZE);
     expect(x).toBeCloseTo(width - lineWidth, 4);
     expect(x).not.toBe(0);
+  });
+});
+
+// #200 §4.1: text-box alignment goes through the new `textbox align`
+// command, not `element style set` (`data-comot-*` is off that command's
+// whitelist) — `realignTextBox` is its mutation primitive.
+describe("realignTextBox（#200 `textbox align`）", () => {
+  let font: FontMetrics;
+  let fontBook: ReadonlyMap<string, FontMetrics>;
+  const FONT_SIZE = 40;
+
+  beforeAll(async () => {
+    font = parseFont(new Uint8Array(await readFile(bundledFontPath)));
+    fontBook = new Map([[FAMILY, font]]);
+  });
+
+  it("left -> center：寫入 data-comot-text-align 並依新對齊重新換行", () => {
+    const elementId = "el-realign-1";
+    const charWidth = measureTextWidth(font, CHAR, FONT_SIZE);
+    const width = charWidth * 5;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(5), width, FONT_SIZE, font);
+    expect(original).not.toContain("data-comot-text-align");
+
+    const { updated, lines } = realignTextBox(original, elementId, "center", fontBook);
+    expect(lines).toBe(1);
+    expect(updated).toContain('data-comot-text-align="center"');
+    const x = Number(/<tspan x="([-0-9.]+)"/.exec(updated)![1]);
+    expect(x).toBeCloseTo((width - charWidth * 5) / 2, 4);
+  });
+
+  it("center -> right：既有的 data-comot-text-align 被換掉，不是疊加", () => {
+    const elementId = "el-realign-2";
+    const charWidth = measureTextWidth(font, CHAR, FONT_SIZE);
+    const width = charWidth * 5;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(5), width, FONT_SIZE, font, { align: "center" });
+
+    const { updated } = realignTextBox(original, elementId, "right", fontBook);
+    expect(updated).toContain('data-comot-text-align="right"');
+    expect(updated).not.toContain('data-comot-text-align="center"');
+    const x = Number(/<tspan x="([-0-9.]+)"/.exec(updated)![1]);
+    expect(x).toBeCloseTo(width - charWidth * 5, 4);
+  });
+
+  it("right -> left：x 回到 0", () => {
+    const elementId = "el-realign-3";
+    const charWidth = measureTextWidth(font, CHAR, FONT_SIZE);
+    const width = charWidth * 5;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(5), width, FONT_SIZE, font, { align: "right" });
+
+    const { updated } = realignTextBox(original, elementId, "left", fontBook);
+    expect(updated).toContain('data-comot-text-align="left"');
+    const x = Number(/<tspan x="([-0-9.]+)"/.exec(updated)![1]);
+    expect(x).toBeCloseTo(0, 4);
+  });
+
+  it("目標不是文字框 → 拒絕", () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g id="el-a"><rect x="0" y="0" width="1" height="1"/></g></svg>';
+    expect(() => realignTextBox(svg, "el-a", "center", fontBook)).toThrow("元素不是文字框");
+  });
+
+  it("值不是 left/center/right → 拒絕", () => {
+    const elementId = "el-realign-4";
+    const width = measureTextWidth(font, CHAR, FONT_SIZE) * 5;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(5), width, FONT_SIZE, font);
+    expect(() => realignTextBox(original, elementId, "middle" as never, fontBook)).toThrow("對齊必須是");
   });
 });

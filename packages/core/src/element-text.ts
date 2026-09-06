@@ -599,6 +599,70 @@ export function resizeTextBox(
   return rewrapTextBoxContent(svgContent, container, textNode, widthAttr, roundedWidth, fontFamily, fontSize, fontBook, elementId);
 }
 
+const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
+
+/**
+ * `co-motion textbox align` (#200 §4.1/architecture 對帳): sets a text
+ * box's `data-comot-text-align` and re-wraps its content against the new
+ * alignment — same shape as `resizeTextBox` above, except the axis that
+ * changes is alignment rather than width. `align` is written to the
+ * container FIRST (a plain attribute splice, no re-wrap yet), then the
+ * document is re-scanned so `rewrapTextBoxContent`'s own `readTextAlign`
+ * call picks up the new value — that function always reads alignment off
+ * the container rather than taking it as a parameter (every other caller
+ * carries the existing alignment forward unchanged), so setting it here is
+ * the one legal way to make a rewrap actually change it.
+ */
+export function realignTextBox(
+  svgContent: string,
+  elementId: string,
+  align: "left" | "center" | "right",
+  fontBook: ReadonlyMap<string, FontMetrics>,
+  options: { readonly force?: boolean } = {},
+): { updated: string; lines: number } {
+  if (!TEXT_ALIGN_VALUES.includes(align)) {
+    throw new CoMotionError(`對齊必須是 left、center 或 right：${align}`);
+  }
+
+  const container = findNodeById(scanDocument(svgContent), elementId);
+  if (!container) {
+    throw new CoMotionError(`元素不是文字元素：${elementId}`);
+  }
+  const widthAttr = attributeOf(container, TEXT_WIDTH_ATTRIBUTE);
+  if (!widthAttr) {
+    throw new CoMotionError(`元素不是文字框：${elementId}`);
+  }
+  assertNotLocked(container, elementId, options.force);
+
+  const groupChildren = container.children.filter((child) => child.tag === "g");
+  const textChildren = contentTextChildren(container);
+  if (groupChildren.length > 0 || textChildren.length !== 1) {
+    throw new CoMotionError(`元素不是文字元素：${elementId}`);
+  }
+  const textNode = textChildren[0];
+  if (textNode.selfClosing) {
+    throw new CoMotionError(`元素沒有文字內容：${elementId}`);
+  }
+  const { fontFamily, fontSize } = readTextFontInfo(textNode, elementId);
+
+  const withAlign = applySplices(svgContent, [setAttrSplice(container, TEXT_ALIGN_ATTRIBUTE, align)]);
+  const refreshedContainer = findNodeById(scanDocument(withAlign), elementId)!;
+  const refreshedTextNode = contentTextChildren(refreshedContainer)[0];
+  const refreshedWidthAttr = attributeOf(refreshedContainer, TEXT_WIDTH_ATTRIBUTE)!;
+
+  return rewrapTextBoxContent(
+    withAlign,
+    refreshedContainer,
+    refreshedTextNode,
+    refreshedWidthAttr,
+    Number(refreshedWidthAttr.value),
+    fontFamily,
+    fontSize,
+    fontBook,
+    elementId,
+  );
+}
+
 /**
  * Re-wraps a text box's `<text>` content at `newWidth`/`fontFamily`/`fontSize`
  * and splices the container's `data-comot-text-width`/`data-comot-text-height`

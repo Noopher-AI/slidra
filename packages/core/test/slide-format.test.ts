@@ -191,6 +191,21 @@ describe("parseSlide", () => {
     ]);
   });
 
+  // #200 §4.4: Page style lives on the root <svg>'s own `style` attribute,
+  // read back into `SlideModel.pageStyle` — absent means both null, never a
+  // fabricated default.
+  it("reads pageStyle off the root <svg>'s style attribute, defaulting to both null when absent", () => {
+    expect(parseSlide(wrap('<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>')).pageStyle).toEqual({
+      background: null,
+      accent: null,
+    });
+
+    const styled =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" style="background-color:#14161a;--comot-accent:#c41e3a">' +
+      '<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g></svg>\n';
+    expect(parseSlide(styled).pageStyle).toEqual({ background: "#14161a", accent: "#c41e3a" });
+  });
+
   it("calls a container holding several primitives a compound element", () => {
     const model = parseSlide(wrap('  <g id="el-a"><circle cx="0" cy="0" r="1"/><path d="M0 0 L1 1"/></g>'));
     expect(model.elements[0].kind).toBe("compound");
