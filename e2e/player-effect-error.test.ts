@@ -25,14 +25,18 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *   2. a `target` that does not resolve to any element on the slide (a
  *      very plausible typo: an id renamed without updating the effect
  *      list that points at it)
- *   3. an unimplemented `family` value (`emphasis` — a real family this
- *      round's spec structurally supports but deliberately does not
- *      implement)
+ *   3. an unimplemented `family` value (`build` — [E2.T7] implemented
+ *      `emphasis` for real, so this fixture's stand-in for "a family
+ *      nothing implements" moved to a value that stays permanently
+ *      unimplemented, D4)
  *   4. an unimplemented `effect` value under an otherwise-valid family
  *      (`enter`/`wipe` — plausible if an author assumes PowerPoint-style
- *      transition names just work)
- *   5. an unimplemented `start` value (`with-previous` — plausible if an
- *      author wants two effects to land in the same step)
+ *      transition names just work; `wipe` is deliberately never
+ *      implemented, [E2.T7] §2 — this fixture is *why* it never will be)
+ *   5. an unimplemented `start` value (`on-hover` — [E2.T7] implemented
+ *      `with-previous` for real, D3, so this fixture's stand-in for "a
+ *      start nothing implements" moved to a value that stays permanently
+ *      unimplemented)
  * Round 1 of the Codex review gate on this ticket found #3–#5 missing:
  * the suite only proved the DOM banner exists for damage it happens to
  * be good at catching, not for the "未實作" half of the spec sentence —
@@ -243,7 +247,7 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
       .toBe("第 3 頁：未實作的 family");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
-    expect(noticeText).toContain("emphasis");
+    expect(noticeText).toContain("build");
     expect(noticeText).toContain("尚未實作");
 
     const opacityOf = (selector: string) =>
@@ -338,7 +342,7 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
       .toBe("第 5 頁：未實作的 start");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
-    expect(noticeText).toContain("with-previous");
+    expect(noticeText).toContain("on-hover");
     expect(noticeText).toContain("尚未實作");
 
     const opacityOf = (selector: string) =>

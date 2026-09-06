@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "物件動畫測試簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": ["slides/001.svg"]
+}

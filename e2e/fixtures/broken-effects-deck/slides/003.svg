@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <!-- 損壞之處：family="emphasis" 不在 effects.ts 的 SUPPORTED_EFFECTS
-           裡（本輪只實作 enter 與 media）。強調家族是 ADR-0009 結構上支援、
-           但這輪明訂不實作的三個家族之一。 -->
-      <comot:effect target="el-emphasis-target" family="emphasis" effect="pulse" start="on-click"/>
+      <!-- 損壞之處：family="build" 不在 @co-motion/core/effects 的
+           SUPPORTED_EFFECTS 裡（[E2.T7] 的固定值集是 enter/emphasis/exit/
+           path/media，D4）。"build" 是這輪「一個永遠不會被實作的家族名稱」
+           的守門測試值——emphasis 本輪已經是真正實作的家族，不能再拿來當
+           反例（[E2.T7] 測試盤點）。 -->
+      <comot:effect target="el-emphasis-target" family="build" effect="pulse" start="on-click"/>
     </comot:effects>
   </metadata>
   <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
