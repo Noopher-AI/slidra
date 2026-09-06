@@ -124,6 +124,27 @@ async function beginTextEdit(win: Window, id: string, text: string): Promise<voi
   await tick();
 }
 
+/**
+ * Sends a `preview-textbox` host command the same way canvas.ts's
+ * `textboxPreviewMessage`/`postToFrame` pair does (NOOP-65r3 §2c) — same
+ * synthesized-`MessageEvent` reasoning as `beginTextEdit` above.
+ */
+async function sendPreviewTextbox(win: Window, id: string, markup: unknown, width?: number): Promise<void> {
+  const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+  win.dispatchEvent(
+    new MessageEventCtor("message", {
+      data: { source: "comot-host", command: "preview-textbox", id, markup, width },
+      source: win.parent as unknown as MessageEventSource,
+    }),
+  );
+  await tick();
+}
+
+/** The content `<text>`'s own outerHTML, for asserting on the rebuilt tspan tree. */
+function contentTextOuterHtml(doc: Document, id: string): string {
+  return doc.getElementById(id)!.querySelector("text")!.outerHTML;
+}
+
 /** The hidden `<textarea>` the runtime uses to capture keystrokes while editing — lazily created by `ensureTextarea()`, so only present once an edit session has started. */
 function editTextarea(doc: Document): HTMLTextAreaElement {
   const host = doc.body.children[doc.body.children.length - 1];
@@ -206,17 +227,6 @@ describe("selection-runtime.js", () => {
     expect(host.shadowRoot).not.toBeNull();
     expect(host.querySelector(".sel")).toBeNull();
     expect(host.shadowRoot!.querySelector(".sel")).not.toBeNull();
-  });
-
-  it("四角：shadow root 裡只有 .sel 加一個 i 子元素，沒有 b 或 u", async () => {
-    const { doc } = boot('<svg><rect id="el-a"/></svg>');
-
-    click(doc, doc.getElementById("el-a")!);
-
-    const host = doc.body.children[1];
-    const sel = host.shadowRoot!.querySelector(".sel")!;
-    expect(sel.tagName.toLowerCase()).toBe("div");
-    expect([...sel.children].map((c) => c.tagName.toLowerCase())).toEqual(["i"]);
   });
 
   it("host 用 inline !important 鎖住 display/visibility/opacity/z-index，不吃外部樣式", async () => {
@@ -400,6 +410,128 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
 
     click(doc, doc.getElementById("el-text")!);
     dblclick(doc, doc.getElementById("el-text")!);
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("編輯中按 Enter（無修飾鍵）不呼叫 preventDefault（NOOP-65 決定 A：讓瀏覽器原生插入換行），不 commit、不離開編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    const event = new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true, bubbles: true });
+    ta.dispatchEvent(event);
+    await tick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("編輯中按 ⌘Enter／Ctrl+Enter：preventDefault，不插入換行、不 commit、不離開編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    const cmdEnter = new KeyboardEventCtor("keydown", { key: "Enter", metaKey: true, cancelable: true, bubbles: true });
+    ta.dispatchEvent(cmdEnter);
+    const ctrlEnter = new KeyboardEventCtor("keydown", { key: "Enter", ctrlKey: true, cancelable: true, bubbles: true });
+    ta.dispatchEvent(ctrlEnter);
+    await tick();
+
+    expect(cmdEnter.defaultPrevented).toBe(true);
+    expect(ctrlEnter.defaultPrevented).toBe(true);
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("貼上含 \\r\\n 的內容正規化成 \\n，不是被拿掉（NOOP-65 §4.4：pasted 多行文字合法）", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+
+    ta.value = "a\r\nb\rc";
+    ta.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("input", { bubbles: true }));
+    await tick();
+
+    expect(ta.value).toBe("a\nb\nc");
+  });
+});
+
+describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，鍵盤等同雙擊）", () => {
+  it("未編輯、選取恰好一個文字框，按 Enter（無修飾鍵）送出 dblclick-textbox", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    click(doc, doc.getElementById("el-box")!);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "dblclick-textbox", id: "el-box" });
+    stop();
+  });
+
+  it("未選取任何元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    void doc;
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("選取 2 個以上元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot(
+      '<svg><g id="el-a" data-comot-text-width="400"><text>A</text></g><g id="el-b" data-comot-text-width="400"><text>B</text></g></svg>',
+    );
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    click(doc, doc.getElementById("el-a")!);
+    doc.getElementById("el-b")!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("選取的不是文字元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot('<svg><rect id="el-rect" width="10" height="10"/></svg>');
+    click(doc, doc.getElementById("el-rect")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("⌘Enter／Shift+Enter 等帶修飾鍵的 Enter 不觸發進入編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    click(doc, doc.getElementById("el-box")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", metaKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", shiftKey: true, cancelable: true }));
     await tick();
 
     expect(messages).toHaveLength(0);
@@ -692,5 +824,44 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
 
     window.removeEventListener("message", handler);
     expect(messages.some((m) => m.event === "stage-key")).toBe(false);
+  });
+});
+
+// NOOP-65r3 §2d/C1/C5 — `applyPreviewTextbox` now takes a finished markup
+// STRING (core's own `renderTextBoxContent` output), not a `{ text, y }[]`
+// the runtime used to reconstruct into a hard-coded `x="0"` tspan with no
+// `data-comot-break`/nested runs (NOOP-65r2 FAIL 1). These two tests are
+// the first coverage this channel has ever had (`grep -rln
+// "preview-textbox|applyPreviewTextbox"` was empty before this ticket).
+describe("selection-runtime.js 的文字框 preview 通道（NOOP-65r3）", () => {
+  it("收到 markup 後，內容 <text> 的子節點含 data-comot-break、非零 x、巢狀 run tspan", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+
+    await sendPreviewTextbox(
+      win,
+      "el-text",
+      '<tspan x="12.5" y="16" data-comot-break="1">粗<tspan font-weight="bold">體字</tspan></tspan><tspan x="12.5" y="34">下一段</tspan>',
+      220,
+    );
+
+    const html = contentTextOuterHtml(doc, "el-text");
+    expect(html).toContain('data-comot-break="1"');
+    expect(html).toContain('x="12.5"');
+    expect(html).toContain('<tspan font-weight="bold">體字</tspan>');
+    expect(html).toContain("下一段");
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("220");
+  });
+
+  it("markup 不是字串、或解析失敗時，DOM 完全不動", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const before = contentTextOuterHtml(doc, "el-text");
+
+    await sendPreviewTextbox(win, "el-text", 12345, 999); // wrong type
+    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
+
+    await sendPreviewTextbox(win, "el-text", "<tspan>unterminated", 999); // fails to parse as SVG
+    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
+    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
   });
 });

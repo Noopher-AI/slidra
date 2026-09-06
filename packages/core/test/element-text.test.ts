@@ -1,5 +1,65 @@
-import { describe, expect, it } from "vitest";
-import { replaceElementText, substituteDynamicText } from "../src/element-text.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  replaceElementText,
+  resizeTextBox,
+  setTextRunStyle,
+  substituteDynamicText,
+} from "../src/element-text.js";
+import { wrapText } from "../src/text/wrap.js";
+import { renderTextBoxContent } from "../src/text/render.js";
+import { formatSvgNumber } from "../src/svg-number.js";
+import { measureTextWidth, parseFont, type FontMetrics } from "../src/text-metrics.js";
+
+const FAMILY = "Noto Sans TC";
+const bundledFontPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../src/assets/fonts/NotoSansTC-Presentation.ttf",
+);
+
+/** One CJK ideograph — repeated to build content whose per-line width is exact multiples of a single, independently measured char width, so a test can pick a box width that deterministically forces a chosen line count without depending on wrapText's own break-selection logic (only on `measureTextWidth`, the one shared measurement primitive). */
+const CHAR = "字";
+
+/** A text box container shaped exactly like `workspace.ts`'s `addTextBox` output: `data-comot-text-width`/`-height` (and `-align` when non-left) on the container, content already wrapped and rendered. */
+function buildTextBoxSvg(
+  elementId: string,
+  text: string,
+  width: number,
+  fontSize: number,
+  font: FontMetrics,
+  options: { align?: "left" | "center" | "right" } = {},
+): string {
+  const align = options.align ?? "left";
+  const wrapped = wrapText(text, { width, font, fontSizePx: fontSize, align });
+  const content = renderTextBoxContent(wrapped.lines);
+  const alignAttr = align === "left" ? "" : ` data-comot-text-align="${align}"`;
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+    `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(width)}" data-comot-text-height="${formatSvgNumber(wrapped.height)}"${alignAttr}>` +
+    `<text font-family="${FAMILY}" font-size="${formatSvgNumber(fontSize)}" xml:space="preserve">${content}</text>` +
+    "</g></svg>"
+  );
+}
+
+/** Same shape, but with NO `data-comot-text-height` at all — a box written before NOOP-65 (§4.5 compatibility: a legacy file). */
+function buildLegacyTextBoxSvg(elementId: string, text: string, width: number, fontSize: number, font: FontMetrics): string {
+  const wrapped = wrapText(text, { width, font, fontSizePx: fontSize });
+  const content = renderTextBoxContent(wrapped.lines);
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+    `<g id="${elementId}" data-comot-text-width="${formatSvgNumber(width)}">` +
+    `<text font-family="${FAMILY}" font-size="${formatSvgNumber(fontSize)}" xml:space="preserve">${content}</text>` +
+    "</g></svg>"
+  );
+}
+
+function heightOf(svg: string): number {
+  const match = /data-comot-text-height="([^"]+)"/.exec(svg);
+  if (!match) throw new Error(`test helper: no data-comot-text-height in: ${svg}`);
+  return Number(match[1]);
+}
 
 // This is the structural guarantee ticket #3 hinges on: replaceElementText
 // must be a string splice, not a parse-and-reserialize, so every byte
@@ -385,5 +445,123 @@ describe("substituteDynamicText", () => {
     const result = substituteDynamicText(svg, new Map([["presentation_name", "A &amp; B"]]));
 
     expect(result).toBe('<svg><text id="el-a">A &amp; B</text></svg>');
+  });
+});
+
+// NOOP-129 Review round-1 FAIL item 2: Plan §6.4 promised these 4 tests and
+// none were written — a mutation check proved `rewrapTextBoxContent` /
+// `replaceContainerText` / `setTextRunStyle` can each drop their
+// `data-comot-text-height` write with all 1076 unit tests staying green.
+// Every expected height below comes from the font's own hhea fields via the
+// documented lineHeight formula (`text-wrap.test.ts`'s own convention),
+// never from calling `wrapText`/`rewrapTextBoxContent` a second time — so a
+// height genuinely computed wrong would fail these too, not just a height
+// that was never written.
+describe("data-comot-text-height tracks every rewrap path (NOOP-65 決定 C)", () => {
+  let font: FontMetrics;
+  let fontBook: ReadonlyMap<string, FontMetrics>;
+  let expectedLineHeight: number;
+  const FONT_SIZE = 40;
+
+  beforeAll(async () => {
+    font = parseFont(new Uint8Array(await readFile(bundledFontPath)));
+    fontBook = new Map([[FAMILY, font]]);
+    expectedLineHeight = ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * FONT_SIZE;
+  });
+
+  it("resizeTextBox (textbox width) rewrites the height when narrowing forces 1 line into 3", () => {
+    const elementId = "el-height-1";
+    const wideWidth = measureTextWidth(font, CHAR.repeat(9), FONT_SIZE);
+    const narrowWidth = measureTextWidth(font, CHAR.repeat(3), FONT_SIZE);
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(9), wideWidth, FONT_SIZE, font);
+    expect(heightOf(original)).toBeCloseTo(expectedLineHeight, 4);
+
+    const { updated, lines } = resizeTextBox(original, elementId, narrowWidth, fontBook);
+    expect(lines).toBe(3);
+    expect(heightOf(updated)).toBeCloseTo(3 * expectedLineHeight, 4);
+  });
+
+  it("replaceElementText (text set) rewrites the height for the NEW content, not the old one", () => {
+    const elementId = "el-height-2";
+    const width = measureTextWidth(font, CHAR.repeat(9), FONT_SIZE);
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(3), width, FONT_SIZE, font);
+    expect(heightOf(original)).toBeCloseTo(expectedLineHeight, 4);
+
+    // 27 identical chars at a width sized for exactly 9 wrap to exactly 3 lines.
+    const updated = replaceElementText(original, elementId, CHAR.repeat(27), { fontBook });
+    expect(heightOf(updated)).toBeCloseTo(3 * expectedLineHeight, 4);
+  });
+
+  it("setTextRunStyle (text style set) bakes a first-time height onto a legacy box that had none yet (§4.5 compatibility)", () => {
+    const elementId = "el-height-3";
+    const width = measureTextWidth(font, CHAR.repeat(9), FONT_SIZE);
+    const legacy = buildLegacyTextBoxSvg(elementId, CHAR.repeat(9), width, FONT_SIZE, font);
+    expect(legacy).not.toContain("data-comot-text-height");
+
+    const { updated } = setTextRunStyle(legacy, elementId, 0, 1, { fontWeight: "bold" }, fontBook);
+    expect(heightOf(updated)).toBeCloseTo(expectedLineHeight, 4);
+  });
+
+  it("bakes a first-time data-comot-text-height AFTER id/data-comot-text-width, never reordered ahead of them (splice-order regression)", () => {
+    const elementId = "el-height-4";
+    const width = measureTextWidth(font, CHAR.repeat(9), FONT_SIZE);
+    const legacy = buildLegacyTextBoxSvg(elementId, CHAR.repeat(9), width, FONT_SIZE, font);
+
+    const { updated } = resizeTextBox(legacy, elementId, width, fontBook);
+    const openTag = /<g[^>]*>/.exec(updated)![0];
+    expect(openTag).toMatch(
+      new RegExp(`^<g id="${elementId}" data-comot-text-width="[^"]+" data-comot-text-height="[^"]+">$`),
+    );
+  });
+});
+
+// NOOP-129 Review round-1 FAIL item 3: `readTextAlign` documents itself as
+// an already-decided contract ("every rewrap path calls this to carry the
+// box's alignment forward unchanged"), but nothing failed when it was
+// mutated to always return "left". Expected `x` values below come from the
+// §7-D formula applied to independently measured line widths
+// (`measureTextWidth`), never from calling `wrapText` a second time.
+describe("data-comot-text-align is carried forward through every rewrap path (NOOP-65 決定 D)", () => {
+  let font: FontMetrics;
+  let fontBook: ReadonlyMap<string, FontMetrics>;
+  const FONT_SIZE = 40;
+
+  beforeAll(async () => {
+    font = parseFont(new Uint8Array(await readFile(bundledFontPath)));
+    fontBook = new Map([[FAMILY, font]]);
+  });
+
+  it("resizeTextBox (textbox width) keeps center alignment: every line's x stays (width-lineWidth)/2, not 0", () => {
+    const elementId = "el-align-1";
+    const charWidth = measureTextWidth(font, CHAR, FONT_SIZE);
+    const width1 = charWidth * 9;
+    const width2 = charWidth * 5;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(9), width1, FONT_SIZE, font, { align: "center" });
+
+    const { updated, lines } = resizeTextBox(original, elementId, width2, fontBook);
+    expect(lines).toBe(2);
+    expect(updated).toContain('data-comot-text-align="center"');
+
+    const xs = Array.from(updated.matchAll(/<tspan x="([-0-9.]+)"/g)).map((m) => Number(m[1]));
+    expect(xs).toHaveLength(2);
+    const line1Width = measureTextWidth(font, CHAR.repeat(5), FONT_SIZE);
+    const line2Width = measureTextWidth(font, CHAR.repeat(4), FONT_SIZE);
+    expect(xs[0]).toBeCloseTo((width2 - line1Width) / 2, 4);
+    expect(xs[1]).toBeCloseTo((width2 - line2Width) / 2, 4);
+  });
+
+  it("replaceElementText (text set) keeps right alignment on the freshly wrapped new content", () => {
+    const elementId = "el-align-2";
+    const charWidth = measureTextWidth(font, CHAR, FONT_SIZE);
+    const width = charWidth * 8;
+    const original = buildTextBoxSvg(elementId, CHAR.repeat(2), width, FONT_SIZE, font, { align: "right" });
+
+    const updated = replaceElementText(original, elementId, CHAR.repeat(6), { fontBook });
+    expect(updated).toContain('data-comot-text-align="right"');
+
+    const x = Number(/<tspan x="([-0-9.]+)"/.exec(updated)![1]);
+    const lineWidth = measureTextWidth(font, CHAR.repeat(6), FONT_SIZE);
+    expect(x).toBeCloseTo(width - lineWidth, 4);
+    expect(x).not.toBe(0);
   });
 });

@@ -71,7 +71,7 @@ import {
   type SnapGuide,
 } from "@co-motion/core/geometry";
 import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
-import { wrapText } from "@co-motion/core/text";
+import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 
 export type CanvasMode = "view" | "play" | "preview";
@@ -364,6 +364,21 @@ export interface CanvasController {
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
+  /**
+   * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
+   * `textbox add` for the current slide, selecting the new box on success
+   * (already whitelisted in `SELECT_AFTER_COMMAND`, same as `element
+   * insert`). No-op outside view mode.
+   */
+  insertTextBox: (input: {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    fontSize: number;
+    fontWeight: number;
+    align: "left" | "center" | "right";
+  }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
@@ -714,6 +729,22 @@ interface RotateGesture {
  * PR body's 風險與未處理項 for what this means for the LEFT handle's own
  * on-screen position during the drag.
  */
+/**
+ * A text box's layout inputs beyond width/font, snapshotted once at the
+ * moment editing/dragging starts and held fixed for its whole duration
+ * (NOOP-65r3 決定 2). Both `TextboxWidthGesture` and `TextEditState` carry
+ * one of these — it is what `textboxPreviewMessage` needs on top of the
+ * text/width/font every preview call already had, to reproduce
+ * `rewrapTextBoxContent`'s exact output instead of a host-side
+ * approximation that drops alignment/runs/list indents.
+ */
+interface TextLayoutSnapshot {
+  align: "left" | "center" | "right";
+  /** The content `<text>`'s raw `data-comot-list` attribute value, `null` when absent. */
+  listAttr: string | null;
+  runs: readonly TextRun[];
+}
+
 interface TextboxWidthGesture {
   kind: "textbox-width";
   id: string;
@@ -723,6 +754,7 @@ interface TextboxWidthGesture {
   fontFamily: string;
   fontSize: number;
   sourceText: string;
+  layout: TextLayoutSnapshot;
   /** Resolved asynchronously after the gesture starts (a font fetch); updates never apply until this lands. */
   font: FontMetrics | null;
   startUserX: number;
@@ -756,6 +788,8 @@ interface TextEditState {
   width: number | null;
   font: FontMetrics | null;
   fontSize: number | null;
+  /** `null` for a plain `<text>` (the `width === null` case above) — that path never wraps, so it never needs one. */
+  layout: TextLayoutSnapshot | null;
 }
 
 /**
@@ -1195,7 +1229,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (!editingState || message.id !== editingState.id) return;
       const text = typeof message.text === "string" ? message.text : "";
       editingState.currentText = text;
-      postTextEditPreview(editingState.id, text, editingState.width, editingState.font, editingState.fontSize);
+      postTextEditPreview(editingState.id, text, editingState.width, editingState.font, editingState.fontSize, editingState.layout);
       return;
     }
     if (message.event === "text-edit-commit") {
@@ -1703,6 +1737,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selectionIds], axis });
   }
 
+  async function insertTextBox(input: {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    fontSize: number;
+    fontWeight: number;
+    align: "left" | "center" | "right";
+  }): Promise<void> {
+    if (mode !== "view") return;
+    await runCommand("textbox add", { slidePath: slides[currentIndex], ...input });
+  }
+
   // --- Drag-to-move (§4.2) ---
 
   function beginMoveGesture(point: { x: number; y: number }): void {
@@ -1887,6 +1934,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
     if (!entry) return;
+    // NOOP-65 §7-I: a four-corner handle on a text box only ever changes
+    // its declared WIDTH — font-size and the container's own transform
+    // never move, and height is whatever the content re-wraps to. This
+    // reuses the exact same `textbox width` gesture the left/right
+    // mid-edge handles already drive (`beginTextboxWidthGesture`), just
+    // entered from a corner instead: "nw"/"sw" behave like the left edge,
+    // "ne"/"se" like the right edge (`computeTextboxWidth` only ever reads
+    // the horizontal component of the drag). Core's `element scale`
+    // command itself is untouched — this is purely a front-end handle
+    // remapping (§2 第 8 條).
+    if (entry.element.textWidth !== null) {
+      beginTextboxWidthGesture(point, corner === "nw" || corner === "sw" ? "left" : "right");
+      return;
+    }
     let parts: TransformParts;
     try {
       parts = decomposeMatrix(entry.element.matrix);
@@ -2209,6 +2270,32 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
+  /**
+   * The one place host-side code turns (text, width, font, layout) into a
+   * `preview-textbox` payload. All four call sites below go through this —
+   * NOOP-65r2 FAIL 1 was three of them each hand-writing
+   * `{ text, y }` tspans with no `align`/`runs`/list indent, which the
+   * model didn't even carry back then (§2a fixes that side). The markup
+   * itself comes from core's own `renderTextBoxContent` — the same
+   * function `rewrapTextBoxContent` (element-text.ts) calls — so the
+   * runtime never needs to know how a line becomes a `<tspan>`; it only
+   * ever receives the finished string. See `applyPreviewTextbox` in
+   * selection-runtime.js for the receiving end.
+   */
+  function textboxPreviewMessage(
+    id: string,
+    text: string,
+    width: number,
+    font: FontMetrics,
+    fontSizePx: number,
+    layout: TextLayoutSnapshot,
+  ): Record<string, unknown> {
+    const paragraphCount = text.split("\n").length;
+    const indents = listIndents(parseListTokens(layout.listAttr, paragraphCount, id), fontSizePx);
+    const wrapped = wrapText(text, { width, font, fontSizePx, align: layout.align, indents });
+    return { command: "preview-textbox", id, width, markup: renderTextBoxContent(wrapped.lines, layout.runs) };
+  }
+
   // --- Textbox-width handles (§4.4) ---
 
   function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
@@ -2236,6 +2323,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       fontFamily,
       fontSize,
       sourceText: textPrimitive.text,
+      layout: {
+        align: entry.element.textAlign,
+        listAttr: textPrimitive.attrs.get("data-comot-list") ?? null,
+        runs: textPrimitive.runs,
+      },
       font: null,
       startUserX: toUserPoint(point).x,
       lastWidth: entry.element.textWidth,
@@ -2270,13 +2362,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   function revertTextboxPreview(gesture: TextboxWidthGesture, font: FontMetrics): void {
-    const wrapped = wrapText(gesture.sourceText, { width: gesture.originalWidth, font, fontSizePx: gesture.fontSize });
-    postToFrame({
-      command: "preview-textbox",
-      id: gesture.id,
-      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
-      width: gesture.originalWidth,
-    });
+    postToFrame(
+      textboxPreviewMessage(gesture.id, gesture.sourceText, gesture.originalWidth, font, gesture.fontSize, gesture.layout),
+    );
   }
 
   function updateTextboxWidthGesture(point: { x: number; y: number }): void {
@@ -2285,13 +2373,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const width = computeTextboxWidth(gesture, point);
     if (!(width > 0)) return; // Would go non-positive — freeze at the last valid preview.
     gesture.lastWidth = width;
-    const wrapped = wrapText(gesture.sourceText, { width, font: gesture.font, fontSizePx: gesture.fontSize });
-    postToFrame({
-      command: "preview-textbox",
-      id: gesture.id,
-      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
-      width,
-    });
+    postToFrame(
+      textboxPreviewMessage(gesture.id, gesture.sourceText, width, gesture.font, gesture.fontSize, gesture.layout),
+    );
   }
 
   async function endTextboxWidthGesture(point: { x: number; y: number }, cancelled: boolean): Promise<void> {
@@ -2341,21 +2425,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     width: number | null,
     font: FontMetrics | null,
     fontSizePx: number | null,
+    layout: TextLayoutSnapshot | null,
   ): void {
-    if (width === null || font === null || fontSizePx === null) {
+    if (width === null || font === null || fontSizePx === null || layout === null) {
       // A plain <text>: no wrapping, and no tspan rewrite either — the
       // runtime replaces the text content in place, leaving the element's
       // own x/y/text-anchor alone.
       postToFrame({ command: "preview-text", id, text });
       return;
     }
-    const wrapped = wrapText(text, { width, font, fontSizePx });
-    postToFrame({
-      command: "preview-textbox",
-      id,
-      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
-      width,
-    });
+    postToFrame(textboxPreviewMessage(id, text, width, font, fontSizePx, layout));
   }
 
   /**
@@ -2392,6 +2471,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         width: null,
         font: null,
         fontSize: null,
+        layout: null,
       };
       beginEditingLease();
       postToFrame({ command: "begin-text-edit", id, text: sourceText });
@@ -2421,6 +2501,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (destroyed || thisGeneration !== generation || mode !== "view") return;
 
+    const layout: TextLayoutSnapshot = {
+      align: entry.element.textAlign,
+      listAttr: textPrimitive.attrs.get("data-comot-list") ?? null,
+      runs: textPrimitive.runs,
+    };
     editingState = {
       id,
       slidePath: slides[currentIndex],
@@ -2429,16 +2514,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       font,
       fontSize,
       width,
+      layout,
     };
     beginEditingLease();
-    const wrapped = wrapText(sourceText, { width, font, fontSizePx: fontSize });
-    postToFrame({
-      command: "begin-text-edit",
-      id,
-      text: sourceText,
-      lines: wrapped.lines.map((line) => ({ text: line.text, y: Number(line.y.toFixed(4)) })),
-      width,
-    });
+    const preview = textboxPreviewMessage(id, sourceText, width, font, fontSize, layout);
+    postToFrame({ command: "begin-text-edit", id, text: sourceText, markup: preview.markup, width });
   }
 
   /**
@@ -2467,7 +2547,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     endEditingLease();
     if (destroyed || thisGeneration !== generation) return;
     if (!result.ok) {
-      postTextEditPreview(state.id, state.originalText, state.width, state.font, state.fontSize);
+      postTextEditPreview(state.id, state.originalText, state.width, state.font, state.fontSize, state.layout);
       error = result.message;
       notify();
     }
@@ -3186,6 +3266,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     orderSelection,
     alignSelection,
     distributeSelection,
+    insertTextBox,
     destroy: () => {
       destroyed = true;
       listeners.clear();

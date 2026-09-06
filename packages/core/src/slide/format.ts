@@ -1,7 +1,8 @@
 import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
 import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
-import { unescapeXmlText } from "../element-text.js";
+import { readTextAlign, unescapeXmlText } from "../element-text.js";
+import { readTextBoxRuns, type TextRun } from "../text/runs.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 
 /**
@@ -100,6 +101,18 @@ export interface SlidePrimitive {
    * not `<text>`.
    */
   tspanCount: number;
+  /**
+   * For a `<text>` primitive carrying nested run tspans (NOOP-65 決定 B —
+   * bold/italic spans): the runs read back from those tspans, in the same
+   * content-string index space as `text`. `[]` when the `<text>` has no
+   * nested run tspans, and for every primitive that is not `<text>`. This
+   * is `readTextBoxRuns`'s own `runs` return value — not a second copy —
+   * so a host-side reader (`canvas.ts`'s preview channel) can rebuild the
+   * exact same markup `rewrapTextBoxContent` would, instead of only
+   * getting `content` and reconstructing runs from nothing (NOOP-65r2
+   * FAIL 1: `runs` used to be silently dropped here).
+   */
+  runs: readonly TextRun[];
 }
 
 export interface SlideElement {
@@ -127,10 +140,32 @@ export interface SlideElement {
    * debt for a later documentation unit, not written here.
    */
   textWidth: number | null;
+  /**
+   * Parsed `data-comot-text-height` (NOOP-65 決定 C); `null` when absent —
+   * every text box written before this attribute existed, or written by a
+   * command that never rewraps content, has no such attribute, and
+   * `geometry/bbox.ts`'s `textBounds` falls back to `行數 × 行高` exactly
+   * as it always did. No migration reads this in: absence IS the legacy
+   * behaviour.
+   */
+  textHeight: number | null;
+  /**
+   * `readTextAlign`'s result (`"left"` when the container has no
+   * `data-comot-text-align`, NOOP-65 決定 D — every rewrap path shares this
+   * same default, so this field does too). Present on every element, not
+   * only text boxes: a non-text element simply carries the meaningless
+   * default `"left"`, the same way `textWidth`/`textHeight` are `null`
+   * rather than the field being absent — callers that only care about text
+   * boxes already gate on `kind`/`textWidth` first.
+   */
+  textAlign: "left" | "center" | "right";
 }
 
 /** `data-comot-text-width`, see `SlideElement.textWidth`'s comment for why it lives here. */
 export const TEXT_WIDTH_ATTRIBUTE = "data-comot-text-width";
+
+/** `data-comot-text-height`, see `SlideElement.textHeight`'s comment for why it lives here (NOOP-65). */
+export const TEXT_HEIGHT_ATTRIBUTE = "data-comot-text-height";
 
 export interface SlideModel {
   viewBox: { x: number; y: number; width: number; height: number };
@@ -398,22 +433,31 @@ export function parseSlide(svg: string, slidePath = "投影片"): SlideModel {
   return { viewBox: { x, y, width, height }, elements };
 }
 
-/** Builds one `SlidePrimitive` from a scanned child node. `svg` is the whole document, needed to read a `<text>`'s content by its byte offsets. */
+/**
+ * Builds one `SlidePrimitive` from a scanned child node. `svg` is the whole
+ * document, needed to read a `<text>`'s content by its byte offsets.
+ *
+ * A text box's line tspans can themselves carry nested run tspans (NOOP-65
+ * 決定 B — bold/italic spans). Slicing `[tspan.contentStart, tspan.contentEnd)`
+ * directly, as this used to, would pull the nested tspans' own markup into
+ * the joined string verbatim instead of their decoded text. `readTextBoxRuns`
+ * (`text/runs.ts`) already does the recursive, hard-break-aware read this
+ * needs — `text` here is its `content`, not its `runs` (which callers
+ * needing them re-derive from `svg` directly, e.g. `text style set`).
+ */
 function toPrimitive(child: ScannedNode, svg: string): SlidePrimitive {
   const tag = child.tag.toLowerCase();
   const attrs = new Map(child.attributes.map((attribute) => [attribute.name, attribute.value]));
   if (tag !== "text") {
-    return { tag, attrs, text: "", tspanCount: 0 };
+    return { tag, attrs, text: "", tspanCount: 0, runs: [] };
   }
   const tspans = child.children.filter((grandchild) => grandchild.tag === "tspan");
   if (tspans.length > 0) {
-    const text = tspans
-      .map((tspan) => unescapeXmlText(svg.slice(tspan.contentStart, tspan.contentEnd)))
-      .join("");
-    return { tag, attrs, text, tspanCount: tspans.length };
+    const { content, runs } = readTextBoxRuns(child, svg);
+    return { tag, attrs, text: content, tspanCount: tspans.length, runs };
   }
   const text = unescapeXmlText(svg.slice(child.contentStart, child.contentEnd));
-  return { tag, attrs, text, tspanCount: 0 };
+  return { tag, attrs, text, tspanCount: 0, runs: [] };
 }
 
 function toElement(element: ScannedNode, svg: string): SlideElement {
@@ -443,6 +487,21 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
     textWidth = value;
   }
 
+  const textHeightRaw = attributeValue(element, TEXT_HEIGHT_ATTRIBUTE);
+  let textHeight: number | null = null;
+  if (textHeightRaw !== null) {
+    const trimmed = textHeightRaw.trim();
+    const value = Number(trimmed);
+    if (trimmed === "" || !Number.isFinite(value) || value <= 0) {
+      throw new CoMotionError(
+        `元素 ${attributeValue(element, "id")} 的 ${TEXT_HEIGHT_ATTRIBUTE} 不是合法的正數：${textHeightRaw}`,
+      );
+    }
+    textHeight = value;
+  }
+
+  const textAlign = readTextAlign(element, attributeValue(element, "id")!);
+
   return {
     id: attributeValue(element, "id")!,
     name: attributeValue(element, "data-comot-name"),
@@ -453,5 +512,7 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
     children: isGroup ? children.map((child) => toElement(child, svg)) : [],
     primitives,
     textWidth,
+    textHeight,
+    textAlign,
   };
 }

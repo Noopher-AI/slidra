@@ -1,5 +1,14 @@
 import { CoMotionError } from "./errors.js";
-import { assertNotLocked, escapeXmlAttr, readTextFontInfo, resolveFont, rewrapTextBoxContent } from "./element-text.js";
+import {
+  applySplices,
+  assertNotLocked,
+  escapeXmlAttr,
+  readTextFontInfo,
+  resolveFont,
+  rewrapTextBoxContent,
+  setAttrSplice,
+  type Splice,
+} from "./element-text.js";
 import { assertSlideCompliant, parseSlide, TEXT_WIDTH_ATTRIBUTE, type SlideElement } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
@@ -34,20 +43,6 @@ const IGNORED_CHILD_TAGS = new Set(["title", "desc"]);
  */
 export interface MutationOptions {
   readonly force?: boolean;
-}
-
-interface Splice {
-  start: number;
-  end: number;
-  text: string;
-}
-
-function applySplices(svg: string, splices: readonly Splice[]): string {
-  let result = svg;
-  for (const splice of [...splices].sort((a, b) => b.start - a.start)) {
-    result = result.slice(0, splice.start) + splice.text + result.slice(splice.end);
-  }
-  return result;
 }
 
 function requireSvgRoot(roots: readonly ScannedNode[]): ScannedNode {
@@ -474,16 +469,6 @@ function scaleNumericAttr(
   return { start: attr.start, end: attr.end, text: `${name}="${formatSvgNumber(rounded)}"` };
 }
 
-/** Replaces `attr`'s value on `node` if present, or inserts it right after the tag name if absent. */
-function setAttrSplice(node: ScannedNode, attr: string, value: string): Splice {
-  const existing = attributeOf(node, attr);
-  if (existing) {
-    return { start: existing.start, end: existing.end, text: `${attr}="${escapeXmlAttr(value)}"` };
-  }
-  const insertAt = node.start + 1 + node.tag.length;
-  return { start: insertAt, end: insertAt, text: ` ${attr}="${escapeXmlAttr(value)}"` };
-}
-
 /** Path `d` commands that carry an elliptical arc — scaling would require re-deriving the arc's radii/rotation, which this ticket does not implement (geometry/bbox.ts#pathBounds has the same limitation). */
 const ARC_COMMAND = /[Aa]/;
 
@@ -580,6 +565,7 @@ function scaleLeafPrimitives(
     const refreshedWidthAttr = attributeOf(refreshedContainer, TEXT_WIDTH_ATTRIBUTE)!;
     const { updated } = rewrapTextBoxContent(
       withFontSize,
+      refreshedContainer,
       refreshedTextNode,
       refreshedWidthAttr,
       newWidth,
@@ -1089,6 +1075,7 @@ function setStyleOnContainer(
     const fontSize = attr === "font-size" ? Number(value) : currentInfo.fontSize;
     const { updated } = rewrapTextBoxContent(
       withAttr,
+      refreshedContainer,
       refreshedTextNode,
       refreshedWidthAttr,
       Number(refreshedWidthAttr.value),

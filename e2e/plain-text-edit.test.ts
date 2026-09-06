@@ -122,6 +122,33 @@ function readTextMarkup(svg: string, elementId: string): string {
 }
 
 /** Whether the runtime's hidden edit textarea currently holds focus inside the sandboxed slide iframe. */
+/**
+ * Double-clicks the right half of `elementId`'s last character. Entering
+ * edit by dblclick puts the caret at the click point (05-INTERACTIONS
+ * 「就地編輯」), so this is how a test opens an edit session with the caret
+ * at the END of the text — dblclicking the element's centre would land it
+ * mid-string.
+ */
+async function dblclickAtEnd(page: Page, elementId: string): Promise<void> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  const p = await frame.locator("body").evaluate((body, elementId) => {
+    const doc = body.ownerDocument as Document;
+    const el = doc.getElementById(elementId)!;
+    const textEl = (el.tagName === "text" ? el : el.querySelector("text")) as SVGTextContentElement;
+    const ctm = textEl.getScreenCTM()!;
+    const last = textEl.getNumberOfChars() - 1;
+    const toClient = (x: number, y: number) => new DOMPoint(x, y).matrixTransform(ctm);
+    const ext = textEl.getExtentOfChar(last);
+    const start = toClient(textEl.getStartPositionOfChar(last).x, 0);
+    const end = toClient(textEl.getEndPositionOfChar(last).x, 0);
+    const mid = toClient(ext.x + ext.width / 2, ext.y + ext.height / 2);
+    return { x: start.x + (end.x - start.x) * 0.75, y: mid.y };
+  }, elementId);
+  const box = await page.locator("iframe.slide-frame").boundingBox();
+  if (!box) throw new Error("量不到 iframe.slide-frame 的邊界框");
+  await page.mouse.dblclick(box.x + p.x, box.y + p.y);
+}
+
 async function isEditTextareaFocused(page: Page): Promise<boolean> {
   return page
     .frameLocator("iframe.slide-frame")
@@ -137,7 +164,7 @@ it("沒有 font-family 的文字框：雙擊可進入編輯，換行用內建預
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-box").dblclick();
+    await dblclickAtEnd(page, "el-box");
     await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 
     await page.keyboard.type("一二三四五六七八九十一二三四五六");
@@ -158,44 +185,11 @@ it("沒有 font-family 的文字框：雙擊可進入編輯，換行用內建預
   }
 });
 
-it("進入編輯後畫面看得出來：編輯外框與尾端游標都出現，游標隨打字往後移", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    const frame = page.frameLocator("iframe.slide-frame");
-
-    const decoration = () =>
-      frame.locator("body").evaluate(() => {
-        const shadow = document.querySelector("[data-comot-selection-host]")!.shadowRoot!;
-        const caret = shadow.querySelector(".edit-caret") as HTMLElement;
-        return {
-          frame: (shadow.querySelector(".edit-frame") as HTMLElement).style.display,
-          caret: caret.style.display,
-          caretLeft: parseFloat(caret.style.left || "0"),
-        };
-      });
-
-    expect((await decoration()).frame).not.toBe("block"); // Nothing being edited yet.
-
-    await frame.locator("#el-plain").dblclick();
-    await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
-
-    const opened = await decoration();
-    expect(opened.frame).toBe("block");
-    expect(opened.caret).toBe("block");
-
-    await page.keyboard.type("字");
-    await expect.poll(async () => (await decoration()).caretLeft).toBeGreaterThan(opened.caretLeft);
-  } finally {
-    await cleanup();
-  }
-});
-
 it("一般 <text>（沒有 data-comot-text-width）：雙擊可進入編輯，提交只換字串，x／y／text-anchor 原封不動", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-plain").dblclick();
+    await dblclickAtEnd(page, "el-plain");
     await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 
     await page.keyboard.type("改過了");

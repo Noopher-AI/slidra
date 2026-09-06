@@ -63,25 +63,76 @@ export function parseArgv(argv: string[]): ParsedCommand {
     }
     case "text": {
       const sub = rest[0];
-      if (sub !== "set") {
-        throw new CoMotionError(`未知的子命令：text ${sub ?? ""}`);
+      if (sub === "set") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "text set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "text set", "slide-path");
+        const elementId = requirePositional(args, 2, "text set", "element-id");
+        // new-text may legitimately be an empty string (clears the element's
+        // text), so it is checked for absence, not falsiness — unlike
+        // requirePositional's other args, which reject empty strings too.
+        const newText = args[3];
+        if (newText === undefined) {
+          throw new CoMotionError("命令 text set 缺少參數：new-text");
+        }
+        // --force (T3) can only follow new-text at a fixed position — new-text
+        // itself is taken verbatim from args[3] regardless of its own content,
+        // so a literal "--force" typed as text is never mistaken for the flag.
+        const force = requireTrailingForceFlag(args, 4, "text set");
+        return { name: "text set", input: { id, slidePath, elementId, newText, force } };
       }
-      const args = rest.slice(1);
-      const id = requirePositional(args, 0, "text set", "presentation-id");
-      const slidePath = requirePositional(args, 1, "text set", "slide-path");
-      const elementId = requirePositional(args, 2, "text set", "element-id");
-      // new-text may legitimately be an empty string (clears the element's
-      // text), so it is checked for absence, not falsiness — unlike
-      // requirePositional's other args, which reject empty strings too.
-      const newText = args[3];
-      if (newText === undefined) {
-        throw new CoMotionError("命令 text set 缺少參數：new-text");
+      if (sub === "style") {
+        const subsub = rest[1];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：text style ${subsub ?? ""}`);
+        }
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "text style set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "text style set", "slide-path");
+        const elementId = requirePositional(args, 2, "text style set", "element-id");
+        const rangeRaw = requireFlag(args, "--range", "text style set");
+        const rangeMatch = /^(\d+):(\d+)$/.exec(rangeRaw);
+        if (!rangeMatch) {
+          throw new CoMotionError(`--range 格式錯誤，必須是 數字:數字：${rangeRaw}`);
+        }
+        const rangeStart = Number(rangeMatch[1]);
+        const rangeEnd = Number(rangeMatch[2]);
+        if (!(rangeStart < rangeEnd)) {
+          throw new CoMotionError("--range 的起點必須小於終點");
+        }
+        const fontWeight = optionalFlag(args, "--font-weight");
+        const fontStyle = optionalFlag(args, "--font-style");
+        if (fontWeight === undefined && fontStyle === undefined) {
+          throw new CoMotionError("命令 text style set 至少要給 --font-weight 或 --font-style");
+        }
+        const force = hasFlag(args, "--force");
+        return {
+          name: "text style set",
+          input: { id, slidePath, elementId, rangeStart, rangeEnd, fontWeight, fontStyle, force },
+        };
       }
-      // --force (T3) can only follow new-text at a fixed position — new-text
-      // itself is taken verbatim from args[3] regardless of its own content,
-      // so a literal "--force" typed as text is never mistaken for the flag.
-      const force = requireTrailingForceFlag(args, 4, "text set");
-      return { name: "text set", input: { id, slidePath, elementId, newText, force } };
+      if (sub === "list") {
+        const subsub = rest[1];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：text list ${subsub ?? ""}`);
+        }
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "text list set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "text list set", "slide-path");
+        const elementId = requirePositional(args, 2, "text list set", "element-id");
+        const paragraphRaw = requireFlag(args, "--paragraph", "text list set");
+        const paragraph = Number(paragraphRaw);
+        if (!Number.isInteger(paragraph) || paragraph < 0) {
+          throw new CoMotionError(`--paragraph 不是合法的非負整數：${paragraphRaw}`);
+        }
+        const kind = requireFlag(args, "--kind", "text list set");
+        if (kind !== "bullet" && kind !== "number" && kind !== "none") {
+          throw new CoMotionError(`--kind 必須是 bullet、number 或 none：${kind}`);
+        }
+        const force = hasFlag(args, "--force");
+        return { name: "text list set", input: { id, slidePath, elementId, paragraph, kind, force } };
+      }
+      throw new CoMotionError(`未知的子命令：text ${sub ?? ""}`);
     }
     case "textbox": {
       const sub = rest[0];
@@ -95,7 +146,16 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const text = requireFlag(args, "--text", "textbox add");
         const fontSize = optionalNumberFlag(args, "--font-size", "textbox add");
         const fontFamily = optionalFlag(args, "--font-family");
-        return { name: "textbox add", input: { id, slidePath, x, y, width, text, fontSize, fontFamily } };
+        const fontWeight = optionalNumberFlag(args, "--font-weight", "textbox add");
+        const fill = optionalFlag(args, "--fill");
+        const align = optionalFlag(args, "--align");
+        if (align !== undefined && !["left", "center", "right"].includes(align)) {
+          throw new CoMotionError(`--align 必須是 left、center 或 right：${align}`);
+        }
+        return {
+          name: "textbox add",
+          input: { id, slidePath, x, y, width, text, fontSize, fontFamily, fontWeight, fill, align },
+        };
       }
       if (sub === "width") {
         const id = requirePositional(args, 0, "textbox width", "presentation-id");
@@ -392,6 +452,12 @@ export function parseArgv(argv: string[]): ParsedCommand {
     case "slide": {
       const sub = rest[0];
       const args = rest.slice(1);
+
+      if (sub === "render") {
+        const id = requirePositional(args, 0, "slide render", "presentation-id");
+        const path = requirePositional(args, 1, "slide render", "slide-path");
+        return { name: "slide render", input: { id, path } };
+      }
 
       if (sub === "add") {
         const id = requirePositional(args, 0, "slide add", "presentation-id");
