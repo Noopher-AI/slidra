@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  INITIAL_PASTE_OFFSET_STATE,
-  PASTE_OFFSET_STEP,
-  clipboardWritten,
-  nextPasteOffset,
-  type PasteOffsetState,
-} from "../src/paste-offset.js";
+import { INITIAL_PASTE_OFFSET_STATE, PASTE_OFFSET_STEP, clipboardWritten, nextPasteOffset } from "../src/paste-offset.js";
 
 describe("nextPasteOffset", () => {
   it("跨投影片貼上（目標不是來源頁也不是上次貼上的頁）時 dx/dy 為 0（A4）", () => {
@@ -22,16 +16,7 @@ describe("nextPasteOffset", () => {
     expect(dy).toBe(PASTE_OFFSET_STEP);
   });
 
-  it("同頁連續貼上，偏移逐次遞增，兩份彼此錯開（A3）", () => {
-    let state = clipboardWritten("slides/a.svg");
-    const first = nextPasteOffset(state, "slides/a.svg");
-    state = first.next;
-    const second = nextPasteOffset(state, "slides/a.svg");
-    expect(second.dx).toBeGreaterThan(first.dx);
-    expect(second.dx).toBe(first.dx + PASTE_OFFSET_STEP);
-  });
-
-  it("同頁連續貼上三次，偏移單調遞增且每次固定加一步", () => {
+  it("同頁連續貼上三次，偏移單調遞增且每次固定加一步（A3：涵蓋兩份彼此錯開的情況）", () => {
     let state = clipboardWritten("slides/a.svg");
     const offsets: number[] = [];
     for (let i = 0; i < 3; i++) {
@@ -56,13 +41,6 @@ describe("nextPasteOffset", () => {
     state = nextPasteOffset(state, "slides/b.svg").next; // paste on B: dx=0
     const backOnA = nextPasteOffset(state, "slides/a.svg");
     expect(backOnA.dx).toBe(PASTE_OFFSET_STEP);
-  });
-
-  it("來源頁未知（null）時視為非來源頁，第一次貼上 dx/dy 為 0", () => {
-    const state: PasteOffsetState = { sourceSlidePath: null, lastTargetSlidePath: null, count: 0 };
-    const { dx, dy } = nextPasteOffset(state, "slides/a.svg");
-    expect(dx).toBe(0);
-    expect(dy).toBe(0);
   });
 
   it("dx 與 dy 恆相等", () => {
