@@ -221,6 +221,28 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
   }
 });
 
+it("暫時抓取：選取後情境列蓋在投影片上，按住 Space 從情境列正中央開始拖曳仍會平移（情境列在抓取模式下不攔截指標）", async () => {
+  const { started, page } = await start("stage-nav-space-over-bar");
+  try {
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    const bar = page.locator(".context-bar");
+    await expect.poll(() => bar.isVisible()).toBe(true);
+    const barBox = (await bar.boundingBox())!;
+
+    await page.keyboard.down("Space");
+    await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).toBe("grab");
+    const before = await stageTransform(page);
+    await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(barBox.x + barBox.width / 2 + 30, barBox.y + barBox.height / 2 + 20, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => await stageTransform(page)).not.toBe(before);
+    await page.keyboard.up("Space");
+  } finally {
+    await started.cleanup();
+  }
+});
+
 it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片本體拖曳，放開後恢復；焦點在輸入框時 Space 不啟用", async () => {
   const { started, page } = await start("stage-nav-space");
   try {

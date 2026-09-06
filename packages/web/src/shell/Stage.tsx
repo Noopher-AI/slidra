@@ -262,7 +262,18 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   const wellCursor = dragging ? "grabbing" : isHandActive(hand) ? "grab" : undefined;
 
   return (
-    <div className="canvas-area" ref={wellRef} onWheel={handleWheel} onMouseDown={handleMouseDown} style={{ cursor: wellCursor }}>
+    <div
+      className="canvas-area"
+      ref={wellRef}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      style={{ cursor: wellCursor }}
+      // Grab mode (✋ or Space held): the context bar stops intercepting the
+      // pointer (stage-overlays.css) so a drag that starts over it still
+      // reaches the slide and pans — `isOnStageChrome` would otherwise swallow
+      // that mousedown as "UI chrome".
+      data-grab={isHandActive(hand) ? "true" : undefined}
+    >
       <div className="stage" style={stageStyle}>
         <div ref={canvasRef} className="canvas" />
         {/* T3/NOOP-142: pointer-events stays "none" until App.tsx sets

@@ -73,6 +73,10 @@
   border-radius: var(--radius-lg);
   animation: context-bar-in var(--dur-fast) var(--ease-out);
 }
+/* 抓取模式（✋／按住 Space）：情境列讓路，讓從它上面開始的拖曳穿透到投影片去平移。 */
+.canvas-area[data-grab="true"] .context-bar {
+  pointer-events: none;
+}
 @keyframes context-bar-in {
   from {
     opacity: 0;
