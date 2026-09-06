@@ -385,6 +385,51 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       throw new CoMotionError(`未知的子命令：slide ${sub ?? ""}`);
     }
+    case "comment": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+
+      if (sub === "add") {
+        const id = requirePositional(args, 0, "comment add", "presentation-id");
+        const slidePath = requirePositional(args, 1, "comment add", "slide-path");
+        const target = requirePositional(args, 2, "comment add", "target");
+        // text may legitimately be an empty string at this layer (rejected
+        // downstream, by `@co-motion/core`'s `addComment`) — checked for
+        // absence, not falsiness, same reasoning as `slide notes set`'s text.
+        const text = args[3];
+        if (text === undefined) {
+          throw new CoMotionError("命令 comment add 缺少參數：text");
+        }
+        const author = optionalFlag(args, "--author");
+        return { name: "comment add", input: { id, slidePath, target, text, author } };
+      }
+
+      if (sub === "edit") {
+        const id = requirePositional(args, 0, "comment edit", "presentation-id");
+        const slidePath = requirePositional(args, 1, "comment edit", "slide-path");
+        const commentId = requirePositional(args, 2, "comment edit", "comment-id");
+        const text = args[3];
+        if (text === undefined) {
+          throw new CoMotionError("命令 comment edit 缺少參數：text");
+        }
+        return { name: "comment edit", input: { id, slidePath, commentId, text } };
+      }
+
+      if (sub === "delete") {
+        const id = requirePositional(args, 0, "comment delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "comment delete", "slide-path");
+        const commentId = requirePositional(args, 2, "comment delete", "comment-id");
+        return { name: "comment delete", input: { id, slidePath, commentId } };
+      }
+
+      if (sub === "list") {
+        const id = requirePositional(args, 0, "comment list", "presentation-id");
+        const slidePath = args[1];
+        return { name: "comment list", input: { id, slidePath } };
+      }
+
+      throw new CoMotionError(`未知的子命令：comment ${sub ?? ""}`);
+    }
     case "template": {
       const sub = rest[0];
       const args = rest.slice(1);

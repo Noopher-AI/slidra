@@ -15,6 +15,7 @@ import { register as registerAssetImport } from "./commands/asset-import.js";
 import { register as registerSlide } from "./commands/slide.js";
 import { register as registerTemplate } from "./commands/template.js";
 import { register as registerPresentation } from "./commands/presentation.js";
+import { register as registerComment } from "./commands/comment.js";
 
 /**
  * Builds the registry that both the one-shot `co-motion` bin and the future
@@ -54,6 +55,7 @@ export function createDefaultRegistry(): CommandRegistry {
     registerSlide,
     registerTemplate,
     registerPresentation,
+    registerComment,
   ]) {
     register(registry);
   }
