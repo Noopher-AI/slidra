@@ -202,10 +202,13 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly editingLock: EditingLock;
   /**
-   * True once this turn has acquired `editingLock` and opened a history
-   * group — set on the turn's first command, cleared in `runTurn`'s
-   * `finally`. Guards against a second command in the same turn trying to
-   * open a second group (`beginHistoryGroup` throws on nesting) and tells
+   * True once this turn has acquired `editingLock` and called
+   * `beginHistoryGroup` — set on the turn's first command, cleared in
+   * `runTurn`'s `finally`. This session is the turn-level group's
+   * designated owner: it always calls `endHistoryGroup` unconditionally
+   * when the turn ends, regardless of the return value `beginHistoryGroup`
+   * gave it (a stale group left open by a crashed prior owner is one it
+   * joins and then closes — self-healing). `turnHasEditLock` also tells
    * `finally` whether there is a group/lock to close at all (a turn that
    * only thinks/reads never opens either).
    */

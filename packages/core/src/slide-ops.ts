@@ -269,12 +269,12 @@ export async function addSlide(id: string, input: AddSlideInput = {}): Promise<A
   const nextSlides = [...project.slides];
   nextSlides.splice(at, 0, slidePath);
 
-  await beginHistoryGroup(id);
+  const openedGroup = await beginHistoryGroup(id);
   try {
     await createPresentationFile(id, slidePath, Buffer.from(content, "utf-8"));
     await writeProject(id, { ...project, slides: nextSlides });
   } finally {
-    await endHistoryGroup(id);
+    if (openedGroup) await endHistoryGroup(id);
   }
 
   return { slidePath };
@@ -293,12 +293,12 @@ export async function deleteSlide(id: string, slidePath: string): Promise<void> 
   }
   const nextSlides = project.slides.filter((entry) => entry !== slidePath);
 
-  await beginHistoryGroup(id);
+  const openedGroup = await beginHistoryGroup(id);
   try {
     await deletePresentationFile(id, slidePath);
     await writeProject(id, { ...project, slides: nextSlides });
   } finally {
-    await endHistoryGroup(id);
+    if (openedGroup) await endHistoryGroup(id);
   }
 }
 
@@ -325,12 +325,12 @@ export async function duplicateSlide(id: string, slidePath: string): Promise<Dup
   const nextSlides = [...project.slides];
   nextSlides.splice(sourceIndex + 1, 0, newPath);
 
-  await beginHistoryGroup(id);
+  const openedGroup = await beginHistoryGroup(id);
   try {
     await createPresentationFile(id, newPath, Buffer.from(content, "utf-8"));
     await writeProject(id, { ...project, slides: nextSlides });
   } finally {
-    await endHistoryGroup(id);
+    if (openedGroup) await endHistoryGroup(id);
   }
 
   return { slidePath: newPath };
@@ -393,12 +393,12 @@ export async function addTemplate(id: string, input: AddTemplateInput = {}): Pro
   const name = trimmedName ?? formatSlideNumber(number);
   const nextTemplates: TemplateEntry[] = [...readTemplateEntries(project), { file: templatePath, name }];
 
-  await beginHistoryGroup(id);
+  const openedGroup = await beginHistoryGroup(id);
   try {
     await createPresentationFile(id, templatePath, Buffer.from(content, "utf-8"));
     await writeProject(id, { ...project, templates: nextTemplates });
   } finally {
-    await endHistoryGroup(id);
+    if (openedGroup) await endHistoryGroup(id);
   }
 
   return { templatePath };
@@ -456,12 +456,12 @@ export async function deleteTemplate(id: string, templatePath: string): Promise<
   }
   const nextTemplates = entries.filter((entry) => entry.file !== templatePath);
 
-  await beginHistoryGroup(id);
+  const openedGroup = await beginHistoryGroup(id);
   try {
     await deletePresentationFile(id, templatePath);
     await writeProject(id, { ...project, templates: nextTemplates });
   } finally {
-    await endHistoryGroup(id);
+    if (openedGroup) await endHistoryGroup(id);
   }
 }
 
