@@ -250,6 +250,9 @@
 .overview-comment-button svg {
   width: calc(var(--space-4) + 1px);
   height: calc(var(--space-4) + 1px);
+  /* The bubble's tail hangs off its bottom-left, so the geometrically
+     centred glyph reads as sitting right of centre; nudge it 1px left. */
+  transform: translateX(-1px);
 }
 
 /* 拖曳插入線（T3 plan §3.8）：畫在放置目標項的上緣。 */
