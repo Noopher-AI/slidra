@@ -8,6 +8,8 @@ export interface SlideCommentWithPath extends SlideComment {
 export interface NumberedComment extends SlideCommentWithPath {
   /** 1-based, assigned by `sortComments` — the number `.comment-pin` and Pinned context both render. */
   number: number;
+  /** 1-based index of `slidePath` in the deck — the "Slide N" label each Pinned context row shows. */
+  slideNumber: number;
 }
 
 export interface DeckCommentsResult {
@@ -82,5 +84,9 @@ export function sortComments(comments: readonly SlideCommentWithPath[], slides: 
       if (priorityDelta !== 0) return priorityDelta;
       return a.index - b.index;
     })
-    .map(({ comment }, index) => ({ ...comment, number: index + 1 }));
+    .map(({ comment }, index) => ({
+      ...comment,
+      number: index + 1,
+      slideNumber: (pageIndex.get(comment.slidePath) ?? -1) + 1,
+    }));
 }

@@ -275,7 +275,8 @@
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your
    next message」提醒作者這是隨下一則訊息一起送出的 context，不是已經送
-   出的歷史。 */
+   出的歷史。位置依設計稿（New v3 / 03-UI_RATIONALE §Chat）：在訊息區之下、
+   輸入框之上，列表超過約 6.5 列時自己捲動，不把輸入框往下推。 */
 .chat-pinned {
   flex: none;
   margin: var(--space-3) var(--space-5) 0;
@@ -283,6 +284,9 @@
   background: var(--surface-1);
   border: 1px solid var(--surface-2);
   border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .chat-pinned-header {
   display: flex;
@@ -308,6 +312,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* 設計稿：30px 一列、最多 6.5 列可視，超過捲動。 */
+  max-height: calc(var(--control-h) * 6.5);
+  overflow-y: auto;
 }
 .chat-pinned-item {
   display: flex;
@@ -335,6 +342,24 @@
 }
 .chat-pinned-item-text:hover {
   background: var(--surface-2);
+}
+.chat-pinned-item-slide {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--brand-red-hover);
+  font-weight: 700;
+}
+.chat-pinned-item-page {
+  color: var(--ink-400);
+  font-weight: 500;
+}
+.chat-pinned-item-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chat-pinned-item-number {
   flex: none;

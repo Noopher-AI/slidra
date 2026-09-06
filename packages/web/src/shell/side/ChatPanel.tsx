@@ -45,34 +45,6 @@ export function ChatPanel({
   const hasComments = comments.length > 0;
   return (
     <aside className="chat-sidebar">
-      {hasComments && (
-        <div className="chat-pinned">
-          <div className="chat-pinned-header">
-            <span>
-              Pinned context <span className="chat-pinned-count">{comments.length}</span>
-            </span>
-            <span className="chat-pinned-note">sent with your next message</span>
-          </div>
-          <ul className="chat-pinned-list">
-            {comments.map((comment) => (
-              <li key={comment.id} className="chat-pinned-item" data-comment-id={comment.id}>
-                <button type="button" className="chat-pinned-item-text" onClick={() => onPinnedClick(comment)}>
-                  <span className="chat-pinned-item-number">{comment.number}</span>
-                  {comment.text}
-                </button>
-                <button
-                  type="button"
-                  className="chat-pinned-remove"
-                  aria-label="Remove pin"
-                  onClick={() => onPinnedRemove(comment.id)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       <div className="chat-messages">
         {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
@@ -104,6 +76,38 @@ export function ChatPanel({
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
         {error && <p className="chat-error">{error}</p>}
       </div>
+      {hasComments && (
+        <div className="chat-pinned">
+          <div className="chat-pinned-header">
+            <span>
+              Pinned context <span className="chat-pinned-count">{comments.length}</span>
+            </span>
+            <span className="chat-pinned-note">sent with your next message</span>
+          </div>
+          <ul className="chat-pinned-list">
+            {comments.map((comment) => (
+              <li key={comment.id} className="chat-pinned-item" data-comment-id={comment.id}>
+                <button type="button" className="chat-pinned-item-text" onClick={() => onPinnedClick(comment)}>
+                  <span className="chat-pinned-item-number">{comment.number}</span>
+                  <span className="chat-pinned-item-slide">
+                    Slide {comment.slideNumber}
+                    {comment.target === "page" && <span className="chat-pinned-item-page">page</span>}
+                  </span>
+                  <span className="chat-pinned-item-body">{comment.text}</span>
+                </button>
+                <button
+                  type="button"
+                  className="chat-pinned-remove"
+                  aria-label="Remove pin"
+                  onClick={() => onPinnedRemove(comment.id)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <form
         className="chat-input"
         onSubmit={(event) => {
