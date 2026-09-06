@@ -5,17 +5,24 @@
 //
 // Its whole job: read window.__COMOT_PLAN__ (injected by the parent before
 // this script runs — see player-plan.ts / canvas.ts), listen for the
-// forward arrow key, apply visibility to the current step's elements, and
-// report what happened to the parent over postMessage (C4 in the design
-// doc). It never derives anything itself — all derivation (parsing the
-// effect list, grouping steps) happens in the parent, in player-plan.ts,
-// where it can be unit tested without a browser.
+// forward arrow key, apply each step's effects to the DOM via the Web
+// Animations API (ADR-0005: no SMIL, no CSS `animation`), and report what
+// happened to the parent over postMessage (C4 in the design doc). It never
+// derives anything itself — all derivation (parsing the effect list,
+// grouping steps, computing which ids start hidden) happens in the parent,
+// in player-plan.ts, where it can be unit tested without a browser.
+//
+// [E2.T7]/D7.5: this runtime does NOT feature-detect `el.animate` or
+// `document.getAnimations` — every browser this project targets has both.
+// A future environment that genuinely lacks them should fail loudly (a
+// TypeError here), not silently degrade to doing nothing.
 (function () {
   "use strict";
 
   var plan = window.__COMOT_PLAN__;
   var steps = (plan && plan.steps) || [];
   var media = (plan && plan.media) || {};
+  var hideSelectors = (plan && plan.hideSelectors) || {};
   // -1 means "no step applied yet" — everything the plan marked hidden is
   // still hidden, which is the slide's opening state.
   var currentStep = -1;
@@ -45,6 +52,18 @@
   // a real failure, and must not surface as one (see playMedia's catch).
   var tornDownMedia = new WeakSet();
 
+  // [E2.T7]/D7: which of `plan.hidden`'s ids are STILL hidden right now —
+  // starts as the full set, and loses one entry every time that target's
+  // first `enter` effect runs (see unhideForEnter). Object.create(null) for
+  // the same untrusted-id reason as mediaElements above; keys are used only
+  // via `for...in` + `hasOwnProperty`, never bare property access on
+  // anything resembling a prototype method name.
+  var hiddenNow = Object.create(null);
+  for (var hi = 0; hi < ((plan && plan.hidden) || []).length; hi++) {
+    hiddenNow[plan.hidden[hi]] = true;
+  }
+  var hideStyleEl = document.getElementById("comot-hide");
+
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
     // view (this frame is itself opaque-origin, with no allow-same-origin),
@@ -58,6 +77,36 @@
       }
     }
     parent.postMessage(payload, "*");
+  }
+
+  /**
+   * Rewrites `<style id="comot-hide">`'s content to exactly the ids still in
+   * `hiddenNow` (D7): one `{opacity:0 !important}` rule per id, using the
+   * already-escaped selector the parent computed (`plan.hideSelectors`) —
+   * this runtime never re-implements CSS id escaping.
+   */
+  function rewriteHideStyle() {
+    if (!hideStyleEl) return;
+    var rules = "";
+    for (var id in hiddenNow) {
+      if (!Object.prototype.hasOwnProperty.call(hiddenNow, id)) continue;
+      var selector = hideSelectors[id];
+      if (!selector) continue;
+      rules += selector + "{opacity:0 !important}";
+    }
+    hideStyleEl.textContent = rules;
+  }
+
+  /**
+   * D7 step 2: removes `target` from the hide stylesheet and returns
+   * synchronously — the caller must call `el.animate(...)` in the same
+   * task, before any paint, or the element would flash at full opacity for
+   * one frame before its entrance keyframes take over.
+   */
+  function unhideForEnter(target) {
+    if (!hiddenNow[target]) return;
+    delete hiddenNow[target];
+    rewriteHideStyle();
   }
 
   /**
@@ -99,9 +148,9 @@
     var cue = media[target];
     if (!cue) {
       // The parent's plan builder (player-plan.ts) already verified every
-      // media effect's target carries a cue before this plan was built, so
-      // this should not happen — reported rather than silently skipped, in
-      // case it ever does.
+      // `play` media effect's target carries a cue before this plan was
+      // built, so this should not happen — reported rather than silently
+      // skipped, in case it ever does.
       post({ event: "error", message: "找不到媒體效果的設定：" + target });
       return;
     }
@@ -142,49 +191,200 @@
     }
   }
 
+  /** `getComputedStyle(el).transform`'s resolved `matrix(...)` (or `""` for the identity transform) — the base every family's keyframes compose their own offset on top of, so an element's existing `transform="translate(x y)"` attribute (this project's own element-move convention) is never clobbered by a WAAPI keyframe's own `transform` value (CSS `transform` overrides the SVG presentation attribute entirely; it does not layer on top of it). */
+  function baseTransform(el) {
+    var computed = getComputedStyle(el).transform;
+    return computed && computed !== "none" ? computed : "";
+  }
+
+  function composeTransform(base, fn) {
+    return base ? base + " " + fn : fn;
+  }
+
+  /** Family/effect-name -> WAAPI keyframes (D4.4). `null` for a combination this function does not know how to animate (should not happen — core's `validateEffectItem` already rejected anything outside the fixed value set, 4.1). Never called for `family: "path"`, which has its own sampling-based builder (`animatePath`) — a straight-line keyframe list cannot express a curve. */
+  function keyframesFor(el, effect) {
+    var base = baseTransform(el);
+    if (effect.family === "enter") {
+      switch (effect.effect) {
+        case "appear":
+        case "fade":
+          return [{ opacity: 0 }, { opacity: 1 }];
+        case "fly-up":
+          return [
+            { opacity: 0, transform: composeTransform(base, "translateY(40px)") },
+            { opacity: 1, transform: composeTransform(base, "translateY(0px)") },
+          ];
+        case "fly-left":
+          return [
+            { opacity: 0, transform: composeTransform(base, "translateX(40px)") },
+            { opacity: 1, transform: composeTransform(base, "translateX(0px)") },
+          ];
+        case "zoom":
+          return [
+            { opacity: 0, transform: composeTransform(base, "scale(0.5)") },
+            { opacity: 1, transform: composeTransform(base, "scale(1)") },
+          ];
+      }
+      return null;
+    }
+    if (effect.family === "emphasis") {
+      switch (effect.effect) {
+        case "pulse":
+          return [
+            { transform: composeTransform(base, "scale(1)") },
+            { transform: composeTransform(base, "scale(1.15)") },
+            { transform: composeTransform(base, "scale(1)") },
+          ];
+        case "spin":
+          return [
+            { transform: composeTransform(base, "rotate(0deg)") },
+            { transform: composeTransform(base, "rotate(360deg)") },
+          ];
+        case "grow":
+          return [
+            { transform: composeTransform(base, "scale(1)") },
+            { transform: composeTransform(base, "scale(1.3)") },
+            { transform: composeTransform(base, "scale(1)") },
+          ];
+      }
+      return null;
+    }
+    if (effect.family === "exit") {
+      switch (effect.effect) {
+        case "disappear":
+        case "fade-out":
+          return [{ opacity: 1 }, { opacity: 0 }];
+        case "zoom-out":
+          return [
+            { opacity: 1, transform: composeTransform(base, "scale(1)") },
+            { opacity: 0, transform: composeTransform(base, "scale(0.5)") },
+          ];
+      }
+      return null;
+    }
+    return null;
+  }
+
   /**
-   * Applies one step's effects to the DOM. `duringReplay` is true only when
-   * this call is part of resetToStep's forward replay (settled decision #4):
-   * media effects are skipped entirely there — playMedia is only ever
-   * called from the live forward path (advance) — and every transition is
-   * forced off, `fade` included, so retreating past a fade step never
-   * re-plays it.
+   * `family: "path"` (D4.4, ADR-0005 amended): builds a detached `<path
+   * d="...">` purely to sample it — `getTotalLength`/`getPointAtLength`
+   * work on a node that is never inserted into the document — and turns
+   * those samples into a `transform: translate(dx,dy)` keyframe list, one
+   * sample per `1/SAMPLE_COUNT` of the path's length. Deliberately not
+   * `offset-path`/`motion-path` CSS (D4.4): support differs enough across
+   * engines that it would become a second animation mechanism, not a
+   * shortcut. Every offset composes onto the element's existing transform
+   * (`baseTransform`), same as every other family — the coordinate motion
+   * is *relative to* wherever the element already sits, not absolute.
+   */
+  function animatePath(el, effect, duration, delay) {
+    var d = effect.d;
+    if (!d) {
+      post({ event: "error", message: "路徑效果缺少 d：" + effect.target });
+      return null;
+    }
+    var pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathEl.setAttribute("d", d);
+
+    var length;
+    try {
+      length = pathEl.getTotalLength();
+    } catch (err) {
+      post({
+        event: "error",
+        message: "路徑資料無法解析（" + effect.target + "）：" + (err && err.message ? err.message : String(err)),
+      });
+      return null;
+    }
+    if (!isFinite(length) || length <= 0) {
+      post({ event: "error", message: "路徑效果的 d 長度為 0，無法建立動畫：" + effect.target });
+      return null;
+    }
+
+    var SAMPLE_COUNT = 20;
+    var start = pathEl.getPointAtLength(0);
+    var base = baseTransform(el);
+    var keyframes = [];
+    for (var i = 0; i <= SAMPLE_COUNT; i++) {
+      var point = pathEl.getPointAtLength((length * i) / SAMPLE_COUNT);
+      var dx = point.x - start.x;
+      var dy = point.y - start.y;
+      keyframes.push({ transform: composeTransform(base, "translate(" + dx + "px, " + dy + "px)") });
+    }
+    return el.animate(keyframes, { duration: duration, delay: delay, fill: "forwards", easing: "linear" });
+  }
+
+  /**
+   * Applies one effect (D4.4). Returns the `Animation` WAAPI handed back
+   * (so `playEffectsAwaitable`, used only by Preview, can wait on
+   * `.finished`), or `null` for a media effect or an effect this runtime
+   * could not animate. `duringReplay` (settled decision #4, extended by
+   * [E2.T7]): every family runs with `duration: 0`/`delay: 0` — a step's
+   * final state applies instantly — and media is skipped entirely (a
+   * replay never plays sound).
+   */
+  function applyEffect(effect, duringReplay) {
+    if (effect.family === "media") {
+      if (duringReplay) return null;
+      if (effect.effect === "play") {
+        playMedia(effect.target);
+        return null;
+      }
+      if (effect.effect === "pause") {
+        var mediaEl = mediaElements[effect.target];
+        if (mediaEl) {
+          mediaEl.pause();
+        } else {
+          post({ event: "error", message: "找不到要暫停的媒體元素：" + effect.target });
+        }
+        return null;
+      }
+      return null;
+    }
+
+    var el = document.getElementById(effect.target);
+    if (!el) {
+      // The parent's parser (effects.ts, delegating to
+      // @co-motion/core/effects) already verified every target exists
+      // before this plan was ever built, so this should not happen.
+      // Reported rather than silently skipped, in case it ever does — e.g.
+      // a future bug in the parent's derivation.
+      post({ event: "error", message: "找不到步驟中要顯示的元素：" + effect.target });
+      return null;
+    }
+
+    if (effect.family === "enter") unhideForEnter(effect.target);
+
+    var duration = duringReplay ? 0 : Math.round((effect.duration || 0) * 1000);
+    var delay = duringReplay ? 0 : Math.round((effect.delay || 0) * 1000);
+
+    if (effect.family === "path") {
+      return animatePath(el, effect, duration, delay);
+    }
+
+    var keyframes = keyframesFor(el, effect);
+    if (!keyframes) return null;
+    return el.animate(keyframes, {
+      duration: duration,
+      delay: delay,
+      // exit's whole point is to stay gone; every other family's final
+      // keyframe already composes back to the identity offset (D7/D4.4),
+      // so nothing else needs its effect held once it finishes.
+      fill: effect.family === "exit" ? "forwards" : "none",
+      easing: "ease",
+    });
+  }
+
+  /**
+   * Applies one step's effects to the DOM, fire-and-forget (the normal
+   * forward-advance / replay path — nothing here ever needs to know when
+   * the animations finish). See `playEffectsAwaitable` for the one caller
+   * that does (Preview).
    */
   function applyStep(step, duringReplay) {
     var effects = step.effects;
     for (var i = 0; i < effects.length; i++) {
-      var effect = effects[i];
-      if (effect.family === "media") {
-        if (!duringReplay) playMedia(effect.target);
-        continue;
-      }
-      if (effect.family !== "enter") continue;
-
-      var el = document.getElementById(effect.target);
-      if (!el) {
-        // The parent's parser (effects.ts) already verified every target
-        // exists before this plan was ever built, so this should not
-        // happen. Reported rather than silently skipped, in case it ever
-        // does — e.g. a future bug in the parent's derivation.
-        post({ event: "error", message: "找不到步驟中要顯示的元素：" + effect.target });
-        continue;
-      }
-
-      // "appear" must be instant, "fade" must transition — both are driven
-      // by setting inline opacity, per the design doc. During replay every
-      // transition is off regardless of effect type (settled decision #4):
-      // replaying earlier fades on retreat is exactly what #46 forbids.
-      el.style.transition = !duringReplay && effect.effect === "fade" ? "opacity 0.4s" : "none";
-      // !important: the hide stylesheet in player-plan.ts's renderHideStyle
-      // also had to become !important, because a legal slide element can
-      // carry its own inline opacity (e.g. style="opacity:1"), and inline
-      // style normally wins the cascade over an injected stylesheet rule
-      // regardless of that rule's specificity. Once the hide rule is
-      // !important, a plain `el.style.opacity = "1"` here can no longer
-      // beat it — inline !important is required on both sides, or a step
-      // could set opacity:1 and have it silently overridden by the hide
-      // rule that was supposed to have already been superseded.
-      el.style.setProperty("opacity", "1", "important");
+      applyEffect(effects[i], duringReplay);
     }
   }
 
@@ -194,12 +394,18 @@
    * is the retreat approach settled for #46: rather than inverting each
    * effect family ("un-fade", "un-play"), reuse the runtime's existing
    * forward-apply capability from a known-clean starting point, so any
-   * effect family — including ones that do not exist yet — retreats
-   * correctly for free. Passing target = -1 replays nothing, landing back
-   * on the slide's untouched opening state.
+   * effect family — including path/emphasis/exit, added by [E2.T7] —
+   * retreats correctly for free. Passing target = -1 replays nothing,
+   * landing back on the slide's untouched opening state.
+   *
+   * [E2.T7]: cancelling every live `Animation` up front is what makes "known
+   * clean starting point" true for WAAPI the same way the old code's manual
+   * inline-style clearing made it true for plain opacity/transition — an
+   * `exit`/`path` effect's `fill: "forwards"` hold is exactly the kind of
+   * lingering state a retreat must not carry across.
    *
    * Deliberate asymmetry (#46, do not "fix"): media is skipped during
-   * replay (see applyStep), so retreating past a media step and then
+   * replay (see applyEffect), so retreating past a media step and then
    * advancing onto it again restarts that video from the beginning rather
    * than resuming it. This is intentional, not a bug to close. A single
    * key press carries exactly one transient activation (settled decision
@@ -213,26 +419,14 @@
    * option that stays inside both constraints.
    */
   function resetToStep(target) {
-    for (var i = 0; i < plan.hidden.length; i++) {
-      var el = document.getElementById(plan.hidden[i]);
-      if (el) {
-        // Force the transition off *before* removing the inline opacity, so
-        // the opacity change that follows cannot be animated. Slide markup
-        // is author-written and may legally carry its own CSS transition on
-        // this element (an inline style or a <style> rule in the SVG); if we
-        // removed our inline transition instead of overriding it, that
-        // author transition would apply to the opacity drop below and the
-        // element would fade out instead of vanishing instantly, breaking
-        // the "retreat is instant" guarantee. Leaving `transition: none`
-        // behind afterwards is deliberate, not an oversight: applyStep()
-        // always sets the transition explicitly on every element it touches
-        // (`opacity 0.4s` for a live fade, `none` otherwise), so nothing
-        // downstream depends on this element's original transition value
-        // being restored. Do not "fix" this back to removeProperty.
-        el.style.setProperty("transition", "none");
-        el.style.removeProperty("opacity");
-      }
+    hiddenNow = Object.create(null);
+    for (var hi = 0; hi < ((plan && plan.hidden) || []).length; hi++) {
+      hiddenNow[plan.hidden[hi]] = true;
     }
+    rewriteHideStyle();
+
+    var animations = document.getAnimations();
+    for (var ai = 0; ai < animations.length; ai++) animations[ai].cancel();
 
     // Tear down every media overlay this runtime created: pause it, remove
     // it from the document, and forget it. Clearing mediaElements here is
@@ -275,6 +469,79 @@
       // at the far end.
       post({ event: "retreat-past-start" });
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Preview ([E2.T7]/D8): plan.preview, set only by canvas.ts's
+  // previewEffects(), never by computePlayerPlan. Plays either one card's
+  // specific effect-list positions (`effectIndices`) or the whole slide's
+  // steps in sequence (`null`), then posts exactly one `preview-done` and
+  // goes quiet — the parent tears this iframe down on that signal.
+  // ---------------------------------------------------------------------
+
+  var PREVIEW_STEP_GAP_MS = 250;
+
+  function waitFor(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  /** Runs every effect in `effects` (real timing, not a replay) and resolves once every one of them that produced a WAAPI `Animation` has finished — a rejected `.finished` (e.g. cancelled by a `resetToStep` racing this preview) is swallowed, never left unhandled. */
+  function playEffectsAwaitable(effects) {
+    var pending = [];
+    for (var i = 0; i < effects.length; i++) {
+      var result = applyEffect(effects[i], false);
+      if (result && result.finished && typeof result.finished.then === "function") {
+        pending.push(
+          result.finished.catch(function () {
+            /* cancelled mid-preview — treat as settled, not an error */
+          }),
+        );
+      }
+    }
+    return Promise.all(pending);
+  }
+
+  function runPreview(effectIndices) {
+    function finishPreview() {
+      post({ event: "preview-done" });
+    }
+
+    if (effectIndices) {
+      var byIndex = Object.create(null);
+      for (var s = 0; s < steps.length; s++) {
+        var stepEffects = steps[s].effects;
+        for (var e = 0; e < stepEffects.length; e++) {
+          byIndex[stepEffects[e].index] = stepEffects[e];
+        }
+      }
+      var selected = [];
+      for (var i = 0; i < effectIndices.length; i++) {
+        var effect = byIndex[effectIndices[i]];
+        if (effect) selected.push(effect);
+      }
+      playEffectsAwaitable(selected).then(finishPreview, finishPreview);
+      return;
+    }
+
+    var stepIndex = 0;
+    function playNextStep() {
+      if (stepIndex >= steps.length) {
+        finishPreview();
+        return;
+      }
+      var effects = steps[stepIndex].effects;
+      stepIndex += 1;
+      playEffectsAwaitable(effects).then(function () {
+        if (stepIndex >= steps.length) {
+          finishPreview();
+        } else {
+          waitFor(PREVIEW_STEP_GAP_MS).then(playNextStep);
+        }
+      }, finishPreview);
+    }
+    playNextStep();
   }
 
   document.addEventListener("keydown", function (event) {
@@ -339,16 +606,23 @@
   // which step to land on, and this replays there before anything else
   // happens — the same replay-forward mechanism as ArrowLeft, just seeded
   // from a different starting point. -1 (the default) means "just arrived
-  // normally", so nothing is replayed.
-  var startStep = (plan && typeof plan.startStep === "number" ? plan.startStep : -1);
-  if (startStep >= 0) {
+  // normally", so nothing is replayed. Skipped entirely in Preview (D8):
+  // Preview has no notion of "which step to land on", only "which effects
+  // to play right now".
+  var startStep = plan && typeof plan.startStep === "number" ? plan.startStep : -1;
+  if (!(plan && plan.preview) && startStep >= 0) {
     currentStep = startStep;
     resetToStep(startStep);
   }
 
-  // "ready" must stay the last message this runtime ever posts on boot,
-  // and its shape must stay exactly `{ source: "comot-player", event:
-  // "ready" }` — packages/web/test/canvas.test.ts:851 asserts on that
-  // literal substring to prove the runtime was injected.
+  // "ready" must stay the last message this runtime posts ON BOOT, and its
+  // shape must stay exactly `{ source: "comot-player", event: "ready" }` —
+  // packages/web/test/canvas.test.ts:851 asserts on that literal substring
+  // to prove the runtime was injected. Preview's own `preview-done` is a
+  // later, separate message (D8) — it does not change this contract.
   post({ event: "ready" });
+
+  if (plan && plan.preview) {
+    runPreview(plan.preview.effectIndices);
+  }
 })();

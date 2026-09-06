@@ -14,6 +14,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * Every test builds its own iframe so each gets an isolated `window` (fresh
  * keydown listeners, fresh `currentStep` closure state) rather than sharing
  * mutable globals across tests.
+ *
+ * [E2.T7]/D7.5: jsdom has neither `Element.prototype.animate` nor
+ * `document.getAnimations` (confirmed: `el.animate === undefined`), and the
+ * runtime deliberately does not feature-detect either — a real browser
+ * always has both, D7.5). `stubWebAnimations` below is this test file's own
+ * substitute, installed on every `boot()`: it records every `animate()`
+ * call's `{el, keyframes, options}` (the runtime's public boundary to a
+ * browser, §6.4) and makes `document.getAnimations()`/`.cancel()` behave
+ * consistently with it, so `resetToStep`'s cancel-everything step is
+ * testable too. `family: "path"` is NOT covered here — jsdom has no
+ * `SVGGeometryElement.getTotalLength`/`getPointAtLength` either, and
+ * stubbing those away would stop testing this runtime's own path-sampling
+ * math entirely. Path animation is covered by `e2e/object-animation.test.ts`
+ * instead, against a real browser.
  */
 const runtimeSource = readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/player-runtime.js"),
@@ -31,11 +45,19 @@ afterEach(() => {
   iframe.remove();
 });
 
+// [E2.T7]: widened from "enter" | "media" to the full five-family value set
+// (D4), and duration/delay/d/index added — all optional, so every
+// pre-existing call site building a bare `{target, family, effect, start}`
+// still compiles unchanged.
 interface StubEffect {
   target: string;
-  family: "enter" | "media";
+  family: "enter" | "emphasis" | "exit" | "path" | "media";
   effect: string;
-  start: "on-click";
+  start: "on-click" | "with-previous" | "after-previous";
+  duration?: number;
+  delay?: number;
+  d?: string;
+  index?: number;
 }
 interface StubMediaCue {
   src: string;
@@ -44,25 +66,76 @@ interface StubMediaCue {
 interface StubPlan {
   steps: { effects: StubEffect[] }[];
   hidden: string[];
+  hideSelectors?: Record<string, string>;
   media?: Record<string, StubMediaCue>;
   startStep?: number;
+  preview?: { effectIndices: number[] | null };
 }
 
-function enter(target: string, effect: "fade" | "appear"): StubEffect {
-  return { target, family: "enter", effect, start: "on-click" };
+function enter(target: string, effect: string, overrides: Partial<StubEffect> = {}): StubEffect {
+  return { target, family: "enter", effect, start: "on-click", ...overrides };
 }
-function media(target: string): StubEffect {
-  return { target, family: "media", effect: "play", start: "on-click" };
+function emphasis(target: string, effect: string, overrides: Partial<StubEffect> = {}): StubEffect {
+  return { target, family: "emphasis", effect, start: "on-click", ...overrides };
+}
+function exitEffect(target: string, effect: string, overrides: Partial<StubEffect> = {}): StubEffect {
+  return { target, family: "exit", effect, start: "on-click", ...overrides };
+}
+function media(target: string, effect: "play" | "pause" = "play"): StubEffect {
+  return { target, family: "media", effect, start: "on-click" };
+}
+
+interface StubAnimation {
+  el: Element;
+  keyframes: Record<string, unknown>[];
+  options: { duration?: number; delay?: number; fill?: string; easing?: string };
+  cancelled: boolean;
+  finished: Promise<void>;
+  cancel: () => void;
+}
+
+/** [E2.T7]/D7.5: see this file's header comment. */
+function stubWebAnimations(win: Window): StubAnimation[] {
+  const calls: StubAnimation[] = [];
+  const ElementCtor = (win as unknown as { Element: { prototype: Record<string, unknown> } }).Element;
+  ElementCtor.prototype.animate = function (this: Element, keyframes: unknown, options: unknown) {
+    const call: StubAnimation = {
+      el: this,
+      keyframes: keyframes as Record<string, unknown>[],
+      options: options as StubAnimation["options"],
+      cancelled: false,
+      finished: Promise.resolve(),
+      cancel: () => {
+        call.cancelled = true;
+      },
+    };
+    calls.push(call);
+    return call;
+  };
+  (win.document as unknown as { getAnimations: () => StubAnimation[] }).getAnimations = () =>
+    calls.filter((call) => !call.cancelled);
+  return calls;
 }
 
 /** Boots the runtime inside `iframe`'s own window/document with the given plan. */
-function boot(plan: StubPlan, elementIds: string[]): { win: Window; doc: Document } {
+function boot(plan: StubPlan, elementIds: string[]): { win: Window; doc: Document; animations: StubAnimation[] } {
   const win = iframe.contentWindow as Window & { __COMOT_PLAN__?: StubPlan };
   const doc = iframe.contentDocument as Document;
-  doc.body.innerHTML = elementIds.map((id) => `<div id="${id}"></div>`).join("");
-  win.__COMOT_PLAN__ = plan;
+  const hideSelectors = plan.hideSelectors ?? Object.fromEntries(plan.hidden.map((id) => [id, `#${id}`]));
+  // `<style id="comot-hide">`, PRE-POPULATED with every hidden id's rule, is
+  // normally injected by canvas.ts's wrapPlayDocument — it is
+  // player-plan.ts's renderHideStyle() output, baked into the srcdoc HTML
+  // before this script ever runs. These tests eval the runtime directly,
+  // so they must reproduce that same starting state, not an empty shell —
+  // the runtime itself never populates this stylesheet's *initial*
+  // content, only rewrites it afterwards (D7).
+  const initialRules = plan.hidden.map((id) => `${hideSelectors[id]}{opacity:0 !important}`).join("");
+  doc.body.innerHTML =
+    `<style id="comot-hide">${initialRules}</style>` + elementIds.map((id) => `<div id="${id}"></div>`).join("");
+  const animations = stubWebAnimations(win);
+  win.__COMOT_PLAN__ = { ...plan, hideSelectors };
   (win as unknown as { eval: (source: string) => void }).eval(runtimeSource);
-  return { win, doc };
+  return { win, doc, animations };
 }
 
 function press(win: Window, key: string): void {
@@ -70,8 +143,18 @@ function press(win: Window, key: string): void {
   win.document.dispatchEvent(new KeyboardEventCtor("keydown", { key }));
 }
 
-function opacityOf(doc: Document, id: string): string {
-  return (doc.getElementById(id) as HTMLElement).style.opacity;
+/** Whether `<style id="comot-hide">` still carries a rule for `id` — the D7 replacement for reading `el.style.opacity` directly (WAAPI keyframes aren't reflected in `.style` at all). */
+function hideStyleContains(doc: Document, id: string): boolean {
+  const styleEl = doc.getElementById("comot-hide");
+  return !!styleEl && (styleEl.textContent ?? "").indexOf(`#${id}{`) !== -1;
+}
+
+function animationsFor(animations: StubAnimation[], id: string): StubAnimation[] {
+  return animations.filter((call) => (call.el as HTMLElement).id === id);
+}
+
+function lastKeyframe(call: StubAnimation): Record<string, unknown> {
+  return call.keyframes[call.keyframes.length - 1];
 }
 
 /** Collects every `comot-player` message posted to the outer (test) window. */
@@ -86,6 +169,10 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("player-runtime.js", () => {
   it("posts ready to the parent as soon as it boots", async () => {
     const { messages, stop } = collectMessages();
@@ -96,22 +183,23 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "comot-player", event: "ready" });
   });
 
-  it("ArrowRight 推進一步時，同一步的多個元素一起出現", () => {
+  it("ArrowRight 推進一步時，同一步的多個元素一起出現（各自送出 el.animate，keyframes 最終 opacity 為 1）", () => {
     // Hand-built here, bypassing parseEffects/deriveSteps entirely: this
     // is testing the runtime's own contract (apply whatever step it is
-    // given), independent of whether today's parser can produce a
-    // multi-effect step from a real file (it cannot yet — with-previous is
-    // Out of Scope for #23/#26). See the report for that gap.
+    // given), independent of what today's parser can produce from a real
+    // file.
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade"), enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-b", "el-bg"]);
+    const { win, animations } = boot(plan, ["el-a", "el-b", "el-bg"]);
 
     press(win, "ArrowRight");
 
-    expect(opacityOf(doc, "el-a")).toBe("1");
-    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(animationsFor(animations, "el-a")).toHaveLength(1);
+    expect(animationsFor(animations, "el-b")).toHaveLength(1);
+    expect(lastKeyframe(animationsFor(animations, "el-a")[0]).opacity).toBe(1);
+    expect(lastKeyframe(animationsFor(animations, "el-b")[0]).opacity).toBe(1);
   });
 
   it("不屬於任何步驟的元素完全不被 runtime 碰觸", () => {
@@ -119,26 +207,28 @@ describe("player-runtime.js", () => {
       steps: [{ effects: [enter("el-a", "fade")] }],
       hidden: ["el-a"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-bg"]);
+    const { win, animations } = boot(plan, ["el-a", "el-bg"]);
 
     press(win, "ArrowRight");
 
-    // el-bg was never in `hidden`, so it starts on screen and the runtime
-    // never sets its opacity at all — no inline style was ever written.
-    expect((doc.getElementById("el-bg") as HTMLElement).style.opacity).toBe("");
+    // el-bg was never in `hidden` and never named by any step: no
+    // el.animate() call is ever made for it.
+    expect(animationsFor(animations, "el-bg")).toHaveLength(0);
   });
 
-  it("fade 用 transition，appear 是瞬間（沒有 transition）", () => {
+  it("effect.duration/delay 原樣（換算成毫秒）傳給 el.animate 的 options", () => {
     const plan: StubPlan = {
-      steps: [{ effects: [enter("el-a", "fade"), enter("el-b", "appear")] }],
+      steps: [
+        { effects: [enter("el-a", "fade", { duration: 0.4, delay: 0.1 }), enter("el-b", "appear", { duration: 0 })] },
+      ],
       hidden: ["el-a", "el-b"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+    const { win, animations } = boot(plan, ["el-a", "el-b"]);
 
     press(win, "ArrowRight");
 
-    expect((doc.getElementById("el-a") as HTMLElement).style.transition).toContain("opacity");
-    expect((doc.getElementById("el-b") as HTMLElement).style.transition).toBe("none");
+    expect(animationsFor(animations, "el-a")[0].options).toMatchObject({ duration: 400, delay: 100 });
+    expect(animationsFor(animations, "el-b")[0].options).toMatchObject({ duration: 0 });
   });
 
   it("逐步推進，一次只套用一步；推進到最後一步再按，改為送出 advance-past-end", async () => {
@@ -146,15 +236,15 @@ describe("player-runtime.js", () => {
       steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }],
       hidden: ["el-a", "el-b"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+    const { win, animations } = boot(plan, ["el-a", "el-b"]);
     const { messages, stop } = collectMessages();
 
     press(win, "ArrowRight");
-    expect(opacityOf(doc, "el-a")).toBe("1");
-    expect(opacityOf(doc, "el-b")).toBe("");
+    expect(animationsFor(animations, "el-a")).toHaveLength(1);
+    expect(animationsFor(animations, "el-b")).toHaveLength(0);
 
     press(win, "ArrowRight");
-    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(animationsFor(animations, "el-b")).toHaveLength(1);
 
     press(win, "ArrowRight");
     await tick();
@@ -163,7 +253,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
   });
 
-  it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍可見，第 2 步的元素恢復隱藏", () => {
+  it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍解除隱藏，第 2 步的元素恢復隱藏", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
@@ -172,33 +262,35 @@ describe("player-runtime.js", () => {
 
     press(win, "ArrowRight");
     press(win, "ArrowRight");
-    expect(opacityOf(doc, "el-a")).toBe("1");
-    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(hideStyleContains(doc, "el-a")).toBe(false);
+    expect(hideStyleContains(doc, "el-b")).toBe(false);
 
     press(win, "ArrowLeft");
 
-    expect(opacityOf(doc, "el-a")).toBe("1");
-    expect(opacityOf(doc, "el-b")).toBe("");
+    expect(hideStyleContains(doc, "el-a")).toBe(false);
+    expect(hideStyleContains(doc, "el-b")).toBe(true);
   });
 
-  it("退回時把恢復隱藏的元素之 transition 設為 none，而不是移除（避免作者自訂的 transition 在退回瞬間跑動畫）", () => {
-    // jsdom doesn't run CSS transitions, so this only pins the inline style
-    // state that makes an instant hide possible (transition:none set before
-    // opacity is cleared) — it cannot observe the actual fade/no-fade visual
-    // behaviour of a real browser. That is covered by a later e2e unit.
+  it("退回時取消所有進行中的動畫，並把 hide 樣式表重新寫回完整的隱藏集合（D7 的「已知乾淨起點」延伸到 WAAPI）", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+    const { win, doc, animations } = boot(plan, ["el-a", "el-b"]);
 
     press(win, "ArrowRight");
     press(win, "ArrowRight");
+    const beforeRetreat = animations.slice();
     press(win, "ArrowLeft");
 
-    const elB = doc.getElementById("el-b") as HTMLElement;
-    expect(elB.style.transition).toBe("none");
-    expect(elB.style.opacity).toBe("");
+    // Every animation created before the retreat must now be cancelled — a
+    // lingering `fill` hold (exit/path) is exactly the kind of state a
+    // retreat must not carry across (#46's "known-clean starting point").
+    // The replay itself creates its own fresh (duration:0) calls, which are
+    // legitimately still active — only the pre-retreat snapshot is checked.
+    expect(beforeRetreat.length).toBeGreaterThan(0);
+    expect(beforeRetreat.every((call) => call.cancelled)).toBe(true);
+    expect(hideStyleContains(doc, "el-b")).toBe(true);
   });
 
   it("plan.startStep 為 -1（預設值）時開機：hidden 目標維持隱藏，與剛抵達投影片時相同", () => {
@@ -207,9 +299,10 @@ describe("player-runtime.js", () => {
       hidden: ["el-a"],
       startStep: -1,
     };
-    const { doc } = boot(plan, ["el-a"]);
+    const { doc, animations } = boot(plan, ["el-a"]);
 
-    expect(opacityOf(doc, "el-a")).toBe("");
+    expect(hideStyleContains(doc, "el-a")).toBe(true);
+    expect(animations).toHaveLength(0);
   });
 
   it("退回重播的路徑上，media 效果被跳過，不建立媒體元素", () => {
@@ -361,18 +454,22 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
   });
 
-  it("退回 fade 步驟不會重新播放更早的 fade（重播時 transition 一律關閉）", () => {
+  it("退回重播時，每個 el.animate 呼叫都用 duration 0（不重播更早效果原本的動畫時長）", () => {
     const plan: StubPlan = {
-      steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "appear")] }],
+      steps: [{ effects: [enter("el-a", "fade", { duration: 0.4 })] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
     };
-    const { win, doc } = boot(plan, ["el-a", "el-b"]);
+    const { win, animations } = boot(plan, ["el-a", "el-b"]);
 
     press(win, "ArrowRight");
     press(win, "ArrowRight");
     press(win, "ArrowLeft");
 
-    expect((doc.getElementById("el-a") as HTMLElement).style.transition).toBe("none");
+    const forA = animationsFor(animations, "el-a");
+    // One live call (real duration) plus one replay call (duration 0).
+    expect(forA).toHaveLength(2);
+    expect(forA[0].options.duration).toBe(400);
+    expect(forA[1].options.duration).toBe(0);
   });
 
   it("開機時 plan.startStep 設為最後一步索引：直接落在該步驟已全部套用的狀態", async () => {
@@ -386,21 +483,22 @@ describe("player-runtime.js", () => {
     await tick();
     stop();
 
-    expect(opacityOf(doc, "el-a")).toBe("1");
-    expect(opacityOf(doc, "el-b")).toBe("1");
+    expect(hideStyleContains(doc, "el-a")).toBe(false);
+    expect(hideStyleContains(doc, "el-b")).toBe(false);
     expect(messages[messages.length - 1]).toEqual({ source: "comot-player", event: "ready" });
   });
 
   it("ArrowLeft 在投影片第一步（尚未按過任何鍵）時，送出 retreat-past-start，畫面不變", async () => {
     const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
-    const { win, doc } = boot(plan, ["el-a"]);
+    const { win, doc, animations } = boot(plan, ["el-a"]);
     const { messages, stop } = collectMessages();
 
     press(win, "ArrowLeft");
     await tick();
     stop();
 
-    expect(opacityOf(doc, "el-a")).toBe("");
+    expect(hideStyleContains(doc, "el-a")).toBe(true);
+    expect(animations).toHaveLength(0);
     expect(messages).toContainEqual({ source: "comot-player", event: "retreat-past-start" });
   });
 
@@ -515,5 +613,96 @@ describe("player-runtime.js", () => {
     await tick();
 
     expect(called).toBe(true);
+  });
+
+  // ------------------------------------------------------------------
+  // [E2.T7]: emphasis/exit families, and Preview (D8).
+  // ------------------------------------------------------------------
+
+  it("emphasis 效果不影響 hidden，keyframes 是 transform 的來回關鍵影格", () => {
+    const plan: StubPlan = { steps: [{ effects: [emphasis("el-a", "pulse")] }], hidden: [] };
+    const { win, doc, animations } = boot(plan, ["el-a"]);
+
+    press(win, "ArrowRight");
+
+    expect(hideStyleContains(doc, "el-a")).toBe(false);
+    const call = animationsFor(animations, "el-a")[0];
+    expect(String(call.keyframes[0].transform)).toContain("scale(1)");
+    expect(String(call.keyframes[call.keyframes.length - 1].transform)).toContain("scale(1)");
+    expect(call.options.fill).toBe("none");
+  });
+
+  it("D12：exit 效果的 target 一開始不在 hidden，el.animate 用 fill: forwards 收尾在 opacity 0", () => {
+    const plan: StubPlan = {
+      steps: [{ effects: [exitEffect("el-a", "fade-out")] }],
+      hidden: [], // this target's only effect is exit — never pre-hidden.
+    };
+    const { win, doc, animations } = boot(plan, ["el-a"]);
+
+    expect(hideStyleContains(doc, "el-a")).toBe(false);
+
+    press(win, "ArrowRight");
+
+    const call = animationsFor(animations, "el-a")[0];
+    expect(call.options.fill).toBe("forwards");
+    expect(lastKeyframe(call).opacity).toBe(0);
+  });
+
+  describe("Preview（D8）", () => {
+    it("plan.preview.effectIndices 給定時，只播放那幾個效果索引，完成後送出 preview-done", async () => {
+      const plan: StubPlan = {
+        steps: [
+          { effects: [enter("el-a", "appear", { duration: 0, index: 0 })] },
+          { effects: [enter("el-b", "appear", { duration: 0, index: 1 })] },
+        ],
+        hidden: ["el-a", "el-b"],
+        preview: { effectIndices: [1] },
+      };
+      const { animations } = boot(plan, ["el-a", "el-b"]);
+      const { messages, stop } = collectMessages();
+
+      await wait(100);
+      stop();
+
+      expect(animationsFor(animations, "el-a")).toHaveLength(0);
+      expect(animationsFor(animations, "el-b")).toHaveLength(1);
+      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+      // "ready" is still the boot sequence's own last message — preview-done
+      // is a distinct, later message, not a replacement for it.
+      expect(messages[0]).toEqual({ source: "comot-player", event: "ready" });
+    });
+
+    it("plan.preview.effectIndices 為 null 時，依序播放整份簡報每一步，最後送出 preview-done", async () => {
+      const plan: StubPlan = {
+        steps: [
+          { effects: [enter("el-a", "appear", { duration: 0, index: 0 })] },
+          { effects: [enter("el-b", "appear", { duration: 0, index: 1 })] },
+        ],
+        hidden: ["el-a", "el-b"],
+        preview: { effectIndices: null },
+      };
+      const { animations } = boot(plan, ["el-a", "el-b"]);
+      const { messages, stop } = collectMessages();
+
+      // Two steps at duration:0 plus one fixed inter-step gap — a generous
+      // upper bound, not a tight timing assertion.
+      await wait(800);
+      stop();
+
+      expect(animationsFor(animations, "el-a")).toHaveLength(1);
+      expect(animationsFor(animations, "el-b")).toHaveLength(1);
+      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+    });
+
+    it("preview 為空清單（沒有步驟）時，立刻送出 preview-done", async () => {
+      const plan: StubPlan = { steps: [], hidden: [], preview: { effectIndices: null } };
+      boot(plan, []);
+      const { messages, stop } = collectMessages();
+
+      await wait(100);
+      stop();
+
+      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+    });
   });
 });
