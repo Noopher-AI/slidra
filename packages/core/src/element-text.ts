@@ -4,6 +4,7 @@ import { attributeOf, attributeValue, scanDocument, type ScannedAttribute, type 
 import { wrapText, type WrappedLine, type WrappedText } from "./text/wrap.js";
 import { renderTextBoxContent } from "./text/render.js";
 import { applyRunStyle, readTextBoxRuns } from "./text/runs.js";
+import { parseListTokens, listIndents, type ListKind } from "./text/list.js";
 import type { FontMetrics } from "./text-metrics.js";
 import { formatSvgNumber } from "./svg-number.js";
 
@@ -124,10 +125,8 @@ const LIST_ATTRIBUTE = "data-comot-list";
  */
 export const LIST_MARKER_ATTRIBUTE = "data-comot-list-marker";
 
-/** Left indent, in em (× font-size), for a list paragraph — a judgement value (no ADR/ticket names one); tune by changing this one constant. */
-const LIST_INDENT_EM = 1.5;
-
-export type ListKind = "bullet" | "number" | "none";
+/** Re-exported so `packages/core/src/index.ts`'s existing `export type { ListKind }` keeps compiling — the type itself now lives in `text/list.ts` (NOOP-65r3), shared with the host's preview channel. */
+export type { ListKind };
 
 const LIST_KINDS: readonly ListKind[] = ["bullet", "number", "none"];
 
@@ -153,19 +152,7 @@ function markerTextChild(container: ScannedNode): ScannedNode | undefined {
  * all reads as "no list anywhere", byte-for-byte the pre-list behaviour).
  */
 function readListTokens(textNode: ScannedNode, paragraphCount: number, elementId: string): ListKind[] {
-  const raw = attributeValue(textNode, LIST_ATTRIBUTE);
-  const tokens = raw === null || raw.trim() === "" ? [] : raw.trim().split(/\s+/);
-  for (const token of tokens) {
-    if (!LIST_KINDS.includes(token as ListKind)) {
-      throw new CoMotionError(`元素 ${elementId} 的 ${LIST_ATTRIBUTE} 含不合法的值：${token}`);
-    }
-  }
-  return Array.from({ length: paragraphCount }, (_, i) => (tokens[i] as ListKind | undefined) ?? "none");
-}
-
-/** `wrapText`'s `indents` option, one entry per paragraph — non-"none" paragraphs get `LIST_INDENT_EM * fontSize`, everything else 0. */
-function indentsForTokens(tokens: readonly ListKind[], fontSize: number): number[] {
-  return tokens.map((kind) => (kind === "none" ? 0 : LIST_INDENT_EM * fontSize));
+  return parseListTokens(attributeValue(textNode, LIST_ATTRIBUTE), paragraphCount, elementId);
 }
 
 /** The index, in `lines`, of the FIRST wrapped line of each paragraph — `lines[i].hardBreak` marks the end of a paragraph, so the line right after it starts the next one; index 0 always starts paragraph 0. Length always equals the paragraph count. */
@@ -647,7 +634,7 @@ export function rewrapTextBoxContent(
   const font = resolveFont(fontBook, fontFamily, elementId);
   const paragraphCount = sourceText.split("\n").length;
   const listTokens = readListTokens(textNode, paragraphCount, elementId);
-  const indents = indentsForTokens(listTokens, fontSize);
+  const indents = listIndents(listTokens, fontSize);
   const wrapped = wrapText(sourceText, { width: newWidth, font, fontSizePx: fontSize, align, indents });
   const content = renderTextBoxContent(wrapped.lines, runs);
   // The list attribute itself never changes here (only the content's own
@@ -758,7 +745,7 @@ export function setTextRunStyle(
   const width = Number(widthAttr.value);
   const paragraphCount = content.split("\n").length;
   const listTokens = readListTokens(textNode, paragraphCount, elementId);
-  const indents = indentsForTokens(listTokens, fontSize);
+  const indents = listIndents(listTokens, fontSize);
   const wrapped = wrapText(content, { width, font, fontSizePx: fontSize, align, indents });
   const renderedContent = renderTextBoxContent(wrapped.lines, nextRuns);
   // Styling a character range never changes the paragraph count, so any
@@ -839,7 +826,7 @@ export function setParagraphList(
   const align = readTextAlign(container, elementId);
   const font = resolveFont(fontBook, fontFamily, elementId);
   const width = Number(widthAttr.value);
-  const indents = indentsForTokens(nextTokens, fontSize);
+  const indents = listIndents(nextTokens, fontSize);
   const wrapped = wrapText(content, { width, font, fontSizePx: fontSize, align, indents });
   const renderedContent = renderTextBoxContent(wrapped.lines, runs);
 

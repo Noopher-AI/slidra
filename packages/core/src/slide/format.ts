@@ -1,8 +1,8 @@
 import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
 import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
-import { unescapeXmlText } from "../element-text.js";
-import { readTextBoxRuns } from "../text/runs.js";
+import { readTextAlign, unescapeXmlText } from "../element-text.js";
+import { readTextBoxRuns, type TextRun } from "../text/runs.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 
 /**
@@ -101,6 +101,18 @@ export interface SlidePrimitive {
    * not `<text>`.
    */
   tspanCount: number;
+  /**
+   * For a `<text>` primitive carrying nested run tspans (NOOP-65 決定 B —
+   * bold/italic spans): the runs read back from those tspans, in the same
+   * content-string index space as `text`. `[]` when the `<text>` has no
+   * nested run tspans, and for every primitive that is not `<text>`. This
+   * is `readTextBoxRuns`'s own `runs` return value — not a second copy —
+   * so a host-side reader (`canvas.ts`'s preview channel) can rebuild the
+   * exact same markup `rewrapTextBoxContent` would, instead of only
+   * getting `content` and reconstructing runs from nothing (NOOP-65r2
+   * FAIL 1: `runs` used to be silently dropped here).
+   */
+  runs: readonly TextRun[];
 }
 
 export interface SlideElement {
@@ -137,6 +149,16 @@ export interface SlideElement {
    * behaviour.
    */
   textHeight: number | null;
+  /**
+   * `readTextAlign`'s result (`"left"` when the container has no
+   * `data-comot-text-align`, NOOP-65 決定 D — every rewrap path shares this
+   * same default, so this field does too). Present on every element, not
+   * only text boxes: a non-text element simply carries the meaningless
+   * default `"left"`, the same way `textWidth`/`textHeight` are `null`
+   * rather than the field being absent — callers that only care about text
+   * boxes already gate on `kind`/`textWidth` first.
+   */
+  textAlign: "left" | "center" | "right";
 }
 
 /** `data-comot-text-width`, see `SlideElement.textWidth`'s comment for why it lives here. */
@@ -427,15 +449,15 @@ function toPrimitive(child: ScannedNode, svg: string): SlidePrimitive {
   const tag = child.tag.toLowerCase();
   const attrs = new Map(child.attributes.map((attribute) => [attribute.name, attribute.value]));
   if (tag !== "text") {
-    return { tag, attrs, text: "", tspanCount: 0 };
+    return { tag, attrs, text: "", tspanCount: 0, runs: [] };
   }
   const tspans = child.children.filter((grandchild) => grandchild.tag === "tspan");
   if (tspans.length > 0) {
-    const { content } = readTextBoxRuns(child, svg);
-    return { tag, attrs, text: content, tspanCount: tspans.length };
+    const { content, runs } = readTextBoxRuns(child, svg);
+    return { tag, attrs, text: content, tspanCount: tspans.length, runs };
   }
   const text = unescapeXmlText(svg.slice(child.contentStart, child.contentEnd));
-  return { tag, attrs, text, tspanCount: 0 };
+  return { tag, attrs, text, tspanCount: 0, runs: [] };
 }
 
 function toElement(element: ScannedNode, svg: string): SlideElement {
@@ -478,6 +500,8 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
     textHeight = value;
   }
 
+  const textAlign = readTextAlign(element, attributeValue(element, "id")!);
+
   return {
     id: attributeValue(element, "id")!,
     name: attributeValue(element, "data-comot-name"),
@@ -489,5 +513,6 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
     primitives,
     textWidth,
     textHeight,
+    textAlign,
   };
 }

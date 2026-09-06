@@ -9,3 +9,5 @@ export type { WrapOptions, WrappedLine, WrappedText } from "./wrap.js";
 export { renderTextBoxContent } from "./render.js";
 export { applyRunStyle, readTextBoxRuns } from "./runs.js";
 export type { TextRun } from "./runs.js";
+export { parseListTokens, listIndents, LIST_INDENT_EM } from "./list.js";
+export type { ListKind } from "./list.js";
