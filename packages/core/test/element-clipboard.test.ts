@@ -86,36 +86,6 @@ describe("sanitizeClipboardMarkup", () => {
     ).toThrow(CoMotionError);
   });
 
-  it("rejects a javascript: URI", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><image href="javascript:alert(1)" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects an absolute https:// reference", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><image href="https://evil.example/x.png" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects a url(...) that is not a same-document fragment reference", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><rect style="fill:url(https://evil.example/x.svg#g)" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("accepts a url(#id) same-document fragment reference", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><rect style="fill:url(#grad1)" width="1" height="1"/></g>', "element"),
-    ).not.toThrow();
-  });
-
-  it("rejects a <!DOCTYPE declaration", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><!DOCTYPE foo><rect width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
   it("rejects an effect attribute outside the RawEffectAttributes whitelist", () => {
     expect(() =>
       sanitizeClipboardMarkup('<comot:effect target="el-a" family="enter" effect="fade" start="on-click" onx="1"/>', "effect"),
@@ -126,67 +96,51 @@ describe("sanitizeClipboardMarkup", () => {
     expect(() => sanitizeClipboardMarkup('<g><rect width="1" height="1"/></g>', "element")).toThrow(CoMotionError);
   });
 
-  it("rejects an href hiding an external URL behind decimal XML character references (&#104; -> 'h')", () => {
-    expect(() =>
-      sanitizeClipboardMarkup(
-        '<g id="el-a"><image href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
-        "element",
-      ),
-    ).toThrow(CoMotionError);
+  // --- rejection / acceptance / declaration matrices ---
+  // Cell ids match [E2.T18] r3 plan §6.4 so a reviewer can check this table against
+  // that one line by line. Rows tagged "pre-existing regression" are earlier rounds'
+  // individual `it()`s, kept verbatim rather than rewritten to the plan's own (distinct)
+  // literal for the same cell — both a canonical cell payload and a pre-existing
+  // regression payload survive where the two differ.
+  const REJECT_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
+    ["C01", '<g id="el-a"><image href="javascript:alert(1)" width="1" height="1"/></g>'],
+    ["C02", '<g id="el-a"><image href="&#106;avascript:alert(1)" width="1" height="1"/></g>'],
+    ["C05", '<g id="el-a"><image href="x https://evil.example/y" width="1" height="1"/></g>'],
+    [
+      "C05 (pre-existing regression, plain absolute)",
+      '<g id="el-a"><image href="https://evil.example/x.png" width="1" height="1"/></g>',
+    ],
+    ["C06", '<g id="el-a"><image href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>'],
+    ["C07", '<g id="el-a"><image href="&#x68;ttps://evil.example/x.png" width="1" height="1"/></g>'],
+    [
+      "C08 (pre-existing regression, decimal)",
+      '<g id="el-a"><image xlink:href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
+    ],
+    ["C09", '<g id="el-a"><image href="&#x2f;&#x2f;evil.example/x.png" width="1" height="1"/></g>'],
+    ["C11", '<g id="el-a"><rect style="fill:url(https://evil.example/x.svg#g)" width="1" height="1"/></g>'],
+    ["C16", '<g id="el-a"><rect style="fill:url(#&#x2f;&#x2f;evil.example)" width="1" height="1"/></g>'],
+  ];
+
+  it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {
+    expect(() => sanitizeClipboardMarkup(markup, "element")).toThrow(CoMotionError);
   });
 
-  it("rejects an href hiding an external URL behind hex XML character references (&#x68; -> 'h')", () => {
-    expect(() =>
-      sanitizeClipboardMarkup(
-        '<g id="el-a"><image href="&#x68;ttps://evil.example/x.png" width="1" height="1"/></g>',
-        "element",
-      ),
-    ).toThrow(CoMotionError);
+  const ACCEPT_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
+    ["P01", '<g id="el-a"><rect style="fill:url(#grad1)" width="1" height="1"/></g>'],
+  ];
+
+  it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
+    expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
   });
 
-  it("rejects a protocol-relative reference hidden behind entity-encoded slashes (&#x2f;&#x2f; -> '//')", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><image href="&#x2f;&#x2f;evil.example/x.png" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
+  const DECLARATION_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
+    ["D01", '<g id="el-a"><!DOCTYPE foo><rect width="1" height="1"/></g>'],
+    ["D03", '<g id="el-a"><text x="0" y="0"><![CDATA[<script>alert(1)</script>]]></text></g>'],
+    ["D04", '<g id="el-a"><!--<script>alert(1)</script>--><rect width="1" height="1"/></g>'],
+  ];
 
-  it("rejects xlink:href hiding an external URL behind entity encoding", () => {
-    expect(() =>
-      sanitizeClipboardMarkup(
-        '<g id="el-a"><image xlink:href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
-        "element",
-      ),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects an href hiding a javascript: scheme behind entity encoding", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><image href="&#106;avascript:alert(1)" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects an absolute https:// URL that appears mid-value, not just at the start", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><image href="x https://evil.example/y" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects a url(...) reference whose entity encoding changes it after decoding, even though it still starts with '#' either way (no legitimate reason to entity-encode a same-document url(...) reference)", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><rect style="fill:url(#&#x2f;&#x2f;evil.example)" width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects a fragment containing a CDATA section (scanDocument silently skips it, which would let a <script> string ride through unexamined)", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0"><![CDATA[<script>alert(1)</script>]]></text></g>', "element"),
-    ).toThrow(CoMotionError);
-  });
-
-  it("rejects a fragment containing an HTML/XML comment for the same reason", () => {
-    expect(() =>
-      sanitizeClipboardMarkup('<g id="el-a"><!--<script>alert(1)</script>--><rect width="1" height="1"/></g>', "element"),
-    ).toThrow(CoMotionError);
+  it.each(DECLARATION_MATRIX)("rejects %s", (_cell, markup) => {
+    expect(() => sanitizeClipboardMarkup(markup, "element")).toThrow(CoMotionError);
   });
 });
 
