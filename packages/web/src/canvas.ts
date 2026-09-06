@@ -328,6 +328,21 @@ export interface CanvasController {
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
+  /**
+   * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
+   * `textbox add` for the current slide, selecting the new box on success
+   * (already whitelisted in `SELECT_AFTER_COMMAND`, same as `element
+   * insert`). No-op outside view mode.
+   */
+  insertTextBox: (input: {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    fontSize: number;
+    fontWeight: number;
+    align: "left" | "center" | "right";
+  }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
@@ -1544,6 +1559,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   async function distributeSelection(axis: "horizontal" | "vertical"): Promise<void> {
     if (mode !== "view" || selectionIds.length < 3) return;
     await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selectionIds], axis });
+  }
+
+  async function insertTextBox(input: {
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    fontSize: number;
+    fontWeight: number;
+    align: "left" | "center" | "right";
+  }): Promise<void> {
+    if (mode !== "view") return;
+    await runCommand("textbox add", { slidePath: slides[currentIndex], ...input });
   }
 
   // --- Drag-to-move (§4.2) ---
@@ -2937,6 +2965,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     orderSelection,
     alignSelection,
     distributeSelection,
+    insertTextBox,
     destroy: () => {
       destroyed = true;
       listeners.clear();

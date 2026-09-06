@@ -301,6 +301,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onToggleHand={handleToggleHand}
           selection={state.selection}
           controller={controller}
+          canvasSize={canvasSize}
         />
       )}
       {children}

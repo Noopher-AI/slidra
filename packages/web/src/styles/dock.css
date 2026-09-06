@@ -229,3 +229,103 @@
   opacity: 0.6;
   font-size: var(--text-xs-hint);
 }
+
+/* ── Text 插入面板 (NOOP-65 §3.8/A9) ─────────────────────────────────── */
+.text-panel {
+  width: var(--panel-w);
+  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.text-panel-input {
+  box-sizing: border-box;
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--ink-900);
+}
+.text-panel-input:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
+  outline-offset: 1px;
+}
+.text-panel-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.text-panel-preset {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  color: var(--ink-700);
+}
+.text-panel-preset:hover {
+  background: var(--surface-1);
+}
+.text-panel-preset[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+  background: var(--surface-1);
+}
+.text-panel-preset-sample {
+  font-weight: 700;
+  line-height: 1;
+}
+/* 四個樣式預設各自的「Aa」字級（原型 comotion-logic-v3.js:203 的相對比例，
+   換算成面板本身固定的字級，不吃簡報 canvas 尺寸 — 那個換算只在真正插入
+   時才對 controller.insertTextBox 的輸入做，見 TextPanel.tsx）。 */
+.text-panel-preset[data-preset="title"] .text-panel-preset-sample {
+  font-size: var(--text-lg);
+}
+.text-panel-preset[data-preset="subtitle"] .text-panel-preset-sample {
+  font-size: var(--text-md-panel-title);
+}
+.text-panel-preset[data-preset="body"] .text-panel-preset-sample {
+  font-size: var(--text-base);
+}
+.text-panel-preset[data-preset="caption"] .text-panel-preset-sample {
+  font-size: var(--text-sm);
+}
+.text-panel-preset-label {
+  font-size: var(--text-xs-hint);
+}
+.text-panel-align {
+  flex: 1;
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.text-panel-align:hover {
+  background: var(--surface-1);
+}
+.text-panel-align[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+  background: var(--surface-1);
+}
+.text-panel-insert {
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.text-panel-insert:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.text-panel-insert:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
