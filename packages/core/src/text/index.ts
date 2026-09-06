@@ -7,3 +7,5 @@
 export { wrapText, breakAllowedBetween, NO_BREAK_BEFORE, NO_BREAK_AFTER } from "./wrap.js";
 export type { WrapOptions, WrappedLine, WrappedText } from "./wrap.js";
 export { renderTextBoxContent } from "./render.js";
+export { applyRunStyle, readTextBoxRuns } from "./runs.js";
+export type { TextRun } from "./runs.js";

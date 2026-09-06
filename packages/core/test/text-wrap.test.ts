@@ -53,7 +53,10 @@ describe("wrapText (#76)", () => {
   // The invariant the whole text-box data model rests on: nothing is ever
   // deleted, only broken. A break after a space leaves the space attached
   // to the end of the previous line, so plain concatenation is lossless.
-  describe("concatenating the returned lines reproduces the input byte for byte", () => {
+  // Since NOOP-65's hard breaks (決定 A), the `"\n"` itself is never part
+  // of any line's `text` — it is represented by `hardBreak` instead, so
+  // the round trip has to reinsert it to reproduce the input.
+  describe("concatenating the returned lines (plus a \\n per hardBreak) reproduces the input byte for byte", () => {
     const cases: ReadonlyArray<[string, number, number]> = [
       [SAMPLE, 40, 200],
       [SAMPLE, 40, 280],
@@ -64,11 +67,12 @@ describe("wrapText (#76)", () => {
       ["Supercalifragilisticexpialidocious", 40, 100],
       ["", 40, 300],
       ["驗", 40, 5],
+      ["第一段\n第二段", 40, 300],
     ];
 
     it.each(cases)("%j at width %i, fontSize %i", (text, fontSizePx, width) => {
       const wrapped = wrapText(text, { width, font, fontSizePx });
-      expect(wrapped.lines.map((line) => line.text).join("")).toBe(text);
+      expect(wrapped.lines.map((line) => line.text + (line.hardBreak ? "\n" : "")).join("")).toBe(text);
     });
   });
 
@@ -94,7 +98,7 @@ describe("wrapText (#76)", () => {
 
   it("empty text produces exactly one empty line, so the box still has a height", () => {
     const wrapped = wrapText("", { width: 300, font, fontSizePx: 40 });
-    expect(wrapped.lines).toEqual([{ text: "", y: wrapped.ascent, width: 0 }]);
+    expect(wrapped.lines).toEqual([{ text: "", y: wrapped.ascent, width: 0, x: 0, hardBreak: false }]);
     expect(wrapped.height).toBe(wrapped.lineHeight);
   });
 
@@ -124,6 +128,82 @@ describe("wrapText (#76)", () => {
     for (const line of wrapped.lines) {
       expect(line.width).toBe(measureTextWidth(font, line.text, 40));
     }
+  });
+
+  // NOOP-65 §4.1: hard-break contract table, one case per row.
+  describe("hard breaks (NOOP-65 §4.1)", () => {
+    it('a single "\\n" produces exactly two empty lines, the first marked hardBreak', () => {
+      const wrapped = wrapText("\n", { width: 300, font, fontSizePx: 40 });
+      expect(wrapped.lines.map((l) => [l.text, l.hardBreak])).toEqual([
+        ["", true],
+        ["", false],
+      ]);
+    });
+
+    it('a trailing "\\n" is not swallowed: "a\\n" is two lines, "a" (hardBreak) and ""', () => {
+      const wrapped = wrapText("a\n", { width: 300, font, fontSizePx: 40 });
+      expect(wrapped.lines.map((l) => [l.text, l.hardBreak])).toEqual([
+        ["a", true],
+        ["", false],
+      ]);
+    });
+
+    it('consecutive hard breaks: "a\\n\\nb" is three lines', () => {
+      const wrapped = wrapText("a\n\nb", { width: 300, font, fontSizePx: 40 });
+      expect(wrapped.lines.map((l) => [l.text, l.hardBreak])).toEqual([
+        ["a", true],
+        ["", true],
+        ["b", false],
+      ]);
+    });
+
+    it("rejects \\r with a specific message, never silently normalizing it", () => {
+      expect(() => wrapText("a\r\nb", { width: 300, font, fontSizePx: 40 })).toThrow(/\\r/);
+      expect(() => wrapText("a\rb", { width: 300, font, fontSizePx: 40 })).toThrow(CoMotionError);
+    });
+
+    it("a tab inside a paragraph is legal and measured like any other code point", () => {
+      expect(() => wrapText("a\tb", { width: 300, font, fontSizePx: 40 })).not.toThrow();
+    });
+
+    it("baselines advance across a hard break exactly like a wrap-induced break (one lineHeight per line, no gap)", () => {
+      const wrapped = wrapText("第一段\n第二段", { width: 300, font, fontSizePx: 40 });
+      expect(wrapped.lines).toHaveLength(2);
+      expect(wrapped.lines[1].y).toBe(wrapped.lines[0].y + wrapped.lineHeight);
+    });
+  });
+
+  describe("alignment (NOOP-65 §7-D)", () => {
+    it("defaults every line's x to 0 (left, no indent) when align is omitted", () => {
+      const wrapped = wrapText(SAMPLE, { width: 280, font, fontSizePx: 40 });
+      expect(wrapped.lines.every((l) => l.x === 0)).toBe(true);
+    });
+
+    it("center: x centers the line within [0, width]", () => {
+      const wrapped = wrapText("驗", { width: 300, font, fontSizePx: 40, align: "center" });
+      const [line] = wrapped.lines;
+      expect(line.x).toBeCloseTo((300 - line.width) / 2, 6);
+    });
+
+    it("right: x = width - lineWidth", () => {
+      const wrapped = wrapText("驗", { width: 300, font, fontSizePx: 40, align: "right" });
+      const [line] = wrapped.lines;
+      expect(line.x).toBeCloseTo(300 - line.width, 6);
+    });
+  });
+
+  describe("per-paragraph indent (NOOP-65 §7-E)", () => {
+    it("wraps a paragraph narrower by its indent, and starts its lines' x at the indent", () => {
+      const narrow = wrapText(SAMPLE, { width: 280 - 60, font, fontSizePx: 40 });
+      const indented = wrapText(SAMPLE, { width: 280, font, fontSizePx: 40, indents: [60] });
+      expect(indented.lines.map((l) => l.text)).toEqual(narrow.lines.map((l) => l.text));
+      expect(indented.lines.every((l) => l.x === 60)).toBe(true);
+    });
+
+    it("rejects an indent that is not strictly less than the box width", () => {
+      expect(() => wrapText("x", { width: 100, font, fontSizePx: 40, indents: [100] })).toThrow(CoMotionError);
+      expect(() => wrapText("x", { width: 100, font, fontSizePx: 40, indents: [150] })).toThrow(CoMotionError);
+    });
   });
 
   it("baselines are ascent + i * lineHeight, both read off the face (hhea), relative to the box's top-left", () => {
@@ -171,25 +251,69 @@ describe("breakAllowedBetween", () => {
   });
 });
 
-describe("renderTextBoxContent (#76)", () => {
-  it('serializes one <tspan x="0" y="…"> per line, ascending y, no whitespace anywhere between tags', () => {
-    const content = renderTextBoxContent([
-      { text: "第一行", y: 47.376, width: 100 },
-      { text: "第二行", y: 99.5, width: 100 },
-    ]);
+describe("renderTextBoxContent (#76, NOOP-65)", () => {
+  /** Shorthand for a plain, unaligned, non-broken line literal in these tests. */
+  const line = (text: string, y: number, width: number, extra: Partial<{ x: number; hardBreak: boolean }> = {}) => ({
+    text,
+    y,
+    width,
+    x: extra.x ?? 0,
+    hardBreak: extra.hardBreak ?? false,
+  });
+
+  it('serializes one <tspan x="…" y="…"> per line, ascending y, no whitespace anywhere between tags — x defaults to 0 when alignment/indent were never applied', () => {
+    const content = renderTextBoxContent([line("第一行", 47.376, 100), line("第二行", 99.5, 100)]);
     expect(content).toBe('<tspan x="0" y="47.376">第一行</tspan><tspan x="0" y="99.5">第二行</tspan>');
   });
 
+  it("bakes a non-zero x from alignment/indent verbatim into the tspan", () => {
+    expect(renderTextBoxContent([line("靠右", 10, 40, { x: 123.4 })])).toBe(
+      '<tspan x="123.4" y="10">靠右</tspan>',
+    );
+  });
+
+  it('marks a hardBreak line with data-comot-break="1"; a non-hardBreak line carries no such attribute', () => {
+    const content = renderTextBoxContent([line("第一段", 10, 40, { hardBreak: true }), line("第二段", 30, 40)]);
+    expect(content).toBe(
+      '<tspan x="0" y="10" data-comot-break="1">第一段</tspan><tspan x="0" y="30">第二段</tspan>',
+    );
+  });
+
   it("escapes &, < and > in the line text", () => {
-    const content = renderTextBoxContent([{ text: "A & B < C > D", y: 10, width: 1 }]);
+    const content = renderTextBoxContent([line("A & B < C > D", 10, 1)]);
     expect(content).toBe('<tspan x="0" y="10">A &amp; B &lt; C &gt; D</tspan>');
   });
 
   it("renders a single empty line as an empty tspan, not an omitted one", () => {
-    expect(renderTextBoxContent([{ text: "", y: 10, width: 0 }])).toBe('<tspan x="0" y="10"></tspan>');
+    expect(renderTextBoxContent([line("", 10, 0)])).toBe('<tspan x="0" y="10"></tspan>');
   });
 
-  it("rounds y with the campaign-wide 4-decimal rule (formatSvgNumber)", () => {
-    expect(renderTextBoxContent([{ text: "x", y: 10.00001, width: 1 }])).toBe('<tspan x="0" y="10">x</tspan>');
+  it("rounds x and y with the campaign-wide 4-decimal rule (formatSvgNumber)", () => {
+    expect(renderTextBoxContent([line("x", 10.00001, 1, { x: 5.000001 })])).toBe('<tspan x="5" y="10">x</tspan>');
+  });
+
+  it("wraps a run in a nested tspan carrying only the attributes the run set, escaping its text too", () => {
+    const content = renderTextBoxContent(
+      [line("粗體字示範", 10, 40)],
+      [{ start: 0, end: 2, fontWeight: "bold" }],
+    );
+    expect(content).toBe('<tspan x="0" y="10"><tspan font-weight="bold">粗體</tspan>字示範</tspan>');
+  });
+
+  it("a run spanning two lines splits into one nested tspan per line, each clipped to that line's range — the hardBreak's own \\n index (2) is never covered by either half", () => {
+    // Value-index space: A=0 B=1 \n=2(virtual, never rendered) C=3 D=4.
+    const content = renderTextBoxContent(
+      [line("AB", 10, 20, { hardBreak: true }), line("CD", 30, 20)],
+      [{ start: 1, end: 4, fontStyle: "italic" }],
+    );
+    expect(content).toBe(
+      '<tspan x="0" y="10" data-comot-break="1">A<tspan font-style="italic">B</tspan></tspan>' +
+        '<tspan x="0" y="30"><tspan font-style="italic">C</tspan>D</tspan>',
+    );
+  });
+
+  it("both attributes on one run render font-weight before font-style, in one nested tspan", () => {
+    const content = renderTextBoxContent([line("x", 10, 10)], [{ start: 0, end: 1, fontWeight: "700", fontStyle: "italic" }]);
+    expect(content).toBe('<tspan x="0" y="10"><tspan font-weight="700" font-style="italic">x</tspan></tspan>');
   });
 });
