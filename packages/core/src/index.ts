@@ -44,6 +44,8 @@ export {
   writePresentationFile,
   addTextBox,
   setTextBoxWidth,
+  setSlideTextRunStyle,
+  setSlideParagraphList,
   insertSlideElement,
   deleteSlideElements,
   moveSlideElements,
@@ -68,6 +70,7 @@ export {
   cutSlideElements,
 } from "./workspace.js";
 export type { AddTextBoxInput, SaveState } from "./workspace.js";
+export type { TextRunStyleUpdate, ListKind } from "./element-text.js";
 export {
   insertElement,
   deleteElements,

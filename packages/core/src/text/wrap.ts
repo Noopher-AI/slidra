@@ -24,6 +24,14 @@ export interface WrapOptions {
   readonly font: FontMetrics;
   /** User units (SVG px). Must be a finite number greater than 0; decimals are legal. */
   readonly fontSizePx: number;
+  /** Horizontal alignment, baked into each line's `x`. Defaults to "left". */
+  readonly align?: "left" | "center" | "right";
+  /**
+   * Per-paragraph left indent, in user units — paragraph `i` (0-based,
+   * `text` split on `"\n"`) is wrapped at `width - indents[i]` and its
+   * lines' `x` starts at `indents[i]`. Missing entries default to 0.
+   */
+  readonly indents?: readonly number[];
 }
 
 export interface WrappedLine {
@@ -32,6 +40,14 @@ export interface WrappedLine {
   readonly y: number;
   /** Measured advance width of this line. */
   readonly width: number;
+  /** Baked-in horizontal position, from alignment + the line's paragraph indent. */
+  readonly x: number;
+  /**
+   * True when this line ends because the source text had a `"\n"` there
+   * (a hard break, not a wrap-induced break). The `\n` itself is never
+   * part of any line's `text` — see the module header comment for why.
+   */
+  readonly hardBreak: boolean;
 }
 
 export interface WrappedText {
@@ -100,15 +116,20 @@ function assertWidth(width: number): void {
   }
 }
 
+/** One paragraph's wrapped lines, before the caller assigns global `y`/`x`. */
+interface WrappedParagraphLine {
+  readonly text: string;
+  readonly width: number;
+}
+
 /**
- * Greedy first-fit line breaking, by code point (`Array.from`, matching
- * `measureTextWidth`'s own iteration, so surrogate pairs need no special
- * case).
+ * Greedy first-fit line breaking of one paragraph (no `"\n"` inside it), by
+ * code point (`Array.from`, matching `measureTextWidth`'s own iteration, so
+ * surrogate pairs need no special case).
  *
  * Never deletes a character: a break after a space leaves the space at the
- * end of the previous line rather than dropping it, which is what makes
- * `lines.map(l => l.text).join("")` reproduce the input byte for byte —
- * the invariant the whole text-box data model rests on (§1 step 5).
+ * end of the previous line rather than dropping it — see `wrapText`'s own
+ * header comment for the round-trip invariant this feeds.
  *
  * A single code point wider than `width` gets its own line, and that line
  * is the one case allowed to exceed `width` (an error here would make
@@ -118,27 +139,15 @@ function assertWidth(width: number): void {
  * immediately before the code point that would overflow, so those lines
  * never exceed `width`.
  */
-export function wrapText(text: string, options: WrapOptions): WrappedText {
-  const { width, font, fontSizePx } = options;
-  assertWidth(width);
-
-  const ascent = (font.ascender / font.unitsPerEm) * fontSizePx;
-  // hhea-derived line height (ascender - descender + lineGap), per em. No
-  // `line-height` concept exists anywhere else in the slide format yet
-  // (W1-R7); a later 行距 feature will have to decide whether it
-  // multiplies this number or replaces it.
-  const lineHeight =
-    ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * fontSizePx;
-
+function wrapParagraph(text: string, width: number, font: FontMetrics, fontSizePx: number): WrappedParagraphLine[] {
   const codePoints = Array.from(text, (ch) => ch.codePointAt(0) as number);
 
   if (codePoints.length === 0) {
-    // One empty line, so the box still has a height and still round-trips
-    // (`lines.map(l => l.text).join("") === ""`).
-    return { lines: [{ text: "", y: ascent, width: 0 }], lineHeight, ascent, height: lineHeight };
+    // One empty line, so an empty paragraph still occupies a line.
+    return [{ text: "", width: 0 }];
   }
 
-  const lines: WrappedLine[] = [];
+  const lines: WrappedParagraphLine[] = [];
   let start = 0;
   // Invariant: start < codePoints.length on every entry — the empty-text
   // case is handled above, so every iteration here has real text left to
@@ -176,11 +185,7 @@ export function wrapText(text: string, options: WrapOptions): WrappedText {
 
     if (cursor === codePoints.length) {
       // Everything from `start` fits on one final line.
-      lines.push({
-        text: codePointsToString(codePoints, start, cursor),
-        y: ascent + lines.length * lineHeight,
-        width: accumulated,
-      });
+      lines.push({ text: codePointsToString(codePoints, start, cursor), width: accumulated });
       break;
     }
 
@@ -188,33 +193,80 @@ export function wrapText(text: string, options: WrapOptions): WrappedText {
       // The very first code point of this line is already wider than the
       // box on its own: it takes its own (overflowing) line.
       const soleText = codePointsToString(codePoints, start, start + 1);
-      lines.push({
-        text: soleText,
-        y: ascent + lines.length * lineHeight,
-        width: measureTextWidth(font, soleText, fontSizePx),
-      });
+      lines.push({ text: soleText, width: measureTextWidth(font, soleText, fontSizePx) });
       start += 1;
       continue;
     }
 
     if (breakAt > start) {
-      lines.push({
-        text: codePointsToString(codePoints, start, breakAt),
-        y: ascent + lines.length * lineHeight,
-        width: breakWidth,
-      });
+      lines.push({ text: codePointsToString(codePoints, start, breakAt), width: breakWidth });
       start = breakAt;
     } else {
       // No permitted break anywhere in this run: character-level
       // emergency break right before the code point that overflowed.
-      lines.push({
-        text: codePointsToString(codePoints, start, cursor),
-        y: ascent + lines.length * lineHeight,
-        width: accumulated,
-      });
+      lines.push({ text: codePointsToString(codePoints, start, cursor), width: accumulated });
       start = cursor;
     }
   }
+
+  return lines;
+}
+
+/** `x` for one line, from the paragraph's alignment and indent (§7-D of NOOP-65's plan — 已定案). */
+function lineX(align: "left" | "center" | "right", width: number, indent: number, lineWidth: number): number {
+  if (align === "center") return indent + (width - indent - lineWidth) / 2;
+  if (align === "right") return width - lineWidth;
+  return indent;
+}
+
+/**
+ * Splits `text` into paragraphs on `"\n"`, wraps each independently (a
+ * paragraph never merges with its neighbour across the break), and
+ * concatenates the results with a single, box-wide baseline sequence.
+ *
+ * Hard breaks are baked in as a boolean flag, never as a character in any
+ * line's `text` (NOOP-65 決定 A — 已定案): the line ending a paragraph
+ * (every paragraph but the last) carries `hardBreak: true`. This changes
+ * the round-trip invariant from `lines.map(l => l.text).join("")` to
+ * `lines.map(l => l.text + (l.hardBreak ? "\n" : "")).join("") === text` —
+ * see `packages/core/test/text-wrap.test.ts` for the machine-checked proof.
+ */
+export function wrapText(text: string, options: WrapOptions): WrappedText {
+  const { width, font, fontSizePx, align = "left" } = options;
+  assertWidth(width);
+  if (text.includes("\r")) {
+    throw new CoMotionError("文字內容不接受 \\r，硬換行請用 \\n");
+  }
+
+  const ascent = (font.ascender / font.unitsPerEm) * fontSizePx;
+  // hhea-derived line height (ascender - descender + lineGap), per em. No
+  // `line-height` concept exists anywhere else in the slide format yet
+  // (W1-R7); a later 行距 feature will have to decide whether it
+  // multiplies this number or replaces it.
+  const lineHeight =
+    ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * fontSizePx;
+
+  const paragraphs = text.split("\n");
+  const lines: WrappedLine[] = [];
+
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    const indent = options.indents?.[paragraphIndex] ?? 0;
+    if (indent >= width) {
+      throw new CoMotionError("列表縮排大於文字框寬度，無法排版");
+    }
+    const paragraphLines = wrapParagraph(paragraph, width - indent, font, fontSizePx);
+    const isLastParagraph = paragraphIndex === paragraphs.length - 1;
+    paragraphLines.forEach((line, lineIndex) => {
+      const isLastLineOfParagraph = lineIndex === paragraphLines.length - 1;
+      lines.push({
+        text: line.text,
+        width: line.width,
+        x: lineX(align, width, indent, line.width),
+        y: ascent + lines.length * lineHeight,
+        hardBreak: isLastLineOfParagraph && !isLastParagraph,
+      });
+    });
+  });
 
   return { lines, lineHeight, ascent, height: lines.length * lineHeight };
 }
