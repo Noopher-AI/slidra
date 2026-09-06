@@ -1730,6 +1730,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
     if (!entry) return;
+    // NOOP-65 §7-I: a four-corner handle on a text box only ever changes
+    // its declared WIDTH — font-size and the container's own transform
+    // never move, and height is whatever the content re-wraps to. This
+    // reuses the exact same `textbox width` gesture the left/right
+    // mid-edge handles already drive (`beginTextboxWidthGesture`), just
+    // entered from a corner instead: "nw"/"sw" behave like the left edge,
+    // "ne"/"se" like the right edge (`computeTextboxWidth` only ever reads
+    // the horizontal component of the drag). Core's `element scale`
+    // command itself is untouched — this is purely a front-end handle
+    // remapping (§2 第 8 條).
+    if (entry.element.textWidth !== null) {
+      beginTextboxWidthGesture(point, corner === "nw" || corner === "sw" ? "left" : "right");
+      return;
+    }
     let parts: TransformParts;
     try {
       parts = decomposeMatrix(entry.element.matrix);

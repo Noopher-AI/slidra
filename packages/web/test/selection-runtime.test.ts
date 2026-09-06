@@ -394,6 +394,128 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     expect(messages).toHaveLength(0);
     stop();
   });
+
+  it("編輯中按 Enter（無修飾鍵）不呼叫 preventDefault（NOOP-65 決定 A：讓瀏覽器原生插入換行），不 commit、不離開編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    const event = new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true, bubbles: true });
+    ta.dispatchEvent(event);
+    await tick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("編輯中按 ⌘Enter／Ctrl+Enter：preventDefault，不插入換行、不 commit、不離開編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    const cmdEnter = new KeyboardEventCtor("keydown", { key: "Enter", metaKey: true, cancelable: true, bubbles: true });
+    ta.dispatchEvent(cmdEnter);
+    const ctrlEnter = new KeyboardEventCtor("keydown", { key: "Enter", ctrlKey: true, cancelable: true, bubbles: true });
+    ta.dispatchEvent(ctrlEnter);
+    await tick();
+
+    expect(cmdEnter.defaultPrevented).toBe(true);
+    expect(ctrlEnter.defaultPrevented).toBe(true);
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("貼上含 \\r\\n 的內容正規化成 \\n，不是被拿掉（NOOP-65 §4.4：pasted 多行文字合法）", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    await beginTextEdit(win, "el-text", "Hi");
+    const ta = editTextarea(doc);
+
+    ta.value = "a\r\nb\rc";
+    ta.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("input", { bubbles: true }));
+    await tick();
+
+    expect(ta.value).toBe("a\nb\nc");
+  });
+});
+
+describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，鍵盤等同雙擊）", () => {
+  it("未編輯、選取恰好一個文字框，按 Enter（無修飾鍵）送出 dblclick-textbox", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    click(doc, doc.getElementById("el-box")!);
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "dblclick-textbox", id: "el-box" });
+    stop();
+  });
+
+  it("未選取任何元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    void doc;
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("選取 2 個以上元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot(
+      '<svg><g id="el-a" data-comot-text-width="400"><text>A</text></g><g id="el-b" data-comot-text-width="400"><text>B</text></g></svg>',
+    );
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    click(doc, doc.getElementById("el-a")!);
+    doc.getElementById("el-b")!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("選取的不是文字元素時按 Enter 是 no-op", async () => {
+    const { doc, win } = boot('<svg><rect id="el-rect" width="10" height="10"/></svg>');
+    click(doc, doc.getElementById("el-rect")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
+
+  it("⌘Enter／Shift+Enter 等帶修飾鍵的 Enter 不觸發進入編輯", async () => {
+    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    click(doc, doc.getElementById("el-box")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", metaKey: true, cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", shiftKey: true, cancelable: true }));
+    await tick();
+
+    expect(messages).toHaveLength(0);
+    stop();
+  });
 });
 
 // NOOP-328/NOOP-334: the postMessage-protocol boundary contract that makes

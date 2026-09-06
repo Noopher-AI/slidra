@@ -354,11 +354,20 @@
       scheduleDecorationSync();
     });
     el.addEventListener("keydown", function (event) {
-      // Enter never inserts a line break and never ends editing — core's
-      // wrapText has no newline semantics (§4.2's Enter row); Esc is
-      // handled by the window-level keydown listener below regardless of
-      // where focus sits.
-      if (event.key === "Enter") event.preventDefault();
+      // NOOP-65 決定 A / §4.4: Enter now inserts a hard break (core's
+      // wrapText has newline semantics as of this ticket) — the browser's
+      // own default textarea action does that for free, so a plain Enter
+      // is NOT prevented here any more. ⌘Enter/Ctrl+Enter is the one
+      // exception: no insert, no commit, no leaving edit mode, and it must
+      // never reach anything above this element (there is nothing there
+      // today, but the contract is explicit either way). Esc is handled by
+      // the window-level keydown listener below regardless of where focus
+      // sits, and is unaffected by this branch.
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       // `selectionStart`/`selectionEnd` have not been updated by the
       // browser yet at this point in the event (arrow keys, Home/End,
       // Ctrl/Cmd+A move them as part of the DEFAULT action) — deferred one
@@ -396,10 +405,16 @@
     }, 0);
   }
 
-  /** Replaces any newline in the textarea's value with a single space (pasted multi-line text has no wrapText-side representation) — never while an IME composition is in progress, which this same replacement would corrupt. */
+  /**
+   * Normalizes `\r\n`/`\r` to `\n` (NOOP-65 §4.4: pasted multi-line text is
+   * user input, normalized here at the input-component layer — core's own
+   * `\r` rejection, §4.1, is for API callers, not pasted keyboard text) —
+   * never while an IME composition is in progress, which this same
+   * replacement would corrupt.
+   */
   function sanitizeTextareaValue() {
     var value = textarea.value;
-    var sanitized = value.replace(/\r\n|\r|\n/g, " ");
+    var sanitized = value.replace(/\r\n|\r/g, "\n");
     if (sanitized !== value) textarea.value = sanitized;
   }
 
@@ -556,27 +571,58 @@
   }
 
   /**
+   * `el`'s content `<text>` — excludes a list-marker `<text>` sibling
+   * (NOOP-65 決定 E: the bullet/number glyphs are a second `<text>` in the
+   * same `<g>`, never part of the edited content). Every place in this file
+   * that used to do `el.querySelector("text")` now goes through this.
+   */
+  function contentTextElement(el) {
+    return el.querySelector('text:not([data-comot-list-marker])');
+  }
+
+  /**
    * The character-index ranges covered by each visual line of `textEl`,
-   * outermost/topmost first, each with the `<tspan>` (or, for a
-   * single-line plain `<text>`, the `<text>` itself) client rect that line
-   * occupies. Character indices are a running count across every line —
-   * `getNumberOfChars()`/`getStartPositionOfChar()` already address chars
-   * this way (ADR-0017 §3.1: wrapText never drops a character, so this
-   * running count and `textarea.value`'s own index space are identical).
+   * outermost/topmost first, each with the direct-child `<tspan>` (or, for
+   * a single-line plain `<text>`, the `<text>` itself) client rect that
+   * line occupies.
+   *
+   * Two index spaces, not one (NOOP-65 決定 A/F): `domStart/domEnd` is what
+   * `getStartPositionOfChar`/`getEndPositionOfChar`/`getNumberOfChars`
+   * address (every real character, INCLUDING nested run tspans' text via
+   * `tspan.textContent`, since bold/italic runs never add or remove a
+   * character — 決定 B); `valueStart/valueEnd` is `textarea.value`'s own
+   * space, which additionally counts one virtual character per hard break
+   * (`data-comot-break="1"`, 決定 A) that has no DOM position at all. Only
+   * DIRECT child `<tspan>`s are lines — `getElementsByTagName` (this
+   * function's pre-NOOP-65 shape) would also pick up nested run tspans and
+   * double-count every bold/italic span as its own extra "line".
    */
   function textLineRanges(textEl) {
-    var n = textEl.getNumberOfChars();
-    var tspans = textEl.getElementsByTagName("tspan");
+    var directTspans = [];
+    for (var c = 0; c < textEl.children.length; c++) {
+      if (textEl.children[c].tagName === "tspan") directTspans.push(textEl.children[c]);
+    }
     var lines = [];
-    if (tspans.length > 0) {
-      var idx = 0;
-      for (var i = 0; i < tspans.length; i++) {
-        var len = tspans[i].textContent.length;
-        lines.push({ start: idx, end: idx + len, rect: tspans[i].getBoundingClientRect() });
-        idx += len;
+    if (directTspans.length > 0) {
+      var valueIdx = 0;
+      var domIdx = 0;
+      for (var i = 0; i < directTspans.length; i++) {
+        var tspan = directTspans[i];
+        var domLen = tspan.textContent.length;
+        var hasBreak = tspan.getAttribute("data-comot-break") === "1";
+        lines.push({
+          valueStart: valueIdx,
+          valueEnd: valueIdx + domLen + (hasBreak ? 1 : 0),
+          domStart: domIdx,
+          domEnd: domIdx + domLen,
+          rect: tspan.getBoundingClientRect(),
+        });
+        valueIdx += domLen + (hasBreak ? 1 : 0);
+        domIdx += domLen;
       }
     } else {
-      lines.push({ start: 0, end: n, rect: textEl.getBoundingClientRect() });
+      var n = textEl.getNumberOfChars();
+      lines.push({ valueStart: 0, valueEnd: n, domStart: 0, domEnd: n, rect: textEl.getBoundingClientRect() });
     }
     return lines;
   }
@@ -597,55 +643,54 @@
 
   /**
    * Hit-tests a viewport point against the `<text>` currently being edited
-   * and returns a `textarea.value` character index, or `null` when there
-   * is nothing to test against (ADR-0017 §4.2's contract table: no
-   * editing session, missing element/`<text>`, or an unusable CTM all
-   * return `null` rather than a guessed index). Horizontal placement uses
-   * the midpoint of each character's box — `clientX` past the midpoint
-   * lands the index after that character — and a point past a line's last
-   * character (including any invisible trailing wrap space) resolves to
-   * that line's end, which is numerically identical to the next line's
-   * start.
+   * and returns a `textarea.value` character index (NOOP-65 決定 F — never
+   * a DOM index), or `null` when there is nothing to test against
+   * (ADR-0017 §4.2's contract table: no editing session, missing
+   * element/`<text>`, or an unusable CTM all return `null` rather than a
+   * guessed index). Horizontal placement uses the midpoint of each
+   * character's box — `clientX` past the midpoint lands the index after
+   * that character — and a point past a line's last character resolves to
+   * that line's end.
    */
   function indexAtPoint(clientX, clientY) {
     if (editingId === null) return null;
     var el = document.getElementById(editingId);
     if (!el) return null;
-    var textEl = el.querySelector("text");
+    var textEl = contentTextElement(el);
     if (!textEl) return null;
     var ctm = getTextCTM(textEl);
     if (!ctm) return null;
     var lines = textLineRanges(textEl);
-    var n = lines.length > 0 ? lines[lines.length - 1].end : 0;
-    if (n === 0) return 0;
+    if (lines.length === 0 || lines[lines.length - 1].valueEnd === 0) return 0;
     var line = lineAtClientY(lines, clientY);
-    for (var i = line.start; i < line.end; i++) {
-      var start = toClientPoint(ctm, textEl.getStartPositionOfChar(i));
-      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(i));
-      if (clientX < (start.x + end.x) / 2) return i;
+    for (var domI = line.domStart; domI < line.domEnd; domI++) {
+      var start = toClientPoint(ctm, textEl.getStartPositionOfChar(domI));
+      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(domI));
+      if (clientX < (start.x + end.x) / 2) return line.valueStart + (domI - line.domStart);
     }
-    return line.end;
+    return line.valueEnd;
   }
 
   /**
-   * The screen rect the caret should be drawn at for character index `i`
-   * (`textarea.selectionStart === selectionEnd`), or `null` when there is
-   * no text geometry to measure (empty string, handled by the caller's
-   * container-box fallback — same 0×0 case the pre-ADR-0017 code already
-   * handled).
+   * The screen rect the caret should be drawn at for `textarea.value`
+   * character index `i` (`textarea.selectionStart === selectionEnd`), or
+   * `null` when there is no text geometry to measure at all (every line
+   * has zero real DOM characters — an empty box, or one made only of hard
+   * breaks — handled by the caller's container-box fallback, same as the
+   * pre-ADR-0017 0×0 case).
    */
   function caretRectForIndex(textEl, ctm, lines, i) {
-    var n = lines.length > 0 ? lines[lines.length - 1].end : 0;
-    if (n === 0) return null;
-    if (i >= n) {
-      var lastLine = lines[lines.length - 1];
-      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(n - 1));
+    var lastLine = lines[lines.length - 1];
+    if (lastLine.domEnd === 0) return null;
+    if (i >= lastLine.valueEnd) {
+      var end = toClientPoint(ctm, textEl.getEndPositionOfChar(lastLine.domEnd - 1));
       return { x: end.x, top: lastLine.rect.top, height: lastLine.rect.height };
     }
     for (var li = 0; li < lines.length; li++) {
       var line = lines[li];
-      if (i >= line.start && i < line.end) {
-        var start = toClientPoint(ctm, textEl.getStartPositionOfChar(i));
+      if (i >= line.valueStart && i < line.valueEnd) {
+        var domI = Math.min(line.domStart + (i - line.valueStart), line.domEnd);
+        var start = toClientPoint(ctm, textEl.getStartPositionOfChar(domI));
         return { x: start.x, top: line.rect.top, height: line.rect.height };
       }
     }
@@ -653,24 +698,37 @@
   }
 
   /**
-   * One rect per line touched by `[start, end)` (ADR-0017 §4.3) — a
-   * mid-line selection uses the selected characters' own start/end x, not
-   * the tspan's full rect, so a partial selection never paints a block
-   * over the unselected trailing wrap space; a fully-selected line's block
-   * still stops at its last real character for the same reason. Each
-   * block's top/height come from that line's own tspan rect, never
-   * interpolated between lines — the source of "破洞或重疊" this replaces
-   * (ADR-0017 §4.3's own note on why).
+   * One rect per line touched by `[start, end)` (both `textarea.value`
+   * indices — ADR-0017 §4.3) — a mid-line selection uses the selected
+   * characters' own start/end x, not the tspan's full rect, so a partial
+   * selection never paints a block over the unselected trailing wrap
+   * space; a fully-selected line's block still stops at its last real
+   * character for the same reason. A selection that covers only a line's
+   * trailing virtual hard-break character (no real DOM character on that
+   * line at all) draws a zero-width marker at the line's own end instead
+   * of silently vanishing.
    */
   function selectionRectsForRange(textEl, ctm, lines, start, end) {
     var rects = [];
     for (var li = 0; li < lines.length; li++) {
       var line = lines[li];
-      var s = Math.max(start, line.start);
-      var e = Math.min(end, line.end);
+      var s = Math.max(start, line.valueStart);
+      var e = Math.min(end, line.valueEnd);
       if (s >= e) continue;
-      var startPoint = toClientPoint(ctm, textEl.getStartPositionOfChar(s));
-      var endPoint = toClientPoint(ctm, textEl.getEndPositionOfChar(e - 1));
+      var domS = Math.min(line.domStart + (s - line.valueStart), line.domEnd);
+      var domELast = line.domStart + (e - line.valueStart) - 1;
+      if (domELast < domS || line.domEnd === 0) {
+        var edgePoint = domS < line.domEnd
+          ? toClientPoint(ctm, textEl.getStartPositionOfChar(domS))
+          : line.domEnd > 0
+            ? toClientPoint(ctm, textEl.getEndPositionOfChar(line.domEnd - 1))
+            : null;
+        if (!edgePoint) continue;
+        rects.push({ left: edgePoint.x, right: edgePoint.x, top: line.rect.top, height: line.rect.height });
+        continue;
+      }
+      var startPoint = toClientPoint(ctm, textEl.getStartPositionOfChar(domS));
+      var endPoint = toClientPoint(ctm, textEl.getEndPositionOfChar(domELast));
       rects.push({
         left: Math.min(startPoint.x, endPoint.x),
         right: Math.max(startPoint.x, endPoint.x),
@@ -733,7 +791,7 @@
     editFrame.style.width = rect.width + 6 + "px";
     editFrame.style.height = rect.height + 6 + "px";
 
-    var textEl = el.querySelector("text");
+    var textEl = contentTextElement(el);
     var ctm = textEl ? getTextCTM(textEl) : null;
     var start = textarea.selectionStart;
     var end = textarea.selectionEnd;
@@ -1153,6 +1211,35 @@
     { passive: false },
   );
 
+  // NOOP-65 §4.4: Enter (no modifier at all), when nothing is being edited
+  // and exactly one text-bearing element is selected, opens it for
+  // in-place editing — the keyboard equivalent of double-click, reusing
+  // the exact same `dblclick-textbox` message and host-side flow (so the
+  // caret lands wherever `enterRuntimeTextEdit`'s own default already
+  // puts it: the end of the string). Any other selection shape (0, ≥2, or
+  // a non-text element) is a no-op, not an error (§4.4's contract table) —
+  // falls through untouched to whatever this key would otherwise do.
+  // Deliberately does NOT pre-check `data-comot-lock` itself: a locked
+  // element reaches here only via the host's own "selection" command (a
+  // plain click can never select one at all — `findSelectable` already
+  // refuses it), and the existing `begin-text-edit` round trip
+  // (`enterRuntimeTextEdit`'s own lock check → `text-edit-denied`) is
+  // already the one place that denial is decided — re-deciding it here
+  // would just be a second, easier-to-drift copy of the same rule.
+  // Guarded on `editingId === null` and `!gesture` the same way
+  // `isRelayedStageKey` below is: once an edit session is open, the
+  // textarea's own keydown handler owns Enter instead.
+  window.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (editingId !== null || gesture) return;
+    if (selectedIds.length !== 1) return;
+    var el = document.getElementById(selectedIds[0]);
+    if (!el) return;
+    if (!el.hasAttribute("data-comot-text-width") && !isPlainTextContainer(el)) return;
+    event.preventDefault();
+    post({ event: "dblclick-textbox", id: el.getAttribute("id") });
+  });
+
   // Space 暫時抓取的中繼 (§4.4)：when focus has moved into this iframe
   // (e.g. after clicking a slide element), the parent document's own
   // window-level keydown listener (Stage.tsx) never sees Space at all —
@@ -1493,7 +1580,7 @@
   function applyPreviewText(id, text) {
     var container = document.getElementById(id);
     if (!container) return;
-    var textEl = container.querySelector("text");
+    var textEl = contentTextElement(container);
     if (!textEl) return;
     textEl.textContent = typeof text === "string" ? text : "";
     updateBoxes();
@@ -1502,7 +1589,7 @@
   function applyPreviewTextbox(id, lines, width) {
     var container = document.getElementById(id);
     if (!container) return;
-    var textEl = container.querySelector("text");
+    var textEl = contentTextElement(container);
     if (!textEl) return;
     while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
     if (Array.isArray(lines)) {

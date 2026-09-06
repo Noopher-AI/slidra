@@ -1738,6 +1738,49 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     const textboxCalls = commandCalls.filter((call) => call.name === "textbox width");
     expect(textboxCalls).toEqual([]);
   });
+
+  // NOOP-65 §7-I: a four-corner handle on a text box must redirect into
+  // the SAME `textbox-width` gesture the left/right edge handles already
+  // use, not the generic scale/resize path — core's `element scale`
+  // semantics are untouched (§2 第 8 條), this is purely a front-end handle
+  // remapping. Proven the same way the neighboring viewport-race test
+  // does: `resolveBrowserFont()` only ever runs from the textbox-width
+  // path, and `/api/default-font` is deliberately left unstubbed so its
+  // rejection sets `state.error` — the plain scale/resize path never
+  // touches fonts at all, so `state.error` staying `null` would mean the
+  // redirect did not happen.
+  it("gesture-start (scale, corner=se) 在文字框上會走 textbox-width 路徑而非 element scale／resize", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(slideMarkupWithTextbox, commandCalls);
+
+    controller = mountCanvas(container);
+    await controller.reload();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(state?.error).not.toBeNull();
+
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 220, y: 150 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 220, y: 150 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commandCalls.filter((call) => call.name === "element scale")).toEqual([]);
+    expect(commandCalls.filter((call) => call.name === "element resize")).toEqual([]);
+  });
 });
 
 // NOOP-91 round-2 FAIL #4: `computeOverlayLabel`/`notifyOverlay` (the data
