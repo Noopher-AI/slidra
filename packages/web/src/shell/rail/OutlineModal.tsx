@@ -14,7 +14,6 @@ export interface OutlineModalProps {
  */
 export function OutlineModal({ onClose }: OutlineModalProps) {
   const [draft, setDraft] = useState("");
-  const lineCount = draft.split("\n").filter((line) => line.trim() !== "").length;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -39,9 +38,6 @@ export function OutlineModal({ onClose }: OutlineModalProps) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
         />
-        <div className="outline-modal-counter">
-          {lineCount} {lineCount === 1 ? "line" : "lines"} · {lineCount} {lineCount === 1 ? "slide" : "slides"}
-        </div>
         <div className="outline-modal-actions">
           <button type="button" className="outline-modal-cancel" onClick={onClose}>
             Cancel

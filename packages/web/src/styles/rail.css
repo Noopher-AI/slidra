@@ -219,18 +219,21 @@
    F13 接上留言功能後，「該頁已有留言」會是第二個恆亮條件。
    常駐可見會改變 rail 的靜止外觀，讓 shell-v3／selection 的既有基準
    全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）。 */
+/* 定位相對 `.overview-item`（含 --space-1 內距），所以要再加上原型量測的
+   縮圖內縮 8px，才會落在縮圖裡面而不是壓在縮圖圓角外緣。 */
 .overview-comment-button {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
+  top: calc(var(--space-1) + var(--space-3));
+  right: calc(var(--space-1) + var(--space-3));
   width: calc(var(--space-4) * 2);
   height: calc(var(--space-4) * 2);
   display: grid;
   place-items: center;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  color: var(--ink-500);
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: var(--surface-1);
+  color: var(--brand-red);
+  box-shadow: var(--shadow-seg);
   pointer-events: none;
 }
 /* 用 `.overview-item .overview-comment-button` 的兩層 class 選擇器（而非單一
@@ -322,10 +325,6 @@
   font-size: var(--text-base);
   color: var(--ink-700);
   resize: none;
-}
-.outline-modal-counter {
-  font-size: var(--text-xs-hint);
-  color: var(--ink-400);
 }
 .outline-modal-actions {
   display: flex;

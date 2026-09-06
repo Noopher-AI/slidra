@@ -171,12 +171,27 @@ export function App() {
   // sidebar, ...) never crosses into the sandboxed iframe, so it needs no
   // relay through canvas.ts/selection-runtime.js — a plain listener here
   // sees it directly (決定 3 point 5).
+  // Only a file drag may raise the overlay: the rail's thumbnail reorder
+  // (overview.ts) is also a native drag, carries "text/plain" only, and
+  // never crosses the overlay — so the overlay's own onDrop/onDragLeave
+  // would never fire and the stage stayed tinted forever after a reorder.
+  // `dragend` bubbles to window for every drag that started in this
+  // document, which also covers a thumbnail dragged across the stage iframe
+  // (the iframe's forwarded "drag-enter" signal above carries no payload).
   useEffect(() => {
-    function onWindowDragEnter() {
+    function onWindowDragEnter(event: globalThis.DragEvent) {
+      if (!event.dataTransfer?.types.includes("Files")) return;
       setDropActive(true);
     }
+    function onWindowDragEnd() {
+      setDropActive(false);
+    }
     window.addEventListener("dragenter", onWindowDragEnter);
-    return () => window.removeEventListener("dragenter", onWindowDragEnter);
+    window.addEventListener("dragend", onWindowDragEnd);
+    return () => {
+      window.removeEventListener("dragenter", onWindowDragEnter);
+      window.removeEventListener("dragend", onWindowDragEnd);
+    };
   }, []);
 
   // Clipboard paste (US 4/6, docs/asset-import.md) is a window-level event,
