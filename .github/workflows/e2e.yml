@@ -1,7 +1,14 @@
 name: e2e
 
+# 觸發規則：同一個 commit 只跑一次。
+# - PR 分支只靠 pull_request；push 只跑 main（合併後的最終驗證）。
+#   以前 push 不限分支，PR 上每 push 一次就同時起 push + pull_request 兩個內容
+#   完全相同的 run，CI 用量直接乘以 2。
+# - concurrency 讓同一個 PR（或同一條分支）新的 commit 進來時取消還在跑的舊
+#   run；workflow_dispatch 用 run_id 自成一組，重產基準截圖不會被別人取消。
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -9,6 +16,10 @@ on:
         description: "重新產生外觀基準截圖（e2e/__screenshots__），而不是比對它們"
         type: boolean
         default: false
+
+concurrency:
+  group: e2e-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-e2e:
