@@ -9,7 +9,13 @@ import {
   setAttrSplice,
   type Splice,
 } from "./element-text.js";
-import { assertSlideCompliant, parseSlide, TEXT_WIDTH_ATTRIBUTE, type SlideElement } from "./slide/format.js";
+import {
+  assertSlideCompliant,
+  parseSlide,
+  TABLE_CONTAINER_TYPE,
+  TEXT_WIDTH_ATTRIBUTE,
+  type SlideElement,
+} from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
 import { elementBounds } from "./geometry/bbox.js";
@@ -93,10 +99,25 @@ function meaningfulChildren(node: ScannedNode): ScannedNode[] {
   return node.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
 }
 
-/** Whether `node` is a group container (ADR-0012: a container's children are all `<g>`, or all primitives — never mixed). */
+/**
+ * Whether `node` is a group container (ADR-0012: a container's children
+ * are all `<g>`, or all primitives — never mixed). An UNBOUND table's
+ * cells are all `<g data-comot-cell>` too (E2.T14) — explicitly excluded
+ * here so every caller below (scale/resize/style's group recursion,
+ * `assertSubtreeNotLocked`) treats a table as a leaf, not a group whose
+ * id-less cells it would otherwise try to recurse into.
+ */
 function isGroupContainer(node: ScannedNode): boolean {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) return false;
   const children = meaningfulChildren(node);
   return children.length > 0 && children.every((child) => child.tag === "g");
+}
+
+/** A table container's cells are not primitives `element scale`/`element resize`/`element style set` know how to touch (E2.T14, plan §2/§4.6) — its style and size are owned entirely by the `table` command family. */
+function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
+    throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
+  }
 }
 
 /** Rounds through `formatSvgNumber` and rejects a value that is positive on input but rounds to zero or below. Mirrors `workspace.ts`'s `assertPositiveAfterRounding` (#76) — small enough, and specific enough to the 4-decimal write rule, that duplicating it here is simpler than threading it across the Node/browser boundary this module cannot cross. */
@@ -698,6 +719,7 @@ function scaleOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
+      assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
       current = scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
     }
   }
@@ -890,6 +912,7 @@ function resizeOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
+      assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
       current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
     }
   }
@@ -1067,6 +1090,7 @@ function setStyleOnContainer(
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
   assertNotLocked(node, id, force);
+  assertNotTableContainer(node, id, "樣式請用 table 命令族調整");
 
   if (isGroupContainer(node)) {
     throw new CoMotionError(`元素 ${id} 是群組，沒有可套用樣式的圖元`);

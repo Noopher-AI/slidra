@@ -38,7 +38,13 @@ export type {
 } from "./slide-ops.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
-export { resolveAssetImport, sanitizeAssetBaseName, resolveConflictFreeFilename } from "./asset-import.js";
+export {
+  resolveAssetImport,
+  sanitizeAssetBaseName,
+  resolveConflictFreeFilename,
+  resolveDataAssetImport,
+} from "./asset-import.js";
+export type { ResolveDataAssetImportInput, ResolvedDataAssetImport } from "./asset-import.js";
 export type { ResolveAssetImportInput, ResolvedAssetImport } from "./asset-import.js";
 export {
   resolveCoMotionHome,
@@ -85,8 +91,29 @@ export {
   moveSlideEffect,
   setSlideEffect,
   listSlideEffects,
+  createSlideTable,
+  setSlideTableCellText,
+  setSlideTableCellStyle,
+  mergeSlideTableCells,
+  setSlideTableColWidth,
+  insertSlideTableColumn,
+  deleteSlideTableColumn,
+  insertSlideTableRow,
+  deleteSlideTableRow,
+  setSlideTableTheme,
+  setSlideTableHeader,
+  bindSlideTableSource,
+  refreshSlideTableSource,
+  setSlideTable,
 } from "./workspace.js";
-export type { AddTextBoxInput, SaveState } from "./workspace.js";
+export type {
+  AddTextBoxInput,
+  SaveState,
+  SetSlideTableCellStyleInput,
+  MergeSlideTableCellsInput,
+  SetSlideTableInput,
+} from "./workspace.js";
+export * from "./table/index.js";
 export type { TextRunStyleUpdate, ListKind } from "./element-text.js";
 export {
   insertElement,
