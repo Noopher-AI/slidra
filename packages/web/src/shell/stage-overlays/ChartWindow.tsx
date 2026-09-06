@@ -116,6 +116,14 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
   // at this corner rather than wherever the previous one was dragged to.
   const [pos, setPos] = useState(() => ({ left: Math.max(0, bounds.width - 436 - 16), top: 16 }));
   const dragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** 命令序列化佇列：後送出的命令一定在前一條 resolve 之後才送出，因此一定後落地。
+   *  失敗也接上（then(send, send)），一條命令失敗不會讓整條鏈卡死。 */
+  function enqueue(send: () => Promise<unknown>): Promise<unknown> {
+    const next = queueRef.current.then(send, send);
+    queueRef.current = next;
+    return next;
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -178,50 +186,56 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
 
   function commitType(next: ChartType): void {
     setType(next);
-    void commit("chart type set", { type: next }, () => setType(model.type));
+    void enqueue(() => commit("chart type set", { type: next }, () => setType(model.type)));
   }
   function commitPalette(next: ChartPalette): void {
     setPalette(next);
-    void commit("chart palette set", { palette: next, colors: [] }, () => setPalette(model.palette));
+    void enqueue(() => commit("chart palette set", { palette: next, colors: [] }, () => setPalette(model.palette)));
   }
   function commitLegend(next: ChartLegend): void {
     setLegend(next);
-    void commit("chart legend set", { legend: next }, () => setLegend(model.legend));
+    void enqueue(() => commit("chart legend set", { legend: next }, () => setLegend(model.legend)));
   }
   function commitGrid(next: boolean): void {
     setGrid(next);
-    void commit("chart option set", { key: "grid", value: String(next) }, () => setGrid(model.grid));
+    void enqueue(() => commit("chart option set", { key: "grid", value: String(next) }, () => setGrid(model.grid)));
   }
   function commitLabels(next: boolean): void {
     setLabels(next);
-    void commit("chart option set", { key: "labels", value: String(next) }, () => setLabels(model.labels));
+    void enqueue(() => commit("chart option set", { key: "labels", value: String(next) }, () => setLabels(model.labels)));
   }
   function commitStack(next: boolean): void {
     setStacked(next);
-    void commit("chart stack set", { stacked: next }, () => setStacked(model.stacked));
+    void enqueue(() => commit("chart stack set", { stacked: next }, () => setStacked(model.stacked)));
   }
   function commitAxis(nextAxes: ChartAxesMode, nextRight: ReadonlySet<string>): void {
     setAxes(nextAxes);
     setRightNames(nextRight);
-    void commit("chart axis set", { axes: nextAxes, right: [...nextRight] }, () => {
-      setAxes(model.axes);
-      setRightNames(new Set(model.series.filter((s) => s.axis === "right").map((s) => s.name)));
-    });
+    void enqueue(() =>
+      commit("chart axis set", { axes: nextAxes, right: [...nextRight] }, () => {
+        setAxes(model.axes);
+        setRightNames(new Set(model.series.filter((s) => s.axis === "right").map((s) => s.name)));
+      }),
+    );
   }
   function commitTitle(key: "x-title" | "y-title"): void {
     const value = key === "x-title" ? xTitle : yTitle;
-    void commit("chart option set", { key, value }, () => {
-      if (key === "x-title") setXTitle(model.xTitle);
-      else setYTitle(model.yTitle);
-    });
+    void enqueue(() =>
+      commit("chart option set", { key, value }, () => {
+        if (key === "x-title") setXTitle(model.xTitle);
+        else setYTitle(model.yTitle);
+      }),
+    );
   }
   function commitData(nextCategories: string[], nextSeries: EditableSeries[]): void {
     const data = chartDataSetInputFromDraft(nextCategories, nextSeries);
     if (!data) return; // Still mid-edit — nothing valid to send yet (matches TextPanel's "empty textarea never sends" posture).
-    void commit("chart data set", { categories: data.categories, series: data.series }, () => {
-      setCategories(model.categories);
-      setSeriesDraft(model.series.map((s) => ({ name: s.name, values: s.values.map(String) })));
-    });
+    void enqueue(() =>
+      commit("chart data set", { categories: data.categories, series: data.series }, () => {
+        setCategories(model.categories);
+        setSeriesDraft(model.series.map((s) => ({ name: s.name, values: s.values.map(String) })));
+      }),
+    );
   }
 
   function toggleAxes(): void {
