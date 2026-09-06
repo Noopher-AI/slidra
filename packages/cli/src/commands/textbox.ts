@@ -1,10 +1,14 @@
-import { addTextBox, setTextBoxWidth } from "@co-motion/core";
+import { addTextBox, setTextBoxAlign, setTextBoxWidth } from "@co-motion/core";
 import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
- * `co-motion textbox add` / `co-motion textbox width` (#76, W1-R5/W1-R9).
+ * `co-motion textbox add` / `co-motion textbox width` (#76, W1-R5/W1-R9) /
+ * `co-motion textbox align` (#200 §4.1: a text box's alignment is a
+ * container-level `data-comot-*` attribute that `element style set`
+ * explicitly refuses, so it gets its own command here rather than folding
+ * into that whitelist).
  *
- * AC1 (amended): these two commands are the whole of #76's write surface —
+ * AC1 (amended): these commands are the whole of #76's write surface —
  * `textbox add` creates a text box with a declared width, `textbox width`
  * changes it. Inline typing on the stage is a later unit (#75).
  */
@@ -82,7 +86,32 @@ export const textBoxWidthCommand: CommandHandler<TextBoxWidthInput, TextBoxWidth
   };
 };
 
+export interface TextBoxAlignInput {
+  id: string;
+  slidePath: string;
+  elementId: string;
+  align: "left" | "center" | "right";
+  /** Bypasses the locked-element guard (T3, ADR-0013). Never sent by the front end. */
+  force?: boolean;
+}
+
+export interface TextBoxAlignData {
+  lines: number;
+}
+
+export const textBoxAlignCommand: CommandHandler<TextBoxAlignInput, TextBoxAlignData> = async (input) => {
+  const { lines } = await setTextBoxAlign(input.id, input.slidePath, input.elementId, input.align, {
+    force: input.force,
+  });
+  return {
+    ok: true,
+    data: { lines },
+    message: `已將 ${input.elementId} 的文字框對齊設為 ${input.align}`,
+  };
+};
+
 export function register(registry: CommandRegistry): void {
   registry.register("textbox add", { handler: textBoxAddCommand, render: null });
   registry.register("textbox width", { handler: textBoxWidthCommand, render: null });
+  registry.register("textbox align", { handler: textBoxAlignCommand, render: null });
 }

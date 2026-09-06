@@ -356,3 +356,78 @@ describe("parseArgv text list set (NOOP-65 §4.3, 決定 E)", () => {
     expect(() => parseArgv(["text", "list", "clear", "p1"])).toThrow();
   });
 });
+
+describe("parseArgv textbox align（#200 §4.1）", () => {
+  it("parses the four positionals into structured input", () => {
+    const parsed = parseArgv(["textbox", "align", "p1", "slides/001.svg", "el-a", "center"]);
+    expect(parsed).toEqual({
+      name: "textbox align",
+      input: { id: "p1", slidePath: "slides/001.svg", elementId: "el-a", align: "center", force: false },
+    });
+  });
+
+  it("rejects an align value outside left/center/right", () => {
+    expect(() => parseArgv(["textbox", "align", "p1", "slides/001.svg", "el-a", "middle"])).toThrow(
+      "align 必須是 left、center 或 right：middle",
+    );
+  });
+
+  it("parses the trailing --force flag", () => {
+    const parsed = parseArgv(["textbox", "align", "p1", "slides/001.svg", "el-a", "right", "--force"]);
+    expect(parsed.input).toMatchObject({ force: true });
+  });
+});
+
+describe("parseArgv slide style set（#200 §4.3/§4.4）", () => {
+  it("parses --background and --accent together", () => {
+    const parsed = parseArgv([
+      "slide", "style", "set", "p1", "slides/001.svg", "--background", "#202020", "--accent", "#00ff00",
+    ]);
+    expect(parsed).toEqual({
+      name: "slide style set",
+      input: { id: "p1", slidePath: "slides/001.svg", background: "#202020", accent: "#00ff00" },
+    });
+  });
+
+  it("parses --background alone, --accent left undefined", () => {
+    const parsed = parseArgv(["slide", "style", "set", "p1", "slides/001.svg", "--background", "#202020"]);
+    expect(parsed.input).toEqual({ id: "p1", slidePath: "slides/001.svg", background: "#202020", accent: undefined });
+  });
+
+  it("accepts an empty string as a legal value (clears the declaration)", () => {
+    const parsed = parseArgv(["slide", "style", "set", "p1", "slides/001.svg", "--background", ""]);
+    expect(parsed.input).toMatchObject({ background: "" });
+  });
+
+  it("rejects neither flag given", () => {
+    expect(() => parseArgv(["slide", "style", "set", "p1", "slides/001.svg"])).toThrow(
+      "命令 slide style set 至少要給 --background 或 --accent",
+    );
+  });
+});
+
+describe("parseArgv presentation canvas set（#200 §4.3）", () => {
+  it("parses --width/--height", () => {
+    const parsed = parseArgv(["presentation", "canvas", "set", "p1", "--width", "1024", "--height", "768"]);
+    expect(parsed).toEqual({
+      name: "presentation canvas set",
+      input: { id: "p1", width: 1024, height: 768 },
+    });
+  });
+
+  it("rejects a missing --height", () => {
+    expect(() => parseArgv(["presentation", "canvas", "set", "p1", "--width", "1024"])).toThrow(
+      "命令 presentation canvas set 缺少參數：--height",
+    );
+  });
+
+  it("rejects a non-numeric --width", () => {
+    expect(() => parseArgv(["presentation", "canvas", "set", "p1", "--width", "abc", "--height", "768"])).toThrow(
+      "--width 不是合法數字：abc",
+    );
+  });
+
+  it("fails on an unknown presentation canvas subcommand", () => {
+    expect(() => parseArgv(["presentation", "canvas", "resize", "p1"])).toThrow("未知的子命令：presentation canvas resize");
+  });
+});
