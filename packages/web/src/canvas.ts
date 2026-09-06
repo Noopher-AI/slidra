@@ -808,6 +808,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Extended by NOOP-275/#156 from a single id to a list, so a multi-element
   // paste selects everything it created rather than just the first one.
   let pendingSelectionIds: string[] | null = null;
+  // True from a committed gesture until render() has re-selected
+  // `pendingSelectionIds` — reported as `OverlayState.dragging` so the
+  // context bar stays hidden across the reload (see keepSelectionAcrossReload).
+  let overlaySettling = false;
   // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
@@ -1074,11 +1078,25 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       }
       const cancelled = Boolean(message.cancelled);
       const gesture = activeGesture;
-      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(endEditingLease);
+      // Keep the context bar hidden through the gesture's tail: the end
+      // handlers null `activeGesture` and notify the overlay *before* their
+      // command round-trips, and a committed write then reloads the slide.
+      // `settle` lifts it only when no reload is coming (cancelled, no-op,
+      // or failed — nothing was parked in pendingSelectionIds); otherwise
+      // render()/selectOnceLoaded clear it once the re-selection has landed.
+      if (gesture && gesture.kind !== "marquee") overlaySettling = true;
+      const settle = () => {
+        if (pendingSelectionIds === null && activeGesture === null) {
+          overlaySettling = false;
+          notifyOverlay();
+        }
+        endEditingLease();
+      };
+      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(settle);
       else if (gesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
-      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(endEditingLease);
-      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(endEditingLease);
-      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(endEditingLease);
+      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(settle);
+      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(settle);
+      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(settle);
       // activeGesture is already null (e.g. a stray gesture-end with no
       // matching start) — still release the lease so it does not sit until
       // HUMAN_LEASE_MAX_MS expires.
@@ -1192,7 +1210,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       union: overlayUnion ? toParentClientRect(overlayUnion) : null,
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
-      dragging: activeGesture !== null && activeGesture.kind !== "marquee",
+      dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlaySettling,
     };
   }
 
@@ -1650,7 +1668,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * (selectOnceLoaded resets groupPath), same as those commands.
    */
   function keepSelectionAcrossReload(): void {
-    if (selectionIds.length > 0) pendingSelectionIds = [...selectionIds];
+    if (selectionIds.length === 0) return;
+    pendingSelectionIds = [...selectionIds];
+    // The context bar stays down until that re-selection has landed (see the
+    // gesture-end handler) — otherwise it flashes: shown the instant the
+    // gesture ends, gone when the reload drops the selection, shown again
+    // once it is restored.
+    overlaySettling = true;
   }
 
   async function endMoveGesture(cancelled: boolean): Promise<void> {
@@ -2467,6 +2491,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // must not leak into some later, unrelated render().
     const selectAfterLoad = pendingSelectionIds;
     pendingSelectionIds = null;
+    // Nothing to re-select after this render → nothing to wait for either.
+    if (!selectAfterLoad) overlaySettling = false;
 
     if (currentIndex === -1) {
       currentSlideModel = null;
@@ -2511,6 +2537,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const targetFrame = frame;
     const onLoad = () => {
       targetFrame.removeEventListener("load", onLoad);
+      // Whatever happens next, the wait is over — never leave the context
+      // bar stuck hidden behind a stale `overlaySettling`.
+      overlaySettling = false;
       if (destroyed || thisGeneration !== generation || mode !== "view") return;
       // Only the ids that still resolve are selected — a paste of several
       // elements where one was concurrently deleted still gives feedback
@@ -2518,7 +2547,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const entries = elementIds
         .map((id) => [id, elementIndex().get(id)] as const)
         .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== undefined);
-      if (entries.length === 0) return;
+      if (entries.length === 0) {
+        notifyOverlay();
+        return;
+      }
       selectionIds = entries.map(([id]) => id);
       selectionNames = entries.map(([, entry]) => entry.element.name);
       selectionGroupPath = [];
