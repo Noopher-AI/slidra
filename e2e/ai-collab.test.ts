@@ -288,15 +288,20 @@ it("Agent 編輯中（持鎖）：titlebar 凍結徽章截圖（AC5）", async (
   }
 });
 
-it("從大綱草擬：Running 指令卡截圖（AC6）", async () => {
+it("從大綱草擬：走真實 UI 入口，agent 真的插入新頁（AC2）＋ Running 指令卡截圖（AC6）", async () => {
   const DRAFT_HOLD_MS = 1500;
-  const { server, cleanup } = await startServerFor({ E2E_DRAFT_HOLD_MS: String(DRAFT_HOLD_MS) });
+  const { server, registry, presentationId, cleanup } = await startServerFor({
+    E2E_DRAFT_HOLD_MS: String(DRAFT_HOLD_MS),
+  });
   try {
     const page = await openApp(server, { waitForAgent: true });
-    await sendChatMessage(
-      page,
-      "【從大綱草擬新頁】請依下面的大綱，用 co-motion slide add 在第 1 頁（slides/001.svg）之後依序插入新頁，每一行大綱一頁；縮排的行是上一行那一頁的副標。插入後請用 textbox add 把文字放進新頁。\n\n第一步\n第二步",
-    );
+    await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(2);
+
+    await page.getByRole("button", { name: "New" }).click();
+    const menu = page.locator('[data-menu="new"]');
+    await menu.getByRole("menuitem", { name: "From outline…" }).click();
+    await page.locator(".outline-modal-textarea").fill("第一步\n第二步");
+    await page.locator(".outline-modal-submit").click();
 
     const commandCard = page.locator(".chat-command-in_progress");
     await expect.poll(() => commandCard.isVisible(), { timeout: 30_000 }).toBe(true);
@@ -305,6 +310,17 @@ it("從大綱草擬：Running 指令卡截圖（AC6）", async () => {
     const box = await commandCard.boundingBox();
     if (!box) throw new Error("找不到 Running 指令卡");
     await compareScreenshot(page, { name: "running-command-card", baselineDir, clip: box });
+
+    // AC2：新頁真的被插入，不只是 UI 事件——縮圖列 +1、project.json 的
+    // slides 在原索引 +1 的位置多一個新路徑（[Fix.5]）。
+    await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(3);
+    const project = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "project.json" });
+    const slides = (JSON.parse(project.data!.content).slides as string[]);
+    expect(slides).toHaveLength(3);
+    expect(slides[0]).toBe("slides/001.svg");
+    expect(slides[2]).toBe("slides/002.svg");
+    expect(slides[1]).not.toBe("slides/001.svg");
+    expect(slides[1]).not.toBe("slides/002.svg");
   } finally {
     await cleanup();
   }

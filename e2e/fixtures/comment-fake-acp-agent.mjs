@@ -11,11 +11,9 @@
 //     --at <N>` (N parsed straight out of the prefix's own "第 N 頁" — this
 //     fixture never invents a number the prompt didn't actually carry),
 //     holds for E2E_DRAFT_HOLD_MS (so the Running command card has an
-//     observable window, AC6), then reports the command as completed
-//     WITHOUT actually running it — see the long comment at that branch's
-//     `tool_call_update` for the discovered, out-of-scope defect this
-//     works around (multi-file `co-motion` commands cannot currently run
-//     inside an agent turn at all).
+//     observable window, AC6), then actually runs it — reports `completed`
+//     only if the command succeeds, `failed` (with stdout/stderr) if it
+//     doesn't. This fixture never reports success it didn't observe.
 //   - contains "寫留言": requests permission for, then actually runs,
 //     `co-motion comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
 //     write, unaffected by the defect above) — AC8(b) needs the write to
@@ -104,20 +102,21 @@ class CommentFakeAgent {
         await new Promise((resolve) => setTimeout(resolve, draftHoldMs));
       }
 
-      // NOT executed (discovered defect, out of [E2.T8]'s scope): the
-      // server already opens a per-turn history group on this session's
-      // first permitted command (session.ts's openEditLockOnFirstCommand),
-      // and `slide add` — a multi-file write — opens its OWN group
-      // internally (packages/core/src/slide-ops.ts), which
-      // packages/core/src/history.ts's beginHistoryGroup refuses to nest
-      // ("Nests are refused rather than reference counted (no known need
-      // for it)"). Running the real command here throws "已經有開啟中的
-      // 復原群組" and never reaches `tool_call_update("completed")` below —
-      // this is not specific to slide add or to this ticket: ANY
-      // multi-file `co-motion` command (slide delete/duplicate, template
-      // add/delete) hits the same conflict the moment an agent turn runs
-      // it. AC6 only needs the Running card's own appearance, which does
-      // not depend on the command actually succeeding.
+      try {
+        await runShellCommand(command, this.sessionCwd);
+      } catch (error) {
+        await this.connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId,
+            status: "failed",
+            content: [{ type: "content", content: { type: "text", text: error.message } }],
+          },
+        });
+        return { stopReason: "end_turn" };
+      }
+
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed" },
