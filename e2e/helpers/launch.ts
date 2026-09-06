@@ -49,6 +49,10 @@ export interface StartServerOptions {
    * content and break byte-exact appearance baselines.
    */
   injectFonts?: boolean;
+  /** [E2.T8]: overrides the default `editing-fake-acp-agent.mjs` fixture. Existing 27 call sites are unaffected — this is optional and defaults to the current fixture. */
+  agentFixture?: string;
+  /** [E2.T8]: merged over the default agent env (`E2E_PRESENTATION_ID`/`E2E_NEW_TITLE`, both still set unless overridden here). */
+  agentEnv?: Record<string, string>;
 }
 
 export interface StartedServer {
@@ -60,7 +64,7 @@ export interface StartedServer {
 
 /** Packs `deckDir` (optionally with fonts injected) and starts a real server against it. */
 export async function startServerFor(options: StartServerOptions): Promise<StartedServer> {
-  const { deckDir, prefix, injectFonts = false } = options;
+  const { deckDir, prefix, injectFonts = false, agentFixture: agentFixtureOverride, agentEnv } = options;
   const coMotionHome = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-home-`));
   const comotDir = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-files-`));
   process.env.CO_MOTION_HOME = coMotionHome;
@@ -85,11 +89,12 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     kind: "claude",
     label: "Claude Code",
     command: process.execPath,
-    args: [agentFixture],
+    args: [agentFixtureOverride ?? agentFixture],
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: "此測試不會送出訊息",
+      ...agentEnv,
     },
   };
 

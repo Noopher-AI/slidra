@@ -392,6 +392,28 @@ it("agent 動手期間編輯凍結，作者看得到凍結狀態；凍結期間 
     await expect.poll(() => banner.isVisible()).toBe(true);
     expect(await banner.textContent()).toBe("Agent editing · undo/redo paused");
 
+    // [E2.T8] AC9 (i)：TitleBar 自己的凍結徽章——與上面 App.tsx 的
+    // `.editing-frozen-banner` 是兩個獨立元素，文字也刻意不同（沒有
+    // "/redo"），這裡是第一次有測試守住這一行字（plan §3.4）。
+    const titlebarBadge = page.locator(".titlebar-frozen-badge");
+    await expect.poll(() => titlebarBadge.isVisible()).toBe(true);
+    expect(await titlebarBadge.textContent()).toBe("Agent editing · undo paused");
+
+    // [E2.T8] AC9 (ii)：Undo／Redo 兩顆按鈕在凍結期間都 disabled。
+    const undoButton = page.locator('.titlebar-icon-button[aria-label="Undo"]');
+    const redoButton = page.locator('.titlebar-icon-button[aria-label="Redo"]');
+    expect(await undoButton.isDisabled()).toBe(true);
+    expect(await redoButton.isDisabled()).toBe(true);
+
+    // [E2.T8] AC9 (iii)：即使繞過瀏覽器對 disabled 按鈕的原生點擊保護，
+    // 直接 `.click()` 那兩顆鈕，投影片文字也不變——這是回歸守門，不是
+    // 這個屬性本來就會擋下點擊的重複驗證（App.tsx 的 `runUndoRedo` 本身
+    // 也在 `editingFrozenRef.current` 時提前 return）。
+    await undoButton.evaluate((el: HTMLButtonElement) => el.click());
+    await redoButton.evaluate((el: HTMLButtonElement) => el.click());
+    expect(await currentSlideText()).toBe("第一頁");
+
+    // [E2.T8] AC9 (iv)：既有的鍵盤 ⌘Z 斷言原封不動保留——
     // App.tsx's editingFrozenRef early-return: Ctrl+Z while frozen sends no
     // request at all, so the (still first-page) text is untouched.
     const isMac = process.platform === "darwin";
