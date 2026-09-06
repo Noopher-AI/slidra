@@ -33,3 +33,9 @@ export type { NormaliseOptions, NormaliseResult } from "./normalise.js";
 // this ticket's xmlns fix.
 export { scanDocument, attributeOf } from "./scan.js";
 export type { ScannedNode } from "./scan.js";
+// [E2.T8]: the web-side comment reader (`packages/web/src/comments.ts`)
+// needs the same splice-only parser the CLI's `comment` commands write
+// through (`core/src/slide-ops.ts`), for the same DOMParser-unbound-namespace
+// reason `scanDocument`/`attributeOf` above were exported for notes.
+export { readSlideComments, addSlideComment, editSlideComment, deleteSlideComment } from "./comments.js";
+export type { SlideComment } from "./comments.js";

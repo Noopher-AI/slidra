@@ -571,6 +571,12 @@ it("縮圖留言鈕依 03-UI_RATIONALE.md「滑入才顯示」：靜止態不可
     const page = await openApp(server);
     const pin = page.locator('.overview-item[data-index="0"] .overview-comment-button');
 
+    // 這條「滑入才顯示」規則只在沒有整頁留言的縮圖上成立——有留言時
+    // `.has-comments` 讓它恆亮（rail.css），下面的靜止態斷言才有意義；這個
+    // fixture deck 目前沒有任何留言，若哪天長出留言，這裡會先用看得懂的訊
+    // 息失敗，而不是讓 opacity 斷言莫名其妙不為 0。
+    await expect.poll(() => pin.evaluate((el) => el.classList.contains("has-comments"))).toBe(false);
+
     await page.mouse.move(0, 0);
     await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 

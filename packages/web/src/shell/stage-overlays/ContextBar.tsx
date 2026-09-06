@@ -8,6 +8,8 @@ export interface ContextBarProps {
   bounds: { width: number; height: number };
   /** Hidden while a drag is in progress (`OverlayState.dragging`). */
   dragging: boolean;
+  /** [E2.T8]: "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
+  onComment(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -45,7 +47,7 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * 共用）；Comment to AI／Edit style 是佈局佔位按鈕，功能分屬 NOOP-67／NOOP-69。
  * 原型的 Edit animation 只在元素已有動畫時出現，判斷來源屬 NOOP-66，尚未渲染。
  */
-export function ContextBar({ union, bounds, dragging, onOrder, onDuplicate, onDelete }: ContextBarProps) {
+export function ContextBar({ union, bounds, dragging, onComment, onOrder, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
@@ -67,8 +69,7 @@ export function ContextBar({ union, bounds, dragging, onOrder, onDuplicate, onDe
   return (
     <div className="context-bar-layer">
       <div ref={barRef} className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
-        {/* NOOP-67 wires this up. */}
-        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI">
+        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI" onClick={onComment}>
           <Icon name="comment" size="control" />
           Comment to AI
         </button>

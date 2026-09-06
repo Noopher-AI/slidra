@@ -1,4 +1,5 @@
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
+import type { NumberedComment } from "../../comments.js";
 
 export interface ChatPanelProps {
   messages: ChatMessage[];
@@ -8,6 +9,16 @@ export interface ChatPanelProps {
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /**
+   * [E2.T8] §4.7: every pinned comment, deck-wide, sorted/numbered by
+   * `sortComments`. Rendered as "Pinned context <n>" — empty means the
+   * whole block doesn't render at all (not "Pinned context 0").
+   */
+  comments: readonly NumberedComment[];
+  /** A Pinned context row was clicked: jump to its slide, select its target, open it for editing. */
+  onPinnedClick(comment: NumberedComment): void;
+  /** The row's own ✕ — deletes immediately, no confirmation (prototype's own rule, `comotion-logic-v3.js:665`). */
+  onPinnedRemove(commentId: string): void;
 }
 
 /**
@@ -19,7 +30,19 @@ export interface ChatPanelProps {
  * 則）——兩者都不能因為殼重建而跟著變。狀態（messages/draft/…）仍然留在
  * App.tsx，這個元件純粹是搬過來的 JSX + 兩個小常數表，不擁有任何狀態。
  */
-export function ChatPanel({ messages, working, streamReady, error, draft, onDraftChange, onSubmit }: ChatPanelProps) {
+export function ChatPanel({
+  messages,
+  working,
+  streamReady,
+  error,
+  draft,
+  onDraftChange,
+  onSubmit,
+  comments,
+  onPinnedClick,
+  onPinnedRemove,
+}: ChatPanelProps) {
+  const hasComments = comments.length > 0;
   return (
     <aside className="chat-sidebar">
       <div className="chat-messages">
@@ -53,6 +76,38 @@ export function ChatPanel({ messages, working, streamReady, error, draft, onDraf
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
         {error && <p className="chat-error">{error}</p>}
       </div>
+      {hasComments && (
+        <div className="chat-pinned">
+          <div className="chat-pinned-header">
+            <span>
+              Pinned context <span className="chat-pinned-count">{comments.length}</span>
+            </span>
+            <span className="chat-pinned-note">sent with your next message</span>
+          </div>
+          <ul className="chat-pinned-list">
+            {comments.map((comment) => (
+              <li key={comment.id} className="chat-pinned-item" data-comment-id={comment.id}>
+                <button type="button" className="chat-pinned-item-text" onClick={() => onPinnedClick(comment)}>
+                  <span className="chat-pinned-item-number">{comment.number}</span>
+                  <span className="chat-pinned-item-slide">
+                    Slide {comment.slideNumber}
+                    {comment.target === "page" && <span className="chat-pinned-item-page">page</span>}
+                  </span>
+                  <span className="chat-pinned-item-body">{comment.text}</span>
+                </button>
+                <button
+                  type="button"
+                  className="chat-pinned-remove"
+                  aria-label="Remove pin"
+                  onClick={() => onPinnedRemove(comment.id)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <form
         className="chat-input"
         onSubmit={(event) => {
@@ -66,6 +121,7 @@ export function ChatPanel({ messages, working, streamReady, error, draft, onDraf
           placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
         />
         <div className="chat-input-footer">
+          {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">↵ to send</span>
           <button type="submit" aria-label="Send" title="Send (↵)" disabled={!streamReady}>
             ↑

@@ -121,13 +121,27 @@ describe("undo / redo — a single text set", () => {
 });
 
 describe("history group errors never leak the real work directory path", () => {
-  it("beginHistoryGroup nested call reports a clear error without the real path", async () => {
-    const { beginHistoryGroup } = await import("@co-motion/core");
-    const { id } = await openFreshPresentation();
+  it("beginHistoryGroup joining an already-open group returns false and does not open a second group (NOOP-67 r2, [Fix.4])", async () => {
+    const { beginHistoryGroup, endHistoryGroup } = await import("@co-motion/core");
+    const { id, elementId } = await openFreshPresentation();
 
-    await beginHistoryGroup(id);
-    await expect(beginHistoryGroup(id)).rejects.toMatchObject({ message: "已經有開啟中的復原群組" });
-    expect("已經有開啟中的復原群組").not.toContain(coMotionHome);
+    const opened = await beginHistoryGroup(id);
+    expect(opened).toBe(true);
+    const joined = await beginHistoryGroup(id);
+    expect(joined).toBe(false);
+
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "A" });
+    await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "B" });
+    // The joiner must NOT close the group — only the owner (the `true`
+    // caller) may call endHistoryGroup. Closing once collects both writes
+    // into a single undo step.
+    await endHistoryGroup(id);
+
+    const undone = await registry.dispatch("undo", { id });
+    expect(undone.ok).toBe(true);
+    const second = await registry.dispatch("undo", { id });
+    expect(second.ok).toBe(false);
+    expect(second.message).toBe("沒有可復原的操作");
   });
 
   it("endHistoryGroup without a matching begin reports a clear error without the real path", async () => {
@@ -204,6 +218,78 @@ describe("undo — an agent turn groups multiple commands into one step (AC 2)",
     const restoredToBefore = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
     expect(restoredToBefore.data!.content).toBe(before.data!.content);
 
+    const third = await registry.dispatch("undo", { id });
+    expect(third.ok).toBe(false);
+    expect(third.message).toBe("沒有可復原的操作");
+  });
+});
+
+describe("undo — multi-file commands inside an agent-turn group don't throw (NOOP-67 r2)", () => {
+  it("[Fix.1] slide add + slide duplicate under an open turn group both succeed, and one undo收回整個 turn", async () => {
+    const { beginHistoryGroup, endHistoryGroup } = await import("@co-motion/core");
+    const id = await openFreshPresentation().then((r) => r.id);
+    const readSlides = async () => {
+      const project = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
+      return (JSON.parse(project.data!.content).slides as string[]).length;
+    };
+    const before = await readSlides();
+
+    await beginHistoryGroup(id);
+    const added = await registry.dispatch<{ slidePath: string }>("slide add", { id });
+    expect(added.ok).toBe(true);
+    const duplicated = await registry.dispatch<{ slidePath: string }>("slide duplicate", {
+      id,
+      slidePath: added.data!.slidePath,
+    });
+    expect(duplicated.ok).toBe(true);
+    await endHistoryGroup(id);
+
+    expect(await readSlides()).toBe(before + 2);
+
+    const undone = await registry.dispatch("undo", { id });
+    expect(undone.ok).toBe(true);
+    expect(await readSlides()).toBe(before);
+    const second = await registry.dispatch("undo", { id });
+    expect(second.ok).toBe(false);
+    expect(second.message).toBe("沒有可復原的操作");
+  });
+
+  it("[Fix.2] all five multi-file commands succeed under an open turn group (slide add/delete/duplicate, template add/delete)", async () => {
+    const { beginHistoryGroup, endHistoryGroup } = await import("@co-motion/core");
+    const id = await openFreshPresentation().then((r) => r.id);
+
+    await beginHistoryGroup(id);
+    const add1 = await registry.dispatch<{ slidePath: string }>("slide add", { id });
+    expect(add1.ok).toBe(true);
+    const add2 = await registry.dispatch<{ slidePath: string }>("slide add", { id });
+    expect(add2.ok).toBe(true);
+    const duplicated = await registry.dispatch<{ slidePath: string }>("slide duplicate", {
+      id,
+      slidePath: add2.data!.slidePath,
+    });
+    expect(duplicated.ok).toBe(true);
+    const deleted = await registry.dispatch("slide delete", { id, slidePath: add1.data!.slidePath });
+    expect(deleted.ok).toBe(true);
+    const templateAdded = await registry.dispatch<{ templatePath: string }>("template add", { id });
+    expect(templateAdded.ok).toBe(true);
+    const templateDeleted = await registry.dispatch("template delete", { id, templatePath: templateAdded.data!.templatePath });
+    expect(templateDeleted.ok).toBe(true);
+    await endHistoryGroup(id);
+  });
+
+  it("[Fix.3] standalone execution (no open turn group) keeps its own undo granularity — one command, one step", async () => {
+    const id = await openFreshPresentation().then((r) => r.id);
+
+    await registry.dispatch("slide add", { id });
+    await registry.dispatch("slide add", { id });
+
+    const first = await registry.dispatch("undo", { id });
+    expect(first.ok).toBe(true);
+    const project = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
+    expect(JSON.parse(project.data!.content).slides.length).toBe(2); // original 1 + the first add
+
+    const second = await registry.dispatch("undo", { id });
+    expect(second.ok).toBe(true);
     const third = await registry.dispatch("undo", { id });
     expect(third.ok).toBe(false);
     expect(third.message).toBe("沒有可復原的操作");

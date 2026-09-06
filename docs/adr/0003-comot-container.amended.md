@@ -14,3 +14,4 @@
 - `project.json` 只放 SVG 表達不了的東西：`formatVersion`、`name`、`canvas`、`slides` 順序陣列（**及 ADR-0016 新增的 `fonts` 陣列**）。共用樣式不放這裡，否則單獨開啟一張投影片會缺色，違反 ADR-0001。
 - `formatVersion` 不可省略，它是未來遷移舊檔的唯一依據。
 - 頁面順序用明確陣列而非檔名排序，避免調整順序時大量改名。
+- **[E2.T8]**：作者釘在簡報上的留言不在 `project.json`，在各投影片 SVG 自己的 `<metadata>` 裡，詳見 ADR-0008。
