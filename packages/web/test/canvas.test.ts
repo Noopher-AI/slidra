@@ -2230,3 +2230,211 @@ describe("mountCanvas 的文字框編輯 preview 通道（NOOP-65r3）", () => {
     expect(markup).toContain('<tspan font-weight="bold">體字</tspan>');
   });
 });
+
+// E2.T14r2 §4.1: handleTableRangeKey/setTableRange/subscribeTableRange — the
+// single decision function both the iframe relay and App.tsx's capture
+// listener call, tested here at its own public boundary
+// (`createCanvasController()`'s returned object, per plan §6.5), not
+// against a private module variable.
+describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）", () => {
+  // 2×2 table: (0,0)/(1,0)/(1,1) start at font-weight 400, (0,1) starts
+  // already bold (700) — lets the ⌘B toggle-both-ways tests below share one
+  // fixture instead of two nearly-identical ones.
+  const TABLE_SLIDE =
+    '<svg viewBox="0 0 1280 720">' +
+    '<g id="el-tbl" data-comot-type="table" data-comot-cols="100 100" data-comot-rows="40 40" data-comot-theme="dark" transform="translate(10 10)">' +
+    '<g data-comot-cell="0,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">A</text></g>' +
+    '<g data-comot-cell="0,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="700" fill="#ffffff">B</text></g>' +
+    '<g data-comot-cell="1,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">C</text></g>' +
+    '<g data-comot-cell="1,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">D</text></g>' +
+    "</g></svg>";
+
+  function stubTableFetch(commandCalls: { name: string; input: Record<string, unknown> }[]): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(TABLE_SLIDE, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { name: string; input: Record<string, unknown> };
+          commandCalls.push(body);
+          return new Response(JSON.stringify({ ok: true, message: "", data: {} }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  function sendSelection(frameWindow: Window, data: Record<string, unknown>): void {
+    window.dispatchEvent(new MessageEvent("message", { data: { source: "comot-selection", ...data }, source: frameWindow }));
+  }
+
+  /** Tracks the latest `subscribeTableRange` value — a real state channel (plan §4.1), so the very first call already carries the value at subscribe time. */
+  function watchTableRange(c: CanvasController): { current: { tableId: string; range: { r0: number; c0: number; r1: number; c1: number } } | null } {
+    const box: { current: { tableId: string; range: { r0: number; c0: number; r1: number; c1: number } } | null } = { current: null };
+    c.subscribeTableRange((value) => {
+      box.current = value;
+    });
+    return box;
+  }
+
+  async function mountWithTable(commandCalls: { name: string; input: Record<string, unknown> }[]): Promise<{ controller: CanvasController; frameWindow: Window }> {
+    stubTableFetch(commandCalls);
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    sendSelection(frameWindow, { event: "select", id: "el-tbl", name: null, additive: false });
+    return { controller, frameWindow };
+  }
+
+  it("沒有作用中的範圍時，任何鍵都回傳 false、不送出任何命令", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c } = await mountWithTable(calls);
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(c.handleTableRangeKey("Delete", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(c.handleTableRangeKey("b", { meta: true, ctrl: false, shift: false })).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("table-cell-click 建立單一儲存格範圍（非 additive）", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 1, r1: 0, c1: 1 } });
+  });
+
+  it("⇧點延伸範圍：normalizeRange(anchor, 該格)", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 1, col: 1, additive: true });
+
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
+  });
+
+  it("Tab 移到下一格（row-major）；⇧Tab 反向", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(true);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 1, r1: 0, c1: 1 } });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: true })).toBe(true);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 0, c1: 0 } });
+  });
+
+  it("Escape 清除範圍，表格本身仍被選取", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    let state: CanvasState | undefined;
+    c.subscribe((next) => {
+      state = next;
+    });
+
+    expect(c.handleTableRangeKey("Escape", { meta: false, ctrl: false, shift: false })).toBe(true);
+
+    expect(range.current).toBeNull();
+    expect(state?.selection.ids).toEqual(["el-tbl"]);
+  });
+
+  it("Delete 對範圍內每一格送 table cell set --text ''，不刪表格、範圍保留", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 1, col: 1, additive: true });
+
+    expect(c.handleTableRangeKey("Delete", { meta: false, ctrl: false, shift: false })).toBe(true);
+    // Sequential now (not `Promise.all`, per the lost-update race this
+    // round found against a real server) — wait for all 4 to land rather
+    // than assuming one microtask flush covers however many round trips.
+    await vi.waitFor(() => {
+      if (calls.filter((call) => call.name === "table cell set").length < 4) throw new Error("still waiting");
+    });
+
+    const setCalls = calls.filter((call) => call.name === "table cell set");
+    expect(setCalls.map((call) => `${call.input.row},${call.input.col}`).sort()).toEqual(["0,0", "0,1", "1,0", "1,1"]);
+    for (const call of setCalls) {
+      expect(call.input).toMatchObject({ slidePath: "slides/001.svg", elementId: "el-tbl", text: "" });
+    }
+    expect(calls.some((call) => call.name === "element delete")).toBe(false);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
+  });
+
+  it("⌘B：字重 400 的格切到 700", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    expect(c.handleTableRangeKey("b", { meta: true, ctrl: false, shift: false })).toBe(true);
+    await Promise.resolve();
+
+    const styleCalls = calls.filter((call) => call.name === "table cell style set");
+    expect(styleCalls).toEqual([
+      { name: "table cell style set", input: { slidePath: "slides/001.svg", elementId: "el-tbl", row: 0, col: 0, rowEnd: 0, colEnd: 0, attr: "font-weight", value: "700" } },
+    ]);
+  });
+
+  it("⌘B：字重已 ≥700 的格切回 400", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+
+    expect(c.handleTableRangeKey("b", { meta: false, ctrl: true, shift: false })).toBe(true);
+    await Promise.resolve();
+
+    const styleCalls = calls.filter((call) => call.name === "table cell style set");
+    expect(styleCalls).toEqual([
+      { name: "table cell style set", input: { slidePath: "slides/001.svg", elementId: "el-tbl", row: 0, col: 1, rowEnd: 0, colEnd: 1, attr: "font-weight", value: "400" } },
+    ]);
+  });
+
+  it("選取的元素已不是那張表格：回傳 false 並清掉範圍", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    // Direct call, bypassing the "select"/"table-cell-click" messages that
+    // would normally keep this in sync — exercises handleTableRangeKey's
+    // own defensive row of its behaviour table (§4.1) even though the
+    // "select" branch already covers the realistic path (next test).
+    c.setTableRange({ tableId: "el-other", range: { r0: 0, c0: 0, r1: 0, c1: 0 } });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(range.current).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("選取換到別的元素、或清空選取：範圍自動變 null", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    expect(range.current).not.toBeNull();
+
+    sendSelection(frameWindow, { event: "select", id: "el-other", name: null, additive: false });
+    expect(range.current).toBeNull();
+
+    sendSelection(frameWindow, { event: "select", id: "el-tbl", name: null, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    expect(range.current).not.toBeNull();
+
+    sendSelection(frameWindow, { event: "clear" });
+    expect(range.current).toBeNull();
+  });
+});

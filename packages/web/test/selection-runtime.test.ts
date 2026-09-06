@@ -1009,4 +1009,137 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
 
     expect(doc.querySelector('[data-comot-cell="0,0"]')!.querySelector("rect")!.getAttribute("width")).toBe(before);
   });
+
+  /** Dispatches a real keydown on `win` with the given modifiers — same shape `pressEscape` above uses for its one key. */
+  function pressKey(win: Window, key: string, modifiers: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {}): void {
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", {
+        key,
+        metaKey: Boolean(modifiers.meta),
+        ctrlKey: Boolean(modifiers.ctrl),
+        shiftKey: Boolean(modifiers.shift),
+        cancelable: true,
+      }),
+    );
+  }
+
+  // E2.T14r2 §4.2's own behaviour table: `tableRangeId` null vs set changes
+  // Delete/Backspace/Escape's routing, and unlocks Tab/⌘B relaying at all —
+  // every row keyed off "現況位元級不變" when the flag is null.
+  describe("selection-runtime.js — table-range 旗標的鍵盤 relay（E2.T14r2, plan §4.2）", () => {
+    it("H2: tableRangeId 為 null（預設）時，Delete 仍發 stage-key（現況不回歸）", async () => {
+      const { win } = boot(TABLE);
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "stage-key",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        alt: false,
+      });
+      expect(messages.some((m: any) => m.event === "table-key")).toBe(false);
+    });
+
+    it("H3: table-range 指令設過 id 後，Delete 發的是 table-key、不發 stage-key", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "table-key",
+        id: "el-tbl",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+      });
+      expect(messages.some((m: any) => m.event === "stage-key")).toBe(false);
+    });
+
+    it("H4: tableRangeId 非 null 時 Escape 發 table-key 且不發 clear；為 null 時仍發 clear", async () => {
+      const { doc, win } = boot(TABLE);
+      click(doc, doc.querySelector('[data-comot-cell="0,0"]')!); // selects el-tbl, so a later Escape-without-range would otherwise clear it
+      await tick();
+
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages: withRange, stop: stopWithRange } = collectMessages();
+      pressEscape(win);
+      await tick();
+      stopWithRange();
+      expect(withRange).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Escape", meta: false, ctrl: false, shift: false });
+      expect(withRange.some((m: any) => m.event === "clear")).toBe(false);
+
+      await sendHostCommand(win, { command: "table-range", id: null });
+      const { messages: withoutRange, stop: stopWithoutRange } = collectMessages();
+      pressEscape(win);
+      await tick();
+      stopWithoutRange();
+      expect(withoutRange).toContainEqual({ source: "comot-selection", event: "clear" });
+      expect(withoutRange.some((m: any) => m.event === "table-key")).toBe(false);
+    });
+
+    it("Tab／⇧Tab 只在 tableRangeId 作用中才 relay 成 table-key，並壓掉預設行為", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      const tabEvent = new (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+      win.dispatchEvent(tabEvent);
+      pressKey(win, "Tab", { shift: true });
+      await tick();
+      stop();
+
+      expect(tabEvent.defaultPrevented).toBe(true);
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: false });
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: true });
+    });
+
+    it("⌘B／Ctrl+B 只在 tableRangeId 作用中才 relay 成 table-key", async () => {
+      const { win } = boot(TABLE);
+
+      const { messages: beforeRange, stop: stopBefore } = collectMessages();
+      pressKey(win, "b", { meta: true });
+      await tick();
+      stopBefore();
+      expect(beforeRange.some((m: any) => m.event === "table-key")).toBe(false);
+
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      pressKey(win, "b", { meta: true });
+      await tick();
+      stop();
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "b", meta: true, ctrl: false, shift: false });
+    });
+
+    it("table-range 指令的 id 不是 string 也不是 null 時忽略，tableRangeId 不動", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      await sendHostCommand(win, { command: "table-range", id: 123 });
+
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "table-key",
+        id: "el-tbl",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+      });
+    });
+  });
 });
