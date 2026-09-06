@@ -105,6 +105,8 @@ describe("sanitizeClipboardMarkup", () => {
   const REJECT_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
     ["C01", '<g id="el-a"><image href="javascript:alert(1)" width="1" height="1"/></g>'],
     ["C02", '<g id="el-a"><image href="&#106;avascript:alert(1)" width="1" height="1"/></g>'],
+    ["C03", '<g id="el-a"><image href="&#x6a;avascript:alert(1)" width="1" height="1"/></g>'],
+    ["C04", '<g id="el-a"><rect style="fill:url(data:image/svg+xml,x)" width="1" height="1"/></g>'],
     ["C05", '<g id="el-a"><image href="x https://evil.example/y" width="1" height="1"/></g>'],
     [
       "C05 (pre-existing regression, plain absolute)",
@@ -112,13 +114,28 @@ describe("sanitizeClipboardMarkup", () => {
     ],
     ["C06", '<g id="el-a"><image href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>'],
     ["C07", '<g id="el-a"><image href="&#x68;ttps://evil.example/x.png" width="1" height="1"/></g>'],
+    ["C08", '<g id="el-a"><image xlink:href="&#x68;ttps://evil.example/x.png" width="1" height="1"/></g>'],
     [
       "C08 (pre-existing regression, decimal)",
       '<g id="el-a"><image xlink:href="&#104;ttps://evil.example/x.png" width="1" height="1"/></g>',
     ],
     ["C09", '<g id="el-a"><image href="&#x2f;&#x2f;evil.example/x.png" width="1" height="1"/></g>'],
+    ["C10", '<g id="el-a"><rect fill="x &#x2f;&#x2f;evil.example/y" width="1" height="1"/></g>'],
     ["C11", '<g id="el-a"><rect style="fill:url(https://evil.example/x.svg#g)" width="1" height="1"/></g>'],
+    ["C12", '<g id="el-a"><rect style="fill:&#x75;rl(&#x2f;&#x2f;evil.example/x.svg#g)" width="1" height="1"/></g>'],
+    ["C13", '<g id="el-a"><rect style="fill:&#117;rl(&#47;&#47;evil.example/x.svg#g)" width="1" height="1"/></g>'],
+    ["C14", '<g id="el-a"><rect filter="&#x75;rl(&#x2f;&#x2f;evil.example/f.svg#f)" width="1" height="1"/></g>'],
+    ["C15", '<g id="el-a"><rect style="fill:url(&quot;//evil.example/x.svg&quot;)" width="1" height="1"/></g>'],
     ["C16", '<g id="el-a"><rect style="fill:url(#&#x2f;&#x2f;evil.example)" width="1" height="1"/></g>'],
+    ["C17", '<g id="el-a"><image href="https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["C18", '<g id="el-a"><image href="HTTPS:evil.example/x.png" width="1" height="1"/></g>'],
+    ["C19", '<g id="el-a"><image href=" https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["C20", '<g id="el-a"><image href="&#x68;ttps:evil.example/x.png" width="1" height="1"/></g>'],
+    ["C21", '<g id="el-a"><image src="//evil.example/x.png" width="1" height="1"/></g>'],
+    ["C22", '<g id="el-a"><image xlink:href="mailto:a@b.c" width="1" height="1"/></g>'],
+    ["C23", '<g id="el-a"><image href="&#x110000;abc" width="1" height="1"/></g>'],
+    ["C24", '<g id="el-a"><image href="&#99999999999;abc" width="1" height="1"/></g>'],
+    ["C25", '<g id="el-a"><rect fill="&#xD800;x" width="1" height="1"/></g>'],
   ];
 
   it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {
@@ -127,6 +144,10 @@ describe("sanitizeClipboardMarkup", () => {
 
   const ACCEPT_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
     ["P01", '<g id="el-a"><rect style="fill:url(#grad1)" width="1" height="1"/></g>'],
+    ["P02", '<g id="el-a"><image href="#frag" width="1" height="1"/></g>'],
+    ["P03", '<g id="el-a"><image href="images/logo.png" width="1" height="1"/></g>'],
+    ["P04", '<g id="el-a"><rect fill="&#x10FFFF;" width="1" height="1"/></g>'],
+    ["P05", '<g id="el-a" data-comot-name="第 3 章：url(#a) 的說明"><rect width="1" height="1"/></g>'],
   ];
 
   it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
@@ -135,6 +156,7 @@ describe("sanitizeClipboardMarkup", () => {
 
   const DECLARATION_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
     ["D01", '<g id="el-a"><!DOCTYPE foo><rect width="1" height="1"/></g>'],
+    ["D02", '<g id="el-a"><!ENTITY foo "bar"><rect width="1" height="1"/></g>'],
     ["D03", '<g id="el-a"><text x="0" y="0"><![CDATA[<script>alert(1)</script>]]></text></g>'],
     ["D04", '<g id="el-a"><!--<script>alert(1)</script>--><rect width="1" height="1"/></g>'],
   ];

@@ -275,21 +275,44 @@ const SANITIZE_PLACEHOLDER_VIEWBOX = "0 0 1280 720";
 
 /** Attribute values matching any of these schemes are never legal in pasted content — none of them can point at same-document data. */
 const DANGEROUS_SCHEME = /\b(javascript|data|file|ftp|blob):/i;
-/** An `http(s)://` reference anywhere in the value, or a protocol-relative URL at its start (Plan §4.2's rule table). Unanchored on purpose: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. */
-const ABSOLUTE_URL = /\bhttps?:\/\/|^\s*\/\//i;
+/** An `http(s)://` reference anywhere in the value, or a protocol-relative `//` anywhere in the value (Plan §7.2: unanchored on purpose — both a leading and a mid-value protocol-relative reference resolve to the same external host, so there is no reason to only catch the former). Unanchored on the scheme half too: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. */
+const ABSOLUTE_URL = /\bhttps?:\/\/|\/\//i;
 /** `url(...)` references — only a same-document fragment (`#foo`) is legal. */
 const URL_FUNCTION = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
 
 const XML_NAMED_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
-/** Decimal (`&#104;`), hex (`&#x68;`) and the five predefined XML entities — the only character references a browser's XML/SVG parser resolves. Attribute values are scanned *after* this decode so entity-encoding can't hide an external reference or a dangerous scheme from the checks below (e.g. `href="&#104;ttps://evil.example"`). */
+
+/** XML 1.0 §2.2 legal character ranges — the code points a conforming XML character reference may target. Anything else (surrogate halves, `0xFFFE`/`0xFFFF`, code points above `0x10FFFF`, most C0 controls) would make the written slide unparsable by any XML parser. */
+function isLegalXmlCodePoint(codePoint: number): boolean {
+  return (
+    codePoint === 0x9 ||
+    codePoint === 0xa ||
+    codePoint === 0xd ||
+    (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+    (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+    (codePoint >= 0x10000 && codePoint <= 0x10ffff)
+  );
+}
+
+/** Decimal (`&#104;`), hex (`&#x68;`) and the five predefined XML entities — the only character references a browser's XML/SVG parser resolves. Attribute values are scanned *after* this decode so entity-encoding can't hide an external reference or a dangerous scheme from the checks below (e.g. `href="&#104;ttps://evil.example"`). Total function — never throws: a numeric reference outside the legal XML range is returned verbatim (undecoded), so the caller can reject it explicitly via `hasIllegalNumericCharacterReference` instead of this function raising a raw `RangeError`. */
 function decodeXmlEntities(value: string): string {
   return value.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (whole, body: string) => {
     if (body[0] === "#") {
       const codePoint = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : whole;
+      return isLegalXmlCodePoint(codePoint) ? String.fromCodePoint(codePoint) : whole;
     }
     return XML_NAMED_ENTITIES[body.toLowerCase()] ?? whole;
   });
+}
+
+/** A numeric character reference (`&#…;`/`&#x…;`) whose code point `decodeXmlEntities` refused to decode — writing it verbatim would produce a slide no XML parser can read back. Checked independently of `decodeXmlEntities` (which must stay total) so the caller can reject it with a `CoMotionError` instead of silently passing the undecoded reference text through. */
+function hasIllegalNumericCharacterReference(value: string): boolean {
+  for (const match of value.matchAll(/&(#x[0-9a-f]+|#[0-9]+);/gi)) {
+    const body = match[1];
+    const codePoint = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+    if (!isLegalXmlCodePoint(codePoint)) return true;
+  }
+  return false;
 }
 
 /** Namespace-declaration attributes carry inert URIs (never fetched or executed) and are exempt from the URL/scheme rules above. */
@@ -308,29 +331,48 @@ const EFFECT_ATTRIBUTE_WHITELIST: ReadonlySet<string> = new Set<keyof RawEffectA
   "d",
 ]);
 
-function isRelativeReference(value: string): boolean {
-  return value.startsWith("#") || (!ABSOLUTE_URL.test(value) && !DANGEROUS_SCHEME.test(value));
+/** [B10] Whitelist, not blacklist, for `href`/`xlink:href`/`src` — the only attributes `assertSlideCompliant`'s primitive whitelist lets a renderer actually fetch through. Only a same-document fragment (`#…`) or a scheme-less, `//`-less relative path is legal; anything with a `:` (an explicit scheme, with or without the `//` a browser's URL parser does not require — e.g. `https:evil.example`) or a `//` (protocol-relative) is an external reference. A blacklist of schemes can always be enumerated around; this shape cannot. */
+function isFragmentOrRelativeReference(value: string): boolean {
+  if (value === "" || value.startsWith("#")) return true;
+  return !/:|\/\//.test(value);
 }
 
+/**
+ * [Corrective Strategy #1] Every content rule below runs inside the same
+ * `for (const form of forms)` loop, over both the raw attribute value and
+ * its one-pass entity-decode. This is a structural constraint, not a
+ * per-rule choice: a rule added beside this loop instead of inside it is a
+ * rule that silently trusts whichever form entity-encoding happens to hide
+ * its payload in. `forms` is `[value]` when decoding changed nothing (the
+ * common case), so unaffected attribute values pay no extra cost.
+ */
 function checkAttributeValue(attrName: string, value: string, label: string): void {
+  if (hasIllegalNumericCharacterReference(value)) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有非法的 XML 字元參照（${value}）`);
+  }
   if (isNamespaceDeclaration(attrName)) return;
 
   const decodedValue = decodeXmlEntities(value);
-  if (DANGEROUS_SCHEME.test(decodedValue)) {
-    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
-  }
-  if (ABSOLUTE_URL.test(decodedValue)) {
-    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 是外部參照（${value}）`);
-  }
-  for (const match of value.matchAll(URL_FUNCTION)) {
-    const ref = match[2];
-    const decodedRef = decodeXmlEntities(ref);
-    if (decodedRef !== ref || !decodedRef.startsWith("#")) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
+  const forms = decodedValue === value ? [value] : [value, decodedValue];
+
+  for (const form of forms) {
+    if (DANGEROUS_SCHEME.test(form)) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
+    }
+    if (ABSOLUTE_URL.test(form)) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 是外部參照（${value}）`);
+    }
+    for (const match of form.matchAll(URL_FUNCTION)) {
+      const ref = match[2];
+      const decodedRef = decodeXmlEntities(ref);
+      if (decodedRef !== ref || !decodedRef.startsWith("#")) {
+        throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
+      }
     }
   }
+
   const isUrlAttr = attrName === "href" || attrName === "xlink:href" || attrName === "src";
-  if (isUrlAttr && (decodedValue !== value || !isRelativeReference(decodedValue))) {
+  if (isUrlAttr && (decodedValue !== value || !isFragmentOrRelativeReference(decodedValue))) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
   }
 }

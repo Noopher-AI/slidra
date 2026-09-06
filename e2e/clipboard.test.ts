@@ -298,3 +298,25 @@ it("A7：不可信內容貼不進去 — 含 onload 的偽造剪貼簿 SVG 貼�
   await expect.poll(() => page.locator(".canvas-error-banner").isVisible().catch(() => false), { timeout: 10_000 }).toBe(true);
   expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before);
 });
+
+it("A8：帶實體編碼外部參照的偽造剪貼簿內容貼不進去，且瀏覽器不對 evil.example 發出任何請求", async () => {
+  const started = await start();
+  const page = await openWithClipboard(started);
+  const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
+
+  const outbound: string[] = [];
+  await page.context().route(/evil\.example/, (route) => {
+    outbound.push(route.request().url());
+    return route.abort();
+  });
+
+  const hostileSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+    '<g id="el-hostile"><rect width="200" height="200" style="fill:&#x75;rl(&#x2f;&#x2f;evil.example/x.svg#g)"/></g></svg>';
+  await page.evaluate((svg) => navigator.clipboard.writeText(svg), hostileSvg);
+  await page.keyboard.press("Meta+v");
+
+  await expect.poll(() => page.locator(".canvas-error-banner").isVisible().catch(() => false), { timeout: 10_000 }).toBe(true);
+  expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before);
+  expect(outbound).toEqual([]);
+});
