@@ -223,6 +223,17 @@
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: 1px;
 }
+.play-bar .play-toggle-button.leave {
+  height: 32px;
+  border-radius: var(--r-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-weight: 700;
+}
+.play-bar .play-toggle-button.leave:not(:disabled):hover {
+  background: var(--brand-red-hover);
+  color: var(--surface-white);
+}
 
 /* ── 檢視模式的全螢幕離開控制 (從 shell.css 遷入，理由同上) ────────── */
 .view-fullscreen-bar {
