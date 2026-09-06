@@ -73,6 +73,7 @@ import {
 import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
+import { tabTarget, cellsInRange, normalizeRange, isCellInRange, type CellRange } from "./table-overlay.js";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -369,6 +370,32 @@ export interface CanvasController {
   /** A column-width drag's live preview (`preview-table-cols` command, 決定 13: never re-wraps text) — `cols` is the FULL column-width array with the dragged column's candidate width substituted in. No-op outside view mode. */
   previewTableCols: (id: string, cols: readonly number[]) => void;
   /**
+   * The cell range currently active inside a selected table (E2.T14r2, plan
+   * §4.1) — `null` when no range is active. Owned here (not `App.tsx`'s
+   * React state, not `TableOverlay`'s local state) because the three
+   * consumers (`TableOverlay`, `TableSection`, and the keyboard decision
+   * function below) sit under different subtrees, and every piece of data
+   * `handleTableRangeKey` needs — the selected `TableModel`, `slidePath`,
+   * `runCommand` — already lives in this module. The listener is called
+   * once immediately with the current value, same contract as `subscribe`/
+   * `subscribeOverlay`.
+   */
+  subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => () => void;
+  /** Sets or clears the active cell range. `null` clears it. Also tells the runtime (`table-range` command) so its own keyboard relay knows whether Delete/Tab/⌘B/Esc belong to the range or to the ordinary stage-key path. */
+  setTableRange: (value: { tableId: string; range: CellRange } | null) => void;
+  /**
+   * The single decision function for every cell-range keyboard shortcut
+   * (Tab/⇧Tab, Esc, Delete/Backspace, ⌘B) — both the iframe relay
+   * (`selection-runtime.js`'s "table-key") and `App.tsx`'s capture-phase
+   * `document` keydown listener call this same function, so the two input
+   * paths (focus inside the iframe vs. focus in the parent document) can
+   * never drift apart. Returns whether the key was handled — the caller is
+   * responsible for `preventDefault`/`stopPropagation`. A `false` return
+   * means the event should fall through to whatever handling already
+   * exists for it (nothing here changes that path's behaviour).
+   */
+  handleTableRangeKey: (key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }) => boolean;
+  /**
    * Re-emits the current overlay state with the frame's *current*
    * position/scale (issue 198 review). The runtime reports bounds in its own
    * iframe client px, which a zoom/pan of the parent's `.stage` transform
@@ -519,7 +546,11 @@ interface SelectionMessage {
     | "table-cell-click"
     | "table-cell-dblclick"
     | "table-cell-contextmenu"
-    | "table-cells";
+    | "table-cells"
+    // E2.T14r2 §4.2: the iframe's own keyboard relay for a cell range
+    // in progress (Tab/⇧Tab, Esc, Delete/Backspace, ⌘B) — sent only while
+    // the runtime's `tableRangeId` flag is set, carrying that same id.
+    | "table-key";
   id?: string;
   name?: string | null;
   /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
@@ -995,6 +1026,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   const overlayListeners = new Set<(state: OverlayState) => void>();
   /** E2.T14 §4.5: table cell hit reports and `table-cells` replies — transient events, same "listener set, no persisted state" shape as `subscribeStageInput`, not folded into `CanvasState`/`OverlayState` since neither is about a table specifically. */
   const tableListeners = new Set<(event: TableRuntimeEvent) => void>();
+  /** E2.T14r2 §4.1: `subscribeTableRange`'s listeners — a real state channel (unlike `tableListeners` above), so a late subscriber gets the current value immediately, same contract as `overlayListeners`. */
+  const tableRangeListeners = new Set<(value: { tableId: string; range: CellRange } | null) => void>();
+  /** The active cell range, or `null`. Built from `table-cell-click`/`table-cell-contextmenu` reports (handleSelectionMessage below) and cleared whenever the selection changes away from this table (§4.1's lifecycle table). */
+  let tableRange: { tableId: string; range: CellRange } | null = null;
+  /** The cell a range gesture started from — set on a non-additive click/contextmenu, read on a ⇧-click to build the range via `normalizeRange`. Private to this module: not part of the public `tableRange`, exactly like `TableOverlay`'s old local `anchorRef` this replaces. */
+  let tableRangeAnchor: { row: number; col: number } | null = null;
   let overlayBoxes: Rect[] = [];
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
@@ -1182,6 +1219,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
       notify();
       pushSelectionToRuntime(selectionIds);
+      // E2.T14r2 §4.1 lifecycle table: a range only survives while its own
+      // table stays the sole selection — any other shape (a different
+      // element, no selection, a multi-selection) drops it.
+      if (tableRange && (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId)) {
+        setTableRange(null);
+      }
       return;
     }
     if (message.event === "clear") {
@@ -1369,7 +1412,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "table-cell-click") {
       const id = typeof message.id === "string" ? message.id : null;
       if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
-        emitTableEvent({ type: "cell-click", id, row: message.row, col: message.col, additive: Boolean(message.additive) });
+        const row = message.row;
+        const col = message.col;
+        emitTableEvent({ type: "cell-click", id, row, col, additive: Boolean(message.additive) });
+        // E2.T14r2 §4.1 lifecycle table: a ⇧-click while a range is already
+        // active on THIS table extends it from the stored anchor; anything
+        // else (plain click, or a ⇧-click that arrives with no anchor of
+        // its own — e.g. right after a table id change already cleared it
+        // above) starts a fresh single-cell range and a fresh anchor.
+        if (message.additive && tableRangeAnchor && tableRange && tableRange.tableId === id) {
+          setTableRange({ tableId: id, range: normalizeRange(tableRangeAnchor, { row, col }) });
+        } else {
+          tableRangeAnchor = { row, col };
+          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
+        }
       }
       return;
     }
@@ -1383,8 +1439,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "table-cell-contextmenu") {
       const id = typeof message.id === "string" ? message.id : null;
       if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col) && isFiniteNumber(message.x) && isFiniteNumber(message.y)) {
+        const row = message.row;
+        const col = message.col;
         const point = toParentClientPoint({ x: message.x, y: message.y });
-        emitTableEvent({ type: "cell-contextmenu", id, row: message.row, col: message.col, x: point.x, y: point.y });
+        emitTableEvent({ type: "cell-contextmenu", id, row, col, x: point.x, y: point.y });
+        // §4.1 lifecycle table: right-clicking inside the current range
+        // leaves it untouched (the menu acts on the whole range); right-
+        // clicking outside it starts a fresh single-cell range/anchor.
+        const cell = { row, col };
+        if (!tableRange || tableRange.tableId !== id || !isCellInRange(cell, tableRange.range)) {
+          tableRangeAnchor = cell;
+          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
+        }
       }
       return;
     }
@@ -1402,10 +1468,99 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       }
       return;
     }
+    if (message.event === "table-key") {
+      if (typeof message.key !== "string") return;
+      // The runtime only ever sends this while its own `tableRangeId` flag
+      // is set (§4.2) — `handleTableRangeKey` re-derives everything else
+      // (which range, which table) from this module's own `tableRange`, the
+      // single source of truth both input paths share.
+      handleTableRangeKey(message.key, { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) });
+      return;
+    }
   }
 
   function emitTableEvent(event: TableRuntimeEvent): void {
     for (const listener of tableListeners) listener(event);
+  }
+
+  function notifyTableRange(): void {
+    for (const listener of tableRangeListeners) listener(tableRange);
+  }
+
+  /** `CanvasController.setTableRange` (E2.T14r2 §4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
+  function setTableRange(value: { tableId: string; range: CellRange } | null): void {
+    tableRange = value;
+    notifyTableRange();
+    postToFrame({ command: "table-range", id: value ? value.tableId : null });
+  }
+
+  /**
+   * `CanvasController.handleTableRangeKey` (E2.T14r2 §4.1, "本輪唯一的新設
+   * 計") — the single decision function for every cell-range keyboard
+   * shortcut. Both `handleSelectionMessage`'s "table-key" branch above (the
+   * iframe relay) and App.tsx's capture-phase keydown listener call this
+   * exact function, never a copy of its logic, so the two input paths
+   * cannot drift apart (same posture as the existing ⌘Z/Delete/etc. relay
+   * `App.tsx:610`'s own comment already documents).
+   */
+  function handleTableRangeKey(key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }): boolean {
+    if (!tableRange) return false;
+    if (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId) {
+      // The selection moved on without the range ever being told (should
+      // not normally happen — the "select"/"clear" branches above already
+      // clear it — but this is the behaviour contract's own explicit row,
+      // not just a defensive fallback).
+      setTableRange(null);
+      return false;
+    }
+    const table = selectedElements()[0]?.table ?? null;
+    if (!table) {
+      setTableRange(null);
+      return false;
+    }
+    const { tableId, range } = tableRange;
+    const slidePath = slides[currentIndex];
+
+    if (key === "Tab") {
+      const next = tabTarget({ row: range.r0, col: range.c0 }, table.rows.length, table.cols.length, modifiers.shift ? -1 : 1);
+      setTableRange({ tableId, range: { r0: next.row, c0: next.col, r1: next.row, c1: next.col } });
+      return true;
+    }
+    if (key === "Escape") {
+      setTableRange(null);
+      return true;
+    }
+    if (key === "Delete" || key === "Backspace") {
+      // Sequential, not `Promise.all` — `/api/command` has no per-file
+      // write queue, so N concurrent `table cell set` calls against the
+      // SAME slide is a genuine lost-update race (verified directly: two
+      // concurrent calls for different cells left one cell's write silently
+      // dropped). One history entry per cell either way (§2.17); this just
+      // orders them instead of racing them.
+      const cellsToClear = cellsInRange(range);
+      void (async () => {
+        for (const cell of cellsToClear) {
+          await runCommand("table cell set", { slidePath, elementId: tableId, row: cell.row, col: cell.col, text: "" });
+        }
+      })();
+      return true;
+    }
+    if ((key === "b" || key === "B") && (modifiers.meta || modifiers.ctrl)) {
+      const topLeft = table.cells.find((cell) => cell.row === range.r0 && cell.col === range.c0);
+      const nextWeight = topLeft && topLeft.fontWeight >= 700 ? 400 : 700;
+      void runCommand("table cell style set", {
+        slidePath,
+        elementId: tableId,
+        row: range.r0,
+        col: range.c0,
+        rowEnd: range.r1,
+        colEnd: range.c1,
+        attr: "font-weight",
+        value: String(nextWeight),
+      });
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1506,6 +1661,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionGroupPath = groupPath;
     notify();
     pushSelectionToRuntime(selectionIds);
+    if (tableRange) setTableRange(null);
   }
 
   /**
@@ -3428,6 +3584,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (mode !== "view") return;
       postToFrame({ command: "preview-table-cols", id, cols: [...cols] });
     },
+    subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => {
+      tableRangeListeners.add(listener);
+      listener(tableRange);
+      return () => {
+        tableRangeListeners.delete(listener);
+      };
+    },
+    setTableRange,
+    handleTableRangeKey,
     selectAll,
     selectElements,
     deleteSelection,
@@ -3442,6 +3607,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       stageInputListeners.clear();
       overlayListeners.clear();
       tableListeners.clear();
+      tableRangeListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React

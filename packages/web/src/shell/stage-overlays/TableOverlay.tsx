@@ -5,10 +5,7 @@ import {
   cellRectAt,
   cellsInRange,
   columnBoundaryPositions,
-  isCellInRange,
-  normalizeRange,
   rangeBoundingRect,
-  type CellAddress,
   type CellRange,
   type TableCellRect,
 } from "../../table-overlay.js";
@@ -26,34 +23,32 @@ export interface TableOverlayProps {
 
 /**
  * The selected table's own cell-range highlight, cell editor, column-width
- * drag handles, and right-click menu (E2.T14, plan §4.5). Self-contained
- * inside `OverlayLayer` — it asks the runtime for this one table's cell
- * rects (`requestTableCells`) and reacts to `subscribeTable`'s hit reports,
- * without any new prop threaded through `Stage.tsx`/`App.tsx`.
- *
- * NOT implemented this round (see the PR's "不確定與保留事項"): Tab/⇧Tab
- * cell navigation, Esc-to-exit-range, and Delete/⌘B as keyboard shortcuts
- * while a range is active. Those need to pre-empt `App.tsx`'s existing
- * document-level Delete/undo-redo keydown handler, which this
- * self-contained component has no reach into without lifting range state
- * to a shared ancestor — a larger change deferred rather than rushed.
- * Bold remains reachable via the cell context menu's own button.
+ * drag handles, and right-click menu (E2.T14/E2.T14r2, plan §4.5). The
+ * range itself is NOT local state — it is owned by `canvas.ts`'s
+ * `CanvasController` (plan §4.1) so the keyboard decision function
+ * (`handleTableRangeKey`) and `TableSection`'s Cell block read the exact
+ * same value this overlay paints; this component only mirrors it via
+ * `subscribeTableRange`.
  */
 export function TableOverlay({ controller, wellRef, slidePath, tableId, table }: TableOverlayProps) {
   const [cellData, setCellData] = useState<{ cells: TableCellRect[]; box: { x: number; y: number; width: number; height: number } } | null>(null);
   const [range, setRange] = useState<CellRange | null>(null);
-  const anchorRef = useRef<CellAddress | null>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; text: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [colDrag, setColDrag] = useState<{ col: number; widths: number[] } | null>(null);
 
   useEffect(() => {
-    setRange(null);
     setEditing(null);
     setMenu(null);
-    anchorRef.current = null;
     controller?.requestTableCells(tableId);
+  }, [controller, tableId]);
+
+  useEffect(() => {
+    if (!controller) return;
+    return controller.subscribeTableRange((value) => {
+      setRange(value && value.tableId === tableId ? value.range : null);
+    });
   }, [controller, tableId]);
 
   useEffect(() => {
@@ -65,12 +60,6 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
         return;
       }
       if (event.type === "cell-click") {
-        if (event.additive && anchorRef.current) {
-          setRange(normalizeRange(anchorRef.current, { row: event.row, col: event.col }));
-        } else {
-          anchorRef.current = { row: event.row, col: event.col };
-          setRange({ r0: event.row, c0: event.col, r1: event.row, c1: event.col });
-        }
         setEditing(null);
         setMenu(null);
         return;
@@ -82,9 +71,6 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
         return;
       }
       if (event.type === "cell-contextmenu") {
-        const cell = { row: event.row, col: event.col };
-        anchorRef.current = cell;
-        setRange((current) => (current && isCellInRange(cell, current) ? current : { r0: cell.row, c0: cell.col, r1: cell.row, c1: cell.col }));
         setMenu({ x: event.x, y: event.y });
       }
     });
@@ -195,7 +181,11 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
             setMenu(null);
           }}
           onBold={() => {
-            void run("table cell style set", { row: range.r0, col: range.c0, rowEnd: range.r1, colEnd: range.c1, attr: "font-weight", value: "700" });
+            // Plan §4.5: the same toggle `handleTableRangeKey` gives ⌘B —
+            // not a second, independently-written "always set 700" —
+            // called directly rather than duplicated, so the menu button
+            // and the shortcut can never disagree on what "Bold" means.
+            controller?.handleTableRangeKey("b", { meta: true, ctrl: false, shift: false });
             setMenu(null);
           }}
           onInsertRowAbove={() => {

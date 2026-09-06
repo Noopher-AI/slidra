@@ -718,6 +718,45 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Cell-range keyboard shortcuts (E2.T14r2 §4.3) — path B of the two the
+  // range's keyboard contract needs (§3.2 of the plan): focus sitting in
+  // THIS document rather than inside the sandboxed iframe, e.g. right after
+  // a cell edit's <input> blurs. Registered on the CAPTURE phase
+  // deliberately: capture on a given node is always ordered before that
+  // same node's own bubble-phase listeners per the DOM spec, so this
+  // effect's `stopPropagation()` on a handled key reliably pre-empts the
+  // four bubble-phase effects above (⌘A/Delete/⌘D/⌘]/⌘[ in particular,
+  // which would otherwise delete the whole table on a range Delete) without
+  // depending on registration order — unlike registration order, capture-
+  // before-bubble is guaranteed regardless of how the component tree
+  // reshuffles these effects relative to each other. None of the four
+  // existing effects change: the guard below returns before doing anything
+  // whenever `handleTableRangeKey` says the key does not belong to it, so
+  // every pre-existing shortcut keeps behaving exactly as before.
+  useEffect(() => {
+    function onKeyDownCapture(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null;
+      // Same guard, verbatim, as the four bubble-phase effects above — most
+      // importantly, this is the only reason a cell editor's own <input>
+      // Enter/Escape still work: calling stopPropagation() here would
+      // otherwise swallow those synthetic React events too.
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const controller = controllerRef.current;
+      if (!controller || canvasStateRef.current.mode !== "view") return;
+      const handled = controller.handleTableRangeKey(event.key, {
+        meta: event.metaKey,
+        ctrl: event.ctrlKey,
+        shift: event.shiftKey,
+      });
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    document.addEventListener("keydown", onKeyDownCapture, true);
+    return () => document.removeEventListener("keydown", onKeyDownCapture, true);
+  }, []);
+
   /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
   async function refreshSaveState(): Promise<void> {
     try {

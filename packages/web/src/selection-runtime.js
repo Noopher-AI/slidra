@@ -1363,6 +1363,13 @@
     return null;
   }
 
+  // E2.T14r2 §4.2: the id of the table currently owning an active cell
+  // range, set by the host's own "table-range" command (below) — `null`
+  // means no range is active, and every key this flag would otherwise
+  // reroute (Delete/Backspace/Tab/⌘B/Esc) keeps its pre-existing behaviour
+  // bit-for-bit (§2.20).
+  var tableRangeId = null;
+
   // --- Stage navigation relay (Dev-Leader 裁決核准的擴大範圍：舞台導航
   // 5 場景，NOOP-83 §3.3/§4) ---
   // Same posture as every other message in this file: report raw
@@ -1647,6 +1654,15 @@
       endGesture(gesture.lastClient, true);
       return;
     }
+    // E2.T14r2 §4.2: a cell range in progress owns Esc while active — it
+    // exits the range (parent decides: table stays selected) instead of
+    // popping group-path or clearing the selection. Must sit here: after
+    // the editingId/gesture branches above (§4.2's own ordering), before
+    // the groupPath branch below.
+    if (tableRangeId !== null) {
+      post({ event: "table-key", id: tableRangeId, key: "Escape", meta: event.metaKey, ctrl: event.ctrlKey, shift: event.shiftKey });
+      return;
+    }
     // Not mid-gesture (NOOP-91 follow-up's group-edit row): pop one level
     // of group-edit scope, or — already at the top — clear the selection
     // instead. Never both in the same keypress.
@@ -1723,6 +1739,12 @@
   window.addEventListener("keydown", function (event) {
     if (!isRelayedStageKey(event)) return;
     if (editingId !== null || gesture) return;
+    // E2.T14r2 §4.2: while a cell range owns Delete/Backspace, the listener
+    // below relays it as "table-key" instead — never both for the same
+    // keypress. Every other key this function whitelists (⌘A/⌘D/⌘]/⌘[/⌘Z)
+    // keeps going through "stage-key" unchanged even with a range active
+    // (§2.22).
+    if (tableRangeId !== null && (event.key === "Delete" || event.key === "Backspace")) return;
     event.preventDefault();
     post({
       event: "stage-key",
@@ -1731,6 +1753,27 @@
       ctrl: event.ctrlKey,
       shift: event.shiftKey,
       alt: event.altKey,
+    });
+  });
+
+  /** Tab/⇧Tab and ⌘B/Ctrl+B — relayed ONLY while a cell range is active (E2.T14r2 §4.2); untouched otherwise, same as this file's own pre-existing comment on `isRelayedStageKey` already promises ("Everything else … is untouched"). */
+  function isTableRangeKey(event) {
+    if (event.key === "Tab") return true;
+    return (event.key === "b" || event.key === "B") && (event.metaKey || event.ctrlKey);
+  }
+  window.addEventListener("keydown", function (event) {
+    if (tableRangeId === null) return;
+    if (editingId !== null || gesture) return;
+    var isRangeDelete = event.key === "Delete" || event.key === "Backspace";
+    if (!isRangeDelete && !isTableRangeKey(event)) return;
+    event.preventDefault(); // Tab would otherwise move focus; Delete/⌘B have their own default actions to suppress too.
+    post({
+      event: "table-key",
+      id: tableRangeId,
+      key: event.key,
+      meta: event.metaKey,
+      ctrl: event.ctrlKey,
+      shift: event.shiftKey,
     });
   });
 
@@ -1884,6 +1927,11 @@
       reportTableCells(data.id);
     } else if (data.command === "preview-table-cols") {
       applyPreviewTableCols(data.id, data.cols);
+    } else if (data.command === "table-range") {
+      // E2.T14r2 §4.2: a malformed id (neither string nor null) leaves the
+      // flag untouched — same "bad input is a no-op" posture
+      // `applyPreviewTableCols` already has for its own malformed input.
+      if (typeof data.id === "string" || data.id === null) tableRangeId = data.id;
     }
   });
 
