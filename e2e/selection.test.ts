@@ -34,8 +34,8 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  *   - "基準截圖：標準檢視含選取框"／"點 demo 第 1 頁的背景會選到背景容器..."
  *   - "敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框..."／"投影片自己的 script 搶先攔截點擊..."
  *   - "離開播放後仍可重新選取：..."
- *   - 情境列「空間不足翻到上方」分支：本檔未 e2e 化，理由見本檔「選取只會
- *     啟用...」測項之前的說明區塊——精確覆蓋在
+ *   - 情境列「空間不足翻到上方」分支：本檔未 e2e 化，理由見「選取後簡報檔案
+ *     位元組完全未變」測項之前的說明區塊——精確覆蓋在
  *     packages/web/test/stage-overlays.test.ts（純邏輯單元測試）。
  * - 功能「選取」› 場景「多選」「全選 / 取消」: ⇧點/框選/⌘A 是舞台直接操作，
  *   在 e2e/direct-manipulation.test.ts 測（"Shift 點兩個元素後一起拖曳"、
@@ -389,40 +389,6 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
 // branches of `ContextBar`'s `fitsBelow` decision directly against its own
 // props instead, including the exact boundary case, which is the more
 // precise place to pin this particular piece of logic down.
-
-// New v3 shell rebuild: 這條測項原本斷言「選取不改變任何 disabled 按鈕的
-// 數量」——舊殼的 Ribbon 命令從不隨選取變動。New v3 的 Dock 明確要求相反
-// （05-INTERACTIONS.feature「停用態」：沒有選取時 Animate/Arrange 半透明不
-// 可按，見 Dock.tsx 的 isCommandDisabled），所以原本的斷言現在會跟這張票
-// 自己交付的規格衝突，不是「保持不變」的既有行為。改成精準斷言：選取只讓
-// Animate／Arrange 這兩顆從 disabled 變 enabled，其餘原本 disabled 的按鈕
-// 一個都不受影響——保留原測項真正要防的那個問題（選取意外啟用不相干的按
-// 鈕），同時容納這張票新增的、刻意的兩顆按鈕反應性。
-it("選取只會啟用 Animate／Arrange 兩顆按鈕，其餘 disabled 按鈕不受影響", async () => {
-  const { server, cleanup } = await startServerFor(demoDir);
-  try {
-    const page = await openApp(server);
-    const animate = page.locator('.dock-command[aria-label="Animate"]');
-    const arrange = page.locator('.dock-command[aria-label="Arrange"]');
-    expect(await animate.isDisabled()).toBe(true);
-    expect(await arrange.isDisabled()).toBe(true);
-
-    const countOtherDisabled = () =>
-      page.locator("button[disabled]").evaluateAll(
-        (els) => els.filter((el) => el.getAttribute("aria-label") !== "Animate" && el.getAttribute("aria-label") !== "Arrange").length,
-      );
-    const otherDisabledBefore = await countOtherDisabled();
-
-    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-
-    await expect.poll(() => animate.isDisabled()).toBe(false);
-    await expect.poll(() => arrange.isDisabled()).toBe(false);
-    const otherDisabledAfter = await countOtherDisabled();
-    expect(otherDisabledAfter).toBe(otherDisabledBefore);
-  } finally {
-    await cleanup();
-  }
-});
 
 it("選取後簡報檔案位元組完全未變", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor(demoDir);
