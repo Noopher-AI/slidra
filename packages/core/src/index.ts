@@ -1,4 +1,4 @@
-export { CoMotionError, CoMotionNotFoundError } from "./errors.js";
+export { CoMotionError, CoMotionNotFoundError, CoMotionInvalidRequestError } from "./errors.js";
 export { generateOpaqueId, generateElementId } from "./id.js";
 export { FORMAT_VERSION, SLIDE_FILE_NAME, buildMinimalPresentation } from "./presentation.js";
 export { DEFAULT_FONT_FAMILY } from "./default-font.js";
@@ -34,6 +34,9 @@ export {
   createNewPresentation,
   openPresentation,
   packPresentation,
+  savePresentation,
+  reopenPresentationInPlace,
+  readSaveState,
   readPresentationFile,
   readPresentationFileBytes,
   listPresentationEntries,
@@ -64,7 +67,7 @@ export {
   duplicateSlideElements,
   cutSlideElements,
 } from "./workspace.js";
-export type { AddTextBoxInput } from "./workspace.js";
+export type { AddTextBoxInput, SaveState } from "./workspace.js";
 export {
   insertElement,
   deleteElements,

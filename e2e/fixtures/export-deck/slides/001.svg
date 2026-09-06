@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <rect id="el-bg-left" x="0" y="0" width="640" height="720" fill="#204060"/>
+  <rect id="el-bg-right" x="640" y="0" width="640" height="720" fill="#e0a020"/>
+  <text id="el-title" x="640" y="120" text-anchor="middle" font-size="64" fill="#ffffff">匯出第一頁</text>
+  <foreignObject id="el-backdrop-probe" x="440" y="260" width="400" height="200">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:400px;height:200px;backdrop-filter:blur(12px);background:rgba(255,255,255,0.15)"></div>
+  </foreignObject>
+</svg>

@@ -4,7 +4,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
 import { CoMotionError, CoMotionNotFoundError } from "../src/errors.js";
-import { openPresentation, packPresentation } from "../src/workspace.js";
+import {
+  openPresentation,
+  packPresentation,
+  readSaveState,
+  reopenPresentationInPlace,
+  resolveWorkDir,
+  savePresentation,
+} from "../src/workspace.js";
 
 // root ignores permission bits, so the chmod-based failure below can never
 // be observed when this process runs as root (CI containers commonly do
@@ -206,5 +213,141 @@ describe("a malformed registry entry", () => {
     await expect(packPresentation("malformed-id-000000", path.join(coMotionHome, "out.comot"))).rejects.toThrow(
       CoMotionError,
     );
+  });
+});
+
+describe("readSaveState (NOOP-93)", () => {
+  it("reports known:false for a pre-existing registry entry with no sourcePath/savedAt", async () => {
+    await mkdir(coMotionHome, { recursive: true });
+    await writeFile(registryPath(), JSON.stringify({ "legacy-id-000000": { workDir: "/irrelevant" } }));
+
+    await expect(readSaveState("legacy-id-000000")).resolves.toEqual({ known: false });
+  });
+
+  it("is clean right after open, dirty after an on-disk change, and clean again after packing back to sourcePath", async () => {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    try {
+      const comotPath = path.join(comotDir, "deck.comot");
+      const { createNewPresentation } = await import("../src/workspace.js");
+      await createNewPresentation(comotPath, "測試簡報");
+      const { id } = await openPresentation(comotPath);
+
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: false, fileName: "deck.comot" });
+
+      const workDir = await resolveWorkDir(id);
+      await writeFile(path.join(workDir, "slides", "001.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: true, fileName: "deck.comot" });
+
+      await packPresentation(id, comotPath);
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: false, fileName: "deck.comot" });
+    } finally {
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("stays dirty after packing to a different path than sourcePath", async () => {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    try {
+      const comotPath = path.join(comotDir, "deck.comot");
+      const otherPath = path.join(comotDir, "elsewhere.comot");
+      const { createNewPresentation } = await import("../src/workspace.js");
+      await createNewPresentation(comotPath, "測試簡報");
+      const { id } = await openPresentation(comotPath);
+
+      const workDir = await resolveWorkDir(id);
+      await writeFile(path.join(workDir, "slides", "001.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+      await packPresentation(id, otherPath);
+
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: true, fileName: "deck.comot" });
+    } finally {
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+});
+
+describe("reopenPresentationInPlace (NOOP-93)", () => {
+  it("swaps the work directory's content in place, keeps the same id, and clears undo history", async () => {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    try {
+      const firstPath = path.join(comotDir, "first.comot");
+      const secondPath = path.join(comotDir, "second.comot");
+      const { createNewPresentation } = await import("../src/workspace.js");
+      await createNewPresentation(firstPath, "第一份簡報");
+      await createNewPresentation(secondPath, "第二份簡報");
+      const { id } = await openPresentation(firstPath);
+      const workDir = await resolveWorkDir(id);
+
+      // Simulate existing undo history for this id — reopen must delete it.
+      const historyDir = path.join(coMotionHome, "history", id);
+      await mkdir(historyDir, { recursive: true });
+      await writeFile(path.join(historyDir, "stack.json"), "[]");
+
+      await reopenPresentationInPlace(id, secondPath);
+
+      // Same id, same work directory path, new content.
+      expect(await resolveWorkDir(id)).toBe(workDir);
+      const projectJson = JSON.parse(await readFile(path.join(workDir, "project.json"), "utf-8"));
+      expect(projectJson.name).toBe("第二份簡報");
+
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: false, fileName: "second.comot" });
+      await expect(readdir(historyDir).catch(() => null)).resolves.toBeNull();
+    } finally {
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("leaves the work directory's existing content untouched when the replacement container is invalid", async () => {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    try {
+      const firstPath = path.join(comotDir, "first.comot");
+      const brokenPath = path.join(comotDir, "broken.comot");
+      const { createNewPresentation } = await import("../src/workspace.js");
+      await createNewPresentation(firstPath, "第一份簡報");
+      await writeFile(brokenPath, "not a zip file");
+      const { id } = await openPresentation(firstPath);
+      const workDir = await resolveWorkDir(id);
+
+      await expect(reopenPresentationInPlace(id, brokenPath)).rejects.toThrow(CoMotionError);
+
+      const projectJson = JSON.parse(await readFile(path.join(workDir, "project.json"), "utf-8"));
+      expect(projectJson.name).toBe("第一份簡報");
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: false, fileName: "first.comot" });
+    } finally {
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+});
+
+describe("savePresentation (NOOP-93)", () => {
+  it("packs back to sourcePath and clears dirty", async () => {
+    const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-files-"));
+    try {
+      const comotPath = path.join(comotDir, "deck.comot");
+      const { createNewPresentation } = await import("../src/workspace.js");
+      await createNewPresentation(comotPath, "測試簡報");
+      const { id } = await openPresentation(comotPath);
+      const workDir = await resolveWorkDir(id);
+      await writeFile(path.join(workDir, "slides", "001.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+
+      await expect(savePresentation(id)).resolves.toEqual({ fileName: "deck.comot" });
+      await expect(readSaveState(id)).resolves.toEqual({ known: true, dirty: false, fileName: "deck.comot" });
+
+      const raw = await readFile(comotPath);
+      expect(raw.length).toBeGreaterThan(0);
+    } finally {
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("refuses without writing when the registry entry has no sourcePath", async () => {
+    await mkdir(coMotionHome, { recursive: true });
+    const workDir = path.join(coMotionHome, "work", "no-source-id");
+    await mkdir(path.join(workDir, "slides"), { recursive: true });
+    await mkdir(path.join(workDir, "assets"), { recursive: true });
+    await mkdir(path.join(workDir, "fonts"), { recursive: true });
+    await writeFile(registryPath(), JSON.stringify({ "no-source-id": { workDir } }));
+
+    await expect(savePresentation("no-source-id")).rejects.toThrow(CoMotionError);
+    await expect(savePresentation("no-source-id")).rejects.toThrow("沒有可寫回的檔案路徑");
   });
 });

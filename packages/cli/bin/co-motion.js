@@ -12,6 +12,17 @@ if (argv[0] === "serve") {
   // tsc -b build) is where the runtime-only edge lives instead.
   const { runServeCli } = await import("@co-motion/server");
   process.exitCode = await runServeCli(argv.slice(1));
+} else if (argv[0] === "export") {
+  // `export` (NOOP-93) runs headless Chromium via `@co-motion/server`,
+  // exactly the same circular-dependency problem `serve` above already
+  // solves — same fix, same runtime-only dynamic import. It finishes and
+  // exits on its own (a few seconds to tens of seconds, never
+  // long-running like `serve`), but stays out of the EPIPE-handling branch
+  // below on purpose: that handler calls `process.exit(0)` on a broken
+  // pipe, which would report success for an export that never actually
+  // finished writing its output file.
+  const { runExportCli } = await import("@co-motion/server");
+  process.exitCode = await runExportCli(argv.slice(1));
 } else {
   // A downstream pipe closing early (e.g. `co-motion cat <id> <path> | head`)
   // makes a later process.stdout.write() fail with EPIPE. Node streams throw

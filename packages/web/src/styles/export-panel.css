@@ -1,0 +1,135 @@
+/* NOOP-93 §4.7 — the titlebar's Export dropdown and its progress/done/error strip. Same shape as rail.css's own .rail-menu (position/shadow/animation), consumed entirely through tokens.css. */
+.export-panel-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.export-toggle-button[aria-expanded="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+}
+.export-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  width: calc(var(--panel-w) * 0.75);
+  padding: var(--space-2);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+  animation: export-menu-in var(--dur-fast) var(--ease-out);
+}
+@keyframes export-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.export-menu-heading {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.export-menu-item:not(:disabled):hover {
+  background: var(--surface-1);
+}
+.export-menu-tag {
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-2xs-chart);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.export-menu-tag-pdf {
+  background: var(--surface-1);
+  color: var(--ink-700);
+}
+.export-menu-tag-pdf-frames {
+  background: var(--info-bg);
+  color: var(--info);
+}
+.export-menu-item-text {
+  flex: 1;
+  min-width: 0;
+}
+.export-menu-item-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.export-menu-item-desc {
+  display: block;
+  font-size: var(--text-xs-hint);
+  color: var(--ink-400);
+}
+.export-status {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  box-shadow: var(--shadow-menu);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+  white-space: nowrap;
+}
+.export-status-done,
+.export-status-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+.export-status-done a {
+  color: var(--brand-red);
+  font-weight: 600;
+}
+.export-status-dismiss {
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  color: var(--ink-400);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+/* The glyph lives in CSS so the strip's textContent stays exactly the event text (e2e/export-gui.test.ts records it). */
+.export-status-dismiss::before {
+  content: "×";
+}
+.export-status-dismiss:hover {
+  background: var(--surface-1);
+  color: var(--ink-700);
+}
+.export-status-error {
+  color: var(--brand-red-hover);
+  border-color: var(--brand-red-ring);
+  background: var(--brand-red-tint);
+}

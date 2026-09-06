@@ -36,3 +36,21 @@ export class CoMotionNotFoundError extends CoMotionError {
     this.name = "CoMotionNotFoundError";
   }
 }
+
+/**
+ * A CoMotionError subtype for a request that is well-formed but cannot be
+ * honoured given the presentation's *current* state — not "missing"
+ * (`CoMotionNotFoundError`), not an I/O failure, just not possible right
+ * now. The one caller today: `savePresentation` (NOOP-93, §4.2), when the
+ * registry entry has no `sourcePath` to write back to. `POST /api/save`
+ * classifies this as 400 (a client-shaped "you can't do that yet"), while
+ * every other `CoMotionError` from that same call — a real I/O failure
+ * mid-write — stays a 500, the same "positively prove the narrower case,
+ * default to loud" discipline `CoMotionNotFoundError` already establishes.
+ */
+export class CoMotionInvalidRequestError extends CoMotionError {
+  constructor(message: string) {
+    super(message);
+    this.name = "CoMotionInvalidRequestError";
+  }
+}

@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
+import { CoMotionError, CoMotionInvalidRequestError, CoMotionNotFoundError } from "./errors.js";
 import { generateElementId, generateOpaqueId } from "./id.js";
 import { buildMinimalPresentation, type ProjectJson } from "./presentation.js";
 import { readTemplateEntries } from "./project-json.js";
@@ -66,6 +66,27 @@ function registryPath(home: string): string {
 
 interface RegistryEntry {
   workDir: string;
+  /** The `.comot` path `open` (or the GUI's `reopenPresentationInPlace`) last read from — absent for a pre-NOOP-93 registry entry. */
+  sourcePath?: string;
+  /**
+   * The work directory's own `maxMtimeInDirectory` reading at the last
+   * moment its content is known to match `sourcePath` byte-for-byte — see
+   * `readSaveState` below. Absent alongside a missing `sourcePath`.
+   *
+   * Deliberately NOT `Date.now()` (an earlier version of this field):
+   * comparing a `Date.now()` timestamp against a later `stat().mtimeMs`
+   * reading mixes two different clocks whose resolutions do not agree — on
+   * this project's filesystem, an mtime can round to a value *later* than a
+   * `Date.now()` captured a moment afterwards, which made a
+   * freshly-`open`ed presentation read back as spuriously `dirty: true`
+   * (observed directly: `e2e/file-roundtrip.test.ts` failed intermittently
+   * against real files before this change). Capturing the snapshot with the
+   * exact same `stat`-based measurement `readSaveState` later compares
+   * against removes the cross-clock mismatch entirely — this is the
+   * "combination" comparison NOOP-93's plan §8 authorized if the naive
+   * timestamp proved flaky.
+   */
+  savedAt?: number;
 }
 
 // A Map cannot resolve inherited Object.prototype properties (`toString`,
@@ -231,7 +252,12 @@ export async function openPresentation(comotPath: string): Promise<{ id: string 
   // can reach — roll the unpack back out.
   try {
     const registry = await readRegistry(home);
-    registry.set(id, { workDir });
+    // `sourcePath`/`savedAt` (NOOP-93): this is the one moment `open` knows
+    // the work directory's content and `comotPath`'s bytes agree — the
+    // presentation was just unpacked from exactly this file. `savedAt` is
+    // the freshly-unpacked content's own max mtime, not `Date.now()` — see
+    // `RegistryEntry.savedAt`'s comment for why.
+    registry.set(id, { workDir, sourcePath: comotPath, savedAt: await maxMtimeInDirectory(workDir) });
     await writeRegistry(home, registry);
   } catch (error) {
     await rm(workDir, { recursive: true, force: true }).catch(() => {});
@@ -243,12 +269,153 @@ export async function openPresentation(comotPath: string): Promise<{ id: string 
 
 /**
  * Packs the presentation identified by `id` back into a single `.comot`
- * file at `outputPath`.
+ * file at `outputPath`. When `outputPath` is the same file `open` last read
+ * from (or the last successful `pack`/`save` wrote to), this is a save:
+ * `savedAt` advances so `readSaveState` reports clean again (NOOP-93, §3.2).
+ * Packing to any other path leaves `savedAt` untouched — that content now
+ * exists in two places, but the work directory's own "last saved" moment
+ * has not changed.
  */
 export async function packPresentation(id: string, outputPath: string): Promise<void> {
   const home = resolveCoMotionHome();
-  const workDir = await lookupWorkDir(home, id);
-  await packDirectory(workDir, outputPath);
+  const registry = await readRegistry(home);
+  const entry = registry.get(id);
+  if (!entry) {
+    throw new CoMotionNotFoundError(`找不到識別碼對應的簡報：${id}`);
+  }
+  await packDirectory(entry.workDir, outputPath);
+  if (entry.sourcePath !== undefined && path.resolve(outputPath) === path.resolve(entry.sourcePath)) {
+    registry.set(id, { ...entry, savedAt: await maxMtimeInDirectory(entry.workDir) });
+    await writeRegistry(home, registry);
+  }
+}
+
+/**
+ * Packs presentation `id` back to the `.comot` path it was last opened
+ * from — `co-motion serve`'s `POST /api/save` (NOOP-93, §4.2). A thin
+ * wrapper over `packPresentation` that resolves the destination itself
+ * (`entry.sourcePath`) rather than making the HTTP layer read a real
+ * filesystem path out of the registry — the registry stays core's alone to
+ * read. Throws before any write when there is no `sourcePath` to write to
+ * (a pre-NOOP-93 registry entry, or one created by `pack`-to-arbitrary-path
+ * rather than `open`): `/api/save` has no path of its own to fall back to,
+ * and guessing one is exactly the fallback this project forbids.
+ */
+export async function savePresentation(id: string): Promise<{ fileName: string }> {
+  const home = resolveCoMotionHome();
+  const registry = await readRegistry(home);
+  const entry = registry.get(id);
+  if (!entry) {
+    throw new CoMotionNotFoundError(`找不到識別碼對應的簡報：${id}`);
+  }
+  if (entry.sourcePath === undefined) {
+    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 co-motion pack 指定路徑");
+  }
+  await packPresentation(id, entry.sourcePath);
+  return { fileName: path.basename(entry.sourcePath) };
+}
+
+/**
+ * Replaces presentation `id`'s work directory content in place with
+ * `comotPath`'s, without changing `id` itself (NOOP-93, §7 decision 5): the
+ * GUI's Open action reuses the same presentation id rather than opening a
+ * second one, because `id` is woven into `startServe`'s closures
+ * (`changeBroadcaster`, `AgentChatSession`, every route) and rebuilding
+ * those for a fresh id is far riskier than swapping the directory's
+ * content under an id that stays put.
+ *
+ * `comotPath` is unpacked into a fresh staging directory *inside* `home`
+ * first — never `os.tmpdir()` — and only once that succeeds (a valid
+ * container with a valid `project.json`) does this touch the real work
+ * directory, by removing its existing children and `rename`-ing the
+ * staged ones in. Staging under `home` (not the system tmp dir) keeps the
+ * final move a same-filesystem `rename`, not a cross-device copy — `home`
+ * and `workDirFor(home, id)` are always on one filesystem, `os.tmpdir()`
+ * is not guaranteed to be.
+ *
+ * The work directory itself is never deleted or recreated
+ * (`watch.ts:86`'s `fsWatch(workDir, { recursive: true }, ...)` holds a
+ * handle on that exact inode — recreating the directory would kill the
+ * live `serve` watcher out from under a running server). Only its children
+ * are swapped.
+ *
+ * `<home>/history/<id>/` is deleted afterwards: the undo/redo stack it
+ * holds refers to the presentation's *previous* content, which no longer
+ * exists once this returns.
+ */
+export async function reopenPresentationInPlace(id: string, comotPath: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const registry = await readRegistry(home);
+  const entry = registry.get(id);
+  if (!entry) {
+    throw new CoMotionNotFoundError(`找不到識別碼對應的簡報：${id}`);
+  }
+
+  await mkdir(home, { recursive: true });
+  const stagingDir = await mkdtemp(path.join(home, ".reopen-"));
+  try {
+    await unpackContainer(comotPath, stagingDir);
+
+    const existingChildren = await readdir(entry.workDir);
+    await Promise.all(
+      existingChildren.map((name) => rm(path.join(entry.workDir, name), { recursive: true, force: true })),
+    );
+    const stagedChildren = await readdir(stagingDir);
+    await Promise.all(
+      stagedChildren.map((name) => rename(path.join(stagingDir, name), path.join(entry.workDir, name))),
+    );
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  registry.set(id, { ...entry, sourcePath: comotPath, savedAt: await maxMtimeInDirectory(entry.workDir) });
+  await writeRegistry(home, registry);
+  await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
+}
+
+export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
+
+/**
+ * Reports whether presentation `id`'s work directory has changed since it
+ * was last known to match `sourcePath` (NOOP-93, §3.2/§4.2). A registry
+ * entry with no `sourcePath`/`savedAt` at all — every entry from before
+ * this ticket — has no saved-state story yet: `{ known: false }`, not a
+ * guessed `dirty: false`.
+ *
+ * "Changed" is the newest mtime anywhere under the work directory —
+ * directories included, not just files, so a *deletion* (which leaves no
+ * file of its own with a new mtime, only a parent directory whose entry
+ * list just shrank) is still detected — compared with strict `>` against
+ * `savedAt`; equal is clean. `savedAt` is always taken *after* the write
+ * it records completed, so a genuine edit can never tie.
+ */
+export async function readSaveState(id: string): Promise<SaveState> {
+  const home = resolveCoMotionHome();
+  const registry = await readRegistry(home);
+  const entry = registry.get(id);
+  if (!entry) {
+    throw new CoMotionNotFoundError(`找不到識別碼對應的簡報：${id}`);
+  }
+  if (entry.sourcePath === undefined || entry.savedAt === undefined) {
+    return { known: false };
+  }
+  const maxMtimeMs = await maxMtimeInDirectory(entry.workDir);
+  return { known: true, dirty: maxMtimeMs > entry.savedAt, fileName: path.basename(entry.sourcePath) };
+}
+
+/** The newest `mtimeMs` of `dir` itself or anything nested inside it. */
+async function maxMtimeInDirectory(dir: string): Promise<number> {
+  let max = (await stat(dir)).mtimeMs;
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      max = Math.max(max, await maxMtimeInDirectory(fullPath));
+    } else if (entry.isFile()) {
+      max = Math.max(max, (await stat(fullPath)).mtimeMs);
+    }
+  }
+  return max;
 }
 
 /**
