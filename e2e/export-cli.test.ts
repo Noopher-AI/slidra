@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -184,7 +184,9 @@ describe("匯出成功（#210 條件 2/4）", () => {
 
   it("--out 省略時，寫到目前工作目錄的 <name>.pdf", async () => {
     const id = await openFixture(exportDeckDir);
-    const workDir = await mkdtemp(path.join(tmpdir(), "co-motion-export-cwd-"));
+    // realpath: macOS's tmpdir is a symlink (/var → /private/var) and the
+    // CLI prints the resolved path.
+    const workDir = await realpath(await mkdtemp(path.join(tmpdir(), "co-motion-export-cwd-")));
     try {
       const result = await runCli(["export", id, "--format", "pdf"], { env: env(), cwd: workDir });
       expect(result.code).toBe(0);
