@@ -181,6 +181,23 @@ describe("validateChartModel — boundary table (plan §4.4)", () => {
     ).toThrow(/axes=single/);
   });
 
+  it("rejects a category name containing a comma (NOOP-159r2 FAIL 2 — would corrupt the comma-joined <comot:categories> on read-back)", () => {
+    expect(() =>
+      validateChartModel(
+        baseModel({
+          categories: ["Taipei, TW", "Kaohsiung", "Q3"],
+          series: [{ name: "S", values: [1, 2, 3], axis: "left", color: null }],
+        }),
+      ),
+    ).toThrow(/類別名稱不可包含逗號.*Taipei, TW/);
+  });
+
+  it("rejects a series name containing a comma", () => {
+    expect(() =>
+      validateChartModel(baseModel({ series: [{ name: "A, B", values: [1, 2, 3], axis: "left", color: null }] })),
+    ).toThrow(/系列名稱不可包含逗號：A, B/);
+  });
+
   it("rejects a series with axis=right when axes=single", () => {
     expect(() =>
       validateChartModel(baseModel({ series: [{ name: "S", values: [1, 2, 3], axis: "right", color: null }] })),

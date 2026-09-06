@@ -167,6 +167,21 @@ describe("chart data set", () => {
     expect(svg).toContain('name="Revenue" values="120,150"');
   });
 
+  it("NOOP-159r2 FAIL 2：CSV 類別名稱含逗號時明確報錯，不寫入損壞資料（Reviewer 重現步驟）", async () => {
+    const { id } = await openFreshPresentation();
+    const elementId = await createChart(id);
+    const before = await readSlide(id);
+    const csvPath = path.join(sourceDir, "commacat.csv");
+    await writeFile(csvPath, 'Region,Revenue\n"Taipei, TW",120\n"Kaohsiung",90\n', "utf-8");
+    const result = await registry.dispatch("chart data set", {
+      id, slidePath: "slides/001.svg", elementId, csv: csvPath,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/逗號/);
+    // Rejected before the write — the element's data is exactly what it was before the attempt, not a desynced half-write.
+    expect(await readSlide(id)).toBe(before);
+  });
+
   it("--csv 指向不存在的檔案時回報 not-found", async () => {
     const { id } = await openFreshPresentation();
     const elementId = await createChart(id);

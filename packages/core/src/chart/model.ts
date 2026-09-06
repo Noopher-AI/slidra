@@ -102,6 +102,16 @@ export function validateChartModel(model: ChartModel): void {
   if (model.categories.some((category) => category === "")) {
     throw new CoMotionError("類別名稱不可為空字串");
   }
+  // `serializeChartData` joins categories with "," into <comot:categories
+  // values="…">; a category name that itself contains a comma is
+  // indistinguishable from the delimiter on read-back, silently splitting
+  // into extra categories and permanently desyncing every series' value
+  // count from the category count (NOOP-159r2 FAIL 2 — reproduced via
+  // `chart data set --csv` on a category like "Taipei, TW").
+  const commaCategory = model.categories.find((category) => category.includes(","));
+  if (commaCategory !== undefined) {
+    throw new CoMotionError(`類別名稱不可包含逗號（會被誤判為分隔符）：${commaCategory}`);
+  }
 
   if (model.series.length < CHART_MIN_SERIES || model.series.length > CHART_MAX_SERIES) {
     throw new CoMotionError(
@@ -113,6 +123,9 @@ export function validateChartModel(model: ChartModel): void {
   for (const series of model.series) {
     if (series.name === "") {
       throw new CoMotionError("系列名稱不可為空字串");
+    }
+    if (series.name.includes(",")) {
+      throw new CoMotionError(`系列名稱不可包含逗號：${series.name}`);
     }
     if (seenNames.has(series.name)) {
       throw new CoMotionError(`系列名稱重複：${series.name}`);

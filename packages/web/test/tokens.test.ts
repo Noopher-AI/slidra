@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { CHART_PALETTE_HEX } from "@co-motion/core/chart";
 
 // tokens.css's public boundary is the file's own text — it *is* the
 // contract. Assertions below read the raw CSS (and the design package's
@@ -216,11 +217,8 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(missing).toEqual([]);
   });
 
-  it("排除項（accent.palette.* 圖表調色盤）確實沒有落地——排除是刻意的，不是漏做", () => {
-    const declared = declaredRootTokenNames();
-    for (const excluded of EXCLUDED_DESIGN_TOKENS) {
-      expect(declared.has(dotPathToCssVar(excluded)), `${excluded} 不應該出現在 tokens.css`).toBe(false);
-    }
+  it("EXCLUDED_DESIGN_TOKENS 目前是空集合——E2.T12 落地 accent.palette.* 後已無排除項（NOOP-159r2 三項債之一：舊測試對空集合迭代是空操作，此斷言取代它，讓「集合為空」本身成為看得見的斷言，而不是悄悄不測任何東西）", () => {
+    expect(EXCLUDED_DESIGN_TOKENS.size).toBe(0);
   });
 
   // control.h's cell packs a second, explicitly-separate number ("30–34
@@ -257,6 +255,29 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     const compactMatch = docToken.valueCell.match(/(\d+(?:\.\d+)?)\s*px\s*緊湊版/);
     if (!compactMatch) throw new Error("control.h 的值欄位找不到「緊湊版」數值——文件格式可能變了");
     expect(declaredRootTokenValue("--control-h-compact")).toBe(`${compactMatch[1]}px`);
+  });
+
+  it("設計包標成色彩（值欄位含 #RRGGBB 字面量）的 token，落地後的 CSS 值都是合法的十六進位色碼（NOOP-159r2 三項債之一：先前沒有格式檢查，--accent-palette-brand-1 改成 notacolor 仍全綠）", () => {
+    const HEX_COLOR = /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/;
+    const malformed: string[] = [];
+    for (const { path: tokenPath, valueCell } of designTokens) {
+      if (EXCLUDED_DESIGN_TOKENS.has(tokenPath)) continue;
+      if (!/#[0-9a-fA-F]{3,8}\b/.test(valueCell)) continue; // 值欄位沒有十六進位字面量 -> 不是色彩 token
+      for (const cssVar of expectedCssVarsFor(tokenPath)) {
+        const declaredValue = declaredRootTokenValue(cssVar);
+        if (!HEX_COLOR.test(declaredValue)) malformed.push(`${cssVar}: "${declaredValue}"`);
+      }
+    }
+    expect(malformed).toEqual([]);
+  });
+
+  it("accent.palette.* 的三組 CSS 變數與 chart/render.ts 的 CHART_PALETTE_HEX 逐色一致（NOOP-159r2 三項債之一：兩份色票各自獨立維護，先前沒有測試綁住）", () => {
+    for (const [palette, hexes] of Object.entries(CHART_PALETTE_HEX)) {
+      hexes.forEach((hex, index) => {
+        const cssVar = `--accent-palette-${palette}-${index + 1}`;
+        expect(declaredRootTokenValue(cssVar).toLowerCase()).toBe(hex.toLowerCase());
+      });
+    }
   });
 });
 

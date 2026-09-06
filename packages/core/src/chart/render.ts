@@ -22,11 +22,24 @@ import type { ChartModel, ChartPalette, ChartSeries } from "./model.js";
  * (`chart/edit.ts`'s `previewChartModel`).
  */
 
-const PALETTES: Readonly<Record<ChartPalette, readonly string[]>> = {
+/**
+ * The six hex swatches per palette — MUST stay byte-for-byte identical to
+ * `packages/web/src/styles/tokens.css`'s `--accent-palette-{brand,cool,warm}-{1..6}`
+ * (design doc `01-DESIGN_TOKENS.md`'s `accent.palette.*` row): the renderer
+ * writes plain hex (design-contract.test.ts forbids literal hex in
+ * `packages/web/src`, so the CSS vars exist only for the GUI's own palette
+ * swatches, e.g. the insert panel/data window pickers), while this constant
+ * is what actually lands in a chart's pixels — two independent sources of
+ * truth for the same six colours, pinned equal by
+ * `packages/web/test/tokens.test.ts`'s "PALETTES 與 tokens.css 一致" test.
+ * Exported (not module-private) so that test can import it.
+ */
+export const CHART_PALETTE_HEX: Readonly<Record<ChartPalette, readonly string[]>> = {
   brand: ["#C8233B", "#5B6DEA", "#4A8F45", "#E08A2E", "#2B9E75", "#A9B0B8"],
   cool: ["#5B6DEA", "#2B9E75", "#38BDF8", "#A78BFA", "#22C55E", "#94A3B8"],
   warm: ["#C8233B", "#E08A2E", "#F4C542", "#D9634C", "#B45309", "#A9B0B8"],
 };
+const PALETTES = CHART_PALETTE_HEX;
 
 const MUTED = "#a9b0b8";
 const INK = "#e7e9ee";

@@ -120,13 +120,22 @@ describe("renderChartSvg — dual axis (AC-5)", () => {
     expect(dual).toContain('text-anchor="start"'); // right-axis ticks anchor start
   });
 
-  it("positions the right-axis series' bars using the right series' own domain, not the left one", () => {
-    // A right-axis series with much larger values must not be squashed to
-    // the same pixel scale as the left series — it gets its own domain.
+  it("positions the right-axis series at absolute pixel coordinates derived from ITS OWN domain (NOOP-159r2 FAIL 3 — the old 'values merely differ' assertion still passed with yFor hard-wired to always use the left axis)", () => {
+    // legend=none, no titles: padT=14 (render.ts's own fixed constant),
+    // padB=26, padR=44 (dual, no right legend), height=300 -> ph = 300 - 14
+    // - 26 = 260. The right axis' own domain is exactly [0, 1000] (built
+    // from ITS series alone). A value AT that domain's max must land at
+    // the very top of the plot area (y === padT) — a value at exactly
+    // half the max must land exactly halfway down (padT + ph/2) — no
+    // matter what render.ts's algorithm looks like internally, a correct
+    // implementation cannot violate this. Hard-wiring yFor to always use
+    // the LEFT axis' domain ([0, 1] here) would instead place these
+    // points thousands of pixels off-canvas, failing both checks below.
     const dual = renderChartSvg(
       baseModel({
         type: "line",
         axes: "dual",
+        legend: "none",
         series: [
           { name: "Left", values: [1, 1, 1], axis: "left", color: null },
           { name: "Right", values: [1000, 500, 1000], axis: "right", color: null },
@@ -135,12 +144,9 @@ describe("renderChartSvg — dual axis (AC-5)", () => {
     );
     const polylines = [...dual.matchAll(/<polyline points="([^"]+)"/g)].map((m) => m[1]);
     expect(polylines).toHaveLength(2);
-    const leftPoints = polylines[0].split(" ").map((p) => p.split(",").map(Number));
-    // Left series is flat (all values 1) -> all y identical.
-    expect(new Set(leftPoints.map((p) => p[1])).size).toBe(1);
     const rightPoints = polylines[1].split(" ").map((p) => p.split(",").map(Number));
-    // Right series dips at the middle point -> y values differ.
-    expect(new Set(rightPoints.map((p) => p[1])).size).toBeGreaterThan(1);
+    expect(rightPoints[0][1]).toBeCloseTo(14, 0); // value 1000 == domain max -> top of plot area
+    expect(rightPoints[1][1]).toBeCloseTo(144, 0); // value 500 == half of domain max -> halfway down (14 + 260/2)
   });
 });
 
@@ -163,6 +169,31 @@ describe("renderChartSvg — stacked (AC-6)", () => {
     // the two segments' y ranges must be adjacent (bottom of A == top of B)
     const [a, b] = forCategory0.map((r) => ({ y: Number(r[2]), h: Number(r[4]) }));
     expect(Math.abs(a.y - (b.y + b.h))).toBeLessThan(0.01);
+  });
+
+  it("scales the stacked total against the STACKED domain, not an unstacked one (NOOP-159r2 FAIL 4 — the adjacency check above still passed with domainOf's `stacked` argument hard-wired to false)", () => {
+    const model = baseModel({
+      type: "bar",
+      stacked: true,
+      grid: false,
+      labels: false,
+      legend: "none",
+      series: [
+        { name: "A", values: [10, 10, 10], axis: "left", color: "#111111" },
+        { name: "B", values: [20, 20, 20], axis: "left", color: "#222222" },
+      ],
+    });
+    const svg = renderChartSvg(model);
+    const rects = [...svg.matchAll(/<rect x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="[-\d.]+" fill="#\w+"/g)];
+    const topY = Math.min(...rects.map((r) => Number(r[1])));
+    // padT=14 is render.ts's own fixed constant. Every category's stack
+    // totals exactly 30 (10 + 20), which is also the correct STACKED
+    // domain's max — so the tallest bar's top edge must land exactly at
+    // the plot area's top (y === padT). An UNSTACKED domain over the same
+    // series would compute max=20 (the largest single value, not the
+    // largest per-category SUM), scaling the stack's top edge to well
+    // above the plot area (a y measurably less than padT).
+    expect(topY).toBeCloseTo(14, 0);
   });
 
   it("stacks negative and positive values on opposite sides of zero", () => {
