@@ -299,3 +299,18 @@ describe("parseArgv text style set (NOOP-65 §4.2)", () => {
     expect(() => parseArgv(["text", "style", "clear", "p1"])).toThrow();
   });
 });
+
+// NOOP-129 round-2: `slide render` was only reachable through
+// `registry.dispatch` (server, tests) — no shell entry point existed, which
+// blocked #199's A8 acceptance criterion (`co-motion slide render` from a
+// real shell).
+describe("parseArgv slide render (NOOP-65 A8 CLI entry point)", () => {
+  it("parses presentation-id and slide-path into the same shape registry.dispatch('slide render', …) already expects", () => {
+    const parsed = parseArgv(["slide", "render", "p1", "slides/001.svg"]);
+    expect(parsed).toEqual({ name: "slide render", input: { id: "p1", path: "slides/001.svg" } });
+  });
+
+  it("reports the missing slide-path", () => {
+    expect(() => parseArgv(["slide", "render", "p1"])).toThrow("命令 slide render 缺少參數：slide-path");
+  });
+});

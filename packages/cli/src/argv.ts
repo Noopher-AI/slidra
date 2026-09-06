@@ -367,6 +367,12 @@ export function parseArgv(argv: string[]): ParsedCommand {
       const sub = rest[0];
       const args = rest.slice(1);
 
+      if (sub === "render") {
+        const id = requirePositional(args, 0, "slide render", "presentation-id");
+        const path = requirePositional(args, 1, "slide render", "slide-path");
+        return { name: "slide render", input: { id, path } };
+      }
+
       if (sub === "add") {
         const id = requirePositional(args, 0, "slide add", "presentation-id");
         const templatePath = optionalFlag(args, "--template");
