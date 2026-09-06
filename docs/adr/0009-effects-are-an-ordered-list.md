@@ -33,6 +33,6 @@ PowerPoint 與 Keynote 都是這個形狀。PowerPoint 把動畫存在 `<p:timin
 - `duration`／`delay` 為選填屬性，秒為單位；缺席時依家族取預設值（`media` 為 0，其餘 0.6）。合法值是「有限、非負的數字」——格式錯誤或負數一律拋錯，絕不回傳修補後的值。
 - `family="path"` 的效果項多一個 `d` 屬性，語法是投影片座標系下的 SVG path data；`d` 出現在其他家族上是合法但未使用的屬性，原樣保留。
 - **群組動畫**：一筆效果項的 `target` 可以指向一個群組 `<g>`，而不僅是葉節點元素——這與「多個散落元素各自一筆項目」是同一份 schema 的兩種自然結果，不是額外分支。
-- 效果項的清單順序即身分：`co-motion effect` 命令族用 1-based 位置定址（D6），沒有另外發明 id。
+- 效果項的清單順序即身分：`co-motion effect` 命令族用 1-based 位置定址（D6），沒有另外發明 id。`effect list` 的輸出同樣是 1-based，讓 `list` 讀到的 `index` 可以直接餵給 `move`／`set`／`remove`——core 內部的 `Effect.index`（陣列位置）仍是 0-based，只有 CLI 的 `effect list` 命令在輸出前轉換一次。
 - 命名空間常數收斂到 `@co-motion/core/effects` 一處（`https://co-motion.dev/ns`）；`element-clipboard.ts` 先前誤用了 `https://schemas.comotion.app/effects`，導致貼上後的效果在播放時被靜默當成不存在——已修正，現在整個 repo 只有一個命名空間字面值的來源。
 - 效果清單第一次有了真正的寫入端（`co-motion effect add/remove/move/set`）；先前只有讀取（`packages/web/src/effects.ts`）與旁路清理（`element delete` 的懸空項清除）。

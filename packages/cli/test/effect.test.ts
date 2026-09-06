@@ -160,6 +160,27 @@ describe("effect remove / move / set", () => {
     const listed = await registry.dispatch<{ effects: Array<{ target: string }> }>("effect list", { id, slidePath: "slides/001.svg" });
     expect(listed.data!.effects.map((item) => item.target)).toEqual([b]);
   });
+
+  it("effect list 回傳的 index 直接餵給 effect set 改到同一筆，不是前一筆（round-trip）", async () => {
+    const { id } = await openWithThreeEffects();
+    const before = await registry.dispatch<{ effects: Array<{ index: number; target: string; effect: string }> }>(
+      "effect list",
+      { id, slidePath: "slides/001.svg" },
+    );
+    const second = before.data!.effects[1];
+    expect(second.effect).toBe("zoom");
+
+    const result = await registry.dispatch("effect set", { id, slidePath: "slides/001.svg", index: second.index, duration: 2.5 });
+    expect(result.ok).toBe(true);
+
+    const after = await registry.dispatch<{ effects: Array<{ target: string; effect: string; duration: number }> }>(
+      "effect list",
+      { id, slidePath: "slides/001.svg" },
+    );
+    expect(after.data!.effects[0]).toMatchObject({ effect: "fade", duration: 0.6 });
+    expect(after.data!.effects[1]).toMatchObject({ target: second.target, effect: "zoom", duration: 2.5 });
+    expect(after.data!.effects[2]).toMatchObject({ effect: "pulse", duration: 0.6 });
+  });
 });
 
 describe("effect list on a slide with no effect list", () => {
