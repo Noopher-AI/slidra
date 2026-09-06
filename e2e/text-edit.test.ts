@@ -140,6 +140,33 @@ async function isEditTextareaFocused(page: Page): Promise<boolean> {
   });
 }
 
+/**
+ * Double-clicks the right half of `elementId`'s last character. Entering
+ * edit by dblclick puts the caret at the click point (05-INTERACTIONS
+ * 「就地編輯」), so this is how a test opens an edit session with the caret
+ * at the END of the text — dblclicking the element's centre would land it
+ * mid-string.
+ */
+async function dblclickAtEnd(page: Page, elementId: string): Promise<void> {
+  const frame = page.frameLocator("iframe.slide-frame");
+  const p = await frame.locator("body").evaluate((body, elementId) => {
+    const doc = body.ownerDocument as Document;
+    const el = doc.getElementById(elementId)!;
+    const textEl = (el.tagName === "text" ? el : el.querySelector("text")) as SVGTextContentElement;
+    const ctm = textEl.getScreenCTM()!;
+    const last = textEl.getNumberOfChars() - 1;
+    const toClient = (x: number, y: number) => new DOMPoint(x, y).matrixTransform(ctm);
+    const ext = textEl.getExtentOfChar(last);
+    const start = toClient(textEl.getStartPositionOfChar(last).x, 0);
+    const end = toClient(textEl.getEndPositionOfChar(last).x, 0);
+    const mid = toClient(ext.x + ext.width / 2, ext.y + ext.height / 2);
+    return { x: start.x + (end.x - start.x) * 0.75, y: mid.y };
+  }, elementId);
+  const box = await page.locator("iframe.slide-frame").boundingBox();
+  if (!box) throw new Error("量不到 iframe.slide-frame 的邊界框");
+  await page.mouse.dblclick(box.x + p.x, box.y + p.y);
+}
+
 async function waitForEditTextareaFocus(page: Page): Promise<void> {
   await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 }
@@ -328,7 +355,7 @@ it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行與 
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     // The editing model has no caret/selection (only append/backspace at
@@ -381,7 +408,7 @@ it("進入編輯後不打字直接 Esc：不送任何命令（AC5）", async () 
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
@@ -404,7 +431,7 @@ it("編輯期間在被編輯元素上按下並拖曳：transform 不變、不送
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     const svg = page.frameLocator("iframe.slide-frame").locator("svg").first();
@@ -473,7 +500,7 @@ it("A1：ArrowLeft 依序左移游標，caret 畫面位置與 textarea.selection
   try {
     const page = await openApp(server);
     expect(await readEditFrameDisplay(page)).not.toBe("block"); // Nothing being edited yet.
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     expect(await readEditFrameDisplay(page)).toBe("block"); // Editing frame is now shown.
     // Fixture's initial text is "Hi" (len 2) — type more so there is enough
@@ -510,7 +537,7 @@ it("A16：有硬換行時，點第 2 行第 1 個字，游標落在點到的字�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("AAA");
@@ -547,7 +574,7 @@ it("A17：有硬換行時，點第 1 行最後一個字的右半邊，游標停�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("AAA");
@@ -587,7 +614,7 @@ it("A18：跨硬換行拖曳選取，第 1 行的反白區塊從起點畫到該�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("AAA");
@@ -615,11 +642,48 @@ it("A18：跨硬換行拖曳選取，第 1 行的反白區塊從起點畫到該�
   }
 });
 
+// A19：雙擊進入編輯時，游標落在雙擊處，不是文字結尾（05-INTERACTIONS
+// 「就地編輯」）。先用一次編輯建立兩行內容並提交，再雙擊第 2 行第 2 個字。
+it("A19：雙擊多行文字框的第 2 行某字，進入編輯後游標落在該字，不是結尾", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await dblclickAtEnd(page, "el-text");
+    await waitForEditTextareaFocus(page);
+    await page.keyboard.type("AAA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("BBB");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    expect(readTspans(await readSlide(registry, presentationId), "el-text").map((l) => l.text)).toEqual(["HiAAA", "BBB"]);
+
+    // Committed DOM "HiAAA"+"BBB"; value "HiAAA\nBBB". DOM index 6 (line 2's
+    // 2nd "B") must open editing with the caret at value index 7.
+    const target = await charClientRect(page, "el-text", 6);
+    const offset = await iframeOffset(page);
+    await page.mouse.dblclick(offset.x + target.startX + (target.endX - target.startX) * 0.25, offset.y + target.top + target.height / 2);
+    await waitForEditTextareaFocus(page);
+    await page.waitForTimeout(150);
+    expect((await readSelection(page)).start).toBe(7);
+
+    await page.keyboard.type("X");
+    await page.waitForTimeout(80);
+    const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
+      const doc = body.ownerDocument as Document;
+      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+    expect(value).toBe("HiAAA\nBXBB");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     await page.keyboard.type("ABCDE"); // -> "HiABCDE" (len 7)
     await page.waitForTimeout(80);
@@ -646,7 +710,7 @@ it("A4：跨行選取，每行各自一塊，接縫處無破洞或重疊", async
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
     await page.keyboard.type("aaaa bbbb cccc dddd");
@@ -679,7 +743,7 @@ it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令�
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     await page.keyboard.type("ABCDE"); // -> "HiABCDE"
     await page.waitForTimeout(80);
@@ -713,7 +777,7 @@ it("A6：西文含空白斷行的文字方塊，逐字元點擊，selectionStart
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
     await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
     const text = "aaaa bbbb cccc dddd";
@@ -738,7 +802,7 @@ it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元�
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     const frame = page.frameLocator("iframe.slide-frame");
@@ -828,7 +892,7 @@ it("編輯中按 Enter：游標處插入硬換行，不 commit、不離開編輯
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("AAA");
@@ -868,7 +932,7 @@ it("編輯中按 ⌘Enter／Ctrl+Enter：不插入換行、不 commit、不離�
       if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
     });
 
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("XYZ");
@@ -898,7 +962,7 @@ it("A10：基準截圖：編輯中的文字框（多行、含硬換行）", asyn
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    await page.frameLocator("iframe.slide-frame").locator("#el-text").dblclick();
+    await dblclickAtEnd(page, "el-text");
     await waitForEditTextareaFocus(page);
 
     await page.keyboard.type("AAA");

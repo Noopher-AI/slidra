@@ -313,6 +313,11 @@
   // dragging; the moving end is whatever indexAtPoint() reports at the
   // current pointer position.
   var textSelectDrag = null;
+  // Client point of the dblclick that requested the current begin-text-edit
+  // round trip, so the caret lands where the author double-clicked once the
+  // edit session actually opens; null for the Enter-key entry path (caret
+  // stays at the end there).
+  var pendingEditPoint = null;
 
   /** Any ancestor (including `el` itself) carrying `data-comot-lock="true"` — the same walk `findSelectable` does, exposed standalone because the host-initiated `beginTextEdit` path never goes through a click at all and so never runs `findSelectable`. */
   function isLockedOrInsideLocked(el) {
@@ -1090,6 +1095,7 @@
       // own isLockedOrInsideLocked is the other half, for the
       // host-initiated beginTextEdit path this click never goes through.
       if (target.hasAttribute("data-comot-text-width") || isPlainTextContainer(target)) {
+        pendingEditPoint = { x: event.clientX, y: event.clientY };
         post({ event: "dblclick-textbox", id: target.getAttribute("id") });
         return;
       }
@@ -1248,6 +1254,7 @@
     if (!el) return;
     if (!el.hasAttribute("data-comot-text-width") && !isPlainTextContainer(el)) return;
     event.preventDefault();
+    pendingEditPoint = null;
     post({ event: "dblclick-textbox", id: el.getAttribute("id") });
   });
 
@@ -1661,7 +1668,16 @@
       // text box) — nothing to re-wrap, so the initial paint is a no-op.
       if (started) {
         if (typeof data.markup === "string") applyPreviewTextbox(data.id, data.markup, data.width);
+        // Only now is the edit-time DOM in place to hit-test against.
+        if (pendingEditPoint) {
+          var clickIdx = indexAtPoint(pendingEditPoint.x, pendingEditPoint.y);
+          if (clickIdx !== null) {
+            textarea.setSelectionRange(clickIdx, clickIdx);
+            updateEditDecoration();
+          }
+        }
       } else post({ event: "text-edit-denied", id: data.id });
+      pendingEditPoint = null;
     } else if (data.command === "marquee") {
       drawMarquee(data.rect);
     } else if (data.command === "selection") {
