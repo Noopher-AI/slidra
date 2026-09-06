@@ -18,6 +18,7 @@ import "./styles/play.css";
 import "./styles/selection.css";
 import "./styles/side-panel.css";
 import "./styles/animate.css";
+import "./styles/chart-window.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
