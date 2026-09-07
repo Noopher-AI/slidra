@@ -222,3 +222,17 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* [E2.T17] 第三方嵌入播放器（YouTube）。與其他疊層不同，這一層在播放模式
+   也要留著——嵌入的影片必須在播放與全螢幕下繼續播。容器本身不吃事件；
+   個別 iframe 的 pointer-events 由 EmbedLayer 依模式決定。 */
+.embed-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.embed-frame {
+  position: absolute;
+  border: 0;
+}

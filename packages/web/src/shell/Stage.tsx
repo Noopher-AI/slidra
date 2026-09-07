@@ -12,6 +12,7 @@ import {
 import type { CanvasController, CanvasState } from "../canvas.js";
 import { Dock } from "./dock/Dock.js";
 import { OverlayLayer, type CommentOverlayProps } from "./stage-overlays/OverlayLayer.js";
+import { EmbedLayer } from "./stage-overlays/EmbedLayer.js";
 import type { SideId } from "./side/SidePanel.js";
 import {
   initialHandState,
@@ -141,6 +142,13 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   useEffect(() => {
     if (!shellVisible) return;
     controller?.refreshOverlay();
+  }, [controller, shellVisible, zoomPan]);
+
+  // [E2.T17]：嵌入播放器的疊層在播放模式也活著（EmbedLayer 不在 shellVisible
+  // 的閘門後面），所以它的重算不能跟上面那個一起被 `!shellVisible` 擋掉——
+  // 進出播放模式正是 `.stage` transform 換掉、frame 位置整個改變的時候。
+  useEffect(() => {
+    controller?.refreshEmbeds();
   }, [controller, shellVisible, zoomPan]);
 
   // 投影片本體上的滾輪縮放/平移、抓取模式拖曳（NOOP-83 §2/§4，Dev-Leader
@@ -301,6 +309,10 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onDragLeave={dropOverlay.onDragLeave}
         />
       </div>
+      {/* [E2.T17]: deliberately OUTSIDE the `shellVisible` gate below — an
+          embedded player has to keep playing in play mode and fullscreen,
+          where OverlayLayer is unmounted. */}
+      <EmbedLayer controller={controller} />
       {shellVisible && (
         <OverlayLayer
           controller={controller}

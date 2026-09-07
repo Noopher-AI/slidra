@@ -193,6 +193,37 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
     }
   });
 
+  it("Video 面板貼 YouTube 網址 → 不下載任何資產，改成 data-comot-embed，且父文件疊出 <iframe> 播放器", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-video-youtube" });
+    try {
+      const page = await openPage(started.server);
+      const beforeAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
+
+      await page.getByRole("button", { name: "Video" }).click();
+      const panel = page.locator('.media-panel[aria-label="Video"]');
+      await panel.locator(".media-panel-url").fill("https://www.youtube.com/watch?v=MtKyexX-GQc");
+      await panel.locator(".media-panel-insert").click();
+      await expect.poll(() => panel.count()).toBe(0);
+
+      const after = await readSlide(started);
+      // 網頁連結沒有位元組可下載：這條路徑必須完全繞過資產匯入。
+      expect(after).toContain('data-comot-embed="youtube"');
+      expect(after).toContain('data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc"');
+      const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
+      expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries);
+
+      // 播放器活在父文件（ADR-0011：投影片的 srcdoc iframe 永遠不給
+      // allow-same-origin，YouTube 播放器在那裡根本載不起來）。
+      const embed = page.locator(".embed-frame");
+      await expect.poll(() => embed.count()).toBe(1);
+      // `enablejsapi=1` 是載入用的，不寫進投影片檔案——上面斷言過檔案裡
+      // 存的是乾淨的網址。有它，media 效果才驅動得動這個播放器。
+      expect(await embed.getAttribute("src")).toBe("https://www.youtube-nocookie.com/embed/MtKyexX-GQc?enablejsapi=1");
+    } finally {
+      await started.cleanup();
+    }
+  });
+
   it("Audio 面板：三個欄位留空按 Insert → 插入 kind=audio 的占位元素", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-audio-placeholder" });
     try {

@@ -53,7 +53,8 @@
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
-import { computePlayerPlan, renderHideStyle, renderPlanScript, stageMediaFor } from "./player-plan.js";
+import type { EmbedProvider } from "@co-motion/core/embed";
+import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { parseEffects } from "./effects.js";
 import type { Effect } from "./effects.js";
 import {
@@ -424,6 +425,21 @@ export interface CanvasController {
    */
   subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
   /**
+   * [E2.T17] third-party embeds (YouTube). A separate channel from
+   * `subscribeOverlay` because its consumer must stay mounted in play
+   * mode, where `OverlayLayer` is not.
+   */
+  subscribeEmbeds: (listener: (state: EmbedState) => void) => () => void;
+  /** Re-converts the stored embed geometry against the frame's rect right now — for a layout change (play mode, fullscreen) that the runtime has no way to report. */
+  refreshEmbeds: () => void;
+  /**
+   * [E2.T17] "play/pause this embed", forwarded from a `family="media"`
+   * effect. A transient event channel (same shape as `subscribeStageInput`,
+   * not `subscribeEmbeds`): there is no "current command" for a late
+   * subscriber to be caught up on.
+   */
+  subscribeEmbedCommand: (listener: (command: EmbedCommand) => void) => () => void;
+  /**
    * Table cell hit reports (click/dblclick/contextmenu, E2.T14 §4.5) and
    * the reply to `requestTableCells`. Returns an unsubscribe function, same
    * shape as `subscribe`/`subscribeOverlay` — a transient event channel,
@@ -561,6 +577,33 @@ function pageTransitionTransform(effect: PageTransitionEffect, phase: "enter-sta
   return "none";
 }
 
+/** One third-party embed to render over the stage, in parent client px. */
+export interface EmbedItem {
+  id: string;
+  provider: EmbedProvider;
+  /** The player URL — already canonicalised by `embed.ts` at insert time. */
+  url: string;
+  rect: Rect;
+}
+
+/**
+ * [E2.T17] `subscribeEmbeds`'s payload. `interactive` is false in view
+ * mode: the author is editing a slide there, and a player that swallowed
+ * clicks would make its own element unselectable — exactly the reasoning
+ * behind `.media-overlay-el`'s `pointer-events:none`. In play mode the
+ * audience is watching, so the player takes its own clicks.
+ */
+export interface EmbedState {
+  items: EmbedItem[];
+  interactive: boolean;
+}
+
+/** [E2.T17] One "drive this embedded player" instruction, already validated against the current slide's embeds. */
+export interface EmbedCommand {
+  id: string;
+  command: "play" | "pause";
+}
+
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
   source: "comot-player";
@@ -570,9 +613,29 @@ interface PlayerMessage {
   // [E2.T11]: "exit-play" — Escape pressed inside the play iframe
   // (player-runtime.js's own keydown), forwarded here since the runtime
   // has no notion of whether the document is currently fullscreen.
-  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done" | "exit-play";
+  // [E2.T17]: "embed-boxes" — where each third-party embed placeholder
+  // currently sits on screen, so the parent's embed overlay can stay
+  // aligned. The <iframe> itself can only live in the parent document
+  // (ADR-0011); see packages/core/src/embed.ts.
+  // [E2.T17]: "embed-command" — a `family="media"` effect landed on a
+  // third-party embed. The runtime has no <video> to drive (the player is
+  // a cross-origin iframe in THIS document), so it forwards the intent and
+  // the parent speaks the provider's own protocol.
+  event:
+    | "ready"
+    | "focus"
+    | "advance-past-end"
+    | "retreat-past-start"
+    | "error"
+    | "preview-done"
+    | "exit-play"
+    | "embed-boxes"
+    | "embed-command";
   hasFocus?: boolean;
   message?: string;
+  items?: unknown;
+  id?: unknown;
+  command?: unknown;
 }
 
 /** Read directly rather than through a container ref (unlike App.tsx's `isCanvasAreaFullscreen`): this module has no reference to the "well" element `toggleFullscreen()` requests fullscreen on, and the app only ever fullscreens that one element while playing — so "is anything fullscreen at all" answers the same question. */
@@ -643,6 +706,12 @@ interface SelectionMessage {
     // an arbitrary id list (the current slide's animation badge targets),
     // independent of `selectedIds`.
     | "measured"
+    // [E2.T17]: where each third-party embed placeholder currently sits,
+    // so the parent's embed overlay can stay aligned. Sent by BOTH
+    // runtimes (player-runtime.js has its own copy) because the overlay
+    // has to survive play mode, where selection-runtime.js is not even
+    // injected.
+    | "embed-boxes"
     // E2.T14 §4.5: table cell hit reports (click/dblclick/contextmenu) and
     // the reply to a host-issued `table-cells` command.
     | "table-cell-click"
@@ -1184,6 +1253,50 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // successful `measured` reply, converted to parent client px.
   let badgeTargets: { target: string; n: number }[] = [];
   let overlayBadges: { target: string; n: number; rect: Rect }[] = [];
+  // [E2.T17] the embed overlay's own state channel. `embedEntries` is the
+  // current slide's `stageEmbedsFor` table (set at render time, parent
+  // side); `embedBoxes` is where each of those elements last reported
+  // itself to be, already converted to parent client px. Kept apart from
+  // `OverlayState` because the embed overlay must also render in play
+  // mode, where `OverlayLayer` is unmounted entirely (Stage.tsx's
+  // `shellVisible` gate).
+  let embedEntries: Record<string, StageEmbedEntry> = {};
+  let embedBoxes: Record<string, Rect> = {};
+  const embedListeners = new Set<(state: EmbedState) => void>();
+  const embedCommandListeners = new Set<(command: EmbedCommand) => void>();
+
+  /** Validates an `embed-command` payload and fans it out. Both fields come from untrusted slide-side script (ADR-0010), so an unknown id or command is dropped, never forwarded to a player. */
+  function emitEmbedCommand(rawId: unknown, rawCommand: unknown): void {
+    if (typeof rawId !== "string" || !Object.prototype.hasOwnProperty.call(embedEntries, rawId)) return;
+    if (rawCommand !== "play" && rawCommand !== "pause") return;
+    const command: EmbedCommand = { id: rawId, command: rawCommand };
+    for (const listener of embedCommandListeners) listener(command);
+  }
+
+  /** Validates and stores an `embed-boxes` payload from either runtime, then pushes the new state out. Every field is untrusted slide-side data (ADR-0010), so nothing is stored before `isMeasuredItem` has checked its shape. */
+  function applyEmbedBoxes(rawItems: unknown): void {
+    const items = Array.isArray(rawItems) ? rawItems.filter(isMeasuredItem) : [];
+    const next: Record<string, Rect> = {};
+    for (const item of items) next[item.id] = item.rect;
+    embedBoxes = next;
+    notifyEmbeds();
+  }
+
+  /** Converts the stored runtime-px embed boxes to parent client px against the frame's rect *right now* — same contract, and same reason, as `buildOverlayState`. An entry whose element has not reported a box yet is simply absent, never rendered at a guessed position. */
+  function buildEmbedState(): EmbedState {
+    const items: EmbedItem[] = [];
+    for (const id of Object.keys(embedEntries)) {
+      const rect = embedBoxes[id];
+      if (!rect) continue;
+      items.push({ id, url: embedEntries[id].url, provider: embedEntries[id].provider, rect: toParentClientRect(rect) });
+    }
+    return { items, interactive: mode === "play" };
+  }
+
+  function notifyEmbeds(): void {
+    const state = buildEmbedState();
+    for (const listener of embedListeners) listener(state);
+  }
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
@@ -1261,6 +1374,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // rather than closing over a specific iframe, so it keeps working across
   // play()/exitPlay() rebuilds without being re-attached.
   window.addEventListener("message", onWindowMessage);
+  // [E2.T17]: the embed overlay's parent-side conversion reads the frame's
+  // rect at message time, so a window resize that moves/scales the frame
+  // without the runtime re-reporting would leave the player behind. The
+  // stored runtime-local boxes are still correct — only the conversion has
+  // to be redone.
+  window.addEventListener("resize", notifyEmbeds);
 
   function onWindowMessage(event: MessageEvent): void {
     if (destroyed) return;
@@ -1318,6 +1437,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "error") {
       error = message.message ?? "播放時發生未知錯誤";
       notify();
+      return;
+    }
+    if (message.event === "embed-boxes") {
+      applyEmbedBoxes(message.items);
+      return;
+    }
+    if (message.event === "embed-command") {
+      emitEmbedCommand(message.id, message.command);
       return;
     }
     if (message.event === "advance-past-end") {
@@ -1577,6 +1704,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // anything — re-request the current slide's badge targets so the
       // overlay is not stuck showing the PREVIOUS slide's badge positions.
       requestBadgeMeasurement();
+      return;
+    }
+    if (message.event === "embed-boxes") {
+      applyEmbedBoxes(message.items);
       return;
     }
     if (message.event === "measured") {
@@ -3428,11 +3559,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
     }
 
+    // [E2.T17]: the embed table is the parent's, not the iframe's — the
+    // runtime is only told which ids to measure. Boxes are cleared here
+    // and refilled by the runtime's first `embed-boxes` report, so a
+    // stale slide's geometry is never painted under the new slide.
+    embedEntries = stageEmbedsFor(svgMarkup);
+    embedBoxes = {};
+    notifyEmbeds();
+
     frame.srcdoc = wrapSelectionDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
       stageMediaFor(svgMarkup),
+      Object.keys(embedEntries),
     );
 
     // E2.T12: re-derive the open chart window's model off the just-loaded
@@ -3594,6 +3734,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
+    // Same as render(): the ids travel to the runtime inside the plan
+    // (`plan.embedIds`), the URLs stay here.
+    embedEntries = stageEmbedsFor(svgMarkup);
+    embedBoxes = {};
+    notifyEmbeds();
+
     frame.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
@@ -3617,6 +3763,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         frame.style.opacity = "1";
         frame.style.transform = "none";
       });
+      // [E2.T17]: the embed overlay converts runtime-local px against
+      // `frame.getBoundingClientRect()` *at message time*, and the runtime
+      // reports its boxes while this transform is still mid-flight — which
+      // lands the player offset by however far the frame still had to
+      // travel. Re-converting once the transition has settled (the stored
+      // runtime-local boxes are unchanged; only the frame's own rect moved)
+      // is what puts it back on its placeholder.
+      window.setTimeout(() => {
+        if (destroyed || captured !== generation) return;
+        notifyEmbeds();
+      }, ms + 50);
     } else {
       // Instant path must actively clear any inline opacity/transition/
       // transform a PRIOR animation left behind — otherwise this page
@@ -4063,7 +4220,24 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         overlayListeners.delete(listener);
       };
     },
+    subscribeEmbeds: (listener: (state: EmbedState) => void) => {
+      embedListeners.add(listener);
+      listener(buildEmbedState());
+      return () => {
+        embedListeners.delete(listener);
+      };
+    },
+    refreshEmbeds: () => {
+      notifyEmbeds();
+    },
+    subscribeEmbedCommand: (listener: (command: EmbedCommand) => void) => {
+      embedCommandListeners.add(listener);
+      return () => {
+        embedCommandListeners.delete(listener);
+      };
+    },
     refreshOverlay: () => {
+      notifyEmbeds();
       notifyOverlay();
     },
     subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
@@ -4117,7 +4291,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     previewChart,
     destroy: () => {
       destroyed = true;
+      window.removeEventListener("resize", notifyEmbeds);
       listeners.clear();
+      embedListeners.clear();
+      embedCommandListeners.clear();
       stageInputListeners.clear();
       overlayListeners.clear();
       tableListeners.clear();
@@ -4243,6 +4420,8 @@ export function wrapSelectionDocument(
    * wrapper, same shape as its `colors` parameter.
    */
   media: Record<string, { src: string; kind: "video" | "audio" }>,
+  /** [E2.T17]: ids of the slide's third-party embeds — the runtime measures these and posts their boxes out, nothing more. Same caller-computes-it contract as `media`. */
+  embedIds: string[],
 ): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
@@ -4251,11 +4430,12 @@ export function wrapSelectionDocument(
   // (ADR-0010), and JSON.parse (not a bare object literal) is what keeps a
   // "__proto__" key a genuine own property on the far side of the wire.
   const safeMediaJson = JSON.stringify(JSON.stringify(media)).replace(/</g, "\\u003C");
+  const safeEmbedIdsJson = JSON.stringify(JSON.stringify(embedIds)).replace(/</g, "\\u003C");
   // `background:#fff` (#120), same as the other two wrappers: view mode
   // used to lean on `.stage`'s white background for slides that paint no
   // background of their own — stage.css no longer has one (it caused a 1px
   // seam), so the document must be opaque white by itself.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**

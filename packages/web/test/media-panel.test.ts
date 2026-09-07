@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mediaInsertInput } from "../src/shell/dock/panels/media-insert.js";
+import { embedInsertInput, mediaInsertInput, shouldAutoPlayOnClick } from "../src/shell/dock/panels/media-insert.js";
 
 const CANVAS_1280x720 = { width: 1280, height: 720 };
 
@@ -60,5 +60,31 @@ describe("mediaInsertInput（[E2.T17] plan §4.2）", () => {
   it("幾何是目前簡報自己的 canvas 尺寸的百分比，不是寫死的 1280×720", () => {
     const result = mediaInsertInput("image", "assets/photo.png", { width: 1920, height: 1080 });
     expect(result).toMatchObject({ x: 1075.2, y: 216, width: 691.2, height: 648 });
+  });
+});
+
+describe("embedInsertInput（[E2.T17] YouTube 嵌入）", () => {
+  it("用跟一般影片相同的版位，media 存播放器網址、embed 存來源", () => {
+    expect(embedInsertInput({ provider: "youtube", url: "https://www.youtube-nocookie.com/embed/MtKyexX-GQc" }, CANVAS_1280x720)).toEqual({
+      ...mediaInsertInput("video", null, CANVAS_1280x720),
+      media: "https://www.youtube-nocookie.com/embed/MtKyexX-GQc",
+      embed: "youtube",
+    });
+  });
+});
+
+describe("shouldAutoPlayOnClick（插入後自動補一筆「按一下播放」）", () => {
+  it("插入帶媒體的 video／audio 要補效果", () => {
+    expect(shouldAutoPlayOnClick(mediaInsertInput("video", "assets/clip.webm", CANVAS_1280x720))).toBe(true);
+    expect(shouldAutoPlayOnClick(mediaInsertInput("audio", "assets/n.oga", CANVAS_1280x720))).toBe(true);
+  });
+
+  it("第三方嵌入也要補：它沒有 <video>，但效果會轉成播放器自己的 API", () => {
+    expect(shouldAutoPlayOnClick(embedInsertInput({ provider: "youtube", url: "https://x/embed/y" }, CANVAS_1280x720))).toBe(true);
+  });
+
+  it("空占位與圖片不補", () => {
+    expect(shouldAutoPlayOnClick(mediaInsertInput("video", null, CANVAS_1280x720))).toBe(false);
+    expect(shouldAutoPlayOnClick(mediaInsertInput("image", "assets/photo.png", CANVAS_1280x720))).toBe(false);
   });
 });

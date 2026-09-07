@@ -23,6 +23,10 @@
     "./chart": {
       "types": "./dist/chart/index.d.ts",
       "default": "./dist/chart/index.js"
+    },
+    "./embed": {
+      "types": "./dist/embed.d.ts",
+      "default": "./dist/embed.js"
     }
   }
 }

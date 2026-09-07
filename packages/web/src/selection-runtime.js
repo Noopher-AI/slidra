@@ -507,6 +507,28 @@
   // legal id can be "__proto__") — read with `for...in` +
   // hasOwnProperty, never assumed to be a plain enumerable object.
   var mediaTable = window.__COMOT_SELECTION_MEDIA__ || {};
+  // [E2.T17]: ids of the slide's third-party embeds. The <iframe> lives in
+  // the PARENT document (ADR-0011 — this document may never be granted
+  // allow-same-origin, and a nested iframe's sandbox flags are the
+  // intersection with this one's, so the YouTube player cannot work from
+  // in here); this runtime only measures where each placeholder sits and
+  // posts it out, so the parent can keep its overlay aligned.
+  var embedIds = window.__COMOT_SELECTION_EMBEDS__ || [];
+
+  function reportEmbedBoxes() {
+    if (embedIds.length === 0) return;
+    var items = [];
+    for (var i = 0; i < embedIds.length; i++) {
+      var embedEl = document.getElementById(embedIds[i]);
+      if (!embedEl) continue;
+      var embedRect = embedEl.getBoundingClientRect();
+      items.push({
+        id: embedIds[i],
+        rect: { x: embedRect.left, y: embedRect.top, width: embedRect.width, height: embedRect.height },
+      });
+    }
+    post({ event: "embed-boxes", items: items });
+  }
   // id -> { placeholder, media, bar, playButton, seek }
   var mediaOverlays = {};
 
@@ -1525,6 +1547,7 @@
     reportViewport();
     updateBoxes();
     positionMediaOverlays();
+    reportEmbedBoxes();
   });
 
   // T3/NOOP-142: a system file dragged over this iframe never reaches the
@@ -1562,6 +1585,7 @@
   // [E2.T17] plan §4.4: only reachable once bodyMarkup's SVG has actually
   // been parsed — same reason reportViewport() itself waits for `load`.
   window.addEventListener("load", buildMediaOverlays);
+  window.addEventListener("load", reportEmbedBoxes);
 
   var DRAG_THRESHOLD_PX = 3;
   /** The in-progress pointer gesture, or null between gestures. */

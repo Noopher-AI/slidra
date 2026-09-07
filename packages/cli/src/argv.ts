@@ -213,6 +213,7 @@ export function parseArgv(argv: string[]): ParsedCommand {
             strokeWidth: optionalNumberFlag(args, "--stroke-width", "element insert"),
             href: optionalFlag(args, "--href"),
             media: optionalFlag(args, "--media"),
+            embed: optionalFlag(args, "--embed"),
           },
         };
       }

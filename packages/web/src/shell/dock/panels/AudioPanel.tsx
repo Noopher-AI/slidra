@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type DragEvent } from "react";
 import type { CanvasController } from "../../../canvas.js";
-import { mediaInsertInput, type MediaAssetKind } from "./media-insert.js";
+import { mediaInsertInput, shouldAutoPlayOnClick, type MediaAssetKind } from "./media-insert.js";
 
 export interface AudioPanelProps {
   onClose(): void;
@@ -75,14 +75,27 @@ export function AudioPanel({ onClose, controller, canvasSize, slidePath }: Audio
     setPending(false);
     if (!inserted.ok) return;
 
+    const insertedData = inserted.data as { elementId?: unknown } | undefined;
+    const insertedId = typeof insertedData?.elementId === "string" ? insertedData.elementId : undefined;
+
+    // Same as VideoPanel: an inserted asset plays on the next click in
+    // play mode without the author hand-building an effect list.
+    if (insertedId && shouldAutoPlayOnClick(input)) {
+      await controller.runCommand("effect add", {
+        slidePath,
+        elementIds: [insertedId],
+        family: "media",
+        effect: "play",
+        start: "on-click",
+      });
+    }
+
     const trimmedCaption = caption.trim();
     if (trimmedCaption !== "") {
-      const data = inserted.data as { elementId?: unknown } | undefined;
-      const elementId = typeof data?.elementId === "string" ? data.elementId : undefined;
-      if (elementId) {
+      if (insertedId) {
         // 決定 D4：這一次失敗不回滾插入，只把訊息交給既有的 CanvasState.error
         // 通道——runCommand 本身已經這樣做，這裡不用額外處理。
-        await controller.runCommand("element name set", { slidePath, elementIds: [elementId], name: trimmedCaption });
+        await controller.runCommand("element name set", { slidePath, elementIds: [insertedId], name: trimmedCaption });
       }
     }
     onClose();

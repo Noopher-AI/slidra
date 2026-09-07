@@ -23,6 +23,8 @@ export interface MediaInsertInput {
   href?: string;
   /** Present whenever a real asset was imported; absent for an empty placeholder insert. */
   media?: string;
+  /** [E2.T17] Present only for a third-party player embed (YouTube) — `media` is then the player URL, not a path inside the presentation. */
+  embed?: string;
 }
 
 /**
@@ -72,4 +74,49 @@ export function mediaInsertInput(
   // root-relative ("assets/x.png"), so every slide-side reference needs `../`.
   const media = `../${path}`;
   return kind === "image" ? { kind: "image", x, y, width, height, href: media, media } : { kind, x, y, width, height, media };
+}
+
+/**
+ * [E2.T17]: a YouTube link's own insert input. Same box as an ordinary
+ * video (MEDIA_BOX.video) so an embed and a file sit in the same place on
+ * the slide — the only difference is that `media` holds the player URL and
+ * `embed` names the provider, which is what routes it to the parent
+ * document's embed overlay instead of the slide's own media layer
+ * (`packages/core/src/embed.ts` explains why it cannot live in the iframe).
+ */
+export function embedInsertInput(
+  embed: { provider: string; url: string },
+  canvasSize: { width: number; height: number },
+): MediaInsertInput {
+  const box = MEDIA_BOX.video;
+  return {
+    kind: "video",
+    x: (canvasSize.width * box.l) / 100,
+    y: (canvasSize.height * box.t) / 100,
+    width: (canvasSize.width * box.w) / 100,
+    height: (canvasSize.height * box.h) / 100,
+    media: embed.url,
+    embed: embed.provider,
+  };
+}
+
+/**
+ * Whether a just-inserted element should also get a `media`/`play` effect
+ * started `on-click` — i.e. "advance one step in play mode and it plays".
+ * Without one, an inserted video is an element the effect list knows
+ * nothing about, so play mode has nothing to trigger.
+ *
+ * A third-party embed counts too: it has no `<video>` of its own, but the
+ * effect still reaches it — the runtime forwards the intent and the
+ * parent's embed overlay speaks the player's own API (`embed.ts`'s
+ * `embedCommandMessage`). A placeholder with no media yet is excluded —
+ * there is nothing to play.
+ *
+ * A predicate rather than a function that dispatches the command, so the
+ * decision has one home and one unit test while each panel keeps its own
+ * (already-awaited) command sequence.
+ */
+export function shouldAutoPlayOnClick(input: MediaInsertInput): boolean {
+  if (input.media === undefined) return false;
+  return input.kind === "video" || input.kind === "audio";
 }

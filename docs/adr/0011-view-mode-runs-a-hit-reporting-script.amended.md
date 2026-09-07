@@ -19,3 +19,27 @@
 - `wrapSlideDocument` 不再產生純靜態文件。檢視與播放的差別從「有沒有 script」變成「注入哪一支 script」。
 - **選取框必須畫在 Shadow DOM 裡。** 它活在不受信任的文件中，投影片自己的 CSS 有辦法把它蓋掉或藏起來——作者會看到「點了沒反應」。Shadow root 是讓它畫在箱子裡又不被箱子干擾的唯一便宜做法。（NOOP-90/T2 修訂：這條只約束選取框、四角把手、框選矩形——名稱/群組標籤與吸附輔助線改畫在父文件，見上方橫幅。）
 - server 拒絕 `Origin: null` 的防護，現在對檢視模式同樣必要。過去這項防護與 `allow-scripts` 是「同一件事的兩半」，而那件事只發生在播放模式；現在檢視模式也需要它，任何時候都不再有「反正這個模式不跑 script」的餘地。
+
+## 修訂（[E2.T17]：第三方嵌入播放器活在父文件）
+
+YouTube 這類第三方播放器**不能**放進投影片的 iframe，本票實測過：
+
+| 投影片 iframe 的 sandbox | YouTube 播放器 |
+| --- | --- |
+| `allow-scripts`（現行） | 完全載不起來（`embedder.identity.missing.referrer`，origin 是 `null`） |
+| `allow-scripts allow-same-origin` | 正常載入 |
+
+而 `allow-same-origin` 正是本 ADR 明文禁止的那一項：投影片文件是 `srcdoc`，加上這個 token 就與父文件同源，不受信任的投影片內容可以把自己 script 出沙盒。巢狀 iframe 的 sandbox flags 又是與父層取交集，所以「只放寬那個嵌入」在規格上做不到。
+
+決定：**第三方嵌入的 `<iframe>` 畫在父文件**（`packages/web/src/shell/stage-overlays/EmbedLayer.tsx`），疊在投影片的佔位元素上。它載入的是真正的 https 文件，不是 `srcdoc`，因此本來就不受本 ADR 的沙盒條款約束，**投影片 iframe 的 sandbox token 一個字都沒有改**。
+
+幾何一律由 runtime 用 `getBoundingClientRect()` 回報（`embed-boxes` 事件，兩支 runtime 各有一份），父文件只做座標系換算——與上方 NOOP-90/T2 修訂對 `bounds` 的處理是同一條規則的再一次套用，父文件不自己算 SVG 的框。
+
+`family="media"` 的效果照樣打得到嵌入：runtime 沒有 `<video>` 可以呼叫 `.play()`，改成把意圖轉發出去（`embed-command` 事件），由父文件說播放器自己的協定。這裡用的是 YouTube 官方的 IFrame Player API（`YT.Player`）——實測過土法 `postMessage` 送 `{"event":"command","func":"playVideo"}` 給 `?enablejsapi=1` 的 frame 完全沒有回應，那個 handshake 的形狀是 YouTube 私有且會變的。第三方腳本只在投影片真的帶了 YouTube 嵌入時才延遲載入。
+
+### Consequences
+
+- 這一層是 `stage-overlays/` 底下**唯一**在播放模式仍然掛著的疊層（`Stage.tsx` 的 `shellVisible` 閘門之外）：嵌入的影片必須在播放與全螢幕下繼續播。
+- 檢視模式下嵌入的 iframe 是 `pointer-events: none`，否則作者點不到自己的元素、選不起來；播放模式才交還點擊給播放器。
+- 嵌入用到一支第三方腳本（`https://www.youtube.com/iframe_api`）。載不起來時嵌入照常顯示、觀眾仍可按播放器自己的播放鈕，只有「效果驅動播放」這一項失效——這不是損毀的投影片，所以不報錯。
+- 嵌入需要外網。離線播放時該元素只剩一個透明佔位框——`data-comot-media` 存的是播放器網址，沒有位元組被收進 `.comot` 容器。

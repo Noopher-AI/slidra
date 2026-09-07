@@ -5,6 +5,7 @@ import {
   hideSelectorsFor,
   renderHideStyle,
   renderPlanScript,
+  stageEmbedsFor,
   stageMediaFor,
   VIDEO_EXTENSIONS,
 } from "../src/player-plan.js";
@@ -61,6 +62,8 @@ describe("computePlayerPlan", () => {
       hidden: ["el-a", "el-b"],
       hideSelectors: { "el-a": "#el-a", "el-b": "#el-b" },
       media: {},
+      stageMedia: {},
+      embedIds: [],
     });
   });
 
@@ -90,12 +93,62 @@ describe("computePlayerPlan", () => {
     expect(computePlayerPlan(svg).hidden).toEqual([]);
   });
 
+  it("stageEmbedsFor 收錄第三方嵌入，而 stageMedia 明確跳過它們", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
+      '<g id="el-file" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
+      "</svg>";
+
+    expect(stageEmbedsFor(svg)).toEqual({
+      "el-embed": { provider: "youtube", url: "https://www.youtube-nocookie.com/embed/MtKyexX-GQc" },
+    });
+    expect(Object.keys(stageMediaFor(svg))).toEqual(["el-file"]);
+    expect(computePlayerPlan(svg).embedIds).toEqual(["el-embed"]);
+  });
+
+  it("media 效果指向嵌入時：不進 media cue、不因為沒有副檔名而拋錯，仍然是一個步驟", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+      '<comot:effect target="el-embed" family="media" effect="play" start="on-click"/>' +
+      "</comot:effects></metadata>" +
+      '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
+      "</svg>";
+
+    const plan = computePlayerPlan(svg);
+    expect(plan.media).toEqual({});
+    expect(plan.embedIds).toEqual(["el-embed"]);
+    expect(plan.steps).toHaveLength(1);
+  });
+
+  it("不認得的嵌入來源被跳過，而不是拋錯", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<g id="el-x" data-comot-media="https://vimeo.com/1" data-comot-embed="vimeo"/>' +
+      "</svg>";
+    expect(stageEmbedsFor(svg)).toEqual({});
+  });
+
+  it("stageMedia 收錄每個 data-comot-media 元素，包含沒有任何效果指向它的那些", () => {
+    const plan = computePlayerPlan(
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+        '<g id="el-no-effect" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
+        "</svg>",
+    );
+
+    expect(plan.media).toEqual({});
+    expect(plan.stageMedia).toEqual({ "el-no-effect": { src: "../assets/clip.webm", kind: "video" } });
+  });
+
   it("沒有效果清單的投影片得到零步、空的 hidden", () => {
     expect(computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>')).toEqual({
       steps: [],
       hidden: [],
       hideSelectors: {},
       media: {},
+      stageMedia: {},
+      embedIds: [],
     });
   });
 
