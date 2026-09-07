@@ -331,10 +331,38 @@ const EFFECT_ATTRIBUTE_WHITELIST: ReadonlySet<string> = new Set<keyof RawEffectA
   "d",
 ]);
 
-/** [B10] Whitelist, not blacklist, for `href`/`xlink:href`/`src` — the only attributes `assertSlideCompliant`'s primitive whitelist lets a renderer actually fetch through. Only a same-document fragment (`#…`) or a scheme-less, `//`-less (and `\\`-less, per `ABSOLUTE_URL`'s backslash equivalence) relative path is legal; anything with a `:` or a `\` (an explicit scheme, with or without the `//` a browser's URL parser does not require — e.g. `https:evil.example`) or a `//`/`\\` (protocol-relative) is an external reference. A blacklist of schemes can always be enumerated around; this shape cannot. */
-function isFragmentOrRelativeReference(value: string): boolean {
-  if (value === "" || value.startsWith("#")) return true;
-  return !/[:\\]|\/\//.test(value);
+/**
+ * [I1, r5] Delegates the `href`/`xlink:href`/`src` judgment to the same
+ * WHATWG `URL` parser a browser uses, instead of a hand-written regex
+ * re-implementing its normalisation steps (whitespace/control stripping,
+ * case-insensitive scheme, `\`≡`/` for special schemes, optional `//`).
+ * Every one of those steps is a distinct bypass dimension for a regex that
+ * doesn't happen to encode it; delegating removes the dimension instead of
+ * enumerating it. Global `URL` needs no import (`node:url` or otherwise),
+ * so `element-clipboard.ts` stays dependency-free and usable from both
+ * Node and the browser.
+ *
+ * Two probe bases, both must resolve inside the document: with only an
+ * `https://` base, `https:evil.example` (an absolute URL that omits `//`)
+ * parses as *relative* to that base and would pass; the `http://` base
+ * catches it (and vice versa for an `http:` value against an `https://`
+ * base). A parse failure is treated as external (reject) — a legitimate
+ * relative reference has no reason to fail parsing against either base.
+ */
+const REFERENCE_PROBE_BASES = ["https://clipboard.invalid/base/", "http://clipboard.invalid/base/"] as const;
+
+function resolvesWithinDocument(value: string): boolean {
+  for (const base of REFERENCE_PROBE_BASES) {
+    const baseUrl = new URL(base);
+    let resolved: URL;
+    try {
+      resolved = new URL(value, base);
+    } catch {
+      return false;
+    }
+    if (resolved.protocol !== baseUrl.protocol || resolved.host !== baseUrl.host) return false;
+  }
+  return true;
 }
 
 /**
@@ -355,7 +383,39 @@ function checkAttributeValue(attrName: string, value: string, label: string): vo
   const decodedValue = decodeXmlEntities(value);
   const forms = decodedValue === value ? [value] : [value, decodedValue];
 
+  /**
+   * [I2, r5] Over-approximates rather than enumerates: any attribute name
+   * whose *local name* (case-insensitively) is `href`/`src` is treated as
+   * URL-bearing, however it's prefixed — `HREF`, `Href`, `xlink:href`,
+   * `XLINK:HREF`, an aliased namespace prefix (`xmlns:xl="…xlink"` +
+   * `xl:href`/`Xl:HrEf`), or a multi-colon local name (`a:b:href`, which a
+   * first-colon split would miscompute as `b:href`). A browser's HTML
+   * parser lower-cases attribute names before matching its foreign-attribute
+   * table, and its namespace resolution binds a prefix to whichever URI
+   * declared it, not to the prefix's literal spelling — so anything less
+   * permissive than "matches this shape at all" is a bypass waiting to be
+   * found, not a rule that happens to be missing one more case.
+   */
+  const isUrlAttr = /(?:^|:)(?:href|src)$/.test(attrName.toLowerCase());
+
   for (const form of forms) {
+    /**
+     * [I3, r5] Every known bypass discovered so far that isn't a WHATWG
+     * URL-normalisation step (TAB/LF/CR stripping, `\`≡`/`, case
+     * folding, …) routes through a backslash somewhere — CSS's
+     * hex-escape syntax (`\75rl(\00002f\00002fevil.example)`) needs one
+     * to trigger, and so does the URL parser's own backslash equivalence.
+     * SVG attribute syntax has no legitimate use for a literal backslash,
+     * so removing the character removes the whole class of "a downstream
+     * parser re-interprets this differently than we assumed" bypass at
+     * once, without needing to know what that downstream parser does.
+     */
+    if (form.includes("\\")) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有反斜線（${value}）`);
+    }
+    if (isUrlAttr && !resolvesWithinDocument(form)) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
+    }
     if (DANGEROUS_SCHEME.test(form)) {
       throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
     }
@@ -369,13 +429,6 @@ function checkAttributeValue(attrName: string, value: string, label: string): vo
         throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
       }
     }
-  }
-
-  /** Namespace-aware: `xlink:href` is bound by the `xlink` *namespace*, not the literal prefix `xlink:` — a fragment declaring `xmlns:xl="http://www.w3.org/1999/xlink"` and using `xl:href` refers to the identical attribute under a different local prefix, so enumerating the literal prefix string lets that alias bypass the check entirely. */
-  const localName = attrName.slice(attrName.indexOf(":") + 1);
-  const isUrlAttr = localName === "href" || localName === "src";
-  if (isUrlAttr && (decodedValue !== value || !isFragmentOrRelativeReference(decodedValue))) {
-    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
   }
 }
 
@@ -398,7 +451,7 @@ function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean
  * The one gate every pasted fragment — internal or from the system
  * clipboard — must pass before it is spliced into a presentation (ADR-0010,
  * [E2.T18] 決定 4). Never patches a bad fragment into something acceptable:
- * every violation throws, none are silently stripped. Two layers:
+ * every violation throws, none are silently stripped. Three layers:
  *
  * 1. Structural: wrapping the fragment so `assertSlideCompliant` can reuse
  *    its existing tag whitelist/`<script>`/`<foreignObject>` sweep for free.
@@ -407,7 +460,10 @@ function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean
  *    an `effects` fragment is wrapped inside `<metadata><comot:effects>`,
  *    where only the forbidden-tag sweep (which walks metadata too) applies —
  *    `checkSlideCompliance` does not otherwise structurally inspect metadata.
- * 2. Attribute-level (not covered by `assertSlideCompliant`, ADR-0010/0011
+ * 2. Single-root (I4, r5): the fragment must scan to exactly one root node
+ *    of the expected tag (`<g>` for an element, `<comot:effect>` for an
+ *    effect) — see the `roots.length !== 1` check below.
+ * 3. Attribute-level (not covered by `assertSlideCompliant`, ADR-0010/0011
  *    left that to the iframe sandbox for *rendering* — this is the
  *    write-path guard #201's architecture decision added): no `on*` handler,
  *    no `javascript:`/`data:`/`file:`/`ftp:`/`blob:` scheme, no absolute URL,
@@ -435,6 +491,20 @@ export function sanitizeClipboardMarkup(markup: string, kind: "element" | "effec
   assertSlideCompliant(wrapped, label);
 
   const roots = scanDocument(markup);
+  /**
+   * [I4, r5] `scanDocument` returns every root-level node, and nothing
+   * above this point limits that to one — a fragment such as
+   * `<g id="el-a"/><style>@import "//evil.example/x.css";</style>` scans as
+   * two roots and was passing. It happens not to reach an outbound request
+   * today only because both call sites (`serializeClipboardSvg`,
+   * `pasteElements`) pass a single element/effect string each — a caller
+   * invariant, not one this function enforces itself. Requiring exactly
+   * one root of the expected tag makes it this function's own guarantee.
+   */
+  const expectedRootTag = kind === "element" ? "g" : "comot:effect";
+  if (roots.length !== 1 || roots[0].tag !== expectedRootTag) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 必須是恰好一個 <${expectedRootTag}> 根節點`);
+  }
   for (const root of roots) {
     checkNodeAttributes(root, label, kind === "effect");
   }
