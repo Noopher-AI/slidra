@@ -394,15 +394,21 @@ const isPathData: Grammar = (value) => PATH_DATA_RE.test(value);
 
 /**
  * Empty, a same-document fragment (`#id`), or a relative path that doesn't
- * open with a protocol-relative `//` — no scheme colon, no parentheses, no
- * backslash are in the character set at all, which is what actually closes
+ * open with a protocol-relative `//` — excludes only what actually closes
  * every `javascript:`/`data:`/CSS-escape/backslash-equivalence bypass this
- * ticket's five prior rounds each found one new instance of: none of those
- * payloads can be spelled with only these characters. `resolvesWithinDocument`
- * is kept as a second gate behind the shape (決定 D6).
+ * ticket's prior rounds each found one new instance of: a scheme colon
+ * (`:`), a backslash (`\`, path-separator-equivalent in a browser's URL
+ * parser), and C0/C1 control characters (whitespace/newline-hiding tricks).
+ * An ASCII-only positive enumeration was tried first and rejected every
+ * non-ASCII asset path — co-motion is a Traditional-Chinese-first product
+ * where Chinese filenames are ordinary input `element insert`/-media never
+ * blocks ([E2.T18r7] FAIL #2). `resolvesWithinDocument` is kept as a second
+ * gate behind this shape (決定 D6): it alone already blocks every bypass
+ * sample this exclusion set widens for (no non-ASCII sample relies on the
+ * charset, only on the `:`/`\`/leading-`//` exclusions or the second gate).
  */
 const RELATIVE_REF_FRAGMENT_RE = /^#[A-Za-z_][A-Za-z0-9_.-]*$/;
-const RELATIVE_REF_PATH_RE = /^[A-Za-z0-9_.\-/~%&+=@ ;]*$/;
+const RELATIVE_REF_PATH_RE = /^[^\x00-\x1f\x7f-\x9f:\\]*$/;
 const isRelativeRef: Grammar = (value) => {
   const shapeOk = value === "" || RELATIVE_REF_FRAGMENT_RE.test(value) || (RELATIVE_REF_PATH_RE.test(value) && !value.startsWith("//"));
   return shapeOk && resolvesWithinDocument(value);
@@ -415,11 +421,25 @@ const isCellRef: Grammar = (value) => CELL_REF_RE.test(value);
 const FONT_FAMILY_RE = /^[^()\\:;<>"'&]{0,128}$/;
 const isFontFamily: Grammar = (value) => FONT_FAMILY_RE.test(value);
 
-/** Free-form display text (`data-comot-name`) — not a reference carrier, so only markup delimiters are excluded. */
-const FREE_TEXT_RE = /^[^<>\\]{0,512}$/;
+/**
+ * Free-form display text (`data-comot-name`) — not a reference carrier, so
+ * only markup delimiters are excluded. No length bound: `element name set`
+ * (`element-group.ts`'s `setElementName`) never limits `name`'s length, and
+ * a length cap here is not a security property (`data-comot-name` carries no
+ * reference, per D9) — it only buys mis-rejections of legitimate long names
+ * ([E2.T18r7] FAIL #3).
+ */
+const FREE_TEXT_RE = /^[^<>\\]*$/;
 const isFreeText: Grammar = (value) => FREE_TEXT_RE.test(value);
 
-const LIST_SPEC_RE = /^(bullet|number|none)(?: (bullet|number|none))?$/;
+/**
+ * `data-comot-list` (NOOP-65 決定 E, `element-text.ts:110-116`): one
+ * whitespace-separated token per paragraph (`content.split("\n")`) — no
+ * upper bound on paragraph count. `?` (at most two tokens) was a transcription
+ * of a probe corpus's actual output, not this contract; any text box with
+ * three or more paragraphs failed to copy ([E2.T18r7] FAIL #1).
+ */
+const LIST_SPEC_RE = /^(bullet|number|none)(?: (bullet|number|none))*$/;
 const isListSpec: Grammar = (value) => LIST_SPEC_RE.test(value);
 
 function enumOf(values: readonly string[]): Grammar {
@@ -528,12 +548,27 @@ function checkAttributeValue(tag: string, attrName: string, value: string, label
 }
 
 function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean): void {
-  const tagGrammar = isEffect ? (node.tag === "comot:effect" ? EFFECT_ATTRIBUTE_GRAMMAR : undefined) : ELEMENT_TAG_ATTRIBUTES[node.tag];
+  const tagGrammar = isEffect
+    ? node.tag === "comot:effect"
+      ? EFFECT_ATTRIBUTE_GRAMMAR
+      : undefined
+    : Object.hasOwn(ELEMENT_TAG_ATTRIBUTES, node.tag)
+      ? ELEMENT_TAG_ATTRIBUTES[node.tag]
+      : undefined;
   if (!tagGrammar) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 含有不在允許清單內的標籤 <${node.tag}>`);
   }
   for (const attribute of node.attributes) {
-    const grammar = tagGrammar[attribute.name];
+    /**
+     * [E2.T18r7 FAIL #4] `tagGrammar[attribute.name]` alone lets a
+     * prototype-chain property name (`constructor`, `toString`, …) resolve
+     * to an inherited `Object.prototype` value instead of `undefined` —
+     * `Object.hasOwn` restricts the lookup to the grammar map's own keys, so
+     * every such name falls through to the same `CoMotionError` an
+     * unrecognised attribute name gets, not a truthy inherited value nor a
+     * raw JS `TypeError` from calling it as a grammar.
+     */
+    const grammar = Object.hasOwn(tagGrammar, attribute.name) ? tagGrammar[attribute.name] : undefined;
     if (!grammar) {
       throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${node.tag}> 屬性 ${attribute.name} 不在允許清單內`);
     }
