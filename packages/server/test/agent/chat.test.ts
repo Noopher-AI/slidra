@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -587,7 +587,7 @@ describe("chat: shutdown does not hang on an open stream", () => {
 });
 
 describe("chat: session cwd", () => {
-  it("hands the agent a fresh empty temp directory, never the real process cwd or a path under CO_MOTION_HOME", async () => {
+  it("hands the agent the deployed product work directory as its cwd, never the real process cwd (NOOP-238)", async () => {
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
@@ -604,11 +604,87 @@ describe("chat: session cwd", () => {
 
     // Never the real project directory the CLI was launched from.
     expect(sentCwd).not.toBe(process.cwd());
-    // Never anywhere under CO_MOTION_HOME — that would disclose where the
-    // home is, and `..` from there reaches `work/<id>`, the presentation's
-    // real work directory (ADR-0004).
-    const relativeToHome = path.relative(coMotionHome, sentCwd);
-    expect(relativeToHome.startsWith("..") || path.isAbsolute(relativeToHome)).toBe(true);
+    // Exactly `<CO_MOTION_HOME>/agent`, resolved — the product work
+    // directory `deployAgentWorkdir()` deploys before `startServe` ever
+    // constructs the session (NOOP-238). The escape-hatch this test used to
+    // assert ("never under CO_MOTION_HOME") is inverted by design: `../work/<id>`
+    // is no longer reachable from here, because `fs/read_text_file`'s
+    // containment is the deployed directory's own real tree
+    // (`classifyAgentReadPath`/`readAgentWorkdirFile`), not a string prefix
+    // check an agent could try to walk out of.
+    const expectedWorkdir = await realpath(path.join(coMotionHome, "agent"));
+    expect(sentCwd).toBe(expectedWorkdir);
+  });
+
+  it("lets the agent read the deployed CLAUDE.md via a relative path (NOOP-238)", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "CLAUDE.md",
+      }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下你的工作手冊入口");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    const sourceClaudeMd = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../agent-workdir/CLAUDE.md",
+    );
+    expect(result?.readTextFileResult).toBe(await readFile(sourceClaudeMd, "utf8"));
+  });
+
+  it("lets the agent read a file under the deployed .claude/skills tree via a relative path (NOOP-238)", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: ".claude/skills/probe/SKILL.md",
+      }),
+    );
+    // Written directly into the *deployed* target after `serve()` has
+    // already run `deployAgentWorkdir()` once — not into the repo's
+    // `agent-workdir/` source, which this test must never touch, and which
+    // a second deploy would overwrite anyway. This only proves the read
+    // wiring reaches the real, already-deployed `.claude/skills` tree; skill
+    // *content* is out of this ticket's scope (T6/T7).
+    const skillDir = path.join(coMotionHome, "agent", ".claude", "skills", "probe");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
+
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下這個 skill");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    expect(result?.readTextFileResult).toBe("測試用 skill 內容");
+  });
+});
+
+describe("chat: serve close does not delete the deployed work directory (NOOP-238)", () => {
+  it("leaves the work directory's AGENTS.md readable and unchanged after close()", async () => {
+    const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
+    // This test owns close()/assert itself — see the shutdown-hang test
+    // above for why afterEach must not also try to close it.
+    servers = servers.filter((running) => running !== server);
+    await server.close();
+
+    const sourceAgentsMd = await readFile(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../agent-workdir/AGENTS.md"),
+      "utf8",
+    );
+    const deployedAgentsMd = await readFile(path.join(coMotionHome, "agent", "AGENTS.md"), "utf8");
+    expect(deployedAgentsMd).toBe(sourceAgentsMd);
   });
 });
 

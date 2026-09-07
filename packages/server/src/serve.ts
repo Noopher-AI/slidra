@@ -15,6 +15,7 @@ import {
   resolveCoMotionHome,
 } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
+import { deployAgentWorkdir } from "./agent/workdir.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
@@ -93,6 +94,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   if (project.slides.length === 0) {
     throw new CoMotionError("簡報沒有投影片");
   }
+  const agentWorkdir = await deployAgentWorkdir();
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -105,7 +107,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // frozen/unfrozen events are forwarded onto the same /api/events fan-out
   // `presentation-changed` already uses — no second SSE stream.
   const editingLock = new EditingLock();
-  const chatSession = new AgentChatSession(options.agent, presentationId, editingLock);
+  const chatSession = new AgentChatSession(options.agent, presentationId, editingLock, agentWorkdir);
   // Every SSE stream `/api/chat/stream` has ever opened, still connected.
   // `server.close()` waits for established connections rather than
   // closing them, and an SSE stream never ends on its own — so these must
