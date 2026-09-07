@@ -19,8 +19,8 @@ import { PlayChrome } from "./shell/PlayChrome.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 
 /**
- * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
- * e2e/fullscreen-spike.test.ts). Shared by toggleFullscreen() and
+ * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
+ * toggleFullscreen() and
  * handleExitPlay() below rather than duplicated — exitFullscreen() needs no
  * transient activation, unlike requestFullscreen(), so it is safe to call
  * from either place without a fresh click.
@@ -917,7 +917,7 @@ export function App() {
   // must never call exitPlay(). Leaving fullscreen (including Esc) returns
   // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是
   // 另一種模式). Registers both the unprefixed and WebKit-prefixed event
-  // names, matching e2e/fullscreen-spike.test.ts.
+  // names.
   useEffect(() => {
     function onFullscreenChange(): void {
       setIsFullscreen(isCanvasAreaFullscreen(wellRef.current));

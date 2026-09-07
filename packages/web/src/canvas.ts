@@ -3635,12 +3635,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /**
    * Reads the selection box's colours from this document's own tokens.css
-   * (--accent-hi, --s-titlebar) so selection-runtime.js — living in an
-   * opaque-origin document with no access to this document's :root — never
-   * has to hard-code them (ADR-0011). Read fresh on every render() call
-   * rather than cached, so a future token change takes effect immediately.
+   * so selection-runtime.js — living in an opaque-origin document with no
+   * access to this document's :root — never has to hard-code them
+   * (ADR-0011). Read fresh on every render() call rather than cached, so a
+   * future token change takes effect immediately.
+   *
+   * NOOP-90/T2 §0: reads the design package's own tokens, replacing the
+   * old-shell compatibility values this used to read — see
+   * `styles/selection.css`'s updated contract note.
    */
-  /** NOOP-90/T2 §0: reads the design package's own tokens (`--brand-red`/`--surface-white`, tokens.css), replacing the old-shell compatibility values (`--accent-hi`/`--s-titlebar`) this used to read — see `styles/selection.css`'s updated contract note. */
   function selectionColors(): { accent: string; handle: string } {
     const rootStyle = getComputedStyle(document.documentElement);
     return {
