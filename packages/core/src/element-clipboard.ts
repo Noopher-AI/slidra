@@ -354,6 +354,7 @@ function resolvesWithinDocument(value: string): boolean {
 
 type Grammar = (value: string) => boolean;
 
+// 寫入端：packages/core/src/svg-number.ts:6 `formatSvgNumber`（`Number(v.toFixed(4))` → `String`，含 `1e-7`/`1e+21` 指數形）→ 相容。
 const NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const isNumber: Grammar = (value) => NUMBER_RE.test(value);
 
@@ -367,16 +368,29 @@ function numberList(exactCount?: number): Grammar {
   };
 }
 
+// 寫入端（`id`）：packages/core/src/id.ts `generateElementId`（`el-` + 9 bytes base64url，字元集 `A-Za-z0-9-_`）→ 相容。
 const XML_NAME_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 const isXmlName: Grammar = (value) => XML_NAME_RE.test(value);
 
+/**
+ * 寫入端：`element-edit.ts:1011` `STYLE_ATTRIBUTE_WHITELIST` / `validateStyleAttribute`
+ * ——`fill`/`stroke` 是這份白名單的成員，但除 `opacity`/`font-size` 外
+ * `validateStyleAttribute` 不驗證值本身，`element style set` 可以把任意字串寫進 `fill`。
+ * 本文法比寫入端窄，已知誤擋（例：`fill="rgb(1,2,3)"`），見 NOOP-213。
+ */
 const NAMED_COLOR_RE = /^[a-zA-Z]{1,32}$/;
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const PAINT_URL_REF_RE = /^url\(#[A-Za-z_][A-Za-z0-9_.-]*\)$/;
 const isPaint: Grammar = (value) =>
   value === "none" || value === "currentColor" || HEX_COLOR_RE.test(value) || NAMED_COLOR_RE.test(value) || PAINT_URL_REF_RE.test(value);
 
-/** Conservative character set as a first gate, `parseTransform` (already a strict allowlist parser, geometry/transform.ts) as the real judge — so a future relaxation of that parser can't silently widen this grammar too. */
+/**
+ * Conservative character set as a first gate, `parseTransform` (already a
+ * strict allowlist parser, geometry/transform.ts) as the real judge — so a
+ * future relaxation of that parser can't silently widen this grammar too.
+ * 寫入端：`packages/core/src/geometry/transform.ts:248` `formatTransform`
+ * （只產 `translate()`/`rotate()`/`scale()`）→ 相容。
+ */
 const TRANSFORM_CHARSET_RE = /^[A-Za-z0-9 ,.()+\-eE\t\n\r]*$/;
 const isTransform: Grammar = (value) => {
   if (!TRANSFORM_CHARSET_RE.test(value)) return false;
@@ -388,7 +402,13 @@ const isTransform: Grammar = (value) => {
   }
 };
 
-/** Character set only — path data isn't a reference carrier, so there's nothing to parse for, only a shape to bound. */
+/**
+ * Character set only — path data isn't a reference carrier, so there's
+ * nothing to parse for, only a shape to bound. 寫入端：`element-edit.ts:238`
+ * (`element insert path --d`，`escapeXmlAttr(input.d)` 原樣寫入，不驗證形狀)
+ * → 本文法比寫入端窄，已知誤擋（任意 `--d` 字串只要落在 SVG path 語法之外的字元
+ * 集就會被擋），見 NOOP-213。
+ */
 const PATH_DATA_RE = /^[MmZzLlHhVvCcSsQqTtAa0-9eE.,+\-\s]*$/;
 const isPathData: Grammar = (value) => PATH_DATA_RE.test(value);
 
@@ -406,6 +426,8 @@ const isPathData: Grammar = (value) => PATH_DATA_RE.test(value);
  * gate behind this shape (決定 D6): it alone already blocks every bypass
  * sample this exclusion set widens for (no non-ASCII sample relies on the
  * charset, only on the `:`/`\`/leading-`//` exclusions or the second gate).
+ * 寫入端：`element-edit.ts:181`（`data-comot-media`）與 `element-edit.ts:215`
+ * （`image href`），皆經 `escapeXmlAttr` → 相容。
  */
 const RELATIVE_REF_FRAGMENT_RE = /^#[A-Za-z_][A-Za-z0-9_.-]*$/;
 const RELATIVE_REF_PATH_RE = /^[^\x00-\x1f\x7f-\x9f:\\]*$/;
@@ -414,22 +436,36 @@ const isRelativeRef: Grammar = (value) => {
   return shapeOk && resolvesWithinDocument(value);
 };
 
+// 寫入端：packages/core/src/table-clipboard.ts（`data-comot-cell="r,c"`，0-based）→ 相容。
 const CELL_REF_RE = /^\d+,\d+$/;
 const isCellRef: Grammar = (value) => CELL_REF_RE.test(value);
 
-/** Excludes `(`/`:`/`;`/`\`/`<`/`>`/`"`/`'` — i.e. every character a CSS function, a protocol, or a markup delimiter needs. */
+/**
+ * Excludes `(`/`:`/`;`/`\`/`<`/`>`/`"`/`'` — i.e. every character a CSS
+ * function, a protocol, or a markup delimiter needs. 寫入端：
+ * `element-edit.ts:1011` `STYLE_ATTRIBUTE_WHITELIST` / `validateStyleAttribute`
+ * （不驗證 `font-family` 的值）→ 本文法比寫入端窄，已知誤擋（字型名的引號／逗號
+ * 清單，例：`font-family="&quot;Noto Sans TC&quot;, sans-serif"`），見 NOOP-213。
+ */
 const FONT_FAMILY_RE = /^[^()\\:;<>"'&]{0,128}$/;
 const isFontFamily: Grammar = (value) => FONT_FAMILY_RE.test(value);
 
 /**
  * Free-form display text (`data-comot-name`) — not a reference carrier, so
- * only markup delimiters are excluded. No length bound: `element name set`
- * (`element-group.ts`'s `setElementName`) never limits `name`'s length, and
- * a length cap here is not a security property (`data-comot-name` carries no
- * reference, per D9) — it only buys mis-rejections of legitimate long names
- * ([E2.T18r7] FAIL #3).
+ * this grammar excludes only control characters; markup delimiters (`<`/`>`)
+ * and `\` are no longer excluded here ([E2.T18r8] FAIL #2 / 債1): raw-form
+ * XML legality is now `checkAttributeValue`'s job (`hasIllegalRawXmlText`,
+ * ahead of every grammar), so a *decoded* `<`/`>` — e.g.
+ * `data-comot-name="x&lt;y&gt;z"`, a legal display value `escapeXmlAttr`
+ * never blocks writing — has no reason to fail here; the raw form is still
+ * caught upstream regardless of what this grammar allows. Source:
+ * `element-group.ts:265` `setElementName` (via `escapeXmlAttr`, which never
+ * escapes `\`) — no length bound: `setElementName` never limits `name`'s
+ * length, and a length cap here is not a security property
+ * (`data-comot-name` carries no reference, per D9) — it only buys
+ * mis-rejections of legitimate long names ([E2.T18r7] FAIL #3).
  */
-const FREE_TEXT_RE = /^[^<>\\]*$/;
+const FREE_TEXT_RE = /^[^\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]*$/;
 const isFreeText: Grammar = (value) => FREE_TEXT_RE.test(value);
 
 /**
@@ -479,8 +515,10 @@ const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Gr
     "data-comot-lock": enumOf(["true"]),
     "data-comot-type": enumOf(["table"]),
     "data-comot-cell": isCellRef,
+    // 寫入端（data-comot-text-width/height）：workspace.ts:696-697 → 相容。
     "data-comot-text-width": isNumber,
     "data-comot-text-height": isNumber,
+    // 寫入端：workspace.ts:694 → 相容。
     "data-comot-text-align": enumOf(["left", "center", "right"]),
   },
   rect: { ...COMMON, x: isNumber, y: isNumber, width: isNumber, height: isNumber, rx: isNumber, ry: isNumber },
@@ -495,6 +533,8 @@ const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Gr
     width: isNumber,
     height: isNumber,
     href: isRelativeRef,
+    // 全 repo 無任何寫入端（`grep -rn preserveAspectRatio packages --include=*.ts`
+    // 只命中本行與 web/src/overview.ts:420 的一則註解）→ 疑似無來源，本輪只標註不刪。
     preserveAspectRatio: enumOf(["none", "xMidYMid meet", "xMidYMid slice"]),
     "data-comot-media": isRelativeRef,
   },
@@ -503,10 +543,13 @@ const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Gr
     ...TEXTISH,
     x: isNumber,
     y: isNumber,
+    // 寫入端：element-text.ts:216 → 相容。
     "xml:space": enumOf(["preserve"]),
     "data-comot-list": isListSpec,
+    // 寫入端：element-text.ts:126（LIST_MARKER_ATTRIBUTE）→ 相容。
     "data-comot-list-marker": enumOf(["true"]),
   },
+  // 寫入端（data-comot-break）：text/render.ts:32 → 相容。
   tspan: { ...COMMON, ...TEXTISH, x: isNumber, y: isNumber, "data-comot-break": enumOf(["1"]) },
   title: { id: isXmlName },
   desc: { id: isXmlName },
@@ -526,6 +569,33 @@ const EFFECT_ATTRIBUTE_GRAMMAR_TYPED: Readonly<Record<keyof RawEffectAttributes,
 const EFFECT_ATTRIBUTE_GRAMMAR: Readonly<Record<string, Grammar>> = EFFECT_ATTRIBUTE_GRAMMAR_TYPED;
 
 /**
+ * [E2.T18r8, Corrective Strategy] "The bytes written into the slide must be
+ * well-formed XML" is a property of the *raw* form only — an attribute's
+ * decoded form (`href="a&lt;b.png"` decodes to `a<b.png`, a perfectly legal
+ * *display* value) is not written to disk, `scan.ts`'s `ScannedAttribute.value`
+ * is. Putting this check inside a per-attribute value grammar (as r6/r7 each
+ * tried) forces one regex to answer both questions at once and got it wrong
+ * both times: r6 rejected raw `<`/`&` by rejecting decoded `<`/`&` too (FAIL:
+ * `data-comot-name="x&lt;y&gt;z"` mis-rejected); r7 fixed that by widening the
+ * *decoded*-safe character set, which reopened the raw shape (FAIL: a literal
+ * unescaped `<` in `href` passed through and produced a slide `DOMParser`
+ * can't parse). This check runs once, in `checkAttributeValue`, ahead of any
+ * grammar — so no per-attribute grammar needs to reason about raw vs. decoded
+ * ever again.
+ */
+const XML_REFERENCE_RE = /&(?:amp|lt|gt|quot|apos|#[0-9]+|#[xX][0-9a-fA-F]+);/g;
+
+/** `null` when `raw` is well-formed XML text; otherwise a human-readable reason. */
+function hasIllegalRawXmlText(raw: string): string | null {
+  if (raw.includes("<")) return "含有未逸出的 <";
+  if (raw.replace(XML_REFERENCE_RE, "").includes("&")) return "含有未開啟合法字元參照的 &";
+  for (const ch of raw) {
+    if (!isLegalXmlCodePoint(ch.codePointAt(0)!)) return "含有 XML 1.0 不允許的字元";
+  }
+  return null;
+}
+
+/**
  * [Corrective Strategy #1, D6] Every grammar runs inside the same
  * `for (const form of forms)` loop, over both the raw attribute value and
  * its one-pass entity-decode. This is a structural constraint, not a
@@ -535,6 +605,10 @@ const EFFECT_ATTRIBUTE_GRAMMAR: Readonly<Record<string, Grammar>> = EFFECT_ATTRI
  * extra cost.
  */
 function checkAttributeValue(tag: string, attrName: string, value: string, label: string, grammar: Grammar): void {
+  const rawProblem = hasIllegalRawXmlText(value);
+  if (rawProblem) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${tag}> 屬性 ${attrName} 的原始文字不是合法的 XML（${rawProblem}）`);
+  }
   if (hasIllegalNumericCharacterReference(value)) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${tag}> 屬性 ${attrName} 含有非法的 XML 字元參照（${value}）`);
   }
@@ -576,6 +650,36 @@ function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean
   }
   for (const child of node.children) {
     checkNodeAttributes(child, label, isEffect);
+  }
+}
+
+/**
+ * [E2.T18r8] Same raw-form XML legality as `checkAttributeValue`, applied to
+ * element/character content instead of an attribute value — the same
+ * unescaped-`<`/bare-`&`/illegal-code-point defect reaches the written slide
+ * through `<text>`/`<tspan>` character data just as readily as through an
+ * attribute (a bare `&` in either place produces a slide `DOMParser` can't
+ * parse). A node's own text is everything in its content range *not* covered
+ * by a child element — `markup.slice` between consecutive child boundaries,
+ * recursing into each child for its own text. `markup`/`scanDocument(markup)`
+ * share one coordinate system (`sanitizeClipboardMarkup` scans `markup`
+ * itself, not `wrapped`), so these offsets are directly usable.
+ */
+function checkTextContent(markup: string, node: ScannedNode, label: string): void {
+  if (node.selfClosing) return;
+  let cursor = node.contentStart;
+  const spans: string[] = [];
+  for (const child of node.children) {
+    spans.push(markup.slice(cursor, child.start));
+    checkTextContent(markup, child, label);
+    cursor = child.end;
+  }
+  spans.push(markup.slice(cursor, node.contentEnd));
+  for (const span of spans) {
+    const problem = hasIllegalRawXmlText(span);
+    if (problem) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${node.tag}> 文字內容不是合法的 XML（${problem}）`);
+    }
   }
 }
 
@@ -642,6 +746,7 @@ export function sanitizeClipboardMarkup(markup: string, kind: "element" | "effec
   }
   for (const root of roots) {
     checkNodeAttributes(root, label, kind === "effect");
+    checkTextContent(markup, root, label);
   }
 }
 
