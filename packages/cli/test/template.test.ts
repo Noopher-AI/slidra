@@ -384,7 +384,7 @@ describe("formatVersion 進位 (4.2)", () => {
     expect(after.templates).toEqual([{ file: "templates/001.svg", name: "封面" }]);
   });
 
-  it("(c) formatVersion:1 的簡報只讀（template list）時，磁碟上的 project.json 位元組不變", async () => {
+  it("(c) formatVersion:1 的簡報只讀（template list）時，磁碟上的 project.json 位元組不變 —— [E2.T11] 的 open-time 遷移已把 formatVersion 提到 3（unpackContainer 的咽喉點，見 migrateLegacyTransition），但 templates 陣列本身不因為單純讀取而被正規化成物件（那個 1→2 lazy 升級仍然只掛在 writeProject，template list 從不呼叫它）", async () => {
     const id = await openWithProjectJson({
       formatVersion: 1,
       name: "舊版本簡報",
@@ -398,6 +398,7 @@ describe("formatVersion 進位 (4.2)", () => {
     const after = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
 
     expect(after.data!.content).toBe(before.data!.content);
-    expect(JSON.parse(before.data!.content).formatVersion).toBe(1);
+    expect(JSON.parse(before.data!.content).formatVersion).toBe(FORMAT_VERSION);
+    expect(JSON.parse(before.data!.content).templates).toEqual(["templates/001.svg"]);
   });
 });

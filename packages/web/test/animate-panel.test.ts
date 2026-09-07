@@ -5,6 +5,7 @@ import type { Effect } from "../src/effects.js";
 import { buildCards, cardLabel, EffectCard, type EffectCardData } from "../src/shell/side/animate/cards.js";
 import { ObjectList } from "../src/shell/side/animate/ObjectList.js";
 import type { TargetInfo } from "../src/shell/side/animate/useSlideEffects.js";
+import { PageTransitionView } from "../src/shell/side/animate/PageTransitionView.js";
 
 /**
  * [E2.T7]/NOOP-66/#206 §6.4: the panel's public boundary is
@@ -109,5 +110,56 @@ describe("EffectCard", () => {
     );
     expect(markup).toContain('value="1.2"');
     expect(markup).toContain('value="0.3"');
+  });
+});
+
+describe("PageTransitionView ([E2.T11]/#207 §4.7)", () => {
+  const baseTransition = {
+    enter: { effect: "none" as const, duration: 0.6 },
+    exit: { effect: "none" as const, duration: 0.5 },
+  };
+  const handlers = {
+    onChangeEnterEffect: noop,
+    onChangeEnterDuration: noop,
+    onChangeExitEffect: noop,
+    onChangeExitDuration: noop,
+    onApplyAll: noop,
+  };
+
+  it("Enter/Exit 各自四張效果卡，文案逐字照原型（None/Fade/Slide in/Zoom in，Exit 側 Slide out/Zoom out）", () => {
+    const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition: baseTransition, ...handlers }));
+    expect(markup).toContain("Slide in");
+    expect(markup).toContain("Zoom in");
+    expect(markup).toContain("Slide out");
+    expect(markup).toContain("Zoom out");
+    expect(markup).toContain("Apply to all slides");
+  });
+
+  it("目前的 enter/exit 效果卡帶 selected class，其餘不帶", () => {
+    const transition = { enter: { effect: "fade" as const, duration: 0.6 }, exit: { effect: "zoom" as const, duration: 0.5 } };
+    const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
+    expect(markup).toMatch(/animate-page-effect-card selected"[^>]*>Fade</);
+    expect(markup).toMatch(/animate-page-effect-card selected"[^>]*>Zoom out</);
+    expect(markup).not.toMatch(/selected"[^>]*>None</);
+  });
+
+  it("標題右側顯示 {n}s，直接反映 duration 真值", () => {
+    const transition = { enter: { effect: "none" as const, duration: 0.8 }, exit: { effect: "none" as const, duration: 0.5 } };
+    const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
+    expect(markup).toContain("0.8s");
+  });
+
+  it("§4.7：目前值超出滑桿 0.2–1.5 時，數值文字仍顯示真值（3s），滑桿本身的 value 被夾到端點", () => {
+    const transition = { enter: { effect: "none" as const, duration: 3 }, exit: { effect: "none" as const, duration: 0.5 } };
+    const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
+    expect(markup).toContain("3s");
+    expect(markup).toContain('value="1.5"'); // 滑桿本身的 value 夾在端點
+  });
+
+  it("滑桿的 min/max/step 是原型的 0.2/1.5/0.1", () => {
+    const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition: baseTransition, ...handlers }));
+    expect(markup).toContain('min="0.2"');
+    expect(markup).toContain('max="1.5"');
+    expect(markup).toContain('step="0.1"');
   });
 });

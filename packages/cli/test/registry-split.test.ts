@@ -57,7 +57,8 @@ const EXPECTED_COMMAND_NAMES = [
   "template list",
   "template rename",
   "template delete",
-  "presentation transition set",
+  // [E2.T11]: replaces `presentation transition set` (removed).
+  "slide transition set",
   "presentation canvas set",
   // [E2.T7]: the effect command family (NOOP-66/#206).
   "effect add",

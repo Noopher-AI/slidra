@@ -144,7 +144,11 @@ export function SidePanel({ state, controller, canvasSize, chat, side, sub, onSi
             <StyleObjectPanel state={state} controller={controller} />
           ))}
         {side === "animate" &&
-          (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel state={state} controller={controller} />)}
+          (sub === "page" ? (
+            <AnimatePagePanel state={state} controller={controller} />
+          ) : (
+            <AnimateObjectPanel state={state} controller={controller} />
+          ))}
       </div>
     </div>
   );

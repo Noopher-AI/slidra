@@ -43,3 +43,8 @@ export type { ScannedNode } from "./scan.js";
 // reason `scanDocument`/`attributeOf` above were exported for notes.
 export { readSlideComments, addSlideComment, editSlideComment, deleteSlideComment } from "./comments.js";
 export type { SlideComment } from "./comments.js";
+// [E2.T11]: the web-side Animate › Page panel and `canvas.ts`'s page
+// enter/exit playback both need the read side directly — same Node-free
+// reasoning as every export above.
+export { readSlideTransition } from "./transition.js";
+export type { PageTransitionEffect, SlideTransition, SlideTransitionEdge } from "./transition.js";

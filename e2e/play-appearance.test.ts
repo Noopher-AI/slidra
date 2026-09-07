@@ -171,7 +171,7 @@ it("控制列的上一步／下一步換的是投影片本身，不是效果清�
   }
 });
 
-it("控制列子節點順序與樣板一致（上一步／下一步／頁碼／分隔線／全螢幕／離開播放）", async () => {
+it("[A15] 控制列子節點順序與樣板一致（上一步／頁碼／下一步／分隔線／全螢幕／離開播放），且底部置中", async () => {
   // gate round 2 (2026-08-25), medium finding：全螢幕/離開播放這兩顆一度
   // 順序反了（樣板是「全螢幕、離開播放」），而現有 e2e 對 `.play-bar` 的
   // 每一個選擇器都是 aria-label 或 class（見這個檔案與
@@ -181,7 +181,9 @@ it("控制列子節點順序與樣板一致（上一步／下一步／頁碼／�
   // `.play-bar` 的 DOM children、依序轉成可辨識的名字，跟樣板
   // （base-shell.html:419-426，波指揮官在 1440×900 用 Playwright 量過的
   // 順序）逐一比對，把順序變成一個真的被斷言守住的契約，而不是只靠人眼
-  // 讀 JSX。
+  // 讀 JSX。[E2.T11] §4.8 把 pos 從「上/下之後」移到「上一步與下一步之間」
+  // （原型的實際順序），並把控制列從左下移到底部置中——一併補上水平置中的
+  // 幾何斷言，這兩者都是本票才第一次被守住的契約。
   const { page, cleanup } = await openApp(demoDir, "play-appearance-order");
   try {
     await enterPlay(page);
@@ -195,7 +197,15 @@ it("控制列子節點順序與樣板一致（上一步／下一步／頁碼／�
         return child.textContent?.trim() ?? child.tagName;
       }),
     );
-    expect(order).toEqual(["上一步", "下一步", "pos", "divider", "全螢幕", "離開播放"]);
+    expect(order).toEqual(["上一步", "pos", "下一步", "divider", "全螢幕", "離開播放"]);
+
+    const barBox = await page.locator(".play-bar").boundingBox();
+    const canvasAreaBox = await page.locator(".canvas-area").boundingBox();
+    expect(barBox).not.toBeNull();
+    expect(canvasAreaBox).not.toBeNull();
+    const barCenterX = barBox!.x + barBox!.width / 2;
+    const canvasCenterX = canvasAreaBox!.x + canvasAreaBox!.width / 2;
+    expect(Math.abs(barCenterX - canvasCenterX)).toBeLessThanOrEqual(2);
   } finally {
     await page.close();
     await cleanup();
@@ -271,6 +281,10 @@ it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 cli
   // pointer-events:auto 會攔下投影片區域的 click，原生的「點 iframe 給它
   // 瀏覽器焦點」因此不再發生。PlayChrome 用 controller.focusPlayer()
   // 補回——這裡驗證補償真的成立，不只是讀程式碼相信它成立。
+  // [E2.T11] §4.8：這個覆蓋層的 onClick 現在「多做一件事」——除了
+  // focusPlayer() 之外還會 stepPlayer("advance")（原型的「點畫面前進」）。
+  // 不影響這條測項本身在驗的焦點回收，下一個人如果看到這裡的簡報也跟著
+  // 前進了一步，那是新行為，不是回歸。
   const { page, cleanup } = await openApp(demoDir, "play-appearance-focus-click");
   try {
     await enterPlay(page);

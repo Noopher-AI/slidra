@@ -21,7 +21,7 @@ export {
   renameTemplate,
   deleteTemplate,
   setNotes,
-  setTransition,
+  setSlideTransitionOn,
   addComment,
   editComment,
   deleteComment,
@@ -35,6 +35,7 @@ export type {
   AddTemplateInput,
   AddTemplateResult,
   SlideCommentWithPath,
+  SetSlideTransitionOnInput,
 } from "./slide-ops.js";
 export type { PageStyle, PageStyleUpdate } from "./slide-style.js";
 export { setSlideViewBox, setPresentationCanvas, assertValidCanvasDimension } from "./presentation-canvas.js";

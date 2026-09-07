@@ -539,6 +539,86 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
   });
 
+  // [E2.T11] §3.8/§4.5: Space/PageDown mirror ArrowRight (「前進一步」),
+  // PageUp mirrors ArrowLeft (「後退一步」), Escape posts a new "exit-play"
+  // event canvas.ts decides how to act on (the runtime itself has no notion
+  // of fullscreen). Existing ArrowRight/ArrowLeft behaviour must not regress.
+  describe("Space／PageDown／PageUp／Escape ([E2.T11])", () => {
+    it("Space 推進一步，跟 ArrowRight 完全同義（同一步的元素一起出現）", () => {
+      const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
+      const { win, doc, animations } = boot(plan, ["el-a"]);
+
+      press(win, " ");
+
+      expect(animationsFor(animations, "el-a")).toHaveLength(1);
+      expect(hideStyleContains(doc, "el-a")).toBe(false);
+    });
+
+    it("PageDown 推進一步，跟 ArrowRight 完全同義", () => {
+      const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
+      const { win, doc, animations } = boot(plan, ["el-a"]);
+
+      press(win, "PageDown");
+
+      expect(animationsFor(animations, "el-a")).toHaveLength(1);
+      expect(hideStyleContains(doc, "el-a")).toBe(false);
+    });
+
+    it("PageUp 退回一步，跟 ArrowLeft 完全同義", () => {
+      const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }], hidden: ["el-a", "el-b"] };
+      const { win, doc } = boot(plan, ["el-a", "el-b"]);
+      press(win, "ArrowRight");
+      press(win, "ArrowRight");
+
+      press(win, "PageUp");
+
+      expect(hideStyleContains(doc, "el-a")).toBe(false);
+      expect(hideStyleContains(doc, "el-b")).toBe(true);
+    });
+
+    it("在投影片最後一步再按 Space／PageDown：送出 advance-past-end（跟 ArrowRight 同一條路徑，不建立第二個推進機制）", async () => {
+      const { win } = boot({ steps: [], hidden: [] }, []);
+      const { messages, stop } = collectMessages();
+
+      press(win, " ");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
+    });
+
+    it("Escape 送出 exit-play——不是 advance/retreat，也不直接改變任何步驟狀態", async () => {
+      const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
+      const { win, doc } = boot(plan, ["el-a"]);
+      const { messages, stop } = collectMessages();
+
+      press(win, "Escape");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({ source: "comot-player", event: "exit-play" });
+      // Escape 本身不改變揭露狀態——它是父文件的事，不是 runtime 的效果推進。
+      expect(hideStyleContains(doc, "el-a")).toBe(true);
+    });
+
+    it("既有的 ArrowRight／ArrowLeft 不因新鍵位而回歸：兩者仍照原行為推進/退回", () => {
+      const plan: StubPlan = {
+        steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }],
+        hidden: ["el-a", "el-b"],
+      };
+      const { win, doc, animations } = boot(plan, ["el-a", "el-b"]);
+
+      press(win, "ArrowRight");
+      press(win, "ArrowRight");
+      expect(animationsFor(animations, "el-a")).toHaveLength(1);
+      expect(hideStyleContains(doc, "el-b")).toBe(false);
+
+      press(win, "ArrowLeft");
+      expect(hideStyleContains(doc, "el-a")).toBe(false);
+      expect(hideStyleContains(doc, "el-b")).toBe(true);
+    });
+  });
+
   it("推進到 media 效果的步驟時，建立對齊佔位元素的 <video>，src 是原始 data-comot-media 值", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }],

@@ -5,6 +5,12 @@ import { FORMAT_VERSION } from "./presentation.js";
 import { scanDocument, attributeOf, type ScannedNode } from "./slide/scan.js";
 import { setSlideNotes } from "./notes.js";
 import {
+  readSlideTransition,
+  setSlideTransition,
+  type PageTransitionEffect,
+  type SlideTransition,
+} from "./slide/transition.js";
+import {
   addSlideComment,
   deleteSlideComment,
   editSlideComment,
@@ -24,7 +30,8 @@ import { beginHistoryGroup, endHistoryGroup } from "./history.js";
 /**
  * Slide- and template-level file orchestration (T3): `slide add / delete /
  * duplicate / move`, `template add`, `slide notes set`, and
- * `presentation transition set`. Every write here goes through
+ * `slide transition set` ([E2.T11], replacing T3's presentation-wide
+ * `presentation transition set`). Every write here goes through
  * `writePresentationFile` / `createPresentationFile` / `deletePresentationFile`
  * (workspace.ts) — undo is free the same way it is for every element edit.
  * A multi-file operation (`slide add`/`delete`/`duplicate`/`template add`,
@@ -580,13 +587,86 @@ export async function listAllComments(id: string): Promise<SlideCommentWithPath[
   return all;
 }
 
-const VALID_TRANSITIONS = ["none", "fade"] as const;
+const PAGE_TRANSITION_EFFECTS = ["none", "fade", "slide", "zoom"] as const;
 
-/** `co-motion presentation transition set` (T3, AC 12) — stores only; nothing plays it back (`player-runtime.js`/`player-plan.ts` are untouched). */
-export async function setTransition(id: string, name: string): Promise<void> {
-  if (!(VALID_TRANSITIONS as readonly string[]).includes(name)) {
-    throw new CoMotionError(`不支援的轉場效果：${name}，可用值為 ${VALID_TRANSITIONS.join("、")}`);
+export interface SetSlideTransitionOnInput {
+  enter?: PageTransitionEffect;
+  enterDuration?: number;
+  exit?: PageTransitionEffect;
+  exitDuration?: number;
+}
+
+function assertValidTransitionEffect(value: string | undefined, field: "enter" | "exit"): void {
+  if (value !== undefined && !(PAGE_TRANSITION_EFFECTS as readonly string[]).includes(value)) {
+    throw new CoMotionError(`slide transition set 不支援的 ${field}：${value}`);
   }
+}
+
+function assertValidTransitionDuration(value: number | undefined, field: "enter-duration" | "exit-duration"): void {
+  if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+    throw new CoMotionError(`slide transition set 不支援的 ${field}：${value}`);
+  }
+}
+
+/**
+ * `co-motion slide transition set` ([E2.T11]) — replaces T3's presentation-
+ * wide `presentation transition set` (removed). Reads `slidePath`'s current
+ * transition, merges in whichever of the four fields `input` names (§4.4:
+ * an omitted field keeps that page's current value, defaults included),
+ * then either writes just `slidePath` or — with `all: true` — the fully
+ * resolved result to every slide in the presentation, as one undo step
+ * (`beginHistoryGroup`/`endHistoryGroup`, same convention `deleteTemplate`
+ * uses for its own multi-file write).
+ */
+export async function setSlideTransitionOn(
+  id: string,
+  slidePath: string,
+  input: SetSlideTransitionOnInput,
+  options: { all?: boolean } = {},
+): Promise<{ slideCount: number }> {
+  if (
+    input.enter === undefined &&
+    input.enterDuration === undefined &&
+    input.exit === undefined &&
+    input.exitDuration === undefined &&
+    !options.all
+  ) {
+    throw new CoMotionError("slide transition set 至少要指定一個要改的欄位");
+  }
+  assertValidTransitionEffect(input.enter, "enter");
+  assertValidTransitionEffect(input.exit, "exit");
+  assertValidTransitionDuration(input.enterDuration, "enter-duration");
+  assertValidTransitionDuration(input.exitDuration, "exit-duration");
+
   const project = await readProject(id);
-  await writeProject(id, { ...project, transition: name });
+  requireSlidePath(project, slidePath);
+
+  const sourceRaw = await readPresentationFile(id, slidePath);
+  const current = readSlideTransition(sourceRaw);
+  const resolved: SlideTransition = {
+    enter: {
+      effect: input.enter ?? current.enter.effect,
+      duration: input.enterDuration ?? current.enter.duration,
+    },
+    exit: {
+      effect: input.exit ?? current.exit.effect,
+      duration: input.exitDuration ?? current.exit.duration,
+    },
+  };
+
+  if (!options.all) {
+    await writePresentationFile(id, slidePath, setSlideTransition(sourceRaw, resolved));
+    return { slideCount: 1 };
+  }
+
+  const openedGroup = await beginHistoryGroup(id);
+  try {
+    for (const path of project.slides) {
+      const raw = path === slidePath ? sourceRaw : await readPresentationFile(id, path);
+      await writePresentationFile(id, path, setSlideTransition(raw, resolved));
+    }
+  } finally {
+    if (openedGroup) await endHistoryGroup(id);
+  }
+  return { slideCount: project.slides.length };
 }

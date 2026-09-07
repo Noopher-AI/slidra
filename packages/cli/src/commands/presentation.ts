@@ -1,21 +1,8 @@
-import { setTransition, setPresentationCanvas } from "@co-motion/core";
+import { setPresentationCanvas } from "@co-motion/core";
 import type { CommandHandler, CommandRegistry } from "../registry.js";
 
-/** `presentation transition set` (T3): stores the presentation's slide transition — this ticket does not play it back. */
-
-export interface PresentationTransitionSetInput {
-  id: string;
-  name: string;
-}
-export type PresentationTransitionSetData = Record<string, never>;
-
-export const presentationTransitionSetCommand: CommandHandler<
-  PresentationTransitionSetInput,
-  PresentationTransitionSetData
-> = async (input) => {
-  await setTransition(input.id, input.name);
-  return { ok: true, data: {}, message: `已設定轉場效果為 ${input.name}` };
-};
+// [E2.T11] removed `presentation transition set`; page transitions are now
+// per-slide (`slide transition set`, see ./slide.ts).
 
 /**
  * `presentation canvas set` (#200 §4.3): resizes the page. Deliberately
@@ -40,6 +27,5 @@ export const presentationCanvasSetCommand: CommandHandler<PresentationCanvasSetI
 };
 
 export function register(registry: CommandRegistry): void {
-  registry.register("presentation transition set", { handler: presentationTransitionSetCommand, render: null });
   registry.register("presentation canvas set", { handler: presentationCanvasSetCommand, render: null });
 }

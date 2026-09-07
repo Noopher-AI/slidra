@@ -357,6 +357,67 @@ describe("parseArgv text list set (NOOP-65 §4.3, 決定 E)", () => {
   });
 });
 
+describe("parseArgv slide transition set ([E2.T11], replacing presentation transition set)", () => {
+  it("parses all four value flags plus --all", () => {
+    expect(
+      parseArgv([
+        "slide", "transition", "set", "p1", "slides/001.svg",
+        "--enter", "fade", "--enter-duration", "0.8",
+        "--exit", "zoom", "--exit-duration", "0.5",
+        "--all",
+      ]),
+    ).toEqual({
+      name: "slide transition set",
+      input: { id: "p1", slidePath: "slides/001.svg", enter: "fade", enterDuration: 0.8, exit: "zoom", exitDuration: 0.5, all: true },
+    });
+  });
+
+  it("--all alone (no value flags) parses as legal — applying the slide's current values is the handler's job, not argv's", () => {
+    expect(parseArgv(["slide", "transition", "set", "p1", "slides/001.svg", "--all"])).toEqual({
+      name: "slide transition set",
+      input: { id: "p1", slidePath: "slides/001.svg", enter: undefined, enterDuration: undefined, exit: undefined, exitDuration: undefined, all: true },
+    });
+  });
+
+  it("rejects an --enter value outside none/fade/slide/zoom, echoing the received value", () => {
+    expect(() => parseArgv(["slide", "transition", "set", "p1", "slides/001.svg", "--enter", "wipe"])).toThrow(
+      "slide transition set 不支援的 enter：wipe",
+    );
+  });
+
+  it("rejects an --exit value outside none/fade/slide/zoom, echoing the received value", () => {
+    expect(() => parseArgv(["slide", "transition", "set", "p1", "slides/001.svg", "--exit", "spin"])).toThrow(
+      "slide transition set 不支援的 exit：spin",
+    );
+  });
+
+  it("rejects a non-numeric --enter-duration", () => {
+    expect(() => parseArgv(["slide", "transition", "set", "p1", "slides/001.svg", "--enter-duration", "abc"])).toThrow(
+      CoMotionError,
+    );
+  });
+
+  it("requires at least one changed field or --all", () => {
+    expect(() => parseArgv(["slide", "transition", "set", "p1", "slides/001.svg"])).toThrow(
+      "slide transition set 至少要指定一個要改的欄位",
+    );
+  });
+
+  it("requires <slide-path> even when --all is given", () => {
+    expect(() => parseArgv(["slide", "transition", "set", "p1", "--all"])).toThrow(CoMotionError);
+  });
+
+  it("fails on an unknown slide transition subcommand", () => {
+    expect(() => parseArgv(["slide", "transition", "clear", "p1"])).toThrow("未知的子命令：slide transition clear");
+  });
+
+  it("presentation transition set no longer parses as its own command — rejected as an unknown presentation subcommand", () => {
+    expect(() => parseArgv(["presentation", "transition", "set", "p1", "fade"])).toThrow(
+      "未知的子命令：presentation transition",
+    );
+  });
+});
+
 describe("parseArgv textbox align（#200 §4.1）", () => {
   it("parses the four positionals into structured input", () => {
     const parsed = parseArgv(["textbox", "align", "p1", "slides/001.svg", "el-a", "center"]);
