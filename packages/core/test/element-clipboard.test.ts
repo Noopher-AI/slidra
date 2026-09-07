@@ -141,6 +141,22 @@ describe("sanitizeClipboardMarkup", () => {
       "X4",
       '<g id="el-a" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https:evil.example/x.png" width="1" height="1"/></g>',
     ],
+    // r5 (NOOP-201 §6.2): round-4 bypasses I1 (URL-parser delegation) and I2/I3 close.
+    ["N1", '<g id="el-a"><image href="/\t/evil.example/x.png" width="1" height="1"/></g>'],
+    ["N2", '<g id="el-a"><image href="/\n/evil.example/x.png" width="1" height="1"/></g>'],
+    ["N3", '<g id="el-a"><image href="/\r/evil.example/x.png" width="1" height="1"/></g>'],
+    ["N4", '<g id="el-a"><image HREF="https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["N5", '<g id="el-a"><image XLINK:HREF="https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["N6", '<g id="el-a"><image SRC="https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["N7", '<g id="el-a"><image Href="https:evil.example/x.png" width="1" height="1"/></g>'],
+    [
+      "N8",
+      '<g id="el-a" xmlns:xl="http://www.w3.org/1999/xlink"><image Xl:HrEf="https:evil.example/x.png" width="1" height="1"/></g>',
+    ],
+    ["N9", '<g id="el-a"><image a:b:href="https:evil.example/x.png" width="1" height="1"/></g>'],
+    ["N10", '<g id="el-a"><image href="/&#9;/evil.example/x.png" width="1" height="1"/></g>'],
+    ["N11", '<g id="el-a"><rect style="fill:\\75rl(\\00002f\\00002fevil.example/x.svg#g)" width="1" height="1"/></g>'],
+    ["N12", '<g id="el-a"><image href="ht\tps://evil.example/x.png" width="1" height="1"/></g>'],
   ];
 
   it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {
@@ -153,6 +169,11 @@ describe("sanitizeClipboardMarkup", () => {
     ["P03", '<g id="el-a"><image href="images/logo.png" width="1" height="1"/></g>'],
     ["P04", '<g id="el-a"><rect fill="&#x10FFFF;" width="1" height="1"/></g>'],
     ["P05", '<g id="el-a" data-comot-name="第 3 章：url(#a) 的說明"><rect width="1" height="1"/></g>'],
+    // r5 (NOOP-201 §6.2): guardrails for I1/I3 — must not over-reject.
+    ["P06", '<g id="el-a"><image href="" width="1" height="1"/></g>'],
+    ["P07", '<g id="el-a"><path d="M0 0\nL1 1"/></g>'],
+    ["P08", '<g id="el-a"><image href="../img/a.png" width="1" height="1"/></g>'],
+    ["P09", '<g id="el-a"><image href="a&amp;b.png" width="1" height="1"/></g>'],
   ];
 
   it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
@@ -168,6 +189,44 @@ describe("sanitizeClipboardMarkup", () => {
 
   it.each(DECLARATION_MATRIX)("rejects %s", (_cell, markup) => {
     expect(() => sanitizeClipboardMarkup(markup, "element")).toThrow(CoMotionError);
+  });
+
+  // r5 (NOOP-201 §6.2, I4): the fragment must scan to exactly one root of the expected tag.
+  it("rejects an element fragment with more than one root node", () => {
+    const markup = '<g id="el-a"><rect width="1" height="1"/></g><style>@import "//evil.example/x.css";</style>';
+    expect(() => sanitizeClipboardMarkup(markup, "element")).toThrow(CoMotionError);
+  });
+
+  it("rejects an effect fragment whose root tag isn't comot:effect", () => {
+    expect(() => sanitizeClipboardMarkup('<rect width="1" height="1"/>', "effect")).toThrow(CoMotionError);
+  });
+});
+
+/**
+ * r5 (NOOP-201 §6.2): I1 bets URL-attribute safety on the global `URL`
+ * parser actually performing the normalisation steps the sanitizer no
+ * longer hand-codes. This is the one describe in this file that asserts a
+ * platform API's behavior rather than this module's own code — if a future
+ * Node/browser `URL` implementation stops doing one of these, this should
+ * go red instead of the gap opening silently.
+ */
+describe("WHATWG URL parser characteristics I1 depends on", () => {
+  const HTTPS_BASE = "https://clipboard.invalid/base/";
+  const HTTP_BASE = "http://clipboard.invalid/base/";
+
+  it.each([
+    ["strips an interior TAB", "/\t/evil.example/x.png", HTTPS_BASE, "evil.example"],
+    ["strips an interior LF", "/\n/evil.example/x.png", HTTPS_BASE, "evil.example"],
+    ["treats a backslash as a path separator (special scheme)", "\\\\evil.example\\x.png", HTTPS_BASE, "evil.example"],
+    ["is case-insensitive on scheme", "HTTPS:evil.example/x.png", HTTPS_BASE, "clipboard.invalid"],
+    ["accepts an authority without //", "https:evil.example/x.png", HTTPS_BASE, "clipboard.invalid"],
+  ])("%s", (_label, value, base, expectedHost) => {
+    expect(new URL(value, base).host).toBe(expectedHost);
+  });
+
+  it("an https: value against an http: base and an http: value against an https: base are complementary externals", () => {
+    expect(new URL("https:evil.example/x.png", HTTP_BASE).host).toBe("evil.example");
+    expect(new URL("http:evil.example/x.png", HTTPS_BASE).host).toBe("evil.example");
   });
 });
 
