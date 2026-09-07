@@ -566,8 +566,12 @@ it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞�
     await compareScreenshot(page, { name: "stage-anim-badges", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
 
     // [E2.T11]/[A16]：Animate › Page（無選取，回到 Page 子分頁）。
+    // `.animate-page-panel` 容器在資料載入前就已存在（AnimatePagePanel.tsx 的載入態回傳同名空殼），
+    // 只等容器出現會讓截圖偶爾拍到空殼而非內容——改等 Apply to all slides 按鈕與全部 8 張效果卡
+    // （Enter 4 張＋Exit 4 張）都渲染出來才截圖。
     await page.locator('[role="tab"][data-subtab="page"]').click();
-    await page.locator(".animate-page-panel").waitFor();
+    await page.locator(".animate-page-panel .animate-page-apply-all").waitFor();
+    await expect.poll(() => page.locator(".animate-page-effect-card").count()).toBe(8);
     await compareScreenshot(page, { name: "animate-page", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
   } finally {
     await cleanup();
