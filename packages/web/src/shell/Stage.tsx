@@ -44,6 +44,8 @@ export interface StageProps {
   controller: CanvasController | null;
   /** [E2.T7]：情境列的 Edit animation 按鈕——只切右欄到 Animate › Object，狀態owner 是 App.tsx（D10）。 */
   onEditAnimation(): void;
+  /** #200 §4.5：情境列的 Edit style 按鈕——只切右欄到 Style › Object，同樣由 App.tsx 持有狀態。 */
+  onEditStyle(): void;
   /** [E2.T7]/D9：右欄目前停在哪個主分頁——只用來決定舞台動畫徽章要不要顯示（見 OverlayLayer 的 showBadges）。 */
   side: SideId;
   /** T3/NOOP-142 既有的拖放匯入媒體 overlay（與這張骨架票無關，維持原樣）。 */
@@ -79,7 +81,7 @@ function isOnStageChrome(target: EventTarget | null): boolean {
  * （平移+縮放），這對 canvas.ts 完全透明——它的座標數學全部發生在 iframe
  * 自己的文件座標系裡，祖先層的 CSS transform 不影響那個座標系。
  */
-export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, side, comment, children }: StageProps) {
+export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, onEditStyle, side, comment, children }: StageProps) {
   const [zoomPan, setZoomPan] = useState<ZoomPanState>(initialZoomPan);
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
@@ -304,6 +306,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           controller={controller}
           wellRef={wellRef}
           onEditAnimation={onEditAnimation}
+          onEditStyle={onEditStyle}
           showBadges={side === "animate" && state.mode === "view"}
           comment={comment}
         />

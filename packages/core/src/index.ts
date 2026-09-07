@@ -36,6 +36,9 @@ export type {
   AddTemplateResult,
   SlideCommentWithPath,
 } from "./slide-ops.js";
+export type { PageStyle, PageStyleUpdate } from "./slide-style.js";
+export { setSlideViewBox, setPresentationCanvas, assertValidCanvasDimension } from "./presentation-canvas.js";
+export type { PresentationCanvasResult } from "./presentation-canvas.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
 export { resolveAssetImport, sanitizeAssetBaseName, resolveConflictFreeFilename } from "./asset-import.js";
@@ -54,8 +57,11 @@ export {
   listPresentationEntries,
   setElementText,
   writePresentationFile,
+  writePresentationFileWithoutHistory,
   addTextBox,
   setTextBoxWidth,
+  setTextBoxAlign,
+  setSlidePageStyle,
   setSlideTextRunStyle,
   setSlideParagraphList,
   insertSlideElement,

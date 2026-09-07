@@ -119,6 +119,7 @@ export function App() {
     error: null,
     selection: { ids: [], names: [], groupPath: [], elements: [] },
     dragSignal: 0,
+    pageStyle: null,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -212,6 +213,11 @@ export function App() {
   }, [hasSelection]);
   function editSelectionAnimation(): void {
     setSide("animate");
+    setSub("object");
+  }
+  /** #200 §4.5: ContextBar's `Edit style` button — only switches the right rail, exactly like `editSelectionAnimation` above. No command is sent, no selection changes. */
+  function editSelectionStyle(): void {
+    setSide("style");
     setSub("object");
   }
 
@@ -1299,6 +1305,7 @@ export function App() {
             state={canvasState}
             controller={controllerRef.current}
             onEditAnimation={editSelectionAnimation}
+            onEditStyle={editSelectionStyle}
             side={side}
             dropOverlay={{
               active: dropActive,
@@ -1339,6 +1346,7 @@ export function App() {
           <SidePanel
             state={canvasState}
             controller={controllerRef.current}
+            canvasSize={presentationInfo?.canvas ?? null}
             side={side}
             sub={sub}
             onSideChange={setSide}

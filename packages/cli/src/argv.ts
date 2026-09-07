@@ -169,6 +169,17 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const force = requireTrailingForceFlag(args, 4, "textbox width");
         return { name: "textbox width", input: { id, slidePath, elementId, width, force } };
       }
+      if (sub === "align") {
+        const id = requirePositional(args, 0, "textbox align", "presentation-id");
+        const slidePath = requirePositional(args, 1, "textbox align", "slide-path");
+        const elementId = requirePositional(args, 2, "textbox align", "element-id");
+        const align = requirePositional(args, 3, "textbox align", "align");
+        if (!["left", "center", "right"].includes(align)) {
+          throw new CoMotionError(`命令 textbox align 的 align 必須是 left、center 或 right：${align}`);
+        }
+        const force = requireTrailingForceFlag(args, 4, "textbox align");
+        return { name: "textbox align", input: { id, slidePath, elementId, align, force } };
+      }
       throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
     }
     case "element": {
@@ -514,6 +525,22 @@ export function parseArgv(argv: string[]): ParsedCommand {
         return { name: "slide notes set", input: { id, slidePath, text } };
       }
 
+      if (sub === "style") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：slide style ${subsub ?? ""}`);
+        }
+        const styleArgs = args.slice(1);
+        const id = requirePositional(styleArgs, 0, "slide style set", "presentation-id");
+        const slidePath = requirePositional(styleArgs, 1, "slide style set", "slide-path");
+        const background = optionalFlag(styleArgs, "--background");
+        const accent = optionalFlag(styleArgs, "--accent");
+        if (background === undefined && accent === undefined) {
+          throw new CoMotionError("命令 slide style set 至少要給 --background 或 --accent");
+        }
+        return { name: "slide style set", input: { id, slidePath, background, accent } };
+      }
+
       throw new CoMotionError(`未知的子命令：slide ${sub ?? ""}`);
     }
     case "comment": {
@@ -606,6 +633,17 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const id = requirePositional(transArgs, 0, "presentation transition set", "presentation-id");
         const name = requirePositional(transArgs, 1, "presentation transition set", "name");
         return { name: "presentation transition set", input: { id, name } };
+      }
+      if (sub === "canvas") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：presentation canvas ${subsub ?? ""}`);
+        }
+        const canvasArgs = args.slice(1);
+        const id = requirePositional(canvasArgs, 0, "presentation canvas set", "presentation-id");
+        const width = requireNumberFlag(canvasArgs, "--width", "presentation canvas set");
+        const height = requireNumberFlag(canvasArgs, "--height", "presentation canvas set");
+        return { name: "presentation canvas set", input: { id, width, height } };
       }
       throw new CoMotionError(`未知的子命令：presentation ${sub ?? ""}`);
     }
