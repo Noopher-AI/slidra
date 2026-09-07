@@ -805,6 +805,29 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
+  it("⌘⇧BracketRight／⌘⇧BracketLeft（真實鍵盤送出的 }/{ + code）也會被中繼成 stage-key，訊息含 code", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", { key: "}", code: "BracketRight", metaKey: true, shiftKey: true, cancelable: true }),
+    );
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", { key: "{", code: "BracketLeft", metaKey: true, shiftKey: true, cancelable: true }),
+    );
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "}", code: "BracketRight", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "{", code: "BracketLeft", meta: true, ctrl: false, shift: true, alt: false },
+    ]);
+  });
+
   it("⌘Z 與 ⇧⌘Z 會被中繼（#198）；沒有修飾鍵的 z 不會", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
