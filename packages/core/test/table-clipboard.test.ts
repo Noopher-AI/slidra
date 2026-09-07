@@ -19,7 +19,7 @@ function tableSlide(cellText: Record<string, string> = {}): string {
   }
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-    `<g id="tbl-1" data-comot-type="table">${cells.join("")}</g>` +
+    `<g id="tbl-1" data-comot-type="table" data-comot-cols="120 120 120" data-comot-rows="48 48">${cells.join("")}</g>` +
     "</svg>"
   );
 }

@@ -15,7 +15,7 @@
       <rect x="0" y="0" width="60" height="60" fill="#66c"/>
     </g>
   </g>
-  <g id="tbl-1" data-comot-name="表格" data-comot-type="table" transform="translate(100 300)">
+  <g id="tbl-1" data-comot-name="表格" data-comot-type="table" data-comot-cols="120 120 120" data-comot-rows="48 48 48" transform="translate(100 300)">
     <g id="cell-0-0" data-comot-cell="0,0"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">A1</text></g>
     <g id="cell-0-1" data-comot-cell="0,1" transform="translate(120 0)"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">B1</text></g>
     <g id="cell-0-2" data-comot-cell="0,2" transform="translate(240 0)"><rect x="0" y="0" width="120" height="48" fill="#eee" stroke="#999"/><text x="8" y="30" font-size="20">C1</text></g>

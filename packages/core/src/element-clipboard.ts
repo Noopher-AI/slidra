@@ -515,6 +515,19 @@ const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Gr
     "data-comot-lock": enumOf(["true"]),
     "data-comot-type": enumOf(["table"]),
     "data-comot-cell": isCellRef,
+    // 寫入端（表格容器／儲存格，E2.T14 #203）：table/render.ts:25-47 →
+    // cols/rows 是空白分隔的數字列表、header/generated 恆為 "1"、span 與
+    // cell 同形（"r,c"）、repeat 恆為 "row" 且必搭 display="none"、theme 與
+    // align 取自 table/model.ts 的 TABLE_THEMES／CELL_ALIGNS。
+    "data-comot-cols": numberList(),
+    "data-comot-rows": numberList(),
+    "data-comot-header": enumOf(["1"]),
+    "data-comot-theme": enumOf(["dark", "light", "zebra"]),
+    "data-comot-span": isCellRef,
+    "data-comot-repeat": enumOf(["row"]),
+    "data-comot-generated": enumOf(["1"]),
+    "data-comot-align": enumOf(["left", "center", "right"]),
+    display: enumOf(["none"]),
     // 寫入端（data-comot-text-width/height）：workspace.ts:696-697 → 相容。
     "data-comot-text-width": isNumber,
     "data-comot-text-height": isNumber,
