@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { importAssetBytes, type AssetImportData } from "@co-motion/cli";
+import { importAssetBytes, importAssetFromUrl, type AssetImportData } from "@co-motion/cli";
 import { CoMotionError } from "@co-motion/core";
 
 /**
@@ -22,6 +22,18 @@ import { CoMotionError } from "@co-motion/core";
 export const MAX_ASSET_BODY_BYTES = 32 * 1024 * 1024;
 
 const ASSET_NAME_HEADER = "x-co-motion-asset-name";
+/**
+ * [E2.T17] plan §4.3/D5: the URL-import counterpart of `ASSET_NAME_HEADER`
+ * — GUI panels send the source as a URL instead of raw bytes. Only
+ * `http(s)` is ever accepted here: `asset import`'s CLI `source` also
+ * accepts a local filesystem path, and blanket-forwarding that same
+ * flexibility to an HTTP endpoint would widen ADR-0004's "no reading
+ * outside the presentation" hole from "the CLI operator's own machine" to
+ * "anything this server process can open a file descriptor on" — `file:`,
+ * a relative path, and an absolute path are all rejected the same way.
+ */
+const ASSET_URL_HEADER = "x-co-motion-asset-url";
+const URL_SCHEME_PATTERN = /^https?:\/\//i;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -66,9 +78,23 @@ export async function handleAssetPost(
   res: ServerResponse,
 ): Promise<void> {
   const sourceNameHeader = req.headers[ASSET_NAME_HEADER];
+  const sourceUrlHeader = req.headers[ASSET_URL_HEADER];
+  const hasName = typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
+  const hasUrl = typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
+
+  if (hasName && hasUrl) {
+    sendJson(res, 400, { error: `不可同時提供 ${ASSET_NAME_HEADER} 與 ${ASSET_URL_HEADER}` });
+    return;
+  }
+
+  if (hasUrl) {
+    await handleUrlAsset(presentationId, sourceUrlHeader as string, res);
+    return;
+  }
+
   const sourceName = typeof sourceNameHeader === "string" ? sourceNameHeader : "";
   if (sourceName.trim() === "") {
-    sendJson(res, 400, { error: `缺少標頭：${ASSET_NAME_HEADER}` });
+    sendJson(res, 400, { error: `缺少標頭：${ASSET_NAME_HEADER} 或 ${ASSET_URL_HEADER}` });
     return;
   }
   let decodedSourceName: string;
@@ -94,6 +120,40 @@ export async function handleAssetPost(
   let data: AssetImportData;
   try {
     data = await importAssetBytes(presentationId, decodedSourceName, new Uint8Array(body));
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "匯入失敗" });
+    return;
+  }
+
+  sendJson(res, 200, { ok: true, data, message: `已匯入媒體：${data.path}` });
+}
+
+/**
+ * [E2.T17] plan §4.3/D5: `POST /api/asset`'s URL mode — `X-Co-Motion-Asset-Url`
+ * (URL-encoded) instead of a raw-bytes body. Downloads server-side and
+ * writes through the exact same `importAssetFromUrl` → `importAssetBytes`
+ * path the CLI's `asset import <url>` uses (ADR-0015: one place decides the
+ * format), with this route's own `MAX_ASSET_BODY_BYTES` threaded through so
+ * a browser-triggered download is bounded the same way the raw-bytes body
+ * already is.
+ */
+async function handleUrlAsset(presentationId: string, urlHeader: string, res: ServerResponse): Promise<void> {
+  let url: string;
+  try {
+    url = decodeURIComponent(urlHeader);
+  } catch {
+    sendJson(res, 400, { error: `標頭編碼無效：${ASSET_URL_HEADER}` });
+    return;
+  }
+
+  if (!URL_SCHEME_PATTERN.test(url)) {
+    sendJson(res, 400, { error: `${ASSET_URL_HEADER} 必須是 http(s) 網址` });
+    return;
+  }
+
+  let data: AssetImportData;
+  try {
+    data = await importAssetFromUrl(presentationId, url, MAX_ASSET_BODY_BYTES);
   } catch (error) {
     sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "匯入失敗" });
     return;

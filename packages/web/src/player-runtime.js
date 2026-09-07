@@ -130,6 +130,142 @@
     el.style.height = rect.height + "px";
   }
 
+  // ── Stage media in play mode ─────────────────────────────────────────
+  // A video the author simply inserted carries no `family="media"` effect,
+  // so `media` above — which is keyed by effect targets only — knows
+  // nothing about it and playMedia() is never called for it. Before this,
+  // play mode painted such a video as its bare SVG placeholder: nothing to
+  // click, nothing that plays. `plan.stageMedia` (player-plan.ts) is the
+  // same table view mode's stage layer already gets, and these overlays are
+  // built once at boot, independently of the step machinery.
+  var stageMedia = (plan && plan.stageMedia) || {};
+  // id -> { media, button }. Object.create(null) for the same untrusted-id
+  // reason as mediaElements above.
+  var stageMediaElements = Object.create(null);
+
+  /**
+   * D2 holds here as it does in view mode: native `controls` is not used,
+   * because `requestFullscreen()` is refused inside this sandbox and the
+   * native bar's fullscreen button would be a dead one. Play mode gets a
+   * single play/pause button rather than view mode's full bar with a seek
+   * slider — an audience watches a video, it does not scrub one, and the
+   * button is the whole of what "the video can be played" needs.
+   */
+  function createStageMedia(id, cue, placeholder) {
+    var el = document.createElement(cue.kind === "video" ? "video" : "audio");
+    // The raw data-comot-media value, unmodified — same <base href>
+    // contract as playMedia() below.
+    el.src = cue.src;
+    el.preload = "metadata";
+    document.body.appendChild(el);
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "\u25B6";
+    button.setAttribute("data-comot-stage-media-control", "play");
+    button.style.position = "absolute";
+    button.style.zIndex = "2";
+    button.style.width = "48px";
+    button.style.height = "48px";
+    button.style.borderRadius = "50%";
+    button.style.border = "none";
+    button.style.cursor = "pointer";
+    button.style.font = "20px/1 sans-serif";
+    // CSS keywords + color-mix, not a hex/rgba literal: design-contract.test.ts
+    // forbids literal colour values under packages/web/src, and this
+    // runtime has no injected palette to read from the way
+    // selection-runtime.js's `colors` gives it one.
+    button.style.color = "white";
+    button.style.background = "color-mix(in srgb, black 55%, transparent)";
+    document.body.appendChild(button);
+
+    button.addEventListener("click", function () {
+      if (el.paused) {
+        // Synchronous, no await before it — the click's own transient
+        // activation is what allows playback with sound (same rule as
+        // playMedia() below).
+        var playResult = el.play();
+        if (playResult && typeof playResult.catch === "function") {
+          playResult.catch(function (err) {
+            post({
+              event: "error",
+              message: "媒體播放失敗（" + id + "）：" + (err && err.message ? err.message : String(err)),
+            });
+          });
+        }
+      } else {
+        el.pause();
+      }
+    });
+    el.addEventListener("play", function () {
+      button.textContent = "\u23F8";
+    });
+    el.addEventListener("pause", function () {
+      button.textContent = "\u25B6";
+    });
+    // A 404/decode failure surfaces the same way every other runtime
+    // failure does, rather than leaving a button that silently does
+    // nothing.
+    el.addEventListener("error", function () {
+      post({ event: "error", message: "媒體載入失敗（" + id + "）：" + cue.src });
+    });
+
+    var overlay = { media: el, button: button, placeholder: placeholder };
+    positionStageMedia(overlay);
+    return overlay;
+  }
+
+  /** Aligns one stage overlay (and its button) to its placeholder's current on-screen box — called at boot and again on every resize, exactly like positionOverlay's own callers. */
+  function positionStageMedia(overlay) {
+    positionOverlay(overlay.media, overlay.placeholder);
+    var rect = overlay.placeholder.getBoundingClientRect();
+    var size = 48;
+    overlay.button.style.left = rect.left + window.scrollX + (rect.width - size) / 2 + "px";
+    overlay.button.style.top = rect.top + window.scrollY + (rect.height - size) / 2 + "px";
+  }
+
+  // ── Third-party embeds ───────────────────────────────────────────────
+  // The <iframe> itself lives in the PARENT document (ADR-0011: this
+  // document may never be granted allow-same-origin, and a nested iframe's
+  // sandbox flags are the intersection with this one's, so the YouTube
+  // player cannot be made to work from in here at all). All this runtime
+  // does is measure where the placeholder currently sits and post it out,
+  // so the parent can keep its overlay aligned.
+  var embedIds = (plan && plan.embedIds) || [];
+
+  /** Whether `target` is one of this slide's third-party embeds. A linear scan over `embedIds` (never a lookup keyed by an untrusted id, ADR-0010) — the list is one entry per embed on a slide, so its length is measured in single digits. */
+  function isEmbedTarget(target) {
+    for (var i = 0; i < embedIds.length; i++) {
+      if (embedIds[i] === target) return true;
+    }
+    return false;
+  }
+
+  function reportEmbedBoxes() {
+    if (embedIds.length === 0) return;
+    var items = [];
+    for (var i = 0; i < embedIds.length; i++) {
+      var el = document.getElementById(embedIds[i]);
+      if (!el) continue;
+      var rect = el.getBoundingClientRect();
+      items.push({ id: embedIds[i], rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } });
+    }
+    post({ event: "embed-boxes", items: items });
+  }
+
+  function buildStageMedia() {
+    for (var id in stageMedia) {
+      if (!Object.prototype.hasOwnProperty.call(stageMedia, id)) continue;
+      // A target the effect list already drives stays the effect list's
+      // business: playMedia() creates and plays it at its own step, and a
+      // second element here would play alongside that one.
+      if (Object.prototype.hasOwnProperty.call(media, id)) continue;
+      var placeholder = document.getElementById(id);
+      if (!placeholder) continue;
+      stageMediaElements[id] = createStageMedia(id, stageMedia[id], placeholder);
+    }
+  }
+
   /**
    * Creates (or reuses) the HTML media element for a `family: "media"`
    * effect and plays it. `.play()` here is on the synchronous path from the
@@ -328,6 +464,16 @@
   function applyEffect(effect, duringReplay, offsetSeconds) {
     if (effect.family === "media") {
       if (duringReplay) return null;
+      // [E2.T17]: a third-party embed has no <video> in this document to
+      // drive — the player lives in the parent's overlay and is spoken to
+      // through its own API. The runtime forwards the intent and stops
+      // there; it never learns what a YouTube player is.
+      if (isEmbedTarget(effect.target)) {
+        if (effect.effect === "play" || effect.effect === "pause") {
+          post({ event: "embed-command", id: effect.target, command: effect.effect });
+        }
+        return null;
+      }
       if (effect.effect === "play") {
         playMedia(effect.target);
         return null;
@@ -463,6 +609,12 @@
       if (mediaEl.parentNode) mediaEl.parentNode.removeChild(mediaEl);
     }
     mediaElements = Object.create(null);
+    // Embeds are torn down the same way, just through the parent: they are
+    // not this document's elements, so there is nothing here to remove —
+    // only a "stop playing" to forward (same reason as applyEffect above).
+    for (var i = 0; i < embedIds.length; i++) {
+      post({ event: "embed-command", id: embedIds[i], command: "pause" });
+    }
 
     for (var s = 0; s <= target; s++) {
       applyStep(steps[s], true);
@@ -601,6 +753,11 @@
       var placeholder = document.getElementById(target);
       if (placeholder) positionOverlay(mediaElements[target], placeholder);
     }
+    for (var stageTarget in stageMediaElements) {
+      if (!Object.prototype.hasOwnProperty.call(stageMediaElements, stageTarget)) continue;
+      positionStageMedia(stageMediaElements[stageTarget]);
+    }
+    reportEmbedBoxes();
   });
 
   window.addEventListener("focus", function () {
@@ -654,6 +811,9 @@
   // packages/web/test/canvas.test.ts:851 asserts on that literal substring
   // to prove the runtime was injected. Preview's own `preview-done` is a
   // later, separate message (D8) — it does not change this contract.
+  buildStageMedia();
+  reportEmbedBoxes();
+
   post({ event: "ready" });
 
   if (plan && plan.preview) {

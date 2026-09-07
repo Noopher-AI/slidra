@@ -91,21 +91,88 @@ for (const viewport of VIEWPORTS) {
     }
   });
 
-  // A9（NOOP-65/#199 驗收條件第 3 條之一）：Text 插入面板的截圖比對。
-  it(`基準截圖：Text 插入面板開啟 (${label})`, async () => {
-    const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: `shell-visual-text-panel-${label}` });
-    try {
-      const page = await openApp(browser, started.server, { viewport });
-      openPages.push(page);
-      await page.getByRole("button", { name: "Text" }).click();
-      await expect.poll(() => page.locator(".text-panel").count()).toBe(1);
-      await settleForScreenshot(page);
-      await compareScreenshot(page, { name: `text-panel-${label}`, baselineDir });
-    } finally {
-      await started.cleanup();
-    }
-  });
 }
+
+// [E2.T17] test-prune (plan §6.3): the Text 插入面板基準 used to run inside
+// the VIEWPORTS loop above (both 1280×720 and 2560×1440) — dropped down to
+// 1280×720 only here, for the exact same reason the Style panel section
+// right below already gives its own 2560 skip: `.floating-layer`/`.dock-panel`
+// is a fixed-width layer centered over the dock, so the 2560 viewport
+// produces no new layout information, only a doubled pixel-comparison cost.
+// [E2.T17]'s own four new Shape/Image/Video/Audio panel baselines
+// (below) are 1280×720-only from the start for the same reason (D8).
+it("基準截圖：Text 插入面板開啟 (1280x720)", async () => {
+  const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: "shell-visual-text-panel-1280x720" });
+  try {
+    const page = await openApp(browser, started.server, { viewport: { width: 1280, height: 720 } });
+    openPages.push(page);
+    await page.getByRole("button", { name: "Text" }).click();
+    await expect.poll(() => page.locator(".text-panel").count()).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "text-panel-1280x720", baselineDir });
+  } finally {
+    await started.cleanup();
+  }
+});
+
+// [E2.T17] plan §5 A7/D8: Shape 選單、Image／Video／Audio 插入面板的截圖比
+// 對——同上，1280×720-only，同一個固定寬浮層沒有第二個 viewport 值得比對
+// 的理由。
+it("基準截圖：Shape 選單開啟 (1280x720)", async () => {
+  const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: "shell-visual-shape-menu" });
+  try {
+    const page = await openApp(browser, started.server, { viewport: { width: 1280, height: 720 } });
+    openPages.push(page);
+    await page.getByRole("button", { name: "Shape" }).click();
+    await expect.poll(() => page.locator(".shape-menu").count()).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "shape-menu-1280x720", baselineDir });
+  } finally {
+    await started.cleanup();
+  }
+});
+
+it("基準截圖：Image 插入面板開啟 (1280x720)", async () => {
+  const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: "shell-visual-image-panel" });
+  try {
+    const page = await openApp(browser, started.server, { viewport: { width: 1280, height: 720 } });
+    openPages.push(page);
+    await page.getByRole("button", { name: "Image" }).click();
+    await expect.poll(() => page.locator(".media-panel[aria-label='Image']").count()).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "image-panel-1280x720", baselineDir });
+  } finally {
+    await started.cleanup();
+  }
+});
+
+it("基準截圖：Video 插入面板開啟 (1280x720)", async () => {
+  const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: "shell-visual-video-panel" });
+  try {
+    const page = await openApp(browser, started.server, { viewport: { width: 1280, height: 720 } });
+    openPages.push(page);
+    await page.getByRole("button", { name: "Video" }).click();
+    await expect.poll(() => page.locator(".media-panel[aria-label='Video']").count()).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "video-panel-1280x720", baselineDir });
+  } finally {
+    await started.cleanup();
+  }
+});
+
+it("基準截圖：Audio 插入面板開啟 (1280x720)", async () => {
+  const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: "shell-visual-audio-panel" });
+  try {
+    const page = await openApp(browser, started.server, { viewport: { width: 1280, height: 720 } });
+    openPages.push(page);
+    await page.getByRole("button", { name: "Audio" }).click();
+    await expect.poll(() => page.locator(".media-panel[aria-label='Audio']").count()).toBe(1);
+    await settleForScreenshot(page);
+    await compareScreenshot(page, { name: "audio-panel-1280x720", baselineDir });
+  } finally {
+    await started.cleanup();
+  }
+});
 
 // #200 (NOOP-69) §5-H: Style › Page／Object×3 類型的截圖比對。右欄是固定寬
 // （side-panel 340px），2560 版本不會有不同的排版資訊，卻讓 CI 的像素比對

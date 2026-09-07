@@ -37,6 +37,10 @@ export default defineConfig({
       // declared Node-free too — effects.ts/player-plan.ts import it
       // straight from source, same reasoning as the three aliases above.
       "@co-motion/core/effects": path.join(rootDir, "../core/src/effects/index.ts"),
+      // [E2.T17]: embed.ts (YouTube URL recognition + the provider value
+      // set) is Node-free too — the Video panel and player-plan.ts import
+      // it straight from source, same reasoning as the aliases above.
+      "@co-motion/core/embed": path.join(rootDir, "../core/src/embed.ts"),
       // [E2.T18]: element-clipboard.ts is declared Node-free too (its own
       // header comment) — the clipboard write/read path calls
       // extractElementsForCopy/serializeClipboardSvg/parseClipboardSvg

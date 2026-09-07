@@ -1,4 +1,5 @@
 import { CoMotionError } from "./errors.js";
+import { requireEmbedProvider } from "./embed.js";
 import {
   applySplices,
   assertNotLocked,
@@ -181,7 +182,19 @@ function assertPositiveAfterRounding(value: number, message: string): number {
 // element insert
 // ---------------------------------------------------------------------------
 
-export type InsertElementKind = "rect" | "ellipse" | "line" | "image" | "path";
+export type InsertElementKind = "rect" | "ellipse" | "line" | "image" | "path" | "video" | "audio";
+
+/**
+ * [E2.T17]: default placeholder fill for a `video`/`audio` insert that has
+ * neither `--href` (a poster image) nor `--fill` (a `video` with `--media`
+ * takes `transparent` instead — see the insert branch) — carried over verbatim
+ * from the front end's pre-existing `insertImportedAsset()` colours
+ * (`packages/web/src/App.tsx`'s `#889`/`#c66`), now living here because a
+ * literal hex value is not allowed anywhere under `packages/web`
+ * (`design-contract.test.ts`).
+ */
+const DEFAULT_VIDEO_FILL = "#889";
+const DEFAULT_AUDIO_FILL = "#c66";
 
 export interface InsertElementInput {
   kind: InsertElementKind;
@@ -204,6 +217,13 @@ export interface InsertElementInput {
   href?: string;
   /** Any kind — ADR-0005 media placeholder marker (T3/NOOP-142: video/audio placeholders are a `rect` with `media` set, no `href`). */
   media?: string;
+  /**
+   * [E2.T17] `video` only: marks `media` as a third-party player URL
+   * (a YouTube embed) rather than a media file inside the presentation.
+   * See `embed.ts` for why such an element is rendered by a PARENT-document
+   * overlay and never inside the sandboxed slide iframe.
+   */
+  embed?: string;
 }
 
 function requireFiniteNumber(value: number | undefined, flag: string): number {
@@ -248,6 +268,18 @@ export function insertElement(
   // live inside `case "image"` alone.
   if (input.media !== undefined) {
     containerAttrs += ` data-comot-media="${escapeXmlAttr(input.media)}"`;
+  }
+  if (input.embed !== undefined) {
+    // Validated, not passed through: an unknown provider must fail here
+    // rather than be written into the file and only surface later as an
+    // overlay that renders nothing.
+    if (input.kind !== "video") {
+      throw new CoMotionError(`--embed 只能用在 --kind video（收到 --kind ${input.kind}）`);
+    }
+    if (input.media === undefined) {
+      throw new CoMotionError("--embed 必須搭配 --media（嵌入播放器的網址）");
+    }
+    containerAttrs += ` data-comot-embed="${escapeXmlAttr(requireEmbedProvider(input.embed))}"`;
   }
   let native: string;
 
@@ -305,6 +337,42 @@ export function insertElement(
         containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
       }
       native = `<path d="${escapeXmlAttr(input.d)}"${fillAttr}${strokeAttr}/>`;
+      break;
+    }
+    // [E2.T17] plan §4.5: a video/audio placeholder carries `data-comot-type`
+    // so the stage media layer and future tooling can tell it apart from a
+    // plain rect/image without guessing off `data-comot-media`'s extension
+    // alone. With `--href` it renders as a poster `<image>` (ADR-0005); without
+    // one, a coloured `<rect>` — `--fill`'s own default only applies here,
+    // never to the five pre-existing kinds above.
+    case "video":
+    case "audio": {
+      const x = requireFiniteNumber(input.x, "x");
+      const y = requireFiniteNumber(input.y, "y");
+      const width = requirePositiveNumber(input.width, "width");
+      const height = requirePositiveNumber(input.height, "height");
+      containerAttrs += ` data-comot-type="${input.kind}"`;
+      containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
+      if (input.href !== undefined) {
+        native = `<image x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" href="${escapeXmlAttr(input.href)}"${fillAttr}${strokeAttr}/>`;
+      } else {
+        // Audio keeps its block either way — an <audio> overlay paints
+        // nothing, so the rect IS the element on screen. Video is the
+        // case that changes: a placeholder with no media of its own
+        // still needs a visible block — it is the only thing on screen,
+        // and the author's handle for attaching media later. One that already HAS media does not:
+        // the stage/player media layer paints the real <video> over this
+        // exact box, so any fill here can only show through as a border of
+        // dead colour around a letterboxed frame. `transparent` rather
+        // than `none` keeps the rect hit-testable, so the element stays
+        // clickable/selectable like every other shape.
+        const rectFillAttr = input.fill !== undefined
+          ? fillAttr
+          : input.kind === "video" && input.media !== undefined
+            ? ` fill="transparent"`
+            : ` fill="${input.kind === "video" ? DEFAULT_VIDEO_FILL : DEFAULT_AUDIO_FILL}"`;
+        native = `<rect x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"${rectFillAttr}${strokeAttr}/>`;
+      }
       break;
     }
     default:

@@ -148,6 +148,8 @@ export {
   STYLE_ATTRIBUTE_WHITELIST,
 } from "./element-edit.js";
 export type { InsertElementKind, InsertElementInput, OrderDirection, MutationOptions, ResizeAnchor } from "./element-edit.js";
+export { youtubeVideoId, youtubeEmbedUrl, embedUrlFor, requireEmbedProvider, EMBED_PROVIDERS } from "./embed.js";
+export type { EmbedProvider } from "./embed.js";
 export { groupElements, ungroupElements, setElementName } from "./element-group.js";
 export { alignElements, distributeElements } from "./element-arrange.js";
 export type { AlignDirection, DistributeAxis } from "./element-arrange.js";

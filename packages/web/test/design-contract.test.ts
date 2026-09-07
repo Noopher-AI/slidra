@@ -132,14 +132,8 @@ interface InlineStyleException {
   reason: string;
 }
 
-/** The only 8 hits in packages/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): default artwork content (App.tsx) and generated faithful-rendering documents (canvas.ts, overview.ts) — the two exception categories the architecture names. */
+/** The only hits in packages/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. [E2.T17]: App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
-  // New v3 shell rebuild removed the Ribbon-driven textbox/shape insert
-  // handlers that used to write "#f4f6f8" (default text fill) — the only
-  // two literal colours left in App.tsx are insertImportedAsset()'s
-  // video/audio placeholder fills, both still real hits (re-verified by
-  // this file's own self-check below).
-  { file: "App.tsx", allowed: ["#889", "#c66"], reason: "預設作品內容，屬投影片資料" },
   { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   // [E2.T7]: same category the ms-only duration pattern below already

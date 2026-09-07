@@ -40,6 +40,8 @@ export interface DockProps {
   onAnimationAdded(): void;
   /** The presentation's own canvas size (project.json's `canvas`) — TextPanel converts the prototype's percentage-based defaults into real pixels against it, instead of assuming 1280×720. `null` before `presentationInfo` has loaded. */
   canvasSize: { width: number; height: number } | null;
+  /** [E2.T17] plan §4.1: ShapeMenu's rect/ellipse fill and line stroke default to the current slide's own accent colour. `null` before a slide has loaded, or when the slide declares no page style at all — ShapeMenu falls back to a non-null accent token for `line` specifically (an unstroked line renders as an invisible hole). */
+  pageStyle: { background: string | null; accent: string | null } | null;
 }
 
 interface CommandDef {
@@ -131,6 +133,7 @@ export function Dock({
   slidePath,
   onAnimationAdded,
   canvasSize,
+  pageStyle,
 }: DockProps) {
   const [openLayer, setOpenLayer] = useState<DockLayer | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
@@ -202,17 +205,25 @@ export function Dock({
       case "zoom":
         return <ZoomMenu zoomPan={zoomPan} onChange={onZoomPanChange} onClose={onClose} />;
       case "shape":
-        return <ShapeMenu onClose={onClose} />;
+        return (
+          <ShapeMenu
+            onClose={onClose}
+            controller={controller}
+            canvasSize={canvasSize}
+            slidePath={slidePath}
+            pageStyle={pageStyle}
+          />
+        );
       case "arrange":
         return <ArrangeMenu selection={selection} controller={controller} onClose={onClose} />;
       case "text":
         return <TextPanel onClose={onClose} controller={controller} canvasSize={canvasSize} />;
       case "image":
-        return <ImagePanel onClose={onClose} />;
+        return <ImagePanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "video":
-        return <VideoPanel onClose={onClose} />;
+        return <VideoPanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "audio":
-        return <AudioPanel onClose={onClose} />;
+        return <AudioPanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "table":
         return <TablePanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "chart":

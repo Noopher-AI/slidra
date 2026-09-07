@@ -6,6 +6,7 @@
  * player-runtime.js). Reuses #26's parseEffects/deriveSteps rather than
  * re-parsing anything.
  */
+import { EMBED_PROVIDERS, type EmbedProvider } from "@co-motion/core/embed";
 import { deriveSteps, parseEffects } from "./effects.js";
 import type { Effect, Step } from "./effects.js";
 
@@ -36,6 +37,24 @@ export interface PlayerPlan {
   /** Keyed by the `family="media"` effect's target id — see mediaCuesFor below. */
   media: Record<string, MediaCue>;
   /**
+   * Every `data-comot-media` element on the slide, effect or no effect —
+   * `stageMediaFor`'s own table, the same one view mode's stage layer
+   * already gets. Play mode needs it because a video an author simply
+   * inserted carries no `family="media"` effect at all: without this, the
+   * only thing `media` above knows about is effect targets, so such a
+   * video is never created in play mode and the audience sees a dead
+   * placeholder box. Targets that DO have a media effect stay the effect
+   * list's business (`playMedia`) and are skipped by the stage layer.
+   */
+  stageMedia: Record<string, StageMediaEntry>;
+  /**
+   * The ids of every third-party embed on the slide. The runtime needs
+   * only the ids — it measures those elements' on-screen boxes and posts
+   * them out; the URLs stay in the parent, which is where the `<iframe>`
+   * actually lives (`stageEmbedsFor`).
+   */
+  embedIds: string[];
+  /**
    * [E2.T7]/D8: Preview's own addressing, set by the CALLER (canvas.ts's
    * `previewEffects`) on top of an otherwise-ordinary plan — never by
    * `computePlayerPlan` itself, which has no notion of "which card was
@@ -51,7 +70,14 @@ export function computePlayerPlan(svgMarkup: string): PlayerPlan {
   const effects = parseEffects(svgMarkup);
   const steps = deriveSteps(effects);
   const hidden = enterTargets(effects);
-  return { steps, hidden, hideSelectors: hideSelectorsFor(hidden), media: mediaCuesFor(svgMarkup, effects) };
+  return {
+    steps,
+    hidden,
+    hideSelectors: hideSelectorsFor(hidden),
+    media: mediaCuesFor(svgMarkup, effects),
+    stageMedia: stageMediaFor(svgMarkup),
+    embedIds: Object.keys(stageEmbedsFor(svgMarkup)),
+  };
 }
 
 /**
@@ -114,6 +140,13 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
     // parseEffects already verified `target` resolves to an element in this
     // document — that check ran against the same markup, so it holds here too.
     const el = doc.getElementById(target) as Element;
+    // [E2.T17]: an embed's `data-comot-media` is a third-party player URL,
+    // not a file — it has no extension for `mediaKindFor` to classify, and
+    // there is no <video> element for the runtime to drive. A media effect
+    // on one is legal and meaningful (it plays the embedded player, via
+    // that player's own API from the parent document); it simply is not a
+    // media CUE. `plan.embedIds` is how the runtime recognises it.
+    if (el.hasAttribute("data-comot-embed")) continue;
     const src = el.getAttribute("data-comot-media");
     if (!src) {
       // ADR-0009: every effect points at an element, and a media effect's
@@ -135,6 +168,94 @@ function mediaKindFor(src: string, target: string): "video" | "audio" {
   throw new Error(
     `元素「${target}」的 data-comot-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
   );
+}
+
+export interface StageMediaEntry {
+  /** The raw `data-comot-media` value, unmodified — same contract as `MediaCue.src`. */
+  src: string;
+  kind: "video" | "audio";
+}
+
+/**
+ * [E2.T17] plan §4.4: the stage (view-mode) counterpart of `mediaCuesFor`,
+ * but scanning every `data-comot-media` element in the slide rather than
+ * only the ones a `family="media"` effect points at — a slide can (and, per
+ * the existing fixtures, does) carry ADR-0005 media placeholders with no
+ * effect on them at all. Kept in this module, not `selection-runtime.js`
+ * (a `?raw`-injected, import-free script — D3), so kind derivation has
+ * exactly one implementation shared with the player.
+ *
+ * Deliberately DOES NOT throw the way `mediaKindFor` does: `mediaCuesFor`
+ * only ever sees elements an author explicitly wired a media effect to, so
+ * an unsupported extension there is a damaged presentation. This function
+ * walks every `data-comot-media` element on the page, image placeholders
+ * (`style-panel-deck`'s photo) included — skipping what it cannot classify
+ * is correct here, not silently degraded.
+ */
+export function stageMediaFor(svgMarkup: string): Record<string, StageMediaEntry> {
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  // Object.create(null): same ADR-0010 untrusted-id reasoning as
+  // mediaCuesFor above — a legal SVG id can be "__proto__".
+  const result: Record<string, StageMediaEntry> = Object.create(null);
+  const elements = doc.querySelectorAll("[data-comot-media]");
+  for (const el of Array.from(elements)) {
+    const id = el.getAttribute("id");
+    const src = el.getAttribute("data-comot-media");
+    if (!id || !src) continue;
+    // An embed is not a media file: `src` is a third-party player URL with
+    // no bytes and no extension to classify, and it is rendered by the
+    // parent document's overlay (see stageEmbedsFor below), never by
+    // either runtime's own <video>/<audio>.
+    if (el.hasAttribute("data-comot-embed")) continue;
+    const declaredType = el.getAttribute("data-comot-type");
+    const kind = declaredType === "video" || declaredType === "audio" ? declaredType : mediaKindForStage(src);
+    if (!kind) continue;
+    result[id] = { src, kind };
+  }
+  return result;
+}
+
+export interface StageEmbedEntry {
+  /** `data-comot-embed`'s value, already narrowed to a provider this build knows. */
+  provider: EmbedProvider;
+  /** The player URL to load — `data-comot-media`'s raw value (`embed.ts` canonicalised it at insert time). */
+  url: string;
+}
+
+/**
+ * [E2.T17]: every third-party player embed on the slide. Separate from
+ * `stageMediaFor` because the two have nothing in common downstream — a
+ * media entry becomes a `<video>` inside the sandboxed slide iframe, an
+ * embed entry becomes an `<iframe>` in the PARENT document (measured:
+ * the YouTube player refuses to load under `allow-scripts` alone, and
+ * ADR-0011 forbids granting the slide document `allow-same-origin`; see
+ * `packages/core/src/embed.ts`).
+ *
+ * An unknown provider is skipped rather than thrown on, for the same
+ * reason `stageMediaFor` skips an unclassifiable src: this walks whatever
+ * the slide happens to contain, including a file written by a newer build.
+ */
+export function stageEmbedsFor(svgMarkup: string): Record<string, StageEmbedEntry> {
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  const result: Record<string, StageEmbedEntry> = Object.create(null);
+  for (const el of Array.from(doc.querySelectorAll("[data-comot-embed]"))) {
+    const id = el.getAttribute("id");
+    const url = el.getAttribute("data-comot-media");
+    const provider = el.getAttribute("data-comot-embed");
+    if (!id || !url || !provider) continue;
+    if (!EMBED_PROVIDERS.includes(provider as EmbedProvider)) continue;
+    result[id] = { provider: provider as EmbedProvider, url };
+  }
+  return result;
+}
+
+/** Non-throwing counterpart of `mediaKindFor`: an unrecognised extension (an image, or anything else) resolves to `null` rather than an error — see `stageMediaFor`'s own comment for why. */
+function mediaKindForStage(src: string): "video" | "audio" | null {
+  const dot = src.lastIndexOf(".");
+  const extension = dot === -1 ? "" : src.slice(dot).toLowerCase();
+  if (VIDEO_EXTENSIONS.includes(extension)) return "video";
+  if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
+  return null;
 }
 
 /**

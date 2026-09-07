@@ -188,7 +188,7 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       if (sub === "insert") {
         const kind = requirePositional(args, 0, "element insert", "kind");
-        if (!["rect", "ellipse", "line", "image", "path"].includes(kind)) {
+        if (!["rect", "ellipse", "line", "image", "path", "video", "audio"].includes(kind)) {
           throw new CoMotionError(`element insert 不支援的 kind：${kind}`);
         }
         const id = requirePositional(args, 1, "element insert", "presentation-id");
@@ -213,6 +213,7 @@ export function parseArgv(argv: string[]): ParsedCommand {
             strokeWidth: optionalNumberFlag(args, "--stroke-width", "element insert"),
             href: optionalFlag(args, "--href"),
             media: optionalFlag(args, "--media"),
+            embed: optionalFlag(args, "--embed"),
           },
         };
       }

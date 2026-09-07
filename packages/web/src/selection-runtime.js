@@ -150,7 +150,22 @@
     ".edit-selection{position:fixed;box-sizing:border-box;background:color-mix(in srgb, " +
     colors.accent +
     " 30%, transparent);pointer-events:none;display:none;}" +
-    "@keyframes comot-caret{50%{opacity:0;}}";
+    "@keyframes comot-caret{50%{opacity:0;}}" +
+    // [E2.T17] plan §4.4: the stage media layer. `.media-overlay-el` (the
+    // actual <video>/<audio>) stays pointer-events:none so a click on the
+    // media surface still hits the SVG placeholder underneath it and
+    // selects the element like any other shape — only the control bar
+    // itself is interactive.
+    ".media-overlay-el{position:fixed;pointer-events:none;object-fit:contain;background:transparent;}" +
+    ".media-control-bar{position:fixed;box-sizing:border-box;height:28px;display:flex;align-items:center;gap:4px;padding:0 6px;pointer-events:auto;background:color-mix(in srgb, " +
+    colors.accent +
+    " 70%, black 30%);}" +
+    ".media-play{all:unset;cursor:pointer;color:" +
+    colors.handle +
+    ";font-size:12px;line-height:1;padding:2px 4px;}" +
+    ".media-seek{flex:1;accent-color:" +
+    colors.accent +
+    ";cursor:pointer;}";
   shadow.appendChild(style);
 
   // One handle div per role, created once and repositioned/hidden on every
@@ -481,6 +496,179 @@
 
   function hideMultiBoxes() {
     multiBoxEl.style.display = "none";
+  }
+
+  // ── Stage media layer ([E2.T17] plan §4.4) ───────────────────────────
+  // Kind derivation stays entirely in the parent (`player-plan.ts`'s
+  // `stageMediaFor`, D3) — this runtime only ever builds what it is told
+  // to, injected the same way `colors` is (canvas.ts's
+  // wrapSelectionDocument sets `window.__COMOT_SELECTION_MEDIA__` before
+  // this script runs). Keyed by untrusted SVG element ids (ADR-0010, a
+  // legal id can be "__proto__") — read with `for...in` +
+  // hasOwnProperty, never assumed to be a plain enumerable object.
+  var mediaTable = window.__COMOT_SELECTION_MEDIA__ || {};
+  // [E2.T17]: ids of the slide's third-party embeds. The <iframe> lives in
+  // the PARENT document (ADR-0011 — this document may never be granted
+  // allow-same-origin, and a nested iframe's sandbox flags are the
+  // intersection with this one's, so the YouTube player cannot work from
+  // in here); this runtime only measures where each placeholder sits and
+  // posts it out, so the parent can keep its overlay aligned.
+  var embedIds = window.__COMOT_SELECTION_EMBEDS__ || [];
+
+  function reportEmbedBoxes() {
+    if (embedIds.length === 0) return;
+    var items = [];
+    for (var i = 0; i < embedIds.length; i++) {
+      var embedEl = document.getElementById(embedIds[i]);
+      if (!embedEl) continue;
+      var embedRect = embedEl.getBoundingClientRect();
+      items.push({
+        id: embedIds[i],
+        rect: { x: embedRect.left, y: embedRect.top, width: embedRect.width, height: embedRect.height },
+      });
+    }
+    post({ event: "embed-boxes", items: items });
+  }
+  // id -> { placeholder, media, bar, playButton, seek }
+  var mediaOverlays = {};
+
+  /** `data-comot-media-control`'s value ("play"/"seek") at or inside `event`'s real (composed) target, or null — same `composedPath()` technique as `findHandleTarget` below, needed for the identical reason: a click/pointerdown on an element inside this open shadow root is retargeted to `host` for a window-level listener's own `event.target`. */
+  function findMediaControlTarget(event) {
+    var path = typeof event.composedPath === "function" ? event.composedPath() : [event.target];
+    for (var i = 0; i < path.length; i++) {
+      var node = path[i];
+      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-comot-media-control")) {
+        return node.getAttribute("data-comot-media-control");
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Builds one placeholder's `<video>`/`<audio>` + self-drawn control bar
+   * (D2: native `controls` is not used — a spike proved
+   * `requestFullscreen()` is refused from inside this sandboxed iframe, so
+   * the native control bar's own fullscreen button would be a dead one).
+   * The media element itself is `pointer-events:none` so a click on the
+   * video surface still hits the SVG placeholder underneath it and
+   * selects the element, exactly like clicking any other shape.
+   */
+  function createMediaOverlay(id, cue, placeholder) {
+    var el = document.createElement(cue.kind === "video" ? "video" : "audio");
+    // The raw data-comot-media value, unmodified — same contract as
+    // player-runtime.js's playMedia(): the view srcdoc already carries a
+    // <base href="/api/raw/<slide dir>"> (wrapSelectionDocument, canvas.ts),
+    // so the browser's own relative-URL resolution does the rest.
+    el.src = cue.src;
+    el.preload = "metadata";
+    el.className = "media-overlay-el";
+    // Inline + !important (same convention as `host` above), not left to
+    // the injected stylesheet alone: pointer-events here is a correctness
+    // property (a hostile slide's own CSS must not be able to make the
+    // video capture clicks meant for the SVG placeholder underneath it),
+    // not decoration.
+    el.style.setProperty("pointer-events", "none", important);
+    shadow.appendChild(el);
+
+    var bar = document.createElement("div");
+    bar.className = "media-control-bar";
+    bar.style.setProperty("pointer-events", "auto", important);
+
+    var playButton = document.createElement("button");
+    playButton.type = "button";
+    playButton.className = "media-play";
+    playButton.setAttribute("data-comot-media-control", "play");
+    playButton.textContent = "▶";
+    bar.appendChild(playButton);
+
+    var seek = document.createElement("input");
+    seek.type = "range";
+    seek.min = "0";
+    seek.max = "0";
+    seek.step = "0.01";
+    seek.value = "0";
+    seek.className = "media-seek";
+    seek.setAttribute("data-comot-media-control", "seek");
+    bar.appendChild(seek);
+
+    shadow.appendChild(bar);
+
+    function reportError(err) {
+      post({
+        event: "error",
+        message: "媒體播放失敗（" + id + "）：" + (err && err.message ? err.message : String(err)),
+      });
+    }
+
+    playButton.addEventListener("click", function () {
+      if (el.paused) {
+        // Synchronous, no await before it — this runs inside the SAME
+        // click dispatch that carries transient activation (same rule as
+        // player-runtime.js's playMedia()).
+        var playResult = el.play();
+        if (playResult && typeof playResult.catch === "function") playResult.catch(reportError);
+      } else {
+        el.pause();
+      }
+    });
+    el.addEventListener("play", function () {
+      playButton.textContent = "⏸";
+    });
+    el.addEventListener("pause", function () {
+      playButton.textContent = "▶";
+    });
+    el.addEventListener("loadedmetadata", function () {
+      seek.max = String(el.duration || 0);
+    });
+    el.addEventListener("timeupdate", function () {
+      seek.value = String(el.currentTime);
+    });
+    seek.addEventListener("input", function () {
+      el.currentTime = Number(seek.value);
+    });
+    // A 404/decode failure must surface (D7's error posture extends here)
+    // without taking down the rest of the slide's overlays — each
+    // placeholder's overlay is independent.
+    el.addEventListener("error", function () {
+      post({ event: "error", message: "媒體載入失敗（" + id + "）：" + cue.src });
+    });
+
+    return { placeholder: placeholder, media: el, bar: bar, playButton: playButton, seek: seek };
+  }
+
+  /** Positions every overlay over its placeholder's current on-screen box (same `getBoundingClientRect()`-driven approach as `positionBox()` above) — called on init and again on resize/zoom, never assuming geometry stays put across either. */
+  function positionMediaOverlays() {
+    for (var id in mediaOverlays) {
+      if (!Object.prototype.hasOwnProperty.call(mediaOverlays, id)) continue;
+      var overlay = mediaOverlays[id];
+      var rect = overlay.placeholder.getBoundingClientRect();
+      overlay.media.style.left = rect.left + "px";
+      overlay.media.style.top = rect.top + "px";
+      overlay.media.style.width = rect.width + "px";
+      overlay.media.style.height = rect.height + "px";
+      var barHeight = 28;
+      overlay.bar.style.left = rect.left + "px";
+      overlay.bar.style.top = rect.top + Math.max(0, rect.height - barHeight) + "px";
+      overlay.bar.style.width = rect.width + "px";
+    }
+  }
+
+  /**
+   * Only reachable once `bodyMarkup`'s SVG has actually been parsed
+   * (`window`'s `load` event, same timing `reportViewport()` already
+   * relies on) — `document.getElementById` for a placeholder resolves to
+   * nothing before that. A `data-comot-media` id this table names but the
+   * page turns out not to contain (should not happen — the table is
+   * derived from this exact markup) is skipped, never thrown on.
+   */
+  function buildMediaOverlays() {
+    for (var id in mediaTable) {
+      if (!Object.prototype.hasOwnProperty.call(mediaTable, id)) continue;
+      var placeholder = document.getElementById(id);
+      if (!placeholder) continue;
+      mediaOverlays[id] = createMediaOverlay(id, mediaTable[id], placeholder);
+    }
+    positionMediaOverlays();
   }
 
   /** Draws one dashed box around the union of every id in `ids` that still resolves to a live element — missing ids are simply skipped, never thrown on (the same "reload made a selected element vanish" tolerance `updateBoxes()`'s single-selection path already has). */
@@ -1152,6 +1340,12 @@
   window.addEventListener(
     "click",
     function (event) {
+      // [E2.T17] plan §4.4: clicking the stage media layer's own play/seek
+      // controls must never change selection — checked first, before any
+      // other short-circuit below, the same `composedPath()` technique
+      // `findHandleTarget` uses (this listener is on `window`, outside the
+      // open shadow root the controls live in).
+      if (findMediaControlTarget(event)) return;
       // A commit-triggering outside pointerdown already cleared editingId
       // and set suppressNextClick before this click fires (§4.2's
       // "pointerdown 落在被編輯元素之外" row) — this guard only matters for
@@ -1352,6 +1546,8 @@
   window.addEventListener("resize", function () {
     reportViewport();
     updateBoxes();
+    positionMediaOverlays();
+    reportEmbedBoxes();
   });
 
   // T3/NOOP-142: a system file dragged over this iframe never reaches the
@@ -1386,6 +1582,10 @@
     });
   }
   window.addEventListener("load", reportViewport);
+  // [E2.T17] plan §4.4: only reachable once bodyMarkup's SVG has actually
+  // been parsed — same reason reportViewport() itself waits for `load`.
+  window.addEventListener("load", buildMediaOverlays);
+  window.addEventListener("load", reportEmbedBoxes);
 
   var DRAG_THRESHOLD_PX = 3;
   /** The in-progress pointer gesture, or null between gestures. */
@@ -1537,6 +1737,12 @@
     "pointerdown",
     function (event) {
       if (event.button !== 0) return; // Left button only — no gesture on right/middle click.
+      // [E2.T17] plan §4.4: a drag that starts on the media control bar
+      // (dragging the seek `<input type="range">`) must never be hijacked
+      // into an element/marquee gesture — letting the browser's own native
+      // range-drag handling run untouched is what makes seeking work at
+      // all, so this returns before any of the gesture state below is set.
+      if (findMediaControlTarget(event)) return;
       if (editingId !== null) {
         var editedEl = document.getElementById(editingId);
         var insideEdited = editedEl && (editedEl === event.target || editedEl.contains(event.target));

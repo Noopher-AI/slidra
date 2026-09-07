@@ -16,6 +16,7 @@ import { StatusBar } from "./shell/StatusBar.js";
 import { SidePanel, type SideId, type SubId } from "./shell/side/SidePanel.js";
 import { ChatPanel } from "./shell/side/ChatPanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
+import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
@@ -304,43 +305,20 @@ export function App() {
     return () => window.removeEventListener("paste", onPaste);
   }, []);
 
-  /** Inserts the element a successfully-imported asset should produce (決定 2/4): `image` for an image, a coloured `rect` placeholder for video/audio. Never reads the byte-detected format any other way — `asset.kind` already came back from `resolveAssetImport`. */
+  /**
+   * Inserts the element a successfully-imported asset should produce, via
+   * the same `mediaInsertInput` the Image/Video/Audio panels use (D9,
+   * [E2.T17]) — a deliberate behaviour change from this function's own
+   * previous, now-removed inline geometry (480×270/160×160 absolute pixels,
+   * always `kind: "rect"` for video/audio): a dropped file and a
+   * panel-inserted one now always produce the same shape of element.
+   */
   async function insertImportedAsset(asset: ImportedAsset): Promise<void> {
     const slidePath = currentSlidePath();
     const canvas = presentationInfo?.canvas;
     if (!slidePath || !canvas) return;
-    // Slides live under `slides/`, assets under `assets/` (both siblings of
-    // the presentation root) — the returned virtual path is root-relative
-    // ("assets/x.png"), so every reference from inside a slide needs `../`.
-    const media = `../${asset.path}`;
-    if (asset.kind === "image") {
-      const width = 480;
-      const height = 270;
-      await runCanvasCommand("element insert", {
-        slidePath,
-        kind: "image",
-        x: (canvas.width - width) / 2,
-        y: (canvas.height - height) / 2,
-        width,
-        height,
-        href: media,
-        media,
-      });
-      return;
-    }
-    const width = asset.kind === "audio" ? 160 : 480;
-    const height = asset.kind === "audio" ? 160 : 270;
-    const fill = asset.kind === "audio" ? "#c66" : "#889";
-    await runCanvasCommand("element insert", {
-      slidePath,
-      kind: "rect",
-      x: (canvas.width - width) / 2,
-      y: (canvas.height - height) / 2,
-      width,
-      height,
-      fill,
-      media,
-    });
+    const input = mediaInsertInput(asset.kind, asset.path, canvas);
+    await runCanvasCommand("element insert", { slidePath, ...input });
   }
 
   /** Uploads `file` and, on success, inserts the resulting element. Failure is already surfaced by `controller.importAsset` through `canvasState.error` — nothing more to do here on that path. */

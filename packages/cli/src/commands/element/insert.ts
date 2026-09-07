@@ -19,6 +19,8 @@ export interface ElementInsertInput {
   strokeWidth?: number;
   href?: string;
   media?: string;
+  /** [E2.T17]: `video` only — marks `media` as a third-party player URL. See `@co-motion/core`'s `embed.ts`. */
+  embed?: string;
 }
 
 export interface ElementInsertData {
@@ -42,6 +44,7 @@ export const elementInsertCommand: CommandHandler<ElementInsertInput, ElementIns
     strokeWidth: input.strokeWidth,
     href: input.href,
     media: input.media,
+    embed: input.embed,
   });
   return { ok: true, data: { elementId }, message: `已在 ${input.slidePath} 新增元素 ${elementId}` };
 };

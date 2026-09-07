@@ -492,3 +492,31 @@ describe("parseArgv presentation canvas set（#200 §4.3）", () => {
     expect(() => parseArgv(["presentation", "canvas", "resize", "p1"])).toThrow("未知的子命令：presentation canvas resize");
   });
 });
+
+describe("parseArgv element insert — video/audio kind ([E2.T17] plan §4.5)", () => {
+  it("accepts video/audio alongside the five pre-existing kinds", () => {
+    const parsed = parseArgv([
+      "element", "insert", "video", "p1", "slides/001.svg",
+      "--x", "720", "--y", "144", "--width", "460", "--height", "432", "--media", "../assets/clip.webm",
+    ]);
+    expect(parsed).toMatchObject({
+      name: "element insert",
+      input: { id: "p1", slidePath: "slides/001.svg", kind: "video", x: 720, y: 144, width: 460, height: 432, media: "../assets/clip.webm" },
+    });
+  });
+
+  it("--embed 被帶進 input（值本身由 core 驗證）", () => {
+    const parsed = parseArgv([
+      "element", "insert", "video", "p1", "slides/001.svg",
+      "--x", "0", "--y", "0", "--width", "640", "--height", "360",
+      "--media", "https://www.youtube-nocookie.com/embed/MtKyexX-GQc", "--embed", "youtube",
+    ]);
+    expect(parsed).toMatchObject({ name: "element insert", input: { embed: "youtube" } });
+  });
+
+  it("still rejects a kind outside the (now seven-entry) whitelist", () => {
+    expect(() => parseArgv(["element", "insert", "bogus", "p1", "slides/001.svg"])).toThrow(
+      "element insert 不支援的 kind：bogus",
+    );
+  });
+});

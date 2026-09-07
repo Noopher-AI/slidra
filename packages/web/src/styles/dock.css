@@ -154,8 +154,8 @@
   }
 }
 
-/* 空容器（Insert 面板／Shape／Arrange）：內容是未來票的範圍，這裡只給一個
-   看得出邊界的最小尺寸，方便手動驗證「有沒有從正確位置長出來」。 */
+/* [E2.T17] 之後每個 Dock 浮層都已經有真正的內容——這條只是一個共用的最小
+   尺寸底線，讓內容較少的浮層（例如 ShapeMenu）仍有看得出邊界的大小。 */
 .dock-panel,
 .dock-menu {
   min-width: calc(var(--panel-w) * 0.7);
@@ -248,6 +248,90 @@
 .arrange-menu-shortcut {
   opacity: 0.6;
   font-size: var(--text-xs-hint);
+}
+
+/* ── Shape 選單 ([E2.T17] plan §4.1) — Rectangle/Ellipse/Line 直接送命令，
+   不開第二層面板，姿態接近 Arrange 選單的單欄版本。 ──────────────────── */
+.shape-menu {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+}
+.shape-menu-item {
+  height: var(--control-h);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+  text-align: left;
+}
+.shape-menu-item:not(:disabled):hover {
+  background: var(--surface-1);
+}
+.shape-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Image/Video/Audio 插入面板 ([E2.T17] plan §4.2) — 三個面板共用同一份
+   樣式：拖放區、URL 欄、caption 欄、Insert 按鈕。 ───────────────────── */
+.media-panel {
+  width: var(--panel-w);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.media-panel-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--control-h) * 3);
+  border: 1px dashed var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+  text-align: center;
+  cursor: pointer;
+}
+.media-panel-dropzone:hover {
+  background: var(--surface-1);
+}
+.media-panel-dropzone input[type="file"] {
+  display: none;
+}
+.media-panel-url,
+.media-panel-caption {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control-h);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding-inline: var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink-900);
+}
+.media-panel-url:focus-visible,
+.media-panel-caption:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
+  outline-offset: 1px;
+}
+.media-panel-insert {
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.media-panel-insert:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.media-panel-insert:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── Text 插入面板 (NOOP-65 §3.8/A9) ─────────────────────────────────── */

@@ -5,6 +5,8 @@ import {
   hideSelectorsFor,
   renderHideStyle,
   renderPlanScript,
+  stageEmbedsFor,
+  stageMediaFor,
   VIDEO_EXTENSIONS,
 } from "../src/player-plan.js";
 // Cross-package: the server's own MIME table must agree with this player's
@@ -60,6 +62,8 @@ describe("computePlayerPlan", () => {
       hidden: ["el-a", "el-b"],
       hideSelectors: { "el-a": "#el-a", "el-b": "#el-b" },
       media: {},
+      stageMedia: {},
+      embedIds: [],
     });
   });
 
@@ -89,12 +93,62 @@ describe("computePlayerPlan", () => {
     expect(computePlayerPlan(svg).hidden).toEqual([]);
   });
 
+  it("stageEmbedsFor 收錄第三方嵌入，而 stageMedia 明確跳過它們", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
+      '<g id="el-file" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
+      "</svg>";
+
+    expect(stageEmbedsFor(svg)).toEqual({
+      "el-embed": { provider: "youtube", url: "https://www.youtube-nocookie.com/embed/MtKyexX-GQc" },
+    });
+    expect(Object.keys(stageMediaFor(svg))).toEqual(["el-file"]);
+    expect(computePlayerPlan(svg).embedIds).toEqual(["el-embed"]);
+  });
+
+  it("media 效果指向嵌入時：不進 media cue、不因為沒有副檔名而拋錯，仍然是一個步驟", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+      '<comot:effect target="el-embed" family="media" effect="play" start="on-click"/>' +
+      "</comot:effects></metadata>" +
+      '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
+      "</svg>";
+
+    const plan = computePlayerPlan(svg);
+    expect(plan.media).toEqual({});
+    expect(plan.embedIds).toEqual(["el-embed"]);
+    expect(plan.steps).toHaveLength(1);
+  });
+
+  it("不認得的嵌入來源被跳過，而不是拋錯", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+      '<g id="el-x" data-comot-media="https://vimeo.com/1" data-comot-embed="vimeo"/>' +
+      "</svg>";
+    expect(stageEmbedsFor(svg)).toEqual({});
+  });
+
+  it("stageMedia 收錄每個 data-comot-media 元素，包含沒有任何效果指向它的那些", () => {
+    const plan = computePlayerPlan(
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+        '<g id="el-no-effect" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
+        "</svg>",
+    );
+
+    expect(plan.media).toEqual({});
+    expect(plan.stageMedia).toEqual({ "el-no-effect": { src: "../assets/clip.webm", kind: "video" } });
+  });
+
   it("沒有效果清單的投影片得到零步、空的 hidden", () => {
     expect(computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>')).toEqual({
       steps: [],
       hidden: [],
       hideSelectors: {},
       media: {},
+      stageMedia: {},
+      embedIds: [],
     });
   });
 
@@ -325,5 +379,53 @@ describe("renderPlanScript：完整走過注入鏈路的重建（不只是 compu
     // property names) — confirmed unaffected, not just assumed.
     expect(reconstructed.hidden).toEqual(plan.hidden);
     expect(reconstructed.steps).toEqual(plan.steps);
+  });
+});
+
+describe("stageMediaFor（[E2.T17] plan §4.4：舞台媒體層的 kind 判定，留在 parent）", () => {
+  it("元素有 data-comot-type 時，用它當 kind（不看副檔名）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="el-1" data-comot-type="audio" data-comot-media="assets/clip.mp4"></g>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({ "el-1": { src: "assets/clip.mp4", kind: "audio" } });
+  });
+
+  it("沒有 data-comot-type 時，靠副檔名判斷（media-deck/demo 004 兩份既有 fixture 能運作的唯一理由）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <rect id="el-1" data-comot-media="../assets/clip.webm"/>
+  <circle id="el-2" data-comot-media="../assets/narration.oga"/>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({
+      "el-1": { src: "../assets/clip.webm", kind: "video" },
+      "el-2": { src: "../assets/narration.oga", kind: "audio" },
+    });
+  });
+
+  it("data-comot-media 指向圖片副檔名時跳過，不拋錯（style-panel-deck 的 PNG）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <image id="el-1" data-comot-media="../assets/photo.png"/>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
+  });
+
+  it("副檔名不認得時跳過，不拋錯", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="el-1" data-comot-media="assets/mystery.xyz"></g>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
+  });
+
+  it('id 是 "__proto__" 時仍正確產生對應項（不是被原型污染吃掉的空物件）', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
+</svg>`;
+    const result = stageMediaFor(svg);
+    expect(Object.prototype.hasOwnProperty.call(result, "__proto__")).toBe(true);
+    expect(result["__proto__"]).toEqual({ src: "assets/clip.mp4", kind: "video" });
+  });
+
+  it("沒有任何媒體元素時回傳空表", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><g id="el-1"><rect width="10" height="10"/></g></svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
   });
 });
