@@ -760,6 +760,8 @@ interface SelectionMessage {
   alt?: boolean;
   /** "stage-key" only — the relayed `KeyboardEvent.key`. */
   key?: string;
+  /** "stage-key" only — the relayed `KeyboardEvent.code` (physical key, layout/Shift independent). */
+  code?: string;
   /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
   row?: number;
   col?: number;
@@ -1546,8 +1548,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (message.key === "Delete" || message.key === "Backspace") void deleteSelection();
       else if (message.key === "a" && (modifiers.meta || modifiers.ctrl)) selectAll();
       else if (message.key === "d" && (modifiers.meta || modifiers.ctrl)) void duplicateSelection();
-      else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
-      else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
+      else if (
+        (message.key === "]" || message.key === "}" || message.code === "BracketRight") &&
+        (modifiers.meta || modifiers.ctrl)
+      )
+        void orderSelection(modifiers.shift ? "front" : "up");
+      else if (
+        (message.key === "[" || message.key === "{" || message.code === "BracketLeft") &&
+        (modifiers.meta || modifiers.ctrl)
+      )
+        void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
       // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
       // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key

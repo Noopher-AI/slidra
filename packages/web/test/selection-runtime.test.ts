@@ -799,9 +799,9 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "a", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Delete", meta: false, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "]", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "a", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Delete", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "]", code: "", meta: true, ctrl: false, shift: true, alt: false },
     ]);
   });
 
@@ -820,8 +820,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "z", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Z", meta: false, ctrl: true, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "z", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Z", code: "", meta: false, ctrl: true, shift: true, alt: false },
     ]);
   });
 
@@ -1069,6 +1069,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
         source: "comot-selection",
         event: "stage-key",
         key: "Delete",
+        code: "",
         meta: false,
         ctrl: false,
         shift: false,
