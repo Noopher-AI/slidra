@@ -1,4 +1,4 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +65,10 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
   }
 }
 
-async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
+async function startServerFor(
+  agentEnv: Record<string, string> = {},
+  skills: { bundled?: Record<string, string>; user?: Record<string, string> } = {},
+): Promise<{
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
@@ -75,6 +78,24 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-files-"));
   const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-deck-"));
+  // [E3.T3] #232/#236: never resolve against the real machine's
+  // `~/.claude/skills` — a real skill directory happening to exist on
+  // whatever machine runs this suite would silently leak into `/` list
+  // assertions (Plan §6.3). Always temp dirs, populated per-test via
+  // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
+  // skill directory name) when a test needs a deterministic entry.
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-user-"));
+  for (const [dir, entries] of [
+    [bundledSkillsDir, skills.bundled] as const,
+    [userSkillsDir, skills.user] as const,
+  ]) {
+    for (const [name, frontmatter] of Object.entries(entries ?? {})) {
+      const skillDir = path.join(dir, name);
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
+    }
+  }
   process.env.CO_MOTION_HOME = coMotionHome;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
@@ -99,7 +120,13 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({
+    registry,
+    presentationId,
+    port: 0,
+    agent,
+    skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },
+  });
 
   return {
     server,
@@ -112,6 +139,8 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
+      await rm(bundledSkillsDir, { recursive: true, force: true });
+      await rm(userSkillsDir, { recursive: true, force: true });
     },
   };
 }
@@ -365,6 +394,113 @@ it("AC8(b)：agent 用 comment 命令寫入後，不重新整理，GUI 的 Pinne
     const pinnedItems = page.locator(".chat-pinned-item");
     await expect.poll(() => pinnedItems.count(), { timeout: 30_000 }).toBe(1);
     expect(await pinnedItems.first().textContent()).toContain(AGENT_COMMENT);
+  } finally {
+    await cleanup();
+  }
+});
+
+// [E3.T3] #232/#236: the `/` slash-command menu. Not a new e2e file (Plan
+// §6.2/§7 — no new e2e file this ticket authorises) — this suite already
+// starts a real server+browser with a fake agent that can echo prompts
+// verbatim, exactly what these two scenarios need.
+
+it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報更新即時變動", async () => {
+  const { server, cleanup } = await startServerFor({
+    E2E_AVAILABLE_COMMANDS: JSON.stringify([
+      { name: "draft", description: "草擬一頁新投影片" },
+      { name: "publish", description: "發布目前版本" },
+    ]),
+    E2E_AVAILABLE_COMMANDS_UPDATE: JSON.stringify([
+      { name: "draft", description: "草擬一頁新投影片" },
+      { name: "archive", description: "封存目前簡報" },
+    ]),
+  });
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    const input = page.locator(".chat-input input");
+    const menu = page.locator(".slash-menu");
+    const menuItem = page.locator(".slash-menu-item");
+
+    // Before any message is sent, the agent hasn't reported anything yet
+    // (session.ts: the ACP subprocess is spawned lazily on the first chat
+    // message) — sending one first is what actually makes its
+    // availableCommands report land.
+    await sendChatMessage(page, "打個招呼");
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("打個招呼");
+
+    // 清單全部出現，含描述（AC1 的畫面驗證部分）。
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
+    expect(await menuItem.nth(0).textContent()).toContain("draft");
+    expect(await menuItem.nth(0).textContent()).toContain("草擬一頁新投影片");
+    expect(await menuItem.nth(1).textContent()).toContain("publish");
+
+    // ↓↓ 從 draft 選到 publish，再繞回 draft，Enter 補全成 "/draft "。
+    await input.press("ArrowDown");
+    await input.press("ArrowDown");
+    await expect.poll(() => menuItem.nth(0).getAttribute("aria-selected"), { timeout: 5000 }).toBe("true");
+    await input.press("Enter");
+    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe("/draft ");
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0); // 補全後 draft 不再符合觸發條件，選單自動關閉
+
+    // Esc：重新打開後關閉，且在同一個觸發區段內繼續打字不重開。
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
+    await input.press("Escape");
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
+    await input.press("d"); // 仍在觸發條件內（"/d"），但 Esc 關閉狀態必須持續
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
+    await input.fill(""); // 離開觸發條件，Esc 的關閉狀態重置
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2); // 重新打開
+
+    // 回報更新後，不重新整理頁面，清單即時變動：publish 消失、archive 出現。
+    // （這則訊息本身不觸發任何 agent 回覆——假 agent 送出更新後直接
+    // end_turn，見 comment-fake-acp-agent.mjs 的「更新命令」分支——所以這裡
+    // 直接輪詢選單內容，而不是等待一則不存在的新訊息。）
+    await input.fill("");
+    await sendChatMessage(page, "更新命令");
+    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe(""); // sendMessage() 清空 draft 後才輪到這裡打 "/"
+    await input.fill("/");
+    await expect.poll(() => menuItem.allTextContents(), { timeout: 30_000 }).toEqual(
+      expect.arrayContaining([expect.stringContaining("archive")]),
+    );
+    const namesAfterUpdate = (await menuItem.allTextContents()).join(" ");
+    expect(namesAfterUpdate).toContain("draft");
+    expect(namesAfterUpdate).toContain("archive");
+    expect(namesAfterUpdate).not.toContain("publish");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
+  const { server, cleanup } = await startServerFor(
+    {},
+    { bundled: { outline: "---\nname: outline\ndescription: 從大綱建立投影片\n---\n" } },
+  );
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    const input = page.locator(".chat-input input");
+
+    // "outline" comes from the bundled skill directory, which is populated
+    // before the server ever starts — no need to wait for the agent's own
+    // report (which does not exist yet, see the test above) to complete
+    // this one.
+    await input.fill("/out");
+    await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
+    await input.press("Enter");
+    const completed = await input.inputValue();
+    expect(completed).toBe("/outline ");
+
+    // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
+    await input.fill(`${completed}這是參數`);
+    await expect.poll(() => page.locator(".slash-menu").count(), { timeout: 5000 }).toBe(0); // 含空白，觸發條件已不成立
+    await page.locator(".chat-input button:not([disabled])").click();
+
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/outline 這是參數");
   } finally {
     await cleanup();
   }

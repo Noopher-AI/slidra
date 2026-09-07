@@ -1,5 +1,8 @@
+import { useEffect, useState, type KeyboardEvent } from "react";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
+import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
+import { SlashMenu } from "./SlashMenu.js";
 
 export interface ChatPanelProps {
   messages: ChatMessage[];
@@ -19,6 +22,13 @@ export interface ChatPanelProps {
   onPinnedClick(comment: NumberedComment): void;
   /** The row's own ✕ — deletes immediately, no confirmation (prototype's own rule, `comotion-logic-v3.js:665`). */
   onPinnedRemove(commentId: string): void;
+  /**
+   * [E3.T3] #232/#236: the full `/` list — agent report ∪ bundled skills ∪
+   * user skills, kept current by App.tsx's GET + `agent-commands` SSE
+   * subscription. This component owns only the menu's transient UI state
+   * (selection, whether Esc dismissed it); it never fetches anything.
+   */
+  commands: readonly SlashCommandOption[];
 }
 
 /**
@@ -27,8 +37,9 @@ export interface ChatPanelProps {
  * `.chat-input button` / `.chat-input input` 驅動 agent 編輯鎖的凍結流程，
  * e2e/helpers/launch.ts 的 `openApp({ waitForAgent: true })` 輪詢
  * `.agent-dot`（在 TitleBar.tsx，不在這裡，但同一個「不改既有契約」的原
- * 則）——兩者都不能因為殼重建而跟著變。狀態（messages/draft/…）仍然留在
- * App.tsx，這個元件純粹是搬過來的 JSX + 兩個小常數表，不擁有任何狀態。
+ * 則）——兩者都不能因為殼重建而跟著變。訊息／草稿等狀態仍然留在
+ * App.tsx；[E3.T3] 起，這個元件另外自己持有斜線選單的兩個 UI 狀態（選取
+ * 索引、是否被 Esc 關閉），因為那是輸入框互動的細節，App.tsx 不需要知道。
  */
 export function ChatPanel({
   messages,
@@ -41,8 +52,69 @@ export function ChatPanel({
   comments,
   onPinnedClick,
   onPinnedRemove,
+  commands,
 }: ChatPanelProps) {
   const hasComments = comments.length > 0;
+
+  // [E3.T3] #232/#236's slash-command menu. Two UI states only: which item
+  // is highlighted, and whether Esc has dismissed the menu for the current
+  // trigger span.
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+
+  const query = slashQuery(draft);
+  // Esc's dismissal is scoped to "the trigger span currently in progress"
+  // (contract: continuing to type must NOT reopen it) — only reset the
+  // moment `draft` leaves the trigger condition entirely (`query` goes
+  // back to `null`), never merely because the query text changed.
+  useEffect(() => {
+    if (query === null) setDismissed(false);
+  }, [query === null]);
+  // The candidate set changes on every keystroke (narrower query) and on
+  // every fresh `commands` report (live update while the menu is open) —
+  // either one invalidates whatever was previously highlighted, so both
+  // reset the selection back to the top.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query, commands]);
+
+  const filtered = commands.length > 0 && query !== null ? filterCommands(commands, query) : [];
+  const menuOpen = query !== null && !dismissed;
+  const showMenu = menuOpen && (commands.length === 0 || filtered.length > 0);
+  const effectiveIndex = filtered.length === 0 ? 0 : Math.min(selectedIndex, filtered.length - 1);
+
+  function selectCommand(command: SlashCommandOption): void {
+    onDraftChange(completeDraft(command.name));
+    setSelectedIndex(0);
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (!showMenu) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (filtered.length > 0) setSelectedIndex(moveSelection(effectiveIndex, filtered.length, 1));
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (filtered.length > 0) setSelectedIndex(moveSelection(effectiveIndex, filtered.length, -1));
+      return;
+    }
+    if (event.key === "Enter") {
+      // Empty state (nothing to complete to): let the keystroke fall
+      // through to the form's own submit, unintercepted — a hint text must
+      // never block sending a message.
+      if (filtered.length === 0) return;
+      event.preventDefault();
+      selectCommand(filtered[effectiveIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setDismissed(true);
+    }
+  }
+
   return (
     <aside className="chat-sidebar">
       <div className="chat-messages">
@@ -115,9 +187,11 @@ export function ChatPanel({
           onSubmit();
         }}
       >
+        {showMenu && <SlashMenu commands={filtered} selectedIndex={effectiveIndex} onSelect={selectCommand} />}
         <input
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={handleInputKeyDown}
           placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
         />
         <div className="chat-input-footer">

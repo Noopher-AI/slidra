@@ -15,6 +15,7 @@ import {
   resolveCoMotionHome,
 } from "@co-motion/core";
 import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
+import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
@@ -68,6 +69,15 @@ export interface ServeOptions {
    * makes that collision impossible rather than merely discouraged.
    */
   staticDir?: string;
+  /**
+   * Overrides for the two skill directories `GET /api/agent/commands` and
+   * the `agent-commands` SSE event scan (architecture decision on
+   * #232/#236). Omitted in production (`cli.ts`), where both resolve to
+   * their real defaults (see `resolveSkillDirs`). Tests always pass this —
+   * relying on `homedir()` would leak whatever `~/.claude/skills` happens
+   * to exist on the machine running the test into assertions.
+   */
+  skillDirs?: Partial<SkillDirs>;
 }
 
 export interface RunningServer {
@@ -132,6 +142,32 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     editingLock.off("unfrozen", onUnfrozen);
   });
 
+  // `/` 斜線命令清單（architecture comment on #232/#236): agent report ∪
+  // bundled skills ∪ user skills, recomputed on demand rather than cached —
+  // the underlying skill directories can change between calls and this is
+  // never hot-path code. `GET /api/agent/commands` below calls this
+  // directly for the initial value; the SSE push below recomputes and
+  // re-broadcasts the same shape whenever the agent sends a fresh report.
+  // Resolved lazily, on first actual use, rather than eagerly here: several
+  // existing tests (e.g. raw.test.ts) build a `ServeOptions` with no
+  // `agent` at all, because they never touch chat — startServe must not
+  // crash on `options.agent.kind` for those callers just because this
+  // unrelated feature also lives here.
+  let skillDirs: SkillDirs | undefined;
+  const computeSlashCommands = () => {
+    skillDirs ??= resolveSkillDirs(options.agent.kind, options.skillDirs);
+    return collectSlashCommands(chatSession.getReportedCommands(), skillDirs);
+  };
+  const onAvailableCommands = () => {
+    void computeSlashCommands().then((commands) => {
+      changeBroadcaster.broadcast("agent-commands", { commands });
+    });
+  };
+  chatSession.on("available-commands", onAvailableCommands);
+  disposers.push(async () => {
+    chatSession.off("available-commands", onAvailableCommands);
+  });
+
   // NOOP-93 §4.4: one export job at a time, for this server's whole
   // lifetime — a fresh manager per `startServe` call, never persisted.
   // `serverAddress` starts with a placeholder port because the real one
@@ -153,6 +189,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       editingLock,
       exportJobManager,
       serverAddress,
+      computeSlashCommands,
       req,
       res,
     );
@@ -218,6 +255,7 @@ async function handleRequest(
   editingLock: EditingLock,
   exportJobManager: ExportJobManager,
   serverAddress: { host: string; port: number },
+  computeSlashCommands: () => Promise<SlashCommand[]>,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -343,6 +381,15 @@ async function handleRequest(
 
     if (url.pathname === "/api/editing") {
       sendJson(res, 200, { frozen: editingLock.getState() === "agent" });
+      return;
+    }
+
+    if (url.pathname === "/api/agent/commands") {
+      // Same "GET for the initial value, SSE for updates, no replay"
+      // pattern as /api/editing above: a page load must see the current
+      // list without waiting for the agent to happen to re-report it.
+      const commands = await computeSlashCommands();
+      sendJson(res, 200, { commands });
       return;
     }
 

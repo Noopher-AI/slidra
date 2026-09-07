@@ -22,10 +22,23 @@
 //     the same request-permission/hold/run dance as editing-fake-acp-agent.mjs's
 //     default case, giving AC5's titlebar-frozen screenshot a real,
 //     observable freeze window (E2E_FREEZE_HOLD_MS).
-//   - anything else: echoes the received prompt text back verbatim as an
-//     `agent_message_chunk` — this is what AC1's "送出" scenario actually
-//     asserts on (proof the comment-context prefix, built server-side by
-//     session.ts, really reached the agent; §4.4 of the plan).
+//   - anything else, at index 1 or later: echoes the received prompt text
+//     back verbatim as an `agent_message_chunk` — this is what AC1's "送出"
+//     scenario actually asserts on (proof the comment-context prefix, built
+//     server-side by session.ts, really reached the agent; §4.4 of the
+//     plan), and also what [E3.T3]'s "送出 /xxx 參數" e2e test asserts on
+//     (proof CoMotion never rewrites the text before it reaches the agent).
+//
+// [E3.T3] #232/#236's own two env vars (the `/` command list):
+//   - E2E_AVAILABLE_COMMANDS (JSON array of {name, description}): sent as
+//     one `available_commands_update` right after `newSession` returns —
+//     the agent's *initial* report, before any author turn.
+//   - E2E_AVAILABLE_COMMANDS_UPDATE (JSON array): whenever an author
+//     message (index >= 1) contains "更新命令", sends this as a second,
+//     full-replacement `available_commands_update` instead of running any
+//     of the branches below — proves a client subscribed to the
+//     `agent-commands` SSE event actually reacts to a *later* report, not
+//     only the first one.
 
 import * as acp from "@zed-industries/agent-client-protocol";
 import { execFile } from "node:child_process";
@@ -38,6 +51,10 @@ const presentationId = requireEnv("E2E_PRESENTATION_ID");
 const draftHoldMs = Number(process.env.E2E_DRAFT_HOLD_MS ?? "0");
 const freezeHoldMs = Number(process.env.E2E_FREEZE_HOLD_MS ?? "0");
 const agentComment = process.env.E2E_AGENT_COMMENT ?? "agent 透過命令寫的留言";
+const availableCommands = process.env.E2E_AVAILABLE_COMMANDS ? JSON.parse(process.env.E2E_AVAILABLE_COMMANDS) : undefined;
+const availableCommandsUpdate = process.env.E2E_AVAILABLE_COMMANDS_UPDATE
+  ? JSON.parse(process.env.E2E_AVAILABLE_COMMANDS_UPDATE)
+  : undefined;
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -62,19 +79,42 @@ class CommentFakeAgent {
 
   async newSession(params) {
     this.sessionCwd = params.cwd;
+    if (availableCommands) {
+      // Sent after the response is decided but before it is returned — a
+      // conforming agent's initial report lands between `session/new` and
+      // the first author turn (see session.ts's own comment on why
+      // `relayingCurrentTurn` must not gate this).
+      await this.connection.sessionUpdate({
+        sessionId: "e2e-fake-session",
+        update: { sessionUpdate: "available_commands_update", availableCommands },
+      });
+    }
     return { sessionId: "e2e-fake-session" };
   }
 
   async prompt(params) {
     const index = promptCount++;
-    if (index !== AUTHOR_PROMPT_INDEX) {
-      return { stopReason: "end_turn" };
-    }
-
     const authorText = extractPromptText(params.prompt);
     const sessionId = params.sessionId;
 
-    if (authorText.includes("【從大綱草擬新頁】")) {
+    // [E3.T3] #232/#236: a later, full-replacement report — checked before
+    // the AUTHOR_PROMPT_INDEX gate below (unlike every other branch, this
+    // one must also fire for a *second* or later author message).
+    if (availableCommandsUpdate && index >= AUTHOR_PROMPT_INDEX && authorText.includes("更新命令")) {
+      await this.connection.sessionUpdate({
+        sessionId,
+        update: { sessionUpdate: "available_commands_update", availableCommands: availableCommandsUpdate },
+      });
+      return { stopReason: "end_turn" };
+    }
+
+    // The 編輯規約 turn (index 0) is the agent's own bookkeeping — never
+    // echoed, never matched against any branch below.
+    if (index < AUTHOR_PROMPT_INDEX) {
+      return { stopReason: "end_turn" };
+    }
+
+    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("【從大綱草擬新頁】")) {
       const match = /在第 (\d+) 頁/.exec(authorText);
       if (!match) throw new Error("prompt 裡找不到「在第 N 頁」——固定前綴的格式變了嗎？");
       const at = match[1];
@@ -128,7 +168,7 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    if (authorText.includes("寫留言")) {
+    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("寫留言")) {
       const command = `co-motion comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
       await requestAndRun(this.connection, sessionId, "e2e-comment-add", "新增留言", command, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
@@ -138,7 +178,7 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    if (authorText.includes("持鎖")) {
+    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("持鎖")) {
       const slide = await this.connection.readTextFile({ sessionId, path: SLIDE_PATH, line: null, limit: null });
       const elementId = extractTextElementId(slide.content);
       const command = `co-motion text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
@@ -150,9 +190,14 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    // Default: echo the received prompt back verbatim — proves the
-    // comment-context prefix (session.ts's buildCommentContext) really
-    // arrived, in its exact real-time content, not a canned reply.
+    // Default (any author message, index >= AUTHOR_PROMPT_INDEX, that
+    // matched none of the branches above): echo the received prompt back
+    // verbatim — proves the comment-context prefix (session.ts's
+    // buildCommentContext) really arrived, in its exact real-time content,
+    // not a canned reply. Every existing test in this suite sends at most
+    // one author message, so widening this from "only index 1" to "index 1
+    // or later" does not change any of their outcomes (verified by
+    // `grep -n "sendChatMessage" e2e/ai-collab.test.ts`).
     await this.connection.sessionUpdate({
       sessionId,
       update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: authorText } },

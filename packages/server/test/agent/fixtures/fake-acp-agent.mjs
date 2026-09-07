@@ -89,6 +89,22 @@
 //                            `{ writeTextFileError: { code, message } }` on
 //                            failure or `{ writeTextFileResult: true }` if
 //                            it unexpectedly succeeds.
+//                            availableCommands: array of
+//                            { name, description } — sent as one
+//                            `available_commands_update` right after
+//                            `newSession` returns its response (never
+//                            folded into an author turn — see session.ts's
+//                            own comment on why the real update must arrive
+//                            outside `relayingCurrentTurn`).
+//                            availableCommandsUpdateOnPromptIndex +
+//                            availableCommandsUpdate: at this prompt index,
+//                            sends a second `available_commands_update`
+//                            carrying availableCommandsUpdate wholesale (a
+//                            full replacement, same as a real agent
+//                            re-reporting its list) — used to prove a
+//                            client subscribed to `available-commands`
+//                            actually recomputes on a later report, not
+//                            only the first one.
 //
 // Every process also logs its own pid as the very first log line, so tests
 // can check with `process.kill(pid, 0)` whether a given spawn is still
@@ -153,6 +169,18 @@ class FakeAgent {
     if (config.authRequired) {
       throw acp.RequestError.authRequired();
     }
+
+    if (config.availableCommands) {
+      // Sent after newSession's own response is decided but before it is
+      // returned — a conforming agent's initial report lands between
+      // `session/new` and the first author turn, never folded into one
+      // (ticket for #232/#236: `relayingCurrentTurn` must not gate this).
+      await this.connection.sessionUpdate({
+        sessionId: "fake-session-1",
+        update: { sessionUpdate: "available_commands_update", availableCommands: config.availableCommands },
+      });
+    }
+
     return { sessionId: "fake-session-1" };
   }
 
@@ -254,6 +282,16 @@ class FakeAgent {
             config.toolCallOutput === undefined
               ? undefined
               : [{ type: "content", content: { type: "text", text: config.toolCallOutput } }],
+        },
+      });
+    }
+
+    if (config.availableCommandsUpdateOnPromptIndex === index) {
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: config.availableCommandsUpdate ?? [],
         },
       });
     }

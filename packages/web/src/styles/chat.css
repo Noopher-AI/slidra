@@ -200,6 +200,7 @@
    張卡上（不是 input 自己）。`.chat-input input` / `.chat-input button`
    選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層 footer。 */
 .chat-input {
+  position: relative; /* anchors .slash-menu, which floats above this card */
   flex: none;
   margin: var(--space-3) var(--space-5) var(--space-5);
   display: flex;
@@ -393,5 +394,63 @@
 
 .chat-input-pinned {
   color: var(--ink-400);
+  font-size: var(--text-xs-hint);
+}
+
+/* [E3.T3] #232/#236: `/` 斜線命令選單——浮在輸入框卡片正上方（`.chat-input`
+   的 position: relative 是它的錨點），不擠壓既有版面。捲動而非裁切過長清
+   單，避免清單長度改變輸入框的視覺高度。 */
+.slash-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: var(--space-2);
+  max-height: calc(var(--control-h) * 6.5); /* 同 .chat-pinned-list：約 6.5 列後自己捲動 */
+  overflow-y: auto;
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+  list-style: none;
+  padding: var(--space-2);
+  margin-top: 0;
+  margin-left: 0;
+  margin-right: 0;
+  z-index: 1;
+}
+
+.slash-menu-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+
+.slash-menu-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.slash-menu-item-selected {
+  background: var(--brand-red-tint);
+}
+
+.slash-menu-item-name {
+  flex: none;
+  color: var(--ink-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.slash-menu-item-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-500);
   font-size: var(--text-xs-hint);
 }

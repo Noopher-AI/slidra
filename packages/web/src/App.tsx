@@ -4,6 +4,7 @@ import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsse
 import { appendMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
+import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
@@ -142,6 +143,14 @@ export function App() {
   // `GET /api/save-state` in the mount effect below resolves.
   const [saveState, setSaveState] = useState<SaveState>({ known: false });
   const [openError, setOpenError] = useState<string | null>(null);
+
+  // [E3.T3] #232/#236: the `/` command list — agent report ∪ bundled
+  // skills ∪ user skills (architecture decision on #232/#236 — not a
+  // fallback, all three are standing sources). `[]` means "nothing
+  // reported/found yet", same meaning `GET /api/agent/commands` gives an
+  // agent that has never reported and two empty/missing skill
+  // directories — SlashMenu shows the fixed hint text for that case.
+  const [commands, setCommands] = useState<SlashCommandOption[]>([]);
 
   // NOOP-93 §4.7: the Export dropdown's own open/closed state, and the
   // job UI state derived from `export` SSE events (or set directly by
@@ -400,6 +409,7 @@ export function App() {
       onFrozenChange: setEditingFrozen,
       onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
+      onCommandsChange: setCommands,
     });
     // The stream's own editing-frozen/editing-unfrozen carry no replay
     // (same reasoning as presentation-changed) — the state as of *this*
@@ -414,6 +424,13 @@ export function App() {
         // "not frozen" on a genuine failure; better to say nothing and let
         // the next presentation-changed/editing-frozen event correct it.
       });
+    // [E3.T3]: same "GET seeds the initial value, SSE carries updates, no
+    // fallback on failure" shape as /api/editing above — a fetch failure
+    // leaves `commands` at its initial `[]` rather than fabricating a list.
+    void fetch("/api/agent/commands")
+      .then((response) => response.json())
+      .then((data: { commands: SlashCommandOption[] }) => setCommands(data.commands))
+      .catch(() => {});
     presentationLoaderRef.current?.load();
     void refreshSaveState();
     void refreshComments();
@@ -1440,6 +1457,7 @@ export function App() {
                   const comment = comments.find((c) => c.id === commentId);
                   if (comment) void deletePinnedComment(comment);
                 }}
+                commands={commands}
               />
             }
           />
