@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { createTableElement, parseFont, readTableModel, setTableCellText, type FontMetrics } from "@co-motion/core";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
@@ -39,8 +39,8 @@ async function readSlide(id: string, slidePath = "slides/001.svg"): Promise<stri
 
 const BLANK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
 const bundledFontPath = path.join(
-  path.dirname(createRequire(import.meta.url).resolve("@co-motion/core")),
-  "assets/fonts/NotoSansTC-Presentation.ttf",
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../core/src/assets/fonts/NotoSansTC-Presentation.ttf",
 );
 let fonts: Map<string, FontMetrics>;
 beforeAll(async () => {
