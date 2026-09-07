@@ -1544,6 +1544,9 @@
         lastClient: { x: event.clientX, y: event.clientY },
         hitId: hit ? hit.getAttribute("id") : null,
         handleName: handleName,
+        // ⇧/⌘/Ctrl held at pointer-down: a drag that starts on an unselected
+        // element ADDS it to the selection instead of replacing it (below).
+        additive: event.shiftKey || event.metaKey || event.ctrlKey,
         started: false,
         kind: null,
         handle: null,
@@ -1592,10 +1595,15 @@
             // same "select, then move" behaviour every direct-manipulation
             // editor gives a plain (non-additive) drag (§4.2's "多選" row
             // implies the selection in effect at drag start is what moves).
+            // With ⇧/⌘/Ctrl held it ADDS instead: a ⇧-click that jitters
+            // past DRAG_THRESHOLD_PX (trackpads do) must not silently throw
+            // away the multi-selection the user was building — found when a
+            // human's "⇧-click chart, Group" kept ending up with only the
+            // chart selected.
             var target = document.getElementById(gesture.hitId);
-            selectedIds = [gesture.hitId];
+            selectedIds = gesture.additive ? selectedIds.concat([gesture.hitId]) : [gesture.hitId];
             updateBoxes();
-            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: false }));
+            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: gesture.additive }));
           }
         }
         // reportViewport() is otherwise only wired to the iframe's own

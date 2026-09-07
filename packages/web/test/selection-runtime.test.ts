@@ -1143,3 +1143,37 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     });
   });
 });
+
+// A ⇧-held pointer-down that jitters past DRAG_THRESHOLD_PX on an element
+// that is not yet selected must ADD it (the multi-selection the user was
+// building survives), whereas the same drag without a modifier replaces the
+// selection with just that element — found when a human's "⇧-click chart,
+// then Group" kept ending up with only the chart selected.
+describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是取代", () => {
+  async function dragOnto(shift: boolean): Promise<{ id?: string; additive?: boolean }[]> {
+    const { win, doc } = boot(
+      '<svg viewBox="0 0 1280 720"><rect id="el-a" width="100" height="100"/><rect id="el-b" x="300" width="100" height="100"/></svg>',
+    );
+    click(doc, doc.getElementById("el-a")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    doc.getElementById("el-b")!.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: 350, clientY: 50, shiftKey: shift }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 360, clientY: 60, shiftKey: shift }));
+    await tick();
+    stop();
+    return (messages as { event?: string; id?: string; additive?: boolean }[]).filter((m) => m.event === "select");
+  }
+
+  it("⇧ 拖曳一個未選取的元素：送出 additive:true 的 select，原本的選取保留", async () => {
+    const selects = await dragOnto(true);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: true })]);
+  });
+
+  it("不帶修飾鍵拖曳一個未選取的元素：送出 additive:false 的 select（既有行為）", async () => {
+    const selects = await dragOnto(false);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: false })]);
+  });
+});
