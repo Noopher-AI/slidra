@@ -11,6 +11,7 @@ import {
   serializeClipboardSvg,
   type ClipboardPayload,
 } from "../src/element-clipboard.js";
+import { STYLE_ATTRIBUTE_WHITELIST } from "../src/element-edit.js";
 import { assertSlideCompliant } from "../src/slide/format.js";
 import { attributeValue, scanDocument } from "../src/slide/scan.js";
 
@@ -201,6 +202,10 @@ describe("sanitizeClipboardMarkup", () => {
     ["P07", '<g id="el-a"><path d="M0 0\nL1 1"/></g>'],
     ["P08", '<g id="el-a"><image href="../img/a.png" width="1" height="1"/></g>'],
     ["P09", '<g id="el-a"><image href="a&amp;b.png" width="1" height="1"/></g>'],
+    // r7 ([E2.T18r7] FAIL #2): write-side source is `element insert`'s `href`,
+    // which imposes no ASCII restriction — a Chinese-named asset path is
+    // ordinary input on a Traditional-Chinese-first product, not an edge case.
+    ["P10", '<g id="el-a"><image href="../assets/照片.png" width="1" height="1"/></g>'],
   ];
 
   it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
@@ -268,6 +273,31 @@ describe("sanitizeClipboardMarkup", () => {
       '<g id="el-tBF580-7QNrp" data-comot-name="標題">\n    <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">allowlist-probe</text>\n  </g>',
       false,
     ],
+    // r7 ([E2.T18r7] FAIL #1): write-side source is `element-text.ts:110-116`'s
+    // `data-comot-list` contract — one token per paragraph, `content.split("\n")`,
+    // no upper bound. A three-paragraph list is ordinary input; the r6 grammar
+    // capped at two tokens and rejected it.
+    [
+      "a data-comot-list with three tokens (three-paragraph text box) is accepted",
+      '<g id="el-a"><text data-comot-list="bullet none none" font-size="24" xml:space="preserve"><tspan x="0" y="1">a</tspan></text></g>',
+      false,
+    ],
+    // r7 ([E2.T18r7] FAIL #3): write-side source is `element-group.ts`'s
+    // `setElementName` — it never bounds `name`'s length, and length isn't a
+    // security property for a non-reference-carrying free-text attribute (D9).
+    [
+      "a data-comot-name longer than 512 characters is accepted",
+      `<g id="el-a" data-comot-name="${"長".repeat(600)}"><rect width="1" height="1"/></g>`,
+      false,
+    ],
+    // r7 ([E2.T18r7] FAIL #4): a prototype-chain property name must fall
+    // through to the same "not on the allowlist" rejection as any other
+    // unrecognised attribute — not resolve to an inherited `Object.prototype`
+    // value (which was truthy and passed), and not throw a raw JS TypeError
+    // instead of CoMotionError (`valueOf`/`__proto__`'s old failure mode).
+    ["a constructor attribute name is rejected, not silently accepted via Object.prototype", '<g id="el-a"><rect width="1" height="1" constructor="x"/></g>', true],
+    ["a toString attribute name is rejected, not silently accepted via Object.prototype", '<g id="el-a"><rect width="1" height="1" toString="x"/></g>', true],
+    ["a __proto__ attribute name is rejected with CoMotionError, not a raw TypeError", '<g id="el-a"><rect width="1" height="1" __proto__="x"/></g>', true],
   ];
 
   it.each(BEHAVIOR_BOUNDARY)("%s", (_label, markup, shouldThrow) => {
@@ -320,6 +350,45 @@ describe("WHATWG URL parser characteristics I1 depends on", () => {
     expect(new URL("https:evil.example/x.png", "http://clipboard.invalid/base/").host).toBe("evil.example");
     expect(new URL("http:evil.example/x.png", HTTPS_BASE).host).toBe("evil.example");
   });
+});
+
+/**
+ * [E2.T18r7] 債: r6's four mis-rejections all traced back to a grammar cell
+ * that was copied from a probe corpus's output rather than derived from the
+ * write side, so the corpus's blind spots became the grammar's blind spots.
+ * This test pins one concrete write-side/grammar seam directly: every
+ * attribute name `element style set` (`element-edit.ts`'s
+ * `STYLE_ATTRIBUTE_WHITELIST`) is allowed to write must have *some* grammar
+ * entry on `<text>` (the one tag carrying both `COMMON` and `TEXTISH`) — if
+ * a future `STYLE_ATTRIBUTE_WHITELIST` addition has no `SAMPLE_VALUES` entry
+ * below, the first assertion catches that gap explicitly rather than the
+ * loop silently skipping it.
+ */
+describe("traceability: element style set's attribute names all have a clipboard grammar entry", () => {
+  const SAMPLE_VALUES: Readonly<Record<string, string>> = {
+    fill: "#000000",
+    stroke: "none",
+    "stroke-width": "1",
+    "stroke-dasharray": "1 2",
+    opacity: "1",
+    "font-family": "Noto Sans TC",
+    "font-size": "16",
+    "font-weight": "700",
+    "text-anchor": "middle",
+  };
+
+  it("STYLE_ATTRIBUTE_WHITELIST has a known sample value for every entry", () => {
+    const missing = STYLE_ATTRIBUTE_WHITELIST.filter((name) => !(name in SAMPLE_VALUES));
+    expect(missing).toEqual([]);
+  });
+
+  it.each(STYLE_ATTRIBUTE_WHITELIST.map((name) => [name, SAMPLE_VALUES[name]] as const))(
+    "%s=%s is accepted on <text>",
+    (name, value) => {
+      const markup = `<g id="el-a"><text ${name}="${value}" font-size="16">a</text></g>`;
+      expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
+    },
+  );
 });
 
 describe("A6: serialized clipboard output never contains script or external references", () => {
