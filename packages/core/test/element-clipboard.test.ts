@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CoMotionError } from "../src/errors.js";
 import {
@@ -8,6 +11,10 @@ import {
   serializeClipboardSvg,
   type ClipboardPayload,
 } from "../src/element-clipboard.js";
+import { assertSlideCompliant } from "../src/slide/format.js";
+import { attributeValue, scanDocument } from "../src/slide/scan.js";
+
+const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
 const wrap = (body: string, viewBox = "0 0 1280 720"): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${body}</svg>`;
@@ -157,6 +164,18 @@ describe("sanitizeClipboardMarkup", () => {
     ["N10", '<g id="el-a"><image href="/&#9;/evil.example/x.png" width="1" height="1"/></g>'],
     ["N11", '<g id="el-a"><rect style="fill:\\75rl(\\00002f\\00002fevil.example/x.svg#g)" width="1" height="1"/></g>'],
     ["N12", '<g id="el-a"><image href="ht\tps://evil.example/x.png" width="1" height="1"/></g>'],
+    // r6 (NOOP-210/[E2.T18r6] AC1): r5's three CSS-carrying bypasses, closed by
+    // dropping `style` from the allowlist entirely rather than adding a fourth
+    // CSS-shape rule — none of these ever reach a value check, all three fail
+    // at "style not in allowlist".
+    ["R1", '<g id="el-a"><rect style="fill:url(https:evil.example/x.svg#g" width="1" height="1"/></g>'],
+    ["R2", '<g id="el-a"><rect style="cursor:image-set(&quot;https:evil.example/c.png&quot; 1x),auto" width="1" height="1"/></g>'],
+    ["R3", '<g id="el-a"><rect style="background-image:image-set(&quot;https:evil.example/c.png&quot; 1x)" width="1" height="1"/></g>'],
+    // r6 (AC3): r5 judged these two "not a problem" under the denylist; the
+    // allowlist closes them for free (style / data-x are simply not on any
+    // tag's attribute list), which is the concrete case for allowlist > denylist.
+    ["J1", '<g id="el-a"><rect style="fill:src(https://evil.example/x.png)" width="1" height="1"/></g>'],
+    ["J2", '<g id="el-a" data-x="https://evil.example/x"><rect width="1" height="1"/></g>'],
   ];
 
   it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {
@@ -186,6 +205,77 @@ describe("sanitizeClipboardMarkup", () => {
 
   it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
     expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
+  });
+
+  // r6 ([E2.T18r6] §6.4, AC5): shapes `serializeClipboardSvg` actually
+  // produces that no prior round's matrix covered — literal values taken
+  // verbatim from the plan's pod-verified `element copy` output (§3.3), not
+  // hand-typed, so a wrong grammar entry shows up as a false rejection here.
+  const ACCEPT_SHAPES: ReadonlyArray<[cell: string, markup: string]> = [
+    [
+      "ellipse with a rotate() transform",
+      '<g id="el-JybPIISuQCCR" transform="translate(200 20) rotate(30)"><ellipse cx="40" cy="20" rx="40" ry="20" fill="#0b3d91"/></g>',
+    ],
+    [
+      "locked line",
+      '<g data-comot-lock="true" id="el-P0I-HMrTeIUb"><line x1="0" y1="0" x2="100" y2="100" stroke="#000" stroke-width="3"/></g>',
+    ],
+    [
+      "media placeholder (data-comot-media relative path)",
+      '<g id="el-eYFfylM1nOMY" data-comot-media="../assets/clip.webm" transform="translate(400 20)"><rect x="0" y="0" width="60" height="60"/></g>',
+    ],
+    [
+      "text box: list spec + a bold/italic run tspan + a break tspan + a list-marker text",
+      '<g id="el-X_hoxBy60u_O" data-comot-text-width="220" data-comot-text-height="104.256" data-comot-text-align="center" transform="translate(600 100)">' +
+        '<text data-comot-list="bullet none" font-family="Noto Sans TC" font-size="24" fill="#fff" xml:space="preserve">' +
+        '<tspan x="44" y="27.84"><tspan font-weight="700" font-style="italic">第一段</tspan>文字很長</tspan>' +
+        '<tspan x="56" y="62.592" data-comot-break="1">需要換行測試</tspan><tspan x="74" y="97.344">第二段</tspan></text>' +
+        '<text data-comot-list-marker="true" font-family="Noto Sans TC" font-size="24" fill="#fff" xml:space="preserve">' +
+        '<tspan x="0" y="27.84">•</tspan></text></g>',
+    ],
+  ];
+
+  it.each(ACCEPT_SHAPES)("accepts %s", (_label, markup) => {
+    expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
+  });
+
+  const EFFECT_ACCEPT_SHAPES: ReadonlyArray<[cell: string, markup: string]> = [
+    ["enter/fade", '<comot:effect target="el-jtW-4ng6_Mpb" family="enter" effect="fade" start="on-click" duration="500" delay="100"/>'],
+    [
+      "path effect with d",
+      '<comot:effect target="el-dyi7D-u9p3SX" family="path" effect="path" start="after-previous" duration="0.6" delay="0" d="M0 0 L100 100"/>',
+    ],
+    ["media/play", '<comot:effect target="el-eYFfylM1nOMY" family="media" effect="play" start="on-click" duration="0" delay="0"/>'],
+  ];
+
+  it.each(EFFECT_ACCEPT_SHAPES)("accepts effect %s", (_label, markup) => {
+    expect(() => sanitizeClipboardMarkup(markup, "effect")).not.toThrow();
+  });
+
+  // r6 (§6.4): behavior-contract boundary rows from §4.1 that no existing
+  // matrix cell covers — an empty container, an unknown tag, a type error, a
+  // rejected transform function alongside three over-rejection guards.
+  const BEHAVIOR_BOUNDARY: ReadonlyArray<[label: string, markup: string, shouldThrow: boolean]> = [
+    ["an empty container (with an id) is rejected", '<g id="el-a"></g>', true],
+    ["an unknown tag (<use>) is rejected", '<g id="el-a"><use href="#x" width="1" height="1"/></g>', true],
+    ["a non-numeric width is rejected", '<g id="el-a"><rect width="abc" height="1"/></g>', true],
+    ["transform=\"url(#a)\" is rejected", '<g id="el-a" transform="url(#a)"><rect width="1" height="1"/></g>', true],
+    ["fill=\"url(#grad1)\" (internal reference) is accepted", '<g id="el-a"><rect fill="url(#grad1)" width="1" height="1"/></g>', false],
+    ["an identity transform=\"\" is accepted", '<g id="el-a" transform=""><rect width="1" height="1"/></g>', false],
+    ["an id on a primitive (not just the container) is accepted", '<g id="el-a"><text id="el-a-text" x="0" y="0">hi</text></g>', false],
+    [
+      "an indented/newline convert-output fragment is accepted",
+      '<g id="el-tBF580-7QNrp" data-comot-name="標題">\n    <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">allowlist-probe</text>\n  </g>',
+      false,
+    ],
+  ];
+
+  it.each(BEHAVIOR_BOUNDARY)("%s", (_label, markup, shouldThrow) => {
+    if (shouldThrow) {
+      expect(() => sanitizeClipboardMarkup(markup, "element")).toThrow(CoMotionError);
+    } else {
+      expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
+    }
   });
 
   const DECLARATION_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
@@ -241,6 +331,94 @@ describe("A6: serialized clipboard output never contains script or external refe
     );
     // A source slide this shape is already non-compliant and could never have been written by this app.
     expect(() => extractElementsForCopy(dirtySvg, "slides/001.svg", ["el-a"])).toThrow(CoMotionError);
+  });
+});
+
+/**
+ * r6 ([E2.T18r6] §3.5/AC7): the wrapper `<svg>`'s own `viewBox` attribute
+ * was never validated or escaped before this round — `sourceSlidePath` was,
+ * `viewBox` wasn't. A `viewBox` shaped like `0 0 1 1" onload="fetch(...)`
+ * closes its own quote and opens a live attribute on the wrapper itself,
+ * defeating `serializeClipboardSvg`'s own claim that nothing this app
+ * writes to the clipboard can be the unsafe half of a round trip.
+ */
+describe("AC7: the wrapper <svg>'s viewBox can't inject an attribute", () => {
+  it("re-serializing an element copied from a slide with a malicious viewBox does not carry the injection into the output", () => {
+    const maliciousSvg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox='0 0 1 1" onload="fetch(1)'>` +
+      '<g id="el-a"><rect width="10" height="10"/></g></svg>';
+    const payload = extractElementsForCopy(maliciousSvg, "slides/001.svg", ["el-a"]);
+    const output = serializeClipboardSvg(payload);
+    expect(output).not.toContain("onload=");
+  });
+
+  it("parseClipboardSvg returns null for a clipboard SVG whose viewBox carries the same injection", () => {
+    const hostileSvg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox='0 0 1 1" onload="fetch(1)' ` +
+      'data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+      '<g id="el-a"><rect width="10" height="10"/></g></svg>';
+    expect(parseClipboardSvg(hostileSvg)).toBeNull();
+  });
+});
+
+/**
+ * r6 ([E2.T18r6] §5 AC4, §6.4): every element/effect fragment co-motion's
+ * own serializer can actually produce, across every compliant fixture slide
+ * in the repo, must be accepted — the allowlist's whole premise is "shapes
+ * the serializer produces", so a false rejection here means a real user
+ * copy/paste would break. Walks `e2e/fixtures/**\/slides/*.svg` and
+ * `demo/slides/*.svg` rather than a hand-picked subset, so a shape this
+ * suite's authors didn't think to hand-write still gets checked.
+ */
+describe("AC4: every real serializer output across the repo's fixture slides passes the allowlist", () => {
+  function collectSlidePaths(): string[] {
+    const found: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile() && entry.name.endsWith(".svg") && path.basename(dir) === "slides") {
+          found.push(full);
+        }
+      }
+    };
+    for (const root of ["e2e/fixtures", "demo"]) walk(path.join(repoRoot, root));
+    return found;
+  }
+
+  it("no false rejection across every compliant slide's top-level elements and effects", () => {
+    const slidePaths = collectSlidePaths();
+    expect(slidePaths.length).toBeGreaterThan(0);
+
+    let checkedFragments = 0;
+    for (const slidePath of slidePaths) {
+      const svg = readFileSync(slidePath, "utf8");
+      try {
+        assertSlideCompliant(svg, slidePath);
+      } catch {
+        continue; // not every fixture deck is a compliant slide on purpose (e.g. hostile-deck).
+      }
+
+      const svgRoot = scanDocument(svg).find((node) => node.tag === "svg");
+      if (!svgRoot) continue;
+      const topLevelIds = svgRoot.children
+        .filter((child) => child.tag === "g")
+        .map((child) => attributeValue(child, "id"))
+        .filter((id): id is string => id !== null);
+      if (topLevelIds.length === 0) continue;
+
+      const payload = extractElementsForCopy(svg, slidePath, topLevelIds);
+      for (const element of payload.elements) {
+        expect(() => sanitizeClipboardMarkup(element, "element")).not.toThrow();
+        checkedFragments++;
+      }
+      for (const effect of payload.effects) {
+        expect(() => sanitizeClipboardMarkup(effect, "effect")).not.toThrow();
+        checkedFragments++;
+      }
+    }
+    expect(checkedFragments).toBeGreaterThan(0);
   });
 });
 
