@@ -313,7 +313,18 @@ const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> =
   ["R3 backslash href", '<g id="el-hostile"><image href="\\\\evil.example\\x.png" width="10" height="10"/></g>'],
   [
     "R3 xl:href namespace alias",
-    '<g id="el-hostile" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https://evil.example/x.png" width="10" height="10"/></g>',
+    // r5 (NOOP-201 §6.2): the "//"-form payload was already caught by ABSOLUTE_URL before ever
+    // reaching the local-name check this cell means to isolate; omitting "//" (still a real
+    // outbound reference once I2's shape match applies) actually exercises that check alone.
+    '<g id="el-hostile" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https:evil.example/x.png" width="10" height="10"/></g>',
+  ],
+  // r5 (NOOP-201 §6.2): round-4's two bypasses that reached a real outbound request.
+  ["R4 TAB href", '<g id="el-hostile"><image href="/\t/evil.example/x.png" width="10" height="10"/></g>'],
+  ["R4 uppercase HREF", '<g id="el-hostile"><image HREF="https:evil.example/y.png" width="10" height="10"/></g>'],
+  // r5 (NOOP-201 §6.2): this round's new CSS hex-escape dimension (I3).
+  [
+    "R5 CSS-escaped url()",
+    '<g id="el-hostile"><rect width="10" height="10" style="fill:\\75rl(\\00002f\\00002fevil.example/x.svg#g)"/></g>',
   ],
 ];
 
