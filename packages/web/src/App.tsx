@@ -119,6 +119,7 @@ export function App() {
     error: null,
     selection: { ids: [], names: [], groupPath: [], elements: [] },
     dragSignal: 0,
+    pageStyle: null,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -212,6 +213,11 @@ export function App() {
   }, [hasSelection]);
   function editSelectionAnimation(): void {
     setSide("animate");
+    setSub("object");
+  }
+  /** #200 §4.5: ContextBar's `Edit style` button — only switches the right rail, exactly like `editSelectionAnimation` above. No command is sent, no selection changes. */
+  function editSelectionStyle(): void {
+    setSide("style");
     setSub("object");
   }
 
@@ -550,7 +556,11 @@ export function App() {
   canvasStateRef.current = canvasState;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      // [E2.T11]: Space is play-mode-only (§4.5's own scope — "→／Space／
+      // 點畫面前進" only ever lists it for 播放模式). In 檢視模式 it falls
+      // through to the same early return every other unhandled key does,
+      // leaving the browser's default Space behaviour untouched there.
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== " ") return;
       // Never steal an arrow key from a text field — the author is moving
       // the caret in the chat box, not paging the deck.
       const target = event.target as HTMLElement | null;
@@ -560,12 +570,13 @@ export function App() {
       const state = canvasStateRef.current;
       if (state.mode === "play") {
         event.preventDefault();
-        controller.stepPlayer(event.key === "ArrowRight" ? "advance" : "retreat");
+        controller.stepPlayer(event.key === "ArrowLeft" ? "retreat" : "advance");
         // Hand focus back so every following key press takes the runtime's
         // own path, transient activation and all.
         controller.focusPlayer();
         return;
       }
+      if (event.key === " ") return;
       event.preventDefault();
       void (event.key === "ArrowRight" ? controller.next() : controller.previous());
     }
@@ -742,6 +753,68 @@ export function App() {
 
       event.preventDefault(); // isDuplicate — otherwise Chrome opens "Add bookmark".
       void runPageCommand("slide duplicate", { slidePath }, state.currentIndex + 1);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Cell-range keyboard shortcuts (E2.T14r2 §4.3) — path B of the two the
+  // range's keyboard contract needs (§3.2 of the plan): focus sitting in
+  // THIS document rather than inside the sandboxed iframe, e.g. right after
+  // a cell edit's <input> blurs. Registered on the CAPTURE phase
+  // deliberately: capture on a given node is always ordered before that
+  // same node's own bubble-phase listeners per the DOM spec, so this
+  // effect's `stopPropagation()` on a handled key reliably pre-empts the
+  // four bubble-phase effects above (⌘A/Delete/⌘D/⌘]/⌘[ in particular,
+  // which would otherwise delete the whole table on a range Delete) without
+  // depending on registration order — unlike registration order, capture-
+  // before-bubble is guaranteed regardless of how the component tree
+  // reshuffles these effects relative to each other. None of the four
+  // existing effects change: the guard below returns before doing anything
+  // whenever `handleTableRangeKey` says the key does not belong to it, so
+  // every pre-existing shortcut keeps behaving exactly as before.
+  useEffect(() => {
+    function onKeyDownCapture(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null;
+      // Same guard, verbatim, as the four bubble-phase effects above — most
+      // importantly, this is the only reason a cell editor's own <input>
+      // Enter/Escape still work: calling stopPropagation() here would
+      // otherwise swallow those synthetic React events too.
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      const controller = controllerRef.current;
+      if (!controller || canvasStateRef.current.mode !== "view") return;
+      const handled = controller.handleTableRangeKey(event.key, {
+        meta: event.metaKey,
+        ctrl: event.ctrlKey,
+        shift: event.shiftKey,
+      });
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    document.addEventListener("keydown", onKeyDownCapture, true);
+    return () => document.removeEventListener("keydown", onKeyDownCapture, true);
+  }, []);
+
+  // [E2.T11] §4.5: Esc leaves 播放模式 — but only when the document is not
+  // ALSO fullscreen right now. Fullscreen owns Esc first: the browser is
+  // already exiting fullscreen on its own by the time this fires, and
+  // `isCanvasAreaFullscreen` here (checked before calling handleExitPlay(),
+  // not inside it) is what keeps that a "leave fullscreen, stay in play
+  // mode" transition rather than dropping out of both at once (the same
+  // rule canvas.ts's onWindowMessage applies to the runtime's own
+  // "exit-play" message — the other route to this same call). `handleExitPlay`
+  // is a hoisted function declaration, so referencing it here (defined
+  // further down this component) is safe.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      if (canvasStateRef.current.mode !== "play") return;
+      if (isCanvasAreaFullscreen(wellRef.current)) return;
+      void handleExitPlay();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -1328,6 +1401,7 @@ export function App() {
             state={canvasState}
             controller={controllerRef.current}
             onEditAnimation={editSelectionAnimation}
+            onEditStyle={editSelectionStyle}
             side={side}
             dropOverlay={{
               active: dropActive,
@@ -1368,6 +1442,7 @@ export function App() {
           <SidePanel
             state={canvasState}
             controller={controllerRef.current}
+            canvasSize={presentationInfo?.canvas ?? null}
             side={side}
             sub={sub}
             onSideChange={setSide}

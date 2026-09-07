@@ -3,18 +3,6 @@ import { parseSlide, type SlideElement } from "@co-motion/core/slide";
 import { STYLE_ATTRIBUTE_WHITELIST } from "@co-motion/core";
 import { PANEL_STYLE_ATTRIBUTES, readElementStyle, summarizeSelection } from "../src/style-attrs.js";
 
-/**
- * `packages/core/src/element-edit.ts`'s own `FORBIDDEN_STYLE_ATTRIBUTES` —
- * not exported (it is a module-private const), so this list is copied here
- * verbatim for the drift check below. If the command layer ever adds a
- * sixth forbidden attribute this test still passes on the panel's *current*
- * eight, which is fine: the meaningful direction of drift this test guards
- * against is the panel silently offering something the command layer would
- * reject, and that only happens if this literal list goes stale in a way
- * that hides an entry the panel actually offers.
- */
-const FORBIDDEN_GEOMETRY_ATTRIBUTES = ["transform", "x", "y", "width", "height"];
-
 const wrap = (body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n${body}\n</svg>\n`;
 
@@ -25,20 +13,14 @@ function elementOf(svgBody: string, id: string): SlideElement {
   return found;
 }
 
-describe("PANEL_STYLE_ATTRIBUTES（驗收 L：反漂移）", () => {
-  it("八格全部落在命令層的 STYLE_ATTRIBUTE_WHITELIST 之內", () => {
+describe("PANEL_STYLE_ATTRIBUTES（NOOP-69 §5-F 反漂移：分段面板送出 element style set 的每個屬性名都在白名單內）", () => {
+  it("每個屬性都落在命令層的 STYLE_ATTRIBUTE_WHITELIST 之內", () => {
     for (const attr of PANEL_STYLE_ATTRIBUTES) {
       expect(STYLE_ATTRIBUTE_WHITELIST).toContain(attr);
     }
   });
 
-  it("八格與白名單外的五個幾何屬性交集為空", () => {
-    for (const attr of PANEL_STYLE_ATTRIBUTES) {
-      expect(FORBIDDEN_GEOMETRY_ATTRIBUTES).not.toContain(attr);
-    }
-  });
-
-  it("固定八格，且不含 stroke-dasharray（父票沒列，本票不做）", () => {
+  it("固定集合：fill / stroke / stroke-width / font-family / font-size / font-weight / text-anchor / opacity", () => {
     expect(PANEL_STYLE_ATTRIBUTES).toEqual([
       "fill",
       "stroke",
@@ -63,14 +45,15 @@ describe("readElementStyle（§4.2）", () => {
     expect(readElementStyle(element, "stroke")).toEqual({ kind: "unset" });
   });
 
-  it("所有 primitive 值相同 → 原文字串，不正規化", () => {
-    const element = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#FFF"/></g>', "el-a");
-    expect(readElementStyle(element, "fill")).toEqual({ kind: "value", value: "#FFF" });
-  });
+  it("單一 primitive、或多個 primitive 值相同 → 原文字串，不正規化", () => {
+    const single = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1" opacity="1.0"/></g>', "el-a");
+    expect(readElementStyle(single, "opacity")).toEqual({ kind: "value", value: "1.0" });
 
-  it("單一 primitive 的值就是它本身", () => {
-    const element = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1" opacity="1.0"/></g>', "el-a");
-    expect(readElementStyle(element, "opacity")).toEqual({ kind: "value", value: "1.0" });
+    const multi = elementOf(
+      '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#FFF"/><circle cx="0" cy="0" r="1" fill="#FFF"/></g>',
+      "el-a",
+    );
+    expect(readElementStyle(multi, "fill")).toEqual({ kind: "value", value: "#FFF" });
   });
 
   it("多個 primitive 之間值不同 → mixed", () => {

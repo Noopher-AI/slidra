@@ -247,7 +247,8 @@ describe("element group / ungroup 清除效果項 ([E2.T7])", () => {
     expect(readEffectList(svg, SLIDE_PATH)).toHaveLength(1);
 
     const ungrouped = ungroupElements(svg, SLIDE_PATH, ["el-group"]);
-    expect(readEffectList(ungrouped, SLIDE_PATH)).toHaveLength(0);
+    expect(readEffectList(ungrouped.svg, SLIDE_PATH)).toHaveLength(0);
+    expect(ungrouped.removedEffects).toBe(1);
   });
 });
 

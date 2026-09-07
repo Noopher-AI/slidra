@@ -43,6 +43,11 @@ export default defineConfig({
       // straight from source, synchronously, same reasoning as the four
       // aliases above.
       "@co-motion/core/clipboard": path.join(rootDir, "../core/src/element-clipboard.ts"),
+      // E2.T12: chart/index.ts (model + csv + render + edit) is declared
+      // Node-free too — the data window's local preview calls
+      // `renderChartSvg` directly (plan §3.6/§4.5), core-rendered markup
+      // only, never a second hand-built drawing routine on this side.
+      "@co-motion/core/chart": path.join(rootDir, "../core/src/chart/index.ts"),
     },
   },
   build: {

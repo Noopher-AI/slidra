@@ -7,7 +7,7 @@ import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
 import { checkSlideCompliance } from "@co-motion/core";
 
-/** T3: `slide notes set` (AC 11) and `presentation transition set` (AC 12). */
+/** T3: `slide notes set` (AC 11). [E2.T11]: `slide transition set`, replacing T3's `presentation transition set`. */
 
 let coMotionHome: string;
 let comotDir: string;
@@ -176,49 +176,127 @@ describe("slide notes set", () => {
   });
 });
 
-describe("presentation transition set", () => {
-  it("AC12: 設定 fade 後 project.json.transition === 'fade'", async () => {
+describe("slide transition set（[E2.T11]，取代 presentation transition set）", () => {
+  it("[A1] 設定 enter=fade/enter-duration=0.8/exit=zoom/exit-duration=0.5 後，SVG 含完整四屬性；<metadata> 是既有的合規豁免區，寫入前後的合規清單不變", async () => {
     const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "fade" });
+    const before = await slideContent(id);
+    const complianceBefore = checkSlideCompliance(before);
+
+    const result = await registry.dispatch("slide transition set", {
+      id,
+      slidePath: "slides/001.svg",
+      enter: "fade",
+      enterDuration: 0.8,
+      exit: "zoom",
+      exitDuration: 0.5,
+    });
     expect(result.ok).toBe(true);
-    const project = await readProject(id);
-    expect(project.transition).toBe("fade");
+    const content = await slideContent(id);
+    expect(content).toContain(
+      '<comot:transition xmlns:comot="https://co-motion.dev/ns" enter="fade" enter-duration="0.8" exit="zoom" exit-duration="0.5"/>',
+    );
+    expect(checkSlideCompliance(content)).toEqual(complianceBefore);
   });
 
-  it("設定 none 合法", async () => {
+  it("[A2] 同一張投影片再跑 --enter none：只有 enter 變 none，其餘三個屬性值不變（部分更新）", async () => {
     const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "none" });
+    await registry.dispatch("slide transition set", {
+      id,
+      slidePath: "slides/001.svg",
+      enter: "fade",
+      enterDuration: 0.8,
+      exit: "zoom",
+      exitDuration: 0.5,
+    });
+    const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg", enter: "none" });
     expect(result.ok).toBe(true);
+    const content = await slideContent(id);
+    expect(content).toContain(
+      '<comot:transition xmlns:comot="https://co-motion.dev/ns" enter="none" enter-duration="0.8" exit="zoom" exit-duration="0.5"/>',
+    );
   });
 
-  it("不支援的值明確報錯，不寫入、不預設回 none", async () => {
+  it("[A3] 不支援的 enter 值／非法的 enter-duration 三種輸入各自明確報錯，SVG 位元組完全不變", async () => {
     const id = await openFreshPresentation();
-    const result = await registry.dispatch("presentation transition set", { id, name: "spin" });
+    const before = await slideContent(id);
+
+    for (const input of [
+      { enter: "wipe" },
+      { enterDuration: -1 },
+      { enterDuration: NaN },
+    ] as const) {
+      const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg", ...input });
+      expect(result.ok, JSON.stringify(input)).toBe(false);
+    }
+    expect(await slideContent(id)).toBe(before);
+  });
+
+  it("slide transition set 至少要指定一個要改的欄位——四個旗標與 --all 都沒給時明確報錯", async () => {
+    const id = await openFreshPresentation();
+    const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg" });
     expect(result.ok).toBe(false);
-    const project = await readProject(id);
-    expect(project.transition).toBeUndefined();
+    expect(result.message).toContain("至少要指定一個要改的欄位");
   });
 
-  it("slide move / duplicate / delete 之後 transition 值不變，且 SVG 內不含 transition 字樣", async () => {
+  it("<slide-path> 不是投影片（含指向 template）時明確報錯", async () => {
     const id = await openFreshPresentation();
-    await registry.dispatch("presentation transition set", { id, name: "fade" });
+    const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/999.svg", enter: "fade" });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("不是投影片");
+  });
+
+  it("slide duplicate 之後複本帶著相同的 <comot:transition>；slide move／delete 不改動任何一頁的頁面進出場（接手被刪測項的關切點：頁面操作不破壞轉場）", async () => {
+    const id = await openFreshPresentation();
+    await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg", enter: "fade", enterDuration: 0.8 });
     await registry.dispatch("slide add", { id });
     await registry.dispatch("slide move", { id, slidePath: "slides/002.svg", newIndex: 0 });
     await registry.dispatch("slide duplicate", { id, slidePath: "slides/001.svg" });
-    await registry.dispatch("slide delete", { id, slidePath: "slides/001.svg" });
 
     const project = await readProject(id);
-    expect(project.transition).toBe("fade");
-
+    const transitionTag = 'enter="fade" enter-duration="0.8"';
+    let matches = 0;
     for (const slidePath of project.slides as string[]) {
       const content = await slideContent(id, slidePath);
-      expect(content).not.toContain("transition");
+      if (content.includes(transitionTag)) matches++;
+    }
+    // 原頁 + 複製出來的那一頁都帶著同一份設定（新加的空白頁沒有）。
+    expect(matches).toBe(2);
+  });
+
+  it("[A4] --all 之後每張投影片都拿到相同的四個屬性值；一次 undo 就把全部投影片還原（一格 undo，非逐頁 N 格）", async () => {
+    const id = await openFreshPresentation();
+    await registry.dispatch("slide add", { id });
+    await registry.dispatch("slide add", { id });
+    await registry.dispatch("slide transition set", {
+      id,
+      slidePath: "slides/001.svg",
+      enter: "slide",
+      enterDuration: 0.4,
+      exit: "fade",
+      exitDuration: 0.9,
+    });
+
+    const beforeBySlide = new Map<string, string>();
+    for (const slidePath of ["slides/001.svg", "slides/002.svg", "slides/003.svg"]) {
+      beforeBySlide.set(slidePath, await slideContent(id, slidePath));
+    }
+    const result = await registry.dispatch("slide transition set", { id, slidePath: "slides/001.svg", all: true });
+    expect(result.ok).toBe(true);
+
+    const project = await readProject(id);
+    const transitionTag = 'enter="slide" enter-duration="0.4" exit="fade" exit-duration="0.9"';
+    for (const slidePath of project.slides as string[]) {
+      expect(await slideContent(id, slidePath)).toContain(transitionTag);
+    }
+
+    await registry.dispatch("undo", { id });
+    for (const [slidePath, before] of beforeBySlide) {
+      expect(await slideContent(id, slidePath), slidePath).toBe(before);
     }
   });
 
-  it("簡報原本沒有 transition 欄位：讀取端視為 none，不因缺欄位而炸", async () => {
+  it("presentation transition set 已不存在：registry.dispatch 對未註冊的命令名一律拋錯（UnknownCommandError），不是回傳 { ok: false }", async () => {
     const id = await openFreshPresentation();
-    const project = await readProject(id);
-    expect(project.transition).toBeUndefined();
+    await expect(registry.dispatch("presentation transition set", { id, name: "fade" })).rejects.toThrow("未知的命令：presentation transition set");
   });
 });

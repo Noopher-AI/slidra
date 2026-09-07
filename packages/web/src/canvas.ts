@@ -70,13 +70,23 @@ import {
   type SnapCandidate,
   type SnapGuide,
 } from "@co-motion/core/geometry";
-import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
+import {
+  parseSlide,
+  readSlideTransition,
+  type PageStyle,
+  type SlideElement,
+  type SlideModel,
+  type PageTransitionEffect,
+  type SlideTransition,
+} from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 import { extractElementsForCopy, serializeClipboardSvg } from "@co-motion/core/clipboard";
 import { INITIAL_PASTE_OFFSET_STATE, clipboardWritten, nextPasteOffset, type PasteOffsetState } from "./paste-offset.js";
 import { classifyClipboardText } from "./clipboard/payload.js";
 import { pasteCommandFor, type CellRangeProvider, type ClipboardTarget } from "./clipboard/dispatch.js";
+import { tabTarget, cellsInRange, normalizeRange, isCellInRange, type CellRange } from "./table-overlay.js";
+import { readChartModel, renderChartSvg, type ChartModel } from "@co-motion/core/chart";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -177,6 +187,22 @@ export interface OverlayState {
   badges: { target: string; n: number; rect: Rect }[];
 }
 
+/**
+ * The open chart data window's target and its live `ChartModel` (E2.T12
+ * plan §2.8/§3.6/§4.5) — `null` means no window is open. Re-derived fresh
+ * off `currentSlideMarkup` (`readChartModel`) after every render(), so a
+ * committed edit's normalized result (e.g. `formatSvgNumber` rounding)
+ * always reflects back into the open window instead of the window quietly
+ * drifting from the file. A separate channel from `CanvasState`/
+ * `subscribeOverlay` for the same reason those are already split apart:
+ * this fires on a cadence (every reload) and shape neither one matches.
+ */
+export interface ChartWindowState {
+  id: string;
+  slidePath: string;
+  model: ChartModel;
+}
+
 export interface CanvasState {
   /** Slide virtual paths, in project.json's own order. */
   slides: string[];
@@ -199,6 +225,13 @@ export interface CanvasState {
    * *changing*, never to its absolute value.
    */
   dragSignal: number;
+  /**
+   * #200 §4.4: the current slide's Page style, straight off
+   * `currentSlideModel.pageStyle` — `null` while there is no current slide
+   * (`currentIndex === -1`), never a fabricated `{background: null, accent:
+   * null}` for that case (Style › Page is disabled entirely then, §4.6).
+   */
+  pageStyle: PageStyle | null;
 }
 
 /**
@@ -309,6 +342,28 @@ export interface CanvasController {
    */
   setStyle: (attr: string, value: string) => Promise<boolean>;
   /**
+   * 樣式面板 (#200 §4.1): the Text section's Align field. Sends `textbox
+   * align` once per currently-selected text box, sequentially (that command
+   * names a single element, unlike `element style set`'s list form) — for
+   * the common single-selection case this is one command, one undo step;
+   * a multi-box selection costs one undo step per box. Same failure
+   * contract as `setStyle`.
+   */
+  setTextAlign: (align: "left" | "center" | "right") => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3/§4.4): Style › Page's Background/Accent fields.
+   * Sends `slide style set` for the current slide. Same failure contract as
+   * `setStyle`. No-op (returns `false`) when there is no current slide.
+   */
+  setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
+   * Sends `presentation canvas set` — never occupies an undo step (the
+   * command's own contract), unlike every other style-panel write. Same
+   * failure contract as `setStyle` otherwise.
+   */
+  setCanvasSize: (width: number, height: number) => Promise<boolean>;
+  /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
    * element), so a caller holding onto a stale reference would be a bug.
@@ -361,6 +416,44 @@ export interface CanvasController {
    */
   subscribeOverlay: (listener: (state: OverlayState) => void) => () => void;
   /**
+   * Table cell hit reports (click/dblclick/contextmenu, E2.T14 §4.5) and
+   * the reply to `requestTableCells`. Returns an unsubscribe function, same
+   * shape as `subscribe`/`subscribeOverlay` — a transient event channel,
+   * not a snapshot: nothing is replayed to a listener that subscribes
+   * after an event already fired.
+   */
+  subscribeTable: (listener: (event: TableRuntimeEvent) => void) => () => void;
+  /** Asks the runtime for `id`'s current per-cell rects + its own box (`table-cells` command) — the reply arrives on `subscribeTable` as a `{type: "cells"}` event. No-op (silently) outside view mode. */
+  requestTableCells: (id: string) => void;
+  /** A column-width drag's live preview (`preview-table-cols` command, 決定 13: never re-wraps text) — `cols` is the FULL column-width array with the dragged column's candidate width substituted in. No-op outside view mode. */
+  previewTableCols: (id: string, cols: readonly number[]) => void;
+  /**
+   * The cell range currently active inside a selected table (E2.T14r2, plan
+   * §4.1) — `null` when no range is active. Owned here (not `App.tsx`'s
+   * React state, not `TableOverlay`'s local state) because the three
+   * consumers (`TableOverlay`, `TableSection`, and the keyboard decision
+   * function below) sit under different subtrees, and every piece of data
+   * `handleTableRangeKey` needs — the selected `TableModel`, `slidePath`,
+   * `runCommand` — already lives in this module. The listener is called
+   * once immediately with the current value, same contract as `subscribe`/
+   * `subscribeOverlay`.
+   */
+  subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => () => void;
+  /** Sets or clears the active cell range. `null` clears it. Also tells the runtime (`table-range` command) so its own keyboard relay knows whether Delete/Tab/⌘B/Esc belong to the range or to the ordinary stage-key path. */
+  setTableRange: (value: { tableId: string; range: CellRange } | null) => void;
+  /**
+   * The single decision function for every cell-range keyboard shortcut
+   * (Tab/⇧Tab, Esc, Delete/Backspace, ⌘B) — both the iframe relay
+   * (`selection-runtime.js`'s "table-key") and `App.tsx`'s capture-phase
+   * `document` keydown listener call this same function, so the two input
+   * paths (focus inside the iframe vs. focus in the parent document) can
+   * never drift apart. Returns whether the key was handled — the caller is
+   * responsible for `preventDefault`/`stopPropagation`. A `false` return
+   * means the event should fall through to whatever handling already
+   * exists for it (nothing here changes that path's behaviour).
+   */
+  handleTableRangeKey: (key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }) => boolean;
+  /**
    * Re-emits the current overlay state with the frame's *current*
    * position/scale (issue 198 review). The runtime reports bounds in its own
    * iframe client px, which a zoom/pan of the parent's `.stage` transform
@@ -408,6 +501,25 @@ export interface CanvasController {
   }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
+   * E2.T12 plan §3.6/§4.5: the chart data window's own state — a
+   * double-click on a chart (selection-runtime.js's "dblclick-chart") opens
+   * it, `ChartWindow.tsx`'s own Esc listener or a slide change closes it.
+   * `null` means closed. Separate from `subscribeOverlay` — see
+   * `ChartWindowState`'s own doc comment.
+   */
+  subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => () => void;
+  /** [E2.T12 plan §3.6/§4.5]: closes the chart data window (Esc) without sending any command — an in-progress local edit is simply discarded, same as `preview-textbox`'s revert path never having written anything either. */
+  closeChartWindow: () => void;
+  /**
+   * E2.T12 plan §3.6/§4.5: the ChartWindow's local-preview channel — swaps
+   * the chart's embedded `<svg>` in place via `renderChartSvg(model)`,
+   * writing nothing. `ChartWindow.tsx` calls this on every keystroke/toggle
+   * before committing the corresponding `chart *` command on blur/click, so
+   * the picture always matches what is about to be sent. No-op outside view
+   * mode or when `id` is not the currently open chart window's target.
+   */
+  previewChart: (id: string, model: ChartModel) => void;
+  /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
    * controller never POSTs /api/undo|redo itself — App.tsx registers its own
    * `runUndoRedo` here so the document-level shortcut and the relayed one
@@ -427,22 +539,19 @@ interface ProjectJson {
    * fetch and parse the exact font bytes `wrapText` needs (§4.4).
    */
   fonts?: { file: string; family: string }[];
-  /**
-   * The presentation-level slide transition (T6). Absent, empty, or an
-   * unknown future value (e.g. an older build opening a newer `.comot`)
-   * all mean the same thing on the read side: play `none` instead of
-   * throwing (project-json.ts's read side deliberately does not
-   * whitelist). Only the literal `"fade"` triggers the fade-in below.
-   */
-  transition?: string;
 }
 
-/** How long renderPlay()'s fade-in runs (T6). Deliberately not shared with
- * player-runtime.js's own 0.4s element-entrance transition — that constant
- * animates elements *inside* the iframe document, this one animates the
- * `<iframe>` element itself from the parent document, and the two layers
- * must stay free to change independently of each other. */
-const PAGE_FADE_MS = 400;
+/**
+ * Turns a page transition's `effect` into the transform its start (enter)
+ * or end (exit) state holds, alongside the animated `opacity` (§4.6's
+ * keyframe table — values transcribed verbatim from the prototype).
+ * `"none"`/`"fade"` never move the frame, only fade it.
+ */
+function pageTransitionTransform(effect: PageTransitionEffect, phase: "enter-start" | "exit-end"): string {
+  if (effect === "slide") return phase === "enter-start" ? "translateX(8%)" : "translateX(-8%)";
+  if (effect === "zoom") return phase === "enter-start" ? "scale(1.06)" : "scale(0.94)";
+  return "none";
+}
 
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
@@ -450,9 +559,18 @@ interface PlayerMessage {
   // [E2.T7]/D8: "preview-done" — the runtime's own signal that Preview has
   // finished playing every effect it was asked to; only ever sent while
   // `mode === "preview"`.
-  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done";
+  // [E2.T11]: "exit-play" — Escape pressed inside the play iframe
+  // (player-runtime.js's own keydown), forwarded here since the runtime
+  // has no notion of whether the document is currently fullscreen.
+  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done" | "exit-play";
   hasFocus?: boolean;
   message?: string;
+}
+
+/** Read directly rather than through a container ref (unlike App.tsx's `isCanvasAreaFullscreen`): this module has no reference to the "well" element `toggleFullscreen()` requests fullscreen on, and the app only ever fullscreens that one element while playing — so "is anything fullscreen at all" answers the same question. */
+function isAnyElementFullscreen(): boolean {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null };
+  return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
 }
 
 function isPlayerMessage(data: unknown): data is PlayerMessage {
@@ -483,6 +601,9 @@ interface SelectionMessage {
     | "group-path"
     | "drag-enter"
     | "dblclick-textbox"
+    // E2.T12 plan §3.6: a plain (non-textbox) double-click resolved to a
+    // chart container — opens its data window, no in-iframe edit state.
+    | "dblclick-chart"
     | "text-edit-input"
     | "text-edit-commit"
     | "text-edit-denied"
@@ -513,7 +634,17 @@ interface SelectionMessage {
     // [E2.T7]/D9: the reply to a host-issued `measure` command — bounds for
     // an arbitrary id list (the current slide's animation badge targets),
     // independent of `selectedIds`.
-    | "measured";
+    | "measured"
+    // E2.T14 §4.5: table cell hit reports (click/dblclick/contextmenu) and
+    // the reply to a host-issued `table-cells` command.
+    | "table-cell-click"
+    | "table-cell-dblclick"
+    | "table-cell-contextmenu"
+    | "table-cells"
+    // E2.T14r2 §4.2: the iframe's own keyboard relay for a cell range
+    // in progress (Tab/⇧Tab, Esc, Delete/Backspace, ⌘B) — sent only while
+    // the runtime's `tableRangeId` flag is set, carrying that same id.
+    | "table-key";
   id?: string;
   name?: string | null;
   /** The runtime's hidden `<textarea>`'s current value, on "text-edit-input" only. */
@@ -552,6 +683,18 @@ interface SelectionMessage {
   alt?: boolean;
   /** "stage-key" only — the relayed `KeyboardEvent.key`. */
   key?: string;
+  /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
+  row?: number;
+  col?: number;
+  /** "table-cell-dblclick" only — the clicked cell's own row (differs from `row` for a generated cell, which edits its hidden template row). */
+  atRow?: number;
+  /** "table-cell-contextmenu" only — iframe-local client px, converted by `toParentClientPoint` before reaching `subscribeTable`'s listener. */
+  x?: number;
+  y?: number;
+  /** "table-cells" only — one entry per cell the runtime could still resolve. */
+  cells?: unknown;
+  /** "table-cells" only — the table container's own box, same coordinate space as `cells[].rect`. */
+  box?: unknown;
 }
 
 /** One `bounds` event item, already shape-validated (see `isBoundsItem`). */
@@ -598,6 +741,31 @@ function isMeasuredItem(value: unknown): value is MeasuredItem {
   const item = value as { id?: unknown; rect?: unknown };
   return typeof item.id === "string" && isNonNegativeRect(item.rect);
 }
+
+/** One `table-cells` event item (E2.T14, plan §4.5). */
+interface TableCellRectItem {
+  row: number;
+  col: number;
+  rect: Rect;
+}
+
+function isTableCellRectItem(value: unknown): value is TableCellRectItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as { row?: unknown; col?: unknown; rect?: unknown };
+  return isFiniteNumber(item.row) && isFiniteNumber(item.col) && isNonNegativeRect(item.rect);
+}
+
+/**
+ * A table cell hit report or the reply to `requestTableCells` (E2.T14, plan
+ * §4.5), already coordinate-converted to this parent document's client px
+ * (`toParentClientPoint`/`toParentClientRect`) — `subscribeTable`'s
+ * listener never sees an iframe-local coordinate.
+ */
+export type TableRuntimeEvent =
+  | { type: "cell-click"; id: string; row: number; col: number; additive: boolean }
+  | { type: "cell-dblclick"; id: string; row: number; col: number; atRow: number }
+  | { type: "cell-contextmenu"; id: string; row: number; col: number; x: number; y: number }
+  | { type: "cells"; id: string; cells: TableCellRectItem[]; box: Rect };
 
 function isSelectionMessage(data: unknown): data is SelectionMessage {
   return (
@@ -870,6 +1038,8 @@ function subtreeIds(element: SlideElement, out: Set<string>): void {
 function subtreeForcesUniformScale(element: SlideElement): boolean {
   if (element.kind === "group") return element.children.some(subtreeForcesUniformScale);
   if (element.kind === "text" || element.kind === "circle" || element.kind === "path") return true;
+  // A table scales through its container transform (see element-edit.ts), so a non-uniform factor would distort every glyph in it.
+  if (element.kind === "table") return true;
   if (element.kind === "compound") {
     return element.primitives.some((primitive) => primitive.tag === "text" || primitive.tag === "circle" || primitive.tag === "path");
   }
@@ -898,10 +1068,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // state. React subscribes to read it and issues commands to change it.
   let slides: string[] = [];
   let currentIndex = -1;
-  // The presentation-level slide transition (T6), read from
-  // project.transition on every reload() — "none" until the first fetch
-  // completes. renderPlay() is the only reader; nothing else needs it.
-  let transition: string | undefined;
+  // [E2.T11]: the page currently on screen's own enter/exit transition,
+  // read fresh from its markup by renderPlay() (or migrateLegacyTransition
+  // vintage — every slide has a resolved value even when it never set one
+  // explicitly). playExitTransition() reads this rather than re-fetching —
+  // it always describes whatever page renderPlay() last painted, which is
+  // exactly the page a forward navigation is about to leave.
+  let currentPageTransition: SlideTransition = {
+    enter: { effect: "none", duration: 0.6 },
+    exit: { effect: "none", duration: 0.5 },
+  };
+  // True for the duration of one playExitTransition() call. A second
+  // forward-navigation request arriving mid-exit is dropped outright, not
+  // queued (§4.6 决定: "不得排隊、不得疊播") — see that function's own
+  // comment.
+  let exiting = false;
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
@@ -961,6 +1142,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // See `OverlayState`'s own doc comment for why this is a separate,
   // high-frequency channel rather than `CanvasState`.
   const overlayListeners = new Set<(state: OverlayState) => void>();
+  /** E2.T14 §4.5: table cell hit reports and `table-cells` replies — transient events, same "listener set, no persisted state" shape as `subscribeStageInput`, not folded into `CanvasState`/`OverlayState` since neither is about a table specifically. */
+  const tableListeners = new Set<(event: TableRuntimeEvent) => void>();
+  /** E2.T14r2 §4.1: `subscribeTableRange`'s listeners — a real state channel (unlike `tableListeners` above), so a late subscriber gets the current value immediately, same contract as `overlayListeners`. */
+  const tableRangeListeners = new Set<(value: { tableId: string; range: CellRange } | null) => void>();
+  /** The active cell range, or `null`. Built from `table-cell-click`/`table-cell-contextmenu` reports (handleSelectionMessage below) and cleared whenever the selection changes away from this table (§4.1's lifecycle table). */
+  let tableRange: { tableId: string; range: CellRange } | null = null;
+  /** The cell a range gesture started from — set on a non-additive click/contextmenu, read on a ⇧-click to build the range via `normalizeRange`. Private to this module: not part of the public `tableRange`, exactly like `TableOverlay`'s old local `anchorRef` this replaces. */
+  let tableRangeAnchor: { row: number; col: number } | null = null;
+  // E2.T12 plan §2.8/§4.5: at most one chart data window open at a time
+  // (`chartWindowTarget`, `null` = closed) — opened by the runtime's
+  // "dblclick-chart" report, closed by Esc (ChartWindow.tsx's own
+  // listener) or a slide change (`showSlide`). A separate channel from
+  // `subscribeOverlay`/`CanvasState` for the same reason those are: high-
+  // frequency during local editing, and shaped nothing like either.
+  const chartWindowListeners = new Set<(state: ChartWindowState | null) => void>();
+  let chartWindowTarget: string | null = null;
   let overlayBoxes: Rect[] = [];
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
@@ -988,6 +1185,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // in-browser, without a round trip to the server — the whole reason this
   // ticket's plan aliases that module straight to source (見 vite/vitest
   // 設定). `null` before the first render() (no slide loaded yet).
+  // E2.T12: the current slide's raw SVG text, kept so `notifyChartWindow`
+  // can re-derive the open chart's `ChartModel` (`readChartModel`) after
+  // every render() without a second fetch — the chart data window is the
+  // one caller that needs the actual bytes, not just the parsed
+  // `SlideElement` shape `currentSlideModel` carries.
   let currentSlideMarkup: string | null = null;
   // Fonts this presentation embeds, as reported by /api/presentation
   // (project.json's own `fonts` field) — resolveBrowserFont() below reads
@@ -1122,6 +1324,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (mode === "preview") exitPreview();
       return;
     }
+    if (message.event === "exit-play") {
+      // §4.5: fullscreen owns Esc first — the browser's own fullscreen
+      // exit is already underway by the time this message arrives, and
+      // leaving play mode too would drop the author straight out of both
+      // at once instead of just the one Esc asked for. The runtime cannot
+      // make this check itself (it has no notion of fullscreen), which is
+      // why it is repeated here rather than only in App.tsx's own Escape
+      // listener (the other route to the same call).
+      if (mode === "play" && !isAnyElementFullscreen()) void exitPlay();
+      return;
+    }
   }
 
   /** Dispatches one already-validated-as-comot-selection message to the right handler (NOOP-91 §4.1). */
@@ -1154,6 +1367,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
       notify();
       pushSelectionToRuntime(selectionIds);
+      // E2.T14r2 §4.1 lifecycle table: a range only survives while its own
+      // table stays the sole selection — any other shape (a different
+      // element, no selection, a multi-selection) drops it.
+      if (tableRange && (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId)) {
+        setTableRange(null);
+      }
       return;
     }
     if (message.event === "clear") {
@@ -1209,6 +1428,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       } else if (message.key === "v" && (modifiers.meta || modifiers.ctrl)) {
         void navigator.clipboard.readText().then((text) => pasteFromText(text));
       }
+      // E2.T12 plan §4.5: Esc closes the chart data window — relayed here
+      // because opening it (a double-click on the slide) leaves focus
+      // inside this sandboxed iframe, where the parent document's own
+      // `window` keydown listener (ChartWindow.tsx) never sees the
+      // keypress at all (same reason ⌘Z/Delete/etc. above need relaying).
+      else if (message.key === "Escape") closeChartWindow();
       return;
     }
     if (message.event === "gesture-start") {
@@ -1279,6 +1504,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "dblclick-textbox") {
       if (typeof message.id === "string") void enterTextEdit(message.id);
+      return;
+    }
+    if (message.event === "dblclick-chart") {
+      if (typeof message.id === "string") openChartWindow(message.id);
       return;
     }
     if (message.event === "text-edit-input") {
@@ -1352,6 +1581,165 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notifyOverlay();
       return;
     }
+    if (message.event === "table-cell-click") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
+        const row = message.row;
+        const col = message.col;
+        emitTableEvent({ type: "cell-click", id, row, col, additive: Boolean(message.additive) });
+        // E2.T14r2 §4.1 lifecycle table: a ⇧-click while a range is already
+        // active on THIS table extends it from the stored anchor; anything
+        // else (plain click, or a ⇧-click that arrives with no anchor of
+        // its own — e.g. right after a table id change already cleared it
+        // above) starts a fresh single-cell range and a fresh anchor.
+        if (message.additive && tableRangeAnchor && tableRange && tableRange.tableId === id) {
+          setTableRange({ tableId: id, range: normalizeRange(tableRangeAnchor, { row, col }) });
+        } else {
+          tableRangeAnchor = { row, col };
+          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
+        }
+      }
+      return;
+    }
+    if (message.event === "table-cell-dblclick") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
+        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col, atRow: isFiniteNumber(message.atRow) ? message.atRow : message.row });
+      }
+      return;
+    }
+    if (message.event === "table-cell-contextmenu") {
+      const id = typeof message.id === "string" ? message.id : null;
+      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col) && isFiniteNumber(message.x) && isFiniteNumber(message.y)) {
+        const row = message.row;
+        const col = message.col;
+        const point = toParentClientPoint({ x: message.x, y: message.y });
+        emitTableEvent({ type: "cell-contextmenu", id, row, col, x: point.x, y: point.y });
+        // §4.1 lifecycle table: right-clicking inside the current range
+        // leaves it untouched (the menu acts on the whole range); right-
+        // clicking outside it starts a fresh single-cell range/anchor.
+        const cell = { row, col };
+        if (!tableRange || tableRange.tableId !== id || !isCellInRange(cell, tableRange.range)) {
+          tableRangeAnchor = cell;
+          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
+        }
+      }
+      return;
+    }
+    if (message.event === "table-cells") {
+      const id = typeof message.id === "string" ? message.id : null;
+      const cells = Array.isArray(message.cells) ? message.cells.filter(isTableCellRectItem) : [];
+      const box = isNonNegativeRect(message.box) ? message.box : null;
+      if (id !== null && box !== null) {
+        emitTableEvent({
+          type: "cells",
+          id,
+          cells: cells.map((cell) => ({ ...cell, rect: toParentClientRect(cell.rect) })),
+          box: toParentClientRect(box),
+        });
+      }
+      return;
+    }
+    if (message.event === "table-key") {
+      if (typeof message.key !== "string") return;
+      // The runtime only ever sends this while its own `tableRangeId` flag
+      // is set (§4.2) — `handleTableRangeKey` re-derives everything else
+      // (which range, which table) from this module's own `tableRange`, the
+      // single source of truth both input paths share.
+      handleTableRangeKey(message.key, { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) });
+      return;
+    }
+  }
+
+  /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
+  let pendingTableDblclick: TableRuntimeEvent | null = null;
+
+  function emitTableEvent(event: TableRuntimeEvent): void {
+    if (event.type === "cell-dblclick" && tableListeners.size === 0) {
+      pendingTableDblclick = event;
+      return;
+    }
+    for (const listener of tableListeners) listener(event);
+  }
+
+  function notifyTableRange(): void {
+    for (const listener of tableRangeListeners) listener(tableRange);
+  }
+
+  /** `CanvasController.setTableRange` (E2.T14r2 §4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
+  function setTableRange(value: { tableId: string; range: CellRange } | null): void {
+    tableRange = value;
+    notifyTableRange();
+    postToFrame({ command: "table-range", id: value ? value.tableId : null });
+  }
+
+  /**
+   * `CanvasController.handleTableRangeKey` (E2.T14r2 §4.1, "本輪唯一的新設
+   * 計") — the single decision function for every cell-range keyboard
+   * shortcut. Both `handleSelectionMessage`'s "table-key" branch above (the
+   * iframe relay) and App.tsx's capture-phase keydown listener call this
+   * exact function, never a copy of its logic, so the two input paths
+   * cannot drift apart (same posture as the existing ⌘Z/Delete/etc. relay
+   * `App.tsx:610`'s own comment already documents).
+   */
+  function handleTableRangeKey(key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }): boolean {
+    if (!tableRange) return false;
+    if (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId) {
+      // The selection moved on without the range ever being told (should
+      // not normally happen — the "select"/"clear" branches above already
+      // clear it — but this is the behaviour contract's own explicit row,
+      // not just a defensive fallback).
+      setTableRange(null);
+      return false;
+    }
+    const table = selectedElements()[0]?.table ?? null;
+    if (!table) {
+      setTableRange(null);
+      return false;
+    }
+    const { tableId, range } = tableRange;
+    const slidePath = slides[currentIndex];
+
+    if (key === "Tab") {
+      const next = tabTarget({ row: range.r0, col: range.c0 }, table.rows.length, table.cols.length, modifiers.shift ? -1 : 1);
+      setTableRange({ tableId, range: { r0: next.row, c0: next.col, r1: next.row, c1: next.col } });
+      return true;
+    }
+    if (key === "Escape") {
+      setTableRange(null);
+      return true;
+    }
+    if (key === "Delete" || key === "Backspace") {
+      // Sequential, not `Promise.all` — `/api/command` has no per-file
+      // write queue, so N concurrent `table cell set` calls against the
+      // SAME slide is a genuine lost-update race (verified directly: two
+      // concurrent calls for different cells left one cell's write silently
+      // dropped). One history entry per cell either way (§2.17); this just
+      // orders them instead of racing them.
+      const cellsToClear = cellsInRange(range);
+      void (async () => {
+        for (const cell of cellsToClear) {
+          await runCommand("table cell set", { slidePath, elementId: tableId, row: cell.row, col: cell.col, text: "" });
+        }
+      })();
+      return true;
+    }
+    if ((key === "b" || key === "B") && (modifiers.meta || modifiers.ctrl)) {
+      const topLeft = table.cells.find((cell) => cell.row === range.r0 && cell.col === range.c0);
+      const nextWeight = topLeft && topLeft.fontWeight >= 700 ? 400 : 700;
+      void runCommand("table cell style set", {
+        slidePath,
+        elementId: tableId,
+        row: range.r0,
+        col: range.c0,
+        rowEnd: range.r1,
+        colEnd: range.c1,
+        attr: "font-weight",
+        value: String(nextWeight),
+      });
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1441,6 +1829,41 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     for (const listener of overlayListeners) listener(state);
   }
 
+  /**
+   * E2.T12: re-derives the open chart window's `ChartModel` off
+   * `currentSlideMarkup` and pushes it to every `subscribeChartWindow`
+   * listener — called after every render() (so a committed edit's
+   * normalized result reflects back) and whenever `chartWindowTarget`
+   * itself changes (open/close). A target that no longer resolves to a
+   * chart (deleted, or the slide changed under it) closes the window
+   * rather than surfacing a parse error — same "silently do nothing"
+   * posture `enterTextEdit` gives an id that no longer resolves.
+   */
+  /** Reads `chartWindowTarget`'s current `ChartModel` off `currentSlideMarkup`; closes the window (clears `chartWindowTarget`) as a side effect when the target no longer resolves to a chart. Shared by `notifyChartWindow` and `subscribeChartWindow`'s initial push. */
+  function buildChartWindowState(): ChartWindowState | null {
+    if (chartWindowTarget === null) return null;
+    try {
+      if (currentSlideMarkup === null) throw new Error("no slide loaded");
+      const model = readChartModel(currentSlideMarkup, chartWindowTarget);
+      return { id: chartWindowTarget, slidePath: slides[currentIndex], model };
+    } catch {
+      chartWindowTarget = null;
+      return null;
+    }
+  }
+
+  function notifyChartWindow(): void {
+    const state = buildChartWindowState();
+    for (const listener of chartWindowListeners) listener(state);
+  }
+
+  /** The runtime's "dblclick-chart" report (selection-runtime.js, plan §3.6) — a plain double-click on a chart container opens its data window. No-op outside view mode, or when `id` does not resolve to a chart (`notifyChartWindow` closes it again in that case). */
+  function openChartWindow(id: string): void {
+    if (mode !== "view") return;
+    chartWindowTarget = id;
+    notifyChartWindow();
+  }
+
   function emitStageInput(event: StageInputEvent): void {
     for (const listener of stageInputListeners) listener(event);
   }
@@ -1452,6 +1875,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectionGroupPath = groupPath;
     notify();
     pushSelectionToRuntime(selectionIds);
+    if (tableRange) setTableRange(null);
   }
 
   /**
@@ -1584,6 +2008,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
     ["element duplicate", "elementIds"],
+    // [E2.T15]/#205 4.2: grouping selects the new group itself; ungrouping
+    // selects the dissolved group's released children (`data.elementIds`,
+    // D2's new return value).
+    ["element group", "elementId"],
+    ["element ungroup", "elementIds"],
+    ["table create", "elementId"],
+    ["chart create", "elementId"],
   ]);
 
   /**
@@ -1713,7 +2144,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return new Map(entries.filter((entry): entry is [string, FontMetrics] => entry !== null));
   }
 
-  /** "full" (single selection: scale + rotate handles) / "move-only" (0 or 2+ selected) / "none" — the rendering condition the "selection" host->runtime command carries (§5's multi-select rule: this is computed here, never at click time in the runtime). */
+  /**
+   * "full" (single selection: scale + rotate handles — a table scales
+   * through its container transform, a chart re-renders at the new size;
+   * see `element-edit.ts`'s `scaleSpecialContainer`) / "move-only" (0 or
+   * 2+ selected) / "none" — the rendering condition the
+   * "selection" host->runtime command carries (§5's multi-select rule:
+   * this is computed here, never at click time in the runtime).
+   */
   function computeHandleFlags(ids: readonly string[]): { handles: "full" | "move-only" | "none"; textbox: boolean } {
     if (ids.length === 0) return { handles: "none", textbox: false };
     if (ids.length > 1) return { handles: "move-only", textbox: false };
@@ -2558,6 +2996,36 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
+  // --- Chart data window (E2.T12 plan §3.6/§4.5) ---
+
+  /**
+   * `CanvasController.previewChart`: swaps the open chart's embedded `<svg>`
+   * for `renderChartSvg(model)`'s output — writes nothing, the exact same
+   * "local preview, commit on blur/click" split `preview-textbox` gives
+   * text edits. `id` must be the currently open window's own target (a
+   * stale call from an already-closed window, e.g. a slow keystroke handler
+   * firing after Esc, is silently dropped rather than repainting a chart
+   * that is no longer the one on screen).
+   */
+  function previewChart(id: string, model: ChartModel): void {
+    if (mode !== "view" || chartWindowTarget !== id) return;
+    postToFrame({ command: "preview-chart", id, markup: renderChartSvg(model) });
+  }
+
+  /** `CanvasController.closeChartWindow` (Esc, plan §4.5): reverts whatever the window's own local preview last painted back to the file's actual committed content — same posture `revertTextboxPreview` gives a cancelled gesture, since a local chart preview never wrote anything either. */
+  function closeChartWindow(): void {
+    const target = chartWindowTarget;
+    chartWindowTarget = null;
+    if (target !== null && currentSlideMarkup !== null) {
+      try {
+        postToFrame({ command: "preview-chart", id: target, markup: renderChartSvg(readChartModel(currentSlideMarkup, target)) });
+      } catch {
+        // `target` no longer resolves to a chart — nothing on screen to revert either.
+      }
+    }
+    notifyChartWindow();
+  }
+
   // --- In-place text editing (NOOP-91/#70 US1, T5) ---
 
   /** Re-wraps `text` with core's `wrapText` and pushes it to the runtime via the existing preview-textbox channel — shared by the live-typing preview and a failed commit's revert. */
@@ -2771,12 +3239,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // these calls' renderPlay() discard its own result instead of racing
     // a later one to paint last.
     const thisGeneration = ++generation;
+    // §4.6: the page currently on screen plays its own exit first — this
+    // is the "leave" half of the page change, and it must finish (or be
+    // aborted) before currentIndex moves at all.
+    if (!(await playExitTransition(thisGeneration))) return;
     currentIndex += 1;
     notify();
     await renderPlay(thisGeneration, "first", true);
   }
 
-  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六). */
+  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六) — except retreat never plays an exit (§4.6 决定 7: `prev()` in the prototype is a plain `go()`, no `goWithExit`). */
   async function retreatPastStart(): Promise<void> {
     // At the very start of the presentation, retreating does nothing —
     // there is nowhere further back to go, and this must not throw.
@@ -2789,7 +3261,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const thisGeneration = ++generation;
     currentIndex -= 1;
     notify();
-    await renderPlay(thisGeneration, "last");
+    await renderPlay(thisGeneration, "last", true);
   }
 
   async function reload(): Promise<void> {
@@ -2827,7 +3299,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
 
     slides = project.slides;
-    transition = project.transition;
     presentationFonts = project.fonts ?? [];
     resolvedFonts = await resolveEmbeddedFonts(presentationFonts);
     if (destroyed || thisGeneration !== generation) return;
@@ -2858,7 +3329,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notifyOverlay();
 
     if (mode === "play") {
-      await renderPlay(thisGeneration);
+      // §4.6: a background refresh plays neither enter nor exit.
+      await renderPlay(thisGeneration, "first", false);
     } else {
       await render(thisGeneration);
     }
@@ -2886,12 +3358,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       badgeTargets = [];
       overlayBadges = [];
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      notifyChartWindow();
       return;
     }
 
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
+    currentSlideMarkup = svgMarkup;
+
     currentSlideMarkup = svgMarkup;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
@@ -2919,6 +3394,24 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
     );
+
+    // E2.T12: re-derive the open chart window's model off the just-loaded
+    // markup so a committed edit's normalized result (formatSvgNumber
+    // rounding, an existing series' carried-over axis/color) reflects back
+    // into the window rather than it quietly drifting from the file.
+    notifyChartWindow();
+    // #200: `CanvasState.pageStyle` reads off `currentSlideModel`, just
+    // parsed above — and, unlike every other field this module notifies on,
+    // it has no selection to piggyback a notify() on (Style › Page has to
+    // work with nothing selected at all). Before this field existed nothing
+    // in `CanvasState` depended on `currentSlideModel` without a selection
+    // change also happening in the same call, so `render()` never needed
+    // its own notify() — reload()'s own notify() (before this function even
+    // runs) was always followed by SOME selection-changing call that
+    // notified again. `selectOnceLoaded` below still fires its own later
+    // notify() once the frame's `load` event lands; this one is what makes
+    // a plain navigation/reload with no pending selection visible at all.
+    notify();
 
     if (selectAfterLoad) selectOnceLoaded(selectAfterLoad, thisGeneration);
   }
@@ -2989,21 +3482,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * after computePlayerPlan() has run, because only the parent knows the
    * slide's step count. The sentinel itself never travels over the wire.
    *
-   * `animate` (T6): whether THIS particular page change should play the
-   * presentation-level fade, on top of `transition === "fade"` already
-   * being true. Callers pass `true` only for a user-initiated forward page
-   * change — retreat, play()/exitPlay() entry, and reload() all pass the
-   * default `false`, matching runtime's existing "retreat is instant"
-   * principle plus "a fade is a *page change*, not an entry or a
-   * background refresh". This is a distinct layer from element-entrance
-   * transitions inside the slide's own runtime: this one fades the
-   * `<iframe>` itself, from the parent document, and never touches
-   * player-runtime.js.
+   * `playEnter` ([E2.T11], replacing T6's `animate`): whether THIS
+   * particular call should play the new page's own enter transition, on
+   * top of whatever `<comot:transition>` it declares. §4.6's table: every
+   * caller passes `true` except `reload()`'s background refresh and
+   * `previewEffects()` — a page change (forward or backward), and
+   * entering play mode itself, all count as a real arrival. This is a
+   * distinct layer from element-entrance transitions inside the slide's
+   * own runtime: this one animates the `<iframe>` itself, from the parent
+   * document, and never touches player-runtime.js.
    */
   async function renderPlay(
     thisGeneration?: number,
     startAt: "first" | "last" = "first",
-    animate = false,
+    playEnter = true,
     /**
      * [E2.T7]/D8: `undefined` (every existing caller) means "not a
      * Preview — never set `plan.preview`". A concrete value (only
@@ -3031,6 +3523,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
+      // [E2.T11]: read alongside the plan, in the same try — a slide whose
+      // <comot:transition> is present but malformed (§4.2: an unknown
+      // effect value, an illegal duration, more than one node) surfaces
+      // through the exact same `error` banner + static-fallback path a
+      // broken effect list already does, rather than a second, differently
+      // shaped failure mode.
+      currentPageTransition = readSlideTransition(svgMarkup);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
@@ -3046,6 +3545,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // author still sees the slide, plus the reason nothing animates.
       error = planError instanceof Error ? planError.message : "效果清單無法解析";
       notify();
+      // A broken page has no transition to play on the way out either —
+      // reset to the all-"none" default so a later playExitTransition()
+      // call leaving this (static) page does not act on stale data left
+      // over from whichever slide was last painted successfully.
+      currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
       frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
@@ -3057,34 +3561,73 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       planScript,
     );
 
-    if (animate && transition === "fade") {
-      // Fade-in only, not a cross-fade (决定 3 in the plan): the old page is
-      // simply gone the instant srcdoc is replaced above, and the new one
-      // reveals itself from black. Fading the old page out first would mean
-      // waiting for that animation before the fetch/srcdoc swap could even
-      // start, tangling this with the generation guard above for a result
-      // that is strictly less faithful to "fade" than what this buys.
+    const { effect, duration } = currentPageTransition.enter;
+    if (playEnter && effect !== "none" && duration > 0) {
+      const ms = duration * 1000;
       frame.style.transition = "none";
       frame.style.opacity = "0";
-      // The "none" transition and opacity:0 must land in a rendered frame
-      // before switching to the real transition, or the browser coalesces
-      // both style writes into one paint and nothing animates.
+      frame.style.transform = pageTransitionTransform(effect, "enter-start");
+      // The "none" transition and the start values above must land in a
+      // rendered frame before switching to the real transition, or the
+      // browser coalesces both style writes into one paint and nothing
+      // animates.
       requestAnimationFrame(() => {
         if (destroyed || captured !== generation) return;
-        frame.style.transition = `opacity ${PAGE_FADE_MS}ms`;
+        frame.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
         frame.style.opacity = "1";
+        frame.style.transform = "none";
       });
     } else {
-      // Instant path must actively clear any inline opacity/transition a
-      // PRIOR fade left behind — otherwise this page silently inherits the
-      // last frame's mid-fade opacity instead of showing at full opacity.
-      // `transition` is cleared before `opacity` defensively — clearing
-      // `opacity` while a `transition` is still declared risks animating
-      // the removal itself instead of jumping straight to the resting
-      // value.
+      // Instant path must actively clear any inline opacity/transition/
+      // transform a PRIOR animation left behind — otherwise this page
+      // silently inherits the last frame's mid-animation state instead of
+      // showing at rest. `transition` is cleared before the values it was
+      // animating, defensively — clearing a value while `transition` is
+      // still declared risks animating the removal itself instead of
+      // jumping straight to the resting state.
       frame.style.removeProperty("transition");
       frame.style.removeProperty("opacity");
+      frame.style.removeProperty("transform");
     }
+  }
+
+  /**
+   * Plays the page currently on screen's own exit transition (§4.6),
+   * before a forward page change replaces `frame.srcdoc`. Unlike
+   * renderPlay()'s enter fade-in, no two-step rAF commit is needed here:
+   * the `<iframe>` is already sitting at its resting opacity/transform (no
+   * inline style forced it there a moment ago), so setting `transition`
+   * and the end values together in one synchronous block still animates
+   * — the browser compares against the last real paint, not against
+   * something this function itself just wrote.
+   *
+   * Returns `false` when the caller must NOT proceed to the page change at
+   * all: either a forward request arrived while an earlier one is still
+   * exiting (§4.6 决定: ignored outright, never queued or stacked), or
+   * `generation` moved on mid-exit — some other navigation (reload(),
+   * exitPlay(), a second showSlide()) superseded this one, and the caller
+   * must abandon its own page change rather than apply it on top.
+   */
+  async function playExitTransition(thisGeneration: number): Promise<boolean> {
+    if (exiting) return false;
+    const { effect, duration } = currentPageTransition.exit;
+    if (effect === "none" || duration === 0) return true;
+
+    exiting = true;
+    const ms = duration * 1000;
+    frame.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
+    frame.style.opacity = "0";
+    frame.style.transform = pageTransitionTransform(effect, "exit-end");
+    await new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    exiting = false;
+
+    if (destroyed || thisGeneration !== generation) {
+      frame.style.removeProperty("transition");
+      frame.style.removeProperty("opacity");
+      frame.style.removeProperty("transform");
+      return false;
+    }
+    return true;
   }
 
   async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
@@ -3096,12 +3639,23 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
-    // Captured before currentIndex moves — "forward" for the fade means
-    // this specific call moved strictly ahead, same intent as
-    // advancePastEnd()'s "+= 1" (retreatPastStart's own "-= 1" path already
-    // passes no animate flag by calling renderPlay's default).
+    // Captured before currentIndex moves — "forward" decides whether the
+    // page being left plays an exit (§4.6: only a forward change does),
+    // same intent as advancePastEnd()'s "+= 1" vs retreatPastStart()'s
+    // "-= 1".
     const forward = index > currentIndex;
+    if (mode === "play" && forward) {
+      if (!(await playExitTransition(thisGeneration))) return;
+    }
     currentIndex = index;
+    // E2.T12 plan §4.5: "切換投影片時關閉" — a chart window's edits target
+    // a specific element id on the slide being left; render()'s own
+    // notifyChartWindow() below would eventually close it anyway (the id
+    // resolves on the wrong slide), but that happens after the slide fetch
+    // resolves — closing it here means the window never lingers open for a
+    // beat while the next slide loads.
+    chartWindowTarget = null;
+    notifyChartWindow();
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
@@ -3122,7 +3676,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notify();
     notifyOverlay();
     if (mode === "play") {
-      await renderPlay(thisGeneration, "first", forward);
+      await renderPlay(thisGeneration, "first", true);
     } else {
       // [E2.T8]: `selectAfter` reuses the exact same "reselect once the
       // new document's `load` fires" mechanism `SELECT_AFTER_COMMAND`
@@ -3314,6 +3868,60 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return false;
     }
+    // Same as runCommand: the write lands back over /api/events and drives a
+    // reload() that drops the selection — park it so the Style › Object
+    // sub-tab (keyed on "is anything selected") does not snap back to Page.
+    keepSelectionAcrossReload();
+    return true;
+  }
+
+  async function setTextAlign(align: "left" | "center" | "right"): Promise<boolean> {
+    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    const thisGeneration = generation;
+    for (const elementId of selectionIds) {
+      const result = await postCommand("textbox align", {
+        slidePath: slides[currentIndex],
+        elementId,
+        align,
+      });
+      if (destroyed || thisGeneration !== generation) return false;
+      if (!result.ok) {
+        error = result.message;
+        notify();
+        return false;
+      }
+      keepSelectionAcrossReload();
+    }
+    return true;
+  }
+
+  async function setPageStyle(update: { background?: string; accent?: string }): Promise<boolean> {
+    if (currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("slide style set", {
+      slidePath: slides[currentIndex],
+      ...update,
+    });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
+    return true;
+  }
+
+  async function setCanvasSize(width: number, height: number): Promise<boolean> {
+    const thisGeneration = generation;
+    const result = await postCommand("presentation canvas set", { width, height });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
     return true;
   }
 
@@ -3334,6 +3942,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     };
     for (const listener of listeners) listener(state);
   }
@@ -3353,6 +3962,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     });
     return () => {
       listeners.delete(listener);
@@ -3381,6 +3991,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
     },
     setStyle,
+    setTextAlign,
+    setPageStyle,
+    setCanvasSize,
     get frameElement() {
       return frame;
     },
@@ -3412,6 +4025,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     refreshOverlay: () => {
       notifyOverlay();
     },
+    subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
+      tableListeners.add(listener);
+      if (pendingTableDblclick) {
+        const replay = pendingTableDblclick;
+        pendingTableDblclick = null;
+        listener(replay);
+      }
+      return () => {
+        tableListeners.delete(listener);
+      };
+    },
+    requestTableCells: (id: string) => {
+      if (mode !== "view") return;
+      postToFrame({ command: "table-cells", id });
+    },
+    previewTableCols: (id: string, cols: readonly number[]) => {
+      if (mode !== "view") return;
+      postToFrame({ command: "preview-table-cols", id, cols: [...cols] });
+    },
+    subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => {
+      tableRangeListeners.add(listener);
+      listener(tableRange);
+      return () => {
+        tableRangeListeners.delete(listener);
+      };
+    },
+    setTableRange,
+    handleTableRangeKey,
     selectAll,
     selectElements,
     deleteSelection,
@@ -3424,11 +4065,23 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     alignSelection,
     distributeSelection,
     insertTextBox,
+    subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => {
+      chartWindowListeners.add(listener);
+      listener(buildChartWindowState());
+      return () => {
+        chartWindowListeners.delete(listener);
+      };
+    },
+    closeChartWindow,
+    previewChart,
     destroy: () => {
       destroyed = true;
       listeners.clear();
       stageInputListeners.clear();
       overlayListeners.clear();
+      tableListeners.clear();
+      tableRangeListeners.clear();
+      chartWindowListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React

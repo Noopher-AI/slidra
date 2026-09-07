@@ -62,7 +62,9 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element distribute",
   "element order",
   "element style set",
-  "presentation transition set",
+  // [E2.T11] replaces the presentation-wide `presentation transition set`
+  // with the per-slide `slide transition set`.
+  "slide transition set",
   // [E4.T7] 的範本管理對話框加入這四條。
   "template add",
   "template list",
@@ -76,6 +78,10 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element resize",
   "element delete",
   "element duplicate",
+  // [E2.T15] 的 Dock Group/Ungroup 按鈕加入這兩條——`element name set`
+  // 不加：本票沒有 GUI 改名入口（見 Plan D6）。
+  "element group",
+  "element ungroup",
   // [E2.T7] 的 Animate 面板／時間軸／情境列 Edit animation 加入這四條；
   // `effect list` 不在其中——GUI 的清單狀態走一般的檔案讀取路徑
   // （`GET /api/files/`），不需要透過命令端點。
@@ -94,6 +100,36 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "table cell copy",
   "table cell cut",
   "table cell paste",
+  // E2.T14 的 Table 插入面板、儲存格編輯／樣式／合併／欄寬拖曳、Style ›
+  // Object 的表格段與 Refresh 按鈕。
+  "table create",
+  "table cell set",
+  "table cell style set",
+  "table merge",
+  "table col width",
+  "table col insert",
+  "table col delete",
+  "table row insert",
+  "table row delete",
+  "table theme set",
+  "table header set",
+  "table bind",
+  "table refresh",
+  "table set",
+  // E2.T12 的圖表插入面板、資料視窗與其八條命令。
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
+  // #200 (NOOP-69) 的樣式面板加入這三條：文字框對齊、頁面樣式（背景／強調
+  // 色）、頁面尺寸。
+  "textbox align",
+  "slide style set",
+  "presentation canvas set",
 ];
 
 /**

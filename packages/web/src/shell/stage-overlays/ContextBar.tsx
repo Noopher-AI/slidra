@@ -12,6 +12,8 @@ export interface ContextBarProps {
   hasAnimation: boolean;
   /** [E2.T7]: switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
   onEditAnimation(): void;
+  /** #200 §4.5: switches the right rail to Style › Object. No command is sent, no selection changes. */
+  onEditStyle(): void;
   /** [E2.T8]: "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
   onComment(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
@@ -53,13 +55,14 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * 「Comment to AI ｜ Edit style ｜ Edit animation（僅選取元素有動畫時）｜
  * 前後層四項（只有圖示） ｜ Duplicate ｜ Delete」。
  * Order／Duplicate／Delete 接到 controller 的同一組方法（鍵盤與 Arrange 選單
- * 共用）；Comment to AI／Edit style 是佈局佔位按鈕，功能分屬 NOOP-67／NOOP-69。
+ * 共用）；Comment to AI 是佈局佔位按鈕，功能屬 NOOP-67；Edit style（#200/NOOP-69）
+ * 只切右欄到 Style › Object，不送任何命令、不改選取。
  * [E2.T7]：Edit animation 只在 `hasAnimation` 為 true 時渲染（不是 disabled——
  * 07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」），插入點固定在 Edit
  * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
  * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
  * 送任何命令、不改選取。 */
-export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
+export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onEditStyle, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
@@ -86,8 +89,7 @@ export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimat
           Comment to AI
         </button>
         <span className="context-bar-divider" />
-        {/* NOOP-69 wires this up. */}
-        <button type="button" className="context-bar-item" title="Edit style">
+        <button type="button" className="context-bar-item" title="Edit style" onClick={onEditStyle}>
           <Icon name="edit" size="control" />
           Edit style
         </button>

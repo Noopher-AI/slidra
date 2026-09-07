@@ -865,3 +865,330 @@ describe("selection-runtime.js 的文字框 preview 通道（NOOP-65r3）", () =
     expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
   });
 });
+
+// E2.T14: table cell click/dblclick/contextmenu, the table-cells /
+// preview-table-cols host<->runtime channel (plan §4.5). A table's cells
+// carry no `id` — `findSelectable` always resolves to the table container
+// itself, exactly like every other content inside it.
+describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）", () => {
+  const TABLE = `
+    <svg>
+      <g id="el-tbl" data-comot-type="table">
+        <g data-comot-cell="0,0"><rect width="10" height="10"/><text>a</text></g>
+        <g data-comot-cell="0,1"><rect width="10" height="10"/><text>b</text></g>
+        <g data-comot-cell="1,0" data-comot-repeat="row" display="none"><rect width="10" height="10"/><text>{{ x }}</text></g>
+        <g data-comot-cell="2,0" data-comot-generated="1"><rect width="10" height="10"/><text>gen</text></g>
+      </g>
+    </svg>`;
+
+  it("點一格：發出 select（表格本身）與 table-cell-click（該格）", async () => {
+    const { doc } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    const cell = doc.querySelector('[data-comot-cell="0,1"]')!;
+    click(doc, cell);
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "select", id: "el-tbl", name: null, additive: false });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+  });
+
+  it("⇧點：table-cell-click 的 additive 為 true", async () => {
+    const { doc, win } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    doc.querySelector('[data-comot-cell="0,0"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: true });
+  });
+
+  it("⇧點同一張已選取表格的第二格：表格本身保持選取（不重發 select／不被誤判成 toggle 取消），只有 table-cell-click 回報新格子（手動瀏覽器煙霧測試抓到的迴歸）", async () => {
+    const { doc } = boot(TABLE);
+    click(doc, doc.querySelector('[data-comot-cell="0,0"]')!);
+    await tick();
+
+    const { messages, stop } = collectMessages();
+    const win = doc.defaultView as Window;
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    doc.querySelector('[data-comot-cell="0,1"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    await tick();
+    stop();
+
+    expect(messages.some((m: any) => m.event === "select")).toBe(false);
+    expect(messages.some((m: any) => m.event === "clear")).toBe(false);
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: true });
+  });
+
+  it("雙擊一般儲存格：table-cell-dblclick 回報自己的 row/col，不進入群組編輯", async () => {
+    const { doc } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
+    expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
+  });
+
+  it("雙擊一個在兩層群組裡的表格儲存格：同一次雙擊鑽到底、選取表格（groupPath 是整條鏈），並回報 table-cell-dblclick", async () => {
+    const grouped = TABLE.replace('<g id="el-tbl"', '<g id="el-outer"><g id="el-grp"><g id="el-tbl"').replace(/<\/svg>\s*$/, "</g></g></svg>");
+    const { doc } = boot(grouped);
+    const { messages, stop } = collectMessages();
+    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    await tick();
+    stop();
+
+    const events = messages.map((m: any) => m.event);
+    expect(events.indexOf("select")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("table-cell-dblclick")).toBeGreaterThan(events.indexOf("select"));
+    expect(messages).toContainEqual(expect.objectContaining({ event: "select", id: "el-tbl", groupPath: ["el-outer", "el-grp"] }));
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
+  });
+
+  it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
+    const { doc } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    dblclick(doc, doc.querySelector('[data-comot-cell="2,0"]')!);
+    await tick();
+    stop();
+
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
+  });
+
+  it("在格上按右鍵：table-cell-contextmenu 回報 row/col/x/y，且壓掉原生選單", async () => {
+    const { win, doc } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
+    const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 7, clientY: 9 });
+    doc.querySelector('[data-comot-cell="0,0"]')!.dispatchEvent(event);
+    await tick();
+    stop();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-contextmenu", id: "el-tbl", row: 0, col: 0, x: 7, y: 9 });
+  });
+
+  async function sendHostCommand(win: Window, command: Record<string, unknown>): Promise<void> {
+    const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+    win.dispatchEvent(
+      new MessageEventCtor("message", {
+        data: { source: "comot-host", ...command },
+        source: win.parent as unknown as MessageEventSource,
+      }),
+    );
+    await tick();
+  }
+
+  it("table-cells 指令：回報每一格的 rect 與表格自己的 box", async () => {
+    const { win } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    await sendHostCommand(win, { command: "table-cells", id: "el-tbl" });
+    stop();
+
+    const reported = messages.find((m: any) => m.event === "table-cells") as any;
+    expect(reported).toBeDefined();
+    expect(reported.id).toBe("el-tbl");
+    expect(reported.cells.length).toBe(4);
+    expect(reported.cells.map((c: any) => `${c.row},${c.col}`).sort()).toEqual(["0,0", "0,1", "1,0", "2,0"]);
+  });
+
+  it("table-cells 指令：id 不存在或不是表格時，安靜地不回報（略過，不拋錯）", async () => {
+    const { win } = boot(TABLE);
+    const { messages, stop } = collectMessages();
+    await sendHostCommand(win, { command: "table-cells", id: "el-nope" });
+    stop();
+    expect(messages.some((m: any) => m.event === "table-cells")).toBe(false);
+  });
+
+  it("preview-table-cols：改變每格的 rect 寬度與 transform x，不動文字內容", async () => {
+    const { doc, win } = boot(TABLE);
+    await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: [50, 30] });
+
+    const cellA = doc.querySelector('[data-comot-cell="0,0"]')!;
+    const cellB = doc.querySelector('[data-comot-cell="0,1"]')!;
+    expect(cellA.querySelector("rect")!.getAttribute("width")).toBe("50");
+    expect(cellB.querySelector("rect")!.getAttribute("width")).toBe("30");
+    expect(cellA.getAttribute("transform")).toBe("translate(0 0)");
+    expect(cellB.getAttribute("transform")).toBe("translate(50 0)");
+    expect(cellA.querySelector("text")!.textContent).toBe("a");
+  });
+
+  it("preview-table-cols：壞輸入（含負數的陣列、非陣列）完全不動 DOM", async () => {
+    const { doc, win } = boot(TABLE);
+    const before = doc.querySelector('[data-comot-cell="0,0"]')!.querySelector("rect")!.getAttribute("width");
+
+    await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: [50, -1] });
+    await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: "not-an-array" });
+
+    expect(doc.querySelector('[data-comot-cell="0,0"]')!.querySelector("rect")!.getAttribute("width")).toBe(before);
+  });
+
+  /** Dispatches a real keydown on `win` with the given modifiers — same shape `pressEscape` above uses for its one key. */
+  function pressKey(win: Window, key: string, modifiers: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {}): void {
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", {
+        key,
+        metaKey: Boolean(modifiers.meta),
+        ctrlKey: Boolean(modifiers.ctrl),
+        shiftKey: Boolean(modifiers.shift),
+        cancelable: true,
+      }),
+    );
+  }
+
+  // E2.T14r2 §4.2's own behaviour table: `tableRangeId` null vs set changes
+  // Delete/Backspace/Escape's routing, and unlocks Tab/⌘B relaying at all —
+  // every row keyed off "現況位元級不變" when the flag is null.
+  describe("selection-runtime.js — table-range 旗標的鍵盤 relay（E2.T14r2, plan §4.2）", () => {
+    it("H2: tableRangeId 為 null（預設）時，Delete 仍發 stage-key（現況不回歸）", async () => {
+      const { win } = boot(TABLE);
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "stage-key",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        alt: false,
+      });
+      expect(messages.some((m: any) => m.event === "table-key")).toBe(false);
+    });
+
+    it("H3: table-range 指令設過 id 後，Delete 發的是 table-key、不發 stage-key", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "table-key",
+        id: "el-tbl",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+      });
+      expect(messages.some((m: any) => m.event === "stage-key")).toBe(false);
+    });
+
+    it("H4: tableRangeId 非 null 時 Escape 發 table-key 且不發 clear；為 null 時仍發 clear", async () => {
+      const { doc, win } = boot(TABLE);
+      click(doc, doc.querySelector('[data-comot-cell="0,0"]')!); // selects el-tbl, so a later Escape-without-range would otherwise clear it
+      await tick();
+
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages: withRange, stop: stopWithRange } = collectMessages();
+      pressEscape(win);
+      await tick();
+      stopWithRange();
+      expect(withRange).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Escape", meta: false, ctrl: false, shift: false });
+      expect(withRange.some((m: any) => m.event === "clear")).toBe(false);
+
+      await sendHostCommand(win, { command: "table-range", id: null });
+      const { messages: withoutRange, stop: stopWithoutRange } = collectMessages();
+      pressEscape(win);
+      await tick();
+      stopWithoutRange();
+      expect(withoutRange).toContainEqual({ source: "comot-selection", event: "clear" });
+      expect(withoutRange.some((m: any) => m.event === "table-key")).toBe(false);
+    });
+
+    it("Tab／⇧Tab 只在 tableRangeId 作用中才 relay 成 table-key，並壓掉預設行為", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      const tabEvent = new (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+      win.dispatchEvent(tabEvent);
+      pressKey(win, "Tab", { shift: true });
+      await tick();
+      stop();
+
+      expect(tabEvent.defaultPrevented).toBe(true);
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: false });
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: true });
+    });
+
+    it("⌘B／Ctrl+B 只在 tableRangeId 作用中才 relay 成 table-key", async () => {
+      const { win } = boot(TABLE);
+
+      const { messages: beforeRange, stop: stopBefore } = collectMessages();
+      pressKey(win, "b", { meta: true });
+      await tick();
+      stopBefore();
+      expect(beforeRange.some((m: any) => m.event === "table-key")).toBe(false);
+
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      const { messages, stop } = collectMessages();
+      pressKey(win, "b", { meta: true });
+      await tick();
+      stop();
+      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "b", meta: true, ctrl: false, shift: false });
+    });
+
+    it("table-range 指令的 id 不是 string 也不是 null 時忽略，tableRangeId 不動", async () => {
+      const { win } = boot(TABLE);
+      await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
+      await sendHostCommand(win, { command: "table-range", id: 123 });
+
+      const { messages, stop } = collectMessages();
+      pressKey(win, "Delete");
+      await tick();
+      stop();
+
+      expect(messages).toContainEqual({
+        source: "comot-selection",
+        event: "table-key",
+        id: "el-tbl",
+        key: "Delete",
+        meta: false,
+        ctrl: false,
+        shift: false,
+      });
+    });
+  });
+});
+
+// A ⇧-held pointer-down that jitters past DRAG_THRESHOLD_PX on an element
+// that is not yet selected must ADD it (the multi-selection the user was
+// building survives), whereas the same drag without a modifier replaces the
+// selection with just that element — found when a human's "⇧-click chart,
+// then Group" kept ending up with only the chart selected.
+describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是取代", () => {
+  async function dragOnto(shift: boolean): Promise<{ id?: string; additive?: boolean }[]> {
+    const { win, doc } = boot(
+      '<svg viewBox="0 0 1280 720"><rect id="el-a" width="100" height="100"/><rect id="el-b" x="300" width="100" height="100"/></svg>',
+    );
+    click(doc, doc.getElementById("el-a")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    doc.getElementById("el-b")!.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: 350, clientY: 50, shiftKey: shift }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 360, clientY: 60, shiftKey: shift }));
+    await tick();
+    stop();
+    return (messages as { event?: string; id?: string; additive?: boolean }[]).filter((m) => m.event === "select");
+  }
+
+  it("⇧ 拖曳一個未選取的元素：送出 additive:true 的 select，原本的選取保留", async () => {
+    const selects = await dragOnto(true);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: true })]);
+  });
+
+  it("不帶修飾鍵拖曳一個未選取的元素：送出 additive:false 的 select（既有行為）", async () => {
+    const selects = await dragOnto(false);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: false })]);
+  });
+});
