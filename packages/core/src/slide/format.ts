@@ -5,6 +5,7 @@ import { readTextAlign, unescapeXmlText } from "../element-text.js";
 import { readSlidePageStyle, type PageStyle } from "../slide-style.js";
 import { readTextBoxRuns, type TextRun } from "../text/runs.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
+import { describeTableShapeProblem, readTableModel, TABLE_CONTAINER_TYPE, type TableModel } from "../table/model.js";
 
 /**
  * The single answer to "what is a compliant slide" (ADR-0012).
@@ -58,15 +59,18 @@ export const CONTAINER_ATTRIBUTES: readonly string[] = [
   // break tests that assert on it. Locking is a container-level boolean —
   // see element-text.ts's `assertNotLocked` for the one guard this powers.
   "data-comot-lock",
-  // Appended at the end too, same reason (E2.T12): marks a container as
-  // holding a chart's `<comot:chart>` data element plus its rendered
-  // `<svg>` — the only place ADR-0012's "one or more primitives" rule is
-  // relaxed to "exactly these two specific tags" (see `walkContainer`).
+  // Appended at the end too, same reason (E2.T12/E2.T14): marks a container
+  // as holding a chart (`<comot:chart>` + rendered `<svg>`) or a table
+  // (`<comot:source>` + `<g data-comot-cell>` cells) — the only places
+  // ADR-0012's "one or more primitives" rule is relaxed (see `walkContainer`).
   "data-comot-type",
 ];
 
 /** The value `data-comot-type` takes on a chart container (E2.T12). */
 export const CHART_CONTAINER_TYPE = "chart";
+
+/** Re-exported so callers of `slide/index.ts`'s barrel keep working — the constant's home is `table/model.ts` (E2.T14), imported here rather than duplicated to avoid a second definition of the same string drifting apart. */
+export { TABLE_CONTAINER_TYPE };
 
 /** Appended to the issues `co-motion convert` can actually repair — never to the ones it refuses to touch. */
 const CONVERT_HINT = "請執行 co-motion convert <簡報識別碼> 轉換成合規格式。";
@@ -87,6 +91,8 @@ export type SlideElementKind =
   | "path"
   /** One container holding several primitives (ADR-0012 allows "one or more primitives"). */
   | "compound"
+  /** A table container: `data-comot-type="table"` holding an optional `<comot:source>` plus `<g data-comot-cell>` children (E2.T14). */
+  | "table"
   /** A chart container: `data-comot-type="chart"` holding `<comot:chart>` + rendered `<svg>` (E2.T12). */
   | "chart";
 
@@ -170,6 +176,8 @@ export interface SlideElement {
    * boxes already gate on `kind`/`textWidth` first.
    */
   textAlign: "left" | "center" | "right";
+  /** Non-`null` only when `kind === "table"` (E2.T14) — see `table/model.ts`'s `TableModel`. */
+  table: TableModel | null;
 }
 
 /** `data-comot-text-width`, see `SlideElement.textWidth`'s comment for why it lives here. */
@@ -198,6 +206,7 @@ export type ComplianceCode =
   | "missing-viewbox"
   | "too-deep"
   | "malformed-markup"
+  | "invalid-table-shape"
   | "invalid-chart-shape";
 
 export interface ComplianceIssue {
@@ -322,6 +331,21 @@ export function checkSlideCompliance(svg: string): ComplianceIssue[] {
     const children = element.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
     if (children.length === 0) {
       report(element, "empty-container", `容器${id ? ` ${id} ` : ""}裡沒有任何圖元或子容器。`, id);
+      return;
+    }
+
+    // A table container relaxes ADR-0012's normal partition (E2.T14): its
+    // children are an optional `<comot:source>` plus `<g data-comot-cell>`
+    // cells, neither of which is a slide primitive and only the latter is
+    // a `<g>` (so the generic "all-g means group" reading below would
+    // otherwise misclassify it). Structural only — cell content and grid
+    // coverage are `table/model.ts`'s `validateTableModel`'s job, run only
+    // when a `table` command actually reads the container.
+    if (attributeValue(element, "data-comot-type") === TABLE_CONTAINER_TYPE) {
+      const problem = describeTableShapeProblem(element);
+      if (problem !== null) {
+        report(element, "invalid-table-shape", `表格容器${id ? ` ${id} ` : ""}格式不正確：${problem}`, id);
+      }
       return;
     }
 
@@ -503,12 +527,16 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
   const children = element.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
   const isGroup = children.length > 0 && children.every((child) => child.tag === "g");
 
-  const primitives: SlidePrimitive[] = isGroup
+  const elementId = attributeValue(element, "id")!;
+  const isTable = attributeValue(element, "data-comot-type") === TABLE_CONTAINER_TYPE;
+
+  const primitives: SlidePrimitive[] = isGroup || isTable
     ? []
     : children.map((child) => toPrimitive(child, svg));
 
   let kind: SlideElementKind;
-  if (isGroup) kind = "group";
+  if (isTable) kind = "table";
+  else if (isGroup) kind = "group";
   else if (attributeValue(element, "data-comot-type") === CHART_CONTAINER_TYPE) kind = "chart";
   else if (primitives.length === 1) kind = primitives[0].tag as SlideElementKind;
   else kind = "compound";
@@ -548,10 +576,11 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
     kind,
     transform,
     matrix: parseTransform(transform),
-    children: isGroup ? children.map((child) => toElement(child, svg)) : [],
+    children: isGroup && !isTable ? children.map((child) => toElement(child, svg)) : [],
     primitives,
     textWidth,
     textHeight,
     textAlign,
+    table: isTable ? readTableModel(svg, elementId) : null,
   };
 }

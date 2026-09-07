@@ -91,6 +91,22 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "comment add",
   "comment edit",
   "comment delete",
+  // E2.T14 的 Table 插入面板、儲存格編輯／樣式／合併／欄寬拖曳、Style ›
+  // Object 的表格段與 Refresh 按鈕。
+  "table create",
+  "table cell set",
+  "table cell style set",
+  "table merge",
+  "table col width",
+  "table col insert",
+  "table col delete",
+  "table row insert",
+  "table row delete",
+  "table theme set",
+  "table header set",
+  "table bind",
+  "table refresh",
+  "table set",
   // E2.T12 的圖表插入面板、資料視窗與其八條命令。
   "chart create",
   "chart data set",

@@ -496,6 +496,18 @@ function boundsWithin(
     throw new CoMotionError(`容器巢狀超過 ${MAX_CONTAINER_DEPTH} 層，無法計算邊界框`);
   }
   const matrix = multiplyMatrix(ancestorMatrix, element.matrix);
+  // A table's bbox is its declared grid extent, not a primitive union
+  // (E2.T14, plan §4.1): cells carry no `id` and are not independently
+  // measurable elements, and `element.table`'s `rows` are always the
+  // core-computed heights already baked into the file.
+  if (element.kind === "table") {
+    if (element.table === null) {
+      throw new CoMotionError(`表格 ${element.id} 缺少 table 資料`);
+    }
+    const width = element.table.cols.reduce((sum, value) => sum + value, 0);
+    const height = element.table.rows.reduce((sum, value) => sum + value, 0);
+    return transformRect(matrix, { x: 0, y: 0, width, height });
+  }
   if (element.kind === "group") {
     if (element.children.length === 0) {
       throw new CoMotionError(`群組 ${element.id} 裡沒有任何子元素，沒有邊界框`);

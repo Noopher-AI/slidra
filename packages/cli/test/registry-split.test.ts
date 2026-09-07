@@ -70,6 +70,24 @@ const EXPECTED_COMMAND_NAMES = [
   "comment edit",
   "comment delete",
   "comment list",
+  // E2.T14: the table command family (#203), including the four commands
+  // §0(a) of the plan added beyond #203's original architecture comment
+  // (row/col insert/delete) to give every cell-context-menu item in
+  // docs/design/docs/05-INTERACTIONS.feature a matching CLI command.
+  "table create",
+  "table cell set",
+  "table cell style set",
+  "table merge",
+  "table col width",
+  "table col insert",
+  "table col delete",
+  "table row insert",
+  "table row delete",
+  "table theme set",
+  "table header set",
+  "table bind",
+  "table refresh",
+  "table set",
   // E2.T12: the chart command family (#204).
   "chart create",
   "chart data set",
@@ -88,12 +106,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 56 known command names — no more, no fewer", () => {
+  it("registers exactly the 78 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(64);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(78);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

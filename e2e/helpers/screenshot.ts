@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Frame, Page } from "playwright";
+import type { Frame, Locator, Page } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
@@ -207,4 +207,76 @@ async function findSlideFrame(page: Page): Promise<Frame | null> {
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
   return null;
+}
+
+export type Box = { x: number; y: number; width: number; height: number };
+
+/** Upper bound on stability-check frames before `settledBox` gives up (NOOP-198's F1/F4 flake never needed more than a handful). */
+const SETTLE_MAX_FRAMES = 20;
+
+function boxesEqual(a: Box, b: Box): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/**
+ * Waits until every *finite* WAAPI animation running on `locator`'s element
+ * (or its subtree) has reached its `finished` state. Animations with
+ * `iterations: Infinity` (e.g. `chat.css`'s `chat-working-spin`) are
+ * excluded — waiting on those would never resolve. A cancelled animation
+ * rejects `.finished`; that's treated as "no longer running", not an error,
+ * so a racing `resetToStep`-style cancel can't fail the caller.
+ */
+async function waitForFiniteAnimations(locator: Locator): Promise<void> {
+  await locator.evaluate(async (el) => {
+    const animations = el.getAnimations({ subtree: true });
+    const finite = animations.filter((animation) => {
+      const timing = animation.effect?.getComputedTiming();
+      return timing ? timing.iterations !== Number.POSITIVE_INFINITY : true;
+    });
+    await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
+  });
+}
+
+/** Awaits one animation frame in the document that owns `locator`'s element — the iframe's own document for an element inside `iframe.slide-frame`, not the top-level page. */
+async function waitOneAnimationFrame(locator: Locator): Promise<void> {
+  await locator.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      }),
+  );
+}
+
+/**
+ * Returns `locator`'s `boundingBox()` only once it has stopped moving:
+ * every finite entrance animation on it (or its subtree) has finished, and
+ * two consecutive animation frames measured the exact same box afterwards.
+ *
+ * `boundingBox()` reports the box *after* CSS transforms are applied, so a
+ * plain `boundingBox()` call taken while a `scale()`/`translateY()` entrance
+ * animation (`.floating-layer`, `.table-cell-menu`, `.context-bar`) is still
+ * running measures a box that is smaller/offset compared to the settled
+ * state — this is what produced NOOP-198's ~42% F1/F4 screenshot-clip flake.
+ * This function replaces "wait a fixed amount of time and hope it's enough"
+ * with a measurement that only returns once it can prove, by direct
+ * observation, that the box is no longer changing.
+ */
+export async function settledBox(locator: Locator, label: string): Promise<Box> {
+  await waitForFiniteAnimations(locator);
+
+  let previous = await locator.boundingBox();
+  if (previous === null) throw new Error(`找不到 ${label} 的版面框`);
+
+  let current: Box | null = null;
+  for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame++) {
+    await waitOneAnimationFrame(locator);
+    current = await locator.boundingBox();
+    if (current === null) throw new Error(`找不到 ${label} 的版面框`);
+    if (boxesEqual(previous, current)) return current;
+    previous = current;
+  }
+
+  throw new Error(
+    `${label} 的版面框在 ${SETTLE_MAX_FRAMES} 幀內未穩定下來（最後兩次量到：${JSON.stringify(previous)} → ${JSON.stringify(current)}）`,
+  );
 }

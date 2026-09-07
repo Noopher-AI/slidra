@@ -12,6 +12,7 @@ import {
 import {
   assertSlideCompliant,
   parseSlide,
+  TABLE_CONTAINER_TYPE,
   CHART_CONTAINER_TYPE,
   TEXT_WIDTH_ATTRIBUTE,
   type SlideElement,
@@ -20,6 +21,7 @@ import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./s
 import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
 import { elementBounds } from "./geometry/bbox.js";
 import { formatSvgNumber } from "./svg-number.js";
+import { scaleChartElement } from "./chart/edit.js";
 import type { FontMetrics } from "./text-metrics.js";
 
 /**
@@ -99,10 +101,25 @@ function meaningfulChildren(node: ScannedNode): ScannedNode[] {
   return node.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
 }
 
-/** Whether `node` is a group container (ADR-0012: a container's children are all `<g>`, or all primitives — never mixed). */
+/**
+ * Whether `node` is a group container (ADR-0012: a container's children
+ * are all `<g>`, or all primitives — never mixed). An UNBOUND table's
+ * cells are all `<g data-comot-cell>` too (E2.T14) — explicitly excluded
+ * here so every caller below (scale/resize/style's group recursion,
+ * `assertSubtreeNotLocked`) treats a table as a leaf, not a group whose
+ * id-less cells it would otherwise try to recurse into.
+ */
 function isGroupContainer(node: ScannedNode): boolean {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) return false;
   const children = meaningfulChildren(node);
   return children.length > 0 && children.every((child) => child.tag === "g");
+}
+
+/** A table container's cells are not primitives `element scale`/`element resize`/`element style set` know how to touch (E2.T14, plan §2/§4.6) — its style and size are owned entirely by the `table` command family. */
+function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
+    throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
+  }
 }
 
 /**
@@ -119,6 +136,36 @@ function assertNotChartContainer(node: ScannedNode, elementId: string, action: s
   if (attributeValue(node, "data-comot-type") === CHART_CONTAINER_TYPE) {
     throw new CoMotionError(`元素 ${elementId} 是圖表，${action}`);
   }
+}
+
+/**
+ * `element scale`/`element resize` for the two containers whose children
+ * are not scalable primitives. A table keeps its declared grid (cols/rows
+ * are core-owned) and scales as a whole through its container transform's
+ * `scale()` — text included, like PowerPoint — so only a uniform factor is
+ * accepted (a non-uniform one would distort the glyphs, same rule as a text
+ * box). A chart re-renders at the new size (`scaleChartElement`). Returns `null` for every other container so
+ * the caller falls through to the primitive path.
+ */
+function scaleSpecialContainer(
+  svg: string,
+  node: ScannedNode,
+  elementId: string,
+  sx: number,
+  sy: number,
+  force: boolean | undefined,
+): string | null {
+  const type = attributeValue(node, "data-comot-type");
+  if (type === TABLE_CONTAINER_TYPE) {
+    if (sx !== sy) {
+      throw new CoMotionError(`元素 ${elementId} 是表格，文字無法非等比縮放，請改用 element scale`);
+    }
+    return applyTransformDelta(svg, elementId, (parts) => ({ ...parts, scaleX: parts.scaleX * sx, scaleY: parts.scaleY * sy }), force);
+  }
+  if (type === CHART_CONTAINER_TYPE) {
+    return scaleChartElement(svg, elementId, sx, sy);
+  }
+  return null;
 }
 
 /** Rounds through `formatSvgNumber` and rejects a value that is positive on input but rounds to zero or below. Mirrors `workspace.ts`'s `assertPositiveAfterRounding` (#76) — small enough, and specific enough to the 4-decimal write rule, that duplicating it here is simpler than threading it across the Node/browser boundary this module cannot cross. */
@@ -720,8 +767,8 @@ function scaleOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
-      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
-      current = scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
+      current = scaleSpecialContainer(current, refreshedNode, currentId, factor, factor, force)
+        ?? scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
     }
   }
 
@@ -913,8 +960,8 @@ function resizeOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
-      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
-      current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
+      current = scaleSpecialContainer(current, refreshedNode, currentId, sx, sy, force)
+        ?? resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
     }
   }
 
@@ -1091,6 +1138,7 @@ function setStyleOnContainer(
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
   assertNotLocked(node, id, force);
+  assertNotTableContainer(node, id, "樣式請用 table 命令族調整");
   assertNotChartContainer(node, id, "樣式請用 chart 命令族調整");
 
   if (isGroupContainer(node)) {

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { toLocalPoint, toLocalRect } from "../src/shell/stage-overlays/OverlayLayer.js";
 import { SelectionOverlay } from "../src/shell/stage-overlays/SelectionOverlay.js";
 import { ContextBar } from "../src/shell/stage-overlays/ContextBar.js";
+import { TableCellMenu } from "../src/shell/stage-overlays/TableCellMenu.js";
 
 /**
  * NOOP-91 round-2 FAIL #4: `SelectionOverlay`/`ContextBar`'s coordinate math
@@ -222,5 +223,66 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       }),
     );
     expect(markup).toContain("top:213px"); // below, not flipped
+  });
+});
+
+describe("TableCellMenu（E2.T14, plan §4.5）", () => {
+  it("永遠顯示 Edit/Bold/插列插欄/刪列刪欄/Clear；canMerge=false 時不顯示 Merge cells", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TableCellMenu, {
+        menuRef: { current: null },
+        x: 10,
+        y: 20,
+        canMerge: false,
+        canUnmerge: false,
+        onEdit: () => {},
+        onBold: () => {},
+        onInsertRowAbove: () => {},
+        onInsertRowBelow: () => {},
+        onInsertColLeft: () => {},
+        onInsertColRight: () => {},
+        onMerge: () => {},
+        onUnmerge: () => {},
+        onDeleteRow: () => {},
+        onDeleteCol: () => {},
+        onClear: () => {},
+      }),
+    );
+    expect(markup).toContain(">Edit<");
+    expect(markup).toContain(">Bold<");
+    expect(markup).toContain(">Insert row above<");
+    expect(markup).toContain(">Insert row below<");
+    expect(markup).toContain(">Insert column left<");
+    expect(markup).toContain(">Insert column right<");
+    expect(markup).toContain(">Delete row<");
+    expect(markup).toContain(">Delete column<");
+    expect(markup).toContain(">Clear<");
+    expect(markup).not.toContain("Merge cells");
+    expect(markup).not.toContain(">Unmerge<");
+  });
+
+  it("canMerge=true 時顯示 Merge cells，canUnmerge=true 時顯示 Unmerge", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TableCellMenu, {
+        menuRef: { current: null },
+        x: 0,
+        y: 0,
+        canMerge: true,
+        canUnmerge: true,
+        onEdit: () => {},
+        onBold: () => {},
+        onInsertRowAbove: () => {},
+        onInsertRowBelow: () => {},
+        onInsertColLeft: () => {},
+        onInsertColRight: () => {},
+        onMerge: () => {},
+        onUnmerge: () => {},
+        onDeleteRow: () => {},
+        onDeleteCol: () => {},
+        onClear: () => {},
+      }),
+    );
+    expect(markup).toContain("Merge cells");
+    expect(markup).toContain(">Unmerge<");
   });
 });

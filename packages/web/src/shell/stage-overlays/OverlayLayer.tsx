@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import type { CanvasController, ChartWindowState, OverlayState } from "../../canvas.js";
+import type { CanvasController, CanvasState, ChartWindowState, OverlayState } from "../../canvas.js";
 import { SelectionOverlay } from "./SelectionOverlay.js";
 import { ContextBar } from "./ContextBar.js";
 import { CommentLayer } from "./CommentLayer.js";
 import { GuideLayer } from "./GuideLayer.js";
 import { BadgeLayer } from "./BadgeLayer.js";
+import { TableOverlay } from "./TableOverlay.js";
 import { ChartWindow } from "./ChartWindow.js";
 
 /**
@@ -91,6 +92,8 @@ export function toLocalRect(
  */
 export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle, showBadges, comment, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
+  const [selection, setSelection] = useState<CanvasState["selection"] | null>(null);
+  const [slidePath, setSlidePath] = useState<string | null>(null);
   const [chartWindow, setChartWindow] = useState<ChartWindowState | null>(null);
 
   useEffect(() => {
@@ -99,6 +102,22 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
       return;
     }
     return controller.subscribeOverlay(setOverlay);
+  }, [controller]);
+
+  // E2.T14 §0(b): a single selected table renders `TableOverlay` — this is
+  // the one place `OverlayLayer` looks at the raw selection/slide state
+  // (`OverlayState` itself has no element-kind info), self-contained so no
+  // new prop needs threading through `Stage.tsx`/`App.tsx`.
+  useEffect(() => {
+    if (!controller) {
+      setSelection(null);
+      setSlidePath(null);
+      return;
+    }
+    return controller.subscribe((state) => {
+      setSelection(state.selection);
+      setSlidePath(state.currentIndex >= 0 ? state.slides[state.currentIndex] : null);
+    });
   }, [controller]);
 
   // E2.T12 plan §3.6/§4.5: the chart data window's own state, self-
@@ -159,6 +178,15 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
       />
       <GuideLayer guides={guides} />
       <BadgeLayer badges={badges} onSelect={(target) => controller?.selectElements([target])} />
+      {selection && selection.ids.length === 1 && selection.elements[0]?.kind === "table" && selection.elements[0].table && (
+        <TableOverlay
+          controller={controller}
+          wellRef={wellRef}
+          slidePath={slidePath}
+          tableId={selection.ids[0]}
+          table={selection.elements[0].table}
+        />
+      )}
       {/* `key={chartWindow.id}` remounts on a different target so its drag
           position and every draft field reset to that chart's own data —
           never carrying edit state from whichever chart was open before. */}

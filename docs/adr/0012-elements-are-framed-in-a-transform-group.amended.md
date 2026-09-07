@@ -24,13 +24,14 @@
 >   （資料）與播放時的視覺效果（衍生）一樣：**渲染結果只由 `packages/core/src/chart/render.ts`
 >   的 `renderChartSvg` 產生，每次 `chart` 命令重畫一次，GUI 或任何其他命令都不直接改它**——這
 >   正是本 ADR「位置只寫在一個地方」（見下方 Consequences）這條不變式延伸出的新結構守衛：
->   `element style set`／`element scale`／`element resize` 對圖表容器一律明確報錯，理由同下方
->   「`transform`/`x`/`y`/`width`/`height` 不得經由樣式命令寫入」——寫入 `<comot:chart>` 或內嵌
->   `<svg>` 的正確路徑只有 `chart` 命令族，繞過它會讓兩者不同步。
+>   `element style set` 對圖表容器一律明確報錯，理由同下方「`transform`/`x`/`y`/`width`/`height`
+>   不得經由樣式命令寫入」——寫入 `<comot:chart>` 或內嵌 `<svg>` 的正確路徑只有 `chart` 命令族，
+>   繞過它會讓兩者不同步。`element scale`／`element resize` 則是這條路徑的一個例外入口：它們不碰
+>   容器 transform 的縮放，而是把 `<comot:chart>` 的 `width`/`height` 乘上倍率後**重畫**一次
+>   （`chart/edit.ts` 的 `scaleChartElement`），所以資料元素與渲染結果仍然同步，且文字不會被拉變形。
 > - `<comot:chart>` 不貢獻 `getBBox()`／`primitiveBounds`；只有內嵌 `<svg>`（視為與 `rect`/`image`
 >   同式：`x`/`y` 預設 0，`width`/`height` 必填）貢獻邊界框——圖表因此像其他元素一樣可以搬移、
->   群組、被效果清單指向，但本版不支援縮放／改尺寸（尺寸只在 `chart create` 或 `chart data set`
->   等命令重畫時由 core 決定）。
+>   群組、被效果清單指向、縮放／改尺寸（等比或非等比皆可，見上一點：一律以新尺寸重畫）。
 > - 內嵌 `<svg>` 與「單獨開啟的圖表 SVG」是同一串位元組：帶 `xmlns`/`width`/`height`/`viewBox`，
 >   不帶 `x`/`y`（位置只寫在容器 `transform`，與本 ADR 的既有規則完全一致，只是多了「圖元」換成
 >   「一整份自己也是合法 SVG 文件的渲染結果」這一種新形狀）。
@@ -38,6 +39,9 @@
 > **沒有改變的部分**：容器仍然只有一層、位置與旋轉仍然只寫在容器的 `transform` 上、「投影片格式
 > 因此變嚴格，不合規的 SVG 不能被編輯命令操作」這條原則不變——只是圖表容器合規的判準是「兩個
 > 特定子元素」而不是「一個或多個圖元」。
+>
+> **本 ADR 由 E2.T14（表格，#203）追加一個容器變體。** 下方原有內容全部不變——這裡只新增
+> `data-comot-type="table"` 這一種容器形狀，見文末「表格容器（E2.T14）」一節。
 
 編輯功能要求四件事：搬移、縮放、旋轉、群組。現有的投影片 SVG 是裸圖元——`<text x y font-size>`、`<rect x y width height>`——每種圖形用自己的方式講位置，而且**沒有任何地方可以寫「我轉了幾度」**，因為在此之前沒有人需要。
 
@@ -64,3 +68,34 @@
 - **投影片格式因此變嚴格**：不合規的 SVG 不能被編輯命令操作，命令拋錯並指出哪裡不對。另有一條使用者主動執行的轉換命令把 SVG 正規化成合規投影片。不自動修——那是靜默改寫使用者的檔案。
 - **任意 `path` 可以被收進來**，且幾乎免費：它的搬移、縮放、旋轉全都是容器給的，唯一做不到的是編輯節點。人不編輯貝茲曲線，要改造型就叫 agent 重畫一個。
 - 現有的 `demo/` 與任何手寫投影片都要經由轉換命令跑一次。
+
+## 表格容器（E2.T14, #203）
+
+表格是這份 ADR「一個容器包一或多個圖元」規則的第二個例外（第一個是圖表，E2.T12，若已合併見同檔案該節）：一個 `data-comot-type="table"` 容器包一個可選的 `<comot:source>`（資料綁定宣告）加上多個 `<g data-comot-cell="r,c">`：
+
+```xml
+<g id="el-tbl1" data-comot-type="table"
+   data-comot-cols="200 300 240" data-comot-rows="44 40 40"
+   data-comot-header="1" data-comot-theme="dark"
+   transform="translate(120 160)">
+  <comot:source xmlns:comot="https://co-motion.dev/ns" src="assets/data/sales.csv"/>
+  <g data-comot-cell="0,0" transform="translate(0 0)">
+    <rect x="0" y="0" width="200" height="44" fill="#ffffff" fill-opacity="0.06"/>
+    <text x="12" y="30" font-size="16" font-weight="700" fill="#a9b0b8" xml:space="preserve">
+      <tspan x="12" y="30">指標</tspan>
+    </text>
+  </g>
+  …
+</g>
+```
+
+固定規則：
+
+- **儲存格容器不帶 `id`**——定址一律靠 `data-comot-cell="r,c"`（0-based，列,欄）；因此表格的儲存格不是獨立可選取的元素，`element move`／`element style set` 等一律作用在整個表格容器上，從不下探到某一格。
+- 儲存格的位置寫在自己的 `transform="translate(x y)"`；圖元（`<rect>`/`<text>`）上永遠沒有 `transform`——與這份 ADR 的核心規則一致。
+- `data-comot-cols`／`data-comot-rows` 是核心算出寫回的欄寬／列高，不接受使用者直接指定列高（欄寬可經 `table col width` 設定；加 `--keep-total` 時右鄰欄吸收差值、表格總寬不變——GUI 拖欄界線走的就是這條）。
+- 表格的邊界框是 `(0,0)` 到 `(Σcols, Σrows)` 經容器 `transform` 變換，不是子圖元的聯集（`geometry/bbox.ts` 的表格分支）——因為儲存格沒有 `id`，不是可獨立測量的「元素」。
+- `element group`／`element ungroup` 對錶格容器一律拋錯：群組化會破壞「儲存格靠位址定址」這個不變式。
+- `element scale`／`element resize` 對錶格**只改容器 `transform` 的 `scale()`**，欄寬／列高與儲存格內容一個位元組都不動——表格像一張圖一樣整體縮放（含文字，同 PowerPoint），之後的任何 `table` 命令都原樣保留這個 scale。因為文字跟著容器縮放，只接受等比：`element resize` 收到 sx ≠ sy 時拋錯（同文字框的規則），GUI 對錶格一律走等比路徑。這是本 ADR 「尺寸走圖元原生屬性」的一個明確例外，理由是表格的尺寸本來就不在圖元上而在 `data-comot-cols`／`data-comot-rows`，而那兩個值是核心從內容算出來的，不能被一個倍率覆寫。
+- 資料綁定沒指定 `--template-row` 時，預設模板列是**第一個含 `{{ 欄名 }}` 的非表頭列**；沒有任何列帶佔位符時才退回最後一列。
+- 資料綁定的展開（CSV → 具體儲存格）只發生在 `table bind`／`table refresh` 這兩條命令，不在顯示時做——與圖表「GUI 永遠不直接改渲染結果」的姿態一致，這裡是「顯示永遠不改動檔案內容」。

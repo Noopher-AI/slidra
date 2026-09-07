@@ -12,6 +12,7 @@ export {
   CONTAINER_ATTRIBUTES,
   MAX_CONTAINER_DEPTH,
   TEXT_WIDTH_ATTRIBUTE,
+  TABLE_CONTAINER_TYPE,
   checkSlideCompliance,
   assertSlideCompliant,
   parseSlide,
