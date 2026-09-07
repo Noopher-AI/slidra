@@ -2,7 +2,7 @@ import { CoMotionError } from "./errors.js";
 import { composeMatrices, decomposeMatrix, formatTransform, multiplyMatrix, parseTransform, type Matrix, type TransformParts } from "./geometry/transform.js";
 import { assertSlideCompliant } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
-import { EFFECTS_NS, type RawEffectAttributes } from "./effects/index.js";
+import { EFFECTS_NS, SUPPORTED_EFFECTS, SUPPORTED_STARTS, type RawEffectAttributes } from "./effects/index.js";
 
 /**
  * `element copy` / `element paste` / `element duplicate` (決定 5-7). Pure
@@ -273,13 +273,6 @@ const CLIPBOARD_SOURCE_ATTR = "data-comot-source";
 /** Used only to satisfy `assertSlideCompliant`'s `missing-viewbox` check while sanitising a fragment in isolation — never the payload's own `viewBox`. */
 const SANITIZE_PLACEHOLDER_VIEWBOX = "0 0 1280 720";
 
-/** Attribute values matching any of these schemes are never legal in pasted content — none of them can point at same-document data. */
-const DANGEROUS_SCHEME = /\b(javascript|data|file|ftp|blob):/i;
-/** An `http(s)://` reference anywhere in the value, or a protocol-relative `//` anywhere in the value (Plan §7.2: unanchored on purpose — both a leading and a mid-value protocol-relative reference resolve to the same external host, so there is no reason to only catch the former). Unanchored on the scheme half too: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. Backslash-tolerant: WHATWG URL parsing treats `\` as equivalent to `/` for any special scheme (http/https included), so `https:\\evil.example` and `\\evil.example` resolve exactly like their forward-slash forms in a browser. */
-const ABSOLUTE_URL = /\bhttps?:[/\\]{2}|[/\\]{2}/i;
-/** `url(...)` references — only a same-document fragment (`#foo`) is legal. */
-const URL_FUNCTION = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
-
 const XML_NAMED_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
 /** XML 1.0 §2.2 legal character ranges — the code points a conforming XML character reference may target. Anything else (surrogate halves, `0xFFFE`/`0xFFFF`, code points above `0x10FFFF`, most C0 controls) would make the written slide unparsable by any XML parser. */
@@ -315,32 +308,15 @@ function hasIllegalNumericCharacterReference(value: string): boolean {
   return false;
 }
 
-/** Namespace-declaration attributes carry inert URIs (never fetched or executed) and are exempt from the URL/scheme rules above. */
-function isNamespaceDeclaration(attrName: string): boolean {
-  return attrName === "xmlns" || attrName.startsWith("xmlns:");
-}
-
-/** [E2.T18] 決定 4：`<comot:effect>` 的屬性白名單，從 `RawEffectAttributes` 的欄位推導，不手抄成常數。 */
-const EFFECT_ATTRIBUTE_WHITELIST: ReadonlySet<string> = new Set<keyof RawEffectAttributes>([
-  "target",
-  "family",
-  "effect",
-  "start",
-  "duration",
-  "delay",
-  "d",
-]);
-
 /**
- * [I1, r5] Delegates the `href`/`xlink:href`/`src` judgment to the same
- * WHATWG `URL` parser a browser uses, instead of a hand-written regex
- * re-implementing its normalisation steps (whitespace/control stripping,
- * case-insensitive scheme, `\`≡`/` for special schemes, optional `//`).
- * Every one of those steps is a distinct bypass dimension for a regex that
- * doesn't happen to encode it; delegating removes the dimension instead of
- * enumerating it. Global `URL` needs no import (`node:url` or otherwise),
- * so `element-clipboard.ts` stays dependency-free and usable from both
- * Node and the browser.
+ * [I1, r5] Used only by the `RELATIVE_REF` grammar (below) as a second gate
+ * behind the shape check, delegating to the same WHATWG `URL` parser a
+ * browser uses rather than re-implementing its normalisation steps by hand.
+ * Kept per [E2.T18r6] 決定 D6: the shape check alone already blocks every
+ * known bypass (see the grammar's own comment), but this catches an unknown
+ * unknown — a shape the grammar allows that a browser still resolves
+ * off-document. Global `URL` needs no import, so this module stays
+ * dependency-free and usable from both Node and the browser.
  *
  * Two probe bases, both must resolve inside the document: with only an
  * `https://` base, `https:evil.example` (an absolute URL that omits `//`)
@@ -365,82 +341,203 @@ function resolvesWithinDocument(value: string): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// [E2.T18r6] Value grammars — the allowlist's third layer. Each grammar
+// judges whether a *complete* attribute value has a shape co-motion's own
+// serializer can produce (Plan §4.2): a value space small enough for an
+// anchored regex, or one large enough to need a real parser (`parseTransform`,
+// already strict) delegated to wholesale. None of them parse CSS, a URL
+// scheme grammar, or any other downstream syntax — the tag/attribute layers
+// below make that unnecessary (`style` and every URL-bearing attribute
+// outside `href`/`data-comot-media` are simply not on any tag's list).
+// ---------------------------------------------------------------------------
+
+type Grammar = (value: string) => boolean;
+
+const NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const isNumber: Grammar = (value) => NUMBER_RE.test(value);
+
+/** One or more `NUMBER`s separated by whitespace or commas; `exactCount`, when given, pins the count (the wrapper `viewBox`'s "exactly 4"). */
+function numberList(exactCount?: number): Grammar {
+  return (value) => {
+    const parts = value.split(/[\s,]+/).filter((part) => part.length > 0);
+    if (parts.length === 0) return false;
+    if (exactCount !== undefined && parts.length !== exactCount) return false;
+    return parts.every((part) => isNumber(part));
+  };
+}
+
+const XML_NAME_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+const isXmlName: Grammar = (value) => XML_NAME_RE.test(value);
+
+const NAMED_COLOR_RE = /^[a-zA-Z]{1,32}$/;
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const PAINT_URL_REF_RE = /^url\(#[A-Za-z_][A-Za-z0-9_.-]*\)$/;
+const isPaint: Grammar = (value) =>
+  value === "none" || value === "currentColor" || HEX_COLOR_RE.test(value) || NAMED_COLOR_RE.test(value) || PAINT_URL_REF_RE.test(value);
+
+/** Conservative character set as a first gate, `parseTransform` (already a strict allowlist parser, geometry/transform.ts) as the real judge — so a future relaxation of that parser can't silently widen this grammar too. */
+const TRANSFORM_CHARSET_RE = /^[A-Za-z0-9 ,.()+\-eE\t\n\r]*$/;
+const isTransform: Grammar = (value) => {
+  if (!TRANSFORM_CHARSET_RE.test(value)) return false;
+  try {
+    parseTransform(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Character set only — path data isn't a reference carrier, so there's nothing to parse for, only a shape to bound. */
+const PATH_DATA_RE = /^[MmZzLlHhVvCcSsQqTtAa0-9eE.,+\-\s]*$/;
+const isPathData: Grammar = (value) => PATH_DATA_RE.test(value);
+
 /**
- * [Corrective Strategy #1] Every content rule below runs inside the same
+ * Empty, a same-document fragment (`#id`), or a relative path that doesn't
+ * open with a protocol-relative `//` — no scheme colon, no parentheses, no
+ * backslash are in the character set at all, which is what actually closes
+ * every `javascript:`/`data:`/CSS-escape/backslash-equivalence bypass this
+ * ticket's five prior rounds each found one new instance of: none of those
+ * payloads can be spelled with only these characters. `resolvesWithinDocument`
+ * is kept as a second gate behind the shape (決定 D6).
+ */
+const RELATIVE_REF_FRAGMENT_RE = /^#[A-Za-z_][A-Za-z0-9_.-]*$/;
+const RELATIVE_REF_PATH_RE = /^[A-Za-z0-9_.\-/~%&+=@ ;]*$/;
+const isRelativeRef: Grammar = (value) => {
+  const shapeOk = value === "" || RELATIVE_REF_FRAGMENT_RE.test(value) || (RELATIVE_REF_PATH_RE.test(value) && !value.startsWith("//"));
+  return shapeOk && resolvesWithinDocument(value);
+};
+
+const CELL_REF_RE = /^\d+,\d+$/;
+const isCellRef: Grammar = (value) => CELL_REF_RE.test(value);
+
+/** Excludes `(`/`:`/`;`/`\`/`<`/`>`/`"`/`'` — i.e. every character a CSS function, a protocol, or a markup delimiter needs. */
+const FONT_FAMILY_RE = /^[^()\\:;<>"'&]{0,128}$/;
+const isFontFamily: Grammar = (value) => FONT_FAMILY_RE.test(value);
+
+/** Free-form display text (`data-comot-name`) — not a reference carrier, so only markup delimiters are excluded. */
+const FREE_TEXT_RE = /^[^<>\\]{0,512}$/;
+const isFreeText: Grammar = (value) => FREE_TEXT_RE.test(value);
+
+const LIST_SPEC_RE = /^(bullet|number|none)(?: (bullet|number|none))?$/;
+const isListSpec: Grammar = (value) => LIST_SPEC_RE.test(value);
+
+function enumOf(values: readonly string[]): Grammar {
+  const set = new Set(values);
+  return (value) => set.has(value);
+}
+
+const FONT_WEIGHTS = ["normal", "bold", "lighter", "bolder", "100", "200", "300", "400", "500", "600", "700", "800", "900"];
+
+/** Shared by every primitive tag (Plan §4.3 `COMMON`) — `<g>` is deliberately excluded (it has no `fill`/`stroke`/`opacity` of its own, and no `xmlns:*`: the serializer never writes either on a container). */
+const COMMON: Readonly<Record<string, Grammar>> = {
+  id: isXmlName,
+  "data-comot-name": isFreeText,
+  fill: isPaint,
+  stroke: isPaint,
+  "stroke-width": isNumber,
+  "stroke-dasharray": numberList(),
+  opacity: isNumber,
+};
+
+/** Shared by `text`/`tspan` (Plan §4.3 `TEXTISH`). */
+const TEXTISH: Readonly<Record<string, Grammar>> = {
+  "font-family": isFontFamily,
+  "font-size": isNumber,
+  "font-weight": enumOf(FONT_WEIGHTS),
+  "font-style": enumOf(["normal", "italic", "oblique"]),
+  "text-anchor": enumOf(["start", "middle", "end"]),
+};
+
+/** [E2.T18r6] Plan §4.3: one grammar map per tag `sanitizeClipboardMarkup("element", …)` may see. A tag with no entry here is rejected outright (`checkNodeAttributes`) — this *is* the allowlist's tag layer, alongside `assertSlideCompliant`'s own (broader, structural) tag sweep. */
+const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Grammar>>>> = {
+  g: {
+    id: isXmlName,
+    transform: isTransform,
+    "data-comot-name": isFreeText,
+    "data-comot-media": isRelativeRef,
+    "data-comot-lock": enumOf(["true"]),
+    "data-comot-type": enumOf(["table"]),
+    "data-comot-cell": isCellRef,
+    "data-comot-text-width": isNumber,
+    "data-comot-text-height": isNumber,
+    "data-comot-text-align": enumOf(["left", "center", "right"]),
+  },
+  rect: { ...COMMON, x: isNumber, y: isNumber, width: isNumber, height: isNumber, rx: isNumber, ry: isNumber },
+  ellipse: { ...COMMON, cx: isNumber, cy: isNumber, rx: isNumber, ry: isNumber },
+  circle: { ...COMMON, cx: isNumber, cy: isNumber, r: isNumber, "data-comot-media": isRelativeRef },
+  line: { ...COMMON, x1: isNumber, y1: isNumber, x2: isNumber, y2: isNumber },
+  path: { ...COMMON, d: isPathData },
+  image: {
+    ...COMMON,
+    x: isNumber,
+    y: isNumber,
+    width: isNumber,
+    height: isNumber,
+    href: isRelativeRef,
+    preserveAspectRatio: enumOf(["none", "xMidYMid meet", "xMidYMid slice"]),
+    "data-comot-media": isRelativeRef,
+  },
+  text: {
+    ...COMMON,
+    ...TEXTISH,
+    x: isNumber,
+    y: isNumber,
+    "xml:space": enumOf(["preserve"]),
+    "data-comot-list": isListSpec,
+    "data-comot-list-marker": enumOf(["true"]),
+  },
+  tspan: { ...COMMON, ...TEXTISH, x: isNumber, y: isNumber, "data-comot-break": enumOf(["1"]) },
+  title: { id: isXmlName },
+  desc: { id: isXmlName },
+};
+
+/** [E2.T18] 決定 4，改寫為 §4.3 的值文法（原本只檢查屬性名稱）：三個 ENUM 的內容從 `effects/index.ts` 推導，不手抄成新常數。 */
+const EFFECT_ATTRIBUTE_GRAMMAR_TYPED: Readonly<Record<keyof RawEffectAttributes, Grammar>> = {
+  target: isXmlName,
+  family: enumOf(Object.keys(SUPPORTED_EFFECTS)),
+  effect: enumOf(Object.values(SUPPORTED_EFFECTS).flat()),
+  start: enumOf(SUPPORTED_STARTS),
+  duration: isNumber,
+  delay: isNumber,
+  d: isPathData,
+};
+/** Widened to a string index so `checkNodeAttributes` can look up an arbitrary (possibly-illegal) attribute name against both this map and `ELEMENT_TAG_ATTRIBUTES` through the same code path; `EFFECT_ATTRIBUTE_GRAMMAR_TYPED` above is what actually pins the keys to `RawEffectAttributes`. */
+const EFFECT_ATTRIBUTE_GRAMMAR: Readonly<Record<string, Grammar>> = EFFECT_ATTRIBUTE_GRAMMAR_TYPED;
+
+/**
+ * [Corrective Strategy #1, D6] Every grammar runs inside the same
  * `for (const form of forms)` loop, over both the raw attribute value and
  * its one-pass entity-decode. This is a structural constraint, not a
- * per-rule choice: a rule added beside this loop instead of inside it is a
- * rule that silently trusts whichever form entity-encoding happens to hide
- * its payload in. `forms` is `[value]` when decoding changed nothing (the
- * common case), so unaffected attribute values pay no extra cost.
+ * per-rule choice: a grammar checked only against the raw form is one an
+ * entity-encoded payload can slip past. `forms` is `[value]` when decoding
+ * changed nothing (the common case), so unaffected attribute values pay no
+ * extra cost.
  */
-function checkAttributeValue(attrName: string, value: string, label: string): void {
+function checkAttributeValue(tag: string, attrName: string, value: string, label: string, grammar: Grammar): void {
   if (hasIllegalNumericCharacterReference(value)) {
-    throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有非法的 XML 字元參照（${value}）`);
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${tag}> 屬性 ${attrName} 含有非法的 XML 字元參照（${value}）`);
   }
-  if (isNamespaceDeclaration(attrName)) return;
-
   const decodedValue = decodeXmlEntities(value);
   const forms = decodedValue === value ? [value] : [value, decodedValue];
-
-  /**
-   * [I2, r5] Over-approximates rather than enumerates: any attribute name
-   * whose *local name* (case-insensitively) is `href`/`src` is treated as
-   * URL-bearing, however it's prefixed — `HREF`, `Href`, `xlink:href`,
-   * `XLINK:HREF`, an aliased namespace prefix (`xmlns:xl="…xlink"` +
-   * `xl:href`/`Xl:HrEf`), or a multi-colon local name (`a:b:href`, which a
-   * first-colon split would miscompute as `b:href`). A browser's HTML
-   * parser lower-cases attribute names before matching its foreign-attribute
-   * table, and its namespace resolution binds a prefix to whichever URI
-   * declared it, not to the prefix's literal spelling — so anything less
-   * permissive than "matches this shape at all" is a bypass waiting to be
-   * found, not a rule that happens to be missing one more case.
-   */
-  const isUrlAttr = /(?:^|:)(?:href|src)$/.test(attrName.toLowerCase());
-
   for (const form of forms) {
-    /**
-     * [I3, r5] Every known bypass discovered so far that isn't a WHATWG
-     * URL-normalisation step (TAB/LF/CR stripping, `\`≡`/`, case
-     * folding, …) routes through a backslash somewhere — CSS's
-     * hex-escape syntax (`\75rl(\00002f\00002fevil.example)`) needs one
-     * to trigger, and so does the URL parser's own backslash equivalence.
-     * SVG attribute syntax has no legitimate use for a literal backslash,
-     * so removing the character removes the whole class of "a downstream
-     * parser re-interprets this differently than we assumed" bypass at
-     * once, without needing to know what that downstream parser does.
-     */
-    if (form.includes("\\")) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有反斜線（${value}）`);
-    }
-    if (isUrlAttr && !resolvesWithinDocument(form)) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
-    }
-    if (DANGEROUS_SCHEME.test(form)) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 含有不允許的協定（${value}）`);
-    }
-    if (ABSOLUTE_URL.test(form)) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 是外部參照（${value}）`);
-    }
-    for (const match of form.matchAll(URL_FUNCTION)) {
-      const ref = match[2];
-      const decodedRef = decodeXmlEntities(ref);
-      if (decodedRef !== ref || !decodedRef.startsWith("#")) {
-        throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 的 url(...) 不是同文件片段參照（${ref}）`);
-      }
+    if (!grammar(form)) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${tag}> 屬性 ${attrName} 的值不符合允許的格式（${value}）`);
     }
   }
 }
 
 function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean): void {
+  const tagGrammar = isEffect ? (node.tag === "comot:effect" ? EFFECT_ATTRIBUTE_GRAMMAR : undefined) : ELEMENT_TAG_ATTRIBUTES[node.tag];
+  if (!tagGrammar) {
+    throw new CoMotionError(`剪貼簿內容不可信：${label} 含有不在允許清單內的標籤 <${node.tag}>`);
+  }
   for (const attribute of node.attributes) {
-    if (/^on/i.test(attribute.name)) {
-      throw new CoMotionError(`剪貼簿內容不可信：${label} 含有事件屬性 ${attribute.name}`);
+    const grammar = tagGrammar[attribute.name];
+    if (!grammar) {
+      throw new CoMotionError(`剪貼簿內容不可信：${label} 的 <${node.tag}> 屬性 ${attribute.name} 不在允許清單內`);
     }
-    checkAttributeValue(attribute.name, attribute.value, label);
-    if (isEffect && node.tag === "comot:effect" && !EFFECT_ATTRIBUTE_WHITELIST.has(attribute.name as keyof RawEffectAttributes)) {
-      throw new CoMotionError(`剪貼簿內容不可信：效果項含有不在白名單內的屬性 ${attribute.name}`);
-    }
+    checkAttributeValue(node.tag, attribute.name, attribute.value, label, grammar);
   }
   for (const child of node.children) {
     checkNodeAttributes(child, label, isEffect);
@@ -465,11 +562,14 @@ function checkNodeAttributes(node: ScannedNode, label: string, isEffect: boolean
  *    effect) — see the `roots.length !== 1` check below.
  * 3. Attribute-level (not covered by `assertSlideCompliant`, ADR-0010/0011
  *    left that to the iframe sandbox for *rendering* — this is the
- *    write-path guard #201's architecture decision added): no `on*` handler,
- *    no `javascript:`/`data:`/`file:`/`ftp:`/`blob:` scheme, no absolute URL,
- *    no `url(...)` outside a same-document fragment, `href`/`xlink:href`/`src`
- *    limited to a fragment or relative path, and — for an effect item only —
- *    no attribute outside `RawEffectAttributes`' fields.
+ *    write-path guard #201's architecture decision added), rewritten in
+ *    [E2.T18r6] from a denylist to an allowlist (`checkNodeAttributes`):
+ *    every tag not in `ELEMENT_TAG_ATTRIBUTES`/`EFFECT_ATTRIBUTE_GRAMMAR` is
+ *    rejected outright, every attribute not on that tag's list is rejected
+ *    (this alone removes `style`, `on*`, `xlink:href`, and any namespace
+ *    alias — none of them are ever on a list), and every attribute that IS
+ *    listed must match its value grammar (§4.2 of that ticket's plan).
+ *    Nothing here parses CSS, a URL scheme, or any other downstream syntax.
  *
  * `<!DOCTYPE`/`<!ENTITY`/`<!--`/`<![CDATA[` are rejected directly on the raw
  * string: `scanDocument` silently skips all four constructs by design, which
@@ -523,7 +623,23 @@ export function serializeClipboardSvg(payload: ClipboardPayload): string {
   for (const element of payload.elements) sanitizeClipboardMarkup(element, "element");
   for (const effect of payload.effects) sanitizeClipboardMarkup(effect, "effect");
 
-  const viewBox = payload.viewBox ?? SANITIZE_PLACEHOLDER_VIEWBOX;
+  /**
+   * [E2.T18r6 AC7, §3.5] `viewBox` came from `extractElementsForCopy`'s
+   * verbatim read of the source `<svg>`, or — via a `parseClipboardSvg` →
+   * `serializeClipboardSvg` round trip — from a foreign clipboard payload
+   * this function never validated before now. Unlike `sourceSlidePath`
+   * (already `escapeAttr`-ed below since this function was first written),
+   * `viewBox` was written straight into the output: a value shaped like
+   * `0 0 1 1" onload="fetch(...)` closed its own quote and opened a live
+   * event-handler attribute on the wrapper `<svg>` itself. A grammar check
+   * plus unconditional escaping (決定 D5) closes both the shape and the
+   * quote-breakout at once; an invalid `viewBox` falls back to the same
+   * placeholder used when the payload has none at all, rather than throwing
+   * — this is the *write* path, and a source `<svg>`'s `viewBox` failing to
+   * parse is not a reason to block copying it.
+   */
+  const rawViewBox = payload.viewBox ?? SANITIZE_PLACEHOLDER_VIEWBOX;
+  const viewBox = escapeAttr(numberList(4)(rawViewBox) ? rawViewBox : SANITIZE_PLACEHOLDER_VIEWBOX);
   const effectsBlock =
     payload.effects.length > 0
       ? `<metadata><comot:effects xmlns:comot="${EFFECTS_NS}">${payload.effects.join("")}</comot:effects></metadata>`
@@ -561,7 +677,17 @@ export function parseClipboardSvg(markup: string): ClipboardPayload | null {
   const sourceSlidePath = attributeValue(svgRoot, CLIPBOARD_SOURCE_ATTR);
   if (sourceSlidePath === null) return null;
 
-  const viewBox = attributeValue(svgRoot, "viewBox") ?? undefined;
+  const rawViewBox = attributeValue(svgRoot, "viewBox");
+  /**
+   * [E2.T18r6 AC7, §3.5] A `viewBox` that doesn't fit `NUMBER_LIST(4)` is
+   * not a shape this app's own `serializeClipboardSvg` ever writes — same
+   * "not co-motion clipboard content" case as a missing marker attribute
+   * above, so this returns `null` rather than passing the value through
+   * unvalidated into a `ClipboardPayload` a later `serializeClipboardSvg`
+   * call might re-embed.
+   */
+  if (rawViewBox !== null && !numberList(4)(rawViewBox)) return null;
+  const viewBox = rawViewBox ?? undefined;
 
   const effects: string[] = [];
   const metadata = svgRoot.children.find((child) => child.tag === "metadata");

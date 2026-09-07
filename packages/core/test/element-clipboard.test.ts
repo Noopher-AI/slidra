@@ -164,10 +164,18 @@ describe("sanitizeClipboardMarkup", () => {
   });
 
   const ACCEPT_MATRIX: ReadonlyArray<[cell: string, markup: string]> = [
-    ["P01", '<g id="el-a"><rect style="fill:url(#grad1)" width="1" height="1"/></g>'],
+    // r6 ([E2.T18r6] 決定 D4): rewritten, not deleted — style is gone from the
+    // allowlist entirely, so the internal reference this cell guards against
+    // over-rejection now has to live on the native attribute the serializer
+    // actually writes it on (`fill`, not `style`).
+    ["P01", '<g id="el-a"><rect fill="url(#grad1)" width="1" height="1"/></g>'],
     ["P02", '<g id="el-a"><image href="#frag" width="1" height="1"/></g>'],
     ["P03", '<g id="el-a"><image href="images/logo.png" width="1" height="1"/></g>'],
-    ["P04", '<g id="el-a"><rect fill="&#x10FFFF;" width="1" height="1"/></g>'],
+    // r6 (決定 D4): rewritten — `&#x10FFFF;` is a legal high-codepoint XML
+    // character reference, but it isn't a legal `PAINT` value; the cell's
+    // point (a legal reference must not be over-rejected as illegal XML) now
+    // has to live on a free-text attribute instead of `fill`.
+    ["P04", '<g id="el-a" data-comot-name="&#x10FFFF;"><rect width="1" height="1"/></g>'],
     ["P05", '<g id="el-a" data-comot-name="第 3 章：url(#a) 的說明"><rect width="1" height="1"/></g>'],
     // r5 (NOOP-201 §6.2): guardrails for I1/I3 — must not over-reject.
     ["P06", '<g id="el-a"><image href="" width="1" height="1"/></g>'],
