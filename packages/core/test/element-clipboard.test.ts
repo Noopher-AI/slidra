@@ -203,29 +203,23 @@ describe("sanitizeClipboardMarkup", () => {
 });
 
 /**
- * r5 (NOOP-201 §6.2): I1 bets URL-attribute safety on the global `URL`
- * parser actually performing the normalisation steps the sanitizer no
- * longer hand-codes. This is the one describe in this file that asserts a
- * platform API's behavior rather than this module's own code — if a future
- * Node/browser `URL` implementation stops doing one of these, this should
- * go red instead of the gap opening silently.
+ * r5 (NOOP-201 §6.2)/r6 ([E2.T18r6] §6.3, test-budget pass): this describe
+ * used to carry 5 additional `it.each` cases asserting the platform `URL`
+ * parser's own normalisation behavior (TAB/LF stripping, backslash-as-path-
+ * separator, case-insensitive scheme, authority-less absolute) — each one
+ * duplicates an input that already has independent, public-API coverage in
+ * `REJECT_MATRIX` (N1/N2/X1/C18 respectively) exercised through
+ * `sanitizeClipboardMarkup` itself. Pruned: they tested the platform, not
+ * this module, and a public-API regression test already covers every input
+ * they used to name. Kept: "complementary externals" below, the one
+ * property (the two-probe-base design's actual reason to exist) no
+ * `REJECT_MATRIX` cell exercises directly.
  */
 describe("WHATWG URL parser characteristics I1 depends on", () => {
   const HTTPS_BASE = "https://clipboard.invalid/base/";
-  const HTTP_BASE = "http://clipboard.invalid/base/";
-
-  it.each([
-    ["strips an interior TAB", "/\t/evil.example/x.png", HTTPS_BASE, "evil.example"],
-    ["strips an interior LF", "/\n/evil.example/x.png", HTTPS_BASE, "evil.example"],
-    ["treats a backslash as a path separator (special scheme)", "\\\\evil.example\\x.png", HTTPS_BASE, "evil.example"],
-    ["is case-insensitive on scheme", "HTTPS:evil.example/x.png", HTTPS_BASE, "clipboard.invalid"],
-    ["accepts an authority without //", "https:evil.example/x.png", HTTPS_BASE, "clipboard.invalid"],
-  ])("%s", (_label, value, base, expectedHost) => {
-    expect(new URL(value, base).host).toBe(expectedHost);
-  });
 
   it("an https: value against an http: base and an http: value against an https: base are complementary externals", () => {
-    expect(new URL("https:evil.example/x.png", HTTP_BASE).host).toBe("evil.example");
+    expect(new URL("https:evil.example/x.png", "http://clipboard.invalid/base/").host).toBe("evil.example");
     expect(new URL("http:evil.example/x.png", HTTPS_BASE).host).toBe("evil.example");
   });
 });
