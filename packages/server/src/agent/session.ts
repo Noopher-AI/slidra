@@ -125,6 +125,14 @@ interface ChatEvents {
 }
 
 /**
+ * The shape `AgentChatSession.attachStream` accepts — pulled out as its own
+ * exported type so `AgentManager` (NOOP-230's session-switching facade,
+ * `manager.ts`) can declare the same signature for its own `attachStream`
+ * without reaching into `ChatEvents`, which stays unexported.
+ */
+export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
+
+/**
  * Drives one ACP adapter subprocess for the lifetime of `co-motion serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
