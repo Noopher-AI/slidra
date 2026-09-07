@@ -534,7 +534,19 @@ const ELEMENT_TAG_ATTRIBUTES: Readonly<Record<string, Readonly<Record<string, Gr
     // 寫入端：workspace.ts:694 → 相容。
     "data-comot-text-align": enumOf(["left", "center", "right"]),
   },
-  rect: { ...COMMON, x: isNumber, y: isNumber, width: isNumber, height: isNumber, rx: isNumber, ry: isNumber },
+  rect: {
+    ...COMMON,
+    x: isNumber,
+    y: isNumber,
+    width: isNumber,
+    height: isNumber,
+    rx: isNumber,
+    ry: isNumber,
+    // 寫入端（表格儲存格的 <rect>，E2.T14 #203）：table/render.ts → fill-opacity
+    // 是數字、pointer-events 恆為 "all"。
+    "fill-opacity": isNumber,
+    "pointer-events": enumOf(["all"]),
+  },
   ellipse: { ...COMMON, cx: isNumber, cy: isNumber, rx: isNumber, ry: isNumber },
   circle: { ...COMMON, cx: isNumber, cy: isNumber, r: isNumber, "data-comot-media": isRelativeRef },
   line: { ...COMMON, x1: isNumber, y1: isNumber, x2: isNumber, y2: isNumber },

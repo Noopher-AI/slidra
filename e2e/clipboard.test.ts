@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import type { CommandRegistry } from "@co-motion/cli";
 import { attributeValue, scanDocument } from "../packages/core/src/slide/scan.js";
+import { readTableModel } from "../packages/core/src/table/model.js";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 
 /**
@@ -232,14 +233,15 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   expect(parseCliData<{ cells: number }>(pasteResult.stdout).cells).toBe(3);
 
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  expect(after).toContain('<g id="cell-2-0" data-comot-cell="2,0" transform="translate(0 96)"><rect x="0" y="0" width="120" height="48" fill="#fff" stroke="#999"/><text x="8" y="30" font-size="20">A1</text></g>');
+  const row2 = readTableModel(after, "tbl-1").cells.filter((cell) => cell.row === 2).map((cell) => cell.text);
+  expect(row2).toEqual(["A1", "B1", "C1"]);
 
   // ADR-0001: confirm the static render, not just the file bytes.
   await page.locator('.overview-item[data-index="0"] .overview-thumb').click();
   await page.reload();
-  await expect.poll(() => slideFrame(page).locator("#cell-2-0 text").textContent(), { timeout: 10_000 }).toBe("A1");
-  expect(await slideFrame(page).locator("#cell-2-1 text").textContent()).toBe("B1");
-  expect(await slideFrame(page).locator("#cell-2-2 text").textContent()).toBe("C1");
+  await expect.poll(() => slideFrame(page).locator('[data-comot-cell="2,0"] text').textContent(), { timeout: 10_000 }).toBe("A1");
+  expect(await slideFrame(page).locator('[data-comot-cell="2,1"] text').textContent()).toBe("B1");
+  expect(await slideFrame(page).locator('[data-comot-cell="2,2"] text').textContent()).toBe("C1");
 });
 
 it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent 走同一條路，僅隨機 id 不同）", async () => {

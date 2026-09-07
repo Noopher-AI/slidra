@@ -1,7 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
+import { createTableElement, parseFont, readTableModel, setTableCellText, type FontMetrics } from "@co-motion/core";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
 
@@ -35,18 +37,28 @@ async function readSlide(id: string, slidePath = "slides/001.svg"): Promise<stri
   return result.data!.content;
 }
 
-/** A 2x3 table fixture ([E2.T14]'s presumed container shape: `data-comot-type="table"` on the table, `data-comot-cell="r,c"` on each cell). */
+const BLANK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
+const bundledFontPath = path.join(
+  path.dirname(createRequire(import.meta.url).resolve("@co-motion/core")),
+  "assets/fonts/NotoSansTC-Presentation.ttf",
+);
+let fonts: Map<string, FontMetrics>;
+beforeAll(async () => {
+  fonts = new Map([["Noto Sans TC", parseFont(new Uint8Array(await readFile(bundledFontPath)))]]);
+});
+
+async function textAt(id: string, row: number, col: number): Promise<string> {
+  return readTableModel(await readSlide(id), "tbl-1").cells.find((cell) => cell.row === row && cell.col === col)!.text;
+}
+
+/** A real [E2.T14] 2x3 table (`table create` + `table cell set` shape), cell text `r{r}c{c}`. */
 async function openTablePresentation(): Promise<{ id: string }> {
-  const cells: string[] = [];
+  let slide = createTableElement(BLANK, "slides/001.svg", "tbl-1", { rows: 2, cols: 3, x: 100, y: 100 }, fonts);
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 3; c++) {
-      cells.push(`<g id="cell-${r}-${c}" data-comot-cell="${r},${c}"><text x="0" y="0">r${r}c${c}</text></g>`);
+      slide = setTableCellText(slide, "slides/001.svg", "tbl-1", r, c, `r${r}c${c}`, fonts);
     }
   }
-  const slide =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-    `<g id="tbl-1" data-comot-type="table" data-comot-cols="120 120 120" data-comot-rows="48 48">${cells.join("")}</g>` +
-    "</svg>";
   const { zipSync } = await import("fflate");
   const zipped = zipSync({
     "project.json": new TextEncoder().encode(
@@ -107,12 +119,13 @@ describe("table cell cut", () => {
     expect(result.ok).toBe(true);
     expect(result.data!.tsv).toBe("r0c0\tr0c1");
     const after = await readSlide(id);
-    expect(after).toContain('<g id="cell-0-0" data-comot-cell="0,0"><text x="0" y="0"></text></g>');
-    expect(after).toContain('<g id="cell-0-2" data-comot-cell="0,2"><text x="0" y="0">r0c2</text></g>');
+    expect(readTableModel(after, "tbl-1").cells).toHaveLength(6);
+    expect(await textAt(id, 0, 0)).toBe("");
+    expect(await textAt(id, 0, 2)).toBe("r0c2");
 
     const undone = await registry.dispatch("undo", { id });
     expect(undone.ok).toBe(true);
-    expect(await readSlide(id)).toContain('<text x="0" y="0">r0c0</text>');
+    expect(await textAt(id, 0, 0)).toBe("r0c0");
   });
 });
 
@@ -126,9 +139,8 @@ describe("table cell paste", () => {
 
     expect(result.ok).toBe(true);
     expect(result.data!.cells).toBe(2);
-    const after = await readSlide(id);
-    expect(after).toContain('<text x="0" y="0">x</text>');
-    expect(after).toContain('<text x="0" y="0">y</text>');
+    expect(await textAt(id, 0, 0)).toBe("x");
+    expect(await textAt(id, 0, 1)).toBe("y");
   });
 
   it("reads TSV content from --tsv-file when tsv is not given", async () => {
@@ -142,7 +154,7 @@ describe("table cell paste", () => {
 
     expect(result.ok).toBe(true);
     expect(result.data!.cells).toBe(3);
-    expect(await readSlide(id)).toContain('<text x="0" y="0">z2</text>');
+    expect(await textAt(id, 1, 1)).toBe("z2");
   });
 
   it("clips to the table's remaining space and reports the actual count written", async () => {

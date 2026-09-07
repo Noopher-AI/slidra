@@ -1450,7 +1450,8 @@ export async function cutTableCells(id: string, slidePath: string, tableElementI
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const { tsv, updated } = cutTableCellRange(original, slidePath, tableElementId, range);
+  const fonts = await resolvePresentationFonts(id);
+  const { tsv, updated } = cutTableCellRange(original, slidePath, tableElementId, range, fonts);
   await writePresentationFile(id, slidePath, updated);
   return { tsv };
 }
@@ -1468,7 +1469,8 @@ export async function pasteTableCells(
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const { updated, cells } = pasteTableCellRange(original, slidePath, tableElementId, anchor, tsv);
+  const fonts = await resolvePresentationFonts(id);
+  const { updated, cells } = pasteTableCellRange(original, slidePath, tableElementId, anchor, tsv, fonts);
   await writePresentationFile(id, slidePath, updated);
   return { cells };
 }
