@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "剪貼簿測試簡報",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": ["slides/001.svg", "slides/002.svg"]
+}

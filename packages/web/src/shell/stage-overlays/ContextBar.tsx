@@ -17,6 +17,10 @@ export interface ContextBarProps {
   /** [E2.T8]: "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
   onComment(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
+  /** [E2.T18]: Copy/Cut always render (parity with Duplicate/Delete) — same "disabled state doesn't exist here, no selection means no bar at all" posture the rest of this component already has (`union === null` hides the whole bar). */
+  onCopy(): void;
+  onCut(): void;
+  onPaste(): void;
   onDuplicate(): void;
   onDelete(): void;
 }
@@ -58,7 +62,7 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
  * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
  * 送任何命令、不改選取。 */
-export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onEditStyle, onComment, onOrder, onDuplicate, onDelete }: ContextBarProps) {
+export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onEditStyle, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
@@ -108,6 +112,16 @@ export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimat
             <Icon name={item.icon} size="control" />
           </button>
         ))}
+        <span className="context-bar-divider" />
+        <button type="button" className="context-bar-item context-bar-item-icon" title="Copy" aria-label="Copy" onClick={onCopy}>
+          <Icon name="copy" size="control" />
+        </button>
+        <button type="button" className="context-bar-item context-bar-item-icon" title="Cut" aria-label="Cut" onClick={onCut}>
+          <Icon name="cut" size="control" />
+        </button>
+        <button type="button" className="context-bar-item context-bar-item-icon" title="Paste" aria-label="Paste" onClick={onPaste}>
+          <Icon name="paste" size="control" />
+        </button>
         <span className="context-bar-divider" />
         <button type="button" className="context-bar-item" title="Duplicate" onClick={onDuplicate}>
           <Icon name="dup" size="control" />

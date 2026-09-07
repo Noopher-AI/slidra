@@ -32,6 +32,7 @@ export default defineConfig({
       "@co-motion/core/slide": path.join(rootDir, "packages/core/src/slide/index.ts"),
       "@co-motion/core/text": path.join(rootDir, "packages/core/src/text/index.ts"),
       "@co-motion/core/effects": path.join(rootDir, "packages/core/src/effects/index.ts"),
+      "@co-motion/core/clipboard": path.join(rootDir, "packages/core/src/element-clipboard.ts"),
       "@co-motion/core/chart": path.join(rootDir, "packages/core/src/chart/index.ts"),
       "@co-motion/core": path.join(rootDir, "packages/core/src/index.ts"),
       "@co-motion/cli": path.join(rootDir, "packages/cli/src/index.ts"),

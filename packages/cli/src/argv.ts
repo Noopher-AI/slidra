@@ -381,7 +381,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const slidePath = requirePositional(args, 1, "element paste", "slide-path");
         const dx = optionalNumberFlag(args, "--dx", "element paste") ?? 0;
         const dy = optionalNumberFlag(args, "--dy", "element paste") ?? 0;
-        return { name: "element paste", input: { id, slidePath, dx, dy } };
+        const svgFile = optionalFlag(args, "--svg-file");
+        return { name: "element paste", input: { id, slidePath, dx, dy, svgFile } };
       }
 
       if (sub === "duplicate") {
@@ -532,6 +533,34 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       const level2 = rest[1];
       const level3 = rest[2];
+
+      if (level1 === "cell" && level2 === "copy") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table cell copy", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell copy", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell copy", "element-id");
+        const range = requireFlag(args, "--range", "table cell copy");
+        return { name: "table cell copy", input: { id, slidePath, elementId, range } };
+      }
+
+      if (level1 === "cell" && level2 === "cut") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table cell cut", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell cut", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell cut", "element-id");
+        const range = requireFlag(args, "--range", "table cell cut");
+        return { name: "table cell cut", input: { id, slidePath, elementId, range } };
+      }
+
+      if (level1 === "cell" && level2 === "paste") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table cell paste", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell paste", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell paste", "element-id");
+        const at = requireFlag(args, "--at", "table cell paste");
+        const tsvFile = requireFlag(args, "--tsv-file", "table cell paste");
+        return { name: "table cell paste", input: { id, slidePath, elementId, at, tsvFile } };
+      }
 
       if (level1 === "cell" && level2 === "set") {
         const args = rest.slice(2);

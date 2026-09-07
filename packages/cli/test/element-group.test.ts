@@ -418,8 +418,8 @@ describe("element copy / paste", () => {
 
   it("migrates only the effect targeting the copied element, appended at the end of the target slide's effect list", async () => {
     const { id } = await openTwoSlidePresentation({
-      slide1Effects: '<comot:effect target="el-a" kind="fade"/><comot:effect target="el-other" kind="fade"/>',
-      slide2Effects: '<comot:effect target="el-existing" kind="fade"/>',
+      slide1Effects: '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/><comot:effect target="el-other" family="enter" effect="fade" start="on-click"/>',
+      slide2Effects: '<comot:effect target="el-existing" family="enter" effect="fade" start="on-click"/>',
     });
 
     await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: ["el-a"] });
@@ -437,7 +437,7 @@ describe("element copy / paste", () => {
 
   it("deleting the pasted element cleans up its migrated effect, without touching an unrelated one", async () => {
     const { id } = await openTwoSlidePresentation({
-      slide1Effects: '<comot:effect target="el-a" kind="fade"/><comot:effect target="el-other" kind="fade"/>',
+      slide1Effects: '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/><comot:effect target="el-other" family="enter" effect="fade" start="on-click"/>',
     });
     await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: ["el-a"] });
     const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", {
@@ -478,6 +478,61 @@ describe("element copy / paste", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message).toContain("剪貼簿");
+  });
+
+  // [E2.T18]: `element copy`'s new `svg` output plugs straight into
+  // `element paste --svg-file`/`svg`, entirely bypassing the presentation's
+  // internal clipboard file — this is A5's mechanism (GUI and agent share
+  // the exact same paste path).
+  it("copy returns the clipboard SVG; paste --svg-file uses it directly and never touches the presentation's own clipboard file", async () => {
+    const { id } = await openTwoSlidePresentation();
+    const copied = await registry.dispatch<{ svg: string }>("element copy", {
+      id, slidePath: "slides/001.svg", elementIds: ["el-a"],
+    });
+    expect(copied.data!.svg).toContain('data-comot-clipboard="elements"');
+
+    const svgFile = path.join(comotDir, "clip.svg");
+    await writeFile(svgFile, copied.data!.svg, "utf-8");
+
+    const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", {
+      id, slidePath: "slides/002.svg", dx: 0, dy: 0, svgFile,
+    });
+    expect(pasted.ok).toBe(true);
+    expect(await readSlide(id, "slides/002.svg")).toContain(`id="${pasted.data!.elementIds[0]}"`);
+
+    // The presentation's own clipboard file was never read: a bare paste
+    // (no svg/svgFile) still fails exactly as the "paste on a slide never
+    // copied to" test above shows for a fresh presentation.
+    const { id: freshId } = await openTwoSlidePresentation();
+    const bareOnFresh = await registry.dispatch("element paste", { id: freshId, slidePath: "slides/002.svg", dx: 0, dy: 0 });
+    expect(bareOnFresh.ok).toBe(false);
+  });
+
+  it("paste --svg-file rejects an unsafe fragment (script tag), leaving the target slide unchanged", async () => {
+    const { id } = await openTwoSlidePresentation();
+    const before = await readSlide(id, "slides/002.svg");
+    const dirtySvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+      '<g id="el-x"><rect width="10" height="10"/><script>alert(1)</script></g></svg>';
+    const svgFile = path.join(comotDir, "dirty.svg");
+    await writeFile(svgFile, dirtySvg, "utf-8");
+
+    const result = await registry.dispatch("element paste", { id, slidePath: "slides/002.svg", dx: 0, dy: 0, svgFile });
+
+    expect(result.ok).toBe(false);
+    expect(await readSlide(id, "slides/002.svg")).toBe(before);
+  });
+
+  it("a bare paste (no svg/svgFile) is unaffected by this ticket — same clipboard-file path and message as before", async () => {
+    const { id } = await openTwoSlidePresentation();
+    await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: ["el-a"] });
+
+    const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", {
+      id, slidePath: "slides/002.svg", dx: 0, dy: 0,
+    });
+
+    expect(pasted.ok).toBe(true);
+    expect(await readSlide(id, "slides/002.svg")).toContain(`id="${pasted.data!.elementIds[0]}"`);
   });
 });
 

@@ -662,6 +662,35 @@ export function App() {
         void controller.orderSelection(event.shiftKey ? "back" : "down");
         return;
       }
+      // [E2.T18] 計畫 §3.8/A0：headless Chromium 底下實測，Ctrl/Cmd+C 這種
+      // 純鍵盤觸發並不會讓瀏覽器發出原生 `copy`/`cut` ClipboardEvent —
+      // Chromium 只在真的有一段可複製的內容（原生文字選取，或聚焦在可編輯
+      // 欄位）時才發這個事件，我們的畫布選取是 Shadow DOM 疊加層，從瀏覽器
+      // 角度看「沒有東西被選取」。改走計畫本身就寫明的備援路徑：⌘C/⌘X/⌘V
+      // 當一般按鍵處理，用非同步的 `navigator.clipboard` API 讀寫，不依賴
+      // ClipboardEvent。⌘V 與既有的原生 `paste` 監聽器（上面，只認圖片）
+      // 並存不衝突：剪貼簿內容是圖片時 `readText()` 拿到空字串，
+      // `pasteFromText` 視為空剪貼簿靜默略過。
+      if (withModifier && event.key === "c") {
+        const svg = controller.copySelection();
+        if (svg) {
+          event.preventDefault();
+          void navigator.clipboard.writeText(svg);
+        }
+        return;
+      }
+      if (withModifier && event.key === "x") {
+        void controller.cutSelection().then((svg) => {
+          if (svg) void navigator.clipboard.writeText(svg);
+        });
+        event.preventDefault();
+        return;
+      }
+      if (withModifier && event.key === "v") {
+        event.preventDefault();
+        void navigator.clipboard.readText().then((text) => controller.pasteFromText(text));
+        return;
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);

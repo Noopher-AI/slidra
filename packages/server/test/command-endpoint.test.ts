@@ -277,6 +277,9 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element resize",
     "element delete",
     "element duplicate",
+    "table cell copy",
+    "table cell cut",
+    "table cell paste",
   ]) {
     const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade", enter: "fade" } });
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);

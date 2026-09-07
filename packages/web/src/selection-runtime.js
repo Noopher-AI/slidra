@@ -1822,7 +1822,17 @@
     if (event.key === "Escape") return true;
     var withModifier = event.metaKey || event.ctrlKey;
     if (!withModifier) return false;
-    return event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" || event.key === "z" || event.key === "Z";
+    // [E2.T18]: c/x/v added alongside a/d/]/[/z/Z — headless Chromium
+    // testing showed Ctrl/Cmd+C/X do not fire a native ClipboardEvent for a
+    // keyboard-only trigger with no real DOM/text selection (our selection
+    // is a Shadow DOM overlay, not one Chromium's clipboard commands see),
+    // so ⌘C/⌘X/⌘V are relayed as ordinary keys and handled with the async
+    // `navigator.clipboard` API on the host side (canvas.ts's "stage-key"
+    // handler), exactly like every other shortcut in this list.
+    return (
+      event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" ||
+      event.key === "z" || event.key === "Z" || event.key === "c" || event.key === "x" || event.key === "v"
+    );
   }
   window.addEventListener("keydown", function (event) {
     if (!isRelayedStageKey(event)) return;

@@ -43,6 +43,11 @@ const EXPECTED_COMMAND_NAMES = [
   "element cut",
   "element paste",
   "element duplicate",
+  // [E2.T18]: the clipboard ticket's soft dependency on [E2.T14]'s table
+  // command family — only the three cell-range clipboard commands.
+  "table cell copy",
+  "table cell cut",
+  "table cell paste",
   "slide render",
   "asset import",
   "element lock",
@@ -111,7 +116,7 @@ describe("createDefaultRegistry command surface", () => {
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(78);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(81);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

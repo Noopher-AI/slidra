@@ -181,6 +181,32 @@ export function setTableCellText(
   });
 }
 
+/**
+ * [E2.T18] `table cell cut/paste`: sets several cells' text in ONE
+ * re-render, so the caller's single `writePresentationFile` is one undo
+ * step. Every entry must name a real cell (a span-covered position is not
+ * a cell) — the clipboard module filters against the model first.
+ */
+export function setTableCellTexts(
+  svgContent: string,
+  slidePath: string,
+  elementId: string,
+  entries: readonly { row: number; col: number; text: string }[],
+  fonts: ReadonlyMap<string, FontMetrics>,
+): string {
+  return updateTable(svgContent, slidePath, elementId, fonts, (model) => {
+    const cells = model.cells.slice();
+    for (const entry of entries) {
+      const index = cells.findIndex((cell) => cell.row === entry.row && cell.col === entry.col);
+      if (index === -1) {
+        throw new CoMotionError(`找不到儲存格 (${entry.row},${entry.col})`);
+      }
+      cells[index] = { ...cells[index], text: entry.text };
+    }
+    return { ...model, cells };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // table cell style set
 // ---------------------------------------------------------------------------
