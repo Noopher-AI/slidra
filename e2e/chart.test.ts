@@ -123,15 +123,13 @@ async function canvasFrame(page: Page): Promise<Frame> {
 }
 
 /**
- * A chart's outer `<g data-comot-type="chart">` carries no geometry of its
- * own (plan §3.3 — it never contributes to `getBBox()`), so its own center
- * point can land on a transparent patch of the embedded `<svg>` (chart
- * padding, the gap between bars) where nothing is painted, and the browser
- * resolves a click there to the top-level slide `<svg>` instead of the
- * chart. Clicking one of the chart's own drawn shapes bypasses that: #72's
+ * The first shape inside a chart's embedded `<svg>` is the full-viewport
+ * transparent hit-area rect `renderChartSvg` opens every chart with, so
+ * this resolves to a point anywhere on the chart — padding included. #72's
  * click resolution (`resolveClickTargetAtEvent`) climbs from ANY descendant
- * up to the nearest id-carrying ancestor, exactly as it does for every
- * other element type.
+ * up to the nearest id-carrying ancestor, exactly as for every other
+ * element type. The "padding is selectable" guarantee itself is guarded by
+ * the AC-1b test below.
  */
 function chartShape(frame: Frame, elementId: string) {
   return frame.locator(`#${elementId} svg :is(rect, path, polyline, circle)`).first();
@@ -187,6 +185,42 @@ it("AC-1: 插入面板：選類型／系列數／類別數／調色盤後插入�
     expect(svg).toContain('palette="cool"');
     expect((svg.match(/<comot:series/g) ?? []).length).toBe(2);
     expect(svg).toMatch(/<comot:categories values="C1,C2,C3,C4,C5,C6,C7"\/>/);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("AC-1b: 點在圖表的留白處（內嵌 svg 左上角 padding）也能選中圖表，且選取框等於整個圖表視口", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const elementId = await createChartViaCli(registry, presentationId);
+    const page = await openApp(server);
+    const slideFrame = await canvasFrame(page);
+
+    // The W×H viewport in page coordinates, via getScreenCTM() — NOT
+    // boundingBox(), which for an embedded <svg> is the union of painted
+    // content and would shrink onto the tick labels without the hit-area rect.
+    const frameBox = (await page.locator("iframe.slide-frame").boundingBox())!;
+    const viewport = await slideFrame.locator(`#${elementId} svg`).evaluate((el) => {
+      const svg = el as SVGSVGElement;
+      const ctm = svg.getScreenCTM()!;
+      return {
+        x: ctm.e,
+        y: ctm.f,
+        width: Number(svg.getAttribute("width")) * ctm.a,
+        height: Number(svg.getAttribute("height")) * ctm.d,
+      };
+    });
+    // 4px in from the viewport's top-left corner: nothing but the hit-area rect is painted there.
+    await page.mouse.click(frameBox.x + viewport.x + 4, frameBox.y + viewport.y + 4);
+
+    await expect.poll(() => page.locator(".status-selection-chip").textContent().then((t) => t?.trim())).toMatch(/^Selected: /);
+    // The outer <g>'s outline must be the W×H viewport, not the union of painted content.
+    const outer = (await slideFrame.locator(`#${elementId}`).boundingBox())!;
+    expect(Math.abs(outer.x - (frameBox.x + viewport.x))).toBeLessThan(1);
+    expect(Math.abs(outer.y - (frameBox.y + viewport.y))).toBeLessThan(1);
+    expect(Math.abs(outer.width - viewport.width)).toBeLessThan(1);
+    expect(Math.abs(outer.height - viewport.height)).toBeLessThan(1);
   } finally {
     await cleanup();
   }
@@ -528,7 +562,8 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
     // y+height 精確等於下面那根的 y（不重算幾何，只斷首尾相接）。
     const stackedData = extractChartData(await readSlide(registry, presentationId), stackedId);
     expect(stackedData).toMatch(/stacked="true"/);
-    const stackedBars = slideFrame.locator(`#${stackedId} svg rect:not([rx])`);
+    // `fill="transparent"` excludes the full-viewport hit-area rect every chart opens with.
+    const stackedBars = slideFrame.locator(`#${stackedId} svg rect:not([rx]):not([fill="transparent"])`);
     expect(await stackedBars.count()).toBe(12);
     const barRects = await stackedBars.evaluateAll((elements) =>
       elements.map((el) => ({

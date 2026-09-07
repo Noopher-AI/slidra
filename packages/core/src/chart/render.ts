@@ -143,8 +143,16 @@ export function renderChartSvg(model: ChartModel): string {
     return g;
   };
 
+  // A full-viewport transparent rect leads every chart. Without it the
+  // embedded <svg> paints only strokes, glyphs and bars, so (a) a click on
+  // the chart's padding or the gap between bars falls through to the slide
+  // <svg> and deselects, and (b) the browser's getBoundingClientRect() —
+  // the selection outline — is the union of painted content, not the
+  // W×H viewport that core's `primitiveBounds` ("svg" case) reports. The
+  // rect makes both the hit area and the outline exactly W×H.
+  const hitArea = `<rect x="0" y="0" width="${n(W)}" height="${n(H)}" fill="transparent"/>`;
   const wrap = (body: string): string =>
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${n(W)}" height="${n(H)}" viewBox="0 0 ${n(W)} ${n(H)}">${body}</svg>`;
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${n(W)}" height="${n(H)}" viewBox="0 0 ${n(W)} ${n(H)}">${hitArea}${body}</svg>`;
 
   if (isPie) {
     let body = "";

@@ -47,6 +47,13 @@ describe("renderChartSvg — shape", () => {
     expect(svg).not.toMatch(/<svg[^>]* y="/);
   });
 
+  it("opens every chart type with a full-viewport transparent rect, so padding is clickable and the bbox equals W×H", () => {
+    for (const type of CHART_TYPES) {
+      const svg = renderChartSvg(baseModel({ type, width: 486.4, height: 475.2 }));
+      expect(svg).toMatch(/^<svg [^>]*><rect x="0" y="0" width="486\.4" height="475\.2" fill="transparent"\/>/);
+    }
+  });
+
   it("renders each of the six chart types without throwing, producing non-empty output", () => {
     for (const type of CHART_TYPES) {
       const svg = renderChartSvg(baseModel({ type }));
