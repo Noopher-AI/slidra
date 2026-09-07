@@ -357,6 +357,10 @@ describe("POST /api/agent/select", () => {
     const pids = await waitForPidCount(2);
     const secondPid = pids[1];
     expect(secondPid).not.toBe(firstPid);
+    // The new session's own handshake (its 編輯規約 prompt) happens after
+    // its pid is logged — wait for it to actually land, or the read below
+    // races the still-in-flight ACP handshake.
+    await waitForPromptCount(3);
 
     expect(() => process.kill(firstPid, 0)).toThrow();
 
