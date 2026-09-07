@@ -177,6 +177,17 @@ describe("sanitizeClipboardMarkup", () => {
     // tag's attribute list), which is the concrete case for allowlist > denylist.
     ["J1", '<g id="el-a"><rect style="fill:src(https://evil.example/x.png)" width="1" height="1"/></g>'],
     ["J2", '<g id="el-a" data-x="https://evil.example/x"><rect width="1" height="1"/></g>'],
+    // [E2.T18r8 F1] r7 widened `RELATIVE_REF`'s excluded-character set to fix
+    // a mis-rejection and, in doing so, reopened a shape r6 had closed: a
+    // raw, unescaped `<` written straight into `href` produces a slide
+    // `DOMParser` can't parse — this is a raw-form XML legality defect, not a
+    // `RELATIVE_REF`-specific one (see `checkAttributeValue`'s new raw-form
+    // check, ahead of every grammar).
+    ["X8", '<g id="el-a"><image href="a<b.png" width="1" height="1"/></g>'],
+    ["X9", '<g id="el-a"><image href="a&b.png" width="1" height="1"/></g>'],
+    ["X10", '<g id="el-a"><image href="a&foo;b.png" width="1" height="1"/></g>'],
+    ["X11", '<g id="el-a"><image href="a&" width="1" height="1"/></g>'],
+    ["X12", '<g id="el-a" data-comot-name="xy"><rect width="1" height="1"/></g>'],
   ];
 
   it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {
@@ -206,6 +217,16 @@ describe("sanitizeClipboardMarkup", () => {
     // which imposes no ASCII restriction — a Chinese-named asset path is
     // ordinary input on a Traditional-Chinese-first product, not an edge case.
     ["P10", '<g id="el-a"><image href="../assets/照片.png" width="1" height="1"/></g>'],
+    // [E2.T18r8 F2] write-side source: `element-group.ts:265` `setElementName`
+    // (via `escapeXmlAttr`) can produce a decoded `<`/`>` in `data-comot-name`
+    // — a legal display value, not a raw XML shape, so the raw-form check
+    // upstream of `FREE_TEXT` must not reject it.
+    ["P11", '<g id="el-a" data-comot-name="x&lt;y&gt;z"><rect width="1" height="1"/></g>'],
+    // [E2.T18r8 債1] `escapeXmlAttr` never escapes `\` — a Windows-style path
+    // pasted into `data-comot-name` is ordinary input, not a reference.
+    ["P12", '<g id="el-a" data-comot-name="C:\\temp\\a"><rect width="1" height="1"/></g>'],
+    // [E2.T18r8] Reviewer-named must-not-reject: a relative path containing a space.
+    ["P13", '<g id="el-a"><image href="../assets/my photo.png" width="1" height="1"/></g>'],
   ];
 
   it.each(ACCEPT_MATRIX)("accepts %s", (_cell, markup) => {
@@ -331,6 +352,41 @@ describe("sanitizeClipboardMarkup", () => {
 });
 
 /**
+ * [E2.T18r8 §2] The same raw-form XML legality defect that reaches the
+ * written slide through an attribute value ([F1]) reaches it just as
+ * readily through `<text>`/`<tspan>` character data — a bare `&` or raw `<`
+ * in either place produces a slide `DOMParser` can't parse. Every path that
+ * writes text content (`element-text.ts:44`, `text/render.ts`,
+ * `slide/comments.ts:29`, `presentation.ts:84`'s `escapeXmlText`)
+ * unconditionally escapes `&`/`<`/`>`, so none of these rejections are
+ * reachable from this app's own writers — only from a foreign/hostile
+ * clipboard payload.
+ */
+describe("raw-form XML legality: text content", () => {
+  it("rejects a bare & in text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">a & b</text></g>', "element")).toThrow(CoMotionError);
+  });
+
+  it("rejects a dangling & at the end of text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">a&</text></g>', "element")).toThrow(CoMotionError);
+  });
+
+  it("rejects XML 1.0 illegal characters (\\u0001) in text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">ab</text></g>', "element")).toThrow(CoMotionError);
+  });
+
+  it("accepts &amp; and a numeric character reference in text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">a &amp; b, &#65;</text></g>', "element")).not.toThrow();
+  });
+
+  it("accepts Chinese text and mixed content across nested <tspan>s, each span checked independently", () => {
+    const markup =
+      '<g id="el-a"><text x="0" y="0">\n  第一段 &amp; <tspan font-weight="700">重點文字</tspan> 第二段\n</text></g>';
+    expect(() => sanitizeClipboardMarkup(markup, "element")).not.toThrow();
+  });
+});
+
+/**
  * r5 (NOOP-201 §6.2)/r6 ([E2.T18r6] §6.3, test-budget pass): this describe
  * used to carry 5 additional `it.each` cases asserting the platform `URL`
  * parser's own normalisation behavior (TAB/LF stripping, backslash-as-path-
@@ -378,7 +434,7 @@ describe("traceability: element style set's attribute names all have a clipboard
   };
 
   it("STYLE_ATTRIBUTE_WHITELIST has a known sample value for every entry", () => {
-    const missing = STYLE_ATTRIBUTE_WHITELIST.filter((name) => !(name in SAMPLE_VALUES));
+    const missing = STYLE_ATTRIBUTE_WHITELIST.filter((name) => !Object.hasOwn(SAMPLE_VALUES, name));
     expect(missing).toEqual([]);
   });
 
@@ -510,5 +566,20 @@ describe("pasteElements sanitizes before splicing (the mount point every paste p
       effects: ['<comot:effect target="el-a" family="enter" effect="fade" start="on-click" onx="1"/>'],
     };
     expect(() => pasteElements(target, "slides/002.svg", payload, 0, 0, () => "el-new")).toThrow(CoMotionError);
+  });
+
+  // [E2.T18r8 AC7] The real-world entry point for [F1]: a payload carrying a
+  // raw, unescaped `<` must be rejected before any splice touches the target
+  // slide — not partially applied, not silently repaired.
+  it("rejects a payload with a raw unescaped < in href, leaving the target slide byte-for-byte unchanged", () => {
+    const target = wrap('<g id="host"><rect width="1" height="1"/></g>');
+    const targetSnapshot = target;
+    const payload: ClipboardPayload = {
+      sourceSlidePath: "slides/001.svg",
+      elements: ['<g id="el-a"><image href="a<b.png" width="1" height="1"/></g>'],
+      effects: [],
+    };
+    expect(() => pasteElements(target, "slides/002.svg", payload, 0, 0, () => "el-new")).toThrow(CoMotionError);
+    expect(target).toBe(targetSnapshot);
   });
 });

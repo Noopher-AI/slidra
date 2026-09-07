@@ -334,6 +334,13 @@ const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> =
   //   R6 style unclosed url()              → core REJECT_MATRIX R1
   //   R6 style cursor image-set()          → core REJECT_MATRIX R2
   //   R6 style background-image image-set() → core REJECT_MATRIX R3
+  // [E2.T18r8 F1] the real-world entry point for the raw-form XML legality
+  // defect: a raw, unescaped `<` in `href` used to pass through and write an
+  // unparsable slide (`DOMParser` failure → that page's animations silently
+  // vanish). Unlike the cells above, this one has no cheaper single-layer
+  // equivalent worth keeping it off — it's the shape Reviewer actually found
+  // the regression through.
+  ["R8 raw < in href", '<g id="el-hostile"><image href="a<b.png" width="10" height="10"/></g>'],
 ];
 
 it.each(A8_BYPASS_MATRIX)(
