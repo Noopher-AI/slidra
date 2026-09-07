@@ -854,7 +854,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
   // Fix 3 (ticket #7): a real, conforming ACP agent sends `path` as an
   // *absolute* path rooted at the session cwd it was handed — never the
   // bare relative virtual path the brief names (confirmed against a real
-  // `claude-code-acp` 0.12.6 probe). The tests below drive the fake agent
+  // `claude-code-acp` 0.12.6 probe). The test below drives the fake agent
   // through `readTextFileAbsoluteUnderCwd`, which reproduces exactly that
   // shape: it resolves the cwd it received via `session/new` and joins the
   // relative path onto the resolved form, the same thing the real adapter
@@ -866,6 +866,15 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
         readTextFileOnPromptIndex: 1,
+        // The fixture builds this path by calling fs.realpathSync on the
+        // cwd it received — the same resolution step a real adapter
+        // performs, confirmed against a real `claude-code-acp` 0.12.6: the
+        // cwd sent to `session/new` was `/var/folders/...`, but the `path`
+        // a subsequent `fs/read_text_file` sent back was
+        // `/private/var/folders/...` (macOS resolves that `/var` symlink).
+        // A prefix comparison against an unresolved cwd string would fail
+        // here on every macOS run; comparing against the resolved form is
+        // what this test exists to catch, and what actually matches.
         readTextFileAbsoluteUnderCwd: "slides/001.svg",
       }),
       id,
@@ -884,40 +893,6 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     // string was handed to `readPresentationFile` verbatim.
     expect(result?.readTextFileResult).toBe(expected.data!.content);
   });
-
-  it(
-    "survives the /var vs /private/var mismatch: the agent resolves the cwd's symlinks (macOS) before echoing an absolute path back, and the read still succeeds",
-    async () => {
-      const id = await openFreshPresentation();
-      const server = await serve(
-        fakeAgent({
-          replies: [["(ack)"], ["好的"]],
-          readTextFileOnPromptIndex: 1,
-          // The fixture builds this path by calling fs.realpathSync on the
-          // cwd it received — the same resolution step a real adapter
-          // performs. A prefix comparison against the raw, unresolved
-          // mkdtemp string would fail here on every macOS run (the trap
-          // this test exists to catch); comparing against the resolved
-          // form (this fix) succeeds.
-          readTextFileAbsoluteUnderCwd: "slides/001.svg",
-        }),
-        id,
-      );
-      const stream = await fetch(`${server.url}/api/chat/stream`);
-      const sse = new SseReader(stream);
-      const done = sse.readUntil((e) => e.event === "chat-done");
-      await postChat(server, "讀一下投影片");
-      await done;
-      await sse.close();
-
-      const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-      const log = await readFakeAgentLog();
-      const result = log.find((entry) => "readTextFileResult" in entry) as
-        | { readTextFileResult?: string }
-        | undefined;
-      expect(result?.readTextFileResult).toBe(expected.data!.content);
-    },
-  );
 
   it("honours line and limit when the whole slide is read this way (the ordinary case, not an edge case)", async () => {
     const id = await openFreshPresentation();
