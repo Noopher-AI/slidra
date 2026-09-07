@@ -221,7 +221,7 @@ describe("table set --from / --markdown", () => {
 });
 
 describe("表格容器與其他命令族的互動 (A4/A5)", () => {
-  it("element style set / scale / resize / group / ungroup 對表格報錯，move/delete 不受影響", async () => {
+  it("element style set / group / ungroup 對表格報錯；scale / resize 走容器 transform；move/delete 不受影響", async () => {
     const { id } = await openFreshPresentation();
     const elementId = await createTable(id);
     const before = await readSlide(id);
@@ -232,24 +232,26 @@ describe("表格容器與其他命令族的互動 (A4/A5)", () => {
     expect(styleResult.ok).toBe(false);
     expect(styleResult.message).toContain("表格");
 
-    const scaleResult = await registry.dispatch("element scale", {
-      id, slidePath: "slides/001.svg", elementIds: [elementId], factor: 2,
-    });
-    expect(scaleResult.ok).toBe(false);
-    expect(scaleResult.message).toContain("表格");
-
-    const resizeResult = await registry.dispatch("element resize", {
-      id, slidePath: "slides/001.svg", elementIds: [elementId], width: 100, height: 100, anchor: "nw",
-    });
-    expect(resizeResult.ok).toBe(false);
-    expect(resizeResult.message).toContain("表格");
-
     const ungroupResult = await registry.dispatch("element ungroup", {
       id, slidePath: "slides/001.svg", elementIds: [elementId],
     });
     expect(ungroupResult.ok).toBe(false);
 
     expect(await readSlide(id)).toBe(before);
+
+    const colsBefore = /data-comot-cols="([^"]+)"/.exec(before)![1];
+    const scaleResult = await registry.dispatch("element scale", {
+      id, slidePath: "slides/001.svg", elementIds: [elementId], factor: 2,
+    });
+    expect(scaleResult.ok).toBe(true);
+    const scaled = await readSlide(id);
+    expect(scaled).toMatch(/scale\(2 2\)/);
+    expect(/data-comot-cols="([^"]+)"/.exec(scaled)![1]).toBe(colsBefore);
+
+    const resizeResult = await registry.dispatch("element resize", {
+      id, slidePath: "slides/001.svg", elementIds: [elementId], width: 100, height: 100, anchor: "nw",
+    });
+    expect(resizeResult.ok).toBe(true);
 
     const moveResult = await registry.dispatch("element move", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], dx: 5, dy: 5,

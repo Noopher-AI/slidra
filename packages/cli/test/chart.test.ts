@@ -282,7 +282,7 @@ describe("圖表容器與其他命令族的互動 (AC-11, AC-13)", () => {
     expect(await readSlide(id)).toContain("comot:effect");
   });
 
-  it("AC-13: element style set / scale / resize 對圖表報錯，move/order/delete 不受影響", async () => {
+  it("AC-13: element style set 對圖表報錯；scale / resize 重繪成新尺寸；move/order/delete 不受影響", async () => {
     const { id } = await openFreshPresentation();
     const elementId = await createChart(id);
 
@@ -295,14 +295,16 @@ describe("圖表容器與其他命令族的互動 (AC-11, AC-13)", () => {
     const scaleResult = await registry.dispatch("element scale", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], factor: 2,
     });
-    expect(scaleResult.ok).toBe(false);
-    expect(scaleResult.message).toContain("圖表");
+    expect(scaleResult.ok).toBe(true);
+    const widthAfterScale = Number(/<comot:chart[^>]*\swidth="([^"]+)"/.exec(await readSlide(id))![1]);
 
     const resizeResult = await registry.dispatch("element resize", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], width: 100, height: 100, anchor: "nw",
     });
-    expect(resizeResult.ok).toBe(false);
-    expect(resizeResult.message).toContain("圖表");
+    expect(resizeResult.ok).toBe(true);
+    const resized = await readSlide(id);
+    expect(resized).toMatch(/<comot:chart[^>]*\swidth="100"[^>]*\sheight="100"/);
+    expect(widthAfterScale).not.toBe(100);
 
     const moveResult = await registry.dispatch("element move", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], dx: 5, dy: 5,
