@@ -2,6 +2,7 @@ import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
 import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
 import { readTextAlign, unescapeXmlText } from "../element-text.js";
+import { readSlidePageStyle, type PageStyle } from "../slide-style.js";
 import { readTextBoxRuns, type TextRun } from "../text/runs.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 
@@ -180,6 +181,8 @@ export const TEXT_HEIGHT_ATTRIBUTE = "data-comot-text-height";
 export interface SlideModel {
   viewBox: { x: number; y: number; width: number; height: number };
   elements: SlideElement[];
+  /** #200 §4.4: the slide's Page style (background/accent), read off the root `<svg>`'s own `style` attribute. */
+  pageStyle: PageStyle;
 }
 
 export type ComplianceCode =
@@ -465,7 +468,7 @@ export function parseSlide(svg: string, slidePath = "投影片"): SlideModel {
     .filter((child) => child.tag === "g")
     .map((child) => toElement(child, svg));
 
-  return { viewBox: { x, y, width, height }, elements };
+  return { viewBox: { x, y, width, height }, elements, pageStyle: readSlidePageStyle(svg) };
 }
 
 /**

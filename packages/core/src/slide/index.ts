@@ -26,6 +26,10 @@ export type {
 } from "./format.js";
 export { normaliseSlideSvg } from "./normalise.js";
 export type { NormaliseOptions, NormaliseResult } from "./normalise.js";
+// #200: the Style panel's Page tab reads `SlideModel.pageStyle` off the
+// browser-safe `SlideElement`/`SlideModel` types above — `PageStyle` has to
+// be reachable from this same subpath for that field to type-check.
+export type { PageStyle } from "../slide-style.js";
 // [E2.T3] adds these three: the web-side speaker-notes reader
 // (`packages/web/src/notes.ts`) needs the offset-carrying scanner directly
 // — DOMParser is unusable there because it treats an unbound `comot:`
@@ -39,3 +43,8 @@ export type { ScannedNode } from "./scan.js";
 // reason `scanDocument`/`attributeOf` above were exported for notes.
 export { readSlideComments, addSlideComment, editSlideComment, deleteSlideComment } from "./comments.js";
 export type { SlideComment } from "./comments.js";
+// [E2.T11]: the web-side Animate › Page panel and `canvas.ts`'s page
+// enter/exit playback both need the read side directly — same Node-free
+// reasoning as every export above.
+export { readSlideTransition } from "./transition.js";
+export type { PageTransitionEffect, SlideTransition, SlideTransitionEdge } from "./transition.js";

@@ -19,4 +19,7 @@
   <g id="el-caption" data-comot-name="標題">
     <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">樣式面板測試簡報</text>
   </g>
+  <g id="el-image" data-comot-name="圖片" data-comot-media="../assets/photo.png" transform="translate(900 80)">
+    <rect x="0" y="0" width="160" height="120" fill="#444"/>
+  </g>
 </svg>

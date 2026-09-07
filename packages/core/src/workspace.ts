@@ -12,6 +12,7 @@ import {
   appendElementToSvg,
   escapeXmlAttr,
   escapeXmlText,
+  realignTextBox,
   replaceElementText,
   resizeTextBox,
   setParagraphList,
@@ -20,6 +21,7 @@ import {
   type ListKind,
   type TextRunStyleUpdate,
 } from "./element-text.js";
+import { setSlidePageStyle as applyPageStyle, type PageStyleUpdate } from "./slide-style.js";
 import {
   deleteElements,
   insertElement,
@@ -525,6 +527,24 @@ export async function writePresentationFile(id: string, virtualPath: string, con
 }
 
 /**
+ * The one exception door (#200 決定 4): only `presentation canvas set` uses
+ * this — page size is the one edit the acceptance criteria (「Undo 可回退
+ * （頁面尺寸除外）」) name as never occupying an undo step. Every other
+ * write goes through `writePresentationFile` above. The difference from it
+ * is exactly the snapshot/commit bracket: no `stageSnapshotEntries`/
+ * `commitSnapshotEntries` call, so nothing is pushed onto the undo stack.
+ * The filesystem watcher still sees the write and still fires
+ * `presentation-changed` (it watches the file itself, not the history
+ * stack), so the stage still updates live.
+ */
+export async function writePresentationFileWithoutHistory(id: string, virtualPath: string, content: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  await writeFile(realPath, content, "utf-8");
+}
+
+/**
  * Confirms `virtualPath` is one of the presentation's declared slides
  * (listed in `project.json`'s `slides` array). The write path
  * (`setElementText`, below) calls this before touching the slide file
@@ -783,6 +803,50 @@ export async function setTextBoxWidth(
   const { updated, lines } = resizeTextBox(original, elementId, width, fontBook, { force: options.force });
   await writePresentationFile(id, slidePath, updated);
   return { lines };
+}
+
+/**
+ * Re-wraps a text box against a new alignment (#200, `co-motion textbox
+ * align`) — same shape as `setTextBoxWidth` above, just the other axis of
+ * `rewrapTextBoxContent`.
+ */
+export async function setTextBoxAlign(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  align: "left" | "center" | "right",
+  options: MutationOptions = {},
+): Promise<{ lines: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const { updated, lines } = realignTextBox(original, elementId, align, fontBook, { force: options.force });
+  await writePresentationFile(id, slidePath, updated);
+  return { lines };
+}
+
+/**
+ * Sets a slide's Page style (#200 §4.4, `co-motion slide style set`) —
+ * background/accent colour, written on the root `<svg>`'s `style`
+ * attribute. Unlike `presentation canvas set`, this goes through
+ * `writePresentationFile` (入歷史): the acceptance criteria's "Undo 可回退
+ * （頁面尺寸除外）" names page SIZE as the one exception, not Page style.
+ */
+export async function setSlidePageStyle(
+  id: string,
+  slidePath: string,
+  update: PageStyleUpdate,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = applyPageStyle(original, update);
+  await writePresentationFile(id, slidePath, updated);
 }
 
 /**

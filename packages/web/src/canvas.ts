@@ -70,7 +70,15 @@ import {
   type SnapCandidate,
   type SnapGuide,
 } from "@co-motion/core/geometry";
-import { parseSlide, type SlideElement, type SlideModel } from "@co-motion/core/slide";
+import {
+  parseSlide,
+  readSlideTransition,
+  type PageStyle,
+  type SlideElement,
+  type SlideModel,
+  type PageTransitionEffect,
+  type SlideTransition,
+} from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
 import { readChartModel, renderChartSvg, type ChartModel } from "@co-motion/core/chart";
@@ -212,6 +220,13 @@ export interface CanvasState {
    * *changing*, never to its absolute value.
    */
   dragSignal: number;
+  /**
+   * #200 §4.4: the current slide's Page style, straight off
+   * `currentSlideModel.pageStyle` — `null` while there is no current slide
+   * (`currentIndex === -1`), never a fabricated `{background: null, accent:
+   * null}` for that case (Style › Page is disabled entirely then, §4.6).
+   */
+  pageStyle: PageStyle | null;
 }
 
 /**
@@ -321,6 +336,28 @@ export interface CanvasController {
    * own error-surfacing contract; the caller reverts whatever it painted.
    */
   setStyle: (attr: string, value: string) => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.1): the Text section's Align field. Sends `textbox
+   * align` once per currently-selected text box, sequentially (that command
+   * names a single element, unlike `element style set`'s list form) — for
+   * the common single-selection case this is one command, one undo step;
+   * a multi-box selection costs one undo step per box. Same failure
+   * contract as `setStyle`.
+   */
+  setTextAlign: (align: "left" | "center" | "right") => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3/§4.4): Style › Page's Background/Accent fields.
+   * Sends `slide style set` for the current slide. Same failure contract as
+   * `setStyle`. No-op (returns `false`) when there is no current slide.
+   */
+  setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
+  /**
+   * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
+   * Sends `presentation canvas set` — never occupies an undo step (the
+   * command's own contract), unlike every other style-panel write. Same
+   * failure contract as `setStyle` otherwise.
+   */
+  setCanvasSize: (width: number, height: number) => Promise<boolean>;
   /**
    * A live getter, not a snapshot: entering/leaving play mode destroys and
    * rebuilds the iframe (the `sandbox` attribute cannot change on a live
@@ -451,22 +488,19 @@ interface ProjectJson {
    * fetch and parse the exact font bytes `wrapText` needs (§4.4).
    */
   fonts?: { file: string; family: string }[];
-  /**
-   * The presentation-level slide transition (T6). Absent, empty, or an
-   * unknown future value (e.g. an older build opening a newer `.comot`)
-   * all mean the same thing on the read side: play `none` instead of
-   * throwing (project-json.ts's read side deliberately does not
-   * whitelist). Only the literal `"fade"` triggers the fade-in below.
-   */
-  transition?: string;
 }
 
-/** How long renderPlay()'s fade-in runs (T6). Deliberately not shared with
- * player-runtime.js's own 0.4s element-entrance transition — that constant
- * animates elements *inside* the iframe document, this one animates the
- * `<iframe>` element itself from the parent document, and the two layers
- * must stay free to change independently of each other. */
-const PAGE_FADE_MS = 400;
+/**
+ * Turns a page transition's `effect` into the transform its start (enter)
+ * or end (exit) state holds, alongside the animated `opacity` (§4.6's
+ * keyframe table — values transcribed verbatim from the prototype).
+ * `"none"`/`"fade"` never move the frame, only fade it.
+ */
+function pageTransitionTransform(effect: PageTransitionEffect, phase: "enter-start" | "exit-end"): string {
+  if (effect === "slide") return phase === "enter-start" ? "translateX(8%)" : "translateX(-8%)";
+  if (effect === "zoom") return phase === "enter-start" ? "scale(1.06)" : "scale(0.94)";
+  return "none";
+}
 
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
@@ -474,9 +508,18 @@ interface PlayerMessage {
   // [E2.T7]/D8: "preview-done" — the runtime's own signal that Preview has
   // finished playing every effect it was asked to; only ever sent while
   // `mode === "preview"`.
-  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done";
+  // [E2.T11]: "exit-play" — Escape pressed inside the play iframe
+  // (player-runtime.js's own keydown), forwarded here since the runtime
+  // has no notion of whether the document is currently fullscreen.
+  event: "ready" | "focus" | "advance-past-end" | "retreat-past-start" | "error" | "preview-done" | "exit-play";
   hasFocus?: boolean;
   message?: string;
+}
+
+/** Read directly rather than through a container ref (unlike App.tsx's `isCanvasAreaFullscreen`): this module has no reference to the "well" element `toggleFullscreen()` requests fullscreen on, and the app only ever fullscreens that one element while playing — so "is anything fullscreen at all" answers the same question. */
+function isAnyElementFullscreen(): boolean {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null };
+  return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
 }
 
 function isPlayerMessage(data: unknown): data is PlayerMessage {
@@ -925,10 +968,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // state. React subscribes to read it and issues commands to change it.
   let slides: string[] = [];
   let currentIndex = -1;
-  // The presentation-level slide transition (T6), read from
-  // project.transition on every reload() — "none" until the first fetch
-  // completes. renderPlay() is the only reader; nothing else needs it.
-  let transition: string | undefined;
+  // [E2.T11]: the page currently on screen's own enter/exit transition,
+  // read fresh from its markup by renderPlay() (or migrateLegacyTransition
+  // vintage — every slide has a resolved value even when it never set one
+  // explicitly). playExitTransition() reads this rather than re-fetching —
+  // it always describes whatever page renderPlay() last painted, which is
+  // exactly the page a forward navigation is about to leave.
+  let currentPageTransition: SlideTransition = {
+    enter: { effect: "none", duration: 0.6 },
+    exit: { effect: "none", duration: 0.5 },
+  };
+  // True for the duration of one playExitTransition() call. A second
+  // forward-navigation request arriving mid-exit is dropped outright, not
+  // queued (§4.6 决定: "不得排隊、不得疊播") — see that function's own
+  // comment.
+  let exiting = false;
   let mode: CanvasMode = "view";
   let playerHasFocus = false;
   let error: string | null = null;
@@ -1146,6 +1200,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "preview-done") {
       if (mode === "preview") exitPreview();
+      return;
+    }
+    if (message.event === "exit-play") {
+      // §4.5: fullscreen owns Esc first — the browser's own fullscreen
+      // exit is already underway by the time this message arrives, and
+      // leaving play mode too would drop the author straight out of both
+      // at once instead of just the one Esc asked for. The runtime cannot
+      // make this check itself (it has no notion of fullscreen), which is
+      // why it is repeated here rather than only in App.tsx's own Escape
+      // listener (the other route to the same call).
+      if (mode === "play" && !isAnyElementFullscreen()) void exitPlay();
       return;
     }
   }
@@ -2801,12 +2866,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // these calls' renderPlay() discard its own result instead of racing
     // a later one to paint last.
     const thisGeneration = ++generation;
+    // §4.6: the page currently on screen plays its own exit first — this
+    // is the "leave" half of the page change, and it must finish (or be
+    // aborted) before currentIndex moves at all.
+    if (!(await playExitTransition(thisGeneration))) return;
     currentIndex += 1;
     notify();
     await renderPlay(thisGeneration, "first", true);
   }
 
-  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六). */
+  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六) — except retreat never plays an exit (§4.6 决定 7: `prev()` in the prototype is a plain `go()`, no `goWithExit`). */
   async function retreatPastStart(): Promise<void> {
     // At the very start of the presentation, retreating does nothing —
     // there is nowhere further back to go, and this must not throw.
@@ -2819,7 +2888,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const thisGeneration = ++generation;
     currentIndex -= 1;
     notify();
-    await renderPlay(thisGeneration, "last");
+    await renderPlay(thisGeneration, "last", true);
   }
 
   async function reload(): Promise<void> {
@@ -2857,7 +2926,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
 
     slides = project.slides;
-    transition = project.transition;
     presentationFonts = project.fonts ?? [];
     resolvedFonts = await resolveEmbeddedFonts(presentationFonts);
     if (destroyed || thisGeneration !== generation) return;
@@ -2888,7 +2956,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notifyOverlay();
 
     if (mode === "play") {
-      await renderPlay(thisGeneration);
+      // §4.6: a background refresh plays neither enter nor exit.
+      await renderPlay(thisGeneration, "first", false);
     } else {
       await render(thisGeneration);
     }
@@ -2957,6 +3026,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // rounding, an existing series' carried-over axis/color) reflects back
     // into the window rather than it quietly drifting from the file.
     notifyChartWindow();
+    // #200: `CanvasState.pageStyle` reads off `currentSlideModel`, just
+    // parsed above — and, unlike every other field this module notifies on,
+    // it has no selection to piggyback a notify() on (Style › Page has to
+    // work with nothing selected at all). Before this field existed nothing
+    // in `CanvasState` depended on `currentSlideModel` without a selection
+    // change also happening in the same call, so `render()` never needed
+    // its own notify() — reload()'s own notify() (before this function even
+    // runs) was always followed by SOME selection-changing call that
+    // notified again. `selectOnceLoaded` below still fires its own later
+    // notify() once the frame's `load` event lands; this one is what makes
+    // a plain navigation/reload with no pending selection visible at all.
+    notify();
 
     if (selectAfterLoad) selectOnceLoaded(selectAfterLoad, thisGeneration);
   }
@@ -3027,21 +3108,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * after computePlayerPlan() has run, because only the parent knows the
    * slide's step count. The sentinel itself never travels over the wire.
    *
-   * `animate` (T6): whether THIS particular page change should play the
-   * presentation-level fade, on top of `transition === "fade"` already
-   * being true. Callers pass `true` only for a user-initiated forward page
-   * change — retreat, play()/exitPlay() entry, and reload() all pass the
-   * default `false`, matching runtime's existing "retreat is instant"
-   * principle plus "a fade is a *page change*, not an entry or a
-   * background refresh". This is a distinct layer from element-entrance
-   * transitions inside the slide's own runtime: this one fades the
-   * `<iframe>` itself, from the parent document, and never touches
-   * player-runtime.js.
+   * `playEnter` ([E2.T11], replacing T6's `animate`): whether THIS
+   * particular call should play the new page's own enter transition, on
+   * top of whatever `<comot:transition>` it declares. §4.6's table: every
+   * caller passes `true` except `reload()`'s background refresh and
+   * `previewEffects()` — a page change (forward or backward), and
+   * entering play mode itself, all count as a real arrival. This is a
+   * distinct layer from element-entrance transitions inside the slide's
+   * own runtime: this one animates the `<iframe>` itself, from the parent
+   * document, and never touches player-runtime.js.
    */
   async function renderPlay(
     thisGeneration?: number,
     startAt: "first" | "last" = "first",
-    animate = false,
+    playEnter = true,
     /**
      * [E2.T7]/D8: `undefined` (every existing caller) means "not a
      * Preview — never set `plan.preview`". A concrete value (only
@@ -3069,6 +3149,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
+      // [E2.T11]: read alongside the plan, in the same try — a slide whose
+      // <comot:transition> is present but malformed (§4.2: an unknown
+      // effect value, an illegal duration, more than one node) surfaces
+      // through the exact same `error` banner + static-fallback path a
+      // broken effect list already does, rather than a second, differently
+      // shaped failure mode.
+      currentPageTransition = readSlideTransition(svgMarkup);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
@@ -3084,6 +3171,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // author still sees the slide, plus the reason nothing animates.
       error = planError instanceof Error ? planError.message : "效果清單無法解析";
       notify();
+      // A broken page has no transition to play on the way out either —
+      // reset to the all-"none" default so a later playExitTransition()
+      // call leaving this (static) page does not act on stale data left
+      // over from whichever slide was last painted successfully.
+      currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
       frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
@@ -3095,34 +3187,73 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       planScript,
     );
 
-    if (animate && transition === "fade") {
-      // Fade-in only, not a cross-fade (决定 3 in the plan): the old page is
-      // simply gone the instant srcdoc is replaced above, and the new one
-      // reveals itself from black. Fading the old page out first would mean
-      // waiting for that animation before the fetch/srcdoc swap could even
-      // start, tangling this with the generation guard above for a result
-      // that is strictly less faithful to "fade" than what this buys.
+    const { effect, duration } = currentPageTransition.enter;
+    if (playEnter && effect !== "none" && duration > 0) {
+      const ms = duration * 1000;
       frame.style.transition = "none";
       frame.style.opacity = "0";
-      // The "none" transition and opacity:0 must land in a rendered frame
-      // before switching to the real transition, or the browser coalesces
-      // both style writes into one paint and nothing animates.
+      frame.style.transform = pageTransitionTransform(effect, "enter-start");
+      // The "none" transition and the start values above must land in a
+      // rendered frame before switching to the real transition, or the
+      // browser coalesces both style writes into one paint and nothing
+      // animates.
       requestAnimationFrame(() => {
         if (destroyed || captured !== generation) return;
-        frame.style.transition = `opacity ${PAGE_FADE_MS}ms`;
+        frame.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
         frame.style.opacity = "1";
+        frame.style.transform = "none";
       });
     } else {
-      // Instant path must actively clear any inline opacity/transition a
-      // PRIOR fade left behind — otherwise this page silently inherits the
-      // last frame's mid-fade opacity instead of showing at full opacity.
-      // `transition` is cleared before `opacity` defensively — clearing
-      // `opacity` while a `transition` is still declared risks animating
-      // the removal itself instead of jumping straight to the resting
-      // value.
+      // Instant path must actively clear any inline opacity/transition/
+      // transform a PRIOR animation left behind — otherwise this page
+      // silently inherits the last frame's mid-animation state instead of
+      // showing at rest. `transition` is cleared before the values it was
+      // animating, defensively — clearing a value while `transition` is
+      // still declared risks animating the removal itself instead of
+      // jumping straight to the resting state.
       frame.style.removeProperty("transition");
       frame.style.removeProperty("opacity");
+      frame.style.removeProperty("transform");
     }
+  }
+
+  /**
+   * Plays the page currently on screen's own exit transition (§4.6),
+   * before a forward page change replaces `frame.srcdoc`. Unlike
+   * renderPlay()'s enter fade-in, no two-step rAF commit is needed here:
+   * the `<iframe>` is already sitting at its resting opacity/transform (no
+   * inline style forced it there a moment ago), so setting `transition`
+   * and the end values together in one synchronous block still animates
+   * — the browser compares against the last real paint, not against
+   * something this function itself just wrote.
+   *
+   * Returns `false` when the caller must NOT proceed to the page change at
+   * all: either a forward request arrived while an earlier one is still
+   * exiting (§4.6 决定: ignored outright, never queued or stacked), or
+   * `generation` moved on mid-exit — some other navigation (reload(),
+   * exitPlay(), a second showSlide()) superseded this one, and the caller
+   * must abandon its own page change rather than apply it on top.
+   */
+  async function playExitTransition(thisGeneration: number): Promise<boolean> {
+    if (exiting) return false;
+    const { effect, duration } = currentPageTransition.exit;
+    if (effect === "none" || duration === 0) return true;
+
+    exiting = true;
+    const ms = duration * 1000;
+    frame.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
+    frame.style.opacity = "0";
+    frame.style.transform = pageTransitionTransform(effect, "exit-end");
+    await new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    exiting = false;
+
+    if (destroyed || thisGeneration !== generation) {
+      frame.style.removeProperty("transition");
+      frame.style.removeProperty("opacity");
+      frame.style.removeProperty("transform");
+      return false;
+    }
+    return true;
   }
 
   async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
@@ -3134,11 +3265,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
     const thisGeneration = ++generation;
-    // Captured before currentIndex moves — "forward" for the fade means
-    // this specific call moved strictly ahead, same intent as
-    // advancePastEnd()'s "+= 1" (retreatPastStart's own "-= 1" path already
-    // passes no animate flag by calling renderPlay's default).
+    // Captured before currentIndex moves — "forward" decides whether the
+    // page being left plays an exit (§4.6: only a forward change does),
+    // same intent as advancePastEnd()'s "+= 1" vs retreatPastStart()'s
+    // "-= 1".
     const forward = index > currentIndex;
+    if (mode === "play" && forward) {
+      if (!(await playExitTransition(thisGeneration))) return;
+    }
     currentIndex = index;
     // E2.T12 plan §4.5: "切換投影片時關閉" — a chart window's edits target
     // a specific element id on the slide being left; render()'s own
@@ -3168,7 +3302,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notify();
     notifyOverlay();
     if (mode === "play") {
-      await renderPlay(thisGeneration, "first", forward);
+      await renderPlay(thisGeneration, "first", true);
     } else {
       // [E2.T8]: `selectAfter` reuses the exact same "reselect once the
       // new document's `load` fires" mechanism `SELECT_AFTER_COMMAND`
@@ -3360,6 +3494,60 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return false;
     }
+    // Same as runCommand: the write lands back over /api/events and drives a
+    // reload() that drops the selection — park it so the Style › Object
+    // sub-tab (keyed on "is anything selected") does not snap back to Page.
+    keepSelectionAcrossReload();
+    return true;
+  }
+
+  async function setTextAlign(align: "left" | "center" | "right"): Promise<boolean> {
+    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    const thisGeneration = generation;
+    for (const elementId of selectionIds) {
+      const result = await postCommand("textbox align", {
+        slidePath: slides[currentIndex],
+        elementId,
+        align,
+      });
+      if (destroyed || thisGeneration !== generation) return false;
+      if (!result.ok) {
+        error = result.message;
+        notify();
+        return false;
+      }
+      keepSelectionAcrossReload();
+    }
+    return true;
+  }
+
+  async function setPageStyle(update: { background?: string; accent?: string }): Promise<boolean> {
+    if (currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("slide style set", {
+      slidePath: slides[currentIndex],
+      ...update,
+    });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
+    return true;
+  }
+
+  async function setCanvasSize(width: number, height: number): Promise<boolean> {
+    const thisGeneration = generation;
+    const result = await postCommand("presentation canvas set", { width, height });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
     return true;
   }
 
@@ -3380,6 +3568,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     };
     for (const listener of listeners) listener(state);
   }
@@ -3399,6 +3588,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         elements: selectedElements(),
       },
       dragSignal,
+      pageStyle: currentSlideModel?.pageStyle ?? null,
     });
     return () => {
       listeners.delete(listener);
@@ -3427,6 +3617,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
     },
     setStyle,
+    setTextAlign,
+    setPageStyle,
+    setCanvasSize,
     get frameElement() {
       return frame;
     },

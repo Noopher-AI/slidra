@@ -344,12 +344,20 @@ describe("mountCanvas 的多頁換頁", () => {
     const unsubscribe = controller.subscribe((state) => seen.push(state.currentIndex));
     expect(seen).toEqual([0]);
 
+    // #200: render() now notifies a second time once it has parsed the new
+    // slide's model (CanvasState.pageStyle depends on it, and — unlike
+    // every other field — has no selection change to piggyback a notify()
+    // on). One `next()` therefore reports the new index twice: once
+    // eagerly (index/selection reset, same as before this ticket) and once
+    // more once the slide model is ready. Both carry `currentIndex: 1`, so
+    // this array is an honest count of *notifications*, not evidence of a
+    // second navigation.
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
 
     unsubscribe();
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
   });
 
   it("沒有投影片時，狀態的索引是 -1，且翻頁不拋錯", async () => {
@@ -606,6 +614,58 @@ describe("mountCanvas 的播放模式", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(srcdoc()).toContain('data-testid="s2"');
+  });
+
+  // [E2.T11] §4.5: fullscreen owns Esc first. The runtime's own keydown
+  // forwards Escape as "exit-play" regardless of fullscreen state, so
+  // canvas.ts must re-check document.fullscreenElement itself before
+  // honoring it — otherwise a single Esc would drop the author out of
+  // both fullscreen and play mode at once.
+  it("全螢幕時收到 runtime 的 exit-play 不會離開播放；離開全螢幕後再收到同一則訊息才真的退出播放", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "fullscreenElement");
+    try {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: document.createElement("div"),
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Still in play mode: srcdoc keeps the play-only plan global.
+      expect(srcdoc()).toContain("window.__COMOT_PLAN__");
+
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(srcdoc()).not.toContain("__COMOT_PLAN__");
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, "fullscreenElement", originalDescriptor);
+      } else {
+        delete (document as { fullscreenElement?: unknown }).fullscreenElement;
+      }
+    }
   });
 
   // #46: the runtime's own reverse-navigation route. currentIndex 0 -> 1
@@ -1147,37 +1207,40 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 // controller (play()/next()/previous()/showSlide()) and assert on the
 // <iframe> element's own inline style, never on the internal renderPlay()
 // function itself.
-describe("mountCanvas 的簡報層級轉場 (T6)", () => {
+describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
   function frame(): HTMLIFrameElement {
     return container.querySelector("iframe") as HTMLIFrameElement;
   }
 
-  function stubTransitionDeck(transition?: string): void {
+  /** Each entry is one slide's raw markup (with or without its own `<comot:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
+  function stubTransitionDeck(markup: Record<string, string>): void {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(
-            JSON.stringify({ ...deck, ...(transition === undefined ? {} : { transition }) }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(deck), { status: 200 });
         }
         const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && deckMarkup[match[1]]) {
-          return new Response(deckMarkup[match[1]], { status: 200 });
+        if (match && markup[match[1]]) {
+          return new Response(markup[match[1]], { status: 200 });
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
   }
 
+  function slideWithTransition(testId: string, transitionAttrs?: string): string {
+    const metadata = transitionAttrs ? `<metadata><comot:transition ${NS} ${transitionAttrs}/></metadata>` : "";
+    return `<svg data-testid="${testId}">${metadata}</svg>`;
+  }
+
   it.each([
-    ["缺少 transition 欄位", undefined],
-    ["空字串", ""],
-    ["未知的未來值", "wipe"],
-  ] as const)("讀取端：%s 視為 none，前進換頁瞬切，不拋錯", async (_label, value) => {
-    stubTransitionDeck(value);
+    ["沒有 <metadata>", slideWithTransition("s1")],
+    ["有 <metadata> 但沒有 <comot:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
+    ["enter/exit 都明寫 none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
+  ] as const)("讀取端：%s → 前進換頁瞬切，不拋錯", async (_label, firstSlideMarkup) => {
+    stubTransitionDeck({ ...deckMarkup, "slides/001.svg": firstSlideMarkup, "slides/002.svg": slideWithTransition("s2") });
     controller = mountCanvas(container);
     await expect(controller.reload()).resolves.toBeUndefined();
     await controller.play();
@@ -1186,22 +1249,15 @@ describe("mountCanvas 的簡報層級轉場 (T6)", () => {
 
     expect(frame().style.opacity).toBe("");
     expect(frame().style.transition).toBe("");
+    expect(frame().style.transform).toBe("");
   });
 
-  it("transition: \"none\" 時前進換頁瞬切", async () => {
-    stubTransitionDeck("none");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-
-    await controller.next();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"fade\" 時前進換頁先設 opacity:0，再於下一個 animation frame 淡入到 1", async () => {
-    stubTransitionDeck("fade");
+  it("[A9] enter=\"fade\" 時抵達該頁：inline style 先是 opacity:0，下一個 animation frame 變成 opacity:1 且 transition 字串含該頁的 enter 時長", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.8" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
@@ -1214,36 +1270,83 @@ describe("mountCanvas 的簡報層級轉場 (T6)", () => {
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     expect(frame().style.opacity).toBe("1");
-    expect(frame().style.transition).toBe(`opacity 400ms`);
+    expect(frame().style.transition).toBe("opacity 800ms var(--ease-out), transform 800ms var(--ease-out)");
   });
 
-  it("transition: \"fade\" 時倒退換頁一律瞬切（retreat is instant）", async () => {
-    stubTransitionDeck("fade");
+  it("[A10] exit=\"fade\" 時前進換頁：離開頁先同步淡出（opacity:0，transition 字串含 exit 時長），時長跑完才真的換成下一頁的 srcdoc", async () => {
+    vi.useFakeTimers();
+    try {
+      stubTransitionDeck({
+        ...deckMarkup,
+        "slides/001.svg": slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+        "slides/002.svg": slideWithTransition("s2"),
+      });
+      controller = mountCanvas(container);
+      await controller.reload();
+      await controller.play();
+
+      const advancePromise = controller.next();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // (a) 同步設定的確定性斷言：opacity 立刻變 0，transition 字串含 1000ms。
+      expect(frame().style.opacity).toBe("0");
+      expect(frame().style.transition).toContain("1000ms");
+      // (b) 此時仍是第一頁的內容，尚未換頁。
+      expect(frame().srcdoc).toContain('data-testid="s1"');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await advancePromise;
+
+      // (c) exit 播完才換成第二頁，且 opacity 回到非 0（enter 為預設 none，瞬切到 1 = removeProperty）。
+      expect(frame().srcdoc).toContain('data-testid="s2"');
+      expect(frame().style.opacity).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("[A11] 倒退換頁不播離開頁的 exit（瞬切離開）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
     await controller.next();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     await controller.previous();
 
+    // 沒有任何 exit 動畫發生過：回到第一頁（enter="none"）之後，inline style 全清空。
+    expect(frame().srcdoc).toContain('data-testid="s1"');
     expect(frame().style.opacity).toBe("");
     expect(frame().style.transition).toBe("");
   });
 
-  it("transition: \"fade\" 時 play() 進入播放（非換頁）瞬切", async () => {
-    stubTransitionDeck("fade");
+  it("play() 進入播放會播該頁的 enter（行為變更：T6 時代這裡是瞬切）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
 
     await controller.play();
 
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
+    expect(frame().style.opacity).toBe("0");
+    expect(frame().style.transition).toBe("none");
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(frame().style.opacity).toBe("1");
   });
 
-  it("transition: \"fade\" 時上一次淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
-    stubTransitionDeck("fade");
+  it("上一次 enter 淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
