@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import type { RunningServer } from "../packages/server/src/serve.js";
 import { openApp, requireBuilt, startServerFor } from "./helpers/launch.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot, settledBox } from "./helpers/screenshot.js";
 
 /**
  * E2.T14/E2.T14r2's real-Chromium acceptance tests (plan §5/§6) — the one
@@ -562,6 +562,10 @@ it("F1: table-panel 基準截圖", async () => {
   const { server, cleanup } = await startServerFor({ deckDir, prefix: "f1" });
   try {
     const page = await openPage(server);
+    // `.table-panel` carries `.floating-layer`'s `scale(0.96)→scale(1)` entrance
+    // animation (dock.css) — suppress it so the clip below measures the settled
+    // box, not a mid-animation one (NOOP-198's F1 flake).
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Table" }).click();
     const panel = page.locator(".table-panel");
     const cells = panel.locator(".table-panel-cell");
@@ -569,7 +573,7 @@ it("F1: table-panel 基準截圖", async () => {
     expect(await cells.first().isEnabled()).toBe(true);
 
     await settleForScreenshot(page);
-    const clip = snapClip(unionBox("插入面板", [await panel.boundingBox()]));
+    const clip = snapClip(unionBox("插入面板", [await settledBox(panel, "插入面板")]));
     await compareScreenshot(page, { name: "table-panel", baselineDir, clip });
   } finally {
     await cleanup();
@@ -601,6 +605,7 @@ for (const theme of ["dark", "light", "zebra"] as const) {
       }
 
       const page = await openPage(server);
+      await page.emulateMedia({ reducedMotion: "reduce" });
       const svg = await catSlide(registry, presentationId);
       expect(svg).toContain(`data-comot-theme="${theme}"`);
       const headerCell = cellMarkup(svg, 0, 0);
@@ -632,6 +637,11 @@ it("F3: cell-range 基準截圖", async () => {
   const { server, cleanup } = await newTableDeck("f3", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
+    // `.context-bar` carries `context-bar-in`'s `translateY` entrance animation
+    // (stage-overlays.css) — suppress it so the clip below measures the
+    // settled box (NOOP-198's root-cause table found this affects F3 too,
+    // just masked by the `waitForTimeout(200)` below).
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator('[data-comot-cell="0,0"]').click();
     await slideFrame.locator('[data-comot-cell="1,1"]').click({ modifiers: ["Shift"] });
@@ -665,7 +675,9 @@ it("F3: cell-range 基準截圖", async () => {
 
     await settleForScreenshot(page);
     const contextBar = page.locator(".context-bar");
-    const clip = snapClip(unionBox("範圍框與情境列", [rangeBoxBox, await contextBar.boundingBox()]));
+    const clip = snapClip(
+      unionBox("範圍框與情境列", [await settledBox(rangeBox, "範圍框"), await settledBox(contextBar, "情境列")]),
+    );
     await compareScreenshot(page, { name: "cell-range", baselineDir, clip });
   } finally {
     await cleanup();
@@ -676,6 +688,10 @@ it("F4: cell-menu 基準截圖", async () => {
   const { server, cleanup } = await newTableDeck("f4", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
+    // `.table-cell-menu` carries the same `floating-layer-in` entrance
+    // animation as `.table-panel` (table.css:191) — suppress it so the clip
+    // below measures the settled box (NOOP-198's F4 flake).
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const slideFrame = page.frameLocator("iframe.slide-frame");
     // A plain click first — same "let TableOverlay's own subscription
     // settle before the interaction that needs it" reasoning as E8/E9's
@@ -694,7 +710,7 @@ it("F4: cell-menu 基準截圖", async () => {
     }
 
     await settleForScreenshot(page);
-    const clip = snapClip(unionBox("儲存格右鍵選單", [await menu.boundingBox()]));
+    const clip = snapClip(unionBox("儲存格右鍵選單", [await settledBox(menu, "儲存格右鍵選單")]));
     await compareScreenshot(page, { name: "cell-menu", baselineDir, clip });
   } finally {
     await cleanup();
