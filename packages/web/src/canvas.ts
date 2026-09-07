@@ -1024,6 +1024,8 @@ function subtreeIds(element: SlideElement, out: Set<string>): void {
 function subtreeForcesUniformScale(element: SlideElement): boolean {
   if (element.kind === "group") return element.children.some(subtreeForcesUniformScale);
   if (element.kind === "text" || element.kind === "circle" || element.kind === "path") return true;
+  // A table scales through its container transform (see element-edit.ts), so a non-uniform factor would distort every glyph in it.
+  if (element.kind === "table") return true;
   if (element.kind === "compound") {
     return element.primitives.some((primitive) => primitive.tag === "text" || primitive.tag === "circle" || primitive.tag === "path");
   }

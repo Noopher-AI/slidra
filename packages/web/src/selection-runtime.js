@@ -131,6 +131,7 @@
     colors.accent +
     ";pointer-events:auto;display:none;}" +
     ".handle.corner{cursor:nwse-resize;}" +
+    ".handle.corner[data-comot-handle=ne],.handle.corner[data-comot-handle=sw]{cursor:nesw-resize;}" +
     ".handle.rotate{border-radius:50%;cursor:grab;}" +
     ".handle.edge{cursor:ew-resize;}" +
     // In-place editing has no visible input of its own — the <textarea>

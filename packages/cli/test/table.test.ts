@@ -251,7 +251,8 @@ describe("表格容器與其他命令族的互動 (A4/A5)", () => {
     const resizeResult = await registry.dispatch("element resize", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], width: 100, height: 100, anchor: "nw",
     });
-    expect(resizeResult.ok).toBe(true);
+    expect(resizeResult.ok).toBe(false);
+    expect(resizeResult.message).toContain("非等比");
 
     const moveResult = await registry.dispatch("element move", {
       id, slidePath: "slides/001.svg", elementIds: [elementId], dx: 5, dy: 5,

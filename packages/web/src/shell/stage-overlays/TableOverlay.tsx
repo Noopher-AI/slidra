@@ -105,8 +105,9 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
     return total > 0 && box.width > 0 ? box.width / total : 1;
   }
 
+  /** `event.clientX` is viewport px, so the column's left edge is taken from the runtime's own client-px box — NOT the well-local rect the handles are painted with (mixing the two added the well's left offset to every drag). */
   function dragWidth(event: React.PointerEvent<HTMLDivElement>): number {
-    const boxRect = toLocalRect(cellData!.box, wellOffset());
+    const boxRect = cellData!.box;
     const k = pxPerUnit(boxRect, colDrag!.widths);
     const scaled = colDrag!.widths.map((w) => w * k);
     const startX = columnBoundaryPositions(boxRect.x, scaled)[colDrag!.col] - scaled[colDrag!.col];

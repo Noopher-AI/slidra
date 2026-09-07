@@ -142,8 +142,9 @@ function assertNotChartContainer(node: ScannedNode, elementId: string, action: s
  * `element scale`/`element resize` for the two containers whose children
  * are not scalable primitives. A table keeps its declared grid (cols/rows
  * are core-owned) and scales as a whole through its container transform's
- * `scale()` — text included, like PowerPoint. A chart re-renders at the new
- * size (`scaleChartElement`). Returns `null` for every other container so
+ * `scale()` — text included, like PowerPoint — so only a uniform factor is
+ * accepted (a non-uniform one would distort the glyphs, same rule as a text
+ * box). A chart re-renders at the new size (`scaleChartElement`). Returns `null` for every other container so
  * the caller falls through to the primitive path.
  */
 function scaleSpecialContainer(
@@ -156,6 +157,9 @@ function scaleSpecialContainer(
 ): string | null {
   const type = attributeValue(node, "data-comot-type");
   if (type === TABLE_CONTAINER_TYPE) {
+    if (sx !== sy) {
+      throw new CoMotionError(`元素 ${elementId} 是表格，文字無法非等比縮放，請改用 element scale`);
+    }
     return applyTransformDelta(svg, elementId, (parts) => ({ ...parts, scaleX: parts.scaleX * sx, scaleY: parts.scaleY * sy }), force);
   }
   if (type === CHART_CONTAINER_TYPE) {

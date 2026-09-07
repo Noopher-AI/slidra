@@ -132,15 +132,18 @@ describe("table edit — cell/col/row operations (plan §4.2/§4.7)", () => {
     expect(after.height).toBeCloseTo(before.height * 2, 6);
   });
 
-  it("element resize scales a table non-uniformly and a later table edit keeps that scale", () => {
+  it("element resize accepts only a uniform factor on a table, and a later table edit keeps that scale", () => {
     const svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0 }, fonts);
     const before = elementBounds(parseSlide(svg, "slides/001.svg").elements[0]);
-    const resized = resizeElements(svg, "slides/001.svg", ["el-t"], before.width * 3, before.height * 0.5, "nw", fonts);
+    expect(() => resizeElements(svg, "slides/001.svg", ["el-t"], before.width * 3, before.height * 0.5, "nw", fonts)).toThrow(
+      /非等比/,
+    );
+    const resized = resizeElements(svg, "slides/001.svg", ["el-t"], before.width * 3, before.height * 3, "nw", fonts);
     const edited = setTableCellText(resized, "slides/001.svg", "el-t", 0, 0, "x", fonts);
-    expect(edited).toMatch(/scale\(3 0\.5\)/);
+    expect(edited).toMatch(/scale\(3 3\)/);
     const after = elementBounds(parseSlide(edited, "slides/001.svg").elements[0]);
     expect(after.width).toBeCloseTo(before.width * 3, 6);
-    expect(after.height).toBeCloseTo(before.height * 0.5, 6);
+    expect(after.height).toBeCloseTo(before.height * 3, 6);
   });
 
   it("row delete rejects deleting the last remaining row", () => {
