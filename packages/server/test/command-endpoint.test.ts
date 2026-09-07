@@ -272,12 +272,13 @@ it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕
     "element align",
     "element distribute",
     "element order",
-    "presentation transition set",
+    // [E2.T11]: replaces `presentation transition set` (removed).
+    "slide transition set",
     "element resize",
     "element delete",
     "element duplicate",
   ]) {
-    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade" } });
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade", enter: "fade" } });
     expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
   }
 });
@@ -360,32 +361,193 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
-it("presentation transition set：白名單內的合法值回 2xx，並寫進 project.json", async () => {
+it("E2.T14：表格的 14 條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
+  const id = await openDeck("table-whitelist.comot");
+  const server = await serve(id);
+
+  for (const name of [
+    "table create",
+    "table cell set",
+    "table cell style set",
+    "table merge",
+    "table col width",
+    "table col insert",
+    "table col delete",
+    "table row insert",
+    "table row delete",
+    "table theme set",
+    "table header set",
+    "table bind",
+    "table refresh",
+    "table set",
+  ]) {
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
+    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
+  }
+});
+
+it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("table-create.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "table create",
+    input: { slidePath: "slides/001.svg", rows: 2, cols: 2, x: 10, y: 10 },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-type="table"');
+});
+
+it("E2.T12：圖表的八條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
+  const id = await openDeck("chart-whitelist.comot");
+  const server = await serve(id);
+
+  for (const name of [
+    "chart create",
+    "chart data set",
+    "chart type set",
+    "chart palette set",
+    "chart axis set",
+    "chart stack set",
+    "chart legend set",
+    "chart option set",
+  ]) {
+    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
+    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
+  }
+});
+
+it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("chart-create.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "chart create",
+    input: { slidePath: "slides/001.svg" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-type="chart"');
+});
+
+it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投影片位元組不變（transform／data-comot-name）", async () => {
+  const id = await openDeck("style-set-forbidden.comot");
+  const server = await serve(id);
+  const before = await readSlide(id);
+
+  const transformResult = await postCommand(server, {
+    name: "element style set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "transform", value: "translate(1 1)" },
+  });
+  expect(transformResult.status).not.toBe(200);
+
+  const dataAttrResult = await postCommand(server, {
+    name: "element style set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "data-comot-name", value: "x" },
+  });
+  expect(dataAttrResult.status).not.toBe(200);
+
+  expect(await readSlide(id)).toBe(before);
+});
+
+async function openTextBoxDeck(fileName: string): Promise<string> {
+  const { zipSync } = await import("fflate");
+  const textBoxSlide =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+    '<g id="el-text" data-comot-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
+    "</svg>";
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(
+      JSON.stringify({
+        formatVersion: 1,
+        name: "文字框對齊測試",
+        canvas: { width: 1280, height: 720 },
+        slides: ["slides/001.svg"],
+      }),
+    ),
+    "slides/001.svg": new TextEncoder().encode(textBoxSlide),
+  });
+  const comotPath = path.join(comotDir, fileName);
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return opened.data!.id;
+}
+
+it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openTextBoxDeck("textbox-align.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "textbox align",
+    input: { slidePath: "slides/001.svg", elementId: "el-text", align: "center" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-text-align="center"');
+});
+
+it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("slide-style-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "slide style set",
+    input: { slidePath: "slides/001.svg", background: "#202020", accent: "#00ff00" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  const slide = await readSlide(id);
+  expect(slide).toContain("background-color:#202020");
+  expect(slide).toContain("--comot-accent:#00ff00");
+});
+
+it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {
+  const id = await openDeck("presentation-canvas-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "presentation canvas set",
+    input: { width: 1024, height: 768 },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect((await readProjectJson(id)).canvas).toEqual({ width: 1024, height: 768 });
+  expect(await readSlide(id)).toContain('viewBox="0 0 1024 768"');
+});
+
+it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投影片 SVG（取代 presentation transition set 寫 project.json）", async () => {
   const id = await openDeck("transition-fade.comot");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
-    name: "presentation transition set",
-    input: { name: "fade" },
+    name: "slide transition set",
+    input: { slidePath: "slides/001.svg", enter: "fade", enterDuration: 0.6 },
   });
 
   expect(status).toBeGreaterThanOrEqual(200);
   expect(status).toBeLessThan(300);
   expect(json.ok).toBe(true);
-  expect((await readProjectJson(id)).transition).toBe("fade");
+  expect(await readSlide(id)).toContain('enter="fade" enter-duration="0.6"');
 });
 
-it("presentation transition set：白名單外的值被命令層拒絕，project.json 不變", async () => {
+it("slide transition set：白名單外的 enter 值被命令層拒絕，SVG 不變", async () => {
   const id = await openDeck("transition-bad.comot");
   const server = await serve(id);
+  const before = await readSlide(id);
 
   const { status } = await postCommand(server, {
-    name: "presentation transition set",
-    input: { name: "spin" },
+    name: "slide transition set",
+    input: { slidePath: "slides/001.svg", enter: "spin" },
   });
 
   expect(status).not.toBe(200);
-  expect((await readProjectJson(id)).transition).toBeUndefined();
+  expect(await readSlide(id)).toBe(before);
 });
 
 it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {

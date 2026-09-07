@@ -1,6 +1,6 @@
 import { CoMotionError } from "./errors.js";
 import { escapeXmlAttr } from "./element-text.js";
-import { assertSlideCompliant } from "./slide/format.js";
+import { assertSlideCompliant, TABLE_CONTAINER_TYPE } from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, multiplyMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
 import { removeEffectsTargeting } from "./effects/edit.js";
@@ -77,8 +77,15 @@ function meaningfulChildren(node: ScannedNode): ScannedNode[] {
   return node.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
 }
 
-/** ADR-0012: a container's children are all `<g>`, or all primitives — never mixed. */
+/**
+ * ADR-0012: a container's children are all `<g>`, or all primitives —
+ * never mixed. An unbound table's cells are all `<g data-comot-cell>` too
+ * (E2.T14) — explicitly excluded so `ungroupOne` below never mistakes a
+ * table for an ordinary group and dissolves it into a pile of id-less
+ * cells.
+ */
 function isGroupContainer(node: ScannedNode): boolean {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) return false;
   const children = meaningfulChildren(node);
   return children.length > 0 && children.every((child) => child.tag === "g");
 }
@@ -108,6 +115,13 @@ function nextGroupName(svgRoot: ScannedNode): string {
     .map((match) => Number(match[1]));
   const next = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
   return `Group ${next}`;
+}
+
+/** `element group`/`element ungroup` never treat a table as a group (E2.T14, plan §2 item 5) — its cells are not independently selectable members. */
+function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
+  if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
+    throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
+  }
 }
 
 /** The leading whitespace before an attribute, so removing it also removes the separating space. */
@@ -175,6 +189,7 @@ export function groupElements(
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const found = elementIds.map((id) => requireContainer(svgRoot, id));
+  found.forEach((entry, index) => assertNotTableContainer(entry.node, elementIds[index], "不能加入群組"));
 
   const parent = found[0].parent;
   if (found.some((entry) => entry.parent !== parent)) {
@@ -226,6 +241,7 @@ function ungroupOne(svgContent: string, slidePath: string, id: string): UngroupO
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
+  assertNotTableContainer(node, id, "不能解散群組");
   if (!isGroupContainer(node)) {
     throw new CoMotionError(`元素 ${id} 不是群組`);
   }

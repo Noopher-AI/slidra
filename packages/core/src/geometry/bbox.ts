@@ -129,7 +129,8 @@ export interface TextBoundsContext {
 export function primitiveBounds(primitive: SlidePrimitive, text?: TextBoundsContext): Rect {
   switch (primitive.tag) {
     case "rect":
-    case "image": {
+    case "image":
+    case "svg": {
       const x = numberAttr(primitive, "x", 0);
       const y = numberAttr(primitive, "y", 0);
       return {
@@ -495,6 +496,18 @@ function boundsWithin(
     throw new CoMotionError(`容器巢狀超過 ${MAX_CONTAINER_DEPTH} 層，無法計算邊界框`);
   }
   const matrix = multiplyMatrix(ancestorMatrix, element.matrix);
+  // A table's bbox is its declared grid extent, not a primitive union
+  // (E2.T14, plan §4.1): cells carry no `id` and are not independently
+  // measurable elements, and `element.table`'s `rows` are always the
+  // core-computed heights already baked into the file.
+  if (element.kind === "table") {
+    if (element.table === null) {
+      throw new CoMotionError(`表格 ${element.id} 缺少 table 資料`);
+    }
+    const width = element.table.cols.reduce((sum, value) => sum + value, 0);
+    const height = element.table.rows.reduce((sum, value) => sum + value, 0);
+    return transformRect(matrix, { x: 0, y: 0, width, height });
+  }
   if (element.kind === "group") {
     if (element.children.length === 0) {
       throw new CoMotionError(`群組 ${element.id} 裡沒有任何子元素，沒有邊界框`);
@@ -520,7 +533,14 @@ function boundsWithin(
   // it as a second, bogus text box and distort the union. It never
   // contributes its own geometry; the content `<text>`'s box already covers
   // the area it decorates.
-  const measurable = element.primitives.filter((primitive) => primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true");
+  // A chart's `<comot:chart>` data primitive never contributes its own
+  // geometry (E2.T12) — it is not an SVG shape at all, only the sibling
+  // rendered `<svg>` (which `primitiveBounds`'s `"svg"` case handles) draws
+  // anything, mirroring how a list marker `<text>` is excluded above.
+  const measurable = element.primitives.filter(
+    (primitive) =>
+      primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true" && primitive.tag !== "comot:chart",
+  );
   return unionRects(
     measurable.map((primitive) =>
       transformRect(matrix, primitiveBounds(primitive, textContext)),

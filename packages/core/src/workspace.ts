@@ -12,6 +12,7 @@ import {
   appendElementToSvg,
   escapeXmlAttr,
   escapeXmlText,
+  realignTextBox,
   replaceElementText,
   resizeTextBox,
   setParagraphList,
@@ -20,6 +21,7 @@ import {
   type ListKind,
   type TextRunStyleUpdate,
 } from "./element-text.js";
+import { setSlidePageStyle as applyPageStyle, type PageStyleUpdate } from "./slide-style.js";
 import {
   deleteElements,
   insertElement,
@@ -61,6 +63,46 @@ import {
   type SetEffectInput,
 } from "./effects/edit.js";
 import type { Effect } from "./effects/index.js";
+import {
+  bindTableSource,
+  createTableElement,
+  deleteTableColumn,
+  deleteTableRow,
+  insertTableColumn,
+  insertTableRow,
+  mergeTableCells,
+  parseMarkdownTable,
+  parseTableCsv,
+  refreshTableSource,
+  setTableCellStyle,
+  setTableCellText,
+  setTableColWidth,
+  setTableFromCsv,
+  setTableFromMarkdown,
+  setTableHeader,
+  setTableTheme,
+  readTableModel,
+  type CellStyleAttr,
+  type CreateTableInput,
+  type TableTheme,
+} from "./table/index.js";
+import {
+  createChartElement,
+  parseChartCsv,
+  setChartAxis,
+  setChartData,
+  setChartLegend,
+  setChartOption,
+  setChartPalette,
+  setChartStack,
+  setChartType,
+  type ChartAxesMode,
+  type ChartLegend,
+  type ChartOptionKey,
+  type ChartPalette,
+  type ChartType,
+  type CreateChartInput,
+} from "./chart/index.js";
 
 /**
  * Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every
@@ -508,6 +550,24 @@ export async function writePresentationFile(id: string, virtualPath: string, con
 }
 
 /**
+ * The one exception door (#200 決定 4): only `presentation canvas set` uses
+ * this — page size is the one edit the acceptance criteria (「Undo 可回退
+ * （頁面尺寸除外）」) name as never occupying an undo step. Every other
+ * write goes through `writePresentationFile` above. The difference from it
+ * is exactly the snapshot/commit bracket: no `stageSnapshotEntries`/
+ * `commitSnapshotEntries` call, so nothing is pushed onto the undo stack.
+ * The filesystem watcher still sees the write and still fires
+ * `presentation-changed` (it watches the file itself, not the history
+ * stack), so the stage still updates live.
+ */
+export async function writePresentationFileWithoutHistory(id: string, virtualPath: string, content: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  const realPath = await resolveVirtualFilePath(workDir, virtualPath);
+  await writeFile(realPath, content, "utf-8");
+}
+
+/**
  * Confirms `virtualPath` is one of the presentation's declared slides
  * (listed in `project.json`'s `slides` array). The write path
  * (`setElementText`, below) calls this before touching the slide file
@@ -766,6 +826,50 @@ export async function setTextBoxWidth(
   const { updated, lines } = resizeTextBox(original, elementId, width, fontBook, { force: options.force });
   await writePresentationFile(id, slidePath, updated);
   return { lines };
+}
+
+/**
+ * Re-wraps a text box against a new alignment (#200, `co-motion textbox
+ * align`) — same shape as `setTextBoxWidth` above, just the other axis of
+ * `rewrapTextBoxContent`.
+ */
+export async function setTextBoxAlign(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  align: "left" | "center" | "right",
+  options: MutationOptions = {},
+): Promise<{ lines: number }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fontBook = await resolvePresentationFonts(id);
+  const { updated, lines } = realignTextBox(original, elementId, align, fontBook, { force: options.force });
+  await writePresentationFile(id, slidePath, updated);
+  return { lines };
+}
+
+/**
+ * Sets a slide's Page style (#200 §4.4, `co-motion slide style set`) —
+ * background/accent colour, written on the root `<svg>`'s `style`
+ * attribute. Unlike `presentation canvas set`, this goes through
+ * `writePresentationFile` (入歷史): the acceptance criteria's "Undo 可回退
+ * （頁面尺寸除外）" names page SIZE as the one exception, not Page style.
+ */
+export async function setSlidePageStyle(
+  id: string,
+  slidePath: string,
+  update: PageStyleUpdate,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = applyPageStyle(original, update);
+  await writePresentationFile(id, slidePath, updated);
 }
 
 /**
@@ -1280,4 +1384,437 @@ export async function duplicateSlideElements(
   const { updated, elementIds: newIds } = pasteElements(original, slidePath, payload, dx, dy, generateElementId);
   await writePresentationFile(id, slidePath, updated);
   return { elementIds: newIds };
+}
+
+// ---------------------------------------------------------------------------
+// table (E2.T14) — same six-line shape as every other write path above:
+// resolve -> assert listed -> read -> pure core function -> write. `table
+// bind`/`table refresh`/`table set --from`'s CSV source is resolved to a
+// plain `ParsedTableCsv` HERE, the one place in the stack allowed to touch
+// the real filesystem (`readFile`) or a deck's virtual one
+// (`readVirtualFile`) — `table/edit.ts` itself only ever sees already-parsed
+// data.
+// ---------------------------------------------------------------------------
+
+export async function createSlideTable(
+  id: string,
+  slidePath: string,
+  input: CreateTableInput,
+): Promise<{ elementId: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const elementId = generateElementId();
+  const updated = createTableElement(original, slidePath, elementId, input, fonts);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+export async function setSlideTableCellText(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  row: number,
+  col: number,
+  text: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = setTableCellText(original, slidePath, elementId, row, col, text, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export interface SetSlideTableCellStyleInput {
+  row: number;
+  col: number;
+  rowEnd?: number;
+  colEnd?: number;
+  attr: CellStyleAttr;
+  value: string;
+}
+
+export async function setSlideTableCellStyle(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  input: SetSlideTableCellStyleInput,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = setTableCellStyle(original, slidePath, elementId, input, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export interface MergeSlideTableCellsInput {
+  row: number;
+  col: number;
+  rowSpan?: number;
+  colSpan?: number;
+  unmerge?: boolean;
+}
+
+export async function mergeSlideTableCells(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  input: MergeSlideTableCellsInput,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = mergeTableCells(original, slidePath, elementId, input, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideTableColWidth(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  col: number,
+  width: number,
+  keepTotal = false,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = setTableColWidth(original, slidePath, elementId, col, width, fonts, keepTotal);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function insertSlideTableColumn(id: string, slidePath: string, elementId: string, at: number): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = insertTableColumn(original, slidePath, elementId, at, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function deleteSlideTableColumn(id: string, slidePath: string, elementId: string, at: number): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = deleteTableColumn(original, slidePath, elementId, at, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function insertSlideTableRow(id: string, slidePath: string, elementId: string, at: number): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = insertTableRow(original, slidePath, elementId, at, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function deleteSlideTableRow(id: string, slidePath: string, elementId: string, at: number): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = deleteTableRow(original, slidePath, elementId, at, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideTableTheme(id: string, slidePath: string, elementId: string, theme: TableTheme): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = setTableTheme(original, slidePath, elementId, theme, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideTableHeader(id: string, slidePath: string, elementId: string, header: boolean): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = setTableHeader(original, slidePath, elementId, header, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function bindSlideTableSource(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  source: string,
+  templateRow: number | undefined,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const csvText = await readVirtualFile(workDir, source);
+  const csv = parseTableCsv(csvText);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = bindTableSource(original, slidePath, elementId, source, templateRow, csv, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function refreshSlideTableSource(id: string, slidePath: string, elementId: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const currentModel = readTableModel(original, elementId);
+  if (currentModel.source === null) {
+    throw new CoMotionError(`表格 ${elementId} 沒有資料來源`);
+  }
+  const csvText = await readVirtualFile(workDir, currentModel.source);
+  const csv = parseTableCsv(csvText);
+  const fonts = await resolvePresentationFonts(id);
+  const updated = refreshTableSource(original, slidePath, elementId, csv, fonts);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export interface SetSlideTableInput {
+  /** A virtual path inside the presentation, e.g. `assets/data/sales.csv`. */
+  from?: string;
+  /** Literal markdown table text. */
+  markdown?: string;
+  /** A local filesystem path outside the presentation, read as markdown table text. */
+  markdownFile?: string;
+}
+
+export async function setSlideTable(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  input: SetSlideTableInput,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const fonts = await resolvePresentationFonts(id);
+
+  if (input.from !== undefined) {
+    const csvText = await readVirtualFile(workDir, input.from);
+    const csv = parseTableCsv(csvText);
+    const updated = setTableFromCsv(original, slidePath, elementId, csv, fonts);
+    await writePresentationFile(id, slidePath, updated);
+    return;
+  }
+  if (input.markdown !== undefined || input.markdownFile !== undefined) {
+    let markdownText: string;
+    if (input.markdownFile !== undefined) {
+      try {
+        markdownText = await readFile(input.markdownFile, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          throw new CoMotionNotFoundError(`找不到 Markdown 檔案：${input.markdownFile}`);
+        }
+        throw error;
+      }
+    } else {
+      markdownText = input.markdown!;
+    }
+    const markdown = parseMarkdownTable(markdownText);
+    const updated = setTableFromMarkdown(original, slidePath, elementId, markdown, fonts);
+    await writePresentationFile(id, slidePath, updated);
+    return;
+  }
+  throw new CoMotionError("table set 必須提供 --from、--markdown 或 --markdown-file 其中一種");
+}
+
+// ---------------------------------------------------------------------------
+// chart (E2.T12) — same six-line shape as every other write path above:
+// resolve -> assert listed -> read -> pure core function -> write. `chart
+// data set`'s three data sources (`--categories`/`--series`, `--csv`,
+// `--csv-asset`) are resolved to a plain `{categories, series}` HERE, the
+// one place in the stack that is allowed to touch the real filesystem
+// (`readFile`) or a deck's virtual one (`readVirtualFile`) — `chart/edit.ts`
+// itself only ever sees already-parsed data.
+// ---------------------------------------------------------------------------
+
+export async function createSlideChart(
+  id: string,
+  slidePath: string,
+  input: CreateChartInput,
+): Promise<{ elementId: string }> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const elementId = generateElementId();
+  const updated = createChartElement(original, slidePath, elementId, input);
+  await writePresentationFile(id, slidePath, updated);
+  return { elementId };
+}
+
+export interface SetSlideChartDataInput {
+  categories?: string[];
+  series?: { name: string; values: number[] }[];
+  /** A local filesystem path outside the presentation. */
+  csv?: string;
+  /** A virtual path INSIDE the presentation (e.g. `assets/data/quarterly.csv`). */
+  csvAsset?: string;
+}
+
+export async function setSlideChartData(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  input: SetSlideChartDataInput,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+
+  let categories: string[];
+  let series: { name: string; values: number[] }[];
+  if (input.csv !== undefined) {
+    let text: string;
+    try {
+      text = await readFile(input.csv, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new CoMotionNotFoundError(`找不到 CSV 檔案：${input.csv}`);
+      }
+      throw error;
+    }
+    ({ categories, series } = parseChartCsv(text));
+  } else if (input.csvAsset !== undefined) {
+    const text = await readVirtualFile(workDir, input.csvAsset);
+    ({ categories, series } = parseChartCsv(text));
+  } else {
+    if (input.categories === undefined || input.series === undefined) {
+      throw new CoMotionError("chart data set 必須提供 --categories/--series、--csv 或 --csv-asset 其中一種");
+    }
+    categories = input.categories;
+    series = input.series;
+  }
+
+  const updated = setChartData(original, slidePath, elementId, { categories, series });
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartType(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  type: ChartType,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartType(original, slidePath, elementId, type);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartPalette(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  palette: ChartPalette,
+  colorOverrides: ReadonlyMap<string, string>,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartPalette(original, slidePath, elementId, palette, colorOverrides);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartAxis(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  axes: ChartAxesMode,
+  rightSeriesNames: readonly string[],
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartAxis(original, slidePath, elementId, axes, rightSeriesNames);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartStack(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  stacked: boolean,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartStack(original, slidePath, elementId, stacked);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartLegend(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  legend: ChartLegend,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartLegend(original, slidePath, elementId, legend);
+  await writePresentationFile(id, slidePath, updated);
+}
+
+export async function setSlideChartOption(
+  id: string,
+  slidePath: string,
+  elementId: string,
+  key: ChartOptionKey,
+  value: string,
+): Promise<void> {
+  const home = resolveCoMotionHome();
+  const workDir = await lookupWorkDir(home, id);
+  await resolveVirtualFilePath(workDir, slidePath);
+  await assertSlidePathListed(workDir, slidePath);
+  const original = await readVirtualFile(workDir, slidePath);
+  const updated = setChartOption(original, slidePath, elementId, key, value);
+  await writePresentationFile(id, slidePath, updated);
 }

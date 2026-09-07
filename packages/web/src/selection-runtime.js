@@ -131,6 +131,7 @@
     colors.accent +
     ";pointer-events:auto;display:none;}" +
     ".handle.corner{cursor:nwse-resize;}" +
+    ".handle.corner[data-comot-handle=ne],.handle.corner[data-comot-handle=sw]{cursor:nesw-resize;}" +
     ".handle.rotate{border-radius:50%;cursor:grab;}" +
     ".handle.edge{cursor:ew-resize;}" +
     // In-place editing has no visible input of its own — the <textarea>
@@ -906,6 +907,70 @@
     post({ event: "measured", items: items });
   }
 
+  /** `table-cells` host->runtime command (E2.T14, plan §4.5): every cell's client rect, plus the table's own box, for `id`'s table container. Silently reports nothing for an id that no longer resolves or is not a table — same "no fallback, just skip" posture `reportMeasured` above has for a stale id. */
+  function reportTableCells(id) {
+    var tableEl = document.getElementById(id);
+    if (!tableEl || tableEl.getAttribute("data-comot-type") !== "table") return;
+    var cellEls = tableEl.querySelectorAll("[data-comot-cell]");
+    var cells = [];
+    for (var i = 0; i < cellEls.length; i++) {
+      var address = tableCellAddress(cellEls[i]);
+      if (!address) continue;
+      var cellRect = cellEls[i].getBoundingClientRect();
+      cells.push({
+        row: address.row,
+        col: address.col,
+        rect: { x: cellRect.left, y: cellRect.top, width: cellRect.width, height: cellRect.height },
+      });
+    }
+    var boxRect = tableEl.getBoundingClientRect();
+    post({
+      event: "table-cells",
+      id: id,
+      cells: cells,
+      box: { x: boxRect.left, y: boxRect.top, width: boxRect.width, height: boxRect.height },
+    });
+  }
+
+  /**
+   * `preview-table-cols` host->runtime command (E2.T14, plan §4.5): a
+   * column-width drag's live preview. Moves only each cell `<g>`'s own
+   * `translate` x and its `<rect>`'s `width` — never re-wraps text (決定
+   * 13: "拖曳期間不重新換行"). `cols` not being an array of the SAME
+   * length as the table's current column count leaves the DOM completely
+   * untouched (same "bad input is a no-op, never a partial mutation"
+   * posture `applyPreviewTextbox` already has for its own malformed
+   * input).
+   */
+  function applyPreviewTableCols(id, cols) {
+    var tableEl = document.getElementById(id);
+    if (!tableEl || tableEl.getAttribute("data-comot-type") !== "table" || !Array.isArray(cols)) return;
+    if (!cols.every(function (value) { return typeof value === "number" && isFinite(value) && value > 0; })) return;
+
+    var cellEls = tableEl.querySelectorAll("[data-comot-cell]");
+    var colCount = cols.length;
+    // Column left-edge x offsets, from the previewed widths.
+    var offsets = [];
+    var x = 0;
+    for (var c = 0; c < colCount; c++) {
+      offsets.push(x);
+      x += cols[c];
+    }
+
+    for (var i = 0; i < cellEls.length; i++) {
+      var cellEl = cellEls[i];
+      var address = tableCellAddress(cellEl);
+      if (!address || address.col >= colCount) continue;
+      var rectEl = cellEl.querySelector("rect");
+      if (!rectEl) continue;
+      var currentTransform = cellEl.getAttribute("transform") || "";
+      var yMatch = /translate\([^,\s]+[,\s]+([^)]+)\)/.exec(currentTransform);
+      var y = yMatch ? yMatch[1].trim() : "0";
+      cellEl.setAttribute("transform", "translate(" + offsets[address.col] + " " + y + ")");
+      rectEl.setAttribute("width", String(cols[address.col]));
+    }
+  }
+
   function updateBoxes() {
     updateEditDecoration();
     positionGroupFrames();
@@ -947,7 +1012,14 @@
     while (current && current !== document.body) {
       if (scopeEl && current === scopeEl) break;
       var tag = current.tagName ? current.tagName.toLowerCase() : "";
-      if (tag === "svg") break;
+      // The outermost slide <svg> (no `ownerSVGElement` of its own) stops
+      // the walk — nothing above it is selectable. E2.T12 introduced this
+      // codebase's first NESTED <svg> (a chart's embedded rendering,
+      // ADR-0012 amend): `ownerSVGElement` is non-null for it (it points
+      // at the enclosing root svg), so it is walked straight through like
+      // any other container instead of wrongly stopping the search one
+      // level short of the chart's own id-carrying `<g>`.
+      if (tag === "svg" && !current.ownerSVGElement) break;
       // T3 / ADR-0013: a locked element is not selectable at all in view
       // mode, and neither is anything inside it — checking only the
       // resolved `outermost` node let a locked child hide behind an
@@ -963,9 +1035,45 @@
     return outermost;
   }
 
-  /** True when `el` wraps at least one further id-carrying descendant — the normal form's own rule that only containers, never primitives, carry `id` (ADR-0012) makes this exactly "is `el` a group". */
+  /**
+   * True when `el` wraps at least one further id-carrying descendant — the
+   * normal form's own rule that only containers, never primitives, carry
+   * `id` (ADR-0012) makes this exactly "is `el` a group". A table's cells
+   * (E2.T14) never carry `id` either, so this already returns `false` for
+   * a table container with no further checks needed — the dblclick
+   * handler below still special-cases `data-comot-type="table"` FIRST so
+   * it opens cell editing instead of merely falling through to "not a
+   * group, do nothing".
+   */
   function isGroupContainer(el) {
     return !!(el && el.querySelector("[id]"));
+  }
+
+  /** Walks up from `rawTarget` to the nearest `data-comot-cell` ancestor, or null (E2.T14, plan §4.5). */
+  function findTableCellElement(rawTarget) {
+    var current = rawTarget;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.hasAttribute("data-comot-cell")) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  /** Parses a cell `<g>`'s own `data-comot-cell="r,c"` into `{row, col}`, or null if malformed. */
+  function tableCellAddress(cellEl) {
+    var raw = cellEl.getAttribute("data-comot-cell");
+    var match = raw ? /^(\d+),(\d+)$/.exec(raw) : null;
+    return match ? { row: Number(match[1]), col: Number(match[2]) } : null;
+  }
+
+  /** The template-row cell sharing `generatedCell`'s column, within the same table container — architecture: "雙擊編輯的是模板列" (plan §4.5). */
+  function findTemplateCellForColumn(tableEl, col) {
+    var candidates = tableEl.querySelectorAll('[data-comot-repeat="row"]');
+    for (var i = 0; i < candidates.length; i++) {
+      var addr = tableCellAddress(candidates[i]);
+      if (addr && addr.col === col) return candidates[i];
+    }
+    return null;
   }
 
   /**
@@ -1069,15 +1177,41 @@
       }
       var id = target.getAttribute("id");
       var name = target.getAttribute("data-comot-name");
-      if (additive) {
-        var idx = selectedIds.indexOf(id);
-        if (idx >= 0) selectedIds.splice(idx, 1);
-        else selectedIds.push(id);
-      } else {
-        selectedIds = [id];
+      var isTable = target.getAttribute("data-comot-type") === "table";
+      // E2.T14 §4.5: every cell in a table resolves to the SAME container
+      // id (cells carry no id of their own) — a ⇧-click on a second cell
+      // of an ALREADY-selected table would otherwise hit the ordinary
+      // multi-element toggle logic below and read as "this id is already
+      // selected, shift-click removes it", deselecting the whole table
+      // out from under the cell-range gesture the user actually performed
+      // (found via the manual browser smoke test: the range overlay
+      // vanished on the second, ⇧-held click). A ⇧-click that stays
+      // inside the same already-selected table is therefore a pure
+      // cell-range gesture — the table's own selection is left untouched,
+      // and the ordinary "select" toggle/post below is skipped entirely.
+      var isRangeGestureWithinSelectedTable = additive && isTable && selectedIds.length === 1 && selectedIds[0] === id;
+      if (!isRangeGestureWithinSelectedTable) {
+        if (additive) {
+          var idx = selectedIds.indexOf(id);
+          if (idx >= 0) selectedIds.splice(idx, 1);
+          else selectedIds.push(id);
+        } else {
+          selectedIds = [id];
+        }
+        updateBoxes();
+        post(withGroupPath({ event: "select", id: id, name: name, additive: additive }));
       }
-      updateBoxes();
-      post(withGroupPath({ event: "select", id: id, name: name, additive: additive }));
+      // A click on any cell also reports which one, alongside the
+      // ordinary "select" of the table container itself (skipped above
+      // for the same-table ⇧-click case) — the host sets the cell range
+      // from this, the table's own selection state from "select".
+      if (isTable) {
+        var cellEl = findTableCellElement(event.target);
+        var address = cellEl && tableCellAddress(cellEl);
+        if (address) {
+          post({ event: "table-cell-click", id: id, row: address.row, col: address.col, additive: event.shiftKey });
+        }
+      }
     },
     true,
   );
@@ -1122,6 +1256,36 @@
       if (target.hasAttribute("data-comot-text-width") || isPlainTextContainer(target)) {
         pendingEditPoint = { x: event.clientX, y: event.clientY };
         post({ event: "dblclick-textbox", id: target.getAttribute("id") });
+        return;
+      }
+      // E2.T14 §4.5: double-clicking a table cell opens cell editing
+      // instead of the group-entry logic below (a table is never a group,
+      // see `isGroupContainer`'s own comment) — a generated cell reports
+      // its template row's row index instead of its own (架構:
+      // "雙擊編輯的是模板列").
+      if (target.getAttribute("data-comot-type") === "table") {
+        var tableCellEl = findTableCellElement(event.target);
+        var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
+        if (cellAddress) {
+          var reportedRow = cellAddress.row;
+          if (tableCellEl.getAttribute("data-comot-generated") === "1") {
+            var templateCell = findTemplateCellForColumn(target, cellAddress.col);
+            var templateAddress = templateCell && tableCellAddress(templateCell);
+            if (templateAddress) reportedRow = templateAddress.row;
+          }
+          post({ event: "table-cell-dblclick", id: target.getAttribute("id"), row: reportedRow, col: cellAddress.col });
+        }
+        return;
+      }
+      // E2.T12 plan §3.6: a chart container opens its data window instead
+      // of the group-entry logic below. A chart nested inside a not-yet-
+      // entered group resolves to that GROUP here (findSelectable's
+      // outermost-within-scope rule), so this branch naturally only fires
+      // once the chart itself is the resolved target — the group-drilling
+      // branch below still runs first for the outer dblclick, exactly the
+      // existing "group 鑽入" two-dblclick sequence plan §4.4 asks for.
+      if (target.getAttribute("data-comot-type") === "chart") {
+        post({ event: "dblclick-chart", id: target.getAttribute("id") });
         return;
       }
       if (!isGroupContainer(target)) return;
@@ -1218,6 +1382,13 @@
     return null;
   }
 
+  // E2.T14r2 §4.2: the id of the table currently owning an active cell
+  // range, set by the host's own "table-range" command (below) — `null`
+  // means no range is active, and every key this flag would otherwise
+  // reroute (Delete/Backspace/Tab/⌘B/Esc) keeps its pre-existing behaviour
+  // bit-for-bit (§2.20).
+  var tableRangeId = null;
+
   // --- Stage navigation relay (Dev-Leader 裁決核准的擴大範圍：舞台導航
   // 5 場景，NOOP-83 §3.3/§4) ---
   // Same posture as every other message in this file: report raw
@@ -1277,6 +1448,13 @@
     if (selectedIds.length !== 1) return;
     var el = document.getElementById(selectedIds[0]);
     if (!el) return;
+    // E2.T12 plan §3.6: same keyboard-equivalent-of-double-click reuse, for
+    // a selected chart's data window instead of text editing.
+    if (el.getAttribute("data-comot-type") === "chart") {
+      event.preventDefault();
+      post({ event: "dblclick-chart", id: el.getAttribute("id") });
+      return;
+    }
     if (!el.hasAttribute("data-comot-text-width") && !isPlainTextContainer(el)) return;
     event.preventDefault();
     pendingEditPoint = null;
@@ -1502,6 +1680,15 @@
       endGesture(gesture.lastClient, true);
       return;
     }
+    // E2.T14r2 §4.2: a cell range in progress owns Esc while active — it
+    // exits the range (parent decides: table stays selected) instead of
+    // popping group-path or clearing the selection. Must sit here: after
+    // the editingId/gesture branches above (§4.2's own ordering), before
+    // the groupPath branch below.
+    if (tableRangeId !== null) {
+      post({ event: "table-key", id: tableRangeId, key: "Escape", meta: event.metaKey, ctrl: event.ctrlKey, shift: event.shiftKey });
+      return;
+    }
     // Not mid-gesture (NOOP-91 follow-up's group-edit row): pop one level
     // of group-edit scope, or — already at the top — clear the selection
     // instead. Never both in the same keypress.
@@ -1542,6 +1729,17 @@
       updateBoxes();
       post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-comot-name"), additive: false }));
     }
+    // E2.T14 §4.5: right-clicking a table cell also reports which one —
+    // the host uses this to open the cell context menu (§3.7: the right-
+    // click menu itself is a parent-document floating layer, this runtime
+    // only ever reports the hit).
+    if (target.getAttribute("data-comot-type") === "table") {
+      var cellEl = findTableCellElement(event.target);
+      var address = cellEl && tableCellAddress(cellEl);
+      if (address) {
+        post({ event: "table-cell-contextmenu", id: id, row: address.row, col: address.col, x: event.clientX, y: event.clientY });
+      }
+    }
   });
 
   // Keyboard relay for the shortcuts that must work even when focus is
@@ -1560,6 +1758,13 @@
   // `stage-key`.
   function isRelayedStageKey(event) {
     if (event.key === "Delete" || event.key === "Backspace") return true;
+    // E2.T12: Escape closing the chart data window is a parent-side (React)
+    // concern with no runtime-local meaning of its own — unlike every other
+    // relayed key, this one is on top of, not instead of, the runtime's own
+    // unconditional Escape handling above (text-edit-commit / gesture
+    // cancel / group-path pop / clear-selection), since those and "close
+    // the chart window if one happens to be open" are independent.
+    if (event.key === "Escape") return true;
     var withModifier = event.metaKey || event.ctrlKey;
     if (!withModifier) return false;
     return event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" || event.key === "z" || event.key === "Z";
@@ -1567,6 +1772,12 @@
   window.addEventListener("keydown", function (event) {
     if (!isRelayedStageKey(event)) return;
     if (editingId !== null || gesture) return;
+    // E2.T14r2 §4.2: while a cell range owns Delete/Backspace, the listener
+    // below relays it as "table-key" instead — never both for the same
+    // keypress. Every other key this function whitelists (⌘A/⌘D/⌘]/⌘[/⌘Z)
+    // keeps going through "stage-key" unchanged even with a range active
+    // (§2.22).
+    if (tableRangeId !== null && (event.key === "Delete" || event.key === "Backspace")) return;
     event.preventDefault();
     post({
       event: "stage-key",
@@ -1575,6 +1786,27 @@
       ctrl: event.ctrlKey,
       shift: event.shiftKey,
       alt: event.altKey,
+    });
+  });
+
+  /** Tab/⇧Tab and ⌘B/Ctrl+B — relayed ONLY while a cell range is active (E2.T14r2 §4.2); untouched otherwise, same as this file's own pre-existing comment on `isRelayedStageKey` already promises ("Everything else … is untouched"). */
+  function isTableRangeKey(event) {
+    if (event.key === "Tab") return true;
+    return (event.key === "b" || event.key === "B") && (event.metaKey || event.ctrlKey);
+  }
+  window.addEventListener("keydown", function (event) {
+    if (tableRangeId === null) return;
+    if (editingId !== null || gesture) return;
+    var isRangeDelete = event.key === "Delete" || event.key === "Backspace";
+    if (!isRangeDelete && !isTableRangeKey(event)) return;
+    event.preventDefault(); // Tab would otherwise move focus; Delete/⌘B have their own default actions to suppress too.
+    post({
+      event: "table-key",
+      id: tableRangeId,
+      key: event.key,
+      meta: event.metaKey,
+      ctrl: event.ctrlKey,
+      shift: event.shiftKey,
     });
   });
 
@@ -1662,6 +1894,34 @@
     updateBoxes();
   }
 
+  /**
+   * E2.T12 plan §3.6 "本地預覽通道": swaps a chart container's embedded
+   * `<svg>` (the sibling of its `<comot:chart>` data element) for the
+   * host-rendered replacement — same "host renders, runtime only
+   * transplants" split `applyPreviewTextbox` uses, so this runtime never
+   * needs its own copy of the chart-drawing math. A container that no
+   * longer exists, or markup that fails to parse as `<svg>`, leaves the
+   * DOM untouched.
+   */
+  function applyPreviewChart(id, markup) {
+    var container = document.getElementById(id);
+    if (!container || typeof markup !== "string") return;
+    var doc = new DOMParser().parseFromString(markup, "image/svg+xml");
+    if (doc.getElementsByTagName("parsererror").length > 0) return;
+    var newSvg = doc.documentElement;
+    if (!newSvg || newSvg.nodeName !== "svg") return;
+    var oldSvg = null;
+    for (var child = container.firstElementChild; child; child = child.nextElementSibling) {
+      if (child.nodeName === "svg") {
+        oldSvg = child;
+        break;
+      }
+    }
+    if (!oldSvg) return;
+    container.replaceChild(document.importNode(newSvg, true), oldSvg);
+    updateBoxes();
+  }
+
   function drawMarquee(rect) {
     if (!rect || typeof rect.x !== "number" || typeof rect.y !== "number") {
       marqueeBox.style.display = "none";
@@ -1687,6 +1947,8 @@
       applyPreviewTextbox(data.id, data.markup, data.width);
     } else if (data.command === "preview-text") {
       applyPreviewText(data.id, data.text);
+    } else if (data.command === "preview-chart") {
+      applyPreviewChart(data.id, data.markup);
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
       // No `markup` means a plain <text> (host side sends it only for a
@@ -1724,6 +1986,15 @@
       document.documentElement.style.cursor = stageHandMode ? "grab" : "";
     } else if (data.command === "measure") {
       reportMeasured(Array.isArray(data.ids) ? data.ids : []);
+    } else if (data.command === "table-cells") {
+      reportTableCells(data.id);
+    } else if (data.command === "preview-table-cols") {
+      applyPreviewTableCols(data.id, data.cols);
+    } else if (data.command === "table-range") {
+      // E2.T14r2 §4.2: a malformed id (neither string nor null) leaves the
+      // flag untouched — same "bad input is a no-op" posture
+      // `applyPreviewTableCols` already has for its own malformed input.
+      if (typeof data.id === "string" || data.id === null) tableRangeId = data.id;
     }
   });
 

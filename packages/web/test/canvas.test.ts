@@ -344,12 +344,20 @@ describe("mountCanvas 的多頁換頁", () => {
     const unsubscribe = controller.subscribe((state) => seen.push(state.currentIndex));
     expect(seen).toEqual([0]);
 
+    // #200: render() now notifies a second time once it has parsed the new
+    // slide's model (CanvasState.pageStyle depends on it, and — unlike
+    // every other field — has no selection change to piggyback a notify()
+    // on). One `next()` therefore reports the new index twice: once
+    // eagerly (index/selection reset, same as before this ticket) and once
+    // more once the slide model is ready. Both carry `currentIndex: 1`, so
+    // this array is an honest count of *notifications*, not evidence of a
+    // second navigation.
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
 
     unsubscribe();
     await controller.next();
-    expect(seen).toEqual([0, 1]);
+    expect(seen).toEqual([0, 1, 1]);
   });
 
   it("沒有投影片時，狀態的索引是 -1，且翻頁不拋錯", async () => {
@@ -606,6 +614,58 @@ describe("mountCanvas 的播放模式", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(srcdoc()).toContain('data-testid="s2"');
+  });
+
+  // [E2.T11] §4.5: fullscreen owns Esc first. The runtime's own keydown
+  // forwards Escape as "exit-play" regardless of fullscreen state, so
+  // canvas.ts must re-check document.fullscreenElement itself before
+  // honoring it — otherwise a single Esc would drop the author out of
+  // both fullscreen and play mode at once.
+  it("全螢幕時收到 runtime 的 exit-play 不會離開播放；離開全螢幕後再收到同一則訊息才真的退出播放", async () => {
+    stubPlayDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    await controller.play();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "fullscreenElement");
+    try {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: document.createElement("div"),
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Still in play mode: srcdoc keeps the play-only plan global.
+      expect(srcdoc()).toContain("window.__COMOT_PLAN__");
+
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { source: "comot-player", event: "exit-play" },
+          source: controller.frameElement.contentWindow as unknown as Window,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(srcdoc()).not.toContain("__COMOT_PLAN__");
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, "fullscreenElement", originalDescriptor);
+      } else {
+        delete (document as { fullscreenElement?: unknown }).fullscreenElement;
+      }
+    }
   });
 
   // #46: the runtime's own reverse-navigation route. currentIndex 0 -> 1
@@ -1147,37 +1207,40 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 // controller (play()/next()/previous()/showSlide()) and assert on the
 // <iframe> element's own inline style, never on the internal renderPlay()
 // function itself.
-describe("mountCanvas 的簡報層級轉場 (T6)", () => {
+describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
   function frame(): HTMLIFrameElement {
     return container.querySelector("iframe") as HTMLIFrameElement;
   }
 
-  function stubTransitionDeck(transition?: string): void {
+  /** Each entry is one slide's raw markup (with or without its own `<comot:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
+  function stubTransitionDeck(markup: Record<string, string>): void {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(
-            JSON.stringify({ ...deck, ...(transition === undefined ? {} : { transition }) }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(deck), { status: 200 });
         }
         const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && deckMarkup[match[1]]) {
-          return new Response(deckMarkup[match[1]], { status: 200 });
+        if (match && markup[match[1]]) {
+          return new Response(markup[match[1]], { status: 200 });
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
   }
 
+  function slideWithTransition(testId: string, transitionAttrs?: string): string {
+    const metadata = transitionAttrs ? `<metadata><comot:transition ${NS} ${transitionAttrs}/></metadata>` : "";
+    return `<svg data-testid="${testId}">${metadata}</svg>`;
+  }
+
   it.each([
-    ["缺少 transition 欄位", undefined],
-    ["空字串", ""],
-    ["未知的未來值", "wipe"],
-  ] as const)("讀取端：%s 視為 none，前進換頁瞬切，不拋錯", async (_label, value) => {
-    stubTransitionDeck(value);
+    ["沒有 <metadata>", slideWithTransition("s1")],
+    ["有 <metadata> 但沒有 <comot:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
+    ["enter/exit 都明寫 none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
+  ] as const)("讀取端：%s → 前進換頁瞬切，不拋錯", async (_label, firstSlideMarkup) => {
+    stubTransitionDeck({ ...deckMarkup, "slides/001.svg": firstSlideMarkup, "slides/002.svg": slideWithTransition("s2") });
     controller = mountCanvas(container);
     await expect(controller.reload()).resolves.toBeUndefined();
     await controller.play();
@@ -1186,22 +1249,15 @@ describe("mountCanvas 的簡報層級轉場 (T6)", () => {
 
     expect(frame().style.opacity).toBe("");
     expect(frame().style.transition).toBe("");
+    expect(frame().style.transform).toBe("");
   });
 
-  it("transition: \"none\" 時前進換頁瞬切", async () => {
-    stubTransitionDeck("none");
-    controller = mountCanvas(container);
-    await controller.reload();
-    await controller.play();
-
-    await controller.next();
-
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
-  });
-
-  it("transition: \"fade\" 時前進換頁先設 opacity:0，再於下一個 animation frame 淡入到 1", async () => {
-    stubTransitionDeck("fade");
+  it("[A9] enter=\"fade\" 時抵達該頁：inline style 先是 opacity:0，下一個 animation frame 變成 opacity:1 且 transition 字串含該頁的 enter 時長", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.8" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
@@ -1214,36 +1270,83 @@ describe("mountCanvas 的簡報層級轉場 (T6)", () => {
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     expect(frame().style.opacity).toBe("1");
-    expect(frame().style.transition).toBe(`opacity 400ms`);
+    expect(frame().style.transition).toBe("opacity 800ms var(--ease-out), transform 800ms var(--ease-out)");
   });
 
-  it("transition: \"fade\" 時倒退換頁一律瞬切（retreat is instant）", async () => {
-    stubTransitionDeck("fade");
+  it("[A10] exit=\"fade\" 時前進換頁：離開頁先同步淡出（opacity:0，transition 字串含 exit 時長），時長跑完才真的換成下一頁的 srcdoc", async () => {
+    vi.useFakeTimers();
+    try {
+      stubTransitionDeck({
+        ...deckMarkup,
+        "slides/001.svg": slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+        "slides/002.svg": slideWithTransition("s2"),
+      });
+      controller = mountCanvas(container);
+      await controller.reload();
+      await controller.play();
+
+      const advancePromise = controller.next();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // (a) 同步設定的確定性斷言：opacity 立刻變 0，transition 字串含 1000ms。
+      expect(frame().style.opacity).toBe("0");
+      expect(frame().style.transition).toContain("1000ms");
+      // (b) 此時仍是第一頁的內容，尚未換頁。
+      expect(frame().srcdoc).toContain('data-testid="s1"');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await advancePromise;
+
+      // (c) exit 播完才換成第二頁，且 opacity 回到非 0（enter 為預設 none，瞬切到 1 = removeProperty）。
+      expect(frame().srcdoc).toContain('data-testid="s2"');
+      expect(frame().style.opacity).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("[A11] 倒退換頁不播離開頁的 exit（瞬切離開）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="none" enter-duration="0.6" exit="fade" exit-duration="1"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
     await controller.next();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     await controller.previous();
 
+    // 沒有任何 exit 動畫發生過：回到第一頁（enter="none"）之後，inline style 全清空。
+    expect(frame().srcdoc).toContain('data-testid="s1"');
     expect(frame().style.opacity).toBe("");
     expect(frame().style.transition).toBe("");
   });
 
-  it("transition: \"fade\" 時 play() 進入播放（非換頁）瞬切", async () => {
-    stubTransitionDeck("fade");
+  it("play() 進入播放會播該頁的 enter（行為變更：T6 時代這裡是瞬切）", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
 
     await controller.play();
 
-    expect(frame().style.opacity).toBe("");
-    expect(frame().style.transition).toBe("");
+    expect(frame().style.opacity).toBe("0");
+    expect(frame().style.transition).toBe("none");
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(frame().style.opacity).toBe("1");
   });
 
-  it("transition: \"fade\" 時上一次淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
-    stubTransitionDeck("fade");
+  it("上一次 enter 淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
+    stubTransitionDeck({
+      ...deckMarkup,
+      "slides/001.svg": slideWithTransition("s1"),
+      "slides/002.svg": slideWithTransition("s2", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
+    });
     controller = mountCanvas(container);
     await controller.reload();
     await controller.play();
@@ -2228,5 +2331,213 @@ describe("mountCanvas 的文字框編輯 preview 通道（NOOP-65r3）", () => {
 
     const markup = lastBeginTextEdit(spy).markup as string;
     expect(markup).toContain('<tspan font-weight="bold">體字</tspan>');
+  });
+});
+
+// E2.T14r2 §4.1: handleTableRangeKey/setTableRange/subscribeTableRange — the
+// single decision function both the iframe relay and App.tsx's capture
+// listener call, tested here at its own public boundary
+// (`createCanvasController()`'s returned object, per plan §6.5), not
+// against a private module variable.
+describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）", () => {
+  // 2×2 table: (0,0)/(1,0)/(1,1) start at font-weight 400, (0,1) starts
+  // already bold (700) — lets the ⌘B toggle-both-ways tests below share one
+  // fixture instead of two nearly-identical ones.
+  const TABLE_SLIDE =
+    '<svg viewBox="0 0 1280 720">' +
+    '<g id="el-tbl" data-comot-type="table" data-comot-cols="100 100" data-comot-rows="40 40" data-comot-theme="dark" transform="translate(10 10)">' +
+    '<g data-comot-cell="0,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">A</text></g>' +
+    '<g data-comot-cell="0,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="700" fill="#ffffff">B</text></g>' +
+    '<g data-comot-cell="1,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">C</text></g>' +
+    '<g data-comot-cell="1,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">D</text></g>' +
+    "</g></svg>";
+
+  function stubTableFetch(commandCalls: { name: string; input: Record<string, unknown> }[]): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(TABLE_SLIDE, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { name: string; input: Record<string, unknown> };
+          commandCalls.push(body);
+          return new Response(JSON.stringify({ ok: true, message: "", data: {} }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  function sendSelection(frameWindow: Window, data: Record<string, unknown>): void {
+    window.dispatchEvent(new MessageEvent("message", { data: { source: "comot-selection", ...data }, source: frameWindow }));
+  }
+
+  /** Tracks the latest `subscribeTableRange` value — a real state channel (plan §4.1), so the very first call already carries the value at subscribe time. */
+  function watchTableRange(c: CanvasController): { current: { tableId: string; range: { r0: number; c0: number; r1: number; c1: number } } | null } {
+    const box: { current: { tableId: string; range: { r0: number; c0: number; r1: number; c1: number } } | null } = { current: null };
+    c.subscribeTableRange((value) => {
+      box.current = value;
+    });
+    return box;
+  }
+
+  async function mountWithTable(commandCalls: { name: string; input: Record<string, unknown> }[]): Promise<{ controller: CanvasController; frameWindow: Window }> {
+    stubTableFetch(commandCalls);
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    sendSelection(frameWindow, { event: "select", id: "el-tbl", name: null, additive: false });
+    return { controller, frameWindow };
+  }
+
+  it("沒有作用中的範圍時，任何鍵都回傳 false、不送出任何命令", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c } = await mountWithTable(calls);
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(c.handleTableRangeKey("Delete", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(c.handleTableRangeKey("b", { meta: true, ctrl: false, shift: false })).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("table-cell-click 建立單一儲存格範圍（非 additive）", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 1, r1: 0, c1: 1 } });
+  });
+
+  it("⇧點延伸範圍：normalizeRange(anchor, 該格)", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 1, col: 1, additive: true });
+
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
+  });
+
+  it("Tab 移到下一格（row-major）；⇧Tab 反向", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(true);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 1, r1: 0, c1: 1 } });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: true })).toBe(true);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 0, c1: 0 } });
+  });
+
+  it("Escape 清除範圍，表格本身仍被選取", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    let state: CanvasState | undefined;
+    c.subscribe((next) => {
+      state = next;
+    });
+
+    expect(c.handleTableRangeKey("Escape", { meta: false, ctrl: false, shift: false })).toBe(true);
+
+    expect(range.current).toBeNull();
+    expect(state?.selection.ids).toEqual(["el-tbl"]);
+  });
+
+  it("Delete 對範圍內每一格送 table cell set --text ''，不刪表格、範圍保留", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 1, col: 1, additive: true });
+
+    expect(c.handleTableRangeKey("Delete", { meta: false, ctrl: false, shift: false })).toBe(true);
+    // Sequential now (not `Promise.all`, per the lost-update race this
+    // round found against a real server) — wait for all 4 to land rather
+    // than assuming one microtask flush covers however many round trips.
+    await vi.waitFor(() => {
+      if (calls.filter((call) => call.name === "table cell set").length < 4) throw new Error("still waiting");
+    });
+
+    const setCalls = calls.filter((call) => call.name === "table cell set");
+    expect(setCalls.map((call) => `${call.input.row},${call.input.col}`).sort()).toEqual(["0,0", "0,1", "1,0", "1,1"]);
+    for (const call of setCalls) {
+      expect(call.input).toMatchObject({ slidePath: "slides/001.svg", elementId: "el-tbl", text: "" });
+    }
+    expect(calls.some((call) => call.name === "element delete")).toBe(false);
+    expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
+  });
+
+  it("⌘B：字重 400 的格切到 700", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+
+    expect(c.handleTableRangeKey("b", { meta: true, ctrl: false, shift: false })).toBe(true);
+    await Promise.resolve();
+
+    const styleCalls = calls.filter((call) => call.name === "table cell style set");
+    expect(styleCalls).toEqual([
+      { name: "table cell style set", input: { slidePath: "slides/001.svg", elementId: "el-tbl", row: 0, col: 0, rowEnd: 0, colEnd: 0, attr: "font-weight", value: "700" } },
+    ]);
+  });
+
+  it("⌘B：字重已 ≥700 的格切回 400", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+
+    expect(c.handleTableRangeKey("b", { meta: false, ctrl: true, shift: false })).toBe(true);
+    await Promise.resolve();
+
+    const styleCalls = calls.filter((call) => call.name === "table cell style set");
+    expect(styleCalls).toEqual([
+      { name: "table cell style set", input: { slidePath: "slides/001.svg", elementId: "el-tbl", row: 0, col: 1, rowEnd: 0, colEnd: 1, attr: "font-weight", value: "400" } },
+    ]);
+  });
+
+  it("選取的元素已不是那張表格：回傳 false 並清掉範圍", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    // Direct call, bypassing the "select"/"table-cell-click" messages that
+    // would normally keep this in sync — exercises handleTableRangeKey's
+    // own defensive row of its behaviour table (§4.1) even though the
+    // "select" branch already covers the realistic path (next test).
+    c.setTableRange({ tableId: "el-other", range: { r0: 0, c0: 0, r1: 0, c1: 0 } });
+
+    expect(c.handleTableRangeKey("Tab", { meta: false, ctrl: false, shift: false })).toBe(false);
+    expect(range.current).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("選取換到別的元素、或清空選取：範圍自動變 null", async () => {
+    const calls: { name: string; input: Record<string, unknown> }[] = [];
+    const { controller: c, frameWindow } = await mountWithTable(calls);
+    const range = watchTableRange(c);
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    expect(range.current).not.toBeNull();
+
+    sendSelection(frameWindow, { event: "select", id: "el-other", name: null, additive: false });
+    expect(range.current).toBeNull();
+
+    sendSelection(frameWindow, { event: "select", id: "el-tbl", name: null, additive: false });
+    sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
+    expect(range.current).not.toBeNull();
+
+    sendSelection(frameWindow, { event: "clear" });
+    expect(range.current).toBeNull();
   });
 });

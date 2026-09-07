@@ -214,9 +214,9 @@ export function Dock({
       case "audio":
         return <AudioPanel onClose={onClose} />;
       case "table":
-        return <TablePanel onClose={onClose} />;
+        return <TablePanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "chart":
-        return <ChartPanel onClose={onClose} />;
+        return <ChartPanel onClose={onClose} controller={controller} slidePath={slidePath} />;
       case "animate":
         return (
           <AnimatePanel

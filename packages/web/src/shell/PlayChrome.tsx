@@ -122,7 +122,22 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           效果清單解析失敗的靜態降級頁更是完全沒有 runtime，所以這裡沒有
           任何既有的 click 行為要保；用既有的 `controller.focusPlayer()`
           （全螢幕切換等處已在用的同一支函式）補回鍵盤焦點即可。 */}
-      <div className="play-mousemove-catcher" onClick={() => controller?.focusPlayer()} />
+      <div
+        className="play-mousemove-catcher"
+        onClick={() => {
+          // [E2.T11] §4.8: clicking the stage also advances a step now
+          // (原型「點畫面前進」) — focusPlayer() itself is unchanged from
+          // before this ticket, still needed so the very next arrow key
+          // takes the runtime's own path.
+          controller?.stepPlayer("advance");
+          controller?.focusPlayer();
+        }}
+      />
+      {/* [E2.T11] §4.8: 頂部置中提示，跟 .play-bar 共用 awake 狀態一起
+          隱去/浮現。純資訊列，`pointer-events: none` 讓它不擋在
+          .play-mousemove-catcher（下方，z-index:1）或 .player-notices/
+          .play-bar（同層，z-index:2）之上搶走點擊。 */}
+      <div className={awake ? "play-hint awake" : "play-hint"}>← → 或點畫面前進 · Esc 離開播放</div>
       {/* 播放模式的浮動通知：播放錯誤與全螢幕錯誤可能同時成立（效果清單
           解析失敗又剛好全螢幕請求也失敗），過去各自用同一組絕對定位互相
           疊在一起，後渲染的會蓋住先渲染的（review gate round 1, P2）。這個
@@ -173,6 +188,14 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             <path d="M10 3 L5 8 L10 13" />
           </svg>
         </button>
+        {/* 頁碼：樣板的 `N / M` 形式（base-shell.html:422 的 `.pos`），不是
+            狀態列的「第 N 頁，共 M 頁」——那句是 #53 給狀態列的規定，播放
+            時狀態列已不在 DOM 裡，兩者不衝突（fleet 指揮官 裁決 A）。
+            [E2.T11] §4.8：順序改為原型的「上一步 → 頁碼 → 下一步」，pos 從
+            兩顆按鈕之後移到中間——裁決 2 凍結的是文字/class，不含順序。 */}
+        <span className="play-bar-position">
+          {state.currentIndex >= 0 ? `${state.currentIndex + 1} / ${state.slides.length}` : "– / –"}
+        </span>
         <button
           type="button"
           className="play-nav-button"
@@ -184,12 +207,6 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             <path d="M6 3 L11 8 L6 13" />
           </svg>
         </button>
-        {/* 頁碼：樣板的 `N / M` 形式（base-shell.html:422 的 `.pos`），不是
-            狀態列的「第 N 頁，共 M 頁」——那句是 #53 給狀態列的規定，播放
-            時狀態列已不在 DOM 裡，兩者不衝突（fleet 指揮官 裁決 A）。 */}
-        <span className="play-bar-position">
-          {state.currentIndex >= 0 ? `${state.currentIndex + 1} / ${state.slides.length}` : "– / –"}
-        </span>
         <span className="play-bar-divider" />
         {/* gate round 2 (2026-08-25), medium finding: 樣板
             (base-shell.html:419-426，波指揮官在 1440×900 用 Playwright

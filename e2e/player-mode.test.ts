@@ -255,6 +255,136 @@ it("播放器握著焦點時，一次方向鍵只推進一步——父文件不�
   await expectHidden(appearText);
 });
 
+// [E2.T11] §2 邊界 8: transition 一律用 `slide transition set` 在測試裡設，
+// 不動 fixtures/play-deck/ 本身；順便證明 CLI 路徑跟播放時真的一致。
+it("[A10]/[A11] 離開頁先播 exit 才真的換頁（前進）；退頁瞬切，不播 exit", async () => {
+  await registry.dispatch("slide transition set", {
+    id: presentationId,
+    slidePath: "slides/001.svg",
+    exit: "fade",
+    exitDuration: 0.3,
+  });
+  try {
+    const page = await browser.newPage();
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    const fadeText = playFrame().locator("#el-fade-in");
+    const appearText = playFrame().locator("#el-appear-in");
+    const secondTitle = playFrame().locator("#el-title2");
+    const frame = page.locator("iframe.slide-frame");
+
+    await page.goto(server.url);
+    await page.locator(".play-button").click();
+    await expect
+      .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+      .toBe("true");
+
+    // 推進完第一頁的兩個步驟。
+    await page.keyboard.press("ArrowRight");
+    await expectVisible(fadeText, 10_000);
+    await page.keyboard.press("ArrowRight");
+    await expectVisible(appearText, 10_000);
+
+    // 第三次按 → 觸發前進換頁：離開頁（第一頁）先播 exit。
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => frame.evaluate((el) => (el as HTMLElement).style.opacity), { timeout: 5_000 }).toBe("0");
+    // exit 還沒播完，仍然是第一頁的內容。
+    expect(await playFrame().locator("#el-title").count()).toBeGreaterThan(0);
+
+    // exit 播完才真的換到第二頁。
+    await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 10_000 }).toBe("播放第二頁");
+    await expect.poll(() => frame.evaluate((el) => (el as HTMLElement).style.opacity), { timeout: 5_000 }).not.toBe("0");
+
+    // 倒退回第一頁：retreatPastStart() 從不呼叫 playExitTransition()——不像
+    // 前進換頁，這裡沒有非同步的中途窗口需要輪詢，按下當下就能斷言。
+    await page.keyboard.press("ArrowLeft");
+    expect(await frame.evaluate((el) => (el as HTMLElement).style.opacity)).not.toBe("0");
+    await expect
+      .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 10_000 })
+      .toBe("播放第一頁");
+  } finally {
+    await registry.dispatch("slide transition set", {
+      id: presentationId,
+      slidePath: "slides/001.svg",
+      exit: "none",
+      exitDuration: 0.5,
+    });
+  }
+});
+
+it("[A12] Space／PageDown／點畫面三者都能推進一個效果步驟；PageUp 能退回", async () => {
+  async function freshPlayPage() {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+    await page.locator(".play-button").click();
+    await expect
+      .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+      .toBe("true");
+    return page;
+  }
+
+  for (const key of ["Space", "PageDown"] as const) {
+    const page = await freshPlayPage();
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    const fadeText = playFrame().locator("#el-fade-in");
+    const appearText = playFrame().locator("#el-appear-in");
+    await page.keyboard.press(key);
+    await expectVisible(fadeText, 10_000);
+    await expectHidden(appearText);
+    await page.close();
+  }
+
+  {
+    const page = await freshPlayPage();
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    const fadeText = playFrame().locator("#el-fade-in");
+    const appearText = playFrame().locator("#el-appear-in");
+    const box = await page.locator(".play-mousemove-catcher").boundingBox();
+    if (!box) throw new Error("找不到 .play-mousemove-catcher 的 bounding box");
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expectVisible(fadeText, 10_000);
+    await expectHidden(appearText);
+    await page.close();
+  }
+
+  {
+    // PageUp 退回一步——跟既有的 ArrowLeft 測項同一套前提：必須先站在第 2
+    // 步（currentStep >= 1），退回一步才會真的改動畫面，不是送
+    // retreat-past-start（那是「已經在第一步」時的既有行為，跟 PageUp 本身
+    // 無關，見 player-runtime.test.ts 的對照測項）。
+    const page = await freshPlayPage();
+    const playFrame = () => page.frameLocator("iframe.slide-frame");
+    const fadeText = playFrame().locator("#el-fade-in");
+    const appearText = playFrame().locator("#el-appear-in");
+    await page.keyboard.press("ArrowRight");
+    await expectVisible(fadeText, 10_000);
+    await page.keyboard.press("ArrowRight");
+    await expectVisible(appearText, 10_000);
+
+    await page.keyboard.press("PageUp");
+    await expectHidden(appearText);
+    expect(await fadeText.evaluate((el) => getComputedStyle(el).opacity)).not.toBe("0");
+    await page.close();
+  }
+});
+
+it("[A13] 播放模式按 Esc（焦點在播放器內）回到編輯模式：.titlebar 重新出現，iframe sandbox 回到 allow-scripts", async () => {
+  const page = await browser.newPage();
+  await page.goto(server.url);
+  await page.locator(".play-button").click();
+  await expect
+    .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+    .toBe("true");
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
+
+  // 焦點在播放 iframe 內——這個 Esc 由 player-runtime.js 自己的 keydown 接住，
+  // post 一則 "exit-play" 給父文件，跟父文件自己的 Escape 監聽器（焦點在外
+  // 時那條）走的是不同路徑，兩者都該導到同一個結果。
+  await page.keyboard.press("Escape");
+
+  await expect.poll(() => page.locator(".titlebar").count(), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
+});
+
 it("story 20：單張投影片檔案直接用瀏覽器打開，所有元素（含只在播放時才出現的）都看得到", async () => {
   const page = await browser.newPage();
   await page.goto(`${server.url}/api/raw/slides/001.svg`);

@@ -1,4 +1,5 @@
-import { addSlide, deleteSlide, duplicateSlide, moveSlide, setNotes } from "@co-motion/core";
+import { addSlide, deleteSlide, duplicateSlide, moveSlide, setNotes, setSlideTransitionOn } from "@co-motion/core";
+import type { PageTransitionEffect } from "@co-motion/core";
 import type { CommandHandler, CommandRegistry } from "../registry.js";
 
 /**
@@ -74,10 +75,34 @@ export const slideNotesSetCommand: CommandHandler<SlideNotesSetInput, SlideNotes
   return { ok: true, data: {}, message: `已更新 ${input.slidePath} 的備忘稿` };
 };
 
+export interface SlideTransitionSetInput {
+  id: string;
+  slidePath: string;
+  enter?: PageTransitionEffect;
+  enterDuration?: number;
+  exit?: PageTransitionEffect;
+  exitDuration?: number;
+  all?: boolean;
+}
+export type SlideTransitionSetData = Record<string, never>;
+
+/** `slide transition set` ([E2.T11]) — replaces T3's `presentation transition set` (removed). */
+export const slideTransitionSetCommand: CommandHandler<SlideTransitionSetInput, SlideTransitionSetData> = async (input) => {
+  const { slideCount } = await setSlideTransitionOn(
+    input.id,
+    input.slidePath,
+    { enter: input.enter, enterDuration: input.enterDuration, exit: input.exit, exitDuration: input.exitDuration },
+    { all: input.all },
+  );
+  const message = input.all ? `已將頁面進出場套用到 ${slideCount} 張投影片` : `已設定 ${input.slidePath} 的頁面進出場`;
+  return { ok: true, data: {}, message };
+};
+
 export function register(registry: CommandRegistry): void {
   registry.register("slide add", { handler: slideAddCommand, render: null });
   registry.register("slide delete", { handler: slideDeleteCommand, render: null });
   registry.register("slide duplicate", { handler: slideDuplicateCommand, render: null });
   registry.register("slide move", { handler: slideMoveCommand, render: null });
   registry.register("slide notes set", { handler: slideNotesSetCommand, render: null });
+  registry.register("slide transition set", { handler: slideTransitionSetCommand, render: null });
 }

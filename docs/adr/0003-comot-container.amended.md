@@ -15,3 +15,4 @@
 - `formatVersion` 不可省略，它是未來遷移舊檔的唯一依據。
 - 頁面順序用明確陣列而非檔名排序，避免調整順序時大量改名。
 - **[E2.T8]**：作者釘在簡報上的留言不在 `project.json`，在各投影片 SVG 自己的 `<metadata>` 裡，詳見 ADR-0008。
+- **[E2.T11]**：`project.json` 的 `transition` 欄位（T3，簡報層級單一轉場，從未被播放過）廢除，改為各投影片 SVG 自己的 `<comot:transition>`，詳見 ADR-0008。`formatVersion` 2 → 3；開啟一份舊版 `.comot` 時，這個欄位的值（若曾設為 `"fade"`）遷移到每一頁的 `<comot:transition>` 後即從 `project.json` 移除，不留相容層。

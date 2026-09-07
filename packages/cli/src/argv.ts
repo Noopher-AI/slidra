@@ -169,6 +169,17 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const force = requireTrailingForceFlag(args, 4, "textbox width");
         return { name: "textbox width", input: { id, slidePath, elementId, width, force } };
       }
+      if (sub === "align") {
+        const id = requirePositional(args, 0, "textbox align", "presentation-id");
+        const slidePath = requirePositional(args, 1, "textbox align", "slide-path");
+        const elementId = requirePositional(args, 2, "textbox align", "element-id");
+        const align = requirePositional(args, 3, "textbox align", "align");
+        if (!["left", "center", "right"].includes(align)) {
+          throw new CoMotionError(`命令 textbox align 的 align 必須是 left、center 或 right：${align}`);
+        }
+        const force = requireTrailingForceFlag(args, 4, "textbox align");
+        return { name: "textbox align", input: { id, slidePath, elementId, align, force } };
+      }
       throw new CoMotionError(`未知的子命令：textbox ${sub ?? ""}`);
     }
     case "element": {
@@ -449,6 +460,291 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       throw new CoMotionError(`未知的子命令：effect ${sub ?? ""}`);
     }
+    case "table": {
+      const level1 = rest[0];
+
+      if (level1 === "create") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table create", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table create", "slide-path");
+        const rows = requireNumberFlag(args, "--rows", "table create");
+        const cols = requireNumberFlag(args, "--cols", "table create");
+        const x = requireNumberFlag(args, "--x", "table create");
+        const y = requireNumberFlag(args, "--y", "table create");
+        const colWidth = optionalNumberFlag(args, "--col-width", "table create");
+        const theme = optionalFlag(args, "--theme");
+        const headerRaw = optionalFlag(args, "--header");
+        let header: boolean | undefined;
+        if (headerRaw !== undefined) {
+          if (headerRaw !== "true" && headerRaw !== "false") {
+            throw new CoMotionError(`--header 只能是 true 或 false：${headerRaw}`);
+          }
+          header = headerRaw === "true";
+        }
+        return { name: "table create", input: { id, slidePath, rows, cols, x, y, colWidth, theme, header } };
+      }
+
+      if (level1 === "refresh") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table refresh", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table refresh", "slide-path");
+        const elementId = requirePositional(args, 2, "table refresh", "element-id");
+        return { name: "table refresh", input: { id, slidePath, elementId } };
+      }
+
+      if (level1 === "bind") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table bind", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table bind", "slide-path");
+        const elementId = requirePositional(args, 2, "table bind", "element-id");
+        const source = requireFlag(args, "--source", "table bind");
+        const templateRow = optionalNumberFlag(args, "--template-row", "table bind");
+        return { name: "table bind", input: { id, slidePath, elementId, source, templateRow } };
+      }
+
+      if (level1 === "set") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table set", "slide-path");
+        const elementId = requirePositional(args, 2, "table set", "element-id");
+        const from = optionalFlag(args, "--from");
+        const markdown = optionalFlag(args, "--markdown");
+        const markdownFile = optionalFlag(args, "--markdown-file");
+        const given = (from !== undefined ? 1 : 0) + (markdown !== undefined ? 1 : 0) + (markdownFile !== undefined ? 1 : 0);
+        if (given !== 1) {
+          throw new CoMotionError("table set 必須恰好提供一種資料來源：--from、--markdown 或 --markdown-file");
+        }
+        return { name: "table set", input: { id, slidePath, elementId, from, markdown, markdownFile } };
+      }
+
+      if (level1 === "merge") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "table merge", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table merge", "slide-path");
+        const elementId = requirePositional(args, 2, "table merge", "element-id");
+        const row = requireNumberFlag(args, "--row", "table merge");
+        const col = requireNumberFlag(args, "--col", "table merge");
+        const unmerge = hasFlag(args, "--unmerge");
+        const rowSpan = optionalNumberFlag(args, "--row-span", "table merge");
+        const colSpan = optionalNumberFlag(args, "--col-span", "table merge");
+        return { name: "table merge", input: { id, slidePath, elementId, row, col, rowSpan, colSpan, unmerge } };
+      }
+
+      const level2 = rest[1];
+      const level3 = rest[2];
+
+      if (level1 === "cell" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table cell set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell set", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell set", "element-id");
+        const row = requireNumberFlag(args, "--row", "table cell set");
+        const col = requireNumberFlag(args, "--col", "table cell set");
+        const text = requireFlag(args, "--text", "table cell set");
+        return { name: "table cell set", input: { id, slidePath, elementId, row, col, text } };
+      }
+
+      if (level1 === "cell" && level2 === "style" && level3 === "set") {
+        const args = rest.slice(3);
+        const id = requirePositional(args, 0, "table cell style set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table cell style set", "slide-path");
+        const elementId = requirePositional(args, 2, "table cell style set", "element-id");
+        const row = requireNumberFlag(args, "--row", "table cell style set");
+        const col = requireNumberFlag(args, "--col", "table cell style set");
+        const rowEnd = optionalNumberFlag(args, "--row-end", "table cell style set");
+        const colEnd = optionalNumberFlag(args, "--col-end", "table cell style set");
+        const value = args[args.length - 1];
+        const attr = args[args.length - 2];
+        if (attr === undefined || value === undefined || isFlagLike(attr) || isFlagLike(value)) {
+          throw new CoMotionError("命令 table cell style set 缺少參數：attr/value");
+        }
+        return { name: "table cell style set", input: { id, slidePath, elementId, row, col, rowEnd, colEnd, attr, value } };
+      }
+
+      if (level1 === "col" && level2 === "width") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col width", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col width", "slide-path");
+        const elementId = requirePositional(args, 2, "table col width", "element-id");
+        const col = requireNumberFlag(args, "--col", "table col width");
+        const width = requireNumberFlag(args, "--width", "table col width");
+        const keepTotal = hasFlag(args, "--keep-total");
+        return { name: "table col width", input: { id, slidePath, elementId, col, width, keepTotal } };
+      }
+
+      if (level1 === "col" && level2 === "insert") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col insert", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col insert", "slide-path");
+        const elementId = requirePositional(args, 2, "table col insert", "element-id");
+        const at = requireNumberFlag(args, "--at", "table col insert");
+        return { name: "table col insert", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "col" && level2 === "delete") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table col delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table col delete", "slide-path");
+        const elementId = requirePositional(args, 2, "table col delete", "element-id");
+        const at = requireNumberFlag(args, "--at", "table col delete");
+        return { name: "table col delete", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "row" && level2 === "insert") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table row insert", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table row insert", "slide-path");
+        const elementId = requirePositional(args, 2, "table row insert", "element-id");
+        const at = requireNumberFlag(args, "--at", "table row insert");
+        return { name: "table row insert", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "row" && level2 === "delete") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table row delete", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table row delete", "slide-path");
+        const elementId = requirePositional(args, 2, "table row delete", "element-id");
+        const at = requireNumberFlag(args, "--at", "table row delete");
+        return { name: "table row delete", input: { id, slidePath, elementId, at } };
+      }
+
+      if (level1 === "theme" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table theme set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table theme set", "slide-path");
+        const elementId = requirePositional(args, 2, "table theme set", "element-id");
+        const theme = requirePositional(args, 3, "table theme set", "theme");
+        return { name: "table theme set", input: { id, slidePath, elementId, theme } };
+      }
+
+      if (level1 === "header" && level2 === "set") {
+        const args = rest.slice(2);
+        const id = requirePositional(args, 0, "table header set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "table header set", "slide-path");
+        const elementId = requirePositional(args, 2, "table header set", "element-id");
+        const value = requirePositional(args, 3, "table header set", "true|false");
+        if (value !== "true" && value !== "false") {
+          throw new CoMotionError(`table header set 不支援的值：${value}`);
+        }
+        return { name: "table header set", input: { id, slidePath, elementId, header: value === "true" } };
+      }
+
+      throw new CoMotionError(`未知的子命令：table ${rest.slice(0, 2).join(" ")}`);
+    }
+    case "chart": {
+      const level1 = rest[0];
+
+      if (level1 === "create") {
+        const args = rest.slice(1);
+        const id = requirePositional(args, 0, "chart create", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart create", "slide-path");
+        const type = optionalFlag(args, "--type");
+        const seriesCount = optionalNumberFlag(args, "--series", "chart create");
+        const categoriesCount = optionalNumberFlag(args, "--categories", "chart create");
+        const palette = optionalFlag(args, "--palette");
+        const x = optionalNumberFlag(args, "--x", "chart create");
+        const y = optionalNumberFlag(args, "--y", "chart create");
+        const width = optionalNumberFlag(args, "--width", "chart create");
+        const height = optionalNumberFlag(args, "--height", "chart create");
+        return {
+          name: "chart create",
+          input: { id, slidePath, type, seriesCount, categoriesCount, palette, x, y, width, height },
+        };
+      }
+
+      const level2 = rest[1];
+      const combined = `${level1 ?? ""} ${level2 ?? ""}`.trim();
+      const args = rest.slice(2);
+
+      if (combined === "data set") {
+        const id = requirePositional(args, 0, "chart data set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart data set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart data set", "element-id");
+        const csv = optionalFlag(args, "--csv");
+        const csvAsset = optionalFlag(args, "--csv-asset");
+        const categoriesRaw = optionalFlag(args, "--categories");
+        const seriesRaw = collectRepeatedFlag(args, "--series");
+
+        const givenCount =
+          (csv !== undefined ? 1 : 0) +
+          (csvAsset !== undefined ? 1 : 0) +
+          (categoriesRaw !== undefined || seriesRaw.length > 0 ? 1 : 0);
+        if (givenCount !== 1) {
+          throw new CoMotionError(
+            "chart data set 必須恰好提供一種資料來源：--categories/--series、--csv 或 --csv-asset",
+          );
+        }
+
+        if (csv !== undefined) {
+          return { name: "chart data set", input: { id, slidePath, elementId, csv } };
+        }
+        if (csvAsset !== undefined) {
+          return { name: "chart data set", input: { id, slidePath, elementId, csvAsset } };
+        }
+        if (categoriesRaw === undefined) {
+          throw new CoMotionError("chart data set 缺少參數：--categories");
+        }
+        const categories = categoriesRaw.split(",");
+        const series = seriesRaw.map(parseChartSeriesFlag);
+        return { name: "chart data set", input: { id, slidePath, elementId, categories, series } };
+      }
+
+      if (combined === "type set") {
+        const id = requirePositional(args, 0, "chart type set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart type set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart type set", "element-id");
+        const type = requirePositional(args, 3, "chart type set", "type");
+        return { name: "chart type set", input: { id, slidePath, elementId, type } };
+      }
+
+      if (combined === "palette set") {
+        const id = requirePositional(args, 0, "chart palette set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart palette set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart palette set", "element-id");
+        const palette = requirePositional(args, 3, "chart palette set", "palette");
+        const colors = collectRepeatedFlag(args, "--color").map(parseChartColorFlag);
+        return { name: "chart palette set", input: { id, slidePath, elementId, palette, colors } };
+      }
+
+      if (combined === "axis set") {
+        const id = requirePositional(args, 0, "chart axis set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart axis set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart axis set", "element-id");
+        const axes = requirePositional(args, 3, "chart axis set", "single|dual");
+        const right = collectRepeatedFlag(args, "--right");
+        return { name: "chart axis set", input: { id, slidePath, elementId, axes, right } };
+      }
+
+      if (combined === "stack set") {
+        const id = requirePositional(args, 0, "chart stack set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart stack set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart stack set", "element-id");
+        const onOff = requirePositional(args, 3, "chart stack set", "on|off");
+        if (onOff !== "on" && onOff !== "off") {
+          throw new CoMotionError(`chart stack set 不支援的值：${onOff}`);
+        }
+        return { name: "chart stack set", input: { id, slidePath, elementId, stacked: onOff === "on" } };
+      }
+
+      if (combined === "legend set") {
+        const id = requirePositional(args, 0, "chart legend set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart legend set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart legend set", "element-id");
+        const legend = requirePositional(args, 3, "chart legend set", "legend");
+        return { name: "chart legend set", input: { id, slidePath, elementId, legend } };
+      }
+
+      if (combined === "option set") {
+        const id = requirePositional(args, 0, "chart option set", "presentation-id");
+        const slidePath = requirePositional(args, 1, "chart option set", "slide-path");
+        const elementId = requirePositional(args, 2, "chart option set", "element-id");
+        const key = requirePositional(args, 3, "chart option set", "key");
+        const value = requirePositional(args, 4, "chart option set", "value");
+        return { name: "chart option set", input: { id, slidePath, elementId, key, value } };
+      }
+
+      throw new CoMotionError(`未知的子命令：chart ${rest.slice(0, 2).join(" ")}`);
+    }
     case "slide": {
       const sub = rest[0];
       const args = rest.slice(1);
@@ -512,6 +808,50 @@ export function parseArgv(argv: string[]): ParsedCommand {
           throw new CoMotionError("命令 slide notes set 缺少參數：text");
         }
         return { name: "slide notes set", input: { id, slidePath, text } };
+      }
+
+      if (sub === "transition") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：slide transition ${subsub ?? ""}`);
+        }
+        const transArgs = args.slice(1);
+        const id = requirePositional(transArgs, 0, "slide transition set", "presentation-id");
+        const slidePath = requirePositional(transArgs, 1, "slide transition set", "slide-path");
+
+        const enter = optionalFlag(transArgs, "--enter");
+        if (enter !== undefined && !["none", "fade", "slide", "zoom"].includes(enter)) {
+          throw new CoMotionError(`slide transition set 不支援的 enter：${enter}`);
+        }
+        const exit = optionalFlag(transArgs, "--exit");
+        if (exit !== undefined && !["none", "fade", "slide", "zoom"].includes(exit)) {
+          throw new CoMotionError(`slide transition set 不支援的 exit：${exit}`);
+        }
+        const enterDuration = optionalNumberFlag(transArgs, "--enter-duration", "slide transition set");
+        const exitDuration = optionalNumberFlag(transArgs, "--exit-duration", "slide transition set");
+        const all = hasFlag(transArgs, "--all");
+
+        if (enter === undefined && enterDuration === undefined && exit === undefined && exitDuration === undefined && !all) {
+          throw new CoMotionError("slide transition set 至少要指定一個要改的欄位");
+        }
+
+        return { name: "slide transition set", input: { id, slidePath, enter, enterDuration, exit, exitDuration, all } };
+      }
+
+      if (sub === "style") {
+        const subsub = args[0];
+        if (subsub !== "set") {
+          throw new CoMotionError(`未知的子命令：slide style ${subsub ?? ""}`);
+        }
+        const styleArgs = args.slice(1);
+        const id = requirePositional(styleArgs, 0, "slide style set", "presentation-id");
+        const slidePath = requirePositional(styleArgs, 1, "slide style set", "slide-path");
+        const background = optionalFlag(styleArgs, "--background");
+        const accent = optionalFlag(styleArgs, "--accent");
+        if (background === undefined && accent === undefined) {
+          throw new CoMotionError("命令 slide style set 至少要給 --background 或 --accent");
+        }
+        return { name: "slide style set", input: { id, slidePath, background, accent } };
       }
 
       throw new CoMotionError(`未知的子命令：slide ${sub ?? ""}`);
@@ -597,15 +937,16 @@ export function parseArgv(argv: string[]): ParsedCommand {
     case "presentation": {
       const sub = rest[0];
       const args = rest.slice(1);
-      if (sub === "transition") {
+      if (sub === "canvas") {
         const subsub = args[0];
         if (subsub !== "set") {
-          throw new CoMotionError(`未知的子命令：presentation transition ${subsub ?? ""}`);
+          throw new CoMotionError(`未知的子命令：presentation canvas ${subsub ?? ""}`);
         }
-        const transArgs = args.slice(1);
-        const id = requirePositional(transArgs, 0, "presentation transition set", "presentation-id");
-        const name = requirePositional(transArgs, 1, "presentation transition set", "name");
-        return { name: "presentation transition set", input: { id, name } };
+        const canvasArgs = args.slice(1);
+        const id = requirePositional(canvasArgs, 0, "presentation canvas set", "presentation-id");
+        const width = requireNumberFlag(canvasArgs, "--width", "presentation canvas set");
+        const height = requireNumberFlag(canvasArgs, "--height", "presentation canvas set");
+        return { name: "presentation canvas set", input: { id, width, height } };
       }
       throw new CoMotionError(`未知的子命令：presentation ${sub ?? ""}`);
     }
@@ -723,6 +1064,51 @@ function requireTrailingForceFlag(args: string[], index: number, command: string
   if (value === undefined) return false;
   if (value === "--force") return true;
   throw new CoMotionError(`命令 ${command} 未知的參數：${value}`);
+}
+
+/** Every value following a (possibly repeated) `flag` in `args` — `chart data set --series`/`palette set --color`/`axis set --right` (E2.T12). */
+function collectRepeatedFlag(args: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === flag) {
+      const value = args[i + 1];
+      if (value === undefined || isFlagLike(value)) {
+        throw new CoMotionError(`${flag} 缺少值`);
+      }
+      values.push(value);
+      i++;
+    }
+  }
+  return values;
+}
+
+/** `--series "name=v1,v2,v3"` -> `{name, values}` (E2.T12). Splits on the FIRST `=` — a series name may not itself contain `=`. */
+function parseChartSeriesFlag(raw: string): { name: string; values: number[] } {
+  const eq = raw.indexOf("=");
+  if (eq === -1) {
+    throw new CoMotionError(`--series 格式錯誤，必須是 name=v1,v2,...：${raw}`);
+  }
+  const name = raw.slice(0, eq);
+  const values = raw
+    .slice(eq + 1)
+    .split(",")
+    .map((token) => {
+      const value = Number(token);
+      if (token.trim() === "" || !Number.isFinite(value)) {
+        throw new CoMotionError(`--series 的值不是合法數字：${raw}`);
+      }
+      return value;
+    });
+  return { name, values };
+}
+
+/** `--color "name=#RRGGBB"` -> `{name, color}` (E2.T12), same split rule as `parseChartSeriesFlag`. */
+function parseChartColorFlag(raw: string): { name: string; color: string } {
+  const eq = raw.indexOf("=");
+  if (eq === -1) {
+    throw new CoMotionError(`--color 格式錯誤，必須是 name=#RRGGBB：${raw}`);
+  }
+  return { name: raw.slice(0, eq), color: raw.slice(eq + 1) };
 }
 
 function optionalNumberFlag(args: string[], flag: string, command: string): number | undefined {

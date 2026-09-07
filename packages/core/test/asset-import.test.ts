@@ -3,6 +3,7 @@ import { CoMotionError } from "../src/errors.js";
 import {
   resolveAssetImport,
   resolveConflictFreeFilename,
+  resolveDataAssetImport,
   sanitizeAssetBaseName,
 } from "../src/asset-import.js";
 
@@ -88,5 +89,70 @@ describe("resolveAssetImport", () => {
     expect(() =>
       resolveAssetImport({ sourceName: "fake.png", bytes: textBytes, existingAssetNames: [] }),
     ).toThrow(CoMotionError);
+  });
+});
+
+describe("resolveDataAssetImport — `asset import --as csv` (E2.T14, plan §0(c)/§4.3)", () => {
+  const csv = (text: string) => new TextEncoder().encode(text);
+
+  it("C1-style: a legal CSV named *.csv resolves to a conflict-free filename", () => {
+    const result = resolveDataAssetImport({
+      sourceName: "sales.csv",
+      bytes: csv("date,revenue\n2026-01-01,100\n"),
+      existingAssetNames: [],
+    });
+    expect(result.fileName).toBe("sales.csv");
+  });
+
+  it("resolves a conflict-free name when the destination already exists (assets/data/'s own sequence)", () => {
+    const result = resolveDataAssetImport({
+      sourceName: "sales.csv",
+      bytes: csv("a\n1\n"),
+      existingAssetNames: ["sales.csv"],
+    });
+    expect(result.fileName).toBe("sales-1.csv");
+  });
+
+  it("C8-style: rejects a source whose name is not .csv, unconditionally of content", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "notes.txt", bytes: csv("a\n1\n"), existingAssetNames: [] }),
+    ).toThrow(/必須是 \.csv 檔案/);
+  });
+
+  it("accepts .CSV case-insensitively", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "SALES.CSV", bytes: csv("a\n1\n"), existingAssetNames: [] }),
+    ).not.toThrow();
+  });
+
+  it("rejects bytes that are not legal UTF-8", () => {
+    const invalidUtf8 = new Uint8Array([0x61, 0xff, 0xfe, 0x62]);
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "sales.csv", bytes: invalidUtf8, existingAssetNames: [] }),
+    ).toThrow(/不是合法的 UTF-8/);
+  });
+
+  it("rejects content containing a NUL byte", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "sales.csv", bytes: csv("a\n1\x000\n"), existingAssetNames: [] }),
+    ).toThrow(/不是合法的 UTF-8/);
+  });
+
+  it("C7: rejects a header containing a reserved dynamic-text name", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "sales.csv", bytes: csv("slide_number,x\n1,2\n"), existingAssetNames: [] }),
+    ).toThrow(/保留名稱/);
+  });
+
+  it("rejects malformed CSV structure (mismatched column count), reusing table/csv.ts's own validation", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "sales.csv", bytes: csv("a,b\n1\n"), existingAssetNames: [] }),
+    ).toThrow(/欄數/);
+  });
+
+  it("C8: header-only CSV (zero data rows) is legal", () => {
+    expect(() =>
+      resolveDataAssetImport({ sourceName: "sales.csv", bytes: csv("a,b\n"), existingAssetNames: [] }),
+    ).not.toThrow();
   });
 });

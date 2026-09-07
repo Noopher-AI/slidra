@@ -3,6 +3,7 @@ import path from "node:path";
 import { unzipSync, zipSync, type Zippable } from "fflate";
 import { CoMotionError } from "./errors.js";
 import { validateProjectJson as validateProjectJsonStructure, assertSupportedFormatVersion } from "./project-json.js";
+import { migrateLegacyTransition } from "./project-migration.js";
 
 const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 
@@ -112,6 +113,10 @@ export async function unpackContainer(comotPath: string, targetDir: string): Pro
     // archive that unzips fine but lacks a usable project.json is still a
     // failed unpack, and must not leave targetDir behind (see catch below).
     await validateProjectJson(targetDir, comotPath);
+    // [E2.T11]: `formatVersion` 2 → 3, run once per unpack (open/reopen),
+    // inside the same try — a failure here rolls back exactly like a bad
+    // project.json does (the catch below removes targetDir either way).
+    await migrateLegacyTransition(targetDir);
   } catch (error) {
     // targetDir is a fresh directory created solely for this unpack (the
     // hidden work directory, ADR-0004). On any failure past this point —

@@ -11,8 +11,16 @@ import type { FontEntry, ProjectJson } from "./project-json.js";
  * remain readable — `readTemplateEntries` normalizes their bare-string
  * `templates` entries on read — and are upgraded to `2` the next time
  * anything writes their `project.json` (`slide-ops.ts`'s `writeProject`).
+ *
+ * Bumped 2 → 3 for [E2.T11]: the presentation-level `transition` field is
+ * dropped in favour of a per-slide `<comot:transition>` (`project-json.ts`'s
+ * `ProjectJson.transition` doc comment). Unlike the 1→2 bump, this upgrade
+ * cannot wait for the next write — a stale `transition` value would keep
+ * meaning "presentation-wide fade" forever otherwise — so it runs once, on
+ * open, from `unpackContainer` (`project-migration.ts`'s
+ * `migrateLegacyTransition`), not lazily from `writeProject`.
  */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 
 export const SLIDE_FILE_NAME = "slides/001.svg";
 

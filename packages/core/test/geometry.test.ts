@@ -287,6 +287,18 @@ describe("primitiveBounds", () => {
     ).toEqual({ x: 490, y: 220, width: 300, height: 300 });
   });
 
+  // E2.T12 — a chart's rendered `<svg>` boxes like `rect`/`image`: no
+  // native `x`/`y` (it defaults to 0, exactly as SVG itself does), width
+  // and height are required.
+  it("boxes a chart's embedded <svg> from width/height, x/y defaulting to 0", () => {
+    expect(primitiveBounds(primitive("svg", { width: "486.4", height: "475.2" }))).toEqual({
+      x: 0,
+      y: 0,
+      width: 486.4,
+      height: 475.2,
+    });
+  });
+
   it("returns a zero-sized box for a zero-sized element rather than throwing", () => {
     expect(primitiveBounds(primitive("rect", { x: "5", y: "5", width: "0", height: "0" }))).toEqual({
       x: 5,

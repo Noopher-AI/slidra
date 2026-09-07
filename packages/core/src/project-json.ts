@@ -35,12 +35,13 @@ export interface ProjectJson {
    */
   templates?: (string | TemplateEntry)[];
   /**
-   * The presentation's slide transition (T3), `"none" | "fade"` — enforced
-   * at write time by `slide-ops.ts`'s `setTransition`, not here (a later
-   * build may add a transition name this build has never heard of, and
-   * `validateProjectJson` only checks shape, not the enum). Optional and
-   * missing on every pre-T3 `.comot`; a reader treats a missing value as
-   * `"none"`. This ticket only stores the value — nothing plays it back.
+   * LEGACY (T3, superseded by [E2.T11]): the presentation-level slide
+   * transition, `"none" | "fade"`. [E2.T11] moves this per-page, into each
+   * slide's own `<comot:transition>` (`core/src/slide/transition.ts`), and
+   * bumps `formatVersion` to 3 — nothing ever writes this field again.
+   * It survives here only so `project-migration.ts`'s `formatVersion` 2→3
+   * upgrade (run once, from `unpackContainer`) can still read a pre-[E2.T11]
+   * `.comot`'s value before deleting the field for good.
    */
   transition?: string;
 }
