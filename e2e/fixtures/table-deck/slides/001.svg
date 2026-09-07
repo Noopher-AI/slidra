@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <g id="el-bg">
+    <rect x="0" y="0" width="1280" height="720" fill="#1b1f24"/>
+  </g>
   <g id="el-caption">
     <text x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">表格測試簡報</text>
   </g>

@@ -528,6 +528,36 @@ const HEADER_PAINT: Record<"dark" | "light" | "zebra", { fill: string; fillOpaci
   zebra: { fill: "#ffffff", fillOpacity: "0.08" },
 };
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * 把 boundingBox 取整並夾在 viewport 內——尺寸不符是 compareScreenshot 的無容忍硬失敗
+ * （helpers/screenshot.ts）。角落各自四捨五入（而不是 x/y 與 width/height 分開四捨五入）
+ * 是刻意的：後者在 box 邊界落在 .5 附近時，x 與 width 可能各自進位到不同方向，兩次執行
+ * 算出的尺寸就會差 1px（實測 F4 出現過 203x288 vs 204x289）。從角落算可以消掉這個誤差。
+ */
+function snapClip(box: Box): Box {
+  const x = Math.max(0, Math.round(box.x));
+  const y = Math.max(0, Math.round(box.y));
+  const right = Math.min(1440, Math.round(box.x + box.width));
+  const bottom = Math.min(900, Math.round(box.y + box.height));
+  const width = right - x;
+  const height = bottom - y;
+  if (width <= 0 || height <= 0) throw new Error(`clip 尺寸無效：${width}x${height}`);
+  return { x, y, width, height };
+}
+
+/** 多個 boundingBox 的聯集；任一為 null 或陣列為空都明確報錯，絕不回退成整個視窗。 */
+function unionBox(label: string, boxes: (Box | null)[]): Box {
+  if (boxes.length === 0 || boxes.some((b) => b === null)) throw new Error(`找不到 ${label} 的版面框`);
+  const list = boxes as Box[];
+  const left = Math.min(...list.map((b) => b.x));
+  const top = Math.min(...list.map((b) => b.y));
+  const right = Math.max(...list.map((b) => b.x + b.width));
+  const bottom = Math.max(...list.map((b) => b.y + b.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 it("F1: table-panel 基準截圖", async () => {
   const { server, cleanup } = await startServerFor({ deckDir, prefix: "f1" });
   try {
@@ -539,16 +569,37 @@ it("F1: table-panel 基準截圖", async () => {
     expect(await cells.first().isEnabled()).toBe(true);
 
     await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "table-panel", baselineDir, clip: { x: 0, y: 0, width: 1440, height: 900 } });
+    const clip = snapClip(unionBox("插入面板", [await panel.boundingBox()]));
+    await compareScreenshot(page, { name: "table-panel", baselineDir, clip });
   } finally {
     await cleanup();
   }
 });
 
+// F2 的固定文字（3×3，第 0 列是表頭）——`table create` 預設是空表格，而空表格在
+// pixelmatch 的門檻下無論背景深淺都低於可辨識界線（本輪 Plan 已用 pixelmatch@7
+// 逐色值量測驗證）；文字是唯一能跨過門檻、讓這 3 張基準真的守住表格渲染的圖元。
+const F2_TEXT: Record<string, string> = {
+  "0,0": "產品",
+  "0,1": "區域",
+  "0,2": "銷量",
+  "1,0": "甲",
+  "1,1": "北區",
+  "1,2": "120",
+  "2,0": "乙",
+  "2,1": "南區",
+  "2,2": "340",
+};
+
 for (const theme of ["dark", "light", "zebra"] as const) {
   it(`F2: theme-${theme} 基準截圖`, async () => {
-    const { server, registry, presentationId, cleanup } = await newTableDeck(`f2-${theme}`, { rows: 3, cols: 3, theme });
+    const { server, registry, presentationId, elementId, cleanup } = await newTableDeck(`f2-${theme}`, { rows: 3, cols: 3, theme });
     try {
+      for (const [addr, text] of Object.entries(F2_TEXT)) {
+        const [row, col] = addr.split(",").map(Number);
+        await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row, col, text });
+      }
+
       const page = await openPage(server);
       const svg = await catSlide(registry, presentationId);
       expect(svg).toContain(`data-comot-theme="${theme}"`);
@@ -557,9 +608,20 @@ for (const theme of ["dark", "light", "zebra"] as const) {
       expect(headerCell).toContain(`fill="${paint.fill}"`);
       if (paint.fillOpacity !== null) expect(headerCell).toContain(`fill-opacity="${paint.fillOpacity}"`);
       else expect(headerCell).not.toContain("fill-opacity");
+      expect(headerCell).toContain(">產品<");
 
       await settleForScreenshot(page);
-      await compareScreenshot(page, { name: `theme-${theme}`, baselineDir, clip: { x: 0, y: 0, width: 1440, height: 900 } });
+      const slideFrame = page.frameLocator("iframe.slide-frame");
+      const cellAddrs = [
+        ["0,0"], ["0,1"], ["0,2"],
+        ["1,0"], ["1,1"], ["1,2"],
+        ["2,0"], ["2,1"], ["2,2"],
+      ];
+      const rects = await Promise.all(
+        cellAddrs.map(([addr]) => slideFrame.locator(`[data-comot-cell="${addr}"] rect`).boundingBox()),
+      );
+      const clip = snapClip(unionBox("表格", rects));
+      await compareScreenshot(page, { name: `theme-${theme}`, baselineDir, clip });
     } finally {
       await cleanup();
     }
@@ -602,7 +664,9 @@ it("F3: cell-range 基準截圖", async () => {
     expect(Math.abs(rangeBoxBox!.y + rangeBoxBox!.height - bottom)).toBeLessThan(3);
 
     await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "cell-range", baselineDir, clip: { x: 0, y: 0, width: 1440, height: 900 } });
+    const contextBar = page.locator(".context-bar");
+    const clip = snapClip(unionBox("範圍框與情境列", [rangeBoxBox, await contextBar.boundingBox()]));
+    await compareScreenshot(page, { name: "cell-range", baselineDir, clip });
   } finally {
     await cleanup();
   }
@@ -630,7 +694,8 @@ it("F4: cell-menu 基準截圖", async () => {
     }
 
     await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "cell-menu", baselineDir, clip: { x: 0, y: 0, width: 1440, height: 900 } });
+    const clip = snapClip(unionBox("儲存格右鍵選單", [await menu.boundingBox()]));
+    await compareScreenshot(page, { name: "cell-menu", baselineDir, clip });
   } finally {
     await cleanup();
   }

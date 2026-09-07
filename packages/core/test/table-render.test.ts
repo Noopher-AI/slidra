@@ -33,13 +33,21 @@ describe("table render — theme, header, merge (plan §4.1, §5 A/F)", () => {
   it("E2: the three themes each produce their own distinct data-comot-theme and header fill", () => {
     const dark = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0, theme: "dark" }, fonts);
     const light = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0, theme: "light" }, fonts);
+    const zebra = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0, theme: "zebra" }, fonts);
     expect(dark).toContain('data-comot-theme="dark"');
     expect(light).toContain('data-comot-theme="light"');
+    expect(zebra).toContain('data-comot-theme="zebra"');
     const darkModel = readTableModel(dark, "el-t");
     const lightModel = readTableModel(light, "el-t");
+    const zebraModel = readTableModel(zebra, "el-t");
     const darkHeader = darkModel.cells.find((c) => c.row === 0 && c.col === 0)!;
     const lightHeader = lightModel.cells.find((c) => c.row === 0 && c.col === 0)!;
+    const zebraHeader = zebraModel.cells.find((c) => c.row === 0 && c.col === 0)!;
     expect(darkHeader.fill).not.toBe(lightHeader.fill);
+    // dark 與 zebra 的表頭 fill 都是 #ffffff，只差 fillOpacity（0.06 vs 0.08）——
+    // 這條混淆過去沒有被單元層守住，只靠像素比對（而像素在這個差值下不可辨識）。
+    expect(zebraHeader.fillOpacity).not.toBe(darkHeader.fillOpacity);
+    expect(zebraHeader.fill).not.toBe(lightHeader.fill);
   });
 
   it("E3: header off means no data-comot-header attribute, and row 0 becomes a body-styled row", () => {
