@@ -290,3 +290,151 @@ describe("Shape 選單（05-INTERACTIONS.feature「Shape / Arrange 選單」）"
     }
   });
 });
+
+describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 packages/web/test/dock.test.ts 沒有涵蓋的可從 UI 到達的三種狀態）", () => {
+  it("無選取時 Animate/Arrange/Group 停用，選 2 個元素後 Group 變成可按（Insert 群組不受影響）", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-disabled-state" });
+    try {
+      const page = await openPage(started.server);
+      const animateButton = page.locator('.dock-command[aria-label="Animate"]');
+      const arrangeButton = page.locator('.dock-command[aria-label="Arrange"]');
+      const groupButton = page.locator('.dock-command[aria-label="Group"]');
+      const textButton = page.getByRole("button", { name: "Text" });
+
+      // 無選取：Animate／Arrange／Group 三顆都停用；Insert 群組（Text 為代表）不受影響。
+      expect(await animateButton.isDisabled()).toBe(true);
+      expect(await arrangeButton.isDisabled()).toBe(true);
+      expect(await groupButton.isDisabled()).toBe(true);
+      expect(await textButton.isDisabled()).toBe(false);
+
+      // 選 2 個元素：Group 變成可按。先選副標、再 Shift 加選標題（不是反過來
+      // ——標題選取後的情境列＝正下方，會落在副標的點擊區域上方，先選標題
+      // 會讓第二次點擊打中情境列而不是副標本身，選取不會變成 2 個元素）。
+      const slideFrame = page.frameLocator("iframe.slide-frame");
+      const selName = page.locator(".status-selection-chip");
+      await slideFrame.locator("#el-subtitle").click();
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 副標");
+      await slideFrame.locator("#el-title").click({ modifiers: ["Shift"] });
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
+      expect(await groupButton.isDisabled()).toBe(false);
+      expect(await animateButton.isDisabled()).toBe(false);
+      expect(await arrangeButton.isDisabled()).toBe(false);
+    } finally {
+      await started.cleanup();
+    }
+  });
+});
+
+describe("Text 插入面板（05-INTERACTIONS.feature「插入」Text：輸入 + 樣式預設 + 對齊，Enter 直接插入）", () => {
+  it("打字後按 Enter：直接插入文字框，元素被選取、面板關閉", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-text-enter" });
+    try {
+      const page = await openPage(started.server);
+      const before = await readSlide(started);
+
+      await page.getByRole("button", { name: "Text" }).click();
+      const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
+      await expect.poll(() => panel.count()).toBe(1);
+      await panel.locator(".text-panel-input").fill("Enter 直接插入");
+      await panel.locator(".text-panel-input").press("Enter");
+
+      await expect.poll(() => panel.count()).toBe(0); // 面板關閉
+
+      const after = await readSlide(started);
+      expect(after).not.toBe(before);
+      expect(after).toContain("Enter 直接插入");
+
+      const sel = page.frameLocator("iframe.slide-frame").locator(".sel");
+      await expect.poll(() => sel.boundingBox()).not.toBeNull();
+    } finally {
+      await started.cleanup();
+    }
+  });
+
+  it("打字後按 Shift+Enter：換行，不插入、面板不關", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-text-shift-enter" });
+    try {
+      const page = await openPage(started.server);
+      const before = await readSlide(started);
+
+      await page.getByRole("button", { name: "Text" }).click();
+      const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
+      await expect.poll(() => panel.count()).toBe(1);
+      const textarea = panel.locator(".text-panel-input");
+      await textarea.fill("第一行");
+      await textarea.press("Shift+Enter");
+      await textarea.type("第二行");
+
+      expect(await panel.count()).toBe(1); // 面板還開著
+      expect(await textarea.inputValue()).toBe("第一行\n第二行");
+      expect(await readSlide(started)).toBe(before); // 沒有插入任何東西
+    } finally {
+      await started.cleanup();
+    }
+  });
+});
+
+describe("拖放檔案到插入面板（06-KEYBOARD_AND_GESTURES.md「拖放檔案到插入面板」）", () => {
+  it("對 Image 面板的 dropzone 派送帶檔案的 drop 事件：檔名出現在面板上，此時還沒有插入任何元素", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-drag-drop" });
+    try {
+      const page = await openPage(started.server);
+      const before = await readSlide(started);
+
+      await page.getByRole("button", { name: "Image" }).click();
+      const panel = page.locator('.media-panel[aria-label="Image"]');
+      await expect.poll(() => panel.count()).toBe(1);
+
+      await page.evaluate(
+        ({ base64, name, mime }) => {
+          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          const file = new File([bytes], name, { type: mime });
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          const dropzone = document.querySelector(".media-panel-dropzone");
+          if (!dropzone) throw new Error("找不到 .media-panel-dropzone");
+          dropzone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+        },
+        { base64: GIF_BYTES.toString("base64"), name: "dropped.gif", mime: "image/gif" },
+      );
+
+      await expect.poll(() => panel.locator(".media-panel-dropzone").textContent()).toBe("dropped.gif");
+      expect(await panel.count()).toBe(1); // 面板還開著，還沒插入
+      expect(await readSlide(started)).toBe(before);
+    } finally {
+      await started.cleanup();
+    }
+  });
+});
+
+describe("Esc 優先序（06-KEYBOARD_AND_GESTURES.md：面板開著且有選取時，一次 Esc 只關面板、選取還在）", () => {
+  it("插入面板開著＋有選取：第一次 Esc 只關面板，選取不變；再對舞台按一次 Esc 才清選取", async () => {
+    const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-esc-priority" });
+    try {
+      const page = await openPage(started.server);
+      const slideFrame = page.frameLocator("iframe.slide-frame");
+      const selName = page.locator(".status-selection-chip");
+
+      await slideFrame.locator("#el-title").click();
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+
+      await page.getByRole("button", { name: "Text" }).click();
+      const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
+      await expect.poll(() => panel.count()).toBe(1);
+
+      await page.keyboard.press("Escape");
+      await expect.poll(() => panel.count()).toBe(0); // 面板關閉
+      expect(await selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題"); // 選取還在
+
+      // 面板關閉後焦點還停在剛才點開它的 Dock 按鈕（父文件），不在 iframe
+      // 裡——selection-runtime.js 的 Escape 監聽只在 iframe 本身有焦點時收
+      // 得到。點一下已選取的元素（不改變選取本身：同一個元素、非疊加）把
+      // 焦點帶回 iframe，再按 Esc 才輪到清除選取。
+      await slideFrame.locator("#el-title").click();
+      await page.keyboard.press("Escape");
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("");
+    } finally {
+      await started.cleanup();
+    }
+  });
+});

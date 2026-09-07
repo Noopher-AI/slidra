@@ -181,6 +181,49 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
   }
 });
 
+it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘Enter 等同按 Add comment", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+
+    const bar = page.locator(".context-bar");
+    await expect.poll(() => bar.isVisible(), { timeout: 5000 }).toBe(true);
+    await bar.getByRole("button", { name: "Comment to AI" }).click();
+
+    const composer = page.locator(".comment-composer");
+    await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
+    await composer.locator("textarea").fill("⌘Enter 儲存留言測試");
+    await composer.locator("textarea").press("Meta+Enter");
+
+    await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
+    const pin = page.locator(".comment-pin");
+    await expect.poll(() => pin.textContent(), { timeout: 5000 }).toBe("1");
+
+    const comments = await listComments(registry, presentationId, "slides/001.svg");
+    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "⌘Enter 儲存留言測試" })]);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘↵ 送出聊天（06-KEYBOARD_AND_GESTURES.md）：在聊天輸入框按 ⌘Enter 等同按 Send", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    const input = page.locator(".chat-input input");
+    await input.fill("⌘Enter 送出測試");
+    await input.press("Meta+Enter");
+
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("⌘Enter 送出測試");
+    expect(await input.inputValue()).toBe(""); // 送出後清空輸入框
+  } finally {
+    await cleanup();
+  }
+});
+
 it("對整頁留言：縮圖留言鈕開整頁留言框，送出後縮圖恆亮紅底", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {

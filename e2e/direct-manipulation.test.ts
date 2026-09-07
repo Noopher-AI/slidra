@@ -1334,6 +1334,42 @@ it("⌘] 將選取移到最上層（element order front/up 的鍵盤入口）", 
   }
 });
 
+it("⌘[ 將選取下移一層（element order down 的鍵盤入口）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    // 起始 z 順序（檔案順序，由下到上）：el-a, el-b, el-c, ...
+    await page.frameLocator("iframe.slide-frame").locator("#el-c").click();
+    await page.keyboard.press("Meta+[");
+    await page.waitForTimeout(150);
+
+    const after = await readSlide(registry, presentationId);
+    expect(after.indexOf('id="el-c"')).toBeLessThan(after.indexOf('id="el-b"'));
+    expect(after.indexOf('id="el-a"')).toBeLessThan(after.indexOf('id="el-c"'));
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+// ⌘⇧]／⌘⇧[（front/back）的鍵盤入口本輪發現打不到，e2e 沒有補——見 PR 報告
+// 的「規格要求但這次沒做的」。App.tsx／canvas.ts 現有的判斷式都是
+// `event.key === "]"／"["`，用 `event.shiftKey` 分岔方向；但真正按下
+// Shift+]／Shift+[ 時，瀏覽器（US 鍵盤配置）送出的 `event.key` 是
+// `"}"`／`"{"`，不是 `"]"`／`"["`（本輪用 Playwright 直接量測 keydown 事件
+// 確認，非臆測）——這兩條判斷式因此永遠不會命中，`front`/`back` 的鍵盤入口
+// 從實作那天起就打不到。`orderSelection("front"/"back")` 本身沒有壞：
+// ArrangeMenu／情境列的「Bring to front」按鈕就是走同一個函式，且已有
+// e2e 覆蓋（見上面「情境列：Bring to front 送出 element order」）。修法是
+// 把判斷式換成 `event.code === "BracketRight"／"BracketLeft"`，但那要動
+// canvas.ts 的 stage-key relay——不在本票「對帳」明列的三個 web 檔案例外
+// 之內，本票不動它。
+
 it("情境列：點選元素後按情境列的 Delete 送出 element delete（右鍵選單已移除，項目併入情境列）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
