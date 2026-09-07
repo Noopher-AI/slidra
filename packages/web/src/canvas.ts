@@ -674,6 +674,8 @@ interface SelectionMessage {
   /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
   row?: number;
   col?: number;
+  /** "table-cell-dblclick" only — the clicked cell's own row (differs from `row` for a generated cell, which edits its hidden template row). */
+  atRow?: number;
   /** "table-cell-contextmenu" only — iframe-local client px, converted by `toParentClientPoint` before reaching `subscribeTable`'s listener. */
   x?: number;
   y?: number;
@@ -749,7 +751,7 @@ function isTableCellRectItem(value: unknown): value is TableCellRectItem {
  */
 export type TableRuntimeEvent =
   | { type: "cell-click"; id: string; row: number; col: number; additive: boolean }
-  | { type: "cell-dblclick"; id: string; row: number; col: number }
+  | { type: "cell-dblclick"; id: string; row: number; col: number; atRow: number }
   | { type: "cell-contextmenu"; id: string; row: number; col: number; x: number; y: number }
   | { type: "cells"; id: string; cells: TableCellRectItem[]; box: Rect };
 
@@ -1562,7 +1564,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "table-cell-dblclick") {
       const id = typeof message.id === "string" ? message.id : null;
       if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
-        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col });
+        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col, atRow: isFiniteNumber(message.atRow) ? message.atRow : message.row });
       }
       return;
     }

@@ -385,6 +385,13 @@ it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     expect(await editor.inputValue()).toBe("{{ 產品 }}");
+    // Drawn over the generated cell the author double-clicked — the template
+    // row it edits is display:none and has no rect (was: a 12×12 input at
+    // the slide's top-left corner, read as "cannot edit" in manual review).
+    const clicked = await slideFrame.locator('[data-comot-cell="2,0"]').boundingBox();
+    const editorBox = await editor.boundingBox();
+    expect(editorBox!.width).toBeGreaterThan(40);
+    expect(Math.abs(editorBox!.y - clicked!.y)).toBeLessThan(4);
   } finally {
     await cleanup();
   }

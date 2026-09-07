@@ -1344,7 +1344,9 @@
       var templateAddress = templateCell && tableCellAddress(templateCell);
       if (templateAddress) reportedRow = templateAddress.row;
     }
-    post({ event: "table-cell-dblclick", id: tableEl.getAttribute("id"), row: reportedRow, col: cellAddress.col });
+    // `atRow` is the clicked cell's OWN row — the template row is display:none,
+    // so the editor must be drawn over the generated cell the author actually hit.
+    post({ event: "table-cell-dblclick", id: tableEl.getAttribute("id"), row: reportedRow, col: cellAddress.col, atRow: cellAddress.row });
   }
 
   window.addEventListener("resize", function () {

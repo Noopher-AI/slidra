@@ -928,7 +928,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1 });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
     expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
   });
 
@@ -944,7 +944,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(events.indexOf("select")).toBeGreaterThanOrEqual(0);
     expect(events.indexOf("table-cell-dblclick")).toBeGreaterThan(events.indexOf("select"));
     expect(messages).toContainEqual(expect.objectContaining({ event: "select", id: "el-tbl", groupPath: ["el-outer", "el-grp"] }));
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1 });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
   });
 
   it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
@@ -954,7 +954,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0 });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
   });
 
   it("在格上按右鍵：table-cell-contextmenu 回報 row/col/x/y，且壓掉原生選單", async () => {
