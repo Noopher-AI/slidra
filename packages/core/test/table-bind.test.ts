@@ -21,6 +21,8 @@ import { readTableModel } from "../src/table/model.js";
 import { parseTableCsv } from "../src/table/csv.js";
 import { parseMarkdownTable } from "../src/table/markdown.js";
 import { checkSlideCompliance, parseSlide } from "../src/slide/format.js";
+import { resizeElements, scaleElements } from "../src/element-edit.js";
+import { elementBounds } from "../src/geometry/bbox.js";
 import { scanDocument } from "../src/slide/scan.js";
 
 const FAMILY = "Noto Sans TC";
@@ -116,6 +118,29 @@ describe("table edit — cell/col/row operations (plan §4.2/§4.7)", () => {
     expect(model.rows.length).toBe(2);
     // Whatever is row 0 after the delete must carry the header weight again.
     expect(model.cells.find((c) => c.row === 0)!.fontWeight).toBe(newHeaderWeight);
+  });
+
+  it("element scale doubles the table through its container transform; the grid itself is untouched", () => {
+    const svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 10, y: 20 }, fonts);
+    const before = elementBounds(parseSlide(svg, "slides/001.svg").elements[0]);
+    const scaled = scaleElements(svg, "slides/001.svg", ["el-t"], 2, fonts);
+    expect(checkSlideCompliance(scaled)).toEqual([]);
+    expect(scaled).toMatch(/transform="translate\(10 20\) scale\(2 2\)"/);
+    expect(readTableModel(scaled, "el-t").cols).toEqual(readTableModel(svg, "el-t").cols);
+    const after = elementBounds(parseSlide(scaled, "slides/001.svg").elements[0]);
+    expect(after.width).toBeCloseTo(before.width * 2, 6);
+    expect(after.height).toBeCloseTo(before.height * 2, 6);
+  });
+
+  it("element resize scales a table non-uniformly and a later table edit keeps that scale", () => {
+    const svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0 }, fonts);
+    const before = elementBounds(parseSlide(svg, "slides/001.svg").elements[0]);
+    const resized = resizeElements(svg, "slides/001.svg", ["el-t"], before.width * 3, before.height * 0.5, "nw", fonts);
+    const edited = setTableCellText(resized, "slides/001.svg", "el-t", 0, 0, "x", fonts);
+    expect(edited).toMatch(/scale\(3 0\.5\)/);
+    const after = elementBounds(parseSlide(edited, "slides/001.svg").elements[0]);
+    expect(after.width).toBeCloseTo(before.width * 3, 6);
+    expect(after.height).toBeCloseTo(before.height * 0.5, 6);
   });
 
   it("row delete rejects deleting the last remaining row", () => {
@@ -264,6 +289,15 @@ describe("table data binding — CSV expansion and escaping (plan §4.4, §5 B/C
     const model = readTableModel(svg, "el-t");
     const generatedRow = [...new Set(model.cells.filter((c) => c.generated).map((c) => c.row))][0];
     expect(model.cells.find((c) => c.row === generatedRow && c.col === 0)!.text).toBe("{{ b }}");
+  });
+
+  it("bind without --template-row picks the first body row that carries a {{ placeholder }}, not the last row", () => {
+    let svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 4, cols: 1, x: 0, y: 0, header: true }, fonts);
+    svg = setTableCellText(svg, "slides/001.svg", "el-t", 1, 0, "{{ name }}", fonts);
+    svg = bindTableSource(svg, "slides/001.svg", "el-t", "assets/data/x.csv", undefined, csvOf("name\nAlice\nBob\n"), fonts);
+    const model = readTableModel(svg, "el-t");
+    expect(model.cells.find((c) => c.repeat)?.row).toBe(1);
+    expect(model.cells.filter((c) => c.generated).map((c) => c.text)).toEqual(["Alice", "Bob"]);
   });
 
   it("bind without --template-row on a header-only table throws (no row to template)", () => {

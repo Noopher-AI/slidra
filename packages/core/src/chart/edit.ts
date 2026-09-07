@@ -156,6 +156,29 @@ function updateChartElement(
   mutate: (model: ChartModel) => ChartModel,
 ): string {
   assertSlideCompliant(svgContent, slidePath);
+  return spliceChartElement(svgContent, elementId, mutate);
+}
+
+/**
+ * `element scale`/`element resize` on a chart container: the chart is
+ * re-rendered at `width*sx`/`height*sy` (the model owns its size — a
+ * `scale()` on the container transform would blur text and desync the
+ * declared width/height from what is drawn). Compliance is the caller's
+ * job, exactly like every other leaf write in `element-edit.ts`.
+ */
+export function scaleChartElement(svgContent: string, elementId: string, sx: number, sy: number): string {
+  return spliceChartElement(svgContent, elementId, (model) => ({
+    ...model,
+    width: model.width * sx,
+    height: model.height * sy,
+  }));
+}
+
+function spliceChartElement(
+  svgContent: string,
+  elementId: string,
+  mutate: (model: ChartModel) => ChartModel,
+): string {
   const current = readChartModel(svgContent, elementId);
   const next = mutate(current);
   validateChartModel(next);

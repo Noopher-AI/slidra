@@ -21,6 +21,7 @@ import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./s
 import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
 import { elementBounds } from "./geometry/bbox.js";
 import { formatSvgNumber } from "./svg-number.js";
+import { scaleChartElement } from "./chart/edit.js";
 import type { FontMetrics } from "./text-metrics.js";
 
 /**
@@ -135,6 +136,32 @@ function assertNotChartContainer(node: ScannedNode, elementId: string, action: s
   if (attributeValue(node, "data-comot-type") === CHART_CONTAINER_TYPE) {
     throw new CoMotionError(`元素 ${elementId} 是圖表，${action}`);
   }
+}
+
+/**
+ * `element scale`/`element resize` for the two containers whose children
+ * are not scalable primitives. A table keeps its declared grid (cols/rows
+ * are core-owned) and scales as a whole through its container transform's
+ * `scale()` — text included, like PowerPoint. A chart re-renders at the new
+ * size (`scaleChartElement`). Returns `null` for every other container so
+ * the caller falls through to the primitive path.
+ */
+function scaleSpecialContainer(
+  svg: string,
+  node: ScannedNode,
+  elementId: string,
+  sx: number,
+  sy: number,
+  force: boolean | undefined,
+): string | null {
+  const type = attributeValue(node, "data-comot-type");
+  if (type === TABLE_CONTAINER_TYPE) {
+    return applyTransformDelta(svg, elementId, (parts) => ({ ...parts, scaleX: parts.scaleX * sx, scaleY: parts.scaleY * sy }), force);
+  }
+  if (type === CHART_CONTAINER_TYPE) {
+    return scaleChartElement(svg, elementId, sx, sy);
+  }
+  return null;
 }
 
 /** Rounds through `formatSvgNumber` and rejects a value that is positive on input but rounds to zero or below. Mirrors `workspace.ts`'s `assertPositiveAfterRounding` (#76) — small enough, and specific enough to the 4-decimal write rule, that duplicating it here is simpler than threading it across the Node/browser boundary this module cannot cross. */
@@ -736,9 +763,8 @@ function scaleOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
-      assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
-      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
-      current = scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
+      current = scaleSpecialContainer(current, refreshedNode, currentId, factor, factor, force)
+        ?? scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
     }
   }
 
@@ -930,9 +956,8 @@ function resizeOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
-      assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
-      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
-      current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
+      current = scaleSpecialContainer(current, refreshedNode, currentId, sx, sy, force)
+        ?? resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
     }
   }
 

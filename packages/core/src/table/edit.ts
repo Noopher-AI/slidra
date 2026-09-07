@@ -646,7 +646,14 @@ export function bindTableSource(
       if (model.header && rowCountAfterStrip === 1) {
         throw new CoMotionError("表格只有表頭列，沒有可當模板的列");
       }
-      resolvedTemplateRow = rowCountAfterStrip - 1;
+      // Default: the first body row that already carries a `{{ column }}`
+      // placeholder — that is the row the author prepared as the template;
+      // only when no row has one does the last row stand in.
+      const placeholderRow = stripped
+        .filter((cell) => cell.text.includes("{{") && !(model.header && cell.row === 0))
+        .map((cell) => cell.row)
+        .sort((a, b) => a - b)[0];
+      resolvedTemplateRow = placeholderRow ?? rowCountAfterStrip - 1;
     }
 
     const withTemplateMark = stripped.map((cell) =>

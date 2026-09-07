@@ -99,20 +99,30 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
     setColDrag({ col, widths: [...table.cols] });
   }
 
+  /** Screen px per table user unit — the stage zoom (and any container `scale()`) folded into one factor, so handle positions and drag distances convert both ways. */
+  function pxPerUnit(box: { width: number }, cols: readonly number[]): number {
+    const total = cols.reduce((sum, w) => sum + w, 0);
+    return total > 0 && box.width > 0 ? box.width / total : 1;
+  }
+
+  function dragWidth(event: React.PointerEvent<HTMLDivElement>): number {
+    const boxRect = toLocalRect(cellData!.box, wellOffset());
+    const k = pxPerUnit(boxRect, colDrag!.widths);
+    const scaled = colDrag!.widths.map((w) => w * k);
+    const startX = columnBoundaryPositions(boxRect.x, scaled)[colDrag!.col] - scaled[colDrag!.col];
+    return Math.max(1, (event.clientX - startX) / k);
+  }
+
   function handleColPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
     if (!colDrag || !cellData) return;
-    const boxRect = toLocalRect(cellData.box, wellOffset());
-    const startX = columnBoundaryPositions(boxRect.x, colDrag.widths)[colDrag.col] - colDrag.widths[colDrag.col];
-    const width = Math.max(1, event.clientX - startX);
+    const width = dragWidth(event);
     const nextWidths = colDrag.widths.map((w, i) => (i === colDrag.col ? width : w));
     controller?.previewTableCols(tableId, nextWidths);
   }
 
   function handleColPointerUp(event: React.PointerEvent<HTMLDivElement>): void {
     if (!colDrag || !cellData) return;
-    const boxRect = toLocalRect(cellData.box, wellOffset());
-    const startX = columnBoundaryPositions(boxRect.x, colDrag.widths)[colDrag.col] - colDrag.widths[colDrag.col];
-    const width = Math.max(1, event.clientX - startX);
+    const width = dragWidth(event);
     setColDrag(null);
     void run("table col width", { col: colDrag.col, width });
   }
@@ -156,7 +166,8 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
         />
       )}
       {table.cols.slice(0, -1).map((_, index) => {
-        const x = columnBoundaryPositions(localBox.x, table.cols)[index];
+        const k = pxPerUnit(localBox, table.cols);
+        const x = columnBoundaryPositions(localBox.x, table.cols.map((w) => w * k))[index];
         return (
           <div
             key={index}

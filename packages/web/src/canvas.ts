@@ -2089,11 +2089,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * "full" (single selection: scale + rotate handles) / "move-only" (0 or
-   * 2+ selected, OR a single table — E2.T14 §2 item 3: a table's only
-   * resize path is `table col width` — OR a chart — E2.T12 plan §2.1:
-   * charts have no GUI resize, only `chart create --width/--height`
-   * decides their size) / "none" — the rendering condition the
+   * "full" (single selection: scale + rotate handles — a table scales
+   * through its container transform, a chart re-renders at the new size;
+   * see `element-edit.ts`'s `scaleSpecialContainer`) / "move-only" (0 or
+   * 2+ selected) / "none" — the rendering condition the
    * "selection" host->runtime command carries (§5's multi-select rule:
    * this is computed here, never at click time in the runtime).
    */
@@ -2101,8 +2100,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (ids.length === 0) return { handles: "none", textbox: false };
     if (ids.length > 1) return { handles: "move-only", textbox: false };
     const entry = elementIndex().get(ids[0]);
-    if (entry?.element.kind === "table") return { handles: "move-only", textbox: false };
-    if (entry?.element.kind === "chart") return { handles: "move-only", textbox: false };
     return { handles: "full", textbox: entry !== undefined && entry.element.textWidth !== null };
   }
 

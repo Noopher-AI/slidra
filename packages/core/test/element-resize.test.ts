@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CoMotionError } from "../src/errors.js";
 import { resizeElements } from "../src/element-edit.js";
+import { createChartElement, readChartModel } from "../src/chart/index.js";
 import { lockElements } from "../src/element-edit.js";
 import { elementBounds } from "../src/geometry/bbox.js";
 import { applyMatrixToPoint, parseTransform } from "../src/geometry/transform.js";
@@ -281,21 +282,19 @@ describe("resizeElements — multiple targets", () => {
   });
 });
 
-// E2.T12 — a chart container is not a shape `resizeLeafPrimitives` knows
-// how to touch (its two children are the data element and the rendered
-// picture, not a scalable primitive); rejected with a clear message
-// instead of falling through to `buildPrimitiveScaleSplices`'s generic
-// "unsupported primitive <comot:chart>" (plan §4.4's three guards).
-describe("resizeElements — rejects a chart container", () => {
-  it("throws a chart-specific message instead of resizing", () => {
-    const svg = slide(
-      '<g id="el-chart" data-comot-type="chart">' +
-        '<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar"/>' +
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"></svg>' +
-        "</g>",
-    );
-    expect(() => resizeElements(svg, SLIDE_PATH, ["el-chart"], 20, 20, "nw", NO_FONTS)).toThrow(
-      "元素 el-chart 是圖表，本版不支援縮放",
-    );
+// E2.T12 follow-up — a chart container resizes by re-rendering at the new
+// size (`scaleChartElement`), so the declared width/height and the drawn
+// picture stay in sync instead of being rejected.
+describe("resizeElements — a chart container re-renders at the new size", () => {
+  it("scales the chart's declared width/height and the embedded <svg> with it", () => {
+    const svg = createChartElement(slide(""), SLIDE_PATH, "el-chart", { x: 0, y: 0, width: 400, height: 300 });
+    const resized = resizeElements(svg, SLIDE_PATH, ["el-chart"], 800, 150, "nw", NO_FONTS);
+    const model = readChartModel(resized, "el-chart");
+    expect(model.width).toBeCloseTo(800, 6);
+    expect(model.height).toBeCloseTo(150, 6);
+    expect(resized).toContain('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="150"');
+    const bounds = elementBounds(parseSlide(resized, SLIDE_PATH).elements[0]);
+    expect(bounds.width).toBeCloseTo(800, 6);
+    expect(bounds.height).toBeCloseTo(150, 6);
   });
 });

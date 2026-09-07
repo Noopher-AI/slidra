@@ -497,17 +497,22 @@ it('E12b: 點一格後出現 table-section-cell；點 align center 後重載該�
   }
 });
 
-it("E13: 選取表格時只有移動——四角縮放與旋轉把手全部不顯示", async () => {
+it("E13: 選取表格時顯示四角縮放與旋轉把手（表格靠容器 transform 縮放），文字框寬度把手不顯示", async () => {
   const { server, cleanup } = await newTableDeck("e13", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator('[data-comot-cell="0,0"]').click();
 
-    for (const name of ["nw", "ne", "sw", "se", "rotate", "width-left", "width-right"]) {
+    for (const name of ["nw", "ne", "sw", "se", "rotate"]) {
       const handle = slideFrame.locator(`[data-comot-handle="${name}"]`);
       const display = await handle.evaluate((el) => getComputedStyle(el).display);
-      expect(display).toBe("none");
+      expect(display, name).not.toBe("none");
+    }
+    for (const name of ["width-left", "width-right"]) {
+      const handle = slideFrame.locator(`[data-comot-handle="${name}"]`);
+      const display = await handle.evaluate((el) => getComputedStyle(el).display);
+      expect(display, name).toBe("none");
     }
   } finally {
     await cleanup();
