@@ -1,5 +1,7 @@
 # 以 ACP client 外接 agent，不自建 agent runtime 與授權
 
+> **本 ADR 由 NOOP-230 修訂了「使用者已經安裝並登入」這個前提。** 下方原文假設兩件事都已經是使用者自己處理好的既成事實：adapter 已經裝在機器上、CLI 已經登入。NOOP-230 起兩者都不再是假設——**兩個 adapter（`claude-code-acp`／`codex-acp`）現在是 `@co-motion/server` 自己的 npm 相依，隨 CoMotion 一起打包安裝**，不用使用者另外 `npm install -g`；**登入狀態則是 serve 主動探測**（`claude auth status --json` / `codex login status`），不是單純假設已登入就直接送出對話。連帶地，「沒有可用的 agent」不再是 serve 啟動失敗的理由：**serve 一律啟動**，尚未選擇或尚未登入只擋住聊天本身（`POST /api/chat` 回 409），其餘功能不受影響——這在舊版原本被明確排除的一條路（見 `select.ts` 舊版文件：「沒有『pick one anyway』或『chat disabled but serve runs』這條路」）在 NOOP-230 之後正是新的預設行為。「Codex 自己處理授權與計費」「CoMotion 不自己實作 agent」這兩條本 ADR 的核心立場不受影響——探測登入狀態是讀一個現成指令的結果，不是 CoMotion 自己代管 OAuth。
+
 CoMotion 內建聊天，但不自己實作 agent。使用者已經安裝並登入 Codex 或 Claude Code，那些工具自己處理授權與計費，CoMotion 不該重做一次 OAuth、provider 抽象與 tool-calling 迴圈——沒有人會因為這些而選擇 CoMotion。
 
 CoMotion 實作成 **Agent Client Protocol（ACP）client**（JSON-RPC 2.0 over stdio），透過現成 adapter 接上任何 agent。

@@ -52,6 +52,23 @@ export interface AgentManagerOptions {
   resolveAdapter?: (kind: AgentKind) => AgentAdapterConfig;
   /** Fired only when `select()` actually swaps to a different kind (§4.4's `agent-changed` event). */
   onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
+  /**
+   * Skips the real login probe for these kinds — `status()`/`probe()`
+   * always report them as logged in, without spawning anything.
+   *
+   * Back-compat seam for `ServeOptions.agent` (serve.ts's own docstring):
+   * every pre-NOOP-230 test suite and the e2e harness hand a directly-built
+   * `AgentAdapterConfig` (often pointed at a fake ACP fixture) straight
+   * through as "the adapter to use" — a concept that predates login
+   * probing entirely and has no real "logged in" state to check. Without
+   * this, `/api/chat`'s new gate would 409 every one of those suites the
+   * moment the *real* `claude`/`codex` CLI on whatever machine runs the
+   * tests happens to report logged out (verified: it does, in this repo's
+   * own sandbox). `serve.ts` sets this only for `ServeOptions.agent`'s own
+   * kind; `cli.ts`'s production path never sets it, so real serve always
+   * probes real CLIs.
+   */
+  assumeLoggedIn?: ReadonlySet<AgentKind>;
 }
 
 /**
@@ -69,6 +86,7 @@ export class AgentManager {
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
   private readonly onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
+  private readonly assumeLoggedIn: ReadonlySet<AgentKind>;
 
   private current: AgentKind | null;
   private source: AgentSource;
@@ -88,6 +106,7 @@ export class AgentManager {
     this.runCommand = options.runCommand ?? spawnCommandRunner;
     this.resolveAdapter = options.resolveAdapter ?? resolveAdapterConfig;
     this.onAgentChanged = options.onAgentChanged;
+    this.assumeLoggedIn = options.assumeLoggedIn ?? new Set();
 
     this.current = options.initial.kind;
     this.source = options.initial.source;
@@ -129,15 +148,20 @@ export class AgentManager {
 
   /** Always reruns both probes (in parallel — total time bounded by one probe's own timeout) and refreshes the cache. */
   async probe(): Promise<AgentStatus> {
-    const [claude, codex] = await Promise.all([
-      probeLogin("claude", this.runCommand),
-      probeLogin("codex", this.runCommand),
-    ]);
+    const [claude, codex] = await Promise.all([this.probeOne("claude"), this.probeOne("codex")]);
     this.probeCache = new Map<AgentKind, ProbeResult>([
       ["claude", claude],
       ["codex", codex],
     ]);
     return this.buildStatus();
+  }
+
+  /** See `assumeLoggedIn`'s own docstring for why a kind may skip the real probe entirely. */
+  private probeOne(kind: AgentKind): Promise<ProbeResult> {
+    if (this.assumeLoggedIn.has(kind)) {
+      return Promise.resolve({ loggedIn: true });
+    }
+    return probeLogin(kind, this.runCommand);
   }
 
   private buildStatus(): AgentStatus {
