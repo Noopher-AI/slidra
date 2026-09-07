@@ -137,8 +137,15 @@ it("06-KEYBOARD ⌘X：元素離開投影片且進系統剪貼簿，一筆歷史
   const page = await openWithClipboard(started);
   const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
 
+  const selChip = page.locator(".status-selection-chip");
   await slideFrame(page).locator("#el-solo").click();
+  await expect.poll(() => selChip.textContent()).not.toBe("");
   await page.keyboard.press("Meta+x");
+  await expect
+    .poll(async () => (await readSlide(started.registry, started.presentationId, "slides/001.svg")).includes('id="el-solo"'), {
+      timeout: 10_000,
+    })
+    .toBe(false);
   await expect.poll(() => readSystemClipboardText(page), { timeout: 10_000 }).toContain("el-solo");
 
   const clipboardText = await readSystemClipboardText(page);
