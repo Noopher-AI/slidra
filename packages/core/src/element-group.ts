@@ -90,7 +90,34 @@ function isGroupContainer(node: ScannedNode): boolean {
   return children.length > 0 && children.every((child) => child.tag === "g");
 }
 
-/** `element group`/`element ungroup` never treat a table as a group (E2.T14, plan §2 item 5) — its cells are not independently selectable members. */
+const GROUP_NAME_PATTERN = /^Group (\d+)$/;
+
+function collectDataCommotNames(node: ScannedNode, names: string[]): void {
+  const name = attributeValue(node, "data-comot-name");
+  if (name !== null) names.push(name);
+  for (const child of node.children) collectDataCommotNames(child, names);
+}
+
+/**
+ * D1: a freshly created group's default name (`Group N`) — the highest
+ * existing `Group <n>` name on the slide, plus one, or `Group 1` when none
+ * exist. Deliberately never fills a gap left by a dissolved group (e.g.
+ * `Group 1`, `Group 5` → next is `Group 6`, not `Group 2`): reusing a
+ * number that already existed once on this slide would make undo/redo
+ * ambiguous about which "Group 2" is meant.
+ */
+function nextGroupName(svgRoot: ScannedNode): string {
+  const names: string[] = [];
+  collectDataCommotNames(svgRoot, names);
+  const numbers = names
+    .map((name) => GROUP_NAME_PATTERN.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => Number(match[1]));
+  const next = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+  return `Group ${next}`;
+}
+
+/** `element ungroup` never treats a table as a group (E2.T14) — its cells are not independently selectable members. A table CAN be a member of a group like any other element: its cells stay addressed through its own container id, wherever that container sits. */
 function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
   if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
     throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
@@ -162,7 +189,6 @@ export function groupElements(
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const found = elementIds.map((id) => requireContainer(svgRoot, id));
-  found.forEach((entry, index) => assertNotTableContainer(entry.node, elementIds[index], "不能加入群組"));
 
   const parent = found[0].parent;
   if (found.some((entry) => entry.parent !== parent)) {
@@ -172,8 +198,9 @@ export function groupElements(
   // Document order among the targets, as they actually appear in `parent`.
   const byDocumentOrder = [...found].sort((a, b) => a.node.start - b.node.start);
   const topmost = byDocumentOrder[byDocumentOrder.length - 1].node;
+  const groupName = nextGroupName(svgRoot);
   const combinedMarkup =
-    `<g id="${newGroupId}">` +
+    `<g id="${newGroupId}" data-comot-name="${escapeXmlAttr(groupName)}">` +
     byDocumentOrder.map((entry) => svgContent.slice(entry.node.start, entry.node.end)).join("") +
     "</g>";
 
@@ -191,6 +218,13 @@ export function groupElements(
 // element ungroup
 // ---------------------------------------------------------------------------
 
+interface UngroupOneResult {
+  svg: string;
+  /** The dissolved group's direct children, in document order — the GUI reselects these (SELECT_AFTER_COMMAND). */
+  elementIds: string[];
+  removedEffects: number;
+}
+
 /**
  * Dissolves one group, splicing its children in at the group's old position
  * (document order preserved) and folding the group's own transform into
@@ -202,7 +236,7 @@ export function groupElements(
  * animation, D5) is removed along with it — the id it pointed at no longer
  * exists once the group is dissolved.
  */
-function ungroupOne(svgContent: string, slidePath: string, id: string): string {
+function ungroupOne(svgContent: string, slidePath: string, id: string): UngroupOneResult {
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
@@ -228,6 +262,9 @@ function ungroupOne(svgContent: string, slidePath: string, id: string): string {
   const refreshedSvgRoot = requireSvgRoot(refreshedRoots);
   const { node: refreshedNode } = requireContainer(refreshedSvgRoot, id);
   const refreshedChildren = meaningfulChildren(refreshedNode);
+  const childIds = refreshedChildren
+    .map((child) => attributeValue(child, "id"))
+    .filter((childId): childId is string => childId !== null);
   const childrenMarkup = refreshedChildren
     .map((child) => withFoldedTransforms.slice(child.start, child.end))
     .join("");
@@ -237,7 +274,16 @@ function ungroupOne(svgContent: string, slidePath: string, id: string): string {
     childrenMarkup +
     withFoldedTransforms.slice(refreshedNode.end);
 
-  return removeEffectsTargeting(ungrouped, slidePath, new Set([id])).updated;
+  const { updated, removedCount } = removeEffectsTargeting(ungrouped, slidePath, new Set([id]));
+  return { svg: updated, elementIds: childIds, removedEffects: removedCount };
+}
+
+export interface UngroupElementsResult {
+  svg: string;
+  /** Every dissolved group's direct children, concatenated in processing order — the GUI reselects these. */
+  elementIds: string[];
+  /** [E2.T7]: how many effect items were removed because they targeted one of the dissolved groups directly. */
+  removedEffects: number;
 }
 
 /**
@@ -245,14 +291,19 @@ function ungroupOne(svgContent: string, slidePath: string, id: string): string {
  * processed in list order, re-scanning the document fresh before each one
  * (element-edit.ts's convention — never reuse stale offsets).
  */
-export function ungroupElements(svgContent: string, slidePath: string, elementIds: readonly string[]): string {
+export function ungroupElements(svgContent: string, slidePath: string, elementIds: readonly string[]): UngroupElementsResult {
   assertSlideCompliant(svgContent, slidePath);
   validateIdList(elementIds);
   let current = svgContent;
+  const allChildIds: string[] = [];
+  let totalRemoved = 0;
   for (const id of elementIds) {
-    current = ungroupOne(current, slidePath, id);
+    const result = ungroupOne(current, slidePath, id);
+    current = result.svg;
+    allChildIds.push(...result.elementIds);
+    totalRemoved += result.removedEffects;
   }
-  return current;
+  return { svg: current, elementIds: allChildIds, removedEffects: totalRemoved };
 }
 
 // ---------------------------------------------------------------------------

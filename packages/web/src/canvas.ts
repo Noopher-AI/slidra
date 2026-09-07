@@ -674,6 +674,8 @@ interface SelectionMessage {
   /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
   row?: number;
   col?: number;
+  /** "table-cell-dblclick" only — the clicked cell's own row (differs from `row` for a generated cell, which edits its hidden template row). */
+  atRow?: number;
   /** "table-cell-contextmenu" only — iframe-local client px, converted by `toParentClientPoint` before reaching `subscribeTable`'s listener. */
   x?: number;
   y?: number;
@@ -749,7 +751,7 @@ function isTableCellRectItem(value: unknown): value is TableCellRectItem {
  */
 export type TableRuntimeEvent =
   | { type: "cell-click"; id: string; row: number; col: number; additive: boolean }
-  | { type: "cell-dblclick"; id: string; row: number; col: number }
+  | { type: "cell-dblclick"; id: string; row: number; col: number; atRow: number }
   | { type: "cell-contextmenu"; id: string; row: number; col: number; x: number; y: number }
   | { type: "cells"; id: string; cells: TableCellRectItem[]; box: Rect };
 
@@ -1562,7 +1564,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "table-cell-dblclick") {
       const id = typeof message.id === "string" ? message.id : null;
       if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
-        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col });
+        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col, atRow: isFiniteNumber(message.atRow) ? message.atRow : message.row });
       }
       return;
     }
@@ -1609,7 +1611,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
   }
 
+  /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
+  let pendingTableDblclick: TableRuntimeEvent | null = null;
+
   function emitTableEvent(event: TableRuntimeEvent): void {
+    if (event.type === "cell-dblclick" && tableListeners.size === 0) {
+      pendingTableDblclick = event;
+      return;
+    }
     for (const listener of tableListeners) listener(event);
   }
 
@@ -1959,6 +1968,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
     ["element duplicate", "elementIds"],
+    // [E2.T15]/#205 4.2: grouping selects the new group itself; ungrouping
+    // selects the dissolved group's released children (`data.elementIds`,
+    // D2's new return value).
+    ["element group", "elementId"],
+    ["element ungroup", "elementIds"],
     ["table create", "elementId"],
     ["chart create", "elementId"],
   ]);
@@ -3913,6 +3927,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     },
     subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
       tableListeners.add(listener);
+      if (pendingTableDblclick) {
+        const replay = pendingTableDblclick;
+        pendingTableDblclick = null;
+        listener(replay);
+      }
       return () => {
         tableListeners.delete(listener);
       };

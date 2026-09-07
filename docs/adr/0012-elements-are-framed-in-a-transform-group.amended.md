@@ -95,7 +95,7 @@
 - 儲存格的位置寫在自己的 `transform="translate(x y)"`；圖元（`<rect>`/`<text>`）上永遠沒有 `transform`——與這份 ADR 的核心規則一致。
 - `data-comot-cols`／`data-comot-rows` 是核心算出寫回的欄寬／列高，不接受使用者直接指定列高（欄寬可經 `table col width` 設定；加 `--keep-total` 時右鄰欄吸收差值、表格總寬不變——GUI 拖欄界線走的就是這條）。
 - 表格的邊界框是 `(0,0)` 到 `(Σcols, Σrows)` 經容器 `transform` 變換，不是子圖元的聯集（`geometry/bbox.ts` 的表格分支）——因為儲存格沒有 `id`，不是可獨立測量的「元素」。
-- `element group`／`element ungroup` 對錶格容器一律拋錯：群組化會破壞「儲存格靠位址定址」這個不變式。
+- 表格可以像任何元素一樣**加入群組**（儲存格定址是相對表格容器 id 的，容器放在哪一層都不受影響）；`element ungroup` 對錶格容器本身一律拋錯，因為表格不是群組、儲存格不是可獨立選取的成員。
 - `element scale`／`element resize` 對錶格**只改容器 `transform` 的 `scale()`**，欄寬／列高與儲存格內容一個位元組都不動——表格像一張圖一樣整體縮放（含文字，同 PowerPoint），之後的任何 `table` 命令都原樣保留這個 scale。因為文字跟著容器縮放，只接受等比：`element resize` 收到 sx ≠ sy 時拋錯（同文字框的規則），GUI 對錶格一律走等比路徑。這是本 ADR 「尺寸走圖元原生屬性」的一個明確例外，理由是表格的尺寸本來就不在圖元上而在 `data-comot-cols`／`data-comot-rows`，而那兩個值是核心從內容算出來的，不能被一個倍率覆寫。
 - 資料綁定沒指定 `--template-row` 時，預設模板列是**第一個含 `{{ 欄名 }}` 的非表頭列**；沒有任何列帶佔位符時才退回最後一列。
 - 資料綁定的展開（CSV → 具體儲存格）只發生在 `table bind`／`table refresh` 這兩條命令，不在顯示時做——與圖表「GUI 永遠不直接改渲染結果」的姿態一致，這裡是「顯示永遠不改動檔案內容」。

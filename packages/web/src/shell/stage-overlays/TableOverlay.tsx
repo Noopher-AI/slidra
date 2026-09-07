@@ -34,7 +34,8 @@ export interface TableOverlayProps {
 export function TableOverlay({ controller, wellRef, slidePath, tableId, table }: TableOverlayProps) {
   const [cellData, setCellData] = useState<{ cells: TableCellRect[]; box: { x: number; y: number; width: number; height: number } } | null>(null);
   const [range, setRange] = useState<CellRange | null>(null);
-  const [editing, setEditing] = useState<{ row: number; col: number; text: string } | null>(null);
+  /** `row`/`col` address the cell whose text is edited; `atRow` is where the editor is drawn — they differ for a generated cell, which edits its hidden template row (架構: "雙擊編輯的是模板列"). */
+  const [editing, setEditing] = useState<{ row: number; col: number; atRow: number; text: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [colDrag, setColDrag] = useState<{ col: number; widths: number[] } | null>(null);
@@ -67,7 +68,7 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
       }
       if (event.type === "cell-dblclick") {
         const cell = table.cells.find((c) => c.row === event.row && c.col === event.col);
-        setEditing({ row: event.row, col: event.col, text: cell?.text ?? "" });
+        setEditing({ row: event.row, col: event.col, atRow: event.atRow, text: cell?.text ?? "" });
         setMenu(null);
         return;
       }
@@ -146,7 +147,7 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
   const localCells: TableCellRect[] = cellData.cells.map((cell) => ({ ...cell, rect: toLocalRect(cell.rect, offset) }));
   const localBox = toLocalRect(cellData.box, offset);
   const rangeRect = range ? rangeBoundingRect(localCells, range) : null;
-  const editRect = editing ? cellRectAt(localCells, editing) : null;
+  const editRect = editing ? cellRectAt(localCells, { row: editing.atRow, col: editing.col }) : null;
   const topLeft = range ? topLeftCell(range) : undefined;
   const canMerge = range ? range.r1 > range.r0 || range.c1 > range.c0 : false;
   const canUnmerge = topLeft ? topLeft.rowSpan > 1 || topLeft.colSpan > 1 : false;
@@ -196,7 +197,7 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
           canUnmerge={canUnmerge}
           onEdit={() => {
             const cell = topLeftCell(range);
-            setEditing({ row: range.r0, col: range.c0, text: cell?.text ?? "" });
+            setEditing({ row: range.r0, col: range.c0, atRow: range.r0, text: cell?.text ?? "" });
             setMenu(null);
           }}
           onBold={() => {

@@ -928,8 +928,23 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1 });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
     expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
+  });
+
+  it("雙擊一個在兩層群組裡的表格儲存格：同一次雙擊鑽到底、選取表格（groupPath 是整條鏈），並回報 table-cell-dblclick", async () => {
+    const grouped = TABLE.replace('<g id="el-tbl"', '<g id="el-outer"><g id="el-grp"><g id="el-tbl"').replace(/<\/svg>\s*$/, "</g></g></svg>");
+    const { doc } = boot(grouped);
+    const { messages, stop } = collectMessages();
+    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    await tick();
+    stop();
+
+    const events = messages.map((m: any) => m.event);
+    expect(events.indexOf("select")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("table-cell-dblclick")).toBeGreaterThan(events.indexOf("select"));
+    expect(messages).toContainEqual(expect.objectContaining({ event: "select", id: "el-tbl", groupPath: ["el-outer", "el-grp"] }));
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
   });
 
   it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
@@ -939,7 +954,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0 });
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
   });
 
   it("在格上按右鍵：table-cell-contextmenu 回報 row/col/x/y，且壓掉原生選單", async () => {
@@ -1141,5 +1156,39 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
         shift: false,
       });
     });
+  });
+});
+
+// A ⇧-held pointer-down that jitters past DRAG_THRESHOLD_PX on an element
+// that is not yet selected must ADD it (the multi-selection the user was
+// building survives), whereas the same drag without a modifier replaces the
+// selection with just that element — found when a human's "⇧-click chart,
+// then Group" kept ending up with only the chart selected.
+describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是取代", () => {
+  async function dragOnto(shift: boolean): Promise<{ id?: string; additive?: boolean }[]> {
+    const { win, doc } = boot(
+      '<svg viewBox="0 0 1280 720"><rect id="el-a" width="100" height="100"/><rect id="el-b" x="300" width="100" height="100"/></svg>',
+    );
+    click(doc, doc.getElementById("el-a")!);
+    await tick();
+    const { messages, stop } = collectMessages();
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    doc.getElementById("el-b")!.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: 350, clientY: 50, shiftKey: shift }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 360, clientY: 60, shiftKey: shift }));
+    await tick();
+    stop();
+    return (messages as { event?: string; id?: string; additive?: boolean }[]).filter((m) => m.event === "select");
+  }
+
+  it("⇧ 拖曳一個未選取的元素：送出 additive:true 的 select，原本的選取保留", async () => {
+    const selects = await dragOnto(true);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: true })]);
+  });
+
+  it("不帶修飾鍵拖曳一個未選取的元素：送出 additive:false 的 select（既有行為）", async () => {
+    const selects = await dragOnto(false);
+    expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: false })]);
   });
 });

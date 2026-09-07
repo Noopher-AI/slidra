@@ -1263,19 +1263,25 @@
       // see `isGroupContainer`'s own comment) — a generated cell reports
       // its template row's row index instead of its own (架構:
       // "雙擊編輯的是模板列").
-      if (target.getAttribute("data-comot-type") === "table") {
-        var tableCellEl = findTableCellElement(event.target);
-        var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
-        if (cellAddress) {
-          var reportedRow = cellAddress.row;
-          if (tableCellEl.getAttribute("data-comot-generated") === "1") {
-            var templateCell = findTemplateCellForColumn(target, cellAddress.col);
-            var templateAddress = templateCell && tableCellAddress(templateCell);
-            if (templateAddress) reportedRow = templateAddress.row;
-          }
-          post({ event: "table-cell-dblclick", id: target.getAttribute("id"), row: reportedRow, col: cellAddress.col });
+      // E2.T14 §4.5: a double-click on a table cell ALWAYS edits that cell,
+      // however many not-yet-entered groups wrap the table — the group
+      // chain becomes the drill-in path in one go (a table is never a group
+      // itself, see `isGroupContainer`). One level per double-click (the
+      // ordinary group rule below) made a grouped table read as "cannot be
+      // edited any more" in manual review: the first double-click looked
+      // like nothing happened.
+      var dblclickCell = findTableCellElement(event.target);
+      var dblclickTable = dblclickCell && tableContainerOf(dblclickCell);
+      if (dblclickTable) {
+        var chain = unlockedAncestorChain(dblclickTable);
+        if (chain) {
+          groupPath = chain;
+          selectedIds = [dblclickTable.getAttribute("id")];
+          updateBoxes();
+          post(withGroupPath({ event: "select", id: dblclickTable.getAttribute("id"), name: dblclickTable.getAttribute("data-comot-name"), additive: false }));
+          postTableCellDblclick(dblclickTable, event.target);
+          return;
         }
-        return;
       }
       // E2.T12 plan §3.6: a chart container opens its data window instead
       // of the group-entry logic below. A chart nested inside a not-yet-
@@ -1301,6 +1307,47 @@
     },
     true,
   );
+
+  /** The `data-comot-type="table"` container a cell belongs to, or null. */
+  function tableContainerOf(cellEl) {
+    var current = cellEl.parentElement;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.getAttribute("data-comot-type") === "table") return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  /** The ids of every id-carrying container above `el` up to the slide root, outermost first — the `groupPath` that makes `el` the resolved target. `null` when `el` or any ancestor is locked (ADR-0013: not reachable in view mode at all). */
+  function unlockedAncestorChain(el) {
+    if (el.getAttribute("data-comot-lock") === "true") return null;
+    var chain = [];
+    var current = el.parentElement;
+    while (current && current !== document.body) {
+      var tag = current.tagName ? current.tagName.toLowerCase() : "";
+      if (tag === "svg" && !current.ownerSVGElement) break;
+      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") return null;
+      if (current.hasAttribute && current.hasAttribute("id")) chain.unshift(current.getAttribute("id"));
+      current = current.parentElement;
+    }
+    return chain;
+  }
+
+  /** E2.T14 §4.5: reports the cell under `rawTarget` of table `tableEl` for editing — a generated cell reports its template row's row index instead of its own (架構: "雙擊編輯的是模板列"). */
+  function postTableCellDblclick(tableEl, rawTarget) {
+    var tableCellEl = findTableCellElement(rawTarget);
+    var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
+    if (!cellAddress) return;
+    var reportedRow = cellAddress.row;
+    if (tableCellEl.getAttribute("data-comot-generated") === "1") {
+      var templateCell = findTemplateCellForColumn(tableEl, cellAddress.col);
+      var templateAddress = templateCell && tableCellAddress(templateCell);
+      if (templateAddress) reportedRow = templateAddress.row;
+    }
+    // `atRow` is the clicked cell's OWN row — the template row is display:none,
+    // so the editor must be drawn over the generated cell the author actually hit.
+    post({ event: "table-cell-dblclick", id: tableEl.getAttribute("id"), row: reportedRow, col: cellAddress.col, atRow: cellAddress.row });
+  }
 
   window.addEventListener("resize", function () {
     reportViewport();
@@ -1544,6 +1591,9 @@
         lastClient: { x: event.clientX, y: event.clientY },
         hitId: hit ? hit.getAttribute("id") : null,
         handleName: handleName,
+        // ⇧/⌘/Ctrl held at pointer-down: a drag that starts on an unselected
+        // element ADDS it to the selection instead of replacing it (below).
+        additive: event.shiftKey || event.metaKey || event.ctrlKey,
         started: false,
         kind: null,
         handle: null,
@@ -1592,10 +1642,15 @@
             // same "select, then move" behaviour every direct-manipulation
             // editor gives a plain (non-additive) drag (§4.2's "多選" row
             // implies the selection in effect at drag start is what moves).
+            // With ⇧/⌘/Ctrl held it ADDS instead: a ⇧-click that jitters
+            // past DRAG_THRESHOLD_PX (trackpads do) must not silently throw
+            // away the multi-selection the user was building — found when a
+            // human's "⇧-click chart, Group" kept ending up with only the
+            // chart selected.
             var target = document.getElementById(gesture.hitId);
-            selectedIds = [gesture.hitId];
+            selectedIds = gesture.additive ? selectedIds.concat([gesture.hitId]) : [gesture.hitId];
             updateBoxes();
-            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: false }));
+            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: gesture.additive }));
           }
         }
         // reportViewport() is otherwise only wired to the iframe's own

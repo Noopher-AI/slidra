@@ -1158,14 +1158,19 @@ export async function groupSlideElements(
   return { elementId, removedEffects };
 }
 
-export async function ungroupSlideElements(id: string, slidePath: string, elementIds: string[]): Promise<void> {
+export async function ungroupSlideElements(
+  id: string,
+  slidePath: string,
+  elementIds: string[],
+): Promise<{ elementIds: string[]; removedEffects: number }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  const updated = ungroupElements(original, slidePath, elementIds);
-  await writePresentationFile(id, slidePath, updated);
+  const { svg, elementIds: childIds, removedEffects } = ungroupElements(original, slidePath, elementIds);
+  await writePresentationFile(id, slidePath, svg);
+  return { elementIds: childIds, removedEffects };
 }
 
 // ---------------------------------------------------------------------------
