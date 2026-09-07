@@ -136,6 +136,105 @@ it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放�
   }
 });
 
+// [E2.T17] plan §4.4/A3-A4: the STAGE (view mode) media layer — distinct
+// from every play-mode test below, which enters play via `.play-button`
+// first. These two open the app in its default view mode and interact
+// with `data-comot-media-control` directly inside the view iframe.
+it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const viewFrame = () => page.frameLocator("iframe.slide-frame");
+    await expect
+      .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+
+    const video = viewFrame().locator("video");
+    await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState), { timeout: 10_000 })
+      .toBeGreaterThan(0);
+    expect(await video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true);
+
+    const playButton = viewFrame().locator('[data-comot-media-control="play"]').first();
+    await playButton.click();
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 })
+      .toBe(false);
+    const t0 = await video.evaluate((el: HTMLVideoElement) => el.currentTime);
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime), { timeout: 10_000 })
+      .toBeGreaterThan(t0);
+
+    await playButton.click();
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 }).toBe(true);
+
+    // 拖曳進度：真實拖曳一個看不見厚度的 range 很不可靠，直接把值設到目標並
+    // 送出瀏覽器拖曳時本來就會送的同一個 "input" 事件——production 的
+    // `seek.addEventListener("input", ...)` 分不出這跟真的滑鼠拖曳有什麼不同。
+    const seek = viewFrame().locator('[data-comot-media-control="seek"]').first();
+    const duration = await video.evaluate((el: HTMLVideoElement) => el.duration);
+    const target = duration / 2;
+    await seek.evaluate((el: HTMLInputElement, value: number) => {
+      el.value = String(value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, target);
+    const seeked = await video.evaluate((el: HTMLVideoElement) => el.currentTime);
+    expect(seeked).toBeGreaterThan(target - 0.2);
+    expect(seeked).toBeLessThan(target + 0.2);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+
+    const viewFrame = () => page.frameLocator("iframe.slide-frame");
+    await expect
+      .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+
+    const audio = viewFrame().locator("audio");
+    await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(1);
+    await expect
+      .poll(() => audio.evaluate((el: HTMLAudioElement) => el.readyState), { timeout: 10_000 })
+      .toBeGreaterThan(0);
+    expect(await audio.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
+
+    const playButton = viewFrame().locator('[data-comot-media-control="play"]').nth(1);
+    await playButton.click();
+    await expect
+      .poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 })
+      .toBe(false);
+    const t0 = await audio.evaluate((el: HTMLAudioElement) => el.currentTime);
+    await expect
+      .poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime), { timeout: 10_000 })
+      .toBeGreaterThan(t0);
+
+    await playButton.click();
+    await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 }).toBe(true);
+
+    const seek = viewFrame().locator('[data-comot-media-control="seek"]').nth(1);
+    const duration = await audio.evaluate((el: HTMLAudioElement) => el.duration);
+    const target = duration / 2;
+    await seek.evaluate((el: HTMLInputElement, value: number) => {
+      el.value = String(value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, target);
+    const seeked = await audio.evaluate((el: HTMLAudioElement) => el.currentTime);
+    expect(seeked).toBeGreaterThan(target - 0.2);
+    expect(seeked).toBeLessThan(target + 0.2);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且伺服器以 206 Partial Content 回應", async () => {
   const { server, cleanup } = await startServerFor();
   try {
