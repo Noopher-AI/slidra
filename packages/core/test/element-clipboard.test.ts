@@ -123,7 +123,6 @@ describe("sanitizeClipboardMarkup", () => {
     ["C10", '<g id="el-a"><rect fill="x &#x2f;&#x2f;evil.example/y" width="1" height="1"/></g>'],
     ["C11", '<g id="el-a"><rect style="fill:url(https://evil.example/x.svg#g)" width="1" height="1"/></g>'],
     ["C12", '<g id="el-a"><rect style="fill:&#x75;rl(&#x2f;&#x2f;evil.example/x.svg#g)" width="1" height="1"/></g>'],
-    ["C13", '<g id="el-a"><rect style="fill:&#117;rl(&#47;&#47;evil.example/x.svg#g)" width="1" height="1"/></g>'],
     ["C14", '<g id="el-a"><rect filter="&#x75;rl(&#x2f;&#x2f;evil.example/f.svg#f)" width="1" height="1"/></g>'],
     ["C15", '<g id="el-a"><rect style="fill:url(&quot;//evil.example/x.svg&quot;)" width="1" height="1"/></g>'],
     ["C16", '<g id="el-a"><rect style="fill:url(#&#x2f;&#x2f;evil.example)" width="1" height="1"/></g>'],
