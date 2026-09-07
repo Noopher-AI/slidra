@@ -326,6 +326,21 @@ const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> =
     "R5 CSS-escaped url()",
     '<g id="el-hostile"><rect width="10" height="10" style="fill:\\75rl(\\00002f\\00002fevil.example/x.svg#g)"/></g>',
   ],
+  // r6 ([E2.T18r6] AC6): r5's three CSS-carrying bypasses — closed by the
+  // allowlist dropping `style` entirely rather than adding a fourth CSS-shape
+  // rule for it, so none of these should reach a real network request.
+  [
+    "R6 style unclosed url()",
+    '<g id="el-hostile"><rect width="10" height="10" style="fill:url(https:evil.example/x.svg#g"/></g>',
+  ],
+  [
+    "R6 style cursor image-set()",
+    '<g id="el-hostile"><rect width="10" height="10" style="cursor:image-set(&quot;https:evil.example/c.png&quot; 1x),auto"/></g>',
+  ],
+  [
+    "R6 style background-image image-set()",
+    '<g id="el-hostile"><rect width="10" height="10" style="background-image:image-set(&quot;https:evil.example/c.png&quot; 1x)"/></g>',
+  ],
 ];
 
 it.each(A8_BYPASS_MATRIX)(
