@@ -19,6 +19,7 @@ import "./styles/selection.css";
 import "./styles/side-panel.css";
 import "./styles/animate.css";
 import "./styles/table.css";
+import "./styles/chart-window.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

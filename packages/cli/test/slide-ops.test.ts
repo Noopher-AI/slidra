@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry } from "../src/commands.js";
 import type { CommandRegistry } from "../src/registry.js";
@@ -45,6 +46,38 @@ async function readProject(id: string): Promise<any> {
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * [E2.T11]: builds and opens a hand-crafted legacy (`formatVersion: 2`)
+ * `.comot` — the only way to fabricate a pre-migration fixture, since no
+ * CLI command writes `project.json.transition` any more (ADR-0002 gives no
+ * other route to that shape). Every slide starts with no `<comot:transition>`
+ * of its own, matching every real pre-[E2.T11] `.comot` on disk.
+ */
+async function openLegacyPresentation(transition: string | undefined, slideCount = 1): Promise<string> {
+  const slides = Array.from({ length: slideCount }, (_, i) => `slides/${String(i + 1).padStart(3, "0")}.svg`);
+  const project: Record<string, unknown> = {
+    formatVersion: 2,
+    name: "舊版本簡報",
+    canvas: { width: 1280, height: 720 },
+    slides,
+  };
+  if (transition !== undefined) project.transition = transition;
+
+  const files: Record<string, Uint8Array> = {
+    "project.json": new TextEncoder().encode(`${JSON.stringify(project, null, 2)}\n`),
+    "assets/": new Uint8Array(0),
+  };
+  for (const slidePath of slides) {
+    files[slidePath] = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>\n');
+  }
+  const zipped = zipSync(files);
+  const comotPath = path.join(comotDir, `legacy-${Math.random().toString(36).slice(2)}.comot`);
+  await writeFile(comotPath, zipped);
+
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return opened.data!.id;
 }
 
 describe("slide add", () => {
@@ -412,5 +445,61 @@ describe("AC13: 向後相容", () => {
     const elementId = /id="([^"]+)"/.exec(content)![1];
     const textResult = await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText: "新文字" });
     expect(textResult.ok).toBe(true);
+  });
+
+  // [E2.T11] §4.3: formatVersion 2 → 3 遷移，掛在 unpackContainer()——每次
+  // open 都跑，不是等下一次寫入才升版（跟上面 templates 的 1→2 lazy 升級不
+  // 是同一條規則，見 template.test.ts (c) 的對照說明）。
+  it("[A6] transition:\"fade\" 的舊 .comot 開啟後：formatVersion 變 3、transition 欄位消失，每張投影片都拿到 enter=fade/0.4、exit=none/0.5", async () => {
+    const id = await openLegacyPresentation("fade", 2);
+
+    const project = await readProject(id);
+    expect(project.formatVersion).toBe(3);
+    expect(project.transition).toBeUndefined();
+
+    for (const slidePath of project.slides as string[]) {
+      const content = (await registry.dispatch<{ content: string }>("cat", { id, path: slidePath })).data!.content;
+      expect(content).toContain(
+        '<comot:transition xmlns:comot="https://co-motion.dev/ns" enter="fade" enter-duration="0.4" exit="none" exit-duration="0.5"/>',
+      );
+    }
+  });
+
+  it.each([
+    ["undefined（原本沒有這個欄位）", undefined],
+    ["\"none\"", "none"],
+    ["未知字串 \"wipe\"", "wipe"],
+  ] as const)("[A7] transition: %s 的舊 .comot 開啟後：formatVersion 變 3、transition 欄位消失，沒有任何投影片被寫入 <comot:transition>（SVG 位元組不變）", async (_label, transition) => {
+    const id = await openLegacyPresentation(transition);
+    const [slidePath] = (await readProject(id)).slides as string[];
+    const before = (await registry.dispatch<{ content: string }>("cat", { id, path: slidePath })).data!.content;
+
+    const project = await readProject(id);
+    expect(project.formatVersion).toBe(3);
+    expect(project.transition).toBeUndefined();
+    expect(before).not.toContain("comot:transition");
+  });
+
+  it("formatVersion:3 的 .comot（已經遷移過）重新開啟：不再重跑遷移，維持原樣", async () => {
+    const id = await openLegacyPresentation("fade", 1);
+    const [slidePath] = (await readProject(id)).slides as string[];
+    const migratedSlide = (await registry.dispatch<{ content: string }>("cat", { id, path: slidePath })).data!.content;
+
+    // 手動把「已遷移」的檔案再包一次、重新開啟，模擬第二次 open 同一份已升
+    // 版的簡報——遷移函式的 formatVersion >= 3 early-return 保證不會覆蓋。
+    const projectAfterFirstOpen = await readProject(id);
+    const files: Record<string, Uint8Array> = {
+      "project.json": new TextEncoder().encode(`${JSON.stringify(projectAfterFirstOpen, null, 2)}\n`),
+      "assets/": new Uint8Array(0),
+      [slidePath]: new TextEncoder().encode(migratedSlide),
+    };
+    const zipped = zipSync(files);
+    const secondPath = path.join(comotDir, "reopen.comot");
+    await writeFile(secondPath, zipped);
+
+    const reopened = await registry.dispatch<{ id: string }>("open", { path: secondPath });
+    const reopenedContent = (await registry.dispatch<{ content: string }>("cat", { id: reopened.data!.id, path: slidePath }))
+      .data!.content;
+    expect(reopenedContent).toBe(migratedSlide);
   });
 });

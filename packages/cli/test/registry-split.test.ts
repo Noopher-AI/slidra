@@ -22,6 +22,7 @@ const EXPECTED_COMMAND_NAMES = [
   "text list set",
   "textbox add",
   "textbox width",
+  "textbox align",
   "convert",
   "undo",
   "redo",
@@ -51,11 +52,14 @@ const EXPECTED_COMMAND_NAMES = [
   "slide duplicate",
   "slide move",
   "slide notes set",
+  "slide style set",
   "template add",
   "template list",
   "template rename",
   "template delete",
-  "presentation transition set",
+  // [E2.T11]: replaces `presentation transition set` (removed).
+  "slide transition set",
+  "presentation canvas set",
   // [E2.T7]: the effect command family (NOOP-66/#206).
   "effect add",
   "effect remove",
@@ -84,6 +88,15 @@ const EXPECTED_COMMAND_NAMES = [
   "table bind",
   "table refresh",
   "table set",
+  // E2.T12: the chart command family (#204).
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
 ];
 
 /** Reads the registry's private definition map without changing registry.ts's public API. */
@@ -93,12 +106,12 @@ function registeredNames(registry: CommandRegistry): string[] {
 }
 
 describe("createDefaultRegistry command surface", () => {
-  it("registers exactly the 67 known command names — no more, no fewer", () => {
+  it("registers exactly the 78 known command names — no more, no fewer", () => {
     const registry = createDefaultRegistry();
     const actual = [...registeredNames(registry)].sort();
     const expected = [...EXPECTED_COMMAND_NAMES].sort();
 
-    expect(EXPECTED_COMMAND_NAMES.length).toBe(67);
+    expect(EXPECTED_COMMAND_NAMES.length).toBe(78);
     expect(new Set(actual).size).toBe(actual.length); // sanity: no duplicate registrations
     expect(actual).toEqual(expected);
   });

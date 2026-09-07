@@ -62,7 +62,9 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element distribute",
   "element order",
   "element style set",
-  "presentation transition set",
+  // [E2.T11] replaces the presentation-wide `presentation transition set`
+  // with the per-slide `slide transition set`.
+  "slide transition set",
   // [E4.T7] 的範本管理對話框加入這四條。
   "template add",
   "template list",
@@ -105,6 +107,20 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "table bind",
   "table refresh",
   "table set",
+  // E2.T12 的圖表插入面板、資料視窗與其八條命令。
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
+  // #200 (NOOP-69) 的樣式面板加入這三條：文字框對齊、頁面樣式（背景／強調
+  // 色）、頁面尺寸。
+  "textbox align",
+  "slide style set",
+  "presentation canvas set",
 ];
 
 /**

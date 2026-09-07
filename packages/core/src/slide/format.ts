@@ -2,6 +2,7 @@ import { CoMotionError } from "../errors.js";
 import { parseTransform, type Matrix } from "../geometry/transform.js";
 import { MAX_CONTAINER_DEPTH } from "../geometry/bbox.js";
 import { readTextAlign, unescapeXmlText } from "../element-text.js";
+import { readSlidePageStyle, type PageStyle } from "../slide-style.js";
 import { readTextBoxRuns, type TextRun } from "../text/runs.js";
 import { attributeValue, positionAt, scanDocument, type ScannedNode } from "./scan.js";
 import { describeTableShapeProblem, readTableModel, TABLE_CONTAINER_TYPE, type TableModel } from "../table/model.js";
@@ -58,11 +59,15 @@ export const CONTAINER_ATTRIBUTES: readonly string[] = [
   // break tests that assert on it. Locking is a container-level boolean —
   // see element-text.ts's `assertNotLocked` for the one guard this powers.
   "data-comot-lock",
-  // Appended at the end too, same reason (E2.T14): marks a container as a
-  // table (chart's `data-comot-type="chart"` shares the same attribute —
-  // see `walkContainer`'s table branch below).
+  // Appended at the end too, same reason (E2.T12/E2.T14): marks a container
+  // as holding a chart (`<comot:chart>` + rendered `<svg>`) or a table
+  // (`<comot:source>` + `<g data-comot-cell>` cells) — the only places
+  // ADR-0012's "one or more primitives" rule is relaxed (see `walkContainer`).
   "data-comot-type",
 ];
+
+/** The value `data-comot-type` takes on a chart container (E2.T12). */
+export const CHART_CONTAINER_TYPE = "chart";
 
 /** Re-exported so callers of `slide/index.ts`'s barrel keep working — the constant's home is `table/model.ts` (E2.T14), imported here rather than duplicated to avoid a second definition of the same string drifting apart. */
 export { TABLE_CONTAINER_TYPE };
@@ -87,7 +92,9 @@ export type SlideElementKind =
   /** One container holding several primitives (ADR-0012 allows "one or more primitives"). */
   | "compound"
   /** A table container: `data-comot-type="table"` holding an optional `<comot:source>` plus `<g data-comot-cell>` children (E2.T14). */
-  | "table";
+  | "table"
+  /** A chart container: `data-comot-type="chart"` holding `<comot:chart>` + rendered `<svg>` (E2.T12). */
+  | "chart";
 
 export interface SlidePrimitive {
   /** Tag name, lower-cased. */
@@ -182,6 +189,8 @@ export const TEXT_HEIGHT_ATTRIBUTE = "data-comot-text-height";
 export interface SlideModel {
   viewBox: { x: number; y: number; width: number; height: number };
   elements: SlideElement[];
+  /** #200 §4.4: the slide's Page style (background/accent), read off the root `<svg>`'s own `style` attribute. */
+  pageStyle: PageStyle;
 }
 
 export type ComplianceCode =
@@ -197,7 +206,8 @@ export type ComplianceCode =
   | "missing-viewbox"
   | "too-deep"
   | "malformed-markup"
-  | "invalid-table-shape";
+  | "invalid-table-shape"
+  | "invalid-chart-shape";
 
 export interface ComplianceIssue {
   code: ComplianceCode;
@@ -339,6 +349,30 @@ export function checkSlideCompliance(svg: string): ComplianceIssue[] {
       return;
     }
 
+    // A chart container relaxes ADR-0012's normal partition (E2.T12): its
+    // two legal children are the data element `<comot:chart>` and the
+    // rendered `<svg>`, neither of which is a `<g>` or a slide primitive.
+    // This is purely a structural check — `<comot:chart>`'s own attributes
+    // and child shape (series/categories) are validated by
+    // `chart/model.ts`'s `readChart` when a `chart` command runs, not here.
+    if (attributeValue(element, "data-comot-type") === CHART_CONTAINER_TYPE) {
+      const others = children.filter((child) => child.tag !== "comot:chart" && child.tag !== "svg");
+      for (const other of others) {
+        if (!FORBIDDEN_TAGS.includes(other.tag)) reportUnknown(other);
+      }
+      const chartTags = children.filter((child) => child.tag === "comot:chart");
+      const svgTags = children.filter((child) => child.tag === "svg");
+      if (chartTags.length !== 1 || svgTags.length !== 1) {
+        report(
+          element,
+          "invalid-chart-shape",
+          `圖表容器${id ? ` ${id} ` : ""}必須恰好包含一個 <comot:chart> 與一個內嵌 <svg>。`,
+          id,
+        );
+      }
+      return;
+    }
+
     const containers = children.filter((child) => child.tag === "g");
     const primitives = children.filter((child) => SLIDE_PRIMITIVE_TAGS.includes(child.tag));
     const others = children.filter(
@@ -458,7 +492,7 @@ export function parseSlide(svg: string, slidePath = "投影片"): SlideModel {
     .filter((child) => child.tag === "g")
     .map((child) => toElement(child, svg));
 
-  return { viewBox: { x, y, width, height }, elements };
+  return { viewBox: { x, y, width, height }, elements, pageStyle: readSlidePageStyle(svg) };
 }
 
 /**
@@ -503,6 +537,7 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
   let kind: SlideElementKind;
   if (isTable) kind = "table";
   else if (isGroup) kind = "group";
+  else if (attributeValue(element, "data-comot-type") === CHART_CONTAINER_TYPE) kind = "chart";
   else if (primitives.length === 1) kind = primitives[0].tag as SlideElementKind;
   else kind = "compound";
 

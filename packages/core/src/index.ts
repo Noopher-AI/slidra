@@ -21,7 +21,7 @@ export {
   renameTemplate,
   deleteTemplate,
   setNotes,
-  setTransition,
+  setSlideTransitionOn,
   addComment,
   editComment,
   deleteComment,
@@ -35,7 +35,11 @@ export type {
   AddTemplateInput,
   AddTemplateResult,
   SlideCommentWithPath,
+  SetSlideTransitionOnInput,
 } from "./slide-ops.js";
+export type { PageStyle, PageStyleUpdate } from "./slide-style.js";
+export { setSlideViewBox, setPresentationCanvas, assertValidCanvasDimension } from "./presentation-canvas.js";
+export type { PresentationCanvasResult } from "./presentation-canvas.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
 export {
@@ -60,8 +64,11 @@ export {
   listPresentationEntries,
   setElementText,
   writePresentationFile,
+  writePresentationFileWithoutHistory,
   addTextBox,
   setTextBoxWidth,
+  setTextBoxAlign,
+  setSlidePageStyle,
   setSlideTextRunStyle,
   setSlideParagraphList,
   insertSlideElement,
@@ -105,6 +112,14 @@ export {
   bindSlideTableSource,
   refreshSlideTableSource,
   setSlideTable,
+  createSlideChart,
+  setSlideChartData,
+  setSlideChartType,
+  setSlideChartPalette,
+  setSlideChartAxis,
+  setSlideChartStack,
+  setSlideChartLegend,
+  setSlideChartOption,
 } from "./workspace.js";
 export type {
   AddTextBoxInput,
@@ -112,6 +127,7 @@ export type {
   SetSlideTableCellStyleInput,
   MergeSlideTableCellsInput,
   SetSlideTableInput,
+  SetSlideChartDataInput,
 } from "./workspace.js";
 export * from "./table/index.js";
 export type { TextRunStyleUpdate, ListKind } from "./element-text.js";
@@ -154,6 +170,7 @@ export {
   removeEffectsTargeting,
 } from "./effects/edit.js";
 export type { AddEffectInput, SetEffectInput } from "./effects/edit.js";
+export * from "./chart/index.js";
 export {
   recordSnapshot,
   beginHistoryGroup,

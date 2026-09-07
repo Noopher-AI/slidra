@@ -12,8 +12,6 @@
 
    Categories intentionally NOT brought in here (see the PR body /
    issue for the full rationale):
-     - `accent.palette.*` (brand/cool/warm chart colour palettes) —
-       out of scope, belongs to a future chart ticket.
      - "字級（投影片，容器單位）" — the slide-*content* font sizes
        (cqw-relative). That's presentation content rendered onto a
        slide, not product UI chrome; it does not belong in a CSS
@@ -124,6 +122,32 @@
   --ok-bg: #eaf6ee; /* Done 徽章底色 */
   --info: #5b6dea; /* PDF+ 標籤、圖表第二色 */
   --info-bg: #eef0fd;
+
+  /* E2.T12: `accent.palette.*` — each doc cell packs six hex colours into
+     one token path, split six ways the same way `ok`/`info` split above.
+     The GUI (Chart 插入面板、資料視窗調色盤) reads these as `var(--…)`
+     (design-contract.test.ts forbids literal hex in packages/web/src);
+     `packages/core/src/chart/render.ts` is OUTSIDE that scan and must
+     write the same six values as literal hex — the rendered SVG has to be
+     self-contained, it cannot depend on this stylesheet. */
+  --accent-palette-brand-1: #c8233b;
+  --accent-palette-brand-2: #5b6dea;
+  --accent-palette-brand-3: #4a8f45;
+  --accent-palette-brand-4: #e08a2e;
+  --accent-palette-brand-5: #2b9e75;
+  --accent-palette-brand-6: #a9b0b8;
+  --accent-palette-cool-1: #5b6dea;
+  --accent-palette-cool-2: #2b9e75;
+  --accent-palette-cool-3: #38bdf8;
+  --accent-palette-cool-4: #a78bfa;
+  --accent-palette-cool-5: #22c55e;
+  --accent-palette-cool-6: #94a3b8;
+  --accent-palette-warm-1: #c8233b;
+  --accent-palette-warm-2: #e08a2e;
+  --accent-palette-warm-3: #f4c542;
+  --accent-palette-warm-4: #d9634c;
+  --accent-palette-warm-5: #b45309;
+  --accent-palette-warm-6: #a9b0b8;
 
   /* ── 字體 ──────────────────────────────────────────────────────── */
   --font-ui: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;

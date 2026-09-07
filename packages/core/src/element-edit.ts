@@ -13,6 +13,7 @@ import {
   assertSlideCompliant,
   parseSlide,
   TABLE_CONTAINER_TYPE,
+  CHART_CONTAINER_TYPE,
   TEXT_WIDTH_ATTRIBUTE,
   type SlideElement,
 } from "./slide/format.js";
@@ -117,6 +118,22 @@ function isGroupContainer(node: ScannedNode): boolean {
 function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
   if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
     throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
+  }
+}
+
+/**
+ * A chart container's two children (`<comot:chart>`, the data; `<svg>`,
+ * the rendered picture) are not primitives `element scale`/`element
+ * resize`/`element style set` know how to touch — `<comot:chart>` in
+ * particular is data, not a drawable shape, and rewriting it here would
+ * silently corrupt it (plan §4.4's three guards, E2.T12). Checked before
+ * any of those three ever dispatches on the container's children, so the
+ * error names the real reason instead of `buildPrimitiveScaleSplices`'s
+ * generic "unsupported primitive `<comot:chart>`".
+ */
+function assertNotChartContainer(node: ScannedNode, elementId: string, action: string): void {
+  if (attributeValue(node, "data-comot-type") === CHART_CONTAINER_TYPE) {
+    throw new CoMotionError(`元素 ${elementId} 是圖表，${action}`);
   }
 }
 
@@ -720,6 +737,7 @@ function scaleOneContainer(
       }
     } else {
       assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
+      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
       current = scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
     }
   }
@@ -913,6 +931,7 @@ function resizeOneContainer(
       }
     } else {
       assertNotTableContainer(refreshedNode, currentId, "本版不支援縮放");
+      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
       current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
     }
   }
@@ -1091,6 +1110,7 @@ function setStyleOnContainer(
   const { node } = requireContainer(svgRoot, id);
   assertNotLocked(node, id, force);
   assertNotTableContainer(node, id, "樣式請用 table 命令族調整");
+  assertNotChartContainer(node, id, "樣式請用 chart 命令族調整");
 
   if (isGroupContainer(node)) {
     throw new CoMotionError(`元素 ${id} 是群組，沒有可套用樣式的圖元`);

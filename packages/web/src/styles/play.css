@@ -164,10 +164,13 @@
    合流成同一個檔案。原本的 rgba 字面值換成 tokens.css 對應的語意 token
    （--s-overlay/--line-overlay/--s-overlay-raised/--r-pill/--r-control），
    逐字比對過都是同一個值，像素中性。 ─────────────────────────────── */
+/* [E2.T11] §4.8: 底部置中膠囊（原型 left:50%;bottom:22px;translateX(-50%)），
+   取代 E1.T6 的左下角定位；子節點順序、文字、class 一個字不動。 */
 .play-bar {
   position: absolute;
-  left: calc(var(--u) * 5);
+  left: 50%;
   bottom: calc(var(--u) * 5);
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: var(--u);
@@ -177,6 +180,31 @@
   border-radius: var(--r-pill);
   backdrop-filter: blur(12px);
   z-index: 2;
+}
+
+/* [E2.T11] §4.8: 頂部置中提示膠囊，跟 .play-bar 共用 awake 淡出（PlayChrome
+   自己切 class）。純資訊列，不接受點擊——蓋在它底下的
+   .play-mousemove-catcher 與同層的 .player-notices/.play-bar 都還要收得到
+   點擊。 */
+.play-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--u) * 5);
+  transform: translateX(-50%);
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  border-radius: var(--r-pill);
+  backdrop-filter: blur(12px);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  z-index: 2;
+  opacity: 0;
+  transition: opacity var(--dur-panel) var(--ease-panel);
+  pointer-events: none;
+}
+.play-hint.awake {
+  opacity: 1;
 }
 .play-bar button {
   height: 26px;
@@ -194,6 +222,17 @@
 .play-bar button:not(:disabled):focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: 1px;
+}
+.play-bar .play-toggle-button.leave {
+  height: 32px;
+  border-radius: var(--r-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-weight: 700;
+}
+.play-bar .play-toggle-button.leave:not(:disabled):hover {
+  background: var(--brand-red-hover);
+  color: var(--surface-white);
 }
 
 /* ── 檢視模式的全螢幕離開控制 (從 shell.css 遷入，理由同上) ────────── */

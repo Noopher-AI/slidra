@@ -1011,7 +1011,14 @@
     while (current && current !== document.body) {
       if (scopeEl && current === scopeEl) break;
       var tag = current.tagName ? current.tagName.toLowerCase() : "";
-      if (tag === "svg") break;
+      // The outermost slide <svg> (no `ownerSVGElement` of its own) stops
+      // the walk — nothing above it is selectable. E2.T12 introduced this
+      // codebase's first NESTED <svg> (a chart's embedded rendering,
+      // ADR-0012 amend): `ownerSVGElement` is non-null for it (it points
+      // at the enclosing root svg), so it is walked straight through like
+      // any other container instead of wrongly stopping the search one
+      // level short of the chart's own id-carrying `<g>`.
+      if (tag === "svg" && !current.ownerSVGElement) break;
       // T3 / ADR-0013: a locked element is not selectable at all in view
       // mode, and neither is anything inside it — checking only the
       // resolved `outermost` node let a locked child hide behind an
@@ -1269,6 +1276,17 @@
         }
         return;
       }
+      // E2.T12 plan §3.6: a chart container opens its data window instead
+      // of the group-entry logic below. A chart nested inside a not-yet-
+      // entered group resolves to that GROUP here (findSelectable's
+      // outermost-within-scope rule), so this branch naturally only fires
+      // once the chart itself is the resolved target — the group-drilling
+      // branch below still runs first for the outer dblclick, exactly the
+      // existing "group 鑽入" two-dblclick sequence plan §4.4 asks for.
+      if (target.getAttribute("data-comot-type") === "chart") {
+        post({ event: "dblclick-chart", id: target.getAttribute("id") });
+        return;
+      }
       if (!isGroupContainer(target)) return;
       groupPath.push(target.getAttribute("id"));
       var inner = resolveClickTargetAtEvent(event);
@@ -1429,6 +1447,13 @@
     if (selectedIds.length !== 1) return;
     var el = document.getElementById(selectedIds[0]);
     if (!el) return;
+    // E2.T12 plan §3.6: same keyboard-equivalent-of-double-click reuse, for
+    // a selected chart's data window instead of text editing.
+    if (el.getAttribute("data-comot-type") === "chart") {
+      event.preventDefault();
+      post({ event: "dblclick-chart", id: el.getAttribute("id") });
+      return;
+    }
     if (!el.hasAttribute("data-comot-text-width") && !isPlainTextContainer(el)) return;
     event.preventDefault();
     pendingEditPoint = null;
@@ -1732,6 +1757,13 @@
   // `stage-key`.
   function isRelayedStageKey(event) {
     if (event.key === "Delete" || event.key === "Backspace") return true;
+    // E2.T12: Escape closing the chart data window is a parent-side (React)
+    // concern with no runtime-local meaning of its own — unlike every other
+    // relayed key, this one is on top of, not instead of, the runtime's own
+    // unconditional Escape handling above (text-edit-commit / gesture
+    // cancel / group-path pop / clear-selection), since those and "close
+    // the chart window if one happens to be open" are independent.
+    if (event.key === "Escape") return true;
     var withModifier = event.metaKey || event.ctrlKey;
     if (!withModifier) return false;
     return event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" || event.key === "z" || event.key === "Z";
@@ -1861,6 +1893,34 @@
     updateBoxes();
   }
 
+  /**
+   * E2.T12 plan §3.6 "本地預覽通道": swaps a chart container's embedded
+   * `<svg>` (the sibling of its `<comot:chart>` data element) for the
+   * host-rendered replacement — same "host renders, runtime only
+   * transplants" split `applyPreviewTextbox` uses, so this runtime never
+   * needs its own copy of the chart-drawing math. A container that no
+   * longer exists, or markup that fails to parse as `<svg>`, leaves the
+   * DOM untouched.
+   */
+  function applyPreviewChart(id, markup) {
+    var container = document.getElementById(id);
+    if (!container || typeof markup !== "string") return;
+    var doc = new DOMParser().parseFromString(markup, "image/svg+xml");
+    if (doc.getElementsByTagName("parsererror").length > 0) return;
+    var newSvg = doc.documentElement;
+    if (!newSvg || newSvg.nodeName !== "svg") return;
+    var oldSvg = null;
+    for (var child = container.firstElementChild; child; child = child.nextElementSibling) {
+      if (child.nodeName === "svg") {
+        oldSvg = child;
+        break;
+      }
+    }
+    if (!oldSvg) return;
+    container.replaceChild(document.importNode(newSvg, true), oldSvg);
+    updateBoxes();
+  }
+
   function drawMarquee(rect) {
     if (!rect || typeof rect.x !== "number" || typeof rect.y !== "number") {
       marqueeBox.style.display = "none";
@@ -1886,6 +1946,8 @@
       applyPreviewTextbox(data.id, data.markup, data.width);
     } else if (data.command === "preview-text") {
       applyPreviewText(data.id, data.text);
+    } else if (data.command === "preview-chart") {
+      applyPreviewChart(data.id, data.markup);
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
       // No `markup` means a plain <text> (host side sends it only for a

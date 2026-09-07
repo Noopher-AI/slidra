@@ -11,6 +11,12 @@ export type SubId = "page" | "object";
 export interface SidePanelProps {
   state: CanvasState;
   controller: CanvasController | null;
+  /**
+   * #200: Style › Page 的 Width/Height 欄位需要目前的畫布尺寸——這來自
+   * `project.json`（App.tsx 的 `presentationInfo`），不在 `CanvasState`
+   * 裡（`Stage.tsx` 的 `canvasSize` prop走同一份資料，同一個理由）。
+   */
+  canvasSize: { width: number; height: number } | null;
   /** 對話 UI（ChatPanel.tsx），原樣搬進來——App.tsx 仍然擁有它的 messages/draft 狀態，切分頁不會弄丟它。 */
   chat: ReactNode;
   /**
@@ -45,7 +51,7 @@ const SIDE_TABS: ReadonlyArray<{ id: SideId; label: string }> = [
  * 主分頁（`side`）永遠不會被這個 effect 動到：規格明講「changing selection
  * while side=chat 不自動切 side」，這裡索性讓 side 完全只受使用者點擊控制。
  */
-export function SidePanel({ state, controller, chat, side, sub, onSideChange, onSubChange }: SidePanelProps) {
+export function SidePanel({ state, controller, canvasSize, chat, side, sub, onSideChange, onSubChange }: SidePanelProps) {
   const hasSelection = state.selection.ids.length > 0;
 
   function focusSideTab(id: SideId): void {
@@ -132,9 +138,17 @@ export function SidePanel({ state, controller, chat, side, sub, onSideChange, on
       >
         {side === "chat" && chat}
         {side === "style" &&
-          (sub === "page" ? <StylePagePanel /> : <StyleObjectPanel state={state} controller={controller} />)}
+          (sub === "page" ? (
+            <StylePagePanel pageStyle={state.pageStyle} canvasSize={canvasSize} controller={controller} />
+          ) : (
+            <StyleObjectPanel state={state} controller={controller} />
+          ))}
         {side === "animate" &&
-          (sub === "page" ? <AnimatePagePanel /> : <AnimateObjectPanel state={state} controller={controller} />)}
+          (sub === "page" ? (
+            <AnimatePagePanel state={state} controller={controller} />
+          ) : (
+            <AnimateObjectPanel state={state} controller={controller} />
+          ))}
       </div>
     </div>
   );
