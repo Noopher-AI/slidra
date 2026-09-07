@@ -484,7 +484,12 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
     // AC-r3-2：這是雙擊接線的守衛——雙擊沒接上時 `.chart-window` 開不了，下面兩條必紅。
     expect(await page.locator(".chart-window").count()).toBe(1);
     expect(await page.locator(".chart-window-table tbody tr").count()).toBe(6);
-    await compareScreenshot(page, { name: "data-window", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
+    const statusBarBox = (await page.locator(".status-bar").boundingBox())!;
+    await compareScreenshot(page, {
+      name: "data-window",
+      baselineDir,
+      clip: { x: 0, y: 0, width: VIEWPORT.width, height: Math.round(statusBarBox.y) },
+    });
     const singleBox = (await slideFrame.locator(`#${singleAxisId}`).boundingBox())!;
     // AC-r3-3：單軸 comot:chart 屬性與內嵌 svg 的刻度節點數（左軸 5、右軸 0）。
     const singleAxisData = extractChartData(await readSlide(registry, presentationId), singleAxisId);
