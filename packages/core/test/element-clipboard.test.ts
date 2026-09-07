@@ -379,6 +379,23 @@ describe("raw-form XML legality: text content", () => {
     expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">a &amp; b, &#65;</text></g>', "element")).not.toThrow();
   });
 
+  // [E2.T18r9] r8's `checkTextContent` reused `hasIllegalRawXmlText` but not
+  // `hasIllegalNumericCharacterReference` — `XML_REFERENCE_RE` treats any
+  // `&#…;`/`&#x…;` shape as an "opened" reference without checking the code
+  // point it names, so an illegal numeric reference (NUL here) reached the
+  // written slide as unparsable XML through text content, the same defect
+  // `checkAttributeValue` already guarded against on the attribute side.
+  it("rejects an illegal numeric character reference (&#0;, NUL) in text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">A&#0;B</text></g>', "element")).toThrow(CoMotionError);
+  });
+
+  // A second, non-zero/non-boundary illegal code point (an unpaired UTF-16
+  // surrogate) — confirms the fix closes the entry point generally, not just
+  // for the one code point exercised above.
+  it("rejects an illegal numeric character reference (&#xD800;, surrogate) in text content", () => {
+    expect(() => sanitizeClipboardMarkup('<g id="el-a"><text x="0" y="0">A&#xD800;B</text></g>', "element")).toThrow(CoMotionError);
+  });
+
   it("accepts Chinese text and mixed content across nested <tspan>s, each span checked independently", () => {
     const markup =
       '<g id="el-a"><text x="0" y="0">\n  第一段 &amp; <tspan font-weight="700">重點文字</tspan> 第二段\n</text></g>';

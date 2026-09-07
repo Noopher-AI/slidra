@@ -589,6 +589,7 @@ const XML_REFERENCE_RE = /&(?:amp|lt|gt|quot|apos|#[0-9]+|#[xX][0-9a-fA-F]+);/g;
 function hasIllegalRawXmlText(raw: string): string | null {
   if (raw.includes("<")) return "含有未逸出的 <";
   if (raw.replace(XML_REFERENCE_RE, "").includes("&")) return "含有未開啟合法字元參照的 &";
+  if (hasIllegalNumericCharacterReference(raw)) return "含有非法的 XML 字元參照";
   for (const ch of raw) {
     if (!isLegalXmlCodePoint(ch.codePointAt(0)!)) return "含有 XML 1.0 不允許的字元";
   }
