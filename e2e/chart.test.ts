@@ -386,8 +386,9 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
 
     // --- AC-r3-6（序列化回歸）：把第一條 `chart data set` 的回應延遲 800ms 放行，
     // 其餘不延遲。沒有序列化時，後送出的命令先落地、被延遲的舊 payload 後落地
-    // 覆蓋掉；有序列化時，第二條命令根本還沒送出。未修的 ChartWindow.tsx 在這條
-    // 斷言上必紅（本輪 pod 上實測 3/3 紅），加上 commit 呼叫端的序列化佇列後必綠。
+    // 覆蓋掉；有序列化時，第二條命令根本還沒送出。斷言前先等在途請求落地
+    // （見下方 waitForTimeout），再讀最終狀態：本輪 pod 上實測，拆掉序列化佇列
+    // 10/10 紅（每次都指向這條 toContain）、保留序列化佇列 10/10 綠。
     await page.keyboard.press("Escape");
     await expect.poll(() => page.locator(".chart-window").count()).toBe(0);
     const raceId = await createChartViaCli(registry, presentationId);
@@ -408,6 +409,9 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
       await input.fill(wantValues[i]);
       await input.blur();
     }
+    // 讓所有在途請求先落地再讀最終狀態：`expect.poll` 一看到中間態的正確值就會通過，
+    // 而未序列化時被延遲 800ms 的第一條命令是最後才落地、把 payload 蓋回舊值的那一條。
+    await page.waitForTimeout(3000);
     await expect
       .poll(async () => extractChartData(await readSlide(registry, presentationId), raceId), { timeout: 5_000 })
       .toContain(`values="${wantValues.join(",")}"`);
