@@ -594,6 +594,77 @@ describe("element insert — other kinds", () => {
     const svg = await readSlide(id);
     expect(svg).toContain(`<ellipse cx="10" cy="5" rx="10" ry="5"/>`);
   });
+
+  it("the five pre-existing kinds' output is unchanged byte-for-byte alongside the new video/audio kinds (T3/[E2.T17] regression)", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "path", d: "M0 0L1 1", fill: "#000",
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(`<g id="${result.data!.elementId}"><path d="M0 0L1 1" fill="#000"/></g>`);
+  });
+});
+
+describe("element insert — video/audio ([E2.T17] plan §4.5)", () => {
+  it("--kind video with --href renders a poster <image>, tagged data-comot-type=\"video\"", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "video",
+      x: 720, y: 144, width: 460, height: 432,
+      media: "../assets/clip.webm", href: "../assets/poster.png",
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(
+      `<g id="${result.data!.elementId}" data-comot-media="../assets/clip.webm" data-comot-type="video" transform="translate(720 144)"><image x="0" y="0" width="460" height="432" href="../assets/poster.png"/></g>`,
+    );
+  });
+
+  it("--kind audio with no --href and no --fill falls back to the core default placeholder colour", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "audio",
+      x: 115, y: 403, width: 1050, height: 158, media: "../assets/n.oga",
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(
+      `<g id="${result.data!.elementId}" data-comot-media="../assets/n.oga" data-comot-type="audio" transform="translate(115 403)"><rect x="0" y="0" width="1050" height="158" fill="#c66"/></g>`,
+    );
+  });
+
+  it("--kind video with no --media is legal: data-comot-type is present, data-comot-media is absent", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "video", x: 0, y: 0, width: 10, height: 10,
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(`data-comot-type="video"`);
+    expect(svg).not.toContain(`data-comot-media`);
+    expect(svg).toContain(`fill="#889"`);
+  });
+
+  it("--fill overrides the default placeholder colour when there is no --href", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch<{ elementId: string }>("element insert", {
+      id, slidePath: "slides/001.svg", kind: "video", x: 0, y: 0, width: 10, height: 10, fill: "#123456",
+    });
+    expect(result.ok).toBe(true);
+    const svg = await readSlide(id);
+    expect(svg).toContain(`fill="#123456"`);
+    expect(svg).not.toContain(`fill="#889"`);
+  });
+
+  it("rejects a missing --width the same way rect/ellipse do", async () => {
+    const { id } = await openConvertedPresentation();
+    const result = await registry.dispatch("element insert", {
+      id, slidePath: "slides/001.svg", kind: "audio", x: 0, y: 0, height: 10,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message.length).toBeGreaterThan(0);
+  });
 });
 
 describe("element scale — ellipse/circle/line", () => {

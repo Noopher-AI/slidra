@@ -95,6 +95,21 @@ export async function importDataAssetBytes(id: string, sourceName: string, bytes
   return { path: virtualPath, mimeType: "text/csv", kind: "data" };
 }
 
+/**
+ * [E2.T17] plan §4.3/D5: the format-decision + write half of a URL-sourced
+ * import, factored out of `assetImportCommand` above so `POST /api/asset`'s
+ * new URL mode (asset-upload.ts) can share it without going through
+ * `asset import`'s own `--as csv` branch or its local-path half — the HTTP
+ * endpoint only ever handles the media-asset URL case. Scheme validation
+ * (D5: only `http(s)`, never `file:`/a local path) is the CALLER's job —
+ * this function's own `downloadSource` already only knows how to fetch, it
+ * has no opinion on what schemes are acceptable at that call site.
+ */
+export async function importAssetFromUrl(id: string, url: string, maxBytes?: number): Promise<AssetImportData> {
+  const bytes = await downloadSource(url, maxBytes);
+  return importAssetBytes(id, sourceNameOf(url), bytes);
+}
+
 function sourceNameOf(source: string): string {
   if (URL_PATTERN.test(source)) {
     return decodeURIComponent(path.posix.basename(new URL(source).pathname));
@@ -112,7 +127,18 @@ async function readLocalSource(sourcePath: string): Promise<Uint8Array> {
   }
 }
 
-async function downloadSource(url: string): Promise<Uint8Array> {
+/**
+ * `maxBytes` (optional, [E2.T17] plan §4.3): unused by this module's own
+ * CLI call site (`asset import <url>` is a trusted, human-run local tool,
+ * same posture it has always had) — `POST /api/asset`'s URL mode
+ * (asset-upload.ts) passes its own `MAX_ASSET_BODY_BYTES` through
+ * `importAssetFromUrl` below so a browser-triggered download is bounded the
+ * same way that route's raw-bytes body already is. Checked against
+ * `Content-Length` first (fails fast without buffering when the server is
+ * honest about size), then again after buffering (a missing or lying
+ * header does not get a pass).
+ */
+async function downloadSource(url: string, maxBytes?: number): Promise<Uint8Array> {
   let response: Response;
   try {
     response = await fetch(url);
@@ -122,5 +148,15 @@ async function downloadSource(url: string): Promise<Uint8Array> {
   if (!response.ok) {
     throw new CoMotionError(`無法下載來源，伺服器回應 ${response.status}：${url}`);
   }
-  return new Uint8Array(await response.arrayBuffer());
+  if (maxBytes !== undefined) {
+    const contentLength = response.headers.get("content-length");
+    if (contentLength !== null && Number(contentLength) > maxBytes) {
+      throw new CoMotionError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+    }
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (maxBytes !== undefined && bytes.byteLength > maxBytes) {
+    throw new CoMotionError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+  }
+  return bytes;
 }

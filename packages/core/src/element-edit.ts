@@ -181,7 +181,18 @@ function assertPositiveAfterRounding(value: number, message: string): number {
 // element insert
 // ---------------------------------------------------------------------------
 
-export type InsertElementKind = "rect" | "ellipse" | "line" | "image" | "path";
+export type InsertElementKind = "rect" | "ellipse" | "line" | "image" | "path" | "video" | "audio";
+
+/**
+ * [E2.T17]: default placeholder fill for a `video`/`audio` insert that has
+ * neither `--href` (a poster image) nor `--fill` — carried over verbatim
+ * from the front end's pre-existing `insertImportedAsset()` colours
+ * (`packages/web/src/App.tsx`'s `#889`/`#c66`), now living here because a
+ * literal hex value is not allowed anywhere under `packages/web`
+ * (`design-contract.test.ts`).
+ */
+const DEFAULT_VIDEO_FILL = "#889";
+const DEFAULT_AUDIO_FILL = "#c66";
 
 export interface InsertElementInput {
   kind: InsertElementKind;
@@ -305,6 +316,30 @@ export function insertElement(
         containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
       }
       native = `<path d="${escapeXmlAttr(input.d)}"${fillAttr}${strokeAttr}/>`;
+      break;
+    }
+    // [E2.T17] plan §4.5: a video/audio placeholder carries `data-comot-type`
+    // so the stage media layer and future tooling can tell it apart from a
+    // plain rect/image without guessing off `data-comot-media`'s extension
+    // alone. With `--href` it renders as a poster `<image>` (ADR-0005); without
+    // one, a coloured `<rect>` — `--fill`'s own default only applies here,
+    // never to the five pre-existing kinds above.
+    case "video":
+    case "audio": {
+      const x = requireFiniteNumber(input.x, "x");
+      const y = requireFiniteNumber(input.y, "y");
+      const width = requirePositiveNumber(input.width, "width");
+      const height = requirePositiveNumber(input.height, "height");
+      containerAttrs += ` data-comot-type="${input.kind}"`;
+      containerAttrs += ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
+      if (input.href !== undefined) {
+        native = `<image x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" href="${escapeXmlAttr(input.href)}"${fillAttr}${strokeAttr}/>`;
+      } else {
+        const rectFillAttr = input.fill !== undefined
+          ? fillAttr
+          : ` fill="${input.kind === "video" ? DEFAULT_VIDEO_FILL : DEFAULT_AUDIO_FILL}"`;
+        native = `<rect x="0" y="0" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"${rectFillAttr}${strokeAttr}/>`;
+      }
       break;
     }
     default:

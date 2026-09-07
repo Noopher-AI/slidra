@@ -2,7 +2,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
@@ -153,4 +155,95 @@ it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
   expect(status).toBe(400);
   const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
   expect(listed.data!.entries).toEqual([]);
+});
+
+describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
+  let sourceServer: http.Server;
+  let sourceBaseUrl: string;
+
+  beforeEach(async () => {
+    sourceServer = http.createServer((req, res) => {
+      if (req.url === "/photo.png") {
+        res.writeHead(200, { "Content-Type": "image/png" });
+        res.end(PNG_BYTES);
+        return;
+      }
+      res.writeHead(404);
+      res.end("not found");
+    });
+    await new Promise<void>((resolve) => sourceServer.listen(0, "127.0.0.1", resolve));
+    const { port } = sourceServer.address() as AddressInfo;
+    sourceBaseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => sourceServer.close(() => resolve()));
+  });
+
+  async function postAssetUrl(server: RunningServer, url: string): Promise<{ status: number; json: any }> {
+    const response = await fetch(`${server.url}/api/asset`, {
+      method: "POST",
+      headers: { "X-Co-Motion-Asset-Url": encodeURIComponent(url) },
+    });
+    const text = await response.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = text;
+    }
+    return { status: response.status, json };
+  }
+
+  it("下載一張真實圖片並匯入，走與 asset import <url> 相同的格式偵測", async () => {
+    const id = await openDeck("url-upload.comot");
+    const server = await serve(id);
+
+    const { status, json } = await postAssetUrl(server, `${sourceBaseUrl}/photo.png`);
+
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.data).toEqual({ path: "assets/photo.png", mimeType: "image/png", kind: "image" });
+    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
+    expect(listed.data!.entries).toEqual(["photo.png"]);
+  });
+
+  it("拒絕非 http(s) 的 scheme（file:／相對路徑），不落地任何檔案", async () => {
+    const id = await openDeck("url-scheme.comot");
+    const server = await serve(id);
+
+    const { status, json } = await postAssetUrl(server, "file:///etc/passwd");
+
+    expect(status).toBe(400);
+    expect(json.error).toContain("http(s)");
+    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
+    expect(listed.data!.entries).toEqual([]);
+  });
+
+  it("同時提供檔名與 URL 兩個標頭時回 400，不猜哪個優先", async () => {
+    const id = await openDeck("url-both-headers.comot");
+    const server = await serve(id);
+
+    const response = await fetch(`${server.url}/api/asset`, {
+      method: "POST",
+      headers: {
+        "X-Co-Motion-Asset-Name": encodeURIComponent("photo.png"),
+        "X-Co-Motion-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
+      },
+      body: PNG_BYTES,
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("下載失敗（404）回 400，不落地任何檔案", async () => {
+    const id = await openDeck("url-404.comot");
+    const server = await serve(id);
+
+    const { status } = await postAssetUrl(server, `${sourceBaseUrl}/does-not-exist.png`);
+
+    expect(status).toBe(400);
+    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
+    expect(listed.data!.entries).toEqual([]);
+  });
 });

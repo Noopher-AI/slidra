@@ -322,6 +322,20 @@ it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內�
   expect(await readSlide(id)).not.toContain('id="el-a"');
 });
 
+it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投影片（D4：面板 caption 落地成 data-comot-name）", async () => {
+  const id = await openDeck("element-name-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "element name set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], name: "封面影片" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-name="封面影片"');
+});
+
 it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實際改到 project.json", async () => {
   const id = await openDeck("template-commands.comot");
   const server = await serve(id);
