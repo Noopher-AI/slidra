@@ -16,6 +16,8 @@ export const CELL_PADDING_X = 12;
 export const CELL_PADDING_Y = 8;
 export const MIN_ROW_HEIGHT = 32;
 export const DEFAULT_COL_WIDTH = 160;
+/** Narrowest a column may be squeezed to by a boundary drag (`table col width --keep-total`): the two paddings plus room for one glyph. */
+export const MIN_COL_WIDTH = 2 * CELL_PADDING_X + 16;
 export const BODY_FONT_SIZE = 20;
 export const HEADER_FONT_SIZE = 16;
 export const HEADER_FONT_WEIGHT = 700;

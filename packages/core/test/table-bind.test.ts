@@ -82,6 +82,14 @@ describe("table edit — cell/col/row operations (plan §4.2/§4.7)", () => {
     expect(model.cols).toEqual([100, 250]);
   });
 
+  it("col width --keep-total moves the boundary: the right neighbour absorbs the difference, total unchanged", () => {
+    const svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 1, cols: 3, x: 0, y: 0 }, fonts);
+    const widened = setTableColWidth(svg, "slides/001.svg", "el-t", 0, 200, fonts, true);
+    expect(readTableModel(widened, "el-t").cols).toEqual([200, 120, 160]);
+    expect(() => setTableColWidth(svg, "slides/001.svg", "el-t", 0, 310, fonts, true)).toThrow(/最小欄寬/);
+    expect(() => setTableColWidth(svg, "slides/001.svg", "el-t", 2, 200, fonts, true)).toThrow(/最後一欄/);
+  });
+
   it("col insert shifts existing columns right and adds a blank column", () => {
     let svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 2, cols: 2, x: 0, y: 0 }, fonts);
     svg = setTableCellText(svg, "slides/001.svg", "el-t", 0, 1, "right", fonts);

@@ -395,9 +395,10 @@ it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產�
 
     expect(await undoCount(presentationId)).toBe(beforeUndo + 1);
     const svg = await catSlide(registry, presentationId);
-    const firstColWidth = Number(/data-comot-cols="([^"]+)"/.exec(svg)![1].split(" ")[0]);
-    expect(firstColWidth).toBeGreaterThan(200);
-    expect(firstColWidth).toBeLessThan(400); // a 60px drag must not also swallow the well's left offset (was 160 -> ~900)
+    const cols = /data-comot-cols="([^"]+)"/.exec(svg)![1].split(" ").map(Number);
+    expect(cols[0]).toBeGreaterThan(200);
+    expect(cols[0]).toBeLessThan(400); // a 60px drag must not also swallow the well's left offset (was 160 -> ~900)
+    expect(cols[0] + cols[1]).toBeCloseTo(320, 3); // the boundary moved: the right column absorbed the difference
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);

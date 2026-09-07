@@ -568,7 +568,8 @@ export function parseArgv(argv: string[]): ParsedCommand {
         const elementId = requirePositional(args, 2, "table col width", "element-id");
         const col = requireNumberFlag(args, "--col", "table col width");
         const width = requireNumberFlag(args, "--width", "table col width");
-        return { name: "table col width", input: { id, slidePath, elementId, col, width } };
+        const keepTotal = hasFlag(args, "--keep-total");
+        return { name: "table col width", input: { id, slidePath, elementId, col, width, keepTotal } };
       }
 
       if (level1 === "col" && level2 === "insert") {

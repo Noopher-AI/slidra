@@ -7,10 +7,12 @@ export interface TableColWidthInput {
   elementId: string;
   col: number;
   width: number;
+  /** The column to the right absorbs the difference; the table's total width stays. */
+  keepTotal?: boolean;
 }
 export type TableColWidthData = Record<string, never>;
 
 export const tableColWidthCommand: CommandHandler<TableColWidthInput, TableColWidthData> = async (input) => {
-  await setSlideTableColWidth(input.id, input.slidePath, input.elementId, input.col, input.width);
+  await setSlideTableColWidth(input.id, input.slidePath, input.elementId, input.col, input.width, input.keepTotal === true);
   return { ok: true, data: {}, message: `已將 ${input.slidePath} 表格 ${input.elementId} 第 ${input.col} 欄寬度改為 ${input.width}` };
 };

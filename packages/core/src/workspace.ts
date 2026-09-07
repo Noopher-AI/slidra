@@ -1481,6 +1481,7 @@ export async function setSlideTableColWidth(
   elementId: string,
   col: number,
   width: number,
+  keepTotal = false,
 ): Promise<void> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
@@ -1488,7 +1489,7 @@ export async function setSlideTableColWidth(
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
   const fonts = await resolvePresentationFonts(id);
-  const updated = setTableColWidth(original, slidePath, elementId, col, width, fonts);
+  const updated = setTableColWidth(original, slidePath, elementId, col, width, fonts, keepTotal);
   await writePresentationFile(id, slidePath, updated);
 }
 

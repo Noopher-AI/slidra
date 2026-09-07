@@ -2,7 +2,7 @@ import { CoMotionError } from "../errors.js";
 import { assertSlideCompliant } from "../slide/format.js";
 import { attributeValue, scanDocument } from "../slide/scan.js";
 import type { FontMetrics } from "../text-metrics.js";
-import { DEFAULT_COL_WIDTH } from "./layout.js";
+import { DEFAULT_COL_WIDTH, MIN_COL_WIDTH } from "./layout.js";
 import {
   CELL_ALIGNS,
   CELL_FONT_WEIGHTS,
@@ -355,6 +355,8 @@ export function setTableColWidth(
   col: number,
   width: number,
   fonts: ReadonlyMap<string, FontMetrics>,
+  /** `--keep-total`: the column to the right absorbs the difference so the table's total width is unchanged — what dragging a column boundary in the GUI means. */
+  keepTotal = false,
 ): string {
   return updateTable(svgContent, slidePath, elementId, fonts, (model) => {
     if (!Number.isInteger(col) || col < 0 || col >= model.cols.length) {
@@ -364,6 +366,16 @@ export function setTableColWidth(
       throw new CoMotionError(`--width 必須是大於 0 的有限數字：${width}`);
     }
     const cols = model.cols.slice();
+    if (keepTotal) {
+      if (col === model.cols.length - 1) {
+        throw new CoMotionError("--keep-total 需要右邊還有一欄可以吸收差值：最後一欄不適用");
+      }
+      const next = cols[col + 1] - (width - cols[col]);
+      if (next < MIN_COL_WIDTH) {
+        throw new CoMotionError(`右邊那欄會小於最小欄寬 ${MIN_COL_WIDTH}：${next}`);
+      }
+      cols[col + 1] = next;
+    }
     cols[col] = width;
     return { ...model, cols };
   });

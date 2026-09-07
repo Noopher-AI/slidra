@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { TableModel } from "@co-motion/core";
 import type { CanvasController, TableRuntimeEvent } from "../../canvas.js";
 import {
+  MIN_COL_WIDTH,
   cellRectAt,
   cellsInRange,
   columnBoundaryPositions,
@@ -111,21 +112,27 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
     const k = pxPerUnit(boxRect, colDrag!.widths);
     const scaled = colDrag!.widths.map((w) => w * k);
     const startX = columnBoundaryPositions(boxRect.x, scaled)[colDrag!.col] - scaled[colDrag!.col];
-    return Math.max(1, (event.clientX - startX) / k);
+    const pairTotal = colDrag!.widths[colDrag!.col] + colDrag!.widths[colDrag!.col + 1];
+    // The boundary moves between the two columns it separates: neither may shrink below MIN_COL_WIDTH.
+    return Math.min(Math.max((event.clientX - startX) / k, MIN_COL_WIDTH), pairTotal - MIN_COL_WIDTH);
+  }
+
+  /** Widths for the live preview: the dragged column at `width`, its right neighbour absorbing the difference (same as `table col width --keep-total`). */
+  function pairedWidths(width: number): number[] {
+    const delta = width - colDrag!.widths[colDrag!.col];
+    return colDrag!.widths.map((w, i) => (i === colDrag!.col ? width : i === colDrag!.col + 1 ? w - delta : w));
   }
 
   function handleColPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
     if (!colDrag || !cellData) return;
-    const width = dragWidth(event);
-    const nextWidths = colDrag.widths.map((w, i) => (i === colDrag.col ? width : w));
-    controller?.previewTableCols(tableId, nextWidths);
+    controller?.previewTableCols(tableId, pairedWidths(dragWidth(event)));
   }
 
   function handleColPointerUp(event: React.PointerEvent<HTMLDivElement>): void {
     if (!colDrag || !cellData) return;
     const width = dragWidth(event);
     setColDrag(null);
-    void run("table col width", { col: colDrag.col, width });
+    void run("table col width", { col: colDrag.col, width, keepTotal: true });
   }
 
   function wellOffset(): { x: number; y: number } {
