@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,34 +9,60 @@ import { agentSettingsPath } from "../../src/agent/settings.js";
 // NOOP-230: serve must always start, whether or not an agent is selected —
 // "no agent" (or "selected but not logged in") is a supported state, never
 // a startup failure (inverting the old detect/select-driven exit(1) this
-// file used to guard). Driven through the real `runServeCli` entry point,
-// against the real `claude`/`codex` CLIs already installed in this sandbox
-// (both report logged-out here — see the ticket's own §3.3 research) rather
-// than an injected probe: `AgentAvailability` collapses "not installed" and
-// "not logged in" into the same `unauthenticated` state (decision §7.3), so
-// this is a faithful, environment-independent exercise of the same path
-// either way.
+// file used to guard). Driven through the real `runServeCli` entry point —
+// `cli.ts` exposes no injection seam for `AgentManager`'s `CommandRunner`
+// (that seam is `serve.ts`'s `ServeOptions.agentManager`, test-only and
+// never reached from `runServeCli`) — this file puts fake `claude`/`codex`
+// executables ahead of the real ones on `PATH` instead (see `beforeEach`
+// below), so every test here reports "not logged in" deterministically,
+// regardless of whether this pod's real CLIs happen to be logged in.
+// `AgentAvailability` collapses "not installed" and "not logged in" into
+// the same `unauthenticated` state (decision §7.3), so this is a faithful
+// exercise of the same path a real not-logged-in CLI would take.
 //
 // `runServeCli` blocks until SIGINT/SIGTERM (real CLI usage) — tests start
 // it, wait for its one "已啟動" console.log line, then synthesize SIGINT via
 // `process.emit` (fires the listener without invoking the OS default/
 // killing this test process) to let it shut down cleanly.
 
+const FAKE_CLAUDE_NOT_LOGGED_IN = '#!/bin/sh\necho \'{"loggedIn":false}\'\nexit 0\n';
+const FAKE_CODEX_NOT_LOGGED_IN = "#!/bin/sh\necho 'Not logged in'\nexit 1\n";
+
 let home: string;
 let comotDir: string;
+let fakeCliDir: string;
+let originalPath: string | undefined;
 let registry: CommandRegistry;
+
+/** Writes fake `claude`/`codex` scripts, both reporting "not logged in", into a fresh temp dir. */
+async function writeFakeCli(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-fake-cli-"));
+  const claudePath = path.join(dir, "claude");
+  const codexPath = path.join(dir, "codex");
+  await writeFile(claudePath, FAKE_CLAUDE_NOT_LOGGED_IN);
+  await chmod(claudePath, 0o755);
+  await writeFile(codexPath, FAKE_CODEX_NOT_LOGGED_IN);
+  await chmod(codexPath, 0o755);
+  return dir;
+}
 
 beforeEach(async () => {
   home = await mkdtemp(path.join(tmpdir(), "co-motion-cli-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cli-files-"));
   process.env.CO_MOTION_HOME = home;
   registry = createDefaultRegistry();
+
+  fakeCliDir = await writeFakeCli();
+  originalPath = process.env.PATH;
+  process.env.PATH = `${fakeCliDir}${path.delimiter}${originalPath ?? ""}`;
 });
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
+  process.env.PATH = originalPath;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(fakeCliDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
@@ -101,13 +127,18 @@ describe("runServeCli", () => {
     const id = await openFreshPresentation();
 
     const cli = await startCli([id, "--port", "0", "--agent", "claude"]);
-    expect(cli.logs[0]).toContain("CoMotion 已啟動：");
-    const agentLines = cli.logs.filter((line) => line.startsWith("使用的 agent") || line.includes("尚未選擇 agent"));
-    expect(agentLines).toHaveLength(1);
-    expect(agentLines[0]).toContain("Claude Code");
-    expect(agentLines[0]).toContain("claude auth login");
-
-    expect(await cli.shutdown()).toBe(0);
+    try {
+      expect(cli.logs[0]).toContain("CoMotion 已啟動：");
+      const agentLines = cli.logs.filter((line) => line.startsWith("使用的 agent") || line.includes("尚未選擇 agent"));
+      expect(agentLines).toHaveLength(1);
+      expect(agentLines[0]).toContain("Claude Code");
+      expect(agentLines[0]).toContain("claude auth login");
+    } finally {
+      // Guarantees the server is closed (and its SIGTERM listener removed)
+      // even when an assertion above throws — otherwise a failed run leaks
+      // a live server into the rest of the suite.
+      expect(await cli.shutdown()).toBe(0);
+    }
   });
 
   it("no agent selected at all (no --agent, no settings.json): serve still starts, exits 0, and says so", async () => {
