@@ -275,8 +275,8 @@ const SANITIZE_PLACEHOLDER_VIEWBOX = "0 0 1280 720";
 
 /** Attribute values matching any of these schemes are never legal in pasted content — none of them can point at same-document data. */
 const DANGEROUS_SCHEME = /\b(javascript|data|file|ftp|blob):/i;
-/** An `http(s)://` reference anywhere in the value, or a protocol-relative `//` anywhere in the value (Plan §7.2: unanchored on purpose — both a leading and a mid-value protocol-relative reference resolve to the same external host, so there is no reason to only catch the former). Unanchored on the scheme half too: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. */
-const ABSOLUTE_URL = /\bhttps?:\/\/|\/\//i;
+/** An `http(s)://` reference anywhere in the value, or a protocol-relative `//` anywhere in the value (Plan §7.2: unanchored on purpose — both a leading and a mid-value protocol-relative reference resolve to the same external host, so there is no reason to only catch the former). Unanchored on the scheme half too: an absolute URL in the middle of a value (`"x https://evil.example/y"`) is still an external reference. Backslash-tolerant: WHATWG URL parsing treats `\` as equivalent to `/` for any special scheme (http/https included), so `https:\\evil.example` and `\\evil.example` resolve exactly like their forward-slash forms in a browser. */
+const ABSOLUTE_URL = /\bhttps?:[/\\]{2}|[/\\]{2}/i;
 /** `url(...)` references — only a same-document fragment (`#foo`) is legal. */
 const URL_FUNCTION = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
 
@@ -331,10 +331,10 @@ const EFFECT_ATTRIBUTE_WHITELIST: ReadonlySet<string> = new Set<keyof RawEffectA
   "d",
 ]);
 
-/** [B10] Whitelist, not blacklist, for `href`/`xlink:href`/`src` — the only attributes `assertSlideCompliant`'s primitive whitelist lets a renderer actually fetch through. Only a same-document fragment (`#…`) or a scheme-less, `//`-less relative path is legal; anything with a `:` (an explicit scheme, with or without the `//` a browser's URL parser does not require — e.g. `https:evil.example`) or a `//` (protocol-relative) is an external reference. A blacklist of schemes can always be enumerated around; this shape cannot. */
+/** [B10] Whitelist, not blacklist, for `href`/`xlink:href`/`src` — the only attributes `assertSlideCompliant`'s primitive whitelist lets a renderer actually fetch through. Only a same-document fragment (`#…`) or a scheme-less, `//`-less (and `\\`-less, per `ABSOLUTE_URL`'s backslash equivalence) relative path is legal; anything with a `:` or a `\` (an explicit scheme, with or without the `//` a browser's URL parser does not require — e.g. `https:evil.example`) or a `//`/`\\` (protocol-relative) is an external reference. A blacklist of schemes can always be enumerated around; this shape cannot. */
 function isFragmentOrRelativeReference(value: string): boolean {
   if (value === "" || value.startsWith("#")) return true;
-  return !/:|\/\//.test(value);
+  return !/[:\\]|\/\//.test(value);
 }
 
 /**
@@ -371,7 +371,9 @@ function checkAttributeValue(attrName: string, value: string, label: string): vo
     }
   }
 
-  const isUrlAttr = attrName === "href" || attrName === "xlink:href" || attrName === "src";
+  /** Namespace-aware: `xlink:href` is bound by the `xlink` *namespace*, not the literal prefix `xlink:` — a fragment declaring `xmlns:xl="http://www.w3.org/1999/xlink"` and using `xl:href` refers to the identical attribute under a different local prefix, so enumerating the literal prefix string lets that alias bypass the check entirely. */
+  const localName = attrName.slice(attrName.indexOf(":") + 1);
+  const isUrlAttr = localName === "href" || localName === "src";
   if (isUrlAttr && (decodedValue !== value || !isFragmentOrRelativeReference(decodedValue))) {
     throw new CoMotionError(`剪貼簿內容不可信：${label} 的屬性 ${attrName} 不是同文件片段或相對路徑（${value}）`);
   }

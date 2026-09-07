@@ -136,6 +136,12 @@ describe("sanitizeClipboardMarkup", () => {
     ["C23", '<g id="el-a"><image href="&#x110000;abc" width="1" height="1"/></g>'],
     ["C24", '<g id="el-a"><image href="&#99999999999;abc" width="1" height="1"/></g>'],
     ["C25", '<g id="el-a"><rect fill="&#xD800;x" width="1" height="1"/></g>'],
+    ["X1", '<g id="el-a"><image href="\\\\evil.example\\x.png" width="1" height="1"/></g>'],
+    ["X2", '<g id="el-a"><image href="\\/evil.example/x.png" width="1" height="1"/></g>'],
+    [
+      "X4",
+      '<g id="el-a" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https:evil.example/x.png" width="1" height="1"/></g>',
+    ],
   ];
 
   it.each(REJECT_MATRIX)("rejects %s", (_cell, markup) => {

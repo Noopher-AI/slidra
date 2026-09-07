@@ -299,24 +299,46 @@ it("A7：不可信內容貼不進去 — 含 onload 的偽造剪貼簿 SVG 貼�
   expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before);
 });
 
-it("A8：帶實體編碼外部參照的偽造剪貼簿內容貼不進去，且瀏覽器不對 evil.example 發出任何請求", async () => {
-  const started = await start();
-  const page = await openWithClipboard(started);
-  const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
+/**
+ * 三輪繞過樣本各取一個代表性 payload（[E2.T18r2]／[E2.T18r3]／[E2.T18r4] 三輪
+ * Review 累積發現的角度）：任何一格若被漏放行，`page.context().route` 都會
+ * 攔到對 evil.example 的請求並讓 `outbound` 非空。
+ */
+const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> = [
+  ["R1 entity-encoded href", '<g id="el-hostile"><image href="&#104;ttps://evil.example/x.png" width="10" height="10"/></g>'],
+  [
+    "R2 url(...) raw-string bypass",
+    '<g id="el-hostile"><rect width="200" height="200" style="fill:&#x75;rl(&#x2f;&#x2f;evil.example/x.svg#g)"/></g>',
+  ],
+  ["R3 backslash href", '<g id="el-hostile"><image href="\\\\evil.example\\x.png" width="10" height="10"/></g>'],
+  [
+    "R3 xl:href namespace alias",
+    '<g id="el-hostile" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https://evil.example/x.png" width="10" height="10"/></g>',
+  ],
+];
 
-  const outbound: string[] = [];
-  await page.context().route(/evil\.example/, (route) => {
-    outbound.push(route.request().url());
-    return route.abort();
-  });
+it.each(A8_BYPASS_MATRIX)(
+  "A8：%s 的偽造剪貼簿內容貼不進去，且瀏覽器不對 evil.example 發出任何請求",
+  async (_cell, hostileFragment) => {
+    const started = await start();
+    const page = await openWithClipboard(started);
+    const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
 
-  const hostileSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
-    '<g id="el-hostile"><rect width="200" height="200" style="fill:&#x75;rl(&#x2f;&#x2f;evil.example/x.svg#g)"/></g></svg>';
-  await page.evaluate((svg) => navigator.clipboard.writeText(svg), hostileSvg);
-  await page.keyboard.press("Meta+v");
+    const outbound: string[] = [];
+    await page.context().route(/evil\.example/, (route) => {
+      outbound.push(route.request().url());
+      return route.abort();
+    });
 
-  await expect.poll(() => page.locator(".canvas-error-banner").isVisible().catch(() => false), { timeout: 10_000 }).toBe(true);
-  expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before);
-  expect(outbound).toEqual([]);
-});
+    const hostileSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+      hostileFragment +
+      "</svg>";
+    await page.evaluate((svg) => navigator.clipboard.writeText(svg), hostileSvg);
+    await page.keyboard.press("Meta+v");
+
+    await expect.poll(() => page.locator(".canvas-error-banner").isVisible().catch(() => false), { timeout: 10_000 }).toBe(true);
+    expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before);
+    expect(outbound).toEqual([]);
+  },
+);
