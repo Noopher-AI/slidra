@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * ADR-0011 / #56 — selection-runtime.js is deliberately plain, import-free
@@ -28,9 +28,18 @@ afterEach(() => {
   iframe.remove();
 });
 
-/** Boots the runtime inside `iframe`'s own window/document with the given body markup. */
-function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window; doc: Document } {
-  const win = iframe.contentWindow as Window & { __COMOT_SELECTION_COLORS__?: typeof COLORS };
+type StageMediaTable = Record<string, { src: string; kind: "video" | "audio" }>;
+
+/** Boots the runtime inside `iframe`'s own window/document with the given body markup. `media` ([E2.T17] plan §4.4) seeds `window.__COMOT_SELECTION_MEDIA__` the same way canvas.ts's wrapSelectionDocument does — defaulting to an empty table so every pre-existing call site (no media in play) is unaffected. */
+function boot(
+  bodyMarkup: string,
+  colors: typeof COLORS = COLORS,
+  media: StageMediaTable = {},
+): { win: Window; doc: Document } {
+  const win = iframe.contentWindow as Window & {
+    __COMOT_SELECTION_COLORS__?: typeof COLORS;
+    __COMOT_SELECTION_MEDIA__?: StageMediaTable;
+  };
   const doc = iframe.contentDocument as Document;
   doc.body.innerHTML = bodyMarkup;
   // jsdom has no layout engine and does not implement elementFromPoint at all,
@@ -41,8 +50,14 @@ function boot(bodyMarkup: string, colors: typeof COLORS = COLORS): { win: Window
   // The ring's own pixel-tolerance behavior is covered by e2e/visual-qa, not here.
   (doc as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => null;
   win.__COMOT_SELECTION_COLORS__ = colors;
+  win.__COMOT_SELECTION_MEDIA__ = media;
   (win as unknown as { eval: (source: string) => void }).eval(runtimeSource);
   return { win, doc };
+}
+
+/** Fires the runtime's `window.addEventListener("load", buildMediaOverlays)` (plan §4.4) — jsdom does not reliably fire a real `load` event for an iframe document built via `innerHTML`, so tests that need the media layer built dispatch it explicitly, the same way other tests dispatch synthetic keydown/click events on `win`. */
+function fireLoad(win: Window): void {
+  win.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("load"));
 }
 
 /**
@@ -1190,5 +1205,126 @@ describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是�
   it("不帶修飾鍵拖曳一個未選取的元素：送出 additive:false 的 select（既有行為）", async () => {
     const selects = await dragOnto(false);
     expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: false })]);
+  });
+});
+
+describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", () => {
+  function stubMediaPlayback(win: Window): void {
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    MediaProto.play = () => Promise.resolve();
+    MediaProto.pause = () => {
+      /* jsdom stub — see player-runtime.test.ts for the same pattern. */
+    };
+  }
+
+  it("對 media 表裡的每個 id 建一個 <video>/<audio> 覆蓋層與控制列，且媒體本身 pointer-events:none、控制列 pointer-events:auto", async () => {
+    const { win, doc } = boot('<svg><rect id="el-video"/><circle id="el-audio"/></svg>', COLORS, {
+      "el-video": { src: "../assets/clip.webm", kind: "video" },
+      "el-audio": { src: "../assets/n.oga", kind: "audio" },
+    });
+    fireLoad(win);
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const video = host.shadowRoot!.querySelector("video") as HTMLVideoElement;
+    const audio = host.shadowRoot!.querySelector("audio") as HTMLAudioElement;
+    expect(video.src).toContain("clip.webm");
+    expect(audio.src).toContain("n.oga");
+    // Inline + !important, same convention as `host`'s own critical
+    // properties — checked directly rather than via getComputedStyle,
+    // which jsdom does not reliably resolve for shadow-root stylesheet
+    // rules (see e2e/visual-qa for the real-browser rendering check).
+    expect(video.style.getPropertyValue("pointer-events")).toBe("none");
+    expect(video.style.getPropertyPriority("pointer-events")).toBe("important");
+    const bars = host.shadowRoot!.querySelectorAll(".media-control-bar");
+    expect(bars.length).toBe(2);
+    const bar = bars[0] as HTMLElement;
+    expect(bar.style.getPropertyValue("pointer-events")).toBe("auto");
+  });
+
+  it("控制列帶 data-comot-media-control=\"play\"／\"seek\" 屬性", async () => {
+    const { win, doc } = boot('<svg><rect id="el-video"/></svg>', COLORS, {
+      "el-video": { src: "../assets/clip.webm", kind: "video" },
+    });
+    fireLoad(win);
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    expect(host.shadowRoot!.querySelector('[data-comot-media-control="play"]')).not.toBeNull();
+    expect(host.shadowRoot!.querySelector('[data-comot-media-control="seek"]')).not.toBeNull();
+  });
+
+  it("點控制列不改變選取：先選好一個元素，再點 play 鈕，selectedIds 不變、也不會多送一次 select/clear", async () => {
+    const { win, doc } = boot('<svg><rect id="el-a"/><rect id="el-video"/></svg>', COLORS, {
+      "el-video": { src: "../assets/clip.webm", kind: "video" },
+    });
+    stubMediaPlayback(win);
+    fireLoad(win);
+    click(doc, doc.getElementById("el-a")!);
+    await tick();
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const box = host.shadowRoot!.querySelector(".sel") as HTMLElement;
+    expect(box.style.display).toBe("block");
+
+    const { messages, stop } = collectMessages();
+    const playButton = host.shadowRoot!.querySelector('[data-comot-media-control="play"]') as HTMLElement;
+    click(doc, playButton);
+    await tick();
+    stop();
+
+    expect(box.style.display).toBe("block"); // el-a 仍是選取中的框，沒有被清掉或換掉
+    expect((messages as { event?: string }[]).some((m) => m.event === "select" || m.event === "clear")).toBe(false);
+  });
+
+  it("按 play 呼叫 el.play()；再按一次（此時已在播放）呼叫 el.pause()", async () => {
+    // jsdom does not implement real media playback — `.paused` never
+    // toggles on its own the way a real browser's would, so this stubs it
+    // as a settable property the play/pause spies themselves flip, the
+    // same "fake just enough of the platform" posture
+    // player-runtime.test.ts already uses for HTMLMediaElement.
+    const { win, doc } = boot('<svg><rect id="el-video"/></svg>', COLORS, {
+      "el-video": { src: "../assets/clip.webm", kind: "video" },
+    });
+    const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
+      .prototype;
+    let isPaused = true;
+    Object.defineProperty(MediaProto, "paused", { configurable: true, get: () => isPaused });
+    const playSpy = vi.fn(() => {
+      isPaused = false;
+      return Promise.resolve();
+    });
+    const pauseSpy = vi.fn(() => {
+      isPaused = true;
+    });
+    MediaProto.play = playSpy;
+    MediaProto.pause = pauseSpy;
+    fireLoad(win);
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const playButton = host.shadowRoot!.querySelector('[data-comot-media-control="play"]') as HTMLElement;
+
+    click(doc, playButton);
+    await tick();
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(pauseSpy).not.toHaveBeenCalled();
+
+    click(doc, playButton);
+    await tick();
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("media 表是空物件時，shadow root 裡不建立任何 <video>/<audio>／控制列（不影響既有選取行為）", async () => {
+    const { win, doc } = boot('<svg><rect id="el-a"/></svg>', COLORS, {});
+    fireLoad(win);
+
+    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    expect(host.shadowRoot!.querySelector("video")).toBeNull();
+    expect(host.shadowRoot!.querySelector("audio")).toBeNull();
+    expect(host.shadowRoot!.querySelector(".media-control-bar")).toBeNull();
+
+    click(doc, doc.getElementById("el-a")!);
+    const box = host.shadowRoot!.querySelector(".sel") as HTMLElement;
+    expect(box.style.display).toBe("block");
   });
 });

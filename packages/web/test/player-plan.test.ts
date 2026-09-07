@@ -5,6 +5,7 @@ import {
   hideSelectorsFor,
   renderHideStyle,
   renderPlanScript,
+  stageMediaFor,
   VIDEO_EXTENSIONS,
 } from "../src/player-plan.js";
 // Cross-package: the server's own MIME table must agree with this player's
@@ -325,5 +326,53 @@ describe("renderPlanScript：完整走過注入鏈路的重建（不只是 compu
     // property names) — confirmed unaffected, not just assumed.
     expect(reconstructed.hidden).toEqual(plan.hidden);
     expect(reconstructed.steps).toEqual(plan.steps);
+  });
+});
+
+describe("stageMediaFor（[E2.T17] plan §4.4：舞台媒體層的 kind 判定，留在 parent）", () => {
+  it("元素有 data-comot-type 時，用它當 kind（不看副檔名）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="el-1" data-comot-type="audio" data-comot-media="assets/clip.mp4"></g>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({ "el-1": { src: "assets/clip.mp4", kind: "audio" } });
+  });
+
+  it("沒有 data-comot-type 時，靠副檔名判斷（media-deck/demo 004 兩份既有 fixture 能運作的唯一理由）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <rect id="el-1" data-comot-media="../assets/clip.webm"/>
+  <circle id="el-2" data-comot-media="../assets/narration.oga"/>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({
+      "el-1": { src: "../assets/clip.webm", kind: "video" },
+      "el-2": { src: "../assets/narration.oga", kind: "audio" },
+    });
+  });
+
+  it("data-comot-media 指向圖片副檔名時跳過，不拋錯（style-panel-deck 的 PNG）", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <image id="el-1" data-comot-media="../assets/photo.png"/>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
+  });
+
+  it("副檔名不認得時跳過，不拋錯", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <g id="el-1" data-comot-media="assets/mystery.xyz"></g>
+</svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
+  });
+
+  it('id 是 "__proto__" 時仍正確產生對應項（不是被原型污染吃掉的空物件）', () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
+</svg>`;
+    const result = stageMediaFor(svg);
+    expect(Object.prototype.hasOwnProperty.call(result, "__proto__")).toBe(true);
+    expect(result["__proto__"]).toEqual({ src: "assets/clip.mp4", kind: "video" });
+  });
+
+  it("沒有任何媒體元素時回傳空表", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><g id="el-1"><rect width="10" height="10"/></g></svg>`;
+    expect(stageMediaFor(svg)).toEqual({});
   });
 });

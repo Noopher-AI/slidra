@@ -322,6 +322,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           slidePath={state.currentIndex >= 0 ? state.slides[state.currentIndex] : null}
           onAnimationAdded={onEditAnimation}
           canvasSize={canvasSize}
+          pageStyle={state.pageStyle}
         />
       )}
       {children}

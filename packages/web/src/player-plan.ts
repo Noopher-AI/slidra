@@ -137,6 +137,55 @@ function mediaKindFor(src: string, target: string): "video" | "audio" {
   );
 }
 
+export interface StageMediaEntry {
+  /** The raw `data-comot-media` value, unmodified — same contract as `MediaCue.src`. */
+  src: string;
+  kind: "video" | "audio";
+}
+
+/**
+ * [E2.T17] plan §4.4: the stage (view-mode) counterpart of `mediaCuesFor`,
+ * but scanning every `data-comot-media` element in the slide rather than
+ * only the ones a `family="media"` effect points at — a slide can (and, per
+ * the existing fixtures, does) carry ADR-0005 media placeholders with no
+ * effect on them at all. Kept in this module, not `selection-runtime.js`
+ * (a `?raw`-injected, import-free script — D3), so kind derivation has
+ * exactly one implementation shared with the player.
+ *
+ * Deliberately DOES NOT throw the way `mediaKindFor` does: `mediaCuesFor`
+ * only ever sees elements an author explicitly wired a media effect to, so
+ * an unsupported extension there is a damaged presentation. This function
+ * walks every `data-comot-media` element on the page, image placeholders
+ * (`style-panel-deck`'s photo) included — skipping what it cannot classify
+ * is correct here, not silently degraded.
+ */
+export function stageMediaFor(svgMarkup: string): Record<string, StageMediaEntry> {
+  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+  // Object.create(null): same ADR-0010 untrusted-id reasoning as
+  // mediaCuesFor above — a legal SVG id can be "__proto__".
+  const result: Record<string, StageMediaEntry> = Object.create(null);
+  const elements = doc.querySelectorAll("[data-comot-media]");
+  for (const el of Array.from(elements)) {
+    const id = el.getAttribute("id");
+    const src = el.getAttribute("data-comot-media");
+    if (!id || !src) continue;
+    const declaredType = el.getAttribute("data-comot-type");
+    const kind = declaredType === "video" || declaredType === "audio" ? declaredType : mediaKindForStage(src);
+    if (!kind) continue;
+    result[id] = { src, kind };
+  }
+  return result;
+}
+
+/** Non-throwing counterpart of `mediaKindFor`: an unrecognised extension (an image, or anything else) resolves to `null` rather than an error — see `stageMediaFor`'s own comment for why. */
+function mediaKindForStage(src: string): "video" | "audio" | null {
+  const dot = src.lastIndexOf(".");
+  const extension = dot === -1 ? "" : src.slice(dot).toLowerCase();
+  if (VIDEO_EXTENSIONS.includes(extension)) return "video";
+  if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
+  return null;
+}
+
 /**
  * Per-id `<style>` rules that pre-hide every `hidden` target via
  * `opacity:0`. Injected into the play `srcdoc`'s `<head>` — never via

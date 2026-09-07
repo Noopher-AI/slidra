@@ -53,7 +53,7 @@
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
-import { computePlayerPlan, renderHideStyle, renderPlanScript } from "./player-plan.js";
+import { computePlayerPlan, renderHideStyle, renderPlanScript, stageMediaFor } from "./player-plan.js";
 import { parseEffects } from "./effects.js";
 import type { Effect } from "./effects.js";
 import {
@@ -324,6 +324,14 @@ export interface CanvasController {
    * `CanvasState.error`, and a success clears any stale error.
    */
   importAsset: (file: File) => Promise<ImportAssetResult>;
+  /**
+   * [E2.T17] plan §4.3/D5 — the URL-source counterpart of `importAsset`,
+   * for the Image/Video/Audio panels' URL text field. Same transport family
+   * as `importAsset` (`POST /api/asset`, same 409-freeze gate, same
+   * `CanvasState.error` failure posture), just a different header instead
+   * of a raw-bytes body.
+   */
+  importAssetFromUrl: (url: string) => Promise<ImportAssetResult>;
   /**
    * Surfaces `message` through the same `CanvasState.error` → `[role=alert]`
    * channel `runCommand`/`importAsset` already use (決定 7), for a front-end
@@ -2065,6 +2073,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return result;
   }
 
+  /**
+   * [E2.T17] plan §4.3/D5's front-end half of `CanvasController.importAssetFromUrl`
+   * — the URL-source counterpart of `importAsset` above, same failure
+   * posture (never throws, `{ ok: false, message }` on any failure). The
+   * `http(s)`-only scheme check is server-side (asset-upload.ts) — this
+   * function is a thin transport wrapper, not a second copy of that
+   * validation.
+   */
+  async function importAssetFromUrl(url: string): Promise<ImportAssetResult> {
+    const result = await postAssetUrl(url);
+    error = result.ok ? null : result.message;
+    notify();
+    return result;
+  }
+
   async function postAsset(file: File): Promise<ImportAssetResult> {
     try {
       const bytes = await file.arrayBuffer();
@@ -2073,16 +2096,32 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         headers: { "X-Co-Motion-Asset-Name": encodeURIComponent(file.name) },
         body: bytes,
       });
-      const body = (await response.json().catch(() => null)) as
-        | { ok?: boolean; message?: string; error?: string; data?: ImportedAsset }
-        | null;
-      if (!response.ok || !body?.data) {
-        return { ok: false, message: (body && typeof body.error === "string" && body.error) || `匯入失敗（HTTP ${response.status}）` };
-      }
-      return { ok: true, message: typeof body.message === "string" ? body.message : "", data: body.data };
+      return parseAssetResponse(response);
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : "匯入失敗" };
     }
+  }
+
+  async function postAssetUrl(url: string): Promise<ImportAssetResult> {
+    try {
+      const response = await fetch("/api/asset", {
+        method: "POST",
+        headers: { "X-Co-Motion-Asset-Url": encodeURIComponent(url) },
+      });
+      return parseAssetResponse(response);
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : "匯入失敗" };
+    }
+  }
+
+  async function parseAssetResponse(response: Response): Promise<ImportAssetResult> {
+    const body = (await response.json().catch(() => null)) as
+      | { ok?: boolean; message?: string; error?: string; data?: ImportedAsset }
+      | null;
+    if (!response.ok || !body?.data) {
+      return { ok: false, message: (body && typeof body.error === "string" && body.error) || `匯入失敗（HTTP ${response.status}）` };
+    }
+    return { ok: true, message: typeof body.message === "string" ? body.message : "", data: body.data };
   }
 
   /**
@@ -3393,6 +3432,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
+      stageMediaFor(svgMarkup),
     );
 
     // E2.T12: re-derive the open chart window's model off the just-loaded
@@ -3986,6 +4026,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     beginTextEdit: enterTextEdit,
     runCommand,
     importAsset,
+    importAssetFromUrl,
     reportError: (message: string) => {
       error = message;
       notify();
@@ -4194,14 +4235,27 @@ export function wrapSelectionDocument(
   bodyMarkup: string,
   baseHref: string | undefined,
   colors: { accent: string; handle: string },
+  /**
+   * [E2.T17] plan §4.4: `stageMediaFor(bodyMarkup)`'s own return value —
+   * computed by the CALLER (render(), which already has `bodyMarkup` in
+   * hand before calling this function), not derived again in here, so this
+   * function stays a pure "given everything it needs, produce a document"
+   * wrapper, same shape as its `colors` parameter.
+   */
+  media: Record<string, { src: string; kind: "video" | "audio" }>,
 ): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
+  // Same `__proto__`-safety reasoning as renderPlanScript() in
+  // player-plan.ts: `media` is keyed by untrusted SVG element ids
+  // (ADR-0010), and JSON.parse (not a bare object literal) is what keeps a
+  // "__proto__" key a genuine own property on the far side of the wire.
+  const safeMediaJson = JSON.stringify(JSON.stringify(media)).replace(/</g, "\\u003C");
   // `background:#fff` (#120), same as the other two wrappers: view mode
   // used to lean on `.stage`'s white background for slides that paint no
   // background of their own — stage.css no longer has one (it caused a 1px
   // seam), so the document must be opaque white by itself.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**

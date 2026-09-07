@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { CanvasController, CanvasSelection } from "../src/canvas.js";
 import type { SlideElement } from "@co-motion/core/slide";
 import { computeGroupButtonState, Dock, DockToast, groupToastText, type DockProps } from "../src/shell/dock/Dock.js";
+import { ShapeMenu } from "../src/shell/dock/menus/ShapeMenu.js";
 
 /**
  * [E2.T15]/#205 §6.3: Dock 的按鈕狀態與 toast 文字的公開邊界是 props/純函式
@@ -43,6 +44,7 @@ function dockProps(overrides: Partial<DockProps> = {}): DockProps {
     slidePath: "slides/001.svg",
     onAnimationAdded: noop,
     canvasSize: { width: 1280, height: 720 },
+    pageStyle: null,
     ...overrides,
   };
 }
@@ -184,5 +186,40 @@ describe("DockToast 標記", () => {
   it("role=status、class 是 dock-toast", () => {
     const markup = renderToStaticMarkup(createElement(DockToast, { text: "Grouped 2 elements" }));
     expect(markup).toBe('<div role="status" class="dock-toast">Grouped 2 elements</div>');
+  });
+});
+
+describe("ShapeMenu（[E2.T17] plan §4.1：Rectangle/Ellipse/Line 三個項目與 disabled 條件）", () => {
+  const controllerStubShape = {} as CanvasController;
+
+  function shapeMenuMarkup(overrides: Partial<Parameters<typeof ShapeMenu>[0]> = {}): string {
+    return renderToStaticMarkup(
+      createElement(ShapeMenu, {
+        onClose: noop,
+        controller: controllerStubShape,
+        canvasSize: { width: 1280, height: 720 },
+        slidePath: "slides/001.svg",
+        pageStyle: null,
+        ...overrides,
+      }),
+    );
+  }
+
+  it("渲染三個項目：Rectangle/Ellipse/Line", () => {
+    const markup = shapeMenuMarkup();
+    expect(markup).toContain(">Rectangle<");
+    expect(markup).toContain(">Ellipse<");
+    expect(markup).toContain(">Line<");
+  });
+
+  it("controller 為 null 時三個項目都 disabled", () => {
+    const markup = shapeMenuMarkup({ controller: null });
+    expect((markup.match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
+  });
+
+  it("canvasSize 或 slidePath 為 null 時同樣 disabled；三者都齊全時可按", () => {
+    expect((shapeMenuMarkup({ canvasSize: null }).match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
+    expect((shapeMenuMarkup({ slidePath: null }).match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
+    expect(shapeMenuMarkup().match(/ disabled(?:="")?[ >]/g)).toBeNull();
   });
 });
