@@ -3254,6 +3254,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return false;
     }
+    // Same as runCommand: the write lands back over /api/events and drives a
+    // reload() that drops the selection — park it so the Style › Object
+    // sub-tab (keyed on "is anything selected") does not snap back to Page.
+    keepSelectionAcrossReload();
     return true;
   }
 
@@ -3272,6 +3276,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         notify();
         return false;
       }
+      keepSelectionAcrossReload();
     }
     return true;
   }
@@ -3289,6 +3294,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return false;
     }
+    keepSelectionAcrossReload();
     return true;
   }
 
@@ -3301,6 +3307,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notify();
       return false;
     }
+    keepSelectionAcrossReload();
     return true;
   }
 
