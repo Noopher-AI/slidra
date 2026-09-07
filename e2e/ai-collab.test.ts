@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot, settledBox, type Box } from "./helpers/screenshot.js";
 
 /**
  * [E2.T8] `05-INTERACTIONS.feature`「與 AI 協作」— the four scenarios that
@@ -37,6 +37,23 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 const baselineDir = path.join(e2eDir, "__screenshots__/ai-collab");
 
 const VIEWPORT = { width: 1440, height: 900 };
+
+/**
+ * 把 boundingBox 取整並夾在 viewport 內——尺寸不符是 compareScreenshot 的無容忍硬失敗
+ * （helpers/screenshot.ts）。角落各自四捨五入（而不是 x/y 與 width/height 分開四捨五入）
+ * 是刻意的：後者在 box 邊界落在 .5 附近時，x 與 width 可能各自進位到不同方向，兩次執行
+ * 算出的尺寸就會差 1px。從角落算可以消掉這個誤差（抄自 e2e/table.test.ts 的 snapClip）。
+ */
+function snapClip(box: Box): Box {
+  const x = Math.max(0, Math.round(box.x));
+  const y = Math.max(0, Math.round(box.y));
+  const right = Math.min(VIEWPORT.width, Math.round(box.x + box.width));
+  const bottom = Math.min(VIEWPORT.height, Math.round(box.y + box.height));
+  const width = right - x;
+  const height = bottom - y;
+  if (width <= 0 || height <= 0) throw new Error(`clip 尺寸無效：${width}x${height}`);
+  return { x, y, width, height };
+}
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -164,8 +181,7 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
     await composer.locator("textarea").fill("把這個標題改短一點");
 
     await settleForScreenshot(page);
-    const box = await composer.boundingBox();
-    if (!box) throw new Error("找不到留言框");
+    const box = snapClip(await settledBox(composer, "留言框"));
     await compareScreenshot(page, { name: "comment-composer", baselineDir, clip: box });
 
     await composer.getByRole("button", { name: "Add comment" }).click();
@@ -295,8 +311,7 @@ it("送出：留言隨訊息一起送給 agent（context 前綴真的抵達）�
     expect(await page.locator(".chat-input-pinned").textContent()).toBe("2 pinned");
 
     await settleForScreenshot(page);
-    const box = await pinned.boundingBox();
-    if (!box) throw new Error("找不到 Pinned context");
+    const box = snapClip(await settledBox(pinned, "Pinned context"));
     await compareScreenshot(page, { name: "pinned-context", baselineDir, clip: box });
 
     await sendChatMessage(page, "麻煩照留言處理");
@@ -323,8 +338,7 @@ it("Agent 編輯中（持鎖）：titlebar 凍結徽章截圖（AC5）", async (
     await expect.poll(() => badge.isVisible(), { timeout: 30_000 }).toBe(true);
 
     await settleForScreenshot(page);
-    const box = await page.locator(".titlebar").boundingBox();
-    if (!box) throw new Error("找不到 titlebar");
+    const box = snapClip(await settledBox(page.locator(".titlebar"), "titlebar"));
     await compareScreenshot(page, { name: "titlebar-frozen", baselineDir, clip: box });
   } finally {
     await cleanup();
@@ -349,9 +363,22 @@ it("從大綱草擬：走真實 UI 入口，agent 真的插入新頁（AC2）＋
     const commandCard = page.locator(".chat-command-in_progress");
     await expect.poll(() => commandCard.isVisible(), { timeout: 30_000 }).toBe(true);
 
+    // `co-motion slide add <presentationId> --at 1` 裡的 presentationId 是
+    // generateOpaqueId() 產生的隨機 12 字元，每次 open 都不同，會讓截圖逐像素
+    // 比對不穩定（計畫 §4.3）。截圖前先斷言真的顯示的是這條指令，再換成等長
+    // 固定佔位字串（等寬字，寬度不變），最後斷言替換確實生效。
+    const commandText = commandCard.locator(".chat-command-text");
+    expect(await commandText.textContent()).toBe(`co-motion slide add ${presentationId} --at 1`);
+    const placeholderId = "e2eFixedId00";
+    expect(placeholderId).toHaveLength(12);
+    expect(presentationId).toHaveLength(12);
+    await commandText.evaluate((el, ph) => {
+      el.textContent = el.textContent!.replace(ph.real, ph.placeholder);
+    }, { real: presentationId, placeholder: placeholderId });
+    expect(await commandText.textContent()).toBe(`co-motion slide add ${placeholderId} --at 1`);
+
     await settleForScreenshot(page);
-    const box = await commandCard.boundingBox();
-    if (!box) throw new Error("找不到 Running 指令卡");
+    const box = snapClip(await settledBox(commandCard, "Running 指令卡"));
     await compareScreenshot(page, { name: "running-command-card", baselineDir, clip: box });
 
     // AC2：新頁真的被插入，不只是 UI 事件——縮圖列 +1、project.json 的
