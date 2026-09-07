@@ -361,6 +361,94 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
+it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投影片位元組不變（transform／data-comot-name）", async () => {
+  const id = await openDeck("style-set-forbidden.comot");
+  const server = await serve(id);
+  const before = await readSlide(id);
+
+  const transformResult = await postCommand(server, {
+    name: "element style set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "transform", value: "translate(1 1)" },
+  });
+  expect(transformResult.status).not.toBe(200);
+
+  const dataAttrResult = await postCommand(server, {
+    name: "element style set",
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "data-comot-name", value: "x" },
+  });
+  expect(dataAttrResult.status).not.toBe(200);
+
+  expect(await readSlide(id)).toBe(before);
+});
+
+async function openTextBoxDeck(fileName: string): Promise<string> {
+  const { zipSync } = await import("fflate");
+  const textBoxSlide =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+    '<g id="el-text" data-comot-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
+    "</svg>";
+  const zipped = zipSync({
+    "project.json": new TextEncoder().encode(
+      JSON.stringify({
+        formatVersion: 1,
+        name: "文字框對齊測試",
+        canvas: { width: 1280, height: 720 },
+        slides: ["slides/001.svg"],
+      }),
+    ),
+    "slides/001.svg": new TextEncoder().encode(textBoxSlide),
+  });
+  const comotPath = path.join(comotDir, fileName);
+  await writeFile(comotPath, zipped);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  return opened.data!.id;
+}
+
+it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openTextBoxDeck("textbox-align.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "textbox align",
+    input: { slidePath: "slides/001.svg", elementId: "el-text", align: "center" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect(await readSlide(id)).toContain('data-comot-text-align="center"');
+});
+
+it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("slide-style-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "slide style set",
+    input: { slidePath: "slides/001.svg", background: "#202020", accent: "#00ff00" },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  const slide = await readSlide(id);
+  expect(slide).toContain("background-color:#202020");
+  expect(slide).toContain("--comot-accent:#00ff00");
+});
+
+it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {
+  const id = await openDeck("presentation-canvas-set.comot");
+  const server = await serve(id);
+
+  const { status, json } = await postCommand(server, {
+    name: "presentation canvas set",
+    input: { width: 1024, height: 768 },
+  });
+
+  expect(status).toBe(200);
+  expect(json.ok).toBe(true);
+  expect((await readProjectJson(id)).canvas).toEqual({ width: 1024, height: 768 });
+  expect(await readSlide(id)).toContain('viewBox="0 0 1024 768"');
+});
+
 it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投影片 SVG（取代 presentation transition set 寫 project.json）", async () => {
   const id = await openDeck("transition-fade.comot");
   const server = await serve(id);

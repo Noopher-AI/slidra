@@ -1,0 +1,568 @@
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { chromium, type Browser, type Frame, type Page } from "playwright";
+import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
+import { packDirectory } from "@co-motion/core";
+import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+
+/**
+ * #200 (NOOP-69): the editable Style panel end to end, against a real
+ * Chromium — same `startServerFor`/`openApp` shape as
+ * `e2e/object-animation.test.ts`. This is the one e2e file this ticket's
+ * plan authorizes opening (§6.3): §5's A1–A10 (Style › Object), B1–B5
+ * (Style › Page), C (sub-tab state machine), D (Edit style entry point),
+ * G (skeleton sections never fire a command) all live here.
+ *
+ * Every test opens its own server against a fresh copy of the fixture deck
+ * (`style-panel-deck`) — no test depends on another's mutations. File
+ * content is always read back with `registry.dispatch("cat", ...)` and
+ * checked verbatim — never trusted from what the panel itself displays
+ * (the discipline the deleted pre-rebuild `e2e/style-panel.test.ts`, commit
+ * `5f8709a`, already established).
+ */
+
+const e2eDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.join(e2eDir, "..");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
+const deckDir = path.join(e2eDir, "fixtures/style-panel-deck");
+const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
+const binDir = path.join(rootDir, "node_modules/.bin");
+
+const VIEWPORT = { width: 1440, height: 900 };
+
+let browser: Browser;
+let openPages: Page[] = [];
+
+beforeAll(async () => {
+  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
+  browser = await chromium.launch();
+});
+
+afterAll(async () => {
+  await browser?.close();
+});
+
+afterEach(async () => {
+  for (const page of openPages) await page.close().catch(() => {});
+  openPages = [];
+});
+
+async function requireBuilt(filePath: string, message: string): Promise<void> {
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error(message);
+  }
+}
+
+interface TestServer {
+  server: RunningServer;
+  registry: CommandRegistry;
+  presentationId: string;
+  cleanup: () => Promise<void>;
+}
+
+async function startServerFor(): Promise<TestServer> {
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-style-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-style-files-"));
+  process.env.CO_MOTION_HOME = coMotionHome;
+
+  const registry: CommandRegistry = createDefaultRegistry();
+  const comotPath = path.join(comotDir, "deck.comot");
+  await packDirectory(deckDir, comotPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const presentationId = opened.data!.id;
+
+  const agent: AgentAdapterConfig = {
+    kind: "claude",
+    label: "Claude Code",
+    command: process.execPath,
+    args: [agentFixture],
+    env: {
+      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      E2E_PRESENTATION_ID: presentationId,
+      E2E_NEW_TITLE: "此測試不會送出訊息",
+    },
+  };
+
+  const server = await startServe({ registry, presentationId, port: 0, agent });
+
+  return {
+    server,
+    registry,
+    presentationId,
+    cleanup: async () => {
+      await server.close();
+      delete process.env.CO_MOTION_HOME;
+      await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    },
+  };
+}
+
+async function openApp(server: RunningServer): Promise<Page> {
+  const page = await browser.newPage({ viewport: VIEWPORT });
+  openPages.push(page);
+  await page.goto(server.url);
+  const slideText = page.frameLocator("iframe.slide-frame").locator("svg").first();
+  await expect.poll(() => slideText.count().catch(() => 0), { timeout: 30_000 }).toBeGreaterThan(0);
+  return page;
+}
+
+async function canvasFrame(page: Page): Promise<Frame> {
+  for (const frame of page.frames()) {
+    const element = await frame.frameElement().catch(() => null);
+    if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
+  }
+  throw new Error("找不到主畫布的 iframe.slide-frame");
+}
+
+async function readSlide(registry: CommandRegistry, presentationId: string): Promise<string> {
+  const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
+  return result.data!.content;
+}
+
+async function readProjectJson(registry: CommandRegistry, presentationId: string): Promise<{ canvas: { width: number; height: number } }> {
+  const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "project.json" });
+  return JSON.parse(result.data!.content);
+}
+
+/** Selects `elementId` on the stage, then opens Style › Object via the ContextBar's `Edit style` entry (§4.5, the one legal entry point). */
+async function selectAndOpenStyleObject(page: Page, frame: Frame, elementId: string): Promise<void> {
+  await frame.locator(`#${elementId}`).click();
+  await page.locator('button[title="Edit style"]').click();
+  await expect.poll(() => page.locator('[role="tab"][data-tab="style"]').getAttribute("aria-selected")).toBe("true");
+  await expect.poll(() => page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
+}
+
+/**
+ * `canvasSize` (App.tsx's `presentationInfo`) loads over its own
+ * `/api/presentation` fetch, separate from the iframe's slide render
+ * `openApp` already waits on — until it resolves, Style › Page renders its
+ * "沒有可編輯的投影片" empty state instead of real fields. Poll for the
+ * Width field rather than a fixed sleep.
+ */
+async function openStylePage(page: Page): Promise<void> {
+  await page.locator('[role="tab"][data-tab="style"]').click();
+  await page.locator('[role="tab"][data-subtab="page"]').click();
+  await expect.poll(() => page.locator('[data-attr="canvas-width"] input').count(), { timeout: 10_000 }).toBe(1);
+}
+
+async function fillField(page: Page, attr: string, value: string): Promise<void> {
+  const input = page.locator(`[data-attr="${attr}"] input`);
+  await input.fill(value);
+  await input.blur();
+}
+
+async function selectField(page: Page, attr: string, value: string): Promise<void> {
+  await page.locator(`[data-attr="${attr}"] select`).selectOption(value);
+}
+
+async function undo(registry: CommandRegistry, presentationId: string): Promise<void> {
+  const result = await registry.dispatch("undo", { id: presentationId });
+  expect(result.ok, JSON.stringify(result)).toBe(true);
+}
+
+// ── §5-A: Style › Object ──────────────────────────────────────────────
+
+it("A1 Text·Font：改成 Noto Sans TC → 檔案與 iframe 一致；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    await selectAndOpenStyleObject(page, frame, "el-text");
+
+    await fillField(page, "font-family", "Noto Sans TC");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('font-family="Noto Sans TC"');
+    await expect.poll(() => frame.locator("#el-text text").getAttribute("font-family")).toBe("Noto Sans TC");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).not.toContain("font-family=");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A2 Text·Size：改成 32 → 檔案 font-size=32 且重新換行（tspan y 改變）；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    const originalY = /<tspan x="[^"]*" y="([^"]+)"/.exec(before)![1];
+
+    await selectAndOpenStyleObject(page, frame, "el-text");
+    await fillField(page, "font-size", "32");
+
+    const updated = await (async () => {
+      let latest = before;
+      await expect.poll(async () => {
+        latest = await readSlide(registry, presentationId);
+        return latest.includes('font-size="32"');
+      }).toBe(true);
+      return latest;
+    })();
+    const newY = /<tspan x="[^"]*" y="([^"]+)"/.exec(updated)![1];
+    expect(newY).not.toBe(originalY);
+    await expect.poll(() => frame.locator("#el-text text").getAttribute("font-size")).toBe("32");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A3 Text·Weight：改成 700 → 檔案 font-weight=700；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-text");
+
+    await fillField(page, "font-weight", "700");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('font-weight="700"');
+    await expect.poll(() => frame.locator("#el-text text").getAttribute("font-weight")).toBe("700");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A4 Text·Text color：改成 #ff0000 → 檔案 fill=#ff0000；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-caption");
+
+    await fillField(page, "fill", "#ff0000");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('fill="#ff0000"');
+    await expect.poll(() => frame.locator("#el-caption-text").getAttribute("fill")).toBe("#ff0000");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A5 Text·Align（文字框）：改成 center → 檔案 data-comot-text-align=center 且 tspan x 改變；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    const originalX = /<tspan x="([^"]*)"/.exec(before)![1];
+    await selectAndOpenStyleObject(page, frame, "el-text");
+
+    await selectField(page, "align", "center");
+    const updated = await (async () => {
+      let latest = before;
+      await expect.poll(async () => {
+        latest = await readSlide(registry, presentationId);
+        return latest.includes('data-comot-text-align="center"');
+      }).toBe(true);
+      return latest;
+    })();
+    const newX = /<tspan x="([^"]*)"/.exec(updated)![1];
+    expect(newX).not.toBe(originalX);
+    await expect.poll(() => frame.locator("#el-text").getAttribute("data-comot-text-align")).toBe("center");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A6 Text·Align（純 <text>）：改成 left → 檔案 text-anchor=start；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    expect(before).toContain('text-anchor="middle"'); // el-caption 的原始值 — 對齊起點是 Center
+    await selectAndOpenStyleObject(page, frame, "el-caption");
+
+    await selectField(page, "align", "left");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('text-anchor="start"');
+    await expect.poll(() => frame.locator("#el-caption-text").getAttribute("text-anchor")).toBe("start");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A7 Shape·Fill color：改成 #123456 → 檔案 fill=#123456；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-a");
+
+    await fillField(page, "fill", "#123456");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('fill="#123456"');
+    await expect.poll(() => frame.locator("#el-a rect").getAttribute("fill")).toBe("#123456");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A8 Shape·Stroke color：改成 #000000 → 檔案 stroke=#000000；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-a");
+
+    await fillField(page, "stroke", "#000000");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('stroke="#000000"');
+    await expect.poll(() => frame.locator("#el-a rect").getAttribute("stroke")).toBe("#000000");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A9 Shape·Stroke width：改成 4 → 檔案 stroke-width=4；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-a");
+
+    await fillField(page, "stroke-width", "4");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('stroke-width="4"');
+    await expect.poll(() => frame.locator("#el-a rect").getAttribute("stroke-width")).toBe("4");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("A10 Appearance·Opacity：改成 0.5 → 檔案 opacity=0.5；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await selectAndOpenStyleObject(page, frame, "el-a");
+
+    await fillField(page, "opacity", "0.5");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('opacity="0.5"');
+    await expect.poll(() => frame.locator("#el-a rect").getAttribute("opacity")).toBe("0.5");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── §5-B: Style › Page ─────────────────────────────────────────────────
+
+it("B1 Background：改成 #202020 → 根 <svg> style 含 background-color；iframe 反映；undo 回退（入歷史）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await openStylePage(page);
+
+    await fillField(page, "background", "#202020");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain("background-color:#202020");
+    await expect
+      .poll(() => frame.locator("svg").evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe("rgb(32, 32, 32)");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --comot-accent；iframe 反映；undo 回退", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+    await openStylePage(page);
+
+    await fillField(page, "accent", "#00ff00");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain("--comot-accent:#00ff00");
+    await expect
+      .poll(() => frame.locator("svg").evaluate((el) => (el as unknown as SVGElement).style.getPropertyValue("--comot-accent")))
+      .toBe("#00ff00");
+
+    await undo(registry, presentationId);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("B3 Slide size 預設鈕（4:3）：project.json/viewBox 改變、元素 transform 不動、.stage 比例跟著變；undo 只復原先前的內容編輯，尺寸維持新值", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    // 先做一筆會入歷史的內容編輯，讓 undo 有東西可以復原（跟 canvas set 本身無關）。
+    await selectAndOpenStyleObject(page, frame, "el-b");
+    await fillField(page, "opacity", "0.9");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('opacity="0.9"');
+
+    await openStylePage(page);
+    await page.locator('button.style-page-preset:has-text("4:3")').click();
+
+    await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 1024, height: 768 });
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('viewBox="0 0 1024 768"');
+    const afterResize = await readSlide(registry, presentationId);
+    expect(afterResize).toContain('transform="translate(80 80)"'); // el-a 的 transform 一字未改
+    await expect
+      .poll(() => page.locator(".stage").evaluate((el) => (el as HTMLElement).style.aspectRatio))
+      .toBe("1024 / 768");
+
+    await undo(registry, presentationId); // 復原的是 opacity 那筆，不是尺寸
+    const afterUndo = await readSlide(registry, presentationId);
+    expect(afterUndo).not.toContain('opacity="0.9"');
+    expect((await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 1024, height: 768 });
+  } finally {
+    await cleanup();
+  }
+});
+
+it("B4 Width/Height 手動輸入：project.json/viewBox 改成輸入值", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await openStylePage(page);
+
+    await fillField(page, "canvas-width", "1600");
+    await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas.width).toBe(1600);
+    // §2 決定「不做樂觀預覽」: the Height field's commit reads the CURRENT
+    // `canvasSize` prop for the width half of the pair — that prop only
+    // catches up once the browser's own presentation-changed → reload
+    // round trip lands. Editing Height before that round trip completes
+    // would resubmit the OLD width (a real, documented limitation — see
+    // the delivery notes). `data-canvas-width` mirrors the live prop
+    // (never the field's own draft, which already reads "1600" the
+    // instant it is typed) — waiting on it is the real readiness signal.
+    await expect.poll(() => page.locator(".style-page-panel").getAttribute("data-canvas-width")).toBe("1600");
+    await fillField(page, "canvas-height", "900");
+    await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 1600, height: 900 });
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('viewBox="0 0 1600 900"');
+  } finally {
+    await cleanup();
+  }
+});
+
+it("B5 Swap orientation：寬高互換", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await openStylePage(page);
+
+    await page.locator("button.style-page-swap").click();
+    await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 720, height: 1280 });
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain('viewBox="0 0 720 1280"');
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── §5-C: 子分頁狀態機 ───────────────────────────────────────────────────
+
+it("C：無選取時 Object 鈕 disabled 且停在 Page；選取後自動切 Object；取消選取後自動回 Page", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    await page.locator('[role="tab"][data-tab="style"]').click();
+
+    expect(await page.locator('[role="tab"][data-subtab="object"]').isDisabled()).toBe(true);
+    expect(await page.locator('[role="tab"][data-subtab="page"]').getAttribute("aria-selected")).toBe("true");
+
+    await frame.locator("#el-a").click();
+    await expect.poll(() => page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
+
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.locator('[role="tab"][data-subtab="page"]').getAttribute("aria-selected")).toBe("true");
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── §5-D: Edit style 入口 ────────────────────────────────────────────────
+
+it("D：情境列恰好一顆 Edit style；點擊只切右欄，不送任何命令（檔案位元組不變）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+
+    await frame.locator("#el-a").click();
+    await expect.poll(() => page.locator('button[title="Edit style"]').count()).toBe(1);
+
+    await page.locator('button[title="Edit style"]').click();
+    await expect.poll(() => page.locator('[role="tab"][data-tab="style"]').getAttribute("aria-selected")).toBe("true");
+    expect(await page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
+
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── §5-G: 骨架段不會誤送命令 ─────────────────────────────────────────────
+
+it("G：Table／Chart／Image caption 三段的每個控制項都是 disabled，投影片位元組不變", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const frame = await canvasFrame(page);
+    const before = await readSlide(registry, presentationId);
+
+    await selectAndOpenStyleObject(page, frame, "el-image");
+    await expect.poll(() => page.locator('[data-section="image"]').count()).toBe(1);
+
+    for (const section of ["table", "chart", "image"]) {
+      const controls = page.locator(`[data-section="${section}"] :is(input,select)`);
+      const count = await controls.count();
+      expect(count).toBeGreaterThan(0);
+      const disabledFlags = await controls.evaluateAll((elements) =>
+        elements.map((el) => (el as HTMLInputElement | HTMLSelectElement).disabled),
+      );
+      expect(disabledFlags.every(Boolean)).toBe(true);
+    }
+
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});

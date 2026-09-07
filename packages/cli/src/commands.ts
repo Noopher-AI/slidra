@@ -16,6 +16,8 @@ import { register as registerEffect } from "./commands/effect/index.js";
 import { register as registerSlideRender } from "./commands/slide-render.js";
 import { register as registerAssetImport } from "./commands/asset-import.js";
 import { register as registerSlide } from "./commands/slide.js";
+import { register as registerSlideStyle } from "./commands/slide-style.js";
+import { register as registerPresentation } from "./commands/presentation.js";
 import { register as registerTemplate } from "./commands/template.js";
 import { register as registerComment } from "./commands/comment.js";
 
@@ -58,6 +60,8 @@ export function createDefaultRegistry(): CommandRegistry {
     registerSlideRender,
     registerAssetImport,
     registerSlide,
+    registerSlideStyle,
+    registerPresentation,
     registerTemplate,
     registerComment,
   ]) {

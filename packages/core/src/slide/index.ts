@@ -26,6 +26,10 @@ export type {
 } from "./format.js";
 export { normaliseSlideSvg } from "./normalise.js";
 export type { NormaliseOptions, NormaliseResult } from "./normalise.js";
+// #200: the Style panel's Page tab reads `SlideModel.pageStyle` off the
+// browser-safe `SlideElement`/`SlideModel` types above — `PageStyle` has to
+// be reachable from this same subpath for that field to type-check.
+export type { PageStyle } from "../slide-style.js";
 // [E2.T3] adds these three: the web-side speaker-notes reader
 // (`packages/web/src/notes.ts`) needs the offset-carrying scanner directly
 // — DOMParser is unusable there because it treats an unbound `comot:`

@@ -91,6 +91,11 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "comment add",
   "comment edit",
   "comment delete",
+  // #200 (NOOP-69) 的樣式面板加入這三條：文字框對齊、頁面樣式（背景／強調
+  // 色）、頁面尺寸。
+  "textbox align",
+  "slide style set",
+  "presentation canvas set",
 ];
 
 /**
