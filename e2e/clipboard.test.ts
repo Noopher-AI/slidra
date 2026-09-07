@@ -321,26 +321,19 @@ const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> =
   // r5 (NOOP-201 §6.2): round-4's two bypasses that reached a real outbound request.
   ["R4 TAB href", '<g id="el-hostile"><image href="/\t/evil.example/x.png" width="10" height="10"/></g>'],
   ["R4 uppercase HREF", '<g id="el-hostile"><image HREF="https:evil.example/y.png" width="10" height="10"/></g>'],
-  // r5 (NOOP-201 §6.2): this round's new CSS hex-escape dimension (I3).
-  [
-    "R5 CSS-escaped url()",
-    '<g id="el-hostile"><rect width="10" height="10" style="fill:\\75rl(\\00002f\\00002fevil.example/x.svg#g)"/></g>',
-  ],
-  // r6 ([E2.T18r6] AC6): r5's three CSS-carrying bypasses — closed by the
-  // allowlist dropping `style` entirely rather than adding a fourth CSS-shape
-  // rule for it, so none of these should reach a real network request.
-  [
-    "R6 style unclosed url()",
-    '<g id="el-hostile"><rect width="10" height="10" style="fill:url(https:evil.example/x.svg#g"/></g>',
-  ],
-  [
-    "R6 style cursor image-set()",
-    '<g id="el-hostile"><rect width="10" height="10" style="cursor:image-set(&quot;https:evil.example/c.png&quot; 1x),auto"/></g>',
-  ],
-  [
-    "R6 style background-image image-set()",
-    '<g id="el-hostile"><rect width="10" height="10" style="background-image:image-set(&quot;https:evil.example/c.png&quot; 1x)"/></g>',
-  ],
+  // [E2.T18r8 §6.3, test budget] r5's CSS-hex-escape row and r6's three
+  // style-carrying rows are pruned here: `style` dropped from the allowlist
+  // entirely in r6, so all four are rejected at the same "style not in
+  // allowlist" line as "R2 url(...) raw-string bypass" above (kept as the
+  // one representative — it carries entity-encoding, `url()`, and a
+  // protocol-relative `//` in a single payload, the most dimensions of any
+  // style-carrying cell). Each removed row's payload survives verbatim in
+  // core's cheaper (0.4s, no browser) `REJECT_MATRIX` — a browser launch adds
+  // no information a unit-layer assertion doesn't already give:
+  //   R5 CSS-escaped url()                 → core REJECT_MATRIX N11
+  //   R6 style unclosed url()              → core REJECT_MATRIX R1
+  //   R6 style cursor image-set()          → core REJECT_MATRIX R2
+  //   R6 style background-image image-set() → core REJECT_MATRIX R3
 ];
 
 it.each(A8_BYPASS_MATRIX)(
