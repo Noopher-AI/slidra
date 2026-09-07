@@ -1263,9 +1263,25 @@
       // see `isGroupContainer`'s own comment) — a generated cell reports
       // its template row's row index instead of its own (架構:
       // "雙擊編輯的是模板列").
-      if (target.getAttribute("data-comot-type") === "table") {
-        postTableCellDblclick(target, event.target);
-        return;
+      // E2.T14 §4.5: a double-click on a table cell ALWAYS edits that cell,
+      // however many not-yet-entered groups wrap the table — the group
+      // chain becomes the drill-in path in one go (a table is never a group
+      // itself, see `isGroupContainer`). One level per double-click (the
+      // ordinary group rule below) made a grouped table read as "cannot be
+      // edited any more" in manual review: the first double-click looked
+      // like nothing happened.
+      var dblclickCell = findTableCellElement(event.target);
+      var dblclickTable = dblclickCell && tableContainerOf(dblclickCell);
+      if (dblclickTable) {
+        var chain = unlockedAncestorChain(dblclickTable);
+        if (chain) {
+          groupPath = chain;
+          selectedIds = [dblclickTable.getAttribute("id")];
+          updateBoxes();
+          post(withGroupPath({ event: "select", id: dblclickTable.getAttribute("id"), name: dblclickTable.getAttribute("data-comot-name"), additive: false }));
+          postTableCellDblclick(dblclickTable, event.target);
+          return;
+        }
       }
       // E2.T12 plan §3.6: a chart container opens its data window instead
       // of the group-entry logic below. A chart nested inside a not-yet-
@@ -1288,14 +1304,34 @@
       selectedIds = [inner.getAttribute("id")];
       updateBoxes();
       post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
-      // A table inside a group: the same double-click that drilled in and
-      // selected it also opens the cell under the pointer — otherwise the
-      // author has to double-click twice to edit a grouped table, and the
-      // first one looks like "nothing happened" (found in manual review).
-      if (inner.getAttribute("data-comot-type") === "table") postTableCellDblclick(inner, event.target);
     },
     true,
   );
+
+  /** The `data-comot-type="table"` container a cell belongs to, or null. */
+  function tableContainerOf(cellEl) {
+    var current = cellEl.parentElement;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.getAttribute("data-comot-type") === "table") return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  /** The ids of every id-carrying container above `el` up to the slide root, outermost first — the `groupPath` that makes `el` the resolved target. `null` when `el` or any ancestor is locked (ADR-0013: not reachable in view mode at all). */
+  function unlockedAncestorChain(el) {
+    if (el.getAttribute("data-comot-lock") === "true") return null;
+    var chain = [];
+    var current = el.parentElement;
+    while (current && current !== document.body) {
+      var tag = current.tagName ? current.tagName.toLowerCase() : "";
+      if (tag === "svg" && !current.ownerSVGElement) break;
+      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") return null;
+      if (current.hasAttribute && current.hasAttribute("id")) chain.unshift(current.getAttribute("id"));
+      current = current.parentElement;
+    }
+    return chain;
+  }
 
   /** E2.T14 §4.5: reports the cell under `rawTarget` of table `tableEl` for editing — a generated cell reports its template row's row index instead of its own (架構: "雙擊編輯的是模板列"). */
   function postTableCellDblclick(tableEl, rawTarget) {
