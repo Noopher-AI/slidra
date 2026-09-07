@@ -22,6 +22,7 @@ import { parseTableCsv } from "../src/table/csv.js";
 import { parseMarkdownTable } from "../src/table/markdown.js";
 import { checkSlideCompliance, parseSlide } from "../src/slide/format.js";
 import { resizeElements, scaleElements } from "../src/element-edit.js";
+import { groupElements, ungroupElements } from "../src/element-group.js";
 import { elementBounds } from "../src/geometry/bbox.js";
 import { scanDocument } from "../src/slide/scan.js";
 
@@ -152,6 +153,19 @@ describe("table edit — cell/col/row operations (plan §4.2/§4.7)", () => {
     const after = elementBounds(parseSlide(edited, "slides/001.svg").elements[0]);
     expect(after.width).toBeCloseTo(before.width * 3, 6);
     expect(after.height).toBeCloseTo(before.height * 3, 6);
+  });
+
+  it("a table can join a group like any element; its cells stay editable inside, and ungroup releases it", () => {
+    let svg = createTableElement(SLIDE, "slides/001.svg", "el-t", { rows: 1, cols: 1, x: 0, y: 0 }, fonts);
+    svg = svg.replace("</svg>", '<g id="el-r"><rect width="10" height="10"/></g></svg>');
+    svg = groupElements(svg, "slides/001.svg", ["el-t", "el-r"], "el-g").svg;
+    expect(checkSlideCompliance(svg)).toEqual([]);
+    expect(parseSlide(svg, "slides/001.svg").elements.map((e) => e.kind)).toEqual(["group"]);
+    svg = setTableCellText(svg, "slides/001.svg", "el-t", 0, 0, "inside", fonts);
+    expect(readTableModel(svg, "el-t").cells[0].text).toBe("inside");
+    expect(() => ungroupElements(svg, "slides/001.svg", ["el-t"])).toThrow(/是表格/);
+    const released = ungroupElements(svg, "slides/001.svg", ["el-g"]);
+    expect(released.elementIds).toEqual(["el-t", "el-r"]);
   });
 
   it("row delete rejects deleting the last remaining row", () => {

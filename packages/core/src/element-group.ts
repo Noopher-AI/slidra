@@ -117,7 +117,7 @@ function nextGroupName(svgRoot: ScannedNode): string {
   return `Group ${next}`;
 }
 
-/** `element group`/`element ungroup` never treat a table as a group (E2.T14, plan §2 item 5) — its cells are not independently selectable members. */
+/** `element ungroup` never treats a table as a group (E2.T14) — its cells are not independently selectable members. A table CAN be a member of a group like any other element: its cells stay addressed through its own container id, wherever that container sits. */
 function assertNotTableContainer(node: ScannedNode, elementId: string, action: string): void {
   if (attributeValue(node, "data-comot-type") === TABLE_CONTAINER_TYPE) {
     throw new CoMotionError(`元素 ${elementId} 是表格，${action}`);
@@ -189,7 +189,6 @@ export function groupElements(
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const found = elementIds.map((id) => requireContainer(svgRoot, id));
-  found.forEach((entry, index) => assertNotTableContainer(entry.node, elementIds[index], "不能加入群組"));
 
   const parent = found[0].parent;
   if (found.some((entry) => entry.parent !== parent)) {
