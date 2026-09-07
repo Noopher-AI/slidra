@@ -58,7 +58,15 @@ export const CONTAINER_ATTRIBUTES: readonly string[] = [
   // break tests that assert on it. Locking is a container-level boolean —
   // see element-text.ts's `assertNotLocked` for the one guard this powers.
   "data-comot-lock",
+  // Appended at the end too, same reason (E2.T12): marks a container as
+  // holding a chart's `<comot:chart>` data element plus its rendered
+  // `<svg>` — the only place ADR-0012's "one or more primitives" rule is
+  // relaxed to "exactly these two specific tags" (see `walkContainer`).
+  "data-comot-type",
 ];
+
+/** The value `data-comot-type` takes on a chart container (E2.T12). */
+export const CHART_CONTAINER_TYPE = "chart";
 
 /** Appended to the issues `co-motion convert` can actually repair — never to the ones it refuses to touch. */
 const CONVERT_HINT = "請執行 co-motion convert <簡報識別碼> 轉換成合規格式。";
@@ -78,7 +86,9 @@ export type SlideElementKind =
   | "image"
   | "path"
   /** One container holding several primitives (ADR-0012 allows "one or more primitives"). */
-  | "compound";
+  | "compound"
+  /** A chart container: `data-comot-type="chart"` holding `<comot:chart>` + rendered `<svg>` (E2.T12). */
+  | "chart";
 
 export interface SlidePrimitive {
   /** Tag name, lower-cased. */
@@ -187,7 +197,8 @@ export type ComplianceCode =
   | "bad-transform"
   | "missing-viewbox"
   | "too-deep"
-  | "malformed-markup";
+  | "malformed-markup"
+  | "invalid-chart-shape";
 
 export interface ComplianceIssue {
   code: ComplianceCode;
@@ -311,6 +322,30 @@ export function checkSlideCompliance(svg: string): ComplianceIssue[] {
     const children = element.children.filter((child) => !IGNORED_CHILD_TAGS.has(child.tag));
     if (children.length === 0) {
       report(element, "empty-container", `容器${id ? ` ${id} ` : ""}裡沒有任何圖元或子容器。`, id);
+      return;
+    }
+
+    // A chart container relaxes ADR-0012's normal partition (E2.T12): its
+    // two legal children are the data element `<comot:chart>` and the
+    // rendered `<svg>`, neither of which is a `<g>` or a slide primitive.
+    // This is purely a structural check — `<comot:chart>`'s own attributes
+    // and child shape (series/categories) are validated by
+    // `chart/model.ts`'s `readChart` when a `chart` command runs, not here.
+    if (attributeValue(element, "data-comot-type") === CHART_CONTAINER_TYPE) {
+      const others = children.filter((child) => child.tag !== "comot:chart" && child.tag !== "svg");
+      for (const other of others) {
+        if (!FORBIDDEN_TAGS.includes(other.tag)) reportUnknown(other);
+      }
+      const chartTags = children.filter((child) => child.tag === "comot:chart");
+      const svgTags = children.filter((child) => child.tag === "svg");
+      if (chartTags.length !== 1 || svgTags.length !== 1) {
+        report(
+          element,
+          "invalid-chart-shape",
+          `圖表容器${id ? ` ${id} ` : ""}必須恰好包含一個 <comot:chart> 與一個內嵌 <svg>。`,
+          id,
+        );
+      }
       return;
     }
 
@@ -474,6 +509,7 @@ function toElement(element: ScannedNode, svg: string): SlideElement {
 
   let kind: SlideElementKind;
   if (isGroup) kind = "group";
+  else if (attributeValue(element, "data-comot-type") === CHART_CONTAINER_TYPE) kind = "chart";
   else if (primitives.length === 1) kind = primitives[0].tag as SlideElementKind;
   else kind = "compound";
 

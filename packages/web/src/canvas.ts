@@ -81,6 +81,7 @@ import {
 } from "@co-motion/core/slide";
 import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
 import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
+import { readChartModel, renderChartSvg, type ChartModel } from "@co-motion/core/chart";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -179,6 +180,22 @@ export interface OverlayState {
    * no effects, or outside view mode.
    */
   badges: { target: string; n: number; rect: Rect }[];
+}
+
+/**
+ * The open chart data window's target and its live `ChartModel` (E2.T12
+ * plan §2.8/§3.6/§4.5) — `null` means no window is open. Re-derived fresh
+ * off `currentSlideMarkup` (`readChartModel`) after every render(), so a
+ * committed edit's normalized result (e.g. `formatSvgNumber` rounding)
+ * always reflects back into the open window instead of the window quietly
+ * drifting from the file. A separate channel from `CanvasState`/
+ * `subscribeOverlay` for the same reason those are already split apart:
+ * this fires on a cadence (every reload) and shape neither one matches.
+ */
+export interface ChartWindowState {
+  id: string;
+  slidePath: string;
+  model: ChartModel;
 }
 
 export interface CanvasState {
@@ -433,6 +450,25 @@ export interface CanvasController {
   }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
+   * E2.T12 plan §3.6/§4.5: the chart data window's own state — a
+   * double-click on a chart (selection-runtime.js's "dblclick-chart") opens
+   * it, `ChartWindow.tsx`'s own Esc listener or a slide change closes it.
+   * `null` means closed. Separate from `subscribeOverlay` — see
+   * `ChartWindowState`'s own doc comment.
+   */
+  subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => () => void;
+  /** [E2.T12 plan §3.6/§4.5]: closes the chart data window (Esc) without sending any command — an in-progress local edit is simply discarded, same as `preview-textbox`'s revert path never having written anything either. */
+  closeChartWindow: () => void;
+  /**
+   * E2.T12 plan §3.6/§4.5: the ChartWindow's local-preview channel — swaps
+   * the chart's embedded `<svg>` in place via `renderChartSvg(model)`,
+   * writing nothing. `ChartWindow.tsx` calls this on every keystroke/toggle
+   * before committing the corresponding `chart *` command on blur/click, so
+   * the picture always matches what is about to be sent. No-op outside view
+   * mode or when `id` is not the currently open chart window's target.
+   */
+  previewChart: (id: string, model: ChartModel) => void;
+  /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
    * controller never POSTs /api/undo|redo itself — App.tsx registers its own
    * `runUndoRedo` here so the document-level shortcut and the relayed one
@@ -514,6 +550,9 @@ interface SelectionMessage {
     | "group-path"
     | "drag-enter"
     | "dblclick-textbox"
+    // E2.T12 plan §3.6: a plain (non-textbox) double-click resolved to a
+    // chart container — opens its data window, no in-iframe edit state.
+    | "dblclick-chart"
     | "text-edit-input"
     | "text-edit-commit"
     | "text-edit-denied"
@@ -994,6 +1033,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // See `OverlayState`'s own doc comment for why this is a separate,
   // high-frequency channel rather than `CanvasState`.
   const overlayListeners = new Set<(state: OverlayState) => void>();
+  // E2.T12 plan §2.8/§4.5: at most one chart data window open at a time
+  // (`chartWindowTarget`, `null` = closed) — opened by the runtime's
+  // "dblclick-chart" report, closed by Esc (ChartWindow.tsx's own
+  // listener) or a slide change (`showSlide`). A separate channel from
+  // `subscribeOverlay`/`CanvasState` for the same reason those are: high-
+  // frequency during local editing, and shaped nothing like either.
+  const chartWindowListeners = new Set<(state: ChartWindowState | null) => void>();
+  let chartWindowTarget: string | null = null;
   let overlayBoxes: Rect[] = [];
   let overlayUnion: Rect | null = null;
   let overlayAncestors: { id: string; name: string | null }[] = [];
@@ -1016,6 +1063,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
   let currentSlideModel: SlideModel | null = null;
+  // E2.T12: the current slide's raw SVG text, kept so `notifyChartWindow`
+  // can re-derive the open chart's `ChartModel` (`readChartModel`) after
+  // every render() without a second fetch — the chart data window is the
+  // one caller that needs the actual bytes, not just the parsed
+  // `SlideElement` shape `currentSlideModel` carries.
+  let currentSlideMarkup: string | null = null;
   // Fonts this presentation embeds, as reported by /api/presentation
   // (project.json's own `fonts` field) — resolveBrowserFont() below reads
   // this to find the right font FILE for a family it hasn't fetched yet.
@@ -1233,6 +1286,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
       else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
+      // E2.T12 plan §4.5: Esc closes the chart data window — relayed here
+      // because opening it (a double-click on the slide) leaves focus
+      // inside this sandboxed iframe, where the parent document's own
+      // `window` keydown listener (ChartWindow.tsx) never sees the
+      // keypress at all (same reason ⌘Z/Delete/etc. above need relaying).
+      else if (message.key === "Escape") closeChartWindow();
       return;
     }
     if (message.event === "gesture-start") {
@@ -1303,6 +1362,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "dblclick-textbox") {
       if (typeof message.id === "string") void enterTextEdit(message.id);
+      return;
+    }
+    if (message.event === "dblclick-chart") {
+      if (typeof message.id === "string") openChartWindow(message.id);
       return;
     }
     if (message.event === "text-edit-input") {
@@ -1465,6 +1528,41 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     for (const listener of overlayListeners) listener(state);
   }
 
+  /**
+   * E2.T12: re-derives the open chart window's `ChartModel` off
+   * `currentSlideMarkup` and pushes it to every `subscribeChartWindow`
+   * listener — called after every render() (so a committed edit's
+   * normalized result reflects back) and whenever `chartWindowTarget`
+   * itself changes (open/close). A target that no longer resolves to a
+   * chart (deleted, or the slide changed under it) closes the window
+   * rather than surfacing a parse error — same "silently do nothing"
+   * posture `enterTextEdit` gives an id that no longer resolves.
+   */
+  /** Reads `chartWindowTarget`'s current `ChartModel` off `currentSlideMarkup`; closes the window (clears `chartWindowTarget`) as a side effect when the target no longer resolves to a chart. Shared by `notifyChartWindow` and `subscribeChartWindow`'s initial push. */
+  function buildChartWindowState(): ChartWindowState | null {
+    if (chartWindowTarget === null) return null;
+    try {
+      if (currentSlideMarkup === null) throw new Error("no slide loaded");
+      const model = readChartModel(currentSlideMarkup, chartWindowTarget);
+      return { id: chartWindowTarget, slidePath: slides[currentIndex], model };
+    } catch {
+      chartWindowTarget = null;
+      return null;
+    }
+  }
+
+  function notifyChartWindow(): void {
+    const state = buildChartWindowState();
+    for (const listener of chartWindowListeners) listener(state);
+  }
+
+  /** The runtime's "dblclick-chart" report (selection-runtime.js, plan §3.6) — a plain double-click on a chart container opens its data window. No-op outside view mode, or when `id` does not resolve to a chart (`notifyChartWindow` closes it again in that case). */
+  function openChartWindow(id: string): void {
+    if (mode !== "view") return;
+    chartWindowTarget = id;
+    notifyChartWindow();
+  }
+
   function emitStageInput(event: StageInputEvent): void {
     for (const listener of stageInputListeners) listener(event);
   }
@@ -1608,6 +1706,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     ["element insert", "elementId"],
     ["element paste", "elementIds"],
     ["element duplicate", "elementIds"],
+    ["chart create", "elementId"],
   ]);
 
   /**
@@ -1737,11 +1836,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return new Map(entries.filter((entry): entry is [string, FontMetrics] => entry !== null));
   }
 
-  /** "full" (single selection: scale + rotate handles) / "move-only" (0 or 2+ selected) / "none" — the rendering condition the "selection" host->runtime command carries (§5's multi-select rule: this is computed here, never at click time in the runtime). */
+  /** "full" (single selection: scale + rotate handles) / "move-only" (0 or 2+ selected, OR a chart — E2.T12 plan §2.1: charts have no GUI resize, only `chart create --width/--height` decides their size) / "none" — the rendering condition the "selection" host->runtime command carries (§5's multi-select rule: this is computed here, never at click time in the runtime). */
   function computeHandleFlags(ids: readonly string[]): { handles: "full" | "move-only" | "none"; textbox: boolean } {
     if (ids.length === 0) return { handles: "none", textbox: false };
     if (ids.length > 1) return { handles: "move-only", textbox: false };
     const entry = elementIndex().get(ids[0]);
+    if (entry?.element.kind === "chart") return { handles: "move-only", textbox: false };
     return { handles: "full", textbox: entry !== undefined && entry.element.textWidth !== null };
   }
 
@@ -2523,6 +2623,36 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
+  // --- Chart data window (E2.T12 plan §3.6/§4.5) ---
+
+  /**
+   * `CanvasController.previewChart`: swaps the open chart's embedded `<svg>`
+   * for `renderChartSvg(model)`'s output — writes nothing, the exact same
+   * "local preview, commit on blur/click" split `preview-textbox` gives
+   * text edits. `id` must be the currently open window's own target (a
+   * stale call from an already-closed window, e.g. a slow keystroke handler
+   * firing after Esc, is silently dropped rather than repainting a chart
+   * that is no longer the one on screen).
+   */
+  function previewChart(id: string, model: ChartModel): void {
+    if (mode !== "view" || chartWindowTarget !== id) return;
+    postToFrame({ command: "preview-chart", id, markup: renderChartSvg(model) });
+  }
+
+  /** `CanvasController.closeChartWindow` (Esc, plan §4.5): reverts whatever the window's own local preview last painted back to the file's actual committed content — same posture `revertTextboxPreview` gives a cancelled gesture, since a local chart preview never wrote anything either. */
+  function closeChartWindow(): void {
+    const target = chartWindowTarget;
+    chartWindowTarget = null;
+    if (target !== null && currentSlideMarkup !== null) {
+      try {
+        postToFrame({ command: "preview-chart", id: target, markup: renderChartSvg(readChartModel(currentSlideMarkup, target)) });
+      } catch {
+        // `target` no longer resolves to a chart — nothing on screen to revert either.
+      }
+    }
+    notifyChartWindow();
+  }
+
   // --- In-place text editing (NOOP-91/#70 US1, T5) ---
 
   /** Re-wraps `text` with core's `wrapText` and pushes it to the runtime via the existing preview-textbox channel — shared by the live-typing preview and a failed commit's revert. */
@@ -2850,16 +2980,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (currentIndex === -1) {
       currentSlideModel = null;
+      currentSlideMarkup = null;
       currentSlideEffects = [];
       badgeTargets = [];
       overlayBadges = [];
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      notifyChartWindow();
       return;
     }
 
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || thisGeneration !== generation) return;
+
+    currentSlideMarkup = svgMarkup;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
     // A non-compliant slide (should not happen — every write path asserts
@@ -2887,6 +3021,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       selectionColors(),
     );
 
+    // E2.T12: re-derive the open chart window's model off the just-loaded
+    // markup so a committed edit's normalized result (formatSvgNumber
+    // rounding, an existing series' carried-over axis/color) reflects back
+    // into the window rather than it quietly drifting from the file.
+    notifyChartWindow();
     // #200: `CanvasState.pageStyle` reads off `currentSlideModel`, just
     // parsed above — and, unlike every other field this module notifies on,
     // it has no selection to piggyback a notify() on (Style › Page has to
@@ -3135,6 +3274,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (!(await playExitTransition(thisGeneration))) return;
     }
     currentIndex = index;
+    // E2.T12 plan §4.5: "切換投影片時關閉" — a chart window's edits target
+    // a specific element id on the slide being left; render()'s own
+    // notifyChartWindow() below would eventually close it anyway (the id
+    // resolves on the wrong slide), but that happens after the slide fetch
+    // resolves — closing it here means the window never lingers open for a
+    // beat while the next slide loads.
+    chartWindowTarget = null;
+    notifyChartWindow();
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
@@ -3512,11 +3659,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     alignSelection,
     distributeSelection,
     insertTextBox,
+    subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => {
+      chartWindowListeners.add(listener);
+      listener(buildChartWindowState());
+      return () => {
+        chartWindowListeners.delete(listener);
+      };
+    },
+    closeChartWindow,
+    previewChart,
     destroy: () => {
       destroyed = true;
       listeners.clear();
       stageInputListeners.clear();
       overlayListeners.clear();
+      chartWindowListeners.clear();
       window.removeEventListener("message", onWindowMessage);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React

@@ -9,7 +9,13 @@ import {
   setAttrSplice,
   type Splice,
 } from "./element-text.js";
-import { assertSlideCompliant, parseSlide, TEXT_WIDTH_ATTRIBUTE, type SlideElement } from "./slide/format.js";
+import {
+  assertSlideCompliant,
+  parseSlide,
+  CHART_CONTAINER_TYPE,
+  TEXT_WIDTH_ATTRIBUTE,
+  type SlideElement,
+} from "./slide/format.js";
 import { attributeOf, attributeValue, scanDocument, type ScannedNode } from "./slide/scan.js";
 import { decomposeMatrix, formatTransform, invertMatrix, parseTransform, type TransformParts } from "./geometry/transform.js";
 import { elementBounds } from "./geometry/bbox.js";
@@ -97,6 +103,22 @@ function meaningfulChildren(node: ScannedNode): ScannedNode[] {
 function isGroupContainer(node: ScannedNode): boolean {
   const children = meaningfulChildren(node);
   return children.length > 0 && children.every((child) => child.tag === "g");
+}
+
+/**
+ * A chart container's two children (`<comot:chart>`, the data; `<svg>`,
+ * the rendered picture) are not primitives `element scale`/`element
+ * resize`/`element style set` know how to touch — `<comot:chart>` in
+ * particular is data, not a drawable shape, and rewriting it here would
+ * silently corrupt it (plan §4.4's three guards, E2.T12). Checked before
+ * any of those three ever dispatches on the container's children, so the
+ * error names the real reason instead of `buildPrimitiveScaleSplices`'s
+ * generic "unsupported primitive `<comot:chart>`".
+ */
+function assertNotChartContainer(node: ScannedNode, elementId: string, action: string): void {
+  if (attributeValue(node, "data-comot-type") === CHART_CONTAINER_TYPE) {
+    throw new CoMotionError(`元素 ${elementId} 是圖表，${action}`);
+  }
 }
 
 /** Rounds through `formatSvgNumber` and rejects a value that is positive on input but rounds to zero or below. Mirrors `workspace.ts`'s `assertPositiveAfterRounding` (#76) — small enough, and specific enough to the 4-decimal write rule, that duplicating it here is simpler than threading it across the Node/browser boundary this module cannot cross. */
@@ -698,6 +720,7 @@ function scaleOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
+      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
       current = scaleLeafPrimitives(current, refreshedNode, factor, fontBook, currentId);
     }
   }
@@ -890,6 +913,7 @@ function resizeOneContainer(
         worklist.push({ id: childId, isTarget: false });
       }
     } else {
+      assertNotChartContainer(refreshedNode, currentId, "本版不支援縮放");
       current = resizeLeafPrimitives(current, refreshedNode, sx, sy, fontBook, currentId);
     }
   }
@@ -1067,6 +1091,7 @@ function setStyleOnContainer(
   const svgRoot = requireSvgRoot(roots);
   const { node } = requireContainer(svgRoot, id);
   assertNotLocked(node, id, force);
+  assertNotChartContainer(node, id, "樣式請用 chart 命令族調整");
 
   if (isGroupContainer(node)) {
     throw new CoMotionError(`元素 ${id} 是群組，沒有可套用樣式的圖元`);

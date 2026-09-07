@@ -16,7 +16,8 @@
       "@co-motion/core/geometry": ["../core/src/geometry/index.ts"],
       "@co-motion/core/slide": ["../core/src/slide/index.ts"],
       "@co-motion/core/text": ["../core/src/text/index.ts"],
-      "@co-motion/core/effects": ["../core/src/effects/index.ts"]
+      "@co-motion/core/effects": ["../core/src/effects/index.ts"],
+      "@co-motion/core/chart": ["../core/src/chart/index.ts"]
     }
   },
   "include": ["src"]

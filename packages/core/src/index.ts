@@ -92,8 +92,16 @@ export {
   moveSlideEffect,
   setSlideEffect,
   listSlideEffects,
+  createSlideChart,
+  setSlideChartData,
+  setSlideChartType,
+  setSlideChartPalette,
+  setSlideChartAxis,
+  setSlideChartStack,
+  setSlideChartLegend,
+  setSlideChartOption,
 } from "./workspace.js";
-export type { AddTextBoxInput, SaveState } from "./workspace.js";
+export type { AddTextBoxInput, SaveState, SetSlideChartDataInput } from "./workspace.js";
 export type { TextRunStyleUpdate, ListKind } from "./element-text.js";
 export {
   insertElement,
@@ -134,6 +142,7 @@ export {
   removeEffectsTargeting,
 } from "./effects/edit.js";
 export type { AddEffectInput, SetEffectInput } from "./effects/edit.js";
+export * from "./chart/index.js";
 export {
   recordSnapshot,
   beginHistoryGroup,

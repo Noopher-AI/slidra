@@ -129,7 +129,8 @@ export interface TextBoundsContext {
 export function primitiveBounds(primitive: SlidePrimitive, text?: TextBoundsContext): Rect {
   switch (primitive.tag) {
     case "rect":
-    case "image": {
+    case "image":
+    case "svg": {
       const x = numberAttr(primitive, "x", 0);
       const y = numberAttr(primitive, "y", 0);
       return {
@@ -520,7 +521,14 @@ function boundsWithin(
   // it as a second, bogus text box and distort the union. It never
   // contributes its own geometry; the content `<text>`'s box already covers
   // the area it decorates.
-  const measurable = element.primitives.filter((primitive) => primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true");
+  // A chart's `<comot:chart>` data primitive never contributes its own
+  // geometry (E2.T12) — it is not an SVG shape at all, only the sibling
+  // rendered `<svg>` (which `primitiveBounds`'s `"svg"` case handles) draws
+  // anything, mirroring how a list marker `<text>` is excluded above.
+  const measurable = element.primitives.filter(
+    (primitive) =>
+      primitive.attrs.get(LIST_MARKER_ATTRIBUTE) !== "true" && primitive.tag !== "comot:chart",
+  );
   return unionRects(
     measurable.map((primitive) =>
       transformRect(matrix, primitiveBounds(primitive, textContext)),

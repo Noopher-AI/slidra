@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import type { CanvasController, OverlayState } from "../../canvas.js";
+import type { CanvasController, ChartWindowState, OverlayState } from "../../canvas.js";
 import { SelectionOverlay } from "./SelectionOverlay.js";
 import { ContextBar } from "./ContextBar.js";
 import { CommentLayer } from "./CommentLayer.js";
 import { GuideLayer } from "./GuideLayer.js";
 import { BadgeLayer } from "./BadgeLayer.js";
+import { ChartWindow } from "./ChartWindow.js";
 
 /**
  * [E2.T8]: the comment overlay's own state, resolved by `App.tsx` (it owns
@@ -90,6 +91,7 @@ export function toLocalRect(
  */
 export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle, showBadges, comment, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
+  const [chartWindow, setChartWindow] = useState<ChartWindowState | null>(null);
 
   useEffect(() => {
     if (!controller) {
@@ -97,6 +99,19 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
       return;
     }
     return controller.subscribeOverlay(setOverlay);
+  }, [controller]);
+
+  // E2.T12 plan §3.6/§4.5: the chart data window's own state, self-
+  // subscribed here rather than threaded through Stage.tsx/App.tsx —
+  // `controller` (which is all `subscribeChartWindow`/`closeChartWindow`/
+  // `previewChart` need) already reaches this component, the same way
+  // `subscribeOverlay` above is handled locally instead of lifted.
+  useEffect(() => {
+    if (!controller) {
+      setChartWindow(null);
+      return;
+    }
+    return controller.subscribeChartWindow(setChartWindow);
   }, [controller]);
 
   const wellRect = wellRef.current?.getBoundingClientRect();
@@ -144,6 +159,10 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
       />
       <GuideLayer guides={guides} />
       <BadgeLayer badges={badges} onSelect={(target) => controller?.selectElements([target])} />
+      {/* `key={chartWindow.id}` remounts on a different target so its drag
+          position and every draft field reset to that chart's own data —
+          never carrying edit state from whichever chart was open before. */}
+      {chartWindow && <ChartWindow key={chartWindow.id} state={chartWindow} controller={controller} bounds={bounds} />}
       {children}
     </div>
   );

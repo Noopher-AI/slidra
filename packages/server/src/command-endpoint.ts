@@ -91,6 +91,15 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "comment add",
   "comment edit",
   "comment delete",
+  // E2.T12 的圖表插入面板、資料視窗與其八條命令。
+  "chart create",
+  "chart data set",
+  "chart type set",
+  "chart palette set",
+  "chart axis set",
+  "chart stack set",
+  "chart legend set",
+  "chart option set",
   // #200 (NOOP-69) 的樣式面板加入這三條：文字框對齊、頁面樣式（背景／強調
   // 色）、頁面尺寸。
   "textbox align",

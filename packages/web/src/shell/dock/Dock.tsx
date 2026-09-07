@@ -138,7 +138,7 @@ export function Dock({
       case "table":
         return <TablePanel onClose={onClose} />;
       case "chart":
-        return <ChartPanel onClose={onClose} />;
+        return <ChartPanel onClose={onClose} controller={controller} slidePath={slidePath} />;
       case "animate":
         return (
           <AnimatePanel
