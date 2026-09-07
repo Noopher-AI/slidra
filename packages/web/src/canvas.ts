@@ -1609,7 +1609,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
   }
 
+  /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
+  let pendingTableDblclick: TableRuntimeEvent | null = null;
+
   function emitTableEvent(event: TableRuntimeEvent): void {
+    if (event.type === "cell-dblclick" && tableListeners.size === 0) {
+      pendingTableDblclick = event;
+      return;
+    }
     for (const listener of tableListeners) listener(event);
   }
 
@@ -3918,6 +3925,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     },
     subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
       tableListeners.add(listener);
+      if (pendingTableDblclick) {
+        const replay = pendingTableDblclick;
+        pendingTableDblclick = null;
+        listener(replay);
+      }
       return () => {
         tableListeners.delete(listener);
       };

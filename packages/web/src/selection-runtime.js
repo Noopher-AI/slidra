@@ -1264,17 +1264,7 @@
       // its template row's row index instead of its own (架構:
       // "雙擊編輯的是模板列").
       if (target.getAttribute("data-comot-type") === "table") {
-        var tableCellEl = findTableCellElement(event.target);
-        var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
-        if (cellAddress) {
-          var reportedRow = cellAddress.row;
-          if (tableCellEl.getAttribute("data-comot-generated") === "1") {
-            var templateCell = findTemplateCellForColumn(target, cellAddress.col);
-            var templateAddress = templateCell && tableCellAddress(templateCell);
-            if (templateAddress) reportedRow = templateAddress.row;
-          }
-          post({ event: "table-cell-dblclick", id: target.getAttribute("id"), row: reportedRow, col: cellAddress.col });
-        }
+        postTableCellDblclick(target, event.target);
         return;
       }
       // E2.T12 plan §3.6: a chart container opens its data window instead
@@ -1298,9 +1288,28 @@
       selectedIds = [inner.getAttribute("id")];
       updateBoxes();
       post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
+      // A table inside a group: the same double-click that drilled in and
+      // selected it also opens the cell under the pointer — otherwise the
+      // author has to double-click twice to edit a grouped table, and the
+      // first one looks like "nothing happened" (found in manual review).
+      if (inner.getAttribute("data-comot-type") === "table") postTableCellDblclick(inner, event.target);
     },
     true,
   );
+
+  /** E2.T14 §4.5: reports the cell under `rawTarget` of table `tableEl` for editing — a generated cell reports its template row's row index instead of its own (架構: "雙擊編輯的是模板列"). */
+  function postTableCellDblclick(tableEl, rawTarget) {
+    var tableCellEl = findTableCellElement(rawTarget);
+    var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
+    if (!cellAddress) return;
+    var reportedRow = cellAddress.row;
+    if (tableCellEl.getAttribute("data-comot-generated") === "1") {
+      var templateCell = findTemplateCellForColumn(tableEl, cellAddress.col);
+      var templateAddress = templateCell && tableCellAddress(templateCell);
+      if (templateAddress) reportedRow = templateAddress.row;
+    }
+    post({ event: "table-cell-dblclick", id: tableEl.getAttribute("id"), row: reportedRow, col: cellAddress.col });
+  }
 
   window.addEventListener("resize", function () {
     reportViewport();

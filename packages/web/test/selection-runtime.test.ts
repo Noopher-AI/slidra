@@ -932,6 +932,21 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
   });
 
+  it("雙擊一個在群組裡的表格儲存格：同一次雙擊鑽入群組、選取表格，並回報 table-cell-dblclick", async () => {
+    const grouped = TABLE.replace('<g id="el-tbl"', '<g id="el-grp"><g id="el-tbl"').replace(/<\/svg>\s*$/, "</g></svg>");
+    const { doc } = boot(grouped);
+    const { messages, stop } = collectMessages();
+    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    await tick();
+    stop();
+
+    const events = messages.map((m: any) => m.event);
+    expect(events.indexOf("select")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("table-cell-dblclick")).toBeGreaterThan(events.indexOf("select"));
+    expect(messages).toContainEqual(expect.objectContaining({ event: "select", id: "el-tbl", groupPath: ["el-grp"] }));
+    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1 });
+  });
+
   it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();

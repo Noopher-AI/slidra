@@ -346,6 +346,28 @@ it("E8: 雙擊一格出現編輯輸入框；Enter 提交後重載顯示新文字
   }
 });
 
+it("E8b: 表格在群組裡時，直接雙擊一格就進入編輯（同一次雙擊鑽入＋開編輯器），不需要先點一下", async () => {
+  const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e8b", { rows: 2, cols: 2 });
+  try {
+    const grouped = await registry.dispatch("element group", {
+      id: presentationId, slidePath: "slides/001.svg", elementIds: [elementId, "el-caption"],
+    });
+    expect(grouped.ok).toBe(true);
+
+    const page = await openPage(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    await slideFrame.locator('[data-comot-cell="0,0"]').dblclick();
+    const editor = page.locator("input.table-cell-editor");
+    await expect.poll(() => editor.count()).toBe(1);
+    await editor.fill("群內");
+    await editor.press("Enter");
+
+    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">群內<");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（架構：雙擊編輯的是模板列）", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e9", { rows: 2, cols: 2 });
   try {
