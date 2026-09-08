@@ -556,12 +556,15 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     // "outline" comes from the bundled skill directory, which is populated
     // before the server ever starts — no need to wait for the agent's own
     // report (which does not exist yet, see the test above) to complete
-    // this one.
-    await input.fill("/out");
+    // this one. Bundled skills are namespaced with `comotion-`
+    // (commands.ts's BUNDLED_PREFIX) so an author can tell CoMotion's own
+    // shipped skills apart from agent/user ones — the registered command is
+    // "comotion-outline", not the bare skill-directory name "outline".
+    await input.fill("/comotion-out");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");
     const completed = await input.inputValue();
-    expect(completed).toBe("/outline ");
+    expect(completed).toBe("/comotion-outline ");
 
     // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
     await input.fill(`${completed}這是參數`);
@@ -569,7 +572,7 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     await page.locator(".chat-input button:not([disabled])").click();
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/outline 這是參數");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-outline 這是參數");
   } finally {
     await cleanup();
   }
