@@ -38,6 +38,8 @@ export class AgentSwitchLockedError extends CoMotionError {
 export interface AgentManagerOptions {
   presentationId: string;
   editingLock: EditingLock;
+  /** The deployed agent working directory (NOOP-231) every session runs in. */
+  workdir: string;
   /** What `serve` started with — the queryable "why is `current` what it is" (§4.3's `source` field). */
   initial: { kind: AgentKind | null; source: AgentSource };
   /** Injected for tests — see `probe.ts`. Defaults to actually spawning `claude`/`codex`. */
@@ -83,6 +85,7 @@ export interface AgentManagerOptions {
 export class AgentManager {
   private readonly presentationId: string;
   private readonly editingLock: EditingLock;
+  private readonly workdir: string;
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
   private readonly onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
@@ -103,6 +106,7 @@ export class AgentManager {
   constructor(options: AgentManagerOptions) {
     this.presentationId = options.presentationId;
     this.editingLock = options.editingLock;
+    this.workdir = options.workdir;
     this.runCommand = options.runCommand ?? spawnCommandRunner;
     this.resolveAdapter = options.resolveAdapter ?? resolveAdapterConfig;
     this.onAgentChanged = options.onAgentChanged;
@@ -119,7 +123,7 @@ export class AgentManager {
 
   private buildSession(kind: AgentKind): AgentChatSession {
     const config = this.resolveAdapter(kind);
-    return new AgentChatSession(config, this.presentationId, this.editingLock);
+    return new AgentChatSession(config, this.presentationId, this.editingLock, this.workdir);
   }
 
   /** Forwards one session's events to every currently attached `/api/chat/stream` listener. */

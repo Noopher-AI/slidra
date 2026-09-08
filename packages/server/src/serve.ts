@@ -15,6 +15,7 @@ import {
   resolveCoMotionHome,
 } from "@co-motion/core";
 import type { AgentAdapterConfig } from "./agent/session.js";
+import { deployAgentWorkdir } from "./agent/workdir.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
 import { resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
@@ -120,6 +121,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   if (project.slides.length === 0) {
     throw new CoMotionError("簡報沒有投影片");
   }
+  const agentWorkdir = await deployAgentWorkdir();
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -157,6 +159,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const manager = new AgentManager({
     presentationId,
     editingLock,
+    workdir: agentWorkdir,
     initial: initialAgent,
     runCommand: options.agentManager?.runCommand,
     resolveAdapter,

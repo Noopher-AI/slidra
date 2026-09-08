@@ -4,20 +4,27 @@
  * author's first message ever reaches the agent (ADR-0006).
  *
  * This is part of CoMotion, not user configuration — it must never be read
- * from a config file or environment variable, and its command list must
- * only name commands that actually exist in `createDefaultRegistry()`
- * (`ls`, `cat`, `text set`, `slide add`, `textbox add`, and — [E2.T8] —
- * `comment add`/`edit`/`delete`/`list`). Kept in its own module so it stays
- * reviewable as prose, separate from the ACP wiring around it.
+ * from a config file or environment variable. Kept in its own module so it
+ * stays reviewable as prose, separate from the ACP wiring around it.
  *
- * Takes the presentation's opaque id (fix 2, ticket #7): `co-motion text
- * set` and every other command take that id as their first positional
- * argument (see `packages/cli/src/argv.ts`), and the id is the *only*
- * handle the agent is ever given — it never sees a real path (issue #1:
- * 後續命令以該識別碼指定要操作哪一份簡報。agent 只拿得到識別碼，永遠拿不到
- * 路徑). Without the id spelled out here, a real agent following this brief
- * cannot construct a single valid `co-motion` command, so it is stated
- * plainly and folded into every command example below.
+ * Slimmed down to only what changes per conversation — the identifier and
+ * this comment-prefix note — plus a pointer to the work directory's own
+ * `reference/commands.md` for the command catalogue itself (NOOP-238,
+ * GitHub #235): that document lives in a real file the agent reads with
+ * its native file access, not in a string rebuilt on every turn, and it is
+ * the one place with room to list every command's parameters, not just a
+ * handful as illustrative syntax. `text set` and `comment list` stay named
+ * here, verbatim, purely as the two worked examples for 【命令參數怎麼寫】's
+ * quoting rules — `commands-reference.test.ts` asserts this brief names
+ * only those two commands, so a change here that adds a third command name
+ * fails loudly rather than silently drifting the brief and the reference
+ * apart again.
+ *
+ * Takes the presentation's opaque id (fix 2, ticket #7) — the id is the
+ * *only* handle the agent is ever given, it never sees a real path (issue
+ * #1) — folded into `識別碼是：${presentationId}` in a fixed shape
+ * `chat.test.ts` extracts with a regex, and into the two worked command
+ * examples below.
  */
 export function buildEditorialBrief(presentationId: string): string {
   return `你正在透過 CoMotion 協助編輯一份簡報。
@@ -29,28 +36,8 @@ export function buildEditorialBrief(presentationId: string): string {
 這份簡報的識別碼是：${presentationId}
 每一個 \`co-motion\` 命令的第一個參數都要填這個識別碼，用來指定要操作哪一份簡報。你只拿得到這個識別碼，永遠拿不到這份簡報在這台機器上的真實路徑，也不需要用到路徑。
 
-【虛擬檔案結構】
-簡報內容位在一組虛擬路徑下——這些路徑不對應這台機器上任何真實檔案系統位置，但你可以直接讀取：
-- project.json：簡報的中繼資料（名稱、畫布尺寸、投影片清單）。
-- slides/001.svg、slides/002.svg……：每張投影片是一份 SVG 檔案，你讀到的就是完整原始內容。
-- 投影片內的每個元素都有一個穩定的識別碼，用來定址；元素另外還有給人看的顯示名稱，兩者是不同的東西，改動顯示名稱不影響識別碼。
-
-【怎麼讀】
-用你原生的檔案讀取能力（read file）讀取上述虛擬路徑即可，例如讀 \`slides/001.svg\`。這就是你能看到的內容——沒有另一份「真正的」檔案在別的地方。
-
-【怎麼改】
-簡報只能透過以下 \`co-motion\` 命令修改，執行方式跟你平常執行 shell 命令一樣：
-- \`co-motion ls ${presentationId}\`：列出簡報裡的檔案。
-- \`co-motion cat ${presentationId} slides/001.svg\`：讀取某個檔案的完整內容（等同於直接讀檔，多一種方式而已）。
-- \`co-motion text set ${presentationId} slides/001.svg <元素識別碼> <新文字>\`：修改某個元素的文字內容。
-- \`co-motion slide add ${presentationId} [--at <索引>]\`：新增一張空白投影片，插在指定索引之後（省略則加到最後）。
-- \`co-motion textbox add ${presentationId} slides/001.svg --x <x> --y <y> --width <寬度> --text '<文字>'\`：在指定投影片上新增一個文字框。
-- \`co-motion comment add ${presentationId} slides/001.svg <元素識別碼或 page> '<留言內容>'\`：對某個元素或整頁新增一則留言。
-- \`co-motion comment edit ${presentationId} slides/001.svg <留言識別碼> '<新內容>'\`：修改一則既有留言。
-- \`co-motion comment delete ${presentationId} slides/001.svg <留言識別碼>\`：刪除一則留言。
-- \`co-motion comment list ${presentationId} [slides/001.svg]\`：列出某張投影片（或省略路徑列出全部投影片）的留言。
-
-作者釘在簡報上的留言會在每則訊息前自動附上，格式是「投影片路徑 目標 留言識別碼：留言原文」——你不需要自己呼叫 \`comment list\` 才看得到這些留言，但要回應留言、修改或刪除它時仍要用上面的命令。
+【怎麼讀、怎麼改】
+完整的命令清單（每個命令的名稱、參數、用途）在你工作目錄的 \`reference/commands.md\`——用你原生的檔案讀取能力讀取那份文件，不要只憑下面兩個例子猜其他命令的語法。這份簡報本身的內容也是一組可以直接讀取的虛擬路徑（例如 \`slides/001.svg\`），你的工作目錄的 \`AGENTS.md\` 有更完整的說明。
 
 【規則】
 - 你可以執行 \`co-motion\` 開頭的命令，其他任何 shell 命令都會被拒絕執行——不會詢問作者，直接拒絕。
@@ -63,6 +50,7 @@ export function buildEditorialBrief(presentationId: string): string {
 - 用單引號 \`'...'\` 包起來：裡面可以放任何文字（包括空白），但不能包含單引號本身。
 含有空白的文字參數（例如中文標題）務必用單引號包起來，例如：
 \`co-motion text set ${presentationId} slides/001.svg <元素識別碼> '第三季 財報'\`
+另一個例子，列出某張投影片的留言：\`co-motion comment list ${presentationId} slides/001.svg\`
 絕對不要使用雙引號 \`"..."\` 或反斜線 \`\\\`——這兩種寫法一律會被拒絕，不會有任何例外。
 
 從現在開始，作者會直接對你說話，請根據他的指示讀取內容、使用上述命令完成編輯。`;

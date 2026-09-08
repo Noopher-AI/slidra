@@ -1,9 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import {
   CoMotionError,
@@ -17,6 +14,7 @@ import {
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
+import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
 import type { EditingLock } from "../editing-lock.js";
 
 /**
@@ -148,24 +146,20 @@ export class AgentChatSession extends EventEmitter {
   private connection: acp.ClientSideConnection | undefined;
   private sessionId: string | undefined;
   /**
-   * The empty `mkdtemp` directory handed to the agent as its session `cwd`
-   * (fix 1). Tracked here so `dispose()` (and a failed-start teardown) can
-   * remove it — nothing in this directory belongs to the user, so its
-   * lifetime is scoped to the session, not the OS temp cleanup schedule.
-   */
-  private sessionCwd: string | undefined;
-  /**
-   * `sessionCwd`, resolved to its real (symlink-free) form (fix 3). A
+   * The deployed product work directory (`deployAgentWorkdir()`'s result),
+   * already resolved to its real (symlink-free) form — handed to the agent
+   * as its session `cwd` on every attempt, and never removed by this
+   * session (its lifetime is `CO_MOTION_HOME`'s, not the session's). A
    * conforming ACP agent echoes back an *absolute* path rooted at the cwd
    * it was given — but resolved, not verbatim (confirmed against a real
    * `claude-code-acp` 0.12.6: the cwd sent to `session/new` was
    * `/var/folders/...`, the `path` a subsequent `fs/read_text_file` sent
    * back was `/private/var/folders/...` — macOS resolves that `/var`
-   * symlink). Comparing an absolute `path` against the raw `mkdtemp` string
+   * symlink). Comparing an absolute `path` against an unresolved string
    * would therefore fail on every single real read; comparing against this
    * resolved form is what actually matches.
    */
-  private sessionCwdReal: string | undefined;
+  private readonly workdirReal: string;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -222,11 +216,12 @@ export class AgentChatSession extends EventEmitter {
    */
   private turnHasEditLock = false;
 
-  constructor(config: AgentAdapterConfig, presentationId: string, editingLock: EditingLock) {
+  constructor(config: AgentAdapterConfig, presentationId: string, editingLock: EditingLock, workdirReal: string) {
     super();
     this.config = config;
     this.presentationId = presentationId;
     this.editingLock = editingLock;
+    this.workdirReal = workdirReal;
   }
 
   override on<K extends keyof ChatEvents>(event: K, listener: ChatEvents[K]): this {
@@ -368,27 +363,26 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * Tears down everything a live or failed session may have running: kills
-   * the child, drops the connection/session id, and removes the temp cwd.
-   * Field-clearing happens synchronously, before any `await`, so a session
-   * that dies mid-request is never *remembered* as live — the very next
-   * `ensureSession()` call always sees a clean slate and spawns a
-   * genuinely fresh attempt, with nothing left for later code to remember
-   * to check (fix 1). Safe to call more than once for the same attempt.
+   * the child and drops the connection/session id. Field-clearing happens
+   * synchronously, before any `await`, so a session that dies mid-request
+   * is never *remembered* as live — the very next `ensureSession()` call
+   * always sees a clean slate and spawns a genuinely fresh attempt, with
+   * nothing left for later code to remember to check (fix 1). Safe to call
+   * more than once for the same attempt.
+   *
+   * Does **not** touch `workdirReal` — the product work directory belongs
+   * to `CO_MOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
+   * session is ever constructed, and outlives every session teardown,
+   * including the process's own shutdown.
    */
   private async teardownSession(): Promise<void> {
     const child = this.child;
-    const sessionCwd = this.sessionCwd;
     this.child = undefined;
     this.connection = undefined;
     this.sessionId = undefined;
-    this.sessionCwd = undefined;
-    this.sessionCwdReal = undefined;
     this.readyPromise = undefined;
     if (child && !child.killed) {
       child.kill();
-    }
-    if (sessionCwd) {
-      await rm(sessionCwd, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -458,24 +452,15 @@ export class AgentChatSession extends EventEmitter {
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
     });
 
-    // A dedicated, empty directory — never the user's project directory
-    // (ADR-0004: a real path is a map the agent will use) and never under
-    // CO_MOTION_HOME (that would disclose the home, and `..` from there
-    // reaches `work/<id>`, the presentation's real work directory). The
-    // system temp directory is unrelated to both, so this is the right
-    // neighbourhood for a cwd the protocol requires but which must hold
-    // nothing of the user's.
-    const sessionCwd = await mkdtemp(path.join(tmpdir(), "co-motion-agent-cwd-"));
-    this.sessionCwd = sessionCwd;
-    // Resolved once, up front, against the directory `mkdtemp` actually
-    // created — not against whatever the agent later sends back — so
-    // `readTextFile`'s prefix comparison (fix 3) is anchored to a real
-    // filesystem fact instead of trusting the agent's own path shape.
-    this.sessionCwdReal = await realpath(sessionCwd);
-
     let session: acp.NewSessionResponse;
     try {
-      session = await connection.newSession({ cwd: sessionCwd, mcpServers: [] });
+      // The deployed product work directory (`deployAgentWorkdir()`,
+      // already resolved to its real form) — the agent reads CLAUDE.md/
+      // AGENTS.md/skills from here via its own native file access, and
+      // `fs/read_text_file` also serves it (see `readTextFile` below).
+      // Never re-deployed per session: the same directory is handed to
+      // every attempt, including a reconnect after an adapter crash.
+      session = await connection.newSession({ cwd: this.workdirReal, mcpServers: [] });
     } catch (error) {
       // Errors that cross the JSON-RPC wire arrive as a plain
       // `{ code, message, data }` object (see the SDK's own
@@ -663,27 +648,31 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * `fs/read_text_file` — third layer of ADR-0004. `params.path` is either
-   * the virtual path the brief names directly (e.g. "slides/001.svg") or,
-   * per a real `claude-code-acp` 0.12.6 probe, an *absolute* path rooted at
-   * the session cwd (fix 3 — a conforming agent sends this shape, so
-   * refusing to understand it means a real agent cannot read anything at
-   * all). `toVirtualPath` translates the latter back into the former;
-   * either way the result goes through the exact same structural lookup
-   * every other read uses (`readPresentationFile`) — the virtual tree
-   * remains the only containment, the cwd prefix is only ever a
-   * translation rule.
+   * a virtual path the brief or `reference/commands.md` names directly
+   * (e.g. "slides/001.svg", "CLAUDE.md") or, per a real `claude-code-acp`
+   * 0.12.6 probe, an *absolute* path rooted at the session cwd (fix 3 — a
+   * conforming agent sends this shape, so refusing to understand it means
+   * a real agent cannot read anything at all). `classifyAgentReadPath`
+   * translates the latter back into the former and decides which of the
+   * two real trees — the presentation's virtual tree, or the deployed work
+   * directory — the (now-relative) path belongs to; either way the read
+   * goes through the same kind of structural lookup, never a raw
+   * `readFile` on caller-supplied input.
    */
   private async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
-    const virtualPath = this.toVirtualPath(params.path);
-    if (virtualPath === undefined) {
-      // An absolute path outside the session cwd: refused explicitly and
+    const target = classifyAgentReadPath(params.path, this.workdirReal);
+    if (target.kind === "refused") {
+      // An absolute path outside the work directory: refused explicitly and
       // never resolved against the real filesystem (fix 3). The message
       // deliberately does not echo the (real filesystem) path back.
       throw new acp.RequestError(READ_NOT_FOUND_CODE, PATH_OUTSIDE_SESSION_CWD_MESSAGE);
     }
     let content: string;
     try {
-      content = await readPresentationFile(this.presentationId, virtualPath);
+      content =
+        target.kind === "presentation"
+          ? await readPresentationFile(this.presentationId, target.virtualPath)
+          : await readAgentWorkdirFile(this.workdirReal, target.relativePath);
     } catch (error) {
       // Preserve the existing Traditional-Chinese wording verbatim — these
       // messages already never contain a real path (ADR-0004, third layer).
@@ -700,37 +689,6 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     return { content: applyLineWindow(content, params.line, params.limit) };
-  }
-
-  /**
-   * Translates whatever `fs/read_text_file` sent as `path` into a virtual
-   * path (fix 3). A relative path already *is* a virtual path — passed
-   * through unchanged, exactly as before this fix, since that is both what
-   * the brief itself names and what the existing tests exercise.
-   *
-   * An absolute path is translated by stripping the session cwd's
-   * *resolved* prefix (`sessionCwdReal`) — resolved because a conforming
-   * agent resolves the cwd's symlinks before it ever echoes a path back
-   * (the `/var` vs `/private/var` case on macOS; see `sessionCwdReal`'s own
-   * comment). `path.resolve` only normalizes the string itself (collapsing
-   * `.`/`..` segments) — it never touches the real filesystem, because the
-   * file this path names is virtual and need not exist on disk at all.
-   *
-   * Returns undefined when the absolute path does not fall under the
-   * session cwd — the caller refuses outright rather than falling back to
-   * any real-filesystem lookup; the cwd prefix is a translation rule, not
-   * a containment mechanism, so there is no "resolve it anyway and see" to
-   * fall back to.
-   */
-  private toVirtualPath(rawPath: string): string | undefined {
-    if (!path.isAbsolute(rawPath)) return rawPath;
-    if (this.sessionCwdReal === undefined) return undefined;
-    const normalized = path.resolve(rawPath);
-    const relative = path.relative(this.sessionCwdReal, normalized);
-    if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
-      return undefined;
-    }
-    return relative;
   }
 
   /** Attaches one SSE stream to this session's events; returns a detach function. */
