@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,6 +79,23 @@ describe("readSkillCommands", () => {
 
     const commands = await readSkillCommands(dir, "user");
     expect(commands).toEqual([{ name: "outline", description: "x", source: "user" }]);
+  });
+
+  it("a skill installed as a symlink to a directory elsewhere is picked up (how skillshare installs them)", async () => {
+    const elsewhere = await mkdtemp(path.join(tmpdir(), "co-motion-skill-src-"));
+    await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: 透過 symlink 安裝\n---\n");
+    await symlink(path.join(elsewhere, "linked"), path.join(dir, "linked"));
+
+    const commands = await readSkillCommands(dir, "user");
+    expect(commands).toEqual([{ name: "linked", description: "透過 symlink 安裝", source: "user" }]);
+    await rm(elsewhere, { recursive: true, force: true });
+  });
+
+  it("a plain file sitting in the skill directory (.DS_Store) contributes nothing", async () => {
+    await writeFile(path.join(dir, ".DS_Store"), "junk");
+
+    const commands = await readSkillCommands(dir, "user");
+    expect(commands).toEqual([]);
   });
 
   it("a non-existent directory returns an empty list, not an error", async () => {

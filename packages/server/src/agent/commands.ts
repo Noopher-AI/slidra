@@ -115,7 +115,11 @@ export async function readSkillCommands(dir: string, source: SlashCommandSource)
 
   const commands: SlashCommand[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    // No `isDirectory()` filter: a real skill directory is very often a
+    // symlink (skillshare and friends install them that way), and `readdir`
+    // reports a symlink as neither a directory nor a file. Just try to read
+    // the SKILL.md — a plain file entry (.DS_Store) fails with ENOTDIR and a
+    // directory without one with ENOENT, both already skipped below.
     const skillPath = path.join(dir, entry.name, "SKILL.md");
     let text: string;
     try {

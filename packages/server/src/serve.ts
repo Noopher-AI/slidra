@@ -212,14 +212,22 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // `agent` at all, because they never touch chat — startServe must not
   // crash on `options.agent.kind` for those callers just because this
   // unrelated feature also lives here.
-  let skillDirs: SkillDirs | undefined;
+  // Keyed by kind, not a single slot: the user skill directory differs per
+  // agent (~/.claude/skills vs ~/.agents/skills), and POST /api/agent/select
+  // can switch kinds while the server runs — a one-shot cache would keep
+  // serving the directory of whichever agent happened to ask first.
+  const skillDirsByKind = new Map<AgentKind, SkillDirs>();
   const computeSlashCommands = (): Promise<SlashCommand[]> => {
     const kind = manager.currentKind();
     // No agent selected yet: no agent report and no user skill directory to
     // point at, so the list is legitimately empty rather than an error.
     if (kind === null) return Promise.resolve([]);
-    skillDirs ??= resolveSkillDirs(kind, options.skillDirs);
-    return collectSlashCommands(manager.getReportedCommands(), skillDirs);
+    let dirs = skillDirsByKind.get(kind);
+    if (!dirs) {
+      dirs = resolveSkillDirs(kind, options.skillDirs);
+      skillDirsByKind.set(kind, dirs);
+    }
+    return collectSlashCommands(manager.getReportedCommands(), dirs);
   };
   const detachCommands = manager.onAvailableCommands(() => {
     void computeSlashCommands().then((commands) => {
