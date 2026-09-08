@@ -177,7 +177,7 @@ async function openApp(server: RunningServer, options: { waitForAgent?: boolean 
 
 async function sendChatMessage(page: Page, text: string): Promise<void> {
   await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-  await page.locator(".chat-input input").fill(text);
+  await page.locator(".chat-input textarea").fill(text);
   await page.locator(".chat-input button").click();
 }
 
@@ -256,7 +256,7 @@ it("⌘↵ 送出聊天（06-KEYBOARD_AND_GESTURES.md）：在聊天輸入框按
   try {
     const page = await openApp(server, { waitForAgent: true });
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    const input = page.locator(".chat-input input");
+    const input = page.locator(".chat-input textarea");
     await input.fill("⌘Enter 送出測試");
     await input.press("Meta+Enter");
 
@@ -350,6 +350,30 @@ it("送出：留言隨訊息一起送給 agent（context 前綴真的抵達）�
     expect(replyText).toContain("把標題改短");
     expect(replyText).toContain("slides/002.svg page");
     expect(replyText).toContain("整頁重寫");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("送出：有釘選留言時，輸入框留空也送得出去（留言本身就是要求）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "把標題改短" });
+
+    const page = await openApp(server, { waitForAgent: true });
+    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    await page.locator(".chat-input button").click(); // 一個字都沒打
+
+    // 對話裡顯示的是佔位字，不是空泡泡。
+    const authored = page.locator(".chat-message-author").last();
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toBe("（未輸入訊息，只送出 1 則釘選留言）");
+
+    // 假 agent 回聲收到的 prompt：留言與「沒有輸入訊息」的指示都在，沒有空的【作者的訊息】。
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("把標題改短");
+    const replyText = (await reply.textContent()) ?? "";
+    expect(replyText).toContain("作者沒有輸入訊息");
+    expect(replyText).not.toContain("【作者的訊息】");
   } finally {
     await cleanup();
   }
@@ -486,7 +510,7 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
   });
   try {
     const page = await openApp(server, { waitForAgent: true });
-    const input = page.locator(".chat-input input");
+    const input = page.locator(".chat-input textarea");
     const menu = page.locator(".slash-menu");
     const menuItem = page.locator(".slash-menu-item");
 
@@ -547,19 +571,18 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
 it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
   const { server, cleanup } = await startServerFor(
     {},
-    { bundled: { outline: "---\nname: outline\ndescription: 從大綱建立投影片\n---\n" } },
+    { bundled: { "comotion-outline": "---\nname: comotion-outline\ndescription: 從大綱建立投影片\n---\n" } },
   );
   try {
     const page = await openApp(server, { waitForAgent: true });
-    const input = page.locator(".chat-input input");
+    const input = page.locator(".chat-input textarea");
 
-    // "outline" comes from the bundled skill directory, which is populated
-    // before the server ever starts — no need to wait for the agent's own
-    // report (which does not exist yet, see the test above) to complete
-    // this one. Bundled skills are namespaced with `comotion-`
-    // (commands.ts's BUNDLED_PREFIX) so an author can tell CoMotion's own
-    // shipped skills apart from agent/user ones — the registered command is
-    // "comotion-outline", not the bare skill-directory name "outline".
+    // "comotion-outline" comes from the bundled skill directory, which is
+    // populated before the server ever starts — no need to wait for the
+    // agent's own report (which does not exist yet, see the test above) to
+    // complete this one. A shipped skill's directory name carries the
+    // `comotion-` namespace itself, so what the author types is exactly
+    // what the agent has registered (#248).
     await input.fill("/comotion-out");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");

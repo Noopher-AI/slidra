@@ -1,5 +1,5 @@
 ---
-name: new-slide
+name: comotion-new-slide
 description: 在簡報最後（或指定位置）新增一頁，放上標題與內文，並確認結果真的長對了
 ---
 

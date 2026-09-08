@@ -197,8 +197,9 @@
 }
 
 /* 輸入框是一張白卡：上半是輸入列，下半是提示 + 圓角送出鈕；焦點框畫在整
-   張卡上（不是 input 自己）。`.chat-input input` / `.chat-input button`
-   選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層 footer。 */
+   張卡上（不是 textarea 自己）。`.chat-input textarea` / `.chat-input
+   button` 選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層
+   footer。 */
 .chat-input {
   position: relative; /* anchors .slash-menu, which floats above this card */
   flex: none;
@@ -214,11 +215,16 @@
   border-color: var(--brand-red-ring);
 }
 
-.chat-input input {
-  /* Firefox min-width fix (NOOP-51): a bare <input> keeps its size=20
-     intrinsic width as its flex-item automatic minimum unless told
-     otherwise, so it doesn't yield the space the submit button needs. */
+.chat-input textarea {
+  /* Firefox min-width fix (NOOP-51): a bare field keeps its intrinsic
+     width as its flex-item automatic minimum unless told otherwise, so it
+     doesn't yield the space the submit button needs. */
   min-width: 0;
+  /* Multi-line: starts one row tall and grows with the content (height is
+     set from JS in ChatPanel), up to a cap after which it scrolls. */
+  resize: none;
+  overflow-y: auto;
+  max-height: 10em;
   padding: var(--space-4) var(--space-5) var(--space-1);
   box-sizing: border-box;
   background: transparent;
@@ -227,11 +233,11 @@
   font: inherit;
   font-size: var(--text-base);
 }
-.chat-input input::placeholder {
+.chat-input textarea::placeholder {
   color: var(--ink-400);
   opacity: 1;
 }
-.chat-input input:focus-visible {
+.chat-input textarea:focus-visible {
   outline: none;
 }
 
