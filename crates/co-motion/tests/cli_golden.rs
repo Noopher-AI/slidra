@@ -202,6 +202,293 @@ fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     );
 }
 
+/// Runs `new`/`open`/`text set` via the TS engine, staging one edit — the
+/// setup every path below re-stages fresh (a separate `Fixture` each,
+/// mirroring `undo_redo_round_trip_via_rust_binary_restores_exact_bytes`'s
+/// own setup above; duplicated rather than shared so each path's fixture is
+/// fully independent). Returns `(id, before, after)`.
+fn build_edited_fixture(fixture: &Fixture) -> (String, Vec<u8>, Vec<u8>) {
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+
+    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+
+    let text_set = fixture.run_node(&[
+        "text",
+        "set",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "改過的標題",
+    ]);
+    assert!(
+        text_set.status.success(),
+        "setup: `text set` failed: {:?}",
+        text_set
+    );
+
+    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_ne!(
+        before, after,
+        "setup: the staged edit must actually change the file"
+    );
+
+    (id, before, after)
+}
+
+fn read_stack_json(fixture: &Fixture, id: &str) -> String {
+    fs::read_to_string(fixture.home.join("history").join(id).join("stack.json"))
+        .expect("stack.json must exist after an undo/redo")
+}
+
+/// `stack.json`'s `groupId`/`snapshotId` are opaque random ids
+/// (`packages/core/src/id.ts` / `crates/co-motion/src/id.rs`, both
+/// `randomBytes(9).base64url`) — freshly generated on every apply, by
+/// whichever engine performed it, so two structurally-identical stacks
+/// never share literal id text. Replaces each with a placeholder assigned
+/// in order of first appearance (`<GROUP_1>`, `<SNAPSHOT_1>`, ...) so a
+/// TS-only reference run and a mixed-engine run can be compared
+/// byte-for-byte despite neither engine's ids ever repeating between
+/// processes.
+fn normalize_stack_ids(raw: &str) -> String {
+    let mut value: serde_json::Value =
+        serde_json::from_str(raw).expect("stack.json must be valid JSON");
+    let mut normalizer = StackIdNormalizer::default();
+    if let Some(array) = value.get_mut("undo").and_then(|v| v.as_array_mut()) {
+        for group in array {
+            normalizer.normalize_group(group);
+        }
+    }
+    if let Some(array) = value.get_mut("redo").and_then(|v| v.as_array_mut()) {
+        for group in array {
+            normalizer.normalize_group(group);
+        }
+    }
+    if let Some(open_group) = value.get_mut("openGroup") {
+        if !open_group.is_null() {
+            normalizer.normalize_group(open_group);
+        }
+    }
+    serde_json::to_string_pretty(&value).expect("normalized stack must serialize")
+}
+
+#[derive(Default)]
+struct StackIdNormalizer {
+    groups: std::collections::HashMap<String, String>,
+    snapshots: std::collections::HashMap<String, String>,
+}
+
+impl StackIdNormalizer {
+    fn group_placeholder(&mut self, real: &str) -> String {
+        let next_index = self.groups.len() + 1;
+        self.groups
+            .entry(real.to_string())
+            .or_insert_with(|| format!("<GROUP_{next_index}>"))
+            .clone()
+    }
+
+    fn snapshot_placeholder(&mut self, real: &str) -> String {
+        let next_index = self.snapshots.len() + 1;
+        self.snapshots
+            .entry(real.to_string())
+            .or_insert_with(|| format!("<SNAPSHOT_{next_index}>"))
+            .clone()
+    }
+
+    fn normalize_group(&mut self, group: &mut serde_json::Value) {
+        let Some(obj) = group.as_object_mut() else {
+            return;
+        };
+        if let Some(serde_json::Value::String(group_id)) = obj.get("groupId") {
+            let placeholder = self.group_placeholder(&group_id.clone());
+            obj.insert(
+                "groupId".to_string(),
+                serde_json::Value::String(placeholder),
+            );
+        }
+        if let Some(entries) = obj.get_mut("entries").and_then(|v| v.as_array_mut()) {
+            for entry in entries.iter_mut() {
+                let Some(entry_obj) = entry.as_object_mut() else {
+                    continue;
+                };
+                if let Some(serde_json::Value::String(snapshot_id)) = entry_obj.get("snapshotId") {
+                    let placeholder = self.snapshot_placeholder(&snapshot_id.clone());
+                    entry_obj.insert(
+                        "snapshotId".to_string(),
+                        serde_json::Value::String(placeholder),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Acceptance criterion A5 (plan NOOP-277 section 5,父票 AC3): the undo/redo
+/// stack must be interchangeable between the Rust and Node engines in
+/// either direction — not just Rust-undo-then-Rust-redo, which
+/// `undo_redo_round_trip_via_rust_binary_restores_exact_bytes` above already
+/// covers. Each of the four paths below re-stages the same edit via the TS
+/// engine (the only content-editing engine so far — history's write-path
+/// staging API is not yet ported, per this module's own header comment)
+/// then exercises undo/redo across engines, checking both the restored file
+/// bytes AND `stack.json`'s id-normalized shape against an all-TS
+/// reference run of the same edit + undo + redo.
+///
+/// The reference is valid for all four paths because `apply_group` (ported
+/// identically on both engines — see `history.rs`'s own doc comment) always
+/// re-derives its inverse group from the group being applied: same virtual
+/// paths, one freshly-generated snapshot id per entry, `groupId` carried
+/// through unchanged. That derivation does not depend on which engine
+/// performed the previous step, so "after one undo" and "after undo+redo"
+/// are each a single well-defined state regardless of engine mix.
+#[test]
+fn cross_engine_undo_redo_matches_ts_reference_stack_and_bytes_on_every_path() {
+    let reference = Fixture::new("cross-engine-reference");
+    let (ref_id, _before, _after) = build_edited_fixture(&reference);
+    let ref_undo = reference.run_node(&["undo", &ref_id]);
+    assert!(
+        ref_undo.status.success(),
+        "reference undo failed: {:?}",
+        ref_undo
+    );
+    let reference_undo_stack = normalize_stack_ids(&read_stack_json(&reference, &ref_id));
+    let ref_redo = reference.run_node(&["redo", &ref_id]);
+    assert!(
+        ref_redo.status.success(),
+        "reference redo failed: {:?}",
+        ref_redo
+    );
+    let reference_redo_stack = normalize_stack_ids(&read_stack_json(&reference, &ref_id));
+
+    // Path 1+2 (A5 paths 1 and 2): TS builds history -> Rust undo -> Rust redo.
+    {
+        let fixture = Fixture::new("cross-engine-rust-undo-rust-redo");
+        let (id, before, after) = build_edited_fixture(&fixture);
+
+        let undo_output = fixture.run_rust(&["undo", &id]);
+        assert!(
+            undo_output.status.success(),
+            "rust undo failed: {:?}",
+            undo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            before,
+            "path 1: rust undo must restore the pre-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_undo_stack,
+            "path 1: rust undo's stack.json diverges from the TS reference"
+        );
+
+        let redo_output = fixture.run_rust(&["redo", &id]);
+        assert!(
+            redo_output.status.success(),
+            "rust redo failed: {:?}",
+            redo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            after,
+            "path 2: rust redo must restore the post-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_redo_stack,
+            "path 2: rust redo's stack.json diverges from the TS reference"
+        );
+    }
+
+    // Path 3 (A5 path 3): TS builds history -> Rust undo -> TS redo.
+    {
+        let fixture = Fixture::new("cross-engine-rust-undo-ts-redo");
+        let (id, before, after) = build_edited_fixture(&fixture);
+
+        let undo_output = fixture.run_rust(&["undo", &id]);
+        assert!(
+            undo_output.status.success(),
+            "rust undo failed: {:?}",
+            undo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            before,
+            "path 3 setup: rust undo must restore the pre-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_undo_stack,
+            "path 3 setup: rust undo's stack.json diverges from the TS reference"
+        );
+
+        let redo_output = fixture.run_node(&["redo", &id]);
+        assert!(
+            redo_output.status.success(),
+            "ts redo failed: {:?}",
+            redo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            after,
+            "path 3: ts redo (after a rust undo) must restore the post-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_redo_stack,
+            "path 3: ts redo's stack.json diverges from the TS reference"
+        );
+    }
+
+    // Path 4 (A5 path 4): TS builds history -> TS undo -> Rust redo.
+    {
+        let fixture = Fixture::new("cross-engine-ts-undo-rust-redo");
+        let (id, before, after) = build_edited_fixture(&fixture);
+
+        let undo_output = fixture.run_node(&["undo", &id]);
+        assert!(
+            undo_output.status.success(),
+            "ts undo failed: {:?}",
+            undo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            before,
+            "path 4 setup: ts undo must restore the pre-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_undo_stack,
+            "path 4 setup: ts undo's stack.json diverges from the TS reference"
+        );
+
+        let redo_output = fixture.run_rust(&["redo", &id]);
+        assert!(
+            redo_output.status.success(),
+            "rust redo failed: {:?}",
+            redo_output
+        );
+        assert_eq!(
+            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
+            after,
+            "path 4: rust redo (after a ts undo) must restore the post-edit bytes"
+        );
+        assert_eq!(
+            normalize_stack_ids(&read_stack_json(&fixture, &id)),
+            reference_redo_stack,
+            "path 4: rust redo's stack.json diverges from the TS reference"
+        );
+    }
+}
+
 #[test]
 fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
     let fixture = Fixture::new("undo-redo-roundtrip");
