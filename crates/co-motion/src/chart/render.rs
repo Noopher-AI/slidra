@@ -74,8 +74,11 @@ fn js_to_fixed(value: f64, digits: usize) -> String {
 /// `Math.round`, ported as `(x + 0.5).floor()` per ECMA-262 (`Math.round`
 /// breaks ties toward +infinity, unlike Rust's `f64::round()`, which breaks
 /// ties away from zero — `Math.round(-2.5) === -2`, `(-2.5_f64).round() ==
-/// -3.0`).
-fn round_half_up(value: f64) -> f64 {
+/// -3.0`). `pub(crate)` (not private) because `chart::edit`'s `chart create`
+/// sample-value formula (`Math.round(30 + 60*|sin(...)|)`, plan §4.2) needs
+/// the exact same semantics — one implementation, not two copies that could
+/// drift.
+pub(crate) fn round_half_up(value: f64) -> f64 {
     (value + 0.5).floor()
 }
 
