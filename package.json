@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present && (command -v cargo >/dev/null 2>&1 || (echo '需要 Rust 工具鏈：先跑 sandbox-setup（或依 rust-toolchain.toml 執行 rustup show）再重試' >&2; exit 1)) && cargo build --release && node scripts/link-cli.mjs",
     "test": "npm run build && vitest run",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "typecheck": "tsc -b && tsc -p packages/web --noEmit",

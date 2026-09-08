@@ -86,8 +86,11 @@ if [ ! -f "$ROOT/packages/cli/dist/bin.js" ]; then
   exit 1
 fi
 
+# NOOP-278：node_modules/.bin/co-motion 現在是 npm run build 最後一步
+# （scripts/link-cli.mjs）指到 Rust 產物（target/release/co-motion）的連結，
+# 不再是 npm workspaces 直接建出、指到 packages/cli 的那個連結。
 if [ ! -x "$CLI" ]; then
-  echo "找不到可執行的 node_modules/.bin/co-motion。npm workspaces 應該要建出這個連結，請執行 npm install 後重試。" >&2
+  echo "找不到可執行的 node_modules/.bin/co-motion（應指向 cargo build 產出的 target/release/co-motion）。請執行 npm run build 後重試。" >&2
   exit 1
 fi
 
@@ -175,8 +178,9 @@ if [ "$RESOLVED" != "$CLI" ]; then
   echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 $CLI。" >&2
   exit 1
 fi
-# co-motion 沒有 --help；用不帶參數呼叫來確認它真的被 node 執行了（會印出
-# 「缺少命令名稱」並以非 0 結束），而不是被 shell 當成 command not found。
+# co-motion 沒有 --help；用不帶參數呼叫來確認它真的執行了（NOOP-278 後，空
+# argv 會被 Rust 二進位回退給 Node，一樣印出「缺少命令名稱」並以非 0 結束），
+# 而不是被 shell 當成 command not found。
 INVOKE_OUTPUT="$(co-motion 2>&1 || true)"
 if printf '%s' "$INVOKE_OUTPUT" | grep -qi "command not found"; then
   echo "co-motion 執行失敗，agent 會拿到 command not found。" >&2
