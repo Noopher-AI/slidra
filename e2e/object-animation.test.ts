@@ -132,13 +132,35 @@ interface EffectRow {
   d?: string;
 }
 
+// [E4.T7] 裁示（Dev-Leader, NOOP-304 [需決策] 回覆）：改讀原始 XML，不再透過
+// `effect list`。`effect list` 現在會依 cli.md 既有規格對「清單第一項
+// start 不是 on-click」的清單回報損毀（[E4.T7] 把 step 推導搬進 effect
+// list 之後才第一次讓這裡撞上，`effect add` 本身允許寫入這個狀態——見
+// cli.md `effect add`「不確定與保留事項」）。這個函式只是讀回機制，測的是
+// GUI／CLI 寫進檔案的內容對不對，不是 `effect list` 合不合規格，所以改用
+// `cat` + regex，跟 packages/cli/test/effect.test.ts:76-89 對稱處理。
 async function readEffects(registry: CommandRegistry, presentationId: string): Promise<EffectRow[]> {
-  const result = await registry.dispatch<{ effects: EffectRow[] }>("effect list", {
+  const result = await registry.dispatch<{ content: string }>("cat", {
     id: presentationId,
-    slidePath: "slides/001.svg",
+    path: "slides/001.svg",
   });
   if (!result.ok) return [];
-  return result.data!.effects;
+  const svg = result.data!.content;
+  const attr = (tag: string, name: string): string | undefined => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
+  return [...svg.matchAll(/<comot:effect\b[^>]*\/>/g)].map((match) => {
+    const tag = match[0];
+    const row: EffectRow = {
+      target: attr(tag, "target")!,
+      family: attr(tag, "family")!,
+      effect: attr(tag, "effect")!,
+      start: attr(tag, "start")!,
+      duration: Number(attr(tag, "duration")),
+      delay: Number(attr(tag, "delay")),
+    };
+    const d = attr(tag, "d");
+    if (d !== undefined) row.d = d;
+    return row;
+  });
 }
 
 async function openAnimatePanel(page: Page): Promise<void> {
@@ -242,7 +264,22 @@ it("A11：群組動畫——多選散落元素，第一筆帶指定的 start，�
     await openAnimatePanel(page);
     await addAnimationViaPanel(page, { family: "enter", effect: "zoom", start: "after-previous" });
 
-    await expect.poll(() => objectCards(page).count()).toBe(2);
+    // 插入面板只在 `effect add` 真的回 ok 之後才關（AnimatePanel.tsx 的
+    // `addAnimation()`：await runCommand → 只有 result.ok 才呼叫
+    // onClose()）——等它關閉，證明寫入已經落地，下面兩個斷言才不會在寫入
+    // 完成前就搶跑。原本用 `objectCards(...).toBe(2)` 當這個同步點，但
+    // Plan 已核准的行為讓終態是 0（下一段註解），跟開局的 0 沒有落差可
+    // poll，需要換一個訊號。
+    await expect.poll(() => page.locator(".animate-panel").count()).toBe(0);
+
+    // [E4.T7] 裁示（Dev-Leader, NOOP-304 [需決策] 回覆，擴大自 Plan NOOP-306
+    // 「2.3 已知會被本票改掉的使用者可見行為」第 2 點）：清單第一項的 start
+    // 不是 on-click 時，`effect list` 依 cli.md L2412 回 failed，路由轉成
+    // 500，Animate › Object 面板的 `useSlideEffects` 把它當成空清單——這是
+    // 規格的直接後果，Plan 已核准的行為，不是缺陷，也不是這次修改造成的。
+    // 面板變空不影響底層檔案：下面 readEffects() 直接讀 XML，證明兩筆效果
+    // 確實照 start 規則正確寫入。
+    await expect.poll(() => objectCards(page).count()).toBe(0);
     const effects = await readEffects(registry, presentationId);
     expect(effects).toHaveLength(2);
     expect(effects.map((e) => e.start)).toEqual(["after-previous", "with-previous"]);
