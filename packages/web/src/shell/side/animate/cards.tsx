@@ -1,4 +1,4 @@
-import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectName, type EffectStart } from "@co-motion/core/effects";
+import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectName, type EffectStart } from "../../../effects.js";
 import { Icon } from "../../../icons/index.js";
 import type { Effect } from "../../../effects.js";
 import type { TargetInfo } from "./useSlideEffects.js";

@@ -76,6 +76,7 @@ import {
   type SetEffectInput,
 } from "./effects/edit.js";
 import type { Effect } from "./effects/index.js";
+import { readSlideTransition, type SlideTransition } from "./slide/transition.js";
 import {
   bindTableSource,
   createTableElement,
@@ -1238,13 +1239,26 @@ export async function setSlideEffect(id: string, slidePath: string, index: numbe
   await writePresentationFile(id, slidePath, updated);
 }
 
-export async function listSlideEffects(id: string, slidePath: string): Promise<Effect[]> {
+/**
+ * [E4.T7]: reads the slide's effect list AND its page transition in one
+ * file read — `effect list`'s `data.transition` (plan 4.1) needs the
+ * latter, and re-reading the same file a second time just for it would be
+ * wasteful. `readEffectList`/`readSlideTransition` are independent parsers
+ * over the same already-loaded content; neither depends on the other.
+ */
+export async function listSlideEffects(
+  id: string,
+  slidePath: string,
+): Promise<{ effects: Effect[]; transition: SlideTransition }> {
   const home = resolveCoMotionHome();
   const workDir = await lookupWorkDir(home, id);
   await resolveVirtualFilePath(workDir, slidePath);
   await assertSlidePathListed(workDir, slidePath);
   const original = await readVirtualFile(workDir, slidePath);
-  return readEffectList(original, slidePath);
+  return {
+    effects: readEffectList(original, slidePath),
+    transition: readSlideTransition(original),
+  };
 }
 
 export async function alignSlideElements(
