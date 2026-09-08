@@ -775,6 +775,19 @@ export function parseArgv(argv: string[]): ParsedCommand {
 
       throw new CoMotionError(`未知的子命令：chart ${rest.slice(0, 2).join(" ")}`);
     }
+    case "asset": {
+      const sub = rest[0];
+      const args = rest.slice(1);
+
+      if (sub === "import") {
+        const id = requirePositional(args, 0, "asset import", "presentation-id");
+        const source = requirePositional(args, 1, "asset import", "source");
+        const as = optionalFlag(args, "--as");
+        return { name: "asset import", input: { id, source, as } };
+      }
+
+      throw new CoMotionError(`未知的子命令：asset ${rest.slice(0, 2).join(" ")}`);
+    }
     case "slide": {
       const sub = rest[0];
       const args = rest.slice(1);
