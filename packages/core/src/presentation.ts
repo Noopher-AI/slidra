@@ -19,8 +19,18 @@ import type { FontEntry, ProjectJson } from "./project-json.js";
  * meaning "presentation-wide fade" forever otherwise — so it runs once, on
  * open, from `unpackContainer` (`project-migration.ts`'s
  * `migrateLegacyTransition`), not lazily from `writeProject`.
+ *
+ * Bumped 3 → 4 for [E4.T4]: `fonts` becomes a required field (still legally
+ * `[]`) and `open` gains a 1→2→3→4 migration chain — but that chain is
+ * Rust-only (`crates/co-motion/src/workspace/migrate.rs`); TS never
+ * implements 3→4 itself. This constant only had to move because TS is still
+ * the read side that must not reject a v4 file `serve` is asked to load
+ * (`assertSupportedFormatVersion`), and the write side
+ * (`slide-ops.ts`'s `writeProject`) must not downgrade one back to 3 the
+ * next time it writes — see that file's `fonts` fallback for the matching
+ * half of this change.
  */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 export const SLIDE_FILE_NAME = "slides/001.svg";
 

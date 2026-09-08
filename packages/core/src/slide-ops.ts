@@ -74,11 +74,23 @@ async function readProject(id: string): Promise<ProjectJson> {
  * (`readTemplateEntries`) — a pre-[E4.T7] file's bare-string entries become
  * `{ file, name }` the next time anything touches its `project.json`, and
  * not a moment sooner.
+ *
+ * `fonts` defaults to `[]` when absent ([E4.T4]): `FORMAT_VERSION` is 4, and
+ * v4 requires `fonts` to be present (comot-format.md). Without this, a TS
+ * write on a Rust-migrated (or pre-#71) presentation would write out a v4
+ * file missing a field v4 itself requires — this is the TS-side half of
+ * that requirement; Rust's own migration (`workspace/migrate.rs`) enforces
+ * the same rule on its own write path. Never synthesizes a font entry or
+ * copies a font file here, same as the Rust migration — an empty array is
+ * the only legal default (comot-format.md's "fonts 缺席一律補 fonts: []").
  */
 async function writeProject(id: string, project: ProjectJson): Promise<void> {
   const nextProject: ProjectJson = { ...project, formatVersion: FORMAT_VERSION };
   if (nextProject.templates !== undefined) {
     nextProject.templates = readTemplateEntries(project);
+  }
+  if (nextProject.fonts === undefined) {
+    nextProject.fonts = [];
   }
   await writePresentationFile(id, "project.json", `${JSON.stringify(nextProject, null, 2)}\n`);
 }
