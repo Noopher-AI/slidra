@@ -127,9 +127,22 @@ fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
     assert!(output.stdout.is_empty());
 }
 
-/// Acceptance criterion A2: for every one of these argv combinations, the
-/// Rust binary's fallback path must byte-for-byte match the real Node CLI —
-/// stdout, stderr, AND exit code all three.
+/// Acceptance criterion A2: for every one of these argv combinations —
+/// genuinely NOT-yet-Rust-dispatched commands, [E4.T4]'s explicit non-scope
+/// (plan §2 item 3: `element`/`textbox`/`table`/`chart`/`comment`/`effect`/
+/// `asset` families) plus a bare unknown command name — the Rust binary's
+/// fallback path must byte-for-byte match the real Node CLI: stdout,
+/// stderr, AND exit code all three.
+///
+/// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
+/// them explicitly as things this ticket would move to Rust): they no
+/// longer fall back at all, so a byte-parity assertion here would no longer
+/// be testing "did the fallback path forward these bytes untouched" — it
+/// would just coincidentally still pass because the Rust implementation
+/// happens to produce identical bytes, while the test's own name kept
+/// claiming otherwise. See `cat_and_ls_are_byte_identical_to_node_on_every_path`
+/// below for their (differently-reasoned) cross-engine parity coverage, and
+/// `no_takeover_table_command_ever_invokes_node` for A1's "回退不再觸發".
 #[test]
 fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
     let fixture = Fixture::new("fallback-parity");
@@ -150,13 +163,14 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
     let id = extract_id(&open_output);
 
     let cases: Vec<Vec<&str>> = vec![
-        vec!["ls", &id],
-        vec!["ls", &id, "slides"],
-        vec!["cat", &id, "project.json"],
-        vec!["cat", &id, "slides/001.svg"],
-        vec!["ls", "NOPE-does-not-exist"],
-        vec!["cat", &id, "nope.txt"],
         vec!["frobnicate"],
+        vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
+        vec!["textbox", "add"],
+        vec!["table", "create"],
+        vec!["chart", "create"],
+        vec!["comment", "list", &id],
+        vec!["effect", "list", &id, "slides/001.svg"],
+        vec!["asset", "import"],
     ];
 
     let mut failures = Vec::new();
@@ -183,6 +197,154 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
         "fallback parity mismatches:\n{}",
         failures.join("\n---\n")
     );
+}
+
+/// A1: for every one of the 21 registered commands, a successful run must
+/// never start a `node` child process at all — proven structurally (not by
+/// inspecting output) by pointing `PATH` at a directory with no `node`
+/// binary in it. A command that still fell back would fail with "找不到
+/// node" instead of succeeding, so success here is direct evidence the
+/// takeover table actually intercepted it.
+#[test]
+fn no_takeover_table_command_ever_invokes_node() {
+    let fixture = Fixture::new("no-node-invoked");
+
+    // Empty PATH-only directory: `node` cannot be found via PATH lookup.
+    let empty_path_dir =
+        env::temp_dir().join(format!("co-motion-empty-path-{}", std::process::id()));
+    fs::create_dir_all(&empty_path_dir).unwrap();
+
+    let run_without_node = |args: &[&str]| -> Output {
+        Command::new(rust_bin())
+            .args(args)
+            .env("CO_MOTION_HOME", &fixture.home)
+            .env("PATH", &empty_path_dir)
+            .output()
+            .expect("compiled co-motion binary must run")
+    };
+
+    let new_path = fixture.workspace.join("t2.comot");
+    let new_output = run_without_node(&["new", new_path.to_str().unwrap(), "--name", "無node測試"]);
+    assert!(
+        new_output.status.success(),
+        "`new` must succeed without node on PATH: {:?}",
+        new_output
+    );
+
+    let open_output = run_without_node(&["open", new_path.to_str().unwrap()]);
+    assert!(
+        open_output.status.success(),
+        "`open` must succeed without node on PATH: {:?}",
+        open_output
+    );
+    let id = extract_id(&open_output);
+
+    let out_comot = fixture.workspace.join("out.comot");
+    let out_comot_str = out_comot.to_str().unwrap();
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["ls", &id],
+        vec!["cat", &id, "project.json"],
+        vec!["convert", &id],
+        vec![
+            "presentation",
+            "canvas",
+            "set",
+            &id,
+            "--width",
+            "1280",
+            "--height",
+            "720",
+        ],
+        vec!["slide", "add", &id],
+        vec!["template", "list", &id],
+        vec!["pack", &id, out_comot_str],
+    ];
+    for args in &cases {
+        let output = run_without_node(args);
+        assert!(
+            output.status.success(),
+            "args={args:?} must succeed without node on PATH (proves no fallback): {:?}",
+            output
+        );
+    }
+
+    fs::remove_dir_all(&empty_path_dir).ok();
+}
+
+/// Acceptance criterion A3: `cat`/`ls` output bytes must match the Node
+/// CLI's exactly — this is the cross-engine byte comparison method
+/// `Fixture::run_rust`/`run_node` were built for (plan §5 A3), now that
+/// both commands are genuinely Rust-dispatched rather than falling back.
+#[test]
+fn cat_and_ls_are_byte_identical_to_node_on_every_path() {
+    let fixture = Fixture::new("cat-ls-parity");
+    let comot_path = fixture.workspace.join("t.comot");
+
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    assert!(
+        open_output.status.success(),
+        "setup: `open` failed: {:?}",
+        open_output
+    );
+    let id = extract_id(&open_output);
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["ls", &id],
+        vec!["ls", &id, "slides"],
+        vec!["ls", "NOPE-does-not-exist"],
+        vec!["cat", &id, "project.json"],
+        vec!["cat", &id, "slides/001.svg"],
+        vec!["cat", &id, "fonts/LICENSE-NotoSansTC.txt"],
+        vec!["cat", &id, "fonts/NotoSansTC-Presentation.ttf"],
+        vec!["cat", &id, "nope.txt"],
+        vec!["cat", &id, "slides"],
+    ];
+
+    let mut failures = Vec::new();
+    for args in &cases {
+        let rust_out = fixture.run_rust(args);
+        let node_out = fixture.run_node(args);
+        if rust_out.stdout != node_out.stdout
+            || rust_out.stderr != node_out.stderr
+            || rust_out.status.code() != node_out.status.code()
+        {
+            failures.push(format!(
+                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
+                rust_out.status.code(),
+                String::from_utf8_lossy(&rust_out.stdout),
+                String::from_utf8_lossy(&rust_out.stderr),
+                node_out.status.code(),
+                String::from_utf8_lossy(&node_out.stdout),
+                String::from_utf8_lossy(&node_out.stderr),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "cat/ls parity mismatches:\n{}",
+        failures.join("\n---\n")
+    );
+}
+
+/// Unknown sub-commands within a taken-over family must be rejected by Rust
+/// itself, never forwarded to Node (A1's "回退不再觸發" — the family name
+/// alone already committed argv[0] to Rust dispatch).
+#[test]
+fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
+    let fixture = Fixture::new("unknown-subcommand");
+    let output = fixture.run_rust(&["slide", "frobnicate"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "未知的子命令：slide frobnicate\n"
+    );
+    assert!(output.stdout.is_empty());
 }
 
 #[test]
@@ -547,5 +709,512 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
     assert_eq!(
         redone, after,
         "rust redo must restore the exact post-edit bytes"
+    );
+}
+
+/// Parses a `--json` command's stdout as the `ok, data, message,
+/// failureKind` envelope (`result.rs`'s `JsonEnvelope`).
+fn json_envelope(output: &Output) -> serde_json::Value {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(stdout.trim_end()).unwrap_or_else(|err| {
+        panic!("`--json` stdout must be one JSON object: {err}\nstdout={stdout:?}")
+    })
+}
+
+fn json_type_tag(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// Every key present in a `data` object, paired with a one-word type tag —
+/// used to pin `cli.md`'s documented "成功 `data`" shape without also
+/// pinning the specific values (those are covered by unit tests elsewhere,
+/// e.g. `slide/ops.rs`).
+fn data_key_types(data: &serde_json::Value) -> std::collections::BTreeMap<String, &'static str> {
+    data.as_object()
+        .unwrap_or_else(|| panic!("data must be a JSON object, got {data}"))
+        .iter()
+        .map(|(k, v)| (k.clone(), json_type_tag(v)))
+        .collect()
+}
+
+fn shape(
+    pairs: &[(&'static str, &'static str)],
+) -> std::collections::BTreeMap<String, &'static str> {
+    pairs.iter().map(|&(k, v)| (k.to_string(), v)).collect()
+}
+
+/// Standard base64 decoder, hand-rolled independently of
+/// `co_motion::base64::encode` (this file has no dependency on that
+/// function and never calls it) — used only as this test's own oracle for
+/// "is this field actually base64", not to assert `encode`'s correctness
+/// (that's `base64.rs`'s own unit tests' job, checked against literal RFC
+/// 4648 vectors).
+fn base64_decode_for_test(input: &str) -> Vec<u8> {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    fn index_of(c: u8) -> u32 {
+        ALPHABET
+            .iter()
+            .position(|&b| b == c)
+            .unwrap_or_else(|| panic!("not a base64 character: {}", c as char)) as u32
+    }
+    let stripped: Vec<u8> = input.bytes().filter(|&b| b != b'=').collect();
+    let mut out = Vec::with_capacity(stripped.len() / 4 * 3);
+    for chunk in stripped.chunks(4) {
+        let mut buf = 0u32;
+        for (i, &b) in chunk.iter().enumerate() {
+            buf |= index_of(b) << (18 - i * 6);
+        }
+        out.push((buf >> 16) as u8);
+        if chunk.len() > 2 {
+            out.push((buf >> 8) as u8);
+        }
+        if chunk.len() > 3 {
+            out.push(buf as u8);
+        }
+    }
+    out
+}
+
+/// NOOP-297 review round 1, item 2: plan NOOP-303 §6 required a `cli_golden`
+/// case pinning every takeover-table command's `--json` `data` shape
+/// against `docs/spec/cli.md`'s documented "成功 `data`" — none existed,
+/// proven by the review's mutation E (renaming `slide add`'s `slidePath`
+/// key to `slide_path` left `cargo test` fully green). This test covers
+/// every command plan NOOP-308's feedback names: `slide`
+/// add/delete/duplicate/move/notes-set/style-set/transition-set/render,
+/// `template` add/list/rename/delete, `presentation canvas set`, and
+/// `new`/`open`/`pack`/`convert`.
+///
+/// It also doubles as the regression guard for review item 1 (`slide
+/// render --json`'s `content` must be base64): a plain "is this a string"
+/// type check would NOT catch a raw-text regression (still a JSON string,
+/// same type tag), so this decodes `content` with an independent decoder
+/// and checks it round-trips to valid UTF-8 starting with `<svg` — raw SVG
+/// text fed through that decoder either fails outright (`<`, `"`, `\n`,
+/// spaces are not base64 characters) or produces garbage bytes, either of
+/// which fails loudly.
+#[test]
+fn json_data_shape_matches_cli_md_for_every_documented_command() {
+    let fixture = Fixture::new("json-data-shape");
+    let comot_path = fixture.workspace.join("t.comot");
+    let comot_path_str = comot_path.to_str().unwrap();
+
+    let new_out = fixture.run_rust(&["new", comot_path_str, "--name", "測試", "--json"]);
+    assert!(new_out.status.success(), "`new --json` failed: {new_out:?}");
+    assert_eq!(
+        data_key_types(&json_envelope(&new_out)["data"]),
+        shape(&[]),
+        "`new`'s data"
+    );
+
+    let open_out = fixture.run_rust(&["open", comot_path_str, "--json"]);
+    assert!(
+        open_out.status.success(),
+        "`open --json` failed: {open_out:?}"
+    );
+    let open_envelope = json_envelope(&open_out);
+    assert_eq!(
+        data_key_types(&open_envelope["data"]),
+        shape(&[("id", "string")]),
+        "`open`'s data"
+    );
+    let id = open_envelope["data"]["id"].as_str().unwrap().to_string();
+
+    // `new`'s default slide has a bare `<text>` primitive not yet wrapped in
+    // a `<g id="el-…">` container — `presentation canvas set` needs typed,
+    // normalized elements to rescale (unlike `convert` itself, whose whole
+    // job is performing that normalization), so it fails with "不合規" on an
+    // unconverted slide. Not asserted here; `convert`'s own data shape is
+    // checked later, once already-normalized, at the end of this sequence.
+    let setup_convert = fixture.run_rust(&["convert", &id]);
+    assert!(
+        setup_convert.status.success(),
+        "setup: `convert` failed: {setup_convert:?}"
+    );
+
+    let canvas_out = fixture.run_rust(&[
+        "presentation",
+        "canvas",
+        "set",
+        &id,
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--json",
+    ]);
+    assert!(
+        canvas_out.status.success(),
+        "`presentation canvas set --json` failed: {canvas_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&canvas_out)["data"]),
+        shape(&[("width", "number"), ("height", "number")]),
+        "`presentation canvas set`'s data"
+    );
+
+    let add_out = fixture.run_rust(&["slide", "add", &id, "--json"]);
+    assert!(
+        add_out.status.success(),
+        "`slide add --json` failed: {add_out:?}"
+    );
+    let add_envelope = json_envelope(&add_out);
+    assert_eq!(
+        data_key_types(&add_envelope["data"]),
+        shape(&[("slidePath", "string")]),
+        "`slide add`'s data"
+    );
+    let added_slide = add_envelope["data"]["slidePath"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let dup_out = fixture.run_rust(&["slide", "duplicate", &id, "slides/001.svg", "--json"]);
+    assert!(
+        dup_out.status.success(),
+        "`slide duplicate --json` failed: {dup_out:?}"
+    );
+    let dup_envelope = json_envelope(&dup_out);
+    assert_eq!(
+        data_key_types(&dup_envelope["data"]),
+        shape(&[("slidePath", "string")]),
+        "`slide duplicate`'s data"
+    );
+    let duplicated_slide = dup_envelope["data"]["slidePath"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let delete_out = fixture.run_rust(&["slide", "delete", &id, &duplicated_slide, "--json"]);
+    assert!(
+        delete_out.status.success(),
+        "`slide delete --json` failed: {delete_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&delete_out)["data"]),
+        shape(&[]),
+        "`slide delete`'s data"
+    );
+
+    let move_out = fixture.run_rust(&["slide", "move", &id, &added_slide, "0", "--json"]);
+    assert!(
+        move_out.status.success(),
+        "`slide move --json` failed: {move_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&move_out)["data"]),
+        shape(&[]),
+        "`slide move`'s data"
+    );
+
+    let notes_out = fixture.run_rust(&[
+        "slide",
+        "notes",
+        "set",
+        &id,
+        "slides/001.svg",
+        "hi",
+        "--json",
+    ]);
+    assert!(
+        notes_out.status.success(),
+        "`slide notes set --json` failed: {notes_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&notes_out)["data"]),
+        shape(&[]),
+        "`slide notes set`'s data"
+    );
+
+    let style_out = fixture.run_rust(&[
+        "slide",
+        "style",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--background",
+        "#111",
+        "--json",
+    ]);
+    assert!(
+        style_out.status.success(),
+        "`slide style set --json` failed: {style_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&style_out)["data"]),
+        shape(&[]),
+        "`slide style set`'s data"
+    );
+
+    let transition_out = fixture.run_rust(&[
+        "slide",
+        "transition",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--enter",
+        "fade",
+        "--json",
+    ]);
+    assert!(
+        transition_out.status.success(),
+        "`slide transition set --json` failed: {transition_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&transition_out)["data"]),
+        shape(&[]),
+        "`slide transition set`'s data"
+    );
+
+    let render_plain = fixture.run_rust(&["slide", "render", &id, "slides/001.svg"]);
+    assert!(
+        render_plain.status.success(),
+        "`slide render` (no --json) failed: {render_plain:?}"
+    );
+    let render_out = fixture.run_rust(&["slide", "render", &id, "slides/001.svg", "--json"]);
+    assert!(
+        render_out.status.success(),
+        "`slide render --json` failed: {render_out:?}"
+    );
+    let render_envelope = json_envelope(&render_out);
+    assert_eq!(
+        data_key_types(&render_envelope["data"]),
+        shape(&[("content", "string")]),
+        "`slide render`'s data"
+    );
+    let content_b64 = render_envelope["data"]["content"].as_str().unwrap();
+    let decoded = base64_decode_for_test(content_b64);
+    assert_eq!(
+        decoded, render_plain.stdout,
+        "`slide render --json`'s content must decode to the same bytes the non-`--json` renderer wrote"
+    );
+    assert!(
+        String::from_utf8_lossy(&decoded).starts_with("<svg"),
+        "decoded content must be the slide's SVG, got {:?}",
+        String::from_utf8_lossy(&decoded)
+    );
+
+    let tmpl_add_out = fixture.run_rust(&["template", "add", &id, "--json"]);
+    assert!(
+        tmpl_add_out.status.success(),
+        "`template add --json` failed: {tmpl_add_out:?}"
+    );
+    let tmpl_add_envelope = json_envelope(&tmpl_add_out);
+    assert_eq!(
+        data_key_types(&tmpl_add_envelope["data"]),
+        shape(&[("templatePath", "string")]),
+        "`template add`'s data"
+    );
+    let template_path = tmpl_add_envelope["data"]["templatePath"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let tmpl_list_out = fixture.run_rust(&["template", "list", &id, "--json"]);
+    assert!(
+        tmpl_list_out.status.success(),
+        "`template list --json` failed: {tmpl_list_out:?}"
+    );
+    let tmpl_list_data = json_envelope(&tmpl_list_out)["data"].clone();
+    assert_eq!(
+        data_key_types(&tmpl_list_data),
+        shape(&[("templates", "array")]),
+        "`template list`'s data"
+    );
+    assert_eq!(
+        data_key_types(&tmpl_list_data["templates"][0]),
+        shape(&[("file", "string"), ("name", "string")]),
+        "`template list`'s data.templates[] entry"
+    );
+
+    let tmpl_rename_out = fixture.run_rust(&[
+        "template",
+        "rename",
+        &id,
+        &template_path,
+        "改過的名字",
+        "--json",
+    ]);
+    assert!(
+        tmpl_rename_out.status.success(),
+        "`template rename --json` failed: {tmpl_rename_out:?}"
+    );
+    let tmpl_rename_envelope = json_envelope(&tmpl_rename_out);
+    assert!(
+        tmpl_rename_envelope
+            .as_object()
+            .unwrap()
+            .get("data")
+            .is_none(),
+        "`template rename`'s data key must be entirely absent (TS handler returns `void`), got {tmpl_rename_envelope}"
+    );
+
+    let tmpl_delete_out = fixture.run_rust(&["template", "delete", &id, &template_path, "--json"]);
+    assert!(
+        tmpl_delete_out.status.success(),
+        "`template delete --json` failed: {tmpl_delete_out:?}"
+    );
+    assert!(
+        json_envelope(&tmpl_delete_out)
+            .as_object()
+            .unwrap()
+            .get("data")
+            .is_none(),
+        "`template delete`'s data key must be entirely absent"
+    );
+
+    let out_comot = fixture.workspace.join("out.comot");
+    let pack_out = fixture.run_rust(&["pack", &id, out_comot.to_str().unwrap(), "--json"]);
+    assert!(
+        pack_out.status.success(),
+        "`pack --json` failed: {pack_out:?}"
+    );
+    assert_eq!(
+        data_key_types(&json_envelope(&pack_out)["data"]),
+        shape(&[]),
+        "`pack`'s data"
+    );
+
+    let convert_out = fixture.run_rust(&["convert", &id, "--json"]);
+    assert!(
+        convert_out.status.success(),
+        "`convert --json` failed: {convert_out:?}"
+    );
+    let convert_data = json_envelope(&convert_out)["data"].clone();
+    assert_eq!(
+        data_key_types(&convert_data),
+        shape(&[("slides", "array")]),
+        "`convert`'s data"
+    );
+    assert_eq!(
+        data_key_types(&convert_data["slides"][0]),
+        shape(&[
+            ("slidePath", "string"),
+            ("changed", "bool"),
+            ("wrapped", "number"),
+        ]),
+        "`convert`'s data.slides[] entry"
+    );
+}
+
+/// NOOP-297 review round 1, item 2 (5): `cat --json`'s multi-path array
+/// shape (`docs/spec/cli.md`'s "--json" section: "`data` 變成 `[{ path,
+/// content }]` 陣列，順序與 argv 給的路徑順序相同") had no golden coverage.
+/// Also pins the "單一路徑也回陣列" behavior this ticket's own plan flagged
+/// as a 保留事項 needing a test.
+#[test]
+fn cat_json_multi_path_returns_ordered_array_shape() {
+    let fixture = Fixture::new("cat-json-multi-path");
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_out = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
+    let open_out = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_out);
+
+    let single = fixture.run_rust(&["cat", &id, "project.json", "--json"]);
+    assert!(single.status.success(), "{single:?}");
+    let single_data = json_envelope(&single)["data"].clone();
+    assert!(
+        single_data.is_array(),
+        "single-path `cat --json` must still be an array: {single_data}"
+    );
+    assert_eq!(single_data.as_array().unwrap().len(), 1);
+
+    let multi = fixture.run_rust(&[
+        "cat",
+        &id,
+        "slides/001.svg",
+        "project.json",
+        "slides/001.svg",
+        "--json",
+    ]);
+    assert!(multi.status.success(), "{multi:?}");
+    let multi_data = json_envelope(&multi)["data"].clone();
+    let entries = multi_data
+        .as_array()
+        .expect("cat --json's data must be an array");
+    assert_eq!(
+        entries.len(),
+        3,
+        "must have one entry per argv path, duplicates included"
+    );
+    let expected_paths = ["slides/001.svg", "project.json", "slides/001.svg"];
+    let mut raw_by_path = std::collections::HashMap::new();
+    for path in ["slides/001.svg", "project.json"] {
+        raw_by_path.insert(path, fixture.run_rust(&["cat", &id, path]).stdout);
+    }
+    for (entry, expected_path) in entries.iter().zip(expected_paths) {
+        assert_eq!(
+            data_key_types(entry),
+            shape(&[("path", "string"), ("content", "string")]),
+            "cat --json array entry shape"
+        );
+        assert_eq!(
+            entry["path"].as_str().unwrap(),
+            expected_path,
+            "array order must match argv order"
+        );
+        let decoded = base64_decode_for_test(entry["content"].as_str().unwrap());
+        assert_eq!(
+            &decoded,
+            raw_by_path.get(expected_path).unwrap(),
+            "content must decode to the same bytes as non-`--json` `cat`"
+        );
+    }
+}
+
+/// Debt flagged alongside review round 1's FAIL (low-cost, addressed while
+/// building the `--json` shape golden test above): `slide add --at` and
+/// `slide move <new-index>`'s "not a valid integer position" error had
+/// never been checked byte-for-byte against the TS engine. `slide`/`slide
+/// move` are takeover-table commands — the Rust `co-motion` binary itself
+/// never falls back to Node for them — but `packages/core`'s executor
+/// (what the Rust port was ported from) is still reachable by invoking the
+/// Node CLI directly, which is exactly what `Fixture::run_node` does, so
+/// this is a genuine cross-engine comparison, not a self-comparison.
+#[test]
+fn slide_add_and_move_reject_non_integer_position_byte_identical_to_node() {
+    let fixture = Fixture::new("non-integer-position");
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_out = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
+    let open_out = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_out);
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["slide", "add", &id, "--at", "1.5"],
+        vec!["slide", "move", &id, "slides/001.svg", "1.5"],
+    ];
+
+    let mut failures = Vec::new();
+    for args in &cases {
+        let rust_out = fixture.run_rust(args);
+        let node_out = fixture.run_node(args);
+        if rust_out.stdout != node_out.stdout
+            || rust_out.stderr != node_out.stderr
+            || rust_out.status.code() != node_out.status.code()
+        {
+            failures.push(format!(
+                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
+                rust_out.status.code(),
+                String::from_utf8_lossy(&rust_out.stdout),
+                String::from_utf8_lossy(&rust_out.stderr),
+                node_out.status.code(),
+                String::from_utf8_lossy(&node_out.stdout),
+                String::from_utf8_lossy(&node_out.stderr),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "non-integer position parity mismatches:\n{}",
+        failures.join("\n---\n")
     );
 }
