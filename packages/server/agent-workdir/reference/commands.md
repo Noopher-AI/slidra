@@ -31,9 +31,10 @@
 
 ## chart data set
 
-**參數**：`<presentation-id>` `<slide-path>` `<element-id>`，資料來源三選一：`--categories <c1,c2,...>` 搭配一或多個 `--series 'name=v1,v2,...'`；或 `--csv <內嵌 CSV 文字>`；或 `--csv-asset <assets/ 下的 CSV 虛擬路徑>`。
+**參數**：`<presentation-id>` `<slide-path>` `<element-id>`，資料來源三選一：`--categories <c1,c2,...>` 搭配一或多個 `--series 'name=v1,v2,...'`；或 `--csv <本機 CSV 檔案路徑>`；或 `--csv-asset <assets/ 下的 CSV 虛擬路徑>`。
 **用途**：設定圖表的類別與數列資料。
 **範例**：`co-motion chart data set <presentation-id> slides/001.svg el-1 --categories Q1,Q2,Q3 --series '營收=100,120,140'`
+> `--csv` 讀的是本機檔案系統路徑（非內嵌 CSV 文字），agent 無法寫檔，這個旗標實務上只有使用者或 CoMotion 本身用得到；agent 請一律用 `--categories`／`--series`。
 
 ## chart legend set
 
@@ -122,9 +123,9 @@
 
 ## effect set
 
-**參數**：`<presentation-id>` `<slide-path>` `<index>`（1-based）、`--effect`、`--start`、`--duration`、`--delay`、`--d`（皆選填）。
+**參數**：`<presentation-id>` `<slide-path>` `<index>`（1-based）、`--effect`、`--start`、`--duration`、`--delay`、`--d`（皆選填）。`--duration`／`--delay`／`--d` 單位是秒。
 **用途**：修改一個既有效果項的參數。
-**範例**：`co-motion effect set <presentation-id> slides/001.svg 1 --duration 500`
+**範例**：`co-motion effect set <presentation-id> slides/001.svg 1 --duration 0.5`
 
 ## element align
 
@@ -324,9 +325,9 @@
 
 ## slide transition set
 
-**參數**：`<presentation-id>` `<slide-path>`、`--enter`、`--exit`（`none|fade|slide|zoom`，選填）、`--enter-duration`、`--exit-duration`（選填）、`--all`（選填，至少指定一項）。
+**參數**：`<presentation-id>` `<slide-path>`、`--enter`、`--exit`（`none|fade|slide|zoom`，選填）、`--enter-duration`、`--exit-duration`（選填，單位是秒）、`--all`（選填，至少指定一項）。
 **用途**：設定投影片切換時的轉場動畫。
-**範例**：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 300`
+**範例**：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3`
 
 ## table bind
 
@@ -356,7 +357,7 @@
 
 **參數**：`<presentation-id>` `<slide-path>` `<element-id>` `--row <數值>` `--col <數值>` `--text <文字>`。
 **用途**：設定單一儲存格的文字內容。
-**範例**：`co-motion table cell set <presentation-id> slides/001.svg el-1 --row 0 --col 0 '總計'`
+**範例**：`co-motion table cell set <presentation-id> slides/001.svg el-1 --row 0 --col 0 --text '總計'`
 
 ## table cell style set
 
@@ -426,9 +427,9 @@
 
 ## table theme set
 
-**參數**：`<presentation-id>` `<slide-path>` `<element-id>` `<theme>`。
+**參數**：`<presentation-id>` `<slide-path>` `<element-id>` `<theme>`。合法值：`dark`、`light`、`zebra`。
 **用途**：套用表格配色主題。
-**範例**：`co-motion table theme set <presentation-id> slides/001.svg el-1 striped`
+**範例**：`co-motion table theme set <presentation-id> slides/001.svg el-1 zebra`
 
 ## template add
 

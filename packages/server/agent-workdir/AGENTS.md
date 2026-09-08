@@ -58,3 +58,8 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 | `/comotion-outline` | `comotion-outline` | 把一份大綱或文章長成整份投影片 |
 | `/comotion-reshape` | `comotion-reshape` | 逐則處理釘選留言，改完刪留言 |
 | `/comotion-check` | `comotion-check` | 全份結構體檢，只留言不動手 |
+| `/comotion-animate` | `comotion-animate` | 為指定頁或整份加上依序揭露的動畫與轉場 |
+| `/comotion-style` | `comotion-style` | 統一整份的字級、顏色與字型，或把某頁樣式套到全部 |
+| `/comotion-table` | `comotion-table` | 把貼上的 Markdown 表格在指定頁做成表格 |
+| `/comotion-chart` | `comotion-chart` | 用一組數列在指定頁做出圖表，可選雙軸與堆疊 |
+| `/comotion-notes` | `comotion-notes` | 依每頁內容補上口語化的備忘稿，可指定時長 |
