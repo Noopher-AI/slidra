@@ -75,7 +75,7 @@ fn text_align_as_str(align: TextAlign) -> &'static str {
 /// site in this module goes through this, not a raw `tag == "text"` filter,
 /// so a list marker never gets mistaken for (or counted alongside) the real
 /// content.
-fn content_text_children(container: &ScannedNode) -> Vec<&ScannedNode> {
+pub(crate) fn content_text_children(container: &ScannedNode) -> Vec<&ScannedNode> {
     container
         .children
         .iter()
@@ -263,7 +263,7 @@ fn resolve_font<'a>(
 
 /// Reads the family + size a `<text>` node's own attributes declare, for
 /// re-wrapping a text box's content.
-fn read_text_font_info(text_node: &ScannedNode, element_id: &str) -> CoMotionResult<(String, f64)> {
+pub(crate) fn read_text_font_info(text_node: &ScannedNode, element_id: &str) -> CoMotionResult<(String, f64)> {
     let declared_family = attribute_value(text_node, "font-family");
     let font_family = declared_family
         .as_deref()
@@ -556,9 +556,9 @@ pub fn replace_element_text(
 // comments naming this function as their eventual replacement).
 // ---------------------------------------------------------------------------
 
-struct RewrappedContent {
-    updated: String,
-    lines: usize,
+pub(crate) struct RewrappedContent {
+    pub(crate) updated: String,
+    pub(crate) lines: usize,
 }
 
 /// Re-wraps a text box's `<text>` content at `new_width`/`font_family`/
@@ -568,7 +568,7 @@ struct RewrappedContent {
 /// out — so its existing runs and alignment are read back from the current
 /// markup and carried forward unchanged.
 #[allow(clippy::too_many_arguments)] // mirrors element-text.ts's rewrapTextBoxContent's 1:1 parameter shape
-fn rewrap_text_box_content(
+pub(crate) fn rewrap_text_box_content(
     svg_content: &str,
     container: &ScannedNode,
     text_node: &ScannedNode,
