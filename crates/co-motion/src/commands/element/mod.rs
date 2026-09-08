@@ -9,8 +9,8 @@
 //! module is CLI plumbing only, mirroring `packages/cli/src/commands/
 //! element/index.ts`'s split from `packages/core/src/element-*.ts`.
 //!
-//! Registered so far (phase P3 of the ticket's commit sequence): the ten
-//! structural commands. `scale`/`resize`/`style set` (P4), `align`/
+//! Registered so far (phases P3-P4 of the ticket's commit sequence): the ten
+//! structural commands plus `scale`/`resize`/`style set`. `align`/
 //! `distribute` (P5), `copy`/`cut`/`paste`/`duplicate` (P7) are not yet
 //! registered — see this module's `TAKEOVER` doc for why an entry is never
 //! added ahead of a working handler.
@@ -23,7 +23,10 @@ pub mod lock;
 pub mod move_cmd;
 pub mod name_set;
 pub mod order;
+pub mod resize;
 pub mod rotate;
+pub mod scale;
+pub mod style_set;
 pub mod ungroup;
 pub mod unlock;
 
@@ -45,6 +48,9 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["element", "name", "set"],
     &["element", "group"],
     &["element", "ungroup"],
+    &["element", "scale"],
+    &["element", "resize"],
+    &["element", "style", "set"],
 ];
 
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
@@ -59,6 +65,9 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
         ["name", "set"] => name_set::run(args),
         ["group"] => group::run(args),
         ["ungroup"] => ungroup::run(args),
+        ["scale"] => scale::run(args),
+        ["resize"] => resize::run(args),
+        ["style", "set"] => style_set::run(args),
         _ => unreachable!("commands::element::TAKEOVER only lists entries dispatch handles"),
     }
 }
@@ -335,6 +344,85 @@ mod tests {
             ],
         );
         assert!(ordered.ok, "{}", ordered.message);
+    }
+
+    #[test]
+    fn scale_resize_and_style_set_via_the_cli_layer() {
+        let fixture = Fixture::new("scale-resize-style");
+        fixture.write_slide(&slide(
+            r#"<g id="a" transform="translate(10 10)"><rect x="0" y="0" width="10" height="10"/></g>"#,
+        ));
+
+        let scaled = dispatch(
+            &["element", "scale"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a".to_string(),
+                "--factor".to_string(),
+                "2".to_string(),
+            ],
+        );
+        assert!(scaled.ok, "{}", scaled.message);
+        assert!(fixture.read_slide().contains(r#"width="20" height="20""#));
+
+        let resized = dispatch(
+            &["element", "resize"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a".to_string(),
+                "--width".to_string(),
+                "5".to_string(),
+                "--height".to_string(),
+                "5".to_string(),
+            ],
+        );
+        assert!(resized.ok, "{}", resized.message);
+        assert!(fixture.read_slide().contains(r#"width="5" height="5""#));
+
+        let styled = dispatch(
+            &["element", "style", "set"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a".to_string(),
+                "fill".to_string(),
+                "#00ff00".to_string(),
+            ],
+        );
+        assert!(styled.ok, "{}", styled.message);
+        assert!(fixture.read_slide().contains(r##"fill="#00ff00""##));
+
+        // Each of the three writes above occupies exactly one undo step.
+        for _ in 0..3 {
+            history::undo(&fixture.id).unwrap();
+        }
+        assert!(fixture.read_slide().contains(r#"width="10" height="10""#));
+        assert!(!fixture.read_slide().contains("fill"));
+    }
+
+    #[test]
+    fn style_set_rejects_an_attribute_outside_the_whitelist_via_the_cli_layer() {
+        let fixture = Fixture::new("style-set-whitelist");
+        fixture.write_slide(&slide(
+            r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        ));
+
+        let result = dispatch(
+            &["element", "style", "set"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a".to_string(),
+                "rx".to_string(),
+                "5".to_string(),
+            ],
+        );
+        assert!(!result.ok);
+        assert_eq!(result.message, "樣式屬性 rx 不在樣式白名單內");
+        // Rejected before any write — the slide file is untouched.
+        assert!(!fixture.read_slide().contains("rx"));
     }
 
     #[test]

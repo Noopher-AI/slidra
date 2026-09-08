@@ -24,12 +24,16 @@ use crate::element::splice::{
     Splice, apply_splices, attribute_removal_splice, build_transform_splice, set_attr_splice,
 };
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::geometry::transform::TransformParts;
-use crate::slide::format::assert_slide_compliant;
+use crate::geometry::bbox::{Bbox, ElementBoundsOptions, element_bounds};
+use crate::geometry::transform::{Point, TransformParts, invert_matrix};
+use crate::slide::format::{
+    CHART_CONTAINER_TYPE, SlideElement, TABLE_CONTAINER_TYPE, TEXT_WIDTH_ATTRIBUTE,
+    assert_slide_compliant, parse_slide,
+};
 use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_document};
 use crate::svgnum::format_svg_number;
-use crate::text::{escape_xml_attr, utf16_offset_to_byte_offset};
-use std::collections::HashSet;
+use crate::text::{FontMetrics, escape_xml_attr, utf16_offset_to_byte_offset};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 fn require_svg_root(roots: &[ScannedNode]) -> CoMotionResult<&ScannedNode> {
     roots
@@ -804,6 +808,853 @@ pub fn unlock_elements(
     Ok(current)
 }
 
+// ---------------------------------------------------------------------------
+// shared: group/table/chart container detection (element scale / resize /
+// style set all need these three checks; ported from element-edit.ts's
+// module-level privates of the same names)
+// ---------------------------------------------------------------------------
+
+/// Doc furniture children accessibility markup can carry; never a real
+/// target. Mirrors `element-edit.ts`'s `IGNORED_CHILD_TAGS`.
+const IGNORED_CHILD_TAGS: [&str; 2] = ["title", "desc"];
+
+fn meaningful_children(node: &ScannedNode) -> Vec<&ScannedNode> {
+    node.children
+        .iter()
+        .filter(|child| !IGNORED_CHILD_TAGS.contains(&child.tag.as_str()))
+        .collect()
+}
+
+/// ADR-0012: a container's children are all `<g>`, or all primitives — never
+/// mixed. An unbound table's cells are all `<g data-comot-cell>` too
+/// (E2.T14) — explicitly excluded here so scale/resize/style-set's group
+/// recursion and lock-checking treat a table as a leaf, not a group whose
+/// id-less cells they would otherwise try to recurse into.
+fn is_group_container(node: &ScannedNode) -> bool {
+    if attribute_value(node, "data-comot-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
+        return false;
+    }
+    let children = meaningful_children(node);
+    !children.is_empty() && children.iter().all(|child| child.tag == "g")
+}
+
+/// A table container's cells are not primitives `element scale`/`element
+/// resize`/`element style set` know how to touch (E2.T14) — its style and
+/// size are owned entirely by the `table` command family (F5, not this
+/// ticket).
+fn assert_not_table_container(
+    node: &ScannedNode,
+    element_id: &str,
+    action: &str,
+) -> CoMotionResult<()> {
+    if attribute_value(node, "data-comot-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 是表格，{action}"
+        )));
+    }
+    Ok(())
+}
+
+/// A chart container's children (`<comot:chart>`, the data; `<svg>`, the
+/// rendered picture) are not primitives these three commands know how to
+/// touch either — checked before either ever dispatches on a container's
+/// children, so the error names the real reason instead of a generic
+/// "unsupported primitive `<comot:chart>`".
+fn assert_not_chart_container(
+    node: &ScannedNode,
+    element_id: &str,
+    action: &str,
+) -> CoMotionResult<()> {
+    if attribute_value(node, "data-comot-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 是圖表，{action}"
+        )));
+    }
+    Ok(())
+}
+
+/// Rejects `id` (and, if it is a group, every descendant container inside
+/// it) the moment any one of them is locked without `--force` (ADR-0013).
+/// Runs entirely against the caller's `svg` snapshot before any splice, so a
+/// lock three levels deep still blocks the whole command atomically instead
+/// of leaving earlier siblings already rewritten.
+fn assert_subtree_not_locked(svg: &str, id: &str, force: bool) -> CoMotionResult<()> {
+    let roots = scan_document(svg)?;
+    let svg_root = require_svg_root(&roots)?;
+    let (node, _parent) = require_container(svg_root, id)?;
+    assert_not_locked(node, id, force)?;
+    if is_group_container(node) {
+        for child in meaningful_children(node) {
+            let child_id = attribute_value(child, "id")
+                .ok_or_else(|| CoMotionError::invalid("群組子容器缺少 id，無法縮放"))?;
+            assert_subtree_not_locked(svg, &child_id, force)?;
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// element scale
+// ---------------------------------------------------------------------------
+
+/// Rounds through `format_svg_number` and rejects a value that is positive
+/// on input but rounds to zero or below. Mirrors `workspace.ts`'s
+/// `assertPositiveAfterRounding` / `element-edit.ts`'s local copy of it.
+fn assert_positive_after_rounding(value: f64, message: String) -> CoMotionResult<f64> {
+    let rounded: f64 = format_svg_number(value)
+        .parse()
+        .expect("format_svg_number always produces a string that reparses as f64");
+    if rounded <= 0.0 {
+        return Err(CoMotionError::invalid(message));
+    }
+    Ok(rounded)
+}
+
+fn scale_numeric_attr(
+    node: &ScannedNode,
+    name: &str,
+    factor: f64,
+    element_id: &str,
+    must_stay_positive: bool,
+) -> CoMotionResult<Splice> {
+    let attr = attribute_of(node, name).ok_or_else(|| {
+        CoMotionError::invalid(format!("元素 {element_id} 缺少屬性 {name}，無法縮放"))
+    })?;
+    let value = attr.value.parse::<f64>().unwrap_or(f64::NAN);
+    if !value.is_finite() {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 的 {name} 不是合法數字：{}",
+            attr.value
+        )));
+    }
+    let scaled = value * factor;
+    let rounded = if must_stay_positive {
+        assert_positive_after_rounding(
+            scaled,
+            format!("元素 {element_id} 的 {name} 縮放後不是大於 0 的數字"),
+        )?
+    } else {
+        scaled
+    };
+    Ok(Splice {
+        start: attr.start,
+        end: attr.end,
+        text: format!("{name}=\"{}\"", format_svg_number(rounded)),
+    })
+}
+
+/// Path `d` commands that carry an elliptical arc — scaling would require
+/// re-deriving the arc's radii/rotation, which this ticket does not
+/// implement (`geometry::bbox::path_bounds` has the same limitation).
+fn scale_path_data(d: &str, factor: f64) -> CoMotionResult<String> {
+    if d.contains('A') || d.contains('a') {
+        return Err(CoMotionError::invalid("path 含有橢圓弧，尚不支援縮放"));
+    }
+    // Hand-written scan for `[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?` tokens —
+    // no `regex` crate (plan decision D4). `d` is always ASCII (SVG path
+    // grammar), so byte indices and `char` indices coincide throughout.
+    let bytes = d.as_bytes();
+    let mut out = String::with_capacity(d.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match scan_number_token(bytes, i) {
+            Some(end) => {
+                let token = &d[i..end];
+                let value: f64 = token.parse().unwrap_or(0.0);
+                out.push_str(&format_svg_number(value * factor));
+                i = end;
+            }
+            None => {
+                out.push(bytes[i] as char);
+                i += 1;
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Matches a `[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?` token starting exactly
+/// at byte offset `start`, returning the end offset (exclusive) on a match.
+/// `None` when no such token starts there — the caller then copies one
+/// literal byte and retries, exactly reproducing a global-regex scan's
+/// left-to-right, non-overlapping match sequence.
+fn scan_number_token(bytes: &[u8], start: usize) -> Option<usize> {
+    let n = bytes.len();
+    let mut i = start;
+    if i < n && (bytes[i] == b'+' || bytes[i] == b'-') {
+        i += 1;
+    }
+    let mut has_digits_before_dot = false;
+    while i < n && bytes[i].is_ascii_digit() {
+        i += 1;
+        has_digits_before_dot = true;
+    }
+    let mut has_digits_after_dot = false;
+    if i < n && bytes[i] == b'.' {
+        i += 1;
+        let after_dot = i;
+        while i < n && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        has_digits_after_dot = i > after_dot;
+    }
+    if !has_digits_before_dot && !has_digits_after_dot {
+        return None;
+    }
+    let mantissa_end = i;
+    if i < n && (bytes[i] == b'e' || bytes[i] == b'E') {
+        let mut j = i + 1;
+        if j < n && (bytes[j] == b'+' || bytes[j] == b'-') {
+            j += 1;
+        }
+        let exp_digits = j;
+        while j < n && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j > exp_digits {
+            i = j;
+        } else {
+            i = mantissa_end;
+        }
+    }
+    Some(i)
+}
+
+fn build_primitive_scale_splices(
+    node: &ScannedNode,
+    factor: f64,
+    element_id: &str,
+) -> CoMotionResult<Vec<Splice>> {
+    match node.tag.as_str() {
+        "text" => {
+            let Some(attr) = attribute_of(node, "font-size") else {
+                return Ok(Vec::new());
+            };
+            let value = attr.value.parse::<f64>().unwrap_or(f64::NAN);
+            let scaled = assert_positive_after_rounding(
+                value * factor,
+                format!("元素 {element_id} 的 font-size 縮放後不是大於 0 的數字"),
+            )?;
+            Ok(vec![Splice {
+                start: attr.start,
+                end: attr.end,
+                text: format!("font-size=\"{}\"", format_svg_number(scaled)),
+            }])
+        }
+        "rect" | "image" => Ok(vec![
+            scale_numeric_attr(node, "width", factor, element_id, true)?,
+            scale_numeric_attr(node, "height", factor, element_id, true)?,
+        ]),
+        "ellipse" => Ok(vec![
+            scale_numeric_attr(node, "cx", factor, element_id, false)?,
+            scale_numeric_attr(node, "cy", factor, element_id, false)?,
+            scale_numeric_attr(node, "rx", factor, element_id, true)?,
+            scale_numeric_attr(node, "ry", factor, element_id, true)?,
+        ]),
+        "circle" => Ok(vec![
+            scale_numeric_attr(node, "cx", factor, element_id, false)?,
+            scale_numeric_attr(node, "cy", factor, element_id, false)?,
+            scale_numeric_attr(node, "r", factor, element_id, true)?,
+        ]),
+        "line" => ["x1", "y1", "x2", "y2"]
+            .iter()
+            .map(|name| scale_numeric_attr(node, name, factor, element_id, false))
+            .collect(),
+        "path" => {
+            let attr = attribute_of(node, "d").ok_or_else(|| {
+                CoMotionError::invalid(format!("元素 {element_id} 缺少屬性 d，無法縮放"))
+            })?;
+            let scaled_d = scale_path_data(&attr.value, factor)?;
+            Ok(vec![Splice {
+                start: attr.start,
+                end: attr.end,
+                text: format!("d=\"{scaled_d}\""),
+            }])
+        }
+        other => Err(CoMotionError::invalid(format!(
+            "不支援縮放的圖元 <{other}>：{element_id}"
+        ))),
+    }
+}
+
+/// `element scale`/`element resize` for the two containers whose children
+/// are not scalable primitives. A table keeps its declared grid and scales
+/// as a whole through its own container transform's `scale()` (only a
+/// uniform factor is accepted — a non-uniform one would distort the text,
+/// same rule as a text box). A chart would need to re-render at the new
+/// size — the Rust binary has no chart-rendering engine yet (F5/NOOP-281 is
+/// still `in_progress`, unmerged as of this ticket's round 3; verified via
+/// `grep -rn CHART_CONTAINER_TYPE crates/co-motion/src` finding only the
+/// structural-validation constant, no renderer) — so this returns an
+/// explicit `Failed` naming that ticket rather than attempting to port
+/// chart rendering, a decision Dev-Leader signed off on for this ticket
+/// (NOOP-309 comment thread). Returns `Ok(None)` for every other container
+/// so the caller falls through to the primitive path.
+fn scale_special_container(
+    svg: &str,
+    node: &ScannedNode,
+    element_id: &str,
+    sx: f64,
+    sy: f64,
+    force: bool,
+) -> CoMotionResult<Option<String>> {
+    let container_type = attribute_value(node, "data-comot-type");
+    match container_type.as_deref() {
+        Some(t) if t == TABLE_CONTAINER_TYPE => {
+            if sx != sy {
+                return Err(CoMotionError::invalid(format!(
+                    "元素 {element_id} 是表格，文字無法非等比縮放，請改用 element scale"
+                )));
+            }
+            let updated = apply_transform_delta(svg, element_id, force, |mut parts| {
+                parts.scale_x *= sx;
+                parts.scale_y *= sy;
+                Ok(parts)
+            })?;
+            Ok(Some(updated))
+        }
+        Some(t) if t == CHART_CONTAINER_TYPE => Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 是圖表，縮放需要圖表命令族支援，見 NOOP-281"
+        ))),
+        _ => Ok(None),
+    }
+}
+
+/// Scales a leaf container's own primitive(s). A text box (`data-comot-text-width`
+/// present) is deferred with an explicit `Failed` rather than attempted: the
+/// TS original re-wraps it (`rewrapTextBoxContent`), which lives in
+/// `element-text.ts` — P6 of this ticket's plan, not yet ported. Registering
+/// `element scale` in the takeover table with a silent wrong answer for text
+/// boxes would be worse than this explicit gap (plan section 6.5: "不要把
+/// 沒有黃金檔案例、沒跑過的命令登記進接管表" — the same principle applied to
+/// one code path within an otherwise-working command rather than to a whole
+/// command).
+fn scale_leaf_primitives(
+    svg: &str,
+    container: &ScannedNode,
+    factor: f64,
+    element_id: &str,
+) -> CoMotionResult<String> {
+    if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_some() {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 是文字框，縮放尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
+        )));
+    }
+    let mut splices = Vec::new();
+    for primitive in meaningful_children(container) {
+        splices.extend(build_primitive_scale_splices(
+            primitive, factor, element_id,
+        )?);
+    }
+    Ok(apply_splices(svg, &splices))
+}
+
+/// Scales one target by `factor`, anchored at the target's own container
+/// origin: the target's own `transform` never changes. A group target
+/// recurses — every descendant container's own `translateX/Y` is multiplied
+/// by `factor` once per level (never compounding with depth), and every
+/// leaf's native geometry is scaled by `build_primitive_scale_splices` (or
+/// rejected, for a text box — see `scale_leaf_primitives`).
+///
+/// Re-locates each node by id from a fresh `scan_document` before touching
+/// it (a worklist of ids, not a single offset-collecting walk) so a splice
+/// earlier in the subtree never invalidates a sibling's or child's offsets.
+fn scale_one_container(svg: &str, id: &str, factor: f64, force: bool) -> CoMotionResult<String> {
+    assert_subtree_not_locked(svg, id, force)?;
+
+    let mut current = svg.to_string();
+    let mut worklist: VecDeque<(String, bool)> = VecDeque::new();
+    worklist.push_back((id.to_string(), true));
+
+    while let Some((current_id, is_target)) = worklist.pop_front() {
+        if !is_target {
+            // Lock was already checked for every node in the subtree by
+            // `assert_subtree_not_locked` above, so `force: true` here can
+            // never actually be rejected — it just skips a redundant check.
+            current = apply_transform_delta(&current, &current_id, true, |mut parts| {
+                parts.translate_x *= factor;
+                parts.translate_y *= factor;
+                Ok(parts)
+            })?;
+        }
+
+        let refreshed_roots = scan_document(&current)?;
+        let refreshed_svg_root = require_svg_root(&refreshed_roots)?;
+        let (refreshed_node, _parent) = require_container(refreshed_svg_root, &current_id)?;
+
+        if is_group_container(refreshed_node) {
+            for child in meaningful_children(refreshed_node) {
+                let child_id = attribute_value(child, "id")
+                    .ok_or_else(|| CoMotionError::invalid("群組子容器缺少 id，無法縮放"))?;
+                worklist.push_back((child_id, false));
+            }
+        } else {
+            current = match scale_special_container(
+                &current,
+                refreshed_node,
+                &current_id,
+                factor,
+                factor,
+                force,
+            )? {
+                Some(updated) => updated,
+                None => scale_leaf_primitives(&current, refreshed_node, factor, &current_id)?,
+            };
+        }
+    }
+
+    Ok(current)
+}
+
+/// Scales every target by the same `factor` (`co-motion element scale`).
+pub fn scale_elements(
+    svg_content: &str,
+    slide_path: &str,
+    element_ids: &[String],
+    factor: f64,
+    force: bool,
+) -> CoMotionResult<String> {
+    assert_slide_compliant(svg_content, slide_path)?;
+    validate_id_list(element_ids)?;
+    if !factor.is_finite() || factor <= 0.0 {
+        return Err(CoMotionError::invalid("factor 必須是大於 0 的數字"));
+    }
+    let mut current = svg_content.to_string();
+    for id in element_ids {
+        current = scale_one_container(&current, id, factor, force)?;
+    }
+    Ok(current)
+}
+
+// ---------------------------------------------------------------------------
+// element resize
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeAnchor {
+    Nw,
+    Ne,
+    Sw,
+    Se,
+}
+
+/// The local corner of `box_` that `anchor` names — "nw" is `(box_.x,
+/// box_.y)`, "se" is the opposite corner, etc.
+fn anchor_corner(anchor: ResizeAnchor, box_: &Bbox) -> Point {
+    Point {
+        x: if matches!(anchor, ResizeAnchor::Ne | ResizeAnchor::Se) {
+            box_.x + box_.width
+        } else {
+            box_.x
+        },
+        y: if matches!(anchor, ResizeAnchor::Sw | ResizeAnchor::Se) {
+            box_.y + box_.height
+        } else {
+            box_.y
+        },
+    }
+}
+
+/// Scales `name` (defaulting to 0 per the SVG spec when absent) by `factor`
+/// — absent stays absent since `0 * factor` is still the default.
+fn scale_optional_numeric_attr(
+    node: &ScannedNode,
+    name: &str,
+    factor: f64,
+    element_id: &str,
+) -> CoMotionResult<Vec<Splice>> {
+    if attribute_of(node, name).is_none() {
+        return Ok(Vec::new());
+    }
+    Ok(vec![scale_numeric_attr(
+        node, name, factor, element_id, false,
+    )?])
+}
+
+/// Non-uniform counterpart to `build_primitive_scale_splices`: `sx`/`sy`
+/// scale the x-ish and y-ish native attributes independently. Shapes whose
+/// data model has no non-uniform representation (`<text>`'s `font-size` is a
+/// single scalar; `<circle>`'s `r` likewise; a non-uniform `<path>` would
+/// need per-command axis-aware re-derivation this ticket does not implement)
+/// reject a non-uniform request outright.
+fn build_primitive_resize_splices(
+    node: &ScannedNode,
+    sx: f64,
+    sy: f64,
+    element_id: &str,
+) -> CoMotionResult<Vec<Splice>> {
+    match node.tag.as_str() {
+        "rect" | "image" => {
+            let mut splices = scale_optional_numeric_attr(node, "x", sx, element_id)?;
+            splices.extend(scale_optional_numeric_attr(node, "y", sy, element_id)?);
+            splices.push(scale_numeric_attr(node, "width", sx, element_id, true)?);
+            splices.push(scale_numeric_attr(node, "height", sy, element_id, true)?);
+            Ok(splices)
+        }
+        "ellipse" => Ok(vec![
+            scale_numeric_attr(node, "cx", sx, element_id, false)?,
+            scale_numeric_attr(node, "cy", sy, element_id, false)?,
+            scale_numeric_attr(node, "rx", sx, element_id, true)?,
+            scale_numeric_attr(node, "ry", sy, element_id, true)?,
+        ]),
+        "line" => Ok(vec![
+            scale_numeric_attr(node, "x1", sx, element_id, false)?,
+            scale_numeric_attr(node, "y1", sy, element_id, false)?,
+            scale_numeric_attr(node, "x2", sx, element_id, false)?,
+            scale_numeric_attr(node, "y2", sy, element_id, false)?,
+        ]),
+        "text" => {
+            if sx != sy {
+                return Err(CoMotionError::invalid(format!(
+                    "元素 {element_id} 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+                )));
+            }
+            build_primitive_scale_splices(node, sx, element_id)
+        }
+        "circle" => {
+            if sx != sy {
+                return Err(CoMotionError::invalid(format!(
+                    "元素 {element_id} 是 <circle>，無法非等比縮放，請改用 element scale"
+                )));
+            }
+            build_primitive_scale_splices(node, sx, element_id)
+        }
+        "path" => {
+            if sx != sy {
+                return Err(CoMotionError::invalid(format!(
+                    "元素 {element_id} 是 <path>，無法非等比縮放，請改用 element scale"
+                )));
+            }
+            build_primitive_scale_splices(node, sx, element_id)
+        }
+        other => Err(CoMotionError::invalid(format!(
+            "不支援縮放的圖元 <{other}>：{element_id}"
+        ))),
+    }
+}
+
+/// Resize counterpart to `scale_leaf_primitives` — a text box is deferred
+/// the same way (see that function's doc comment).
+fn resize_leaf_primitives(
+    svg: &str,
+    container: &ScannedNode,
+    sx: f64,
+    sy: f64,
+    element_id: &str,
+) -> CoMotionResult<String> {
+    if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_some() {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 是文字框，調整尺寸尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
+        )));
+    }
+    let mut splices = Vec::new();
+    for primitive in meaningful_children(container) {
+        splices.extend(build_primitive_resize_splices(
+            primitive, sx, sy, element_id,
+        )?);
+    }
+    Ok(apply_splices(svg, &splices))
+}
+
+/// Resize counterpart to `scale_one_container`: same worklist/re-scan shape,
+/// `(sx, sy)` applied per axis instead of one `factor`. The target's own
+/// container `transform` is left untouched here too — `resize_one_target`
+/// applies the anchor-preserving translate delta afterward, once.
+fn resize_one_container(
+    svg: &str,
+    id: &str,
+    sx: f64,
+    sy: f64,
+    force: bool,
+) -> CoMotionResult<String> {
+    assert_subtree_not_locked(svg, id, force)?;
+
+    let mut current = svg.to_string();
+    let mut worklist: VecDeque<(String, bool)> = VecDeque::new();
+    worklist.push_back((id.to_string(), true));
+
+    while let Some((current_id, is_target)) = worklist.pop_front() {
+        if !is_target {
+            current = apply_transform_delta(&current, &current_id, true, |mut parts| {
+                parts.translate_x *= sx;
+                parts.translate_y *= sy;
+                Ok(parts)
+            })?;
+        }
+
+        let refreshed_roots = scan_document(&current)?;
+        let refreshed_svg_root = require_svg_root(&refreshed_roots)?;
+        let (refreshed_node, _parent) = require_container(refreshed_svg_root, &current_id)?;
+
+        if is_group_container(refreshed_node) {
+            for child in meaningful_children(refreshed_node) {
+                let child_id = attribute_value(child, "id")
+                    .ok_or_else(|| CoMotionError::invalid("群組子容器缺少 id，無法縮放"))?;
+                worklist.push_back((child_id, false));
+            }
+        } else {
+            current = match scale_special_container(
+                &current,
+                refreshed_node,
+                &current_id,
+                sx,
+                sy,
+                force,
+            )? {
+                Some(updated) => updated,
+                None => resize_leaf_primitives(&current, refreshed_node, sx, sy, &current_id)?,
+            };
+        }
+    }
+
+    Ok(current)
+}
+
+/// Depth-first search of a parsed slide model for `id` — resize only ever
+/// needs the element's own local matrix, never an ancestor chain (the
+/// anchor delta below is entirely local to the target's own container).
+fn find_element_by_id<'a>(elements: &'a [SlideElement], id: &str) -> Option<&'a SlideElement> {
+    for element in elements {
+        if element.id == id {
+            return Some(element);
+        }
+        if let Some(found) = find_element_by_id(&element.children, id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Resizes one target to exactly `(width, height)`, anchored so that the
+/// named corner of its bounding box — computed in the target's own local
+/// frame, i.e. with the target's own `transform` factored out via
+/// `invert_matrix` — lands on exactly the same spot after the resize.
+///
+/// Native geometry is scaled by `(sx, sy)` about that local frame's origin
+/// (`resize_one_container`, mirroring `scale_one_container`'s single-`factor`
+/// version); the target's own container transform's rotation and any
+/// pre-existing scale are left alone, and only its translate is shifted by
+/// the delta the anchor corner moved by that scaling — expressed back
+/// through the target's own matrix so a rotated target still keeps its
+/// anchor corner fixed in the parent's frame.
+#[allow(clippy::too_many_arguments)] // mirrors element-resize.ts's resizeElements' 1:1 parameter shape
+fn resize_one_target(
+    svg: &str,
+    slide_path: &str,
+    id: &str,
+    width: f64,
+    height: f64,
+    anchor: ResizeAnchor,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
+    force: bool,
+) -> CoMotionResult<String> {
+    let model = parse_slide(svg, Some(slide_path))?;
+    let element = find_element_by_id(&model.elements, id)
+        .ok_or_else(|| CoMotionError::invalid(format!("找不到元素：{id}")))?;
+
+    let inverse = invert_matrix(&element.matrix)?;
+    let local_box = element_bounds(
+        element,
+        &ElementBoundsOptions {
+            ancestors: &[inverse],
+            fonts: Some(fonts),
+        },
+    )?;
+    if local_box.width <= 0.0 || local_box.height <= 0.0 {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {id} 沒有邊界框，無法縮放"
+        )));
+    }
+    let sx = width / local_box.width;
+    let sy = height / local_box.height;
+
+    let corner_before = anchor_corner(anchor, &local_box);
+    let corner_after = Point {
+        x: corner_before.x * sx,
+        y: corner_before.y * sy,
+    };
+    let delta_local = Point {
+        x: corner_before.x - corner_after.x,
+        y: corner_before.y - corner_after.y,
+    };
+    // The target's own matrix's linear part (no translation) carries a
+    // local delta into the parent's frame — this is what makes a rotated
+    // target's anchor corner land correctly instead of only working
+    // axis-aligned.
+    let matrix = element.matrix;
+    let delta_parent = Point {
+        x: matrix.a * delta_local.x + matrix.c * delta_local.y,
+        y: matrix.b * delta_local.x + matrix.d * delta_local.y,
+    };
+
+    let mut current = resize_one_container(svg, id, sx, sy, force)?;
+    current = apply_transform_delta(&current, id, true, |mut parts| {
+        parts.translate_x += delta_parent.x;
+        parts.translate_y += delta_parent.y;
+        Ok(parts)
+    })?;
+    Ok(current)
+}
+
+/// Resizes every target to the same `(width, height)` (`co-motion element
+/// resize`).
+#[allow(clippy::too_many_arguments)] // mirrors element-edit.ts's resizeElements' 1:1 parameter shape
+pub fn resize_elements(
+    svg_content: &str,
+    slide_path: &str,
+    element_ids: &[String],
+    width: f64,
+    height: f64,
+    anchor: ResizeAnchor,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
+    force: bool,
+) -> CoMotionResult<String> {
+    assert_slide_compliant(svg_content, slide_path)?;
+    validate_id_list(element_ids)?;
+    if !width.is_finite() || width <= 0.0 {
+        return Err(CoMotionError::invalid("width 必須是大於 0 的數字"));
+    }
+    if !height.is_finite() || height <= 0.0 {
+        return Err(CoMotionError::invalid("height 必須是大於 0 的數字"));
+    }
+    let mut current = svg_content.to_string();
+    for id in element_ids {
+        current = resize_one_target(
+            &current, slide_path, id, width, height, anchor, fonts, force,
+        )?;
+    }
+    Ok(current)
+}
+
+// ---------------------------------------------------------------------------
+// element style set (ADR-0014)
+// ---------------------------------------------------------------------------
+
+/// ADR-0014: the style command uses SVG attribute names directly. Nine
+/// entries, not to be extended — ADR-0014 explicitly forbids growing this
+/// list from within this ticket.
+const STYLE_ATTRIBUTE_WHITELIST: &[&str] = &[
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-dasharray",
+    "opacity",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "text-anchor",
+];
+
+const FORBIDDEN_STYLE_ATTRIBUTES: &[&str] = &["transform", "x", "y", "width", "height"];
+
+fn validate_style_attribute(attr: &str, value: &str) -> CoMotionResult<()> {
+    if FORBIDDEN_STYLE_ATTRIBUTES.contains(&attr) {
+        return Err(CoMotionError::invalid(format!(
+            "樣式屬性 {attr} 不在樣式白名單內，位置與大小必須透過 move/scale 命令調整"
+        )));
+    }
+    if attr.starts_with("data-comot-") {
+        return Err(CoMotionError::invalid(format!(
+            "樣式屬性 {attr} 是保留屬性前綴 data-comot-，不可透過 element style set 設定"
+        )));
+    }
+    if !STYLE_ATTRIBUTE_WHITELIST.contains(&attr) {
+        return Err(CoMotionError::invalid(format!(
+            "樣式屬性 {attr} 不在樣式白名單內"
+        )));
+    }
+    if attr == "opacity" {
+        let n = value.parse::<f64>().unwrap_or(f64::NAN);
+        if !(0.0..=1.0).contains(&n) {
+            return Err(CoMotionError::invalid("opacity 必須是 0 到 1 之間的數字"));
+        }
+    }
+    if attr == "font-size" {
+        let n = value.parse::<f64>().unwrap_or(f64::NAN);
+        if !n.is_finite() || n <= 0.0 {
+            return Err(CoMotionError::invalid("font-size 必須是大於 0 的數字"));
+        }
+    }
+    if attr == "stroke-width" {
+        let n = value.parse::<f64>().unwrap_or(f64::NAN);
+        if !n.is_finite() || n < 0.0 {
+            return Err(CoMotionError::invalid("stroke-width 不可為負數"));
+        }
+    }
+    if attr == "text-anchor" && !["start", "middle", "end"].contains(&value) {
+        return Err(CoMotionError::invalid(
+            "text-anchor 必須是 start、middle 或 end",
+        ));
+    }
+    Ok(())
+}
+
+fn set_style_on_container(
+    svg: &str,
+    id: &str,
+    attr: &str,
+    value: &str,
+    force: bool,
+) -> CoMotionResult<String> {
+    let roots = scan_document(svg)?;
+    let svg_root = require_svg_root(&roots)?;
+    let (node, _parent) = require_container(svg_root, id)?;
+    assert_not_locked(node, id, force)?;
+    assert_not_table_container(node, id, "樣式請用 table 命令族調整")?;
+    assert_not_chart_container(node, id, "樣式請用 chart 命令族調整")?;
+
+    if is_group_container(node) {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {id} 是群組，沒有可套用樣式的圖元"
+        )));
+    }
+
+    let is_text_box = attribute_of(node, TEXT_WIDTH_ATTRIBUTE).is_some();
+    if attr == "text-anchor" && is_text_box {
+        return Err(CoMotionError::invalid(format!(
+            "文字框不支援 text-anchor（換行引擎假設 start）：{id}"
+        )));
+    }
+    // A text box's font-size/font-family change needs a re-wrap
+    // (`rewrapTextBoxContent`, P6, not yet ported) — every other whitelisted
+    // attribute (fill/stroke/opacity/...) is a plain splice onto the
+    // `<text>` primitive with no layout consequence, so only these two are
+    // deferred (see `scale_leaf_primitives`'s doc comment for the same
+    // "explicit gap, not a silent wrong answer" reasoning).
+    if is_text_box && (attr == "font-size" || attr == "font-family") {
+        return Err(CoMotionError::invalid(format!(
+            "元素 {id} 是文字框，調整 {attr} 尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
+        )));
+    }
+
+    let splices: Vec<Splice> = meaningful_children(node)
+        .into_iter()
+        .map(|primitive| set_attr_splice(primitive, attr, value))
+        .collect();
+    Ok(apply_splices(svg, &splices))
+}
+
+/// Sets `attr` to `value` on every target's primitive (`co-motion element
+/// style set`). `attr` must be in the whitelist and pass its per-attribute
+/// value validation before any target is touched.
+pub fn set_element_style(
+    svg_content: &str,
+    slide_path: &str,
+    element_ids: &[String],
+    attr: &str,
+    value: &str,
+    force: bool,
+) -> CoMotionResult<String> {
+    assert_slide_compliant(svg_content, slide_path)?;
+    validate_id_list(element_ids)?;
+    validate_style_attribute(attr, value)?;
+    let mut current = svg_content.to_string();
+    for id in element_ids {
+        current = set_style_on_container(&current, id, attr, value, force)?;
+    }
+    Ok(current)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1336,5 +2187,520 @@ mod tests {
         let dup_err =
             lock_elements(&svg, "slides/001.svg", &["a".to_string(), "a".to_string()]).unwrap_err();
         assert_eq!(dup_err.message(), "元素清單重複：a");
+    }
+
+    // --- element scale (P4) ---
+
+    #[test]
+    fn scale_leaf_rect_scales_width_and_height_but_not_the_container_transform() {
+        let svg = slide(
+            r#"<g id="a" transform="translate(5 5)"><rect x="0" y="0" width="10" height="20"/></g>"#,
+        );
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap();
+        assert!(
+            updated.contains(r#"transform="translate(5 5)""#),
+            "target's own transform must not change: {updated}"
+        );
+        assert!(updated.contains(r#"<rect x="0" y="0" width="20" height="40"/>"#));
+    }
+
+    #[test]
+    fn scale_group_multiplies_every_descendant_translate_once_per_level() {
+        let svg = slide(
+            r#"<g id="grp"><g id="child" transform="translate(10 10)"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
+        );
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 3.0, false).unwrap();
+        assert!(
+            !updated.contains(r#"id="grp" transform"#),
+            "the group's own transform must not change: {updated}"
+        );
+        assert!(updated.contains(r#"transform="translate(30 30)""#));
+    }
+
+    #[test]
+    fn scale_rejects_a_locked_descendant_even_though_only_the_outer_group_was_named() {
+        let svg = slide(
+            r#"<g id="grp"><g id="child" data-comot-lock="true"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
+        );
+        let err =
+            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 2.0, false).unwrap_err();
+        assert!(err.message().contains("鎖定的版面骨架"));
+        // Force bypasses it and the child's lock attribute is left untouched.
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 2.0, true).unwrap();
+        assert!(updated.contains(r#"data-comot-lock="true""#));
+    }
+
+    #[test]
+    fn scale_non_positive_factor_errors() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err =
+            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 0.0, false).unwrap_err();
+        assert_eq!(err.message(), "factor 必須是大於 0 的數字");
+    }
+
+    #[test]
+    fn scale_table_container_uniform_factor_scales_its_own_transform() {
+        let svg = slide(
+            r#"<g id="t" data-comot-type="table" data-comot-cols="1" data-comot-rows="1"><g data-comot-cell="0,0"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
+        );
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["t".to_string()], 2.0, false).unwrap();
+        // `format_transform` always writes both axes, never collapses an
+        // equal (sx, sy) to a single-argument `scale(n)`.
+        assert!(updated.contains(r#"transform="scale(2 2)""#), "{updated}");
+    }
+
+    #[test]
+    fn scale_chart_container_is_an_explicit_failed_naming_noop_281() {
+        let svg = slide(r#"<g id="c" data-comot-type="chart"><comot:chart/><svg/></g>"#);
+        let err =
+            scale_elements(&svg, "slides/001.svg", &["c".to_string()], 2.0, false).unwrap_err();
+        assert!(err.message().contains("圖表"));
+        assert!(err.message().contains("NOOP-281"));
+    }
+
+    #[test]
+    fn scale_text_box_defers_with_an_explicit_failed_naming_p6() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-size="16">hi</text></g>"#
+        ));
+        let err =
+            scale_elements(&svg, "slides/001.svg", &["tb".to_string()], 2.0, false).unwrap_err();
+        assert!(err.message().contains("文字框"));
+        assert!(err.message().contains("P6"));
+    }
+
+    #[test]
+    fn scale_bare_text_primitive_font_size_scales_as_a_plain_number() {
+        let svg = slide(r#"<g id="a"><text font-size="16">hi</text></g>"#);
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 1.5, false).unwrap();
+        assert!(updated.contains(r#"font-size="24""#));
+    }
+
+    #[test]
+    fn scale_path_with_an_elliptical_arc_errors() {
+        let svg = slide(r#"<g id="a"><path d="M0 0 A5 5 0 0 1 10 10"/></g>"#);
+        let err =
+            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap_err();
+        assert_eq!(err.message(), "path 含有橢圓弧，尚不支援縮放");
+    }
+
+    #[test]
+    fn scale_path_data_rescales_every_numeric_token_including_shorthand_adjacent_decimals() {
+        // "1.5.5" is SVG's shorthand for two adjacent decimals "1.5" and
+        // ".5" with the repeated point omitted — this is the regex-parity
+        // case `scan_number_token` has to get right without a `regex` crate.
+        let svg = slide(r#"<g id="a"><path d="M-1.5.5L2e1 3"/></g>"#);
+        let updated =
+            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap();
+        // -1.5*2=-3, .5*2=1, 2e1(=20)*2=40, 3*2=6 — "-3" and "1" concatenate
+        // with no separator because the SOURCE had none between "-1.5" and
+        // ".5" either (a `String.replace` with a global regex preserves
+        // whatever separator — including none — sat between two matches).
+        // This is a pre-existing quirk of the TS original's own regex-replace
+        // approach, not something this port introduces or needs to fix.
+        assert_eq!(updated, slide(r#"<g id="a"><path d="M-31L40 6"/></g>"#));
+    }
+
+    // --- element resize (P4) ---
+
+    fn empty_font_book() -> HashMap<String, Box<dyn FontMetrics>> {
+        HashMap::new()
+    }
+
+    fn font_book_with_default() -> HashMap<String, Box<dyn FontMetrics>> {
+        let mut book: HashMap<String, Box<dyn FontMetrics>> = HashMap::new();
+        book.insert(
+            crate::text::DEFAULT_FONT_FAMILY.to_string(),
+            Box::new(crate::text::parse_font(crate::text::DEFAULT_FONT_BYTES).unwrap()),
+        );
+        book
+    }
+
+    #[test]
+    fn resize_nw_anchor_keeps_the_top_left_corner_fixed() {
+        let svg = slide(
+            r#"<g id="a" transform="translate(10 10)"><rect x="0" y="0" width="10" height="10"/></g>"#,
+        );
+        let updated = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            20.0,
+            5.0,
+            ResizeAnchor::Nw,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            updated.contains(r#"transform="translate(10 10)""#),
+            "nw anchor: translate must not move: {updated}"
+        );
+        assert!(updated.contains(r#"<rect x="0" y="0" width="20" height="5"/>"#));
+    }
+
+    #[test]
+    fn resize_se_anchor_shifts_translate_to_keep_the_bottom_right_corner_fixed() {
+        let svg = slide(
+            r#"<g id="a" transform="translate(10 10)"><rect x="0" y="0" width="10" height="10"/></g>"#,
+        );
+        let updated = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            20.0,
+            20.0,
+            ResizeAnchor::Se,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
+        // Absolute se corner before: translate(10,10) applied to the local
+        // se corner (10,10) = (20,20). After scaling by 2x about the local
+        // origin, the resized rect's local se corner is (20,20); mapping
+        // that to the SAME absolute point (20,20) needs translate(0,0) — so
+        // the (now-identity) transform attribute is dropped entirely, same
+        // as `move`/`rotate` dropping an all-default transform elsewhere in
+        // this file.
+        assert!(!updated.contains("transform"), "{updated}");
+        assert!(updated.contains(r#"<rect x="0" y="0" width="20" height="20"/>"#));
+    }
+
+    #[test]
+    fn resize_width_or_height_not_positive_errors() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            0.0,
+            10.0,
+            ResizeAnchor::Nw,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "width 必須是大於 0 的數字");
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            10.0,
+            -1.0,
+            ResizeAnchor::Nw,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "height 必須是大於 0 的數字");
+    }
+
+    #[test]
+    fn resize_missing_element_is_not_found_message() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["nope".to_string()],
+            10.0,
+            10.0,
+            ResizeAnchor::Nw,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "找不到元素：nope");
+    }
+
+    #[test]
+    fn resize_non_uniform_on_a_circle_errors_and_points_at_element_scale() {
+        let svg = slide(r#"<g id="a"><circle cx="5" cy="5" r="5"/></g>"#);
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            20.0,
+            5.0,
+            ResizeAnchor::Nw,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("<circle>"));
+        assert!(err.message().contains("element scale"));
+    }
+
+    #[test]
+    fn resize_text_box_defers_with_an_explicit_failed_naming_p6() {
+        let svg = slide(&format!(
+            r##"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="16">hi</text></g>"##
+        ));
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            200.0,
+            50.0,
+            ResizeAnchor::Nw,
+            &font_book_with_default(),
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("文字框"), "{}", err.message());
+        assert!(err.message().contains("P6"), "{}", err.message());
+    }
+
+    // --- element style set (ADR-0014, P4) ---
+
+    #[test]
+    fn style_set_sets_a_whitelisted_attribute_on_every_primitive() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let updated = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "fill",
+            "#ff0000",
+            false,
+        )
+        .unwrap();
+        assert!(updated.contains(r##"<rect fill="#ff0000" x="0" y="0" width="1" height="1"/>"##));
+    }
+
+    #[test]
+    fn style_set_rejects_forbidden_position_and_size_attributes() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        for attr in ["transform", "x", "y", "width", "height"] {
+            let err =
+                set_element_style(&svg, "slides/001.svg", &["a".to_string()], attr, "1", false)
+                    .unwrap_err();
+            assert!(
+                err.message().contains("move/scale"),
+                "attr={attr}: {}",
+                err.message()
+            );
+        }
+    }
+
+    #[test]
+    fn style_set_rejects_data_comot_prefixed_attributes() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "data-comot-lock",
+            "true",
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("保留屬性前綴"));
+    }
+
+    #[test]
+    fn style_set_rejects_an_attribute_outside_the_whitelist() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err = set_element_style(&svg, "slides/001.svg", &["a".to_string()], "rx", "5", false)
+            .unwrap_err();
+        assert_eq!(err.message(), "樣式屬性 rx 不在樣式白名單內");
+    }
+
+    #[test]
+    fn style_set_validates_opacity_font_size_stroke_width_and_text_anchor_ranges() {
+        let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "opacity",
+            "1.5",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "opacity 必須是 0 到 1 之間的數字");
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "font-size",
+            "0",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "font-size 必須是大於 0 的數字");
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "stroke-width",
+            "-1",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "stroke-width 不可為負數");
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "text-anchor",
+            "center",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "text-anchor 必須是 start、middle 或 end");
+        // And the boundary values are accepted.
+        assert!(
+            set_element_style(
+                &svg,
+                "slides/001.svg",
+                &["a".to_string()],
+                "opacity",
+                "0",
+                false
+            )
+            .is_ok()
+        );
+        assert!(
+            set_element_style(
+                &svg,
+                "slides/001.svg",
+                &["a".to_string()],
+                "opacity",
+                "1",
+                false
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn style_set_rejects_a_group_target() {
+        let svg =
+            slide(r#"<g id="grp"><g id="a"><rect x="0" y="0" width="1" height="1"/></g></g>"#);
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["grp".to_string()],
+            "fill",
+            "red",
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "元素 grp 是群組，沒有可套用樣式的圖元");
+    }
+
+    #[test]
+    fn style_set_rejects_table_and_chart_containers() {
+        let table = slide(
+            r#"<g id="t" data-comot-type="table" data-comot-cols="1" data-comot-rows="1"><g data-comot-cell="0,0"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
+        );
+        let err = set_element_style(
+            &table,
+            "slides/001.svg",
+            &["t".to_string()],
+            "fill",
+            "red",
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("表格"));
+
+        let chart = slide(r#"<g id="c" data-comot-type="chart"><comot:chart/><svg/></g>"#);
+        let err = set_element_style(
+            &chart,
+            "slides/001.svg",
+            &["c".to_string()],
+            "fill",
+            "red",
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("圖表"));
+    }
+
+    #[test]
+    fn style_set_rejects_text_anchor_on_a_text_box_but_allows_fill() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-size="16">hi</text></g>"#
+        ));
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            "text-anchor",
+            "middle",
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("文字框不支援 text-anchor"));
+
+        // fill has no layout consequence, so it works without needing P6's
+        // rewrap machinery.
+        let updated = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            "fill",
+            "#000",
+            false,
+        )
+        .unwrap();
+        assert!(updated.contains(r##"fill="#000""##));
+    }
+
+    #[test]
+    fn style_set_defers_font_size_and_font_family_on_a_text_box() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-size="16">hi</text></g>"#
+        ));
+        for attr in ["font-size", "font-family"] {
+            let value = if attr == "font-size" { "20" } else { "Arial" };
+            let err = set_element_style(
+                &svg,
+                "slides/001.svg",
+                &["tb".to_string()],
+                attr,
+                value,
+                false,
+            )
+            .unwrap_err();
+            assert!(
+                err.message().contains("P6"),
+                "attr={attr}: {}",
+                err.message()
+            );
+        }
+    }
+
+    #[test]
+    fn style_set_respects_lock_and_force() {
+        let svg = slide(
+            r#"<g id="a" data-comot-lock="true"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "fill",
+            "red",
+            false,
+        )
+        .unwrap_err();
+        assert!(err.message().contains("鎖定的版面骨架"));
+        let updated = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "fill",
+            "red",
+            true,
+        )
+        .unwrap();
+        assert!(updated.contains(r#"fill="red""#));
     }
 }
