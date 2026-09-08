@@ -1,14 +1,17 @@
 //! Undo/redo for presentation content. Ported from
-//! `packages/core/src/history.ts`, scoped to this ticket's "undo/redo stack
-//! semantics" slice only: `stack.json`/`snapshots/` storage, and the
-//! `undo`/`redo` commands themselves. The TS file's *write-path* staging API
-//! (`stageSnapshotEntries`/`commitSnapshotEntries`/`discardSnapshotEntries`/
-//! `finalizeCommittedEntries`/`revertCommittedEntries`/`beginHistoryGroup`/
-//! `endHistoryGroup`/`recordSnapshot`) belongs to the content-editing command
-//! layer (`writePresentationFile` and friends), which is not yet ported to
-//! Rust — there is nothing here for those commands to call into yet, so
-//! porting that half now would be dead code with no caller. See the final
-//! report's "spec requires but not done" note.
+//! `packages/core/src/history.ts`: `stack.json`/`snapshots/` storage, the
+//! `undo`/`redo` commands, and — added by NOOP-281/F5 — the write-path
+//! staging API (`stageSnapshotEntries`/`commitSnapshotEntries`/
+//! `discardSnapshotEntries`/`finalizeCommittedEntries`/
+//! `revertCommittedEntries`) that `workspace::write_presentation_file` and
+//! `workspace::create_presentation_file` are built on. NOT ported:
+//! `beginHistoryGroup`/`endHistoryGroup`/`recordSnapshot` — those group
+//! multiple commands into one undo step for the server's agent-turn API
+//! (out of scope for every CLI command this ticket adds; `openGroup` is
+//! read/round-tripped by `read_stack`/`write_stack` below but never set by
+//! anything in this crate, so `commit_snapshot_entries` always takes the
+//! "no open group" branch — which is exactly why plan §5's A14 holds: every
+//! write-path call in this crate is its own one-command undo group).
 //!
 //! Storage lives at `<CO_MOTION_HOME>/history/<presentation-id>/`, a sibling
 //! of `work/<id>/` under the same home — never inside the work directory
@@ -23,14 +26,21 @@
 //! - `redo(id) -> CoMotionResult<UndoResult>` — redoes the most recently
 //!   undone group, moving it back onto the undo stack (subject to the same
 //!   `UNDO_STACK_CAP` as any other push onto that stack).
+//! - `stage_snapshot_entries` / `stage_new_file_entry` / `commit_snapshot_entries`
+//!   / `finalize_committed_entries` / `revert_committed_entries` /
+//!   `discard_snapshot_entries` — the write-path staging API; see each
+//!   function's own doc comment. `workspace::mod.rs` is their only caller.
 //!
-//! Both take only `id` (not `work_dir`/`history_dir` explicitly) and resolve
-//! `CO_MOTION_HOME` plus the work directory themselves via `crate::workspace`
-//! — mirroring `undoLastGroup`/`redoLastGroup`'s actual TS signatures
-//! (`(id: string)`, internally calling `resolveCoMotionHome`/
+//! `undo`/`redo` take only `id` (not `work_dir`/`history_dir` explicitly) and
+//! resolve `CO_MOTION_HOME` plus the work directory themselves via
+//! `crate::workspace` — mirroring `undoLastGroup`/`redoLastGroup`'s actual TS
+//! signatures (`(id: string)`, internally calling `resolveCoMotionHome`/
 //! `resolveWorkDir`) rather than pushing that resolution onto every call
 //! site. A CLI command handler for `co-motion undo`/`redo` needs only the
-//! presentation id argv already gives it.
+//! presentation id argv already gives it. The staging functions mirror their
+//! TS counterparts' own signatures the same way: each takes only `id` (plus
+//! whatever entries/paths it operates on) and resolves `CO_MOTION_HOME`/the
+//! work directory itself.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id;
@@ -56,9 +66,9 @@ const UNDO_STACK_CAP: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct HistoryEntry {
+pub struct HistoryEntry {
     /// e.g. "slides/001.svg"
-    virtual_path: String,
+    pub virtual_path: String,
     /// Filename under `snapshots/`, holding the file's content from
     /// *before* this entry's edit — or `None` when the path did not exist
     /// before the edit (the entry represents the path's *creation*). A
@@ -70,7 +80,7 @@ struct HistoryEntry {
     /// present-and-`null`) must fail to deserialize, matching the TS
     /// original's `isHistoryEntry` (which treats `undefined` as invalid,
     /// only `null` or a string as valid).
-    snapshot_id: Option<String>,
+    pub snapshot_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -86,9 +96,12 @@ struct HistoryGroup {
 /// for the file to parse as a valid stack at all — the TS original's
 /// `isStackFile` rejects a `stack.json` with the `openGroup` key missing
 /// entirely, same as it rejects `undo`/`redo` being missing.
+/// Opaque outside this module (fields stay private) — `workspace::mod.rs`
+/// only ever holds a value of this type (via `CommitResult::previous_stack`)
+/// to hand back, unexamined, to `revert_committed_entries`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StackFile {
+pub struct StackFile {
     undo: Vec<HistoryGroup>,
     redo: Vec<HistoryGroup>,
     open_group: Option<HistoryGroup>,
@@ -220,6 +233,169 @@ fn push_group_to_undo_stack(list: &mut Vec<HistoryGroup>, group: HistoryGroup) -
         }
     }
     evicted_snapshot_ids
+}
+
+/// Writes a snapshot file for each listed path's *current* content, but does
+/// not touch the undo/redo stacks yet — split from a single-shot "record and
+/// commit immediately" helper so a caller (`workspace::write_presentation_file`)
+/// can snapshot first, attempt its actual content write, and only then
+/// decide whether to `commit_snapshot_entries` (write succeeded) or
+/// `discard_snapshot_entries` (write failed) — so a failed write never
+/// occupies an undo slot.
+pub fn stage_snapshot_entries(
+    id: &str,
+    virtual_paths: &[String],
+) -> CoMotionResult<Vec<HistoryEntry>> {
+    let home = workspace::resolve_home();
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let mut entries = Vec::with_capacity(virtual_paths.len());
+    for virtual_path in virtual_paths {
+        let content = virtual_fs::read_virtual_file_bytes(&work_dir, virtual_path)?;
+        let snapshot_id = id::generate_opaque_id();
+        write_snapshot(&home, id, &snapshot_id, &content)?;
+        entries.push(HistoryEntry {
+            virtual_path: virtual_path.clone(),
+            snapshot_id: Some(snapshot_id),
+        });
+    }
+    Ok(entries)
+}
+
+/// Records that `virtual_path` is about to be created — it does not exist
+/// yet — as the creation counterpart to `stage_snapshot_entries` (`asset
+/// import`, `table row insert`-style paths never use this — only actual
+/// file creation does). No I/O and no snapshot file: there is no "before"
+/// content to keep, only the fact that the path was absent. The caller
+/// writes the new file itself, then commits or discards this entry through
+/// the same `commit_snapshot_entries`/`discard_snapshot_entries` any other
+/// staged entry uses.
+pub fn stage_new_file_entry(virtual_path: &str) -> HistoryEntry {
+    HistoryEntry {
+        virtual_path: virtual_path.to_string(),
+        snapshot_id: None,
+    }
+}
+
+pub struct CommitResult {
+    /// A deep copy of the stack exactly as it stood before this commit —
+    /// before the redo clear, before any cap eviction, before `entries` was
+    /// appended. Handed back so a caller whose next step (making the new
+    /// content visible) then fails can restore history to precisely this
+    /// state via `revert_committed_entries`, instead of trying to
+    /// reconstruct it field by field.
+    pub previous_stack: StackFile,
+    /// Snapshot ids this commit orphaned (the redo stack it cleared, plus
+    /// any cap-evicted undo group) — not deleted yet. Deleting them here
+    /// would make the rollback in `revert_committed_entries` impossible
+    /// once the caller's write fails, since `previous_stack` still
+    /// references them. The caller must call `finalize_committed_entries`
+    /// with this list once it knows the commit is not going to be
+    /// reverted.
+    pub pending_deletion_snapshot_ids: Vec<String>,
+}
+
+/// Commits previously staged entries onto the undo timeline: with an open
+/// group, the entries are appended to it; otherwise they become their own
+/// single-command undo group immediately. Nothing in this crate ever opens
+/// a group (see module doc), so every call in practice takes the "own
+/// single-command group" branch. Every call clears the redo stack — undo is
+/// a linear timeline, and a new edit after an undo invalidates whatever
+/// redo would have replayed.
+///
+/// Unlike an ordinary "set → undo → set" loop, this function does *not*
+/// delete the cleared redo entries' (or any cap-evicted group's) snapshot
+/// files itself — see `CommitResult`. A caller with no failure case of its
+/// own between this call and visible effect should immediately follow up
+/// with `finalize_committed_entries`. A caller that commits *before* a
+/// write that can still fail (`write_presentation_file`) instead holds
+/// `previous_stack` until it knows whether to finalize or revert.
+pub fn commit_snapshot_entries(
+    id: &str,
+    entries: Vec<HistoryEntry>,
+) -> CoMotionResult<CommitResult> {
+    let home = workspace::resolve_home();
+    let mut stack = read_stack(&home, id)?;
+    let previous_stack = stack.clone();
+
+    let mut pending_deletion_snapshot_ids = Vec::new();
+    for group in &stack.redo {
+        for entry in &group.entries {
+            if let Some(snapshot_id) = &entry.snapshot_id {
+                pending_deletion_snapshot_ids.push(snapshot_id.clone());
+            }
+        }
+    }
+    stack.redo = Vec::new();
+
+    if let Some(open_group) = stack.open_group.as_mut() {
+        open_group.entries.extend(entries);
+    } else {
+        let group = HistoryGroup {
+            group_id: id::generate_opaque_id(),
+            entries,
+        };
+        pending_deletion_snapshot_ids.extend(push_group_to_undo_stack(&mut stack.undo, group));
+    }
+
+    write_stack(&home, id, &stack)?;
+    Ok(CommitResult {
+        previous_stack,
+        pending_deletion_snapshot_ids,
+    })
+}
+
+/// Deletes the snapshot files a `commit_snapshot_entries` call orphaned,
+/// once the caller knows that commit will never be reverted. Split out from
+/// `commit_snapshot_entries` itself so a caller that commits before a write
+/// that can still fail keeps those files on disk — and thus recoverable via
+/// `revert_committed_entries` — until the write's outcome is known.
+pub fn finalize_committed_entries(id: &str, snapshot_ids: &[String]) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    for snapshot_id in snapshot_ids {
+        delete_snapshot(&home, id, snapshot_id)?;
+    }
+    Ok(())
+}
+
+/// Reverses one `commit_snapshot_entries(id, entries)` call whose caller's
+/// next step — making the new content visible — then failed
+/// (`write_presentation_file` commits the undo group *before* writing its
+/// content, precisely so undo is never unavailable for content a reader can
+/// already see; a failed write must therefore undo that commit too, or the
+/// commit would occupy an undo slot for a write that never actually took
+/// visible effect).
+///
+/// Writes `previous_stack` (as returned by that same `commit_snapshot_entries`
+/// call) back verbatim — restoring the redo stack it cleared and any group
+/// it cap-evicted, not just popping the group it pushed. Because
+/// `commit_snapshot_entries` never deleted those redo/evicted snapshot
+/// files — only staged them for deletion — they are still on disk for
+/// `previous_stack` to reference. `entries`' own staged snapshot files (the
+/// failed write's own "before" content) are discarded, since the content
+/// they exist for never got written. Must be called with the same
+/// `entries`/`previous_stack` pair immediately after, before anything else
+/// commits against this id.
+pub fn revert_committed_entries(
+    id: &str,
+    entries: &[HistoryEntry],
+    previous_stack: StackFile,
+) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    write_stack(&home, id, &previous_stack)?;
+    discard_snapshot_entries(id, entries)
+}
+
+/// Deletes snapshot files staged by `stage_snapshot_entries` whose write was
+/// never committed — the caller's actual content write failed, so these
+/// would otherwise sit on disk unreferenced by any stack.
+pub fn discard_snapshot_entries(id: &str, entries: &[HistoryEntry]) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    for entry in entries {
+        if let Some(snapshot_id) = &entry.snapshot_id {
+            delete_snapshot(&home, id, snapshot_id)?;
+        }
+    }
+    Ok(())
 }
 
 /// `read_virtual_file_bytes`, except a genuinely-absent path is `None`

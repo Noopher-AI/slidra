@@ -1,12 +1,13 @@
-//! Workspace read paths, ported from the READ half of
-//! `packages/core/src/workspace.ts` (home-dir resolution, the registry read,
-//! id-to-workDir lookup) plus `project-json.ts` and `virtual-fs.ts` in the
-//! `project`/`virtual_fs` submodules. This module WRITES NOTHING: no
-//! `projects.json` write, no container packing/unpacking, no format-version
-//! migration — all of that belongs to a later ticket. The only writes in
-//! this crate live in `history.rs` (`stack.json`, `snapshots/`, and,
-//! transitively through `undo`/`redo`, files inside a project's own work
-//! dir), using paths this module resolves.
+//! Workspace read AND write paths. Originally (NOOP-278) ported from only
+//! the READ half of `packages/core/src/workspace.ts` (home-dir resolution,
+//! the registry read, id-to-workDir lookup) plus `project-json.ts` and
+//! `virtual-fs.ts` in the `project`/`virtual_fs` submodules. NOOP-281/F5
+//! adds this file's first writes: `write_presentation_file`,
+//! `create_presentation_file`, `list_presentation_entries`, and
+//! `assert_slide_path_listed` — every one of this ticket's 26 commands
+//! writes through the first two. Still WRITES NOTHING to `projects.json`
+//! itself, and no container packing/unpacking/format-version migration —
+//! that remains a later ticket's.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -22,12 +23,27 @@
 //! - `project` — `project.json` read/parse/validate (see `project.rs`).
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
+//! - `fonts` — a presentation's embedded font book (see `fonts.rs`).
+//! - `write_presentation_file(id, virtual_path, content) -> CoMotionResult<()>`
+//!   — the single door every content-editing command in this crate writes
+//!   through; see its own doc comment for the snapshot/commit/write
+//!   ordering.
+//! - `create_presentation_file(id, virtual_path, content: &[u8]) -> CoMotionResult<()>`
+//!   — the creation counterpart (`asset import`): errors if `virtual_path`
+//!   already exists, undo deletes it instead of restoring prior content.
+//! - `list_presentation_entries(id, virtual_path) -> CoMotionResult<Vec<String>>`
+//!   — `asset import`'s conflict-free-filename scan of `assets/`/`assets/data/`.
+//! - `assert_slide_path_listed(work_dir, virtual_path) -> CoMotionResult<project::ProjectJson>`
+//!   — confirms `virtual_path` is one of the presentation's declared slides
+//!   or templates before any edit-path read/write of it is attempted.
 
+pub mod fonts;
 pub mod project;
 pub mod virtual_fs;
 
-use crate::errors::CoMotionResult;
-use std::path::PathBuf;
+use crate::errors::{CoMotionError, CoMotionResult};
+use crate::history;
+use std::path::{Path, PathBuf};
 
 /// Resolves `CO_MOTION_HOME`, defaulting to `~/.comotion`. Read fresh on
 /// every call — not cached in a `OnceLock`/static — so a caller (or a test)
@@ -310,4 +326,301 @@ pub mod registry {
 /// `packages/core/src/workspace.ts`'s exported `resolveWorkDir`.
 pub fn resolve_work_dir(id: &str) -> CoMotionResult<PathBuf> {
     Ok(registry::lookup(id)?.work_dir)
+}
+
+/// Confirms `virtual_path` is one of the presentation's declared slides
+/// (`project.json`'s `slides` array) or `templates` entries — ported from
+/// `workspace.ts`'s private `assertSlidePathListed`. Every edit-path
+/// command in this crate calls this (via `resolve_virtual_file_path` first,
+/// then this) before touching the slide file itself, so an edit aimed at
+/// e.g. `project.json` is rejected before any read/write of it is
+/// attempted. Returns the parsed `project.json` so a caller that also needs
+/// it (none in this ticket yet) does not have to read it twice.
+pub fn assert_slide_path_listed(
+    work_dir: &Path,
+    virtual_path: &str,
+) -> CoMotionResult<project::ProjectJson> {
+    let proj = project::read_project_json(work_dir)?;
+    let templates = project::read_template_entries(&proj);
+    let is_slide = proj.slides.iter().any(|slide| slide == virtual_path);
+    let is_template = templates
+        .iter()
+        .any(|template| template.file == virtual_path);
+    if !is_slide && !is_template {
+        return Err(CoMotionError::invalid(format!(
+            "不是投影片：{virtual_path}"
+        )));
+    }
+    Ok(proj)
+}
+
+/// Lists the entry names of the virtual directory at `virtual_path` inside
+/// the presentation identified by `id` — mirrors `workspace.ts`'s exported
+/// `listPresentationEntries`. Used by `asset_import::resolve_conflict_free_filename`'s
+/// callers to scan `assets/`/`assets/data/` for existing names.
+///
+/// Errors `NotFound` when the directory itself does not exist — ported
+/// as-is from `virtual_fs::list_virtual_entries`'s existing behavior, which
+/// is the same behavior `listVirtualEntries` has in TS. `assets/` is always
+/// created by `new`'s scaffolding, so the media-asset path never hits this;
+/// `assets/data/` is NOT pre-created, so a presentation's first `--as csv`
+/// import errors here instead of importing — a pre-existing TS behavior
+/// this port intentionally reproduces rather than silently "fixing" (see
+/// plan §2.1 item 3; flagged in this ticket's delivery notes as a
+/// pre-existing gap, not something introduced by this port).
+pub fn list_presentation_entries(id: &str, virtual_path: &str) -> CoMotionResult<Vec<String>> {
+    let work_dir = resolve_work_dir(id)?;
+    virtual_fs::list_virtual_entries(&work_dir, virtual_path)
+}
+
+/// The single door every content-writing command in this crate uses to
+/// overwrite an EXISTING virtual file's content — ported from `workspace.ts`'s
+/// `writePresentationFile`. Snapshots the file's current content into undo
+/// history (via `history::stage_snapshot_entries`) and commits that undo
+/// group durably (`history::commit_snapshot_entries`) *before* the content
+/// write itself, matching the TS original's NOOP-337 ordering: nothing
+/// makes the new content visible until the undo group that reverts it is
+/// already durable. If the content write itself then fails, the commit is
+/// unwound (`history::revert_committed_entries`) — a failed command must
+/// not occupy an undo slot, and must not leave an orphan snapshot file
+/// either.
+pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> CoMotionResult<()> {
+    let work_dir = resolve_work_dir(id)?;
+    let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
+    let entries = history::stage_snapshot_entries(id, &[virtual_path.to_string()])?;
+    let commit = history::commit_snapshot_entries(id, entries.clone())?;
+    match std::fs::write(&real_path, content.as_bytes()) {
+        Ok(()) => {
+            history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
+            Ok(())
+        }
+        Err(_) => {
+            history::revert_committed_entries(id, &entries, commit.previous_stack)?;
+            // real_path is a real filesystem path (ADR-0004) — never quote it.
+            Err(CoMotionError::invalid(format!(
+                "寫入投影片時發生錯誤：{virtual_path}"
+            )))
+        }
+    }
+}
+
+/// The creation counterpart to `write_presentation_file` (`asset import`) —
+/// ported from `workspace.ts`'s `createPresentationFile`. `virtual_path`
+/// must not already exist. Undo for a created file deletes it instead of
+/// restoring prior content (`history::stage_new_file_entry`), so it plugs
+/// into the same `undo`/`redo` commands as every other write with no
+/// bespoke asset-import undo logic.
+///
+/// Binary-safe: `content` is written and later restored as raw bytes, never
+/// decoded as text — unlike `write_presentation_file`, which is only ever
+/// used for this crate's own UTF-8 SVG/JSON content.
+///
+/// Unlike `write_presentation_file`, the commit happens AFTER the write
+/// succeeds, not before: there is no prior visible content whose
+/// undo-availability window matters here, only the new file itself, which
+/// does not exist until the write succeeds.
+pub fn create_presentation_file(
+    id: &str,
+    virtual_path: &str,
+    content: &[u8],
+) -> CoMotionResult<()> {
+    let work_dir = resolve_work_dir(id)?;
+    let already_exists = match virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path) {
+        Ok(_) => true,
+        Err(CoMotionError::NotFound(_)) => false,
+        Err(other) => return Err(other),
+    };
+    if already_exists {
+        return Err(CoMotionError::invalid(format!(
+            "檔案已存在：{virtual_path}"
+        )));
+    }
+
+    let entries = vec![history::stage_new_file_entry(virtual_path)];
+    let mut real_path = work_dir.clone();
+    for segment in virtual_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+    {
+        real_path.push(segment);
+    }
+
+    let write_result: std::io::Result<()> = (|| {
+        if let Some(parent) = real_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&real_path, content)
+    })();
+
+    if write_result.is_err() {
+        history::discard_snapshot_entries(id, &entries)?;
+        // real_path is a real filesystem path (ADR-0004) — never quote it.
+        return Err(CoMotionError::invalid(format!(
+            "寫入檔案時發生錯誤：{virtual_path}"
+        )));
+    }
+
+    let commit = history::commit_snapshot_entries(id, entries)?;
+    history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod write_path_tests {
+    use super::*;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "co-motion-test-workspace-write-{label}-{}",
+            crate::id::random_hex_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn register(home: &Path, test_id: &str, work_dir: &Path) {
+        let work_dir_json =
+            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
+        let id_json = serde_json::to_string(test_id).unwrap();
+        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
+        std::fs::write(home.join("projects.json"), json).unwrap();
+    }
+
+    fn write_project_json(work_dir: &Path, slides: &[&str]) {
+        let slides_json: Vec<String> = slides.iter().map(|s| format!("{s:?}")).collect();
+        std::fs::write(
+            work_dir.join("project.json"),
+            format!(
+                r#"{{"formatVersion":1,"name":"T","canvas":{{"width":1,"height":1}},"slides":[{}]}}"#,
+                slides_json.join(",")
+            ),
+        )
+        .unwrap();
+    }
+
+    struct Fixture {
+        home: PathBuf,
+        work: PathBuf,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Fixture {
+        fn new(label: &str, test_id: &str) -> Self {
+            let guard = registry::ENV_LOCK.lock().unwrap();
+            let home = temp_dir(&format!("{label}-home"));
+            let work = temp_dir(&format!("{label}-work"));
+            register(&home, test_id, &work);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
+            Fixture {
+                home,
+                work,
+                _guard: guard,
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
+            std::fs::remove_dir_all(&self.home).ok();
+            std::fs::remove_dir_all(&self.work).ok();
+        }
+    }
+
+    #[test]
+    fn write_presentation_file_snapshots_before_overwriting_and_undo_restores_it() {
+        let fixture = Fixture::new("write-roundtrip", "pid-write-1");
+        write_project_json(&fixture.work, &["slides/001.svg"]);
+        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
+        std::fs::write(fixture.work.join("slides/001.svg"), "<svg>ORIGINAL</svg>").unwrap();
+
+        write_presentation_file("pid-write-1", "slides/001.svg", "<svg>UPDATED</svg>").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap(),
+            "<svg>UPDATED</svg>"
+        );
+
+        let undo_result = history::undo("pid-write-1").unwrap();
+        assert_eq!(
+            undo_result.restored_paths,
+            vec!["slides/001.svg".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap(),
+            "<svg>ORIGINAL</svg>"
+        );
+
+        drop(fixture);
+    }
+
+    #[test]
+    fn write_presentation_file_rejects_a_path_not_listed_as_a_slide() {
+        let fixture = Fixture::new("write-unlisted", "pid-write-2");
+        write_project_json(&fixture.work, &["slides/001.svg"]);
+        std::fs::write(fixture.work.join("project.json"), r#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":["slides/001.svg"]}"#).unwrap();
+
+        let err = assert_slide_path_listed(&fixture.work, "project.json").unwrap_err();
+        assert_eq!(err.message(), "不是投影片：project.json");
+
+        drop(fixture);
+    }
+
+    #[test]
+    fn create_presentation_file_rejects_an_already_existing_path() {
+        let fixture = Fixture::new("create-exists", "pid-create-1");
+        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
+        std::fs::write(fixture.work.join("assets/photo.png"), b"existing").unwrap();
+
+        let err =
+            create_presentation_file("pid-create-1", "assets/photo.png", b"new bytes").unwrap_err();
+        assert_eq!(err.message(), "檔案已存在：assets/photo.png");
+
+        drop(fixture);
+    }
+
+    #[test]
+    fn create_presentation_file_then_undo_deletes_the_created_file() {
+        let fixture = Fixture::new("create-undo", "pid-create-2");
+        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
+
+        create_presentation_file("pid-create-2", "assets/new.png", b"\x89PNG\r\n\x1a\n").unwrap();
+        let created_path = fixture.work.join("assets/new.png");
+        assert_eq!(std::fs::read(&created_path).unwrap(), b"\x89PNG\r\n\x1a\n");
+
+        let undo_result = history::undo("pid-create-2").unwrap();
+        assert_eq!(
+            undo_result.restored_paths,
+            vec!["assets/new.png".to_string()]
+        );
+        assert!(!created_path.exists());
+
+        drop(fixture);
+    }
+
+    #[test]
+    fn list_presentation_entries_lists_existing_directory() {
+        let fixture = Fixture::new("list-entries", "pid-list-1");
+        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
+        std::fs::write(fixture.work.join("assets/a.png"), b"a").unwrap();
+        std::fs::write(fixture.work.join("assets/b.png"), b"b").unwrap();
+
+        let mut entries = list_presentation_entries("pid-list-1", "assets").unwrap();
+        entries.sort();
+        assert_eq!(entries, vec!["a.png".to_string(), "b.png".to_string()]);
+
+        drop(fixture);
+    }
+
+    #[test]
+    fn list_presentation_entries_missing_directory_is_not_found() {
+        let fixture = Fixture::new("list-missing", "pid-list-2");
+        let err = list_presentation_entries("pid-list-2", "assets/data").unwrap_err();
+        assert!(matches!(err, CoMotionError::NotFound(_)));
+
+        drop(fixture);
+    }
 }
