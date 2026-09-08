@@ -11,11 +11,21 @@
 //! (network/`packages/core` build tooling aren't guaranteed available
 //! wherever `cargo test` runs).
 
+use co_motion::geometry::bbox::{
+    ElementBoundsOptions, TextBoundsContext, element_bounds, format_bbox, path_bounds,
+    primitive_bounds,
+};
+use co_motion::geometry::transform::IDENTITY;
+use co_motion::slide::format::{SlideElement, SlideElementKind, SlidePrimitive, TextAlign};
+use co_motion::slide::scan::{ScannedNode, scan_document};
+use co_motion::slide::table_grid::TableGrid;
 use co_motion::svgnum::format_svg_number;
-use co_motion::text::font::{DEFAULT_FONT_BYTES, parse_font};
+use co_motion::text::font::{DEFAULT_FONT_BYTES, FontMetrics, parse_font};
+use co_motion::text::metrics::measure_text_width;
 use co_motion::text::render::render_text_box_content;
 use co_motion::text::wrap::{Align, WrapOptions, wrap_text};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -114,5 +124,521 @@ fn text_wrap_and_render_matches_ts_reference_fixture() {
     assert_eq!(
         height, fixture.expected_text_height,
         "text-box height diverges from the TS-generated golden fixture"
+    );
+}
+
+// --- scan.json --------------------------------------------------------
+//
+// NOOP-292 (Review round 1, NOOP-283, FAIL item 1): scan.rs had no golden
+// coverage at all — its 18 hand-written tests were self-verified by the
+// same porting pass that wrote the code under test. These cases run the
+// real `scanDocument` (`scripts/gen-golden.mjs`'s `genScan`), covering the
+// module's four rules plus one case per distinct error message.
+
+#[derive(Deserialize)]
+struct ScanAttributeCase {
+    name: String,
+    value: String,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Deserialize)]
+struct ScanNodeCase {
+    tag: String,
+    attributes: Vec<ScanAttributeCase>,
+    start: usize,
+    end: usize,
+    #[serde(rename = "contentStart")]
+    content_start: usize,
+    #[serde(rename = "contentEnd")]
+    content_end: usize,
+    #[serde(rename = "selfClosing")]
+    self_closing: bool,
+    children: Vec<ScanNodeCase>,
+}
+
+#[derive(Deserialize)]
+struct ScanTreeCase {
+    label: String,
+    svg: String,
+    expected: Vec<ScanNodeCase>,
+}
+
+#[derive(Deserialize)]
+struct ScanErrorCase {
+    label: String,
+    svg: String,
+    #[serde(rename = "expectedMessage")]
+    expected_message: String,
+}
+
+#[derive(Deserialize)]
+struct ScanGolden {
+    tree: Vec<ScanTreeCase>,
+    errors: Vec<ScanErrorCase>,
+}
+
+fn assert_scan_node_matches(actual: &ScannedNode, expected: &ScanNodeCase, path: &str) {
+    assert_eq!(actual.tag, expected.tag, "{path}: tag mismatch");
+    assert_eq!(actual.start, expected.start, "{path}: start mismatch");
+    assert_eq!(actual.end, expected.end, "{path}: end mismatch");
+    assert_eq!(
+        actual.content_start, expected.content_start,
+        "{path}: contentStart mismatch"
+    );
+    assert_eq!(
+        actual.content_end, expected.content_end,
+        "{path}: contentEnd mismatch"
+    );
+    assert_eq!(
+        actual.self_closing, expected.self_closing,
+        "{path}: selfClosing mismatch"
+    );
+    assert_eq!(
+        actual.attributes.len(),
+        expected.attributes.len(),
+        "{path}: attribute count mismatch"
+    );
+    for (i, (a, e)) in actual
+        .attributes
+        .iter()
+        .zip(expected.attributes.iter())
+        .enumerate()
+    {
+        assert_eq!(a.name, e.name, "{path}: attribute[{i}].name mismatch");
+        assert_eq!(a.value, e.value, "{path}: attribute[{i}].value mismatch");
+        assert_eq!(a.start, e.start, "{path}: attribute[{i}].start mismatch");
+        assert_eq!(a.end, e.end, "{path}: attribute[{i}].end mismatch");
+    }
+    assert_eq!(
+        actual.children.len(),
+        expected.children.len(),
+        "{path}: children count mismatch"
+    );
+    for (i, (a, e)) in actual
+        .children
+        .iter()
+        .zip(expected.children.iter())
+        .enumerate()
+    {
+        assert_scan_node_matches(a, e, &format!("{path}/children[{i}]"));
+    }
+}
+
+#[test]
+fn scan_document_matches_ts_reference_tree_and_error_cases() {
+    let raw = fs::read_to_string(golden_path("scan.json"))
+        .expect("tests/golden/scan.json must exist — run `node scripts/gen-golden.mjs`");
+    let golden: ScanGolden = serde_json::from_str(&raw).expect("golden file must be valid JSON");
+
+    for case in &golden.tree {
+        let actual = scan_document(&case.svg).unwrap_or_else(|err| {
+            panic!(
+                "case {:?}: expected scan_document to succeed, got {:?}",
+                case.label,
+                err.message()
+            )
+        });
+        assert_eq!(
+            actual.len(),
+            case.expected.len(),
+            "case {:?}: top-level node count mismatch",
+            case.label
+        );
+        for (i, (a, e)) in actual.iter().zip(case.expected.iter()).enumerate() {
+            assert_scan_node_matches(a, e, &format!("case {:?} [{}]", case.label, i));
+        }
+    }
+
+    for case in &golden.errors {
+        let err = scan_document(&case.svg).expect_err(&format!(
+            "case {:?}: expected scan_document to fail",
+            case.label
+        ));
+        assert_eq!(
+            err.message(),
+            case.expected_message,
+            "case {:?}: error message mismatch",
+            case.label
+        );
+    }
+}
+
+// --- bbox.json ----------------------------------------------------------
+//
+// NOOP-292 (Review round 1, NOOP-283, FAIL item 1): one golden case per
+// primitive/element kind plan A9 requires — rect/ellipse/line/path
+// (including the elliptical-arc rejection)/group/table/text — each
+// compared as its four `format_svg_number` fields, run through the real
+// `primitiveBounds`/`elementBounds`/`pathBounds` (`scripts/gen-golden.mjs`'s
+// `genBbox`).
+
+#[derive(Deserialize)]
+struct FormattedRectCase {
+    x: String,
+    y: String,
+    width: String,
+    height: String,
+}
+
+#[derive(Deserialize)]
+struct BboxPrimitiveCase {
+    label: String,
+    tag: String,
+    attrs: HashMap<String, String>,
+    expected: FormattedRectCase,
+}
+
+#[derive(Deserialize)]
+struct BboxPathOkCase {
+    label: String,
+    d: String,
+    expected: FormattedRectCase,
+}
+
+#[derive(Deserialize)]
+struct BboxPathArcCase {
+    label: String,
+    d: String,
+    #[serde(rename = "expectedError")]
+    expected_error: String,
+}
+
+#[derive(Deserialize)]
+struct BboxPathCases {
+    ok: BboxPathOkCase,
+    #[serde(rename = "arcRejected")]
+    arc_rejected: BboxPathArcCase,
+}
+
+#[derive(Deserialize)]
+struct BboxGroupCase {
+    label: String,
+    expected: FormattedRectCase,
+}
+
+#[derive(Deserialize)]
+struct BboxTableCase {
+    label: String,
+    cols: Vec<f64>,
+    rows: Vec<f64>,
+    expected: FormattedRectCase,
+}
+
+#[derive(Deserialize)]
+struct BboxTextCase {
+    label: String,
+    attrs: HashMap<String, String>,
+    text: String,
+    expected: FormattedRectCase,
+}
+
+#[derive(Deserialize)]
+struct BboxGolden {
+    primitives: Vec<BboxPrimitiveCase>,
+    path: BboxPathCases,
+    group: BboxGroupCase,
+    table: BboxTableCase,
+    text: BboxTextCase,
+}
+
+fn primitive_from_attrs(tag: &str, attrs: &HashMap<String, String>) -> SlidePrimitive {
+    SlidePrimitive {
+        tag: tag.to_string(),
+        attrs: attrs.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        text: String::new(),
+        tspan_count: 0,
+        runs: Vec::new(),
+    }
+}
+
+fn bbox_leaf_element(
+    id: &str,
+    kind: SlideElementKind,
+    primitives: Vec<SlidePrimitive>,
+) -> SlideElement {
+    SlideElement {
+        id: id.to_string(),
+        name: None,
+        media: None,
+        kind,
+        transform: None,
+        matrix: IDENTITY,
+        children: Vec::new(),
+        primitives,
+        text_width: None,
+        text_height: None,
+        text_align: TextAlign::Left,
+        table: None,
+    }
+}
+
+fn assert_formatted_rect_eq(
+    actual: &co_motion::geometry::bbox::FormattedBbox,
+    expected: &FormattedRectCase,
+    label: &str,
+) {
+    assert_eq!(actual.x, expected.x, "{label}: x mismatch");
+    assert_eq!(actual.y, expected.y, "{label}: y mismatch");
+    assert_eq!(actual.width, expected.width, "{label}: width mismatch");
+    assert_eq!(actual.height, expected.height, "{label}: height mismatch");
+}
+
+#[test]
+fn bbox_matches_ts_reference_for_every_primitive_and_element_kind() {
+    let raw = fs::read_to_string(golden_path("bbox.json"))
+        .expect("tests/golden/bbox.json must exist — run `node scripts/gen-golden.mjs`");
+    let golden: BboxGolden = serde_json::from_str(&raw).expect("golden file must be valid JSON");
+
+    for case in &golden.primitives {
+        let primitive = primitive_from_attrs(&case.tag, &case.attrs);
+        let bbox = primitive_bounds(&primitive, None)
+            .unwrap_or_else(|err| panic!("case {:?}: {:?}", case.label, err.message()));
+        assert_formatted_rect_eq(&format_bbox(&bbox), &case.expected, &case.label);
+    }
+
+    let ok_bbox = path_bounds(&golden.path.ok.d).expect("path-cubic-bezier case must succeed");
+    assert_formatted_rect_eq(
+        &format_bbox(&ok_bbox),
+        &golden.path.ok.expected,
+        &golden.path.ok.label,
+    );
+
+    let arc_err = path_bounds(&golden.path.arc_rejected.d).expect_err("arc path must be rejected");
+    assert_eq!(
+        arc_err.message(),
+        golden.path.arc_rejected.expected_error,
+        "case {:?}: arc rejection message mismatch",
+        golden.path.arc_rejected.label
+    );
+
+    // group: union of two children's transformed boxes.
+    let child_a = bbox_leaf_element(
+        "child-a",
+        SlideElementKind::Rect,
+        vec![primitive_from_attrs(
+            "rect",
+            &HashMap::from([
+                ("x".to_string(), "2".to_string()),
+                ("y".to_string(), "3".to_string()),
+                ("width".to_string(), "8".to_string()),
+                ("height".to_string(), "6".to_string()),
+            ]),
+        )],
+    );
+    let child_b = bbox_leaf_element(
+        "child-b",
+        SlideElementKind::Ellipse,
+        vec![primitive_from_attrs(
+            "ellipse",
+            &HashMap::from([
+                ("cx".to_string(), "30".to_string()),
+                ("cy".to_string(), "10".to_string()),
+                ("rx".to_string(), "4".to_string()),
+                ("ry".to_string(), "2".to_string()),
+            ]),
+        )],
+    );
+    let mut group = bbox_leaf_element("group-1", SlideElementKind::Group, Vec::new());
+    group.children = vec![child_a, child_b];
+    let options = ElementBoundsOptions {
+        ancestors: &[],
+        fonts: None,
+    };
+    let group_bbox = element_bounds(&group, &options).expect("group bbox must succeed");
+    assert_formatted_rect_eq(
+        &format_bbox(&group_bbox),
+        &golden.group.expected,
+        &golden.group.label,
+    );
+
+    // table: declared grid extent, not a primitive union.
+    let mut table_element = bbox_leaf_element("table-1", SlideElementKind::Table, Vec::new());
+    table_element.table = Some(TableGrid {
+        cols: golden.table.cols.clone(),
+        rows: golden.table.rows.clone(),
+    });
+    let table_bbox = element_bounds(&table_element, &options).expect("table bbox must succeed");
+    assert_formatted_rect_eq(
+        &format_bbox(&table_bbox),
+        &golden.table.expected,
+        &golden.table.label,
+    );
+
+    // text: a plain `<text>` (no tspans), measured via the real embedded
+    // default font — the same physical .ttf `packages/core/dist`'s
+    // `parseFont` read to produce this golden fixture.
+    let font = parse_font(DEFAULT_FONT_BYTES).expect("embedded default font must parse");
+    let fonts: HashMap<String, Box<dyn FontMetrics>> = HashMap::from([(
+        "Noto Sans TC".to_string(),
+        Box::new(font) as Box<dyn FontMetrics>,
+    )]);
+    let text_primitive = SlidePrimitive {
+        text: golden.text.text.clone(),
+        ..primitive_from_attrs("text", &golden.text.attrs)
+    };
+    let text_context = TextBoundsContext {
+        fonts: &fonts,
+        text_width: None,
+        text_height: None,
+        element_id: "text-1".to_string(),
+    };
+    let text_bbox =
+        primitive_bounds(&text_primitive, Some(&text_context)).expect("text bbox must succeed");
+    assert_formatted_rect_eq(
+        &format_bbox(&text_bbox),
+        &golden.text.expected,
+        &golden.text.label,
+    );
+}
+
+// --- font.json ------------------------------------------------------------
+//
+// NOOP-292 (Review round 1, NOOP-283, FAIL item 1): `parseFont`'s line
+// metrics plus >= 50 `measureTextWidth` golden cases, run against the real
+// bundled font (`scripts/gen-golden.mjs`'s `genFont`) — font.rs and
+// metrics.rs had no golden coverage at all before this.
+
+#[derive(Deserialize)]
+struct FontMetricsCase {
+    #[serde(rename = "unitsPerEm")]
+    units_per_em: u16,
+    ascender: i16,
+    descender: i16,
+    #[serde(rename = "lineGap")]
+    line_gap: i16,
+}
+
+#[derive(Deserialize)]
+struct MeasureTextWidthCase {
+    text: String,
+    #[serde(rename = "fontSizePx")]
+    font_size_px: f64,
+    expected: String,
+}
+
+#[derive(Deserialize)]
+struct FontGolden {
+    metrics: FontMetricsCase,
+    #[serde(rename = "measureTextWidth")]
+    measure_text_width: Vec<MeasureTextWidthCase>,
+}
+
+#[test]
+fn font_metrics_and_measure_text_width_match_ts_reference() {
+    let raw = fs::read_to_string(golden_path("font.json"))
+        .expect("tests/golden/font.json must exist — run `node scripts/gen-golden.mjs`");
+    let golden: FontGolden = serde_json::from_str(&raw).expect("golden file must be valid JSON");
+    assert!(
+        golden.measure_text_width.len() >= 50,
+        "plan A9 requires >= 50 measureTextWidth golden cases, found {}",
+        golden.measure_text_width.len()
+    );
+
+    let font = parse_font(DEFAULT_FONT_BYTES).expect("embedded default font must parse");
+    assert_eq!(
+        font.units_per_em(),
+        golden.metrics.units_per_em,
+        "unitsPerEm mismatch"
+    );
+    assert_eq!(
+        font.ascender(),
+        golden.metrics.ascender,
+        "ascender mismatch"
+    );
+    assert_eq!(
+        font.descender(),
+        golden.metrics.descender,
+        "descender mismatch"
+    );
+    assert_eq!(font.line_gap(), golden.metrics.line_gap, "lineGap mismatch");
+
+    let mut failures = Vec::new();
+    for case in &golden.measure_text_width {
+        let actual = measure_text_width(&font, &case.text, case.font_size_px)
+            .unwrap_or_else(|err| panic!("text={:?}: {:?}", case.text, err.message()));
+        let formatted = format_svg_number(actual);
+        if formatted != case.expected {
+            failures.push(format!(
+                "text={:?} fontSizePx={} expected={:?} actual={:?}",
+                case.text, case.font_size_px, case.expected, formatted
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "measureTextWidth mismatches against TS golden data:\n{}",
+        failures.join("\n")
+    );
+}
+
+// --- text_wrap_extra_cases.json --------------------------------------------
+//
+// NOOP-292 (Review round 1, NOOP-283, FAIL item 1): the plan's single
+// `text_wrap_fixture` (full CLI round trip) doesn't cover CJK-only,
+// ASCII-only, an explicit hard break, list-paragraph indents, a single word
+// wider than the box, or an empty paragraph. These six run
+// `wrapText`/`renderTextBoxContent` directly against the real bundled font
+// (`scripts/gen-golden.mjs`'s `genTextWrapExtraCases`).
+
+#[derive(Deserialize)]
+struct TextWrapExtraInput {
+    text: String,
+    width: f64,
+    #[serde(rename = "fontSizePx")]
+    font_size_px: f64,
+    #[serde(default)]
+    indents: Option<Vec<f64>>,
+}
+
+#[derive(Deserialize)]
+struct TextWrapExtraCase {
+    label: String,
+    input: TextWrapExtraInput,
+    #[serde(rename = "expectedInnerMarkup")]
+    expected_inner_markup: String,
+    #[serde(rename = "expectedTextHeight")]
+    expected_text_height: String,
+}
+
+#[test]
+fn text_wrap_extra_cases_match_ts_reference() {
+    let raw = fs::read_to_string(golden_path("text_wrap_extra_cases.json")).expect(
+        "tests/golden/text_wrap_extra_cases.json must exist — run `node scripts/gen-golden.mjs`",
+    );
+    let cases: Vec<TextWrapExtraCase> =
+        serde_json::from_str(&raw).expect("golden file must be valid JSON");
+    assert!(
+        cases.len() >= 6,
+        "plan NOOP-292 requires >= 6 supplementary text-wrap golden cases, found {}",
+        cases.len()
+    );
+
+    let font = parse_font(DEFAULT_FONT_BYTES).expect("embedded default font must parse");
+    let mut failures = Vec::new();
+    for case in &cases {
+        let options = WrapOptions {
+            width: case.input.width,
+            font: &font,
+            font_size_px: case.input.font_size_px,
+            align: Align::Left,
+            indents: case.input.indents.as_deref(),
+        };
+        let wrapped = wrap_text(&case.input.text, &options)
+            .unwrap_or_else(|err| panic!("case {:?}: {:?}", case.label, err.message()));
+        let markup = render_text_box_content(&wrapped.lines, &[]);
+        let height = format_svg_number(wrapped.height);
+        if markup != case.expected_inner_markup || height != case.expected_text_height {
+            failures.push(format!(
+                "case={:?}\n  expected_markup={:?}\n  actual_markup={:?}\n  expected_height={:?}\n  actual_height={:?}",
+                case.label, case.expected_inner_markup, markup, case.expected_text_height, height
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "text-wrap extra-case mismatches against TS golden data:\n{}",
+        failures.join("\n")
     );
 }

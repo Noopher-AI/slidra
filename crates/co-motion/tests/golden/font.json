@@ -1,0 +1,275 @@
+{
+  "metrics": {
+    "unitsPerEm": 1000,
+    "ascender": 1160,
+    "descender": -288,
+    "lineGap": 0
+  },
+  "measureTextWidth": [
+    {
+      "text": "",
+      "fontSizePx": 8,
+      "expected": "0"
+    },
+    {
+      "text": "A",
+      "fontSizePx": 12,
+      "expected": "7.296"
+    },
+    {
+      "text": "a",
+      "fontSizePx": 16,
+      "expected": "9.008"
+    },
+    {
+      "text": "AB",
+      "fontSizePx": 24,
+      "expected": "30.36"
+    },
+    {
+      "text": "ab",
+      "fontSizePx": 32,
+      "expected": "37.792"
+    },
+    {
+      "text": "Hello",
+      "fontSizePx": 48,
+      "expected": "117.888"
+    },
+    {
+      "text": "hello world",
+      "fontSizePx": 8,
+      "expected": "42.016"
+    },
+    {
+      "text": "The quick brown fox jumps over the lazy dog",
+      "fontSizePx": 12,
+      "expected": "247.464"
+    },
+    {
+      "text": "1234567890",
+      "fontSizePx": 16,
+      "expected": "88.8"
+    },
+    {
+      "text": "!@#$%^&*()",
+      "fontSizePx": 24,
+      "expected": "136.272"
+    },
+    {
+      "text": "fi",
+      "fontSizePx": 32,
+      "expected": "19.2"
+    },
+    {
+      "text": "ffi",
+      "fontSizePx": 48,
+      "expected": "44.064"
+    },
+    {
+      "text": "AV",
+      "fontSizePx": 8,
+      "expected": "9.32"
+    },
+    {
+      "text": "VA",
+      "fontSizePx": 12,
+      "expected": "13.98"
+    },
+    {
+      "text": "WA",
+      "fontSizePx": 16,
+      "expected": "23.776"
+    },
+    {
+      "text": "Type",
+      "fontSizePx": 24,
+      "expected": "54.096"
+    },
+    {
+      "text": "Waffle",
+      "fontSizePx": 32,
+      "expected": "92.864"
+    },
+    {
+      "text": "測試",
+      "fontSizePx": 48,
+      "expected": "96"
+    },
+    {
+      "text": "中文字排版測試",
+      "fontSizePx": 8,
+      "expected": "56"
+    },
+    {
+      "text": "你好，世界！",
+      "fontSizePx": 12,
+      "expected": "72"
+    },
+    {
+      "text": "繁體中文字型量測",
+      "fontSizePx": 16,
+      "expected": "128"
+    },
+    {
+      "text": "一二三四五六七八九十",
+      "fontSizePx": 24,
+      "expected": "240"
+    },
+    {
+      "text": "😀",
+      "fontSizePx": 32,
+      "expected": "32"
+    },
+    {
+      "text": "😀😀",
+      "fontSizePx": 48,
+      "expected": "96"
+    },
+    {
+      "text": "Hello😀World",
+      "fontSizePx": 8,
+      "expected": "49.856"
+    },
+    {
+      "text": "🚀🔥✨",
+      "fontSizePx": 12,
+      "expected": "36"
+    },
+    {
+      "text": "café",
+      "fontSizePx": 16,
+      "expected": "30.784"
+    },
+    {
+      "text": "naïve",
+      "fontSizePx": 24,
+      "expected": "60.384"
+    },
+    {
+      "text": "日本語テスト",
+      "fontSizePx": 32,
+      "expected": "192"
+    },
+    {
+      "text": "한국어 테스트",
+      "fontSizePx": 48,
+      "expected": "298.752"
+    },
+    {
+      "text": "MixedCJK中文ABC123",
+      "fontSizePx": 8,
+      "expected": "80.88"
+    },
+    {
+      "text": " leading space",
+      "fontSizePx": 12,
+      "expected": "78.816"
+    },
+    {
+      "text": "trailing space ",
+      "fontSizePx": 16,
+      "expected": "102.784"
+    },
+    {
+      "text": "double  space",
+      "fontSizePx": 24,
+      "expected": "153.744"
+    },
+    {
+      "text": "line\twith\ttabs",
+      "fontSizePx": 32,
+      "expected": "248.896"
+    },
+    {
+      "text": "punctuation, semicolons; colons:",
+      "fontSizePx": 48,
+      "expected": "736.752"
+    },
+    {
+      "text": "quotes\"'and'\"marks",
+      "fontSizePx": 8,
+      "expected": "75.088"
+    },
+    {
+      "text": "emDash—enDash–",
+      "fontSizePx": 12,
+      "expected": "104.712"
+    },
+    {
+      "text": "ellipsis…",
+      "fontSizePx": 16,
+      "expected": "67.568"
+    },
+    {
+      "text": "Ligature test: fi fl ffi ffl",
+      "fontSizePx": 24,
+      "expected": "240.456"
+    },
+    {
+      "text": "Kerning test: AV AW AY VA WA YA",
+      "fontSizePx": 32,
+      "expected": "472.704"
+    },
+    {
+      "text": "0123456789ABCDEF",
+      "fontSizePx": 48,
+      "expected": "445.536"
+    },
+    {
+      "text": "aAbBcCdDeE",
+      "fontSizePx": 8,
+      "expected": "48.36"
+    },
+    {
+      "text": "xyz XYZ",
+      "fontSizePx": 12,
+      "expected": "40.32"
+    },
+    {
+      "text": "測試ABC混合123",
+      "fontSizePx": 16,
+      "expected": "121.088"
+    },
+    {
+      "text": "Hello, 世界! 123",
+      "fontSizePx": 24,
+      "expected": "171.744"
+    },
+    {
+      "text": "  ",
+      "fontSizePx": 32,
+      "expected": "14.336"
+    },
+    {
+      "text": "\t",
+      "fontSizePx": 48,
+      "expected": "48"
+    },
+    {
+      "text": "。，、！？「」『』",
+      "fontSizePx": 8,
+      "expected": "72"
+    },
+    {
+      "text": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      "fontSizePx": 12,
+      "expected": "197.196"
+    },
+    {
+      "text": "abcdefghijklmnopqrstuvwxyz",
+      "fontSizePx": 16,
+      "expected": "218.72"
+    },
+    {
+      "text": "中文標點：，。！？",
+      "fontSizePx": 24,
+      "expected": "216"
+    },
+    {
+      "text": "𠀀𠀁𠀂",
+      "fontSizePx": 32,
+      "expected": "96"
+    }
+  ]
+}
