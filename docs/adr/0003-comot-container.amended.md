@@ -1,6 +1,13 @@
 # 簡報是單一 `.comot` 容器檔，工作目錄隱藏
 
 > **⚠️ 部分條款已失效。** 「內部結構為 `project.json` + `slides/00N.svg` + `assets/`」由 **ADR-0016** 擴充為四個目錄：新增 `fonts/`，登記在 `project.json` 新增的 optional `fonts` 欄位裡。**其餘部分**（`project.json` 只放 SVG 表達不了的東西、`formatVersion` 不可省略、頁面順序用陣列）不受影響。
+>
+> **S7/#255**：`formatVersion` 3 → 4（`templates` 只接受物件形狀、`transition` 欄位禁止出現、`fonts` 改為必填）與完整的
+> 1→2→3→4 遷移規則，定案在 `docs/spec/comot-format.md`，本 ADR 不再逐版追記。
+
+> 容器佈局、`project.json` 每個欄位的完整型別與必填性、`formatVersion` 逐版遷移規則的細節，一律以
+> [`docs/spec/comot-format.md`](../spec/comot-format.md) 為準；本 ADR 只記錄「為什麼要有 `formatVersion`、為什麼是這個容器
+> 形狀」的原始決策脈絡。
 
 使用者期待簡報是「一個檔案」，可以複製、寄送、備份。但編輯期間維持壓縮狀態不可行——一份含影片的簡報，改一個字就要重壓幾十 MB。
 

@@ -42,7 +42,14 @@ co-motion serve          ← CLI 的常駐模式
 - 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
-決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
+命令與格式的規範性定義見 [`docs/spec/`](docs/spec/)，決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
+
+## 命令與格式以 `docs/spec/` 為準
+
+- [`docs/spec/cli.md`](docs/spec/cli.md)：81 條命令的唯一規範性文件——參數、成功時的 `data` JSON 形狀、錯誤情境與 `failureKind`、exit code、renderer 規則。
+- [`docs/spec/comot-format.md`](docs/spec/comot-format.md)：`.comot` 容器與 `~/.comotion/` 工作區的唯一規範性文件——zip 佈局、`project.json` 欄位、SVG `<metadata>` 內的 `comot:*` 元素、`formatVersion` 與遷移規則。
+
+`docs/adr/` 留作**決策史**，記錄當初為什麼那樣選；規格與實作對不上時，以 `docs/spec/` 為準。`packages/server/agent-workdir/reference/commands.md` 是給 agent 的用法摘要，是 `docs/spec/cli.md` 的子集，由 `scripts/check-reference-subset.mjs` 檢查。
 
 ## MVP 邊界
 
