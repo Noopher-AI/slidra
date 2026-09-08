@@ -194,6 +194,8 @@ export function App() {
   // real ACP session state need a new server route, out of this unit's
   // file ownership).
   const [agentConnection, setAgentConnection] = useState<AgentConnection>("connecting");
+  // 目前選定的 agent 名稱，供標題列顯示。null = 還沒取得或尚未選定 agent。
+  const [agentLabel, setAgentLabel] = useState<string | null>(null);
   const everConnectedRef = useRef(false);
 
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
@@ -427,6 +429,15 @@ export function App() {
     // [E3.T3]: same "GET seeds the initial value, SSE carries updates, no
     // fallback on failure" shape as /api/editing above — a fetch failure
     // leaves `commands` at its initial `[]` rather than fabricating a list.
+    // 標題列的 agent 名稱：和上面同一個「GET 取初值」的形狀。目前沒有對應的
+    // SSE 事件可訂閱，切換 agent 只能經由 API，重新整理即會更新。
+    void fetch("/api/agent")
+      .then((response) => response.json())
+      .then((data: { current: string | null; agents: Array<{ kind: string; label: string }> }) => {
+        const current = data.agents.find((agent) => agent.kind === data.current);
+        setAgentLabel(current?.label ?? null);
+      })
+      .catch(() => {});
     void fetch("/api/agent/commands")
       .then((response) => response.json())
       .then((data: { commands: SlashCommandOption[] }) => setCommands(data.commands))
@@ -1339,6 +1350,7 @@ export function App() {
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
           savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
           agentConnection={agentConnection}
+          agentLabel={agentLabel}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}

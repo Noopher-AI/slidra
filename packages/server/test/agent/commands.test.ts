@@ -293,7 +293,8 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
 
     const response = await fetch(`${server.url}/api/agent/commands`);
     const body = (await response.json()) as { commands: SlashCommand[] };
-    expect(body.commands).toEqual([{ name: "outline", description: "出貨版", source: "bundled" }]);
+    // 出貨 skill 一律帶 `comotion-` 前綴，和 agent／使用者自己的 skill 區隔。
+    expect(body.commands).toEqual([{ name: "comotion-outline", description: "出貨版", source: "bundled" }]);
   });
 
   it("no agent report and no skill directories at all: GET returns 200 with an empty list, not an error", async () => {

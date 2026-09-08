@@ -23,6 +23,9 @@ export interface SlashCommand {
   source: SlashCommandSource;
 }
 
+/** Namespace every shipped skill carries in the `/` list. */
+export const BUNDLED_PREFIX = "comotion-";
+
 export interface SkillDirs {
   bundled: string;
   user: string;
@@ -201,5 +204,12 @@ export async function collectSlashCommands(
     readSkillCommands(dirs.user, "user"),
   ]);
 
-  return mergeSlashCommands([agentCommands, bundled, user]);
+  // CoMotion's own shipped skills are namespaced in the `/` list so an
+  // author can tell them apart from whatever the agent or the user brings.
+  // The prefix is applied here, not in `readSkillCommands`, so it lands
+  // before the same-name merge below — a bundled `outline` and a user
+  // `outline` are then two separate entries, not a shadowing pair.
+  const bundledPrefixed = bundled.map((command) => ({ ...command, name: `${BUNDLED_PREFIX}${command.name}` }));
+
+  return mergeSlashCommands([agentCommands, bundledPrefixed, user]);
 }

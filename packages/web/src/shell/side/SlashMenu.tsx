@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { SlashCommandOption } from "../../slash-commands.js";
 
 export interface SlashMenuProps {
@@ -22,6 +23,14 @@ const NO_COMMANDS_HINT = "這個 agent 沒有回報可用的斜線命令";
  * only ever renders whatever it is handed.
  */
 export function SlashMenu({ commands, selectedIndex, onSelect }: SlashMenuProps) {
+  const selectedRef = useRef<HTMLLIElement | null>(null);
+  // Keyboard selection can walk past the visible window (the list scrolls);
+  // `block: "nearest"` scrolls only when the item is actually out of view,
+  // so moving between two visible items never jumps the list around.
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
+
   if (commands.length === 0) {
     return (
       <div className="slash-menu">
@@ -34,6 +43,7 @@ export function SlashMenu({ commands, selectedIndex, onSelect }: SlashMenuProps)
       {commands.map((command, index) => (
         <li
           key={command.name}
+          ref={index === selectedIndex ? selectedRef : undefined}
           role="option"
           aria-selected={index === selectedIndex}
           className={`slash-menu-item${index === selectedIndex ? " slash-menu-item-selected" : ""}`}
