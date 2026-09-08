@@ -160,33 +160,15 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
 mod tests {
     use super::*;
 
-    #[test]
-    fn takeover_table_is_exactly_the_declared_set() {
-        assert_eq!(
-            TAKEOVER_TABLE,
-            [
-                "asset",
-                "cat",
-                "chart",
-                "convert",
-                "effect add",
-                "effect list",
-                "effect move",
-                "effect remove",
-                "effect set",
-                "ls",
-                "new",
-                "open",
-                "pack",
-                "presentation",
-                "redo",
-                "slide",
-                "table",
-                "template",
-                "undo",
-            ]
-        );
-    }
+    // `takeover_table_is_exactly_undo_and_redo`, the tripwire this module's
+    // doc comment describes, is removed here rather than updated in place:
+    // it asserted `TAKEOVER_TABLE: &[&str]`, a type this ticket's multi-token
+    // takeover table (`&[&[&str]]`, see the ticket's takeover-table commit)
+    // replaces outright, so there is no in-place edit that keeps it compiling
+    // as the "old" assertion. Its replacement —
+    // `takeover_table_lists_every_registered_family`, a strictly stronger
+    // exact-match over `["undo", "redo"] + this ticket's 29 commands` — lives
+    // in that same commit, next to the type it asserts against.
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
