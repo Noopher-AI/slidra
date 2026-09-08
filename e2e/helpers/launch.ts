@@ -117,7 +117,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
 export interface OpenAppOptions {
   /** Defaults to { width: 1440, height: 900 }. */
   viewport?: { width: number; height: number };
-  /** Wait for `.agent-dot` to contain "connected". Defaults to `false`. */
+  /** Wait for `waitForAgentConnected`. Defaults to `false`. */
   waitForAgent?: boolean;
   /** Wait for `document.fonts.ready`. Defaults to `false`. */
   waitForFonts?: boolean;
@@ -135,12 +135,25 @@ export async function openApp(browser: Browser, server: RunningServer, options: 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   if (waitForAgent) {
-    await expect
-      .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("connected");
+    await waitForAgentConnected(page);
   }
   if (waitForFonts) {
     await page.evaluate(() => document.fonts.ready);
   }
   return page;
+}
+
+/**
+ * Waits for the titlebar's agent indicator to reach the fully-connected
+ * state: the `.agent-dot-connected` class (connection established), then
+ * `expectedLabel` as its text (the async `GET /api/agent` label has also
+ * arrived — see `TitleBar.tsx`'s `agentStatusText`). Between those two
+ * moments the dot is connected but still shows the generic "Agent
+ * connected" text; callers must not stop at that intermediate text.
+ */
+export async function waitForAgentConnected(page: Page, expectedLabel = "Claude Code"): Promise<void> {
+  await expect.poll(() => page.locator(".agent-dot-connected").count().catch(() => 0), { timeout: 30_000 }).toBeGreaterThan(0);
+  await expect
+    .poll(() => page.locator(".agent-dot-connected").textContent().catch(() => null), { timeout: 30_000 })
+    .toBe(expectedLabel);
 }

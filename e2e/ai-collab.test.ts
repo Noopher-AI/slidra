@@ -9,6 +9,7 @@ import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot, settledBox, type Box } from "./helpers/screenshot.js";
+import { waitForAgentConnected } from "./helpers/launch.js";
 
 /**
  * [E2.T8] `05-INTERACTIONS.feature`「與 AI 協作」— the four scenarios that
@@ -169,9 +170,7 @@ async function openApp(server: RunningServer, options: { waitForAgent?: boolean 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   if (options.waitForAgent) {
-    await expect
-      .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("connected");
+    await waitForAgentConnected(page);
   }
   return page;
 }
