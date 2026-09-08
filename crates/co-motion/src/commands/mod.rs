@@ -51,6 +51,7 @@
 //! rather than a command silently becoming Rust-dispatched as a side effect
 //! of some other change.
 
+pub mod argv;
 pub mod asset_import;
 pub mod cat;
 pub mod chart;

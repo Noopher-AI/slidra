@@ -10,7 +10,7 @@
 //! helpers element-edit.ts already has"). Only the splice primitives named
 //! in plan section 7 decision D6 were consolidated into `element::splice`.
 
-use crate::effects::remove_effects_targeting;
+use crate::effects::edit::remove_effects_targeting;
 use crate::element::splice::{
     Splice, apply_splices, attribute_removal_splice, build_transform_splice,
 };
@@ -484,7 +484,7 @@ mod tests {
     fn group_removes_effects_directly_targeting_members() {
         let svg = slide(&format!(
             r#"<metadata><comot:effects xmlns:comot="{}"><comot:effect target="a" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#,
-            crate::effects::EFFECTS_NS
+            crate::effects::edit::EFFECTS_NS
         ));
         let result = group_elements(
             &svg,
@@ -544,7 +544,7 @@ mod tests {
     fn ungroup_removes_effect_targeting_the_group_itself() {
         let svg = slide(&format!(
             r#"<metadata><comot:effects xmlns:comot="{}"><comot:effect target="grp" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><g id="grp"><g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
-            crate::effects::EFFECTS_NS
+            crate::effects::edit::EFFECTS_NS
         ));
         let result = ungroup_elements(&svg, "slides/001.svg", &["grp".to_string()]).unwrap();
         assert_eq!(result.removed_effects, 1);

@@ -418,7 +418,7 @@ fn collect_container_ids(node: &ScannedNode, into: &mut HashSet<String>) {
 /// ADR-0009's effects list: finds every `<comot:effect>` whose `target`
 /// names an id being removed. Takes the FIRST `<metadata>`/`<comot:effects>`
 /// found rather than erroring on a duplicate (unlike
-/// `effects::remove_effects_targeting`'s `locate_effects_list`) — this is
+/// `effects::edit::remove_effects_targeting`'s `locate_effects_list`) — this is
 /// the TS original's own, more lenient, local scan (`findDanglingEffectRanges`
 /// never validated list uniqueness), not something to "fix" while porting.
 fn find_dangling_effect_ranges(

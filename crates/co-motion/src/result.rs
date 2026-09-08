@@ -6,6 +6,7 @@
 //! `println!` directly, so that the EPIPE and `--json` handling stays in one
 //! place.
 
+use crate::errors::CoMotionError;
 use serde::Serialize;
 use std::io::{self, ErrorKind, Write};
 
@@ -52,6 +53,23 @@ impl CommandResult {
             message: message.into(),
             failure_kind: Some(failure_kind),
         }
+    }
+
+    /// Converts a `CoMotionError` straight into a failed `CommandResult` —
+    /// `NotFound` maps to `FailureKind::NotFound`, `InvalidRequest` to
+    /// `FailureKind::Failed`. [E4.T5] introduces this: `undo.rs`/`redo.rs`
+    /// (this crate's only commands before this ticket) each carry their own
+    /// private copy of this exact mapping, tolerable at two call sites; this
+    /// ticket's ~29 command handlers all need the identical conversion, so
+    /// it is a shared method here rather than a function duplicated into
+    /// every handler file. `undo.rs`/`redo.rs` are left as they are — this
+    /// is new plumbing for new code, not a refactor of existing files.
+    pub fn from_error(err: &CoMotionError) -> Self {
+        let kind = match err {
+            CoMotionError::NotFound(_) => FailureKind::NotFound,
+            CoMotionError::InvalidRequest(_) => FailureKind::Failed,
+        };
+        CommandResult::failure(err.message().to_string(), kind)
     }
 }
 
