@@ -28,7 +28,13 @@ import { handleAssetPost } from "./asset-upload.js";
 import { handleOpenPost } from "./open-endpoint.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
-import { handleFilesRoute, handlePresentationRoute, handleRawRoute, loadProject } from "./read-routes.js";
+import {
+  handleEffectsRoute,
+  handleFilesRoute,
+  handlePresentationRoute,
+  handleRawRoute,
+  loadProject,
+} from "./read-routes.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
@@ -517,6 +523,12 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/files/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
       await handleFilesRoute(registry, presentationId, virtualPath, res);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/effects/")) {
+      const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
+      await handleEffectsRoute(registry, presentationId, virtualPath, res);
       return;
     }
 

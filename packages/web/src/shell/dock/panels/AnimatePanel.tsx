@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectFamily, type EffectName, type EffectStart } from "@co-motion/core/effects";
+import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectFamily, type EffectName, type EffectStart } from "../../../effects.js";
 import type { CanvasController, CanvasSelection } from "../../../canvas.js";
 
 export interface AnimatePanelProps {

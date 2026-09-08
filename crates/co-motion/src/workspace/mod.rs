@@ -4,9 +4,9 @@
 //! `virtual-fs.ts` in the `project`/`virtual_fs` submodules — this crate's
 //! `registry` submodule now also writes `projects.json` ([E4.T4]:
 //! `new`/`open`/`pack` need to register/update a presentation), and
-//! `write.rs` holds the content-write doors (`write_presentation_file` and
-//! friends). Container packing/unpacking lives in `container.rs`;
-//! format-version migration lives in `migrate.rs`.
+//! `write.rs` holds the content-write doors (`assertSlidePathListed`,
+//! `write_presentation_file` and friends). Container packing/unpacking
+//! lives in `container.rs`; format-version migration lives in `migrate.rs`.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -25,7 +25,8 @@
 //! - `project` — `project.json` read/parse/validate/write (see `project.rs`).
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
-//! - `write` — content-write doors (`write_presentation_file` and friends).
+//! - `write` — `assert_slide_path_listed`/`write_presentation_file` and
+//!   friends (see `write.rs`).
 
 pub mod migrate;
 pub mod project;

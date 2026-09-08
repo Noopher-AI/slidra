@@ -14,6 +14,7 @@ pub mod argv;
 pub mod base64;
 pub mod commands;
 pub mod container;
+pub mod effects;
 pub mod errors;
 pub mod fallback;
 pub mod geometry;

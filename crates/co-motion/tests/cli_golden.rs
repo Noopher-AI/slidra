@@ -129,10 +129,11 @@ fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
 
 /// Acceptance criterion A2: for every one of these argv combinations —
 /// genuinely NOT-yet-Rust-dispatched commands, [E4.T4]'s explicit non-scope
-/// (plan §2 item 3: `element`/`textbox`/`table`/`chart`/`comment`/`effect`/
-/// `asset` families) plus a bare unknown command name — the Rust binary's
-/// fallback path must byte-for-byte match the real Node CLI: stdout,
-/// stderr, AND exit code all three.
+/// (plan §2 item 3: `element`/`textbox`/`table`/`chart`/`comment`/`asset`
+/// families, plus [E4.T7]'s `effect` family for any sub-command that isn't
+/// one of its five takeover-table entries) plus a bare unknown command
+/// name — the Rust binary's fallback path must byte-for-byte match the
+/// real Node CLI: stdout, stderr, AND exit code all three.
 ///
 /// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
 /// them explicitly as things this ticket would move to Rust): they no
@@ -169,7 +170,9 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
         vec!["table", "create"],
         vec!["chart", "create"],
         vec!["comment", "list", &id],
-        vec!["effect", "list", &id, "slides/001.svg"],
+        // Not one of `effect`'s five takeover-table entries (add/list/
+        // move/remove/set) — must still fall back, unlike those five.
+        vec!["effect", "duplicate", &id, "slides/001.svg"],
         vec!["asset", "import"],
     ];
 
@@ -199,7 +202,7 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
     );
 }
 
-/// A1: for every one of the 21 registered commands, a successful run must
+/// A1: for every one of the 26 registered commands, a successful run must
 /// never start a `node` child process at all — proven structurally (not by
 /// inspecting output) by pointing `PATH` at a directory with no `node`
 /// binary in it. A command that still fell back would fail with "找不到
@@ -239,6 +242,14 @@ fn no_takeover_table_command_ever_invokes_node() {
     );
     let id = extract_id(&open_output);
 
+    let slide_svg_output = run_without_node(&["cat", &id, "slides/001.svg"]);
+    assert!(
+        slide_svg_output.status.success(),
+        "`cat slides/001.svg` must succeed without node on PATH: {:?}",
+        slide_svg_output
+    );
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&slide_svg_output.stdout));
+
     let out_comot = fixture.workspace.join("out.comot");
     let out_comot_str = out_comot.to_str().unwrap();
     let cases: Vec<Vec<&str>> = vec![
@@ -257,6 +268,17 @@ fn no_takeover_table_command_ever_invokes_node() {
         ],
         vec!["slide", "add", &id],
         vec!["template", "list", &id],
+        vec![
+            "effect",
+            "add",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--family",
+            "enter",
+            "--effect",
+            "fade",
+        ],
         vec!["pack", &id, out_comot_str],
     ];
     for args in &cases {
@@ -710,6 +732,337 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         redone, after,
         "rust redo must restore the exact post-edit bytes"
     );
+}
+
+// ---------------------------------------------------------------------------
+// effect add / remove / move / set / list ([E4.T7], plan 6.1/6.2)
+// ---------------------------------------------------------------------------
+
+/// `new`/`open` alone produce a slide with a bare `<text>` primitive at the
+/// `<svg>` root (not wrapped in a `<g>`) — legal for every command this
+/// file already exercises, but `effect add`/`remove`/`move`/`set` assert
+/// slide compliance (D1's carve-out is `effect list` only), so every fixture
+/// below runs `convert` too before touching effect commands.
+fn new_open_and_convert(fixture: &Fixture) -> String {
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    let convert_output = fixture.run_node(&["convert", &id]);
+    assert!(
+        convert_output.status.success(),
+        "setup: `convert` failed: {:?}",
+        convert_output
+    );
+    id
+}
+
+/// Runs `args` via the Rust binary, then immediately `undo`s it via Rust
+/// too, asserting the file is back to `expected_before` — the shared setup
+/// every "run once via each engine, compare bytes" test below uses to avoid
+/// needing two independent fixtures (which would need two independently
+/// `new`-generated element ids to line up, and `new` assigns those
+/// randomly — see `id.ts`/`id.rs`'s `generateElementId`). A single fixture,
+/// mutated by Rust then rolled back before Node repeats the same argv, is
+/// both simpler and a free extra proof that this ticket's write path
+/// (`workspace::write::write_presentation_file`) occupies exactly one undo
+/// step, same as `effect_add_then_undo_restores_original_bytes` below.
+fn run_via_rust_then_undo(
+    fixture: &Fixture,
+    id: &str,
+    args: &[&str],
+    expected_before: &[u8],
+) -> Vec<u8> {
+    let output = fixture.run_rust(args);
+    assert!(output.status.success(), "rust {args:?} failed: {output:?}");
+    let after = fixture.run_node(&["cat", id, "slides/001.svg"]).stdout;
+    let undo = fixture.run_rust(&["undo", id]);
+    assert!(
+        undo.status.success(),
+        "undo after rust {args:?} failed: {undo:?}"
+    );
+    let restored = fixture.run_node(&["cat", id, "slides/001.svg"]).stdout;
+    assert_eq!(
+        restored, expected_before,
+        "undo after rust {args:?} must restore the pre-command bytes"
+    );
+    after
+}
+
+/// Plan 6.2 item 1: `effect add`, run once via each engine against the same
+/// starting bytes (see `run_via_rust_then_undo`'s doc comment for why one
+/// fixture, not two), must leave byte-identical slide content.
+#[test]
+fn effect_add_matches_between_rust_and_node() {
+    let fixture = Fixture::new("effect-add-parity");
+    let id = new_open_and_convert(&fixture);
+    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+    let add_args = [
+        "effect",
+        "add",
+        id.as_str(),
+        "slides/001.svg",
+        element_id.as_str(),
+        "--family",
+        "enter",
+        "--effect",
+        "fade",
+    ];
+
+    let rust_after = run_via_rust_then_undo(&fixture, &id, &add_args, &before);
+
+    let node_add = fixture.run_node(&add_args);
+    assert!(
+        node_add.status.success(),
+        "node effect add failed: {:?}",
+        node_add
+    );
+    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    assert_eq!(
+        rust_after, node_after,
+        "effect add must produce byte-identical slide content on both engines"
+    );
+}
+
+/// Plan 6.2 item 2: `effect list`'s plain (non-`--json`) output — a message
+/// line followed by `data` pretty-printed as JSON, the one output shape
+/// both engines actually support (`--json` is Rust-only, plan 4.3's own
+/// main.rs doc comment; Node has no such mode) — must be byte-identical.
+/// This is the test that actually exercises the `serde_json` vs
+/// `JSON.stringify` integral-number formatting trap (plan 3.5's
+/// `json_number` helper): `duration`/`delay`/transition-duration values
+/// that happen to be whole numbers must print with no decimal point on
+/// both sides.
+#[test]
+fn effect_list_output_matches_between_rust_and_node() {
+    let fixture = Fixture::new("effect-list-parity");
+    let id = new_open_and_convert(&fixture);
+    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+    let add = fixture.run_node(&[
+        "effect",
+        "add",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--family",
+        "enter",
+        "--effect",
+        "fade",
+    ]);
+    assert!(add.status.success(), "setup: effect add failed: {:?}", add);
+
+    let rust_list = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
+    let node_list = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
+    assert!(
+        rust_list.status.success(),
+        "rust effect list failed: {:?}",
+        rust_list
+    );
+    assert!(
+        node_list.status.success(),
+        "node effect list failed: {:?}",
+        node_list
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&rust_list.stdout),
+        String::from_utf8_lossy(&node_list.stdout),
+        "effect list's message+data output must be byte-identical between engines"
+    );
+    // Sanity: the comparison above is only meaningful if the output
+    // actually carries the new `steps`/`transition` keys (plan 4.1) — guard
+    // against both sides vacuously agreeing on some earlier, smaller shape.
+    let stdout = String::from_utf8_lossy(&rust_list.stdout);
+    assert!(
+        stdout.contains("\"steps\""),
+        "stdout missing steps: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"transition\""),
+        "stdout missing transition: {stdout}"
+    );
+}
+
+/// Plan 6.2 item 3: `effect remove`/`move`/`set`, chained in one session,
+/// run once via each engine against the same starting bytes, must leave
+/// byte-identical final slide content — and, chained with two `effect add`
+/// calls first, this also covers `effect add`'s multi-item "with-previous"
+/// forcing and `remove`'s dedup-and-descending-order splice.
+#[test]
+fn effect_remove_move_set_match_between_rust_and_node() {
+    let fixture = Fixture::new("effect-sequence-parity");
+    let id = new_open_and_convert(&fixture);
+    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+
+    let add1 = [
+        "effect",
+        "add",
+        id.as_str(),
+        "slides/001.svg",
+        element_id.as_str(),
+        "--family",
+        "enter",
+        "--effect",
+        "fade",
+    ];
+    let add2 = [
+        "effect",
+        "add",
+        id.as_str(),
+        "slides/001.svg",
+        element_id.as_str(),
+        "--family",
+        "exit",
+        "--effect",
+        "fade-out",
+    ];
+    let mv = ["effect", "move", id.as_str(), "slides/001.svg", "2", "up"];
+    let set = [
+        "effect",
+        "set",
+        id.as_str(),
+        "slides/001.svg",
+        "1",
+        "--duration",
+        "1.5",
+    ];
+    let remove = ["effect", "remove", id.as_str(), "slides/001.svg", "1"];
+
+    fn run_all(fixture: &Fixture, use_rust: bool, sequence: &[&[&str]]) {
+        for args in sequence {
+            let output = if use_rust {
+                fixture.run_rust(args)
+            } else {
+                fixture.run_node(args)
+            };
+            assert!(
+                output.status.success(),
+                "{args:?} failed (rust={use_rust}): {output:?}"
+            );
+        }
+    }
+
+    run_all(&fixture, true, &[&add1, &add2, &mv, &set, &remove]);
+    let rust_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    // Undo all five steps via Rust to roll the fixture back to `before`,
+    // then repeat the exact same sequence via Node.
+    for _ in 0..5 {
+        let undo = fixture.run_rust(&["undo", &id]);
+        assert!(undo.status.success(), "undo failed: {:?}", undo);
+    }
+    let restored = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_eq!(
+        restored, before,
+        "five undos must restore the pre-sequence bytes"
+    );
+
+    run_all(&fixture, false, &[&add1, &add2, &mv, &set, &remove]);
+    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    assert_eq!(
+        rust_after, node_after,
+        "effect add/move/set/remove chained must produce byte-identical slide content on both engines"
+    );
+}
+
+/// Plan 6.2 item 4: a slide with no effect list at all — `effect list`'s
+/// not-found stderr and exit code must match between engines.
+#[test]
+fn effect_list_without_a_list_matches_stderr_and_exit_code() {
+    let fixture = Fixture::new("effect-list-missing");
+    let id = new_open_and_convert(&fixture);
+
+    let rust_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
+    let node_out = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
+    assert_eq!(rust_out.status.code(), node_out.status.code());
+    assert_eq!(
+        String::from_utf8_lossy(&rust_out.stderr),
+        String::from_utf8_lossy(&node_out.stderr),
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&rust_out.stderr),
+        "這張投影片沒有效果清單\n"
+    );
+}
+
+/// Plan 6.2 item 5: a slide whose effect list is damaged (an unimplemented
+/// `family` value) — `effect list`'s stderr must match between engines,
+/// proving 3.3's exact-message-and-spacing porting.
+#[test]
+fn effect_list_with_damaged_list_matches_stderr() {
+    let fixture = Fixture::new("effect-list-damaged");
+    let id = new_open_and_convert(&fixture);
+
+    let slide_path = {
+        // Resolve the real on-disk path for slides/001.svg the same way the
+        // fixture's own `cat` calls do: via `projects.json`'s registered
+        // workDir, read directly rather than adding a new CLI surface just
+        // for this test.
+        let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
+        let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
+        let work_dir = registry[&id]["workDir"].as_str().unwrap().to_string();
+        PathBuf::from(work_dir).join("slides").join("001.svg")
+    };
+    let original = fs::read_to_string(&slide_path).unwrap();
+    let damaged = original.replace(
+        "</svg>",
+        r#"<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"><comot:effect target="bogus-target" family="not-a-family" effect="fade" start="on-click" duration="0.6" delay="0"/></comot:effects></metadata></svg>"#,
+    );
+    assert_ne!(
+        original, damaged,
+        "the damaging replacement must actually apply"
+    );
+    fs::write(&slide_path, damaged).unwrap();
+
+    let rust_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
+    let node_out = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
+    assert_eq!(rust_out.status.code(), node_out.status.code());
+    assert_eq!(
+        String::from_utf8_lossy(&rust_out.stderr),
+        String::from_utf8_lossy(&node_out.stderr),
+    );
+    assert!(String::from_utf8_lossy(&rust_out.stderr).contains("尚未實作"));
+}
+
+/// Plan 6.2 item 6: `effect add` occupies exactly one undo step — `undo`
+/// after it must restore the pre-add bytes exactly (proving the write path
+/// this ticket adds — `workspace::write::write_presentation_file` — is
+/// wired into the SAME `history.rs` staging API `undo`/`redo` already use).
+#[test]
+fn effect_add_then_undo_restores_original_bytes() {
+    let fixture = Fixture::new("effect-add-undo");
+    let id = new_open_and_convert(&fixture);
+    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+
+    let add = fixture.run_rust(&[
+        "effect",
+        "add",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--family",
+        "enter",
+        "--effect",
+        "fade",
+    ]);
+    assert!(add.status.success(), "effect add failed: {:?}", add);
+    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_ne!(before, after, "effect add must actually change the file");
+
+    let undo = fixture.run_rust(&["undo", &id]);
+    assert!(undo.status.success(), "undo failed: {:?}", undo);
+    let undone = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_eq!(undone, before, "undo must restore the exact pre-add bytes");
 }
 
 /// Parses a `--json` command's stdout as the `ok, data, message,

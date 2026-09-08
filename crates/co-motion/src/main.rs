@@ -6,10 +6,14 @@
 //! print its own (English) error text — any one of those firing on a
 //! fallback-bound argv would break byte-for-byte compatibility with the
 //! Node CLI (acceptance criterion A2). clap's role here is limited to
-//! parsing arguments *within* a takeover-table command's own handler (none
-//! of that parsing is needed yet — `undo`/`redo` take a single positional
-//! id — so clap isn't invoked at all in this ticket; it stays a declared
-//! dependency for F3+ commands to use).
+//! parsing arguments *within* a takeover-table command's own handler — none
+//! of that parsing goes through clap yet either: `undo`/`redo` take a
+//! single positional id, and `effect add/remove/move/set/list`'s argv
+//! parsing (`commands::effect`) is a direct, hand-written port of
+//! `packages/cli/src/argv.ts`'s own hand-written parsing, not a clap
+//! `Parser` derive — so clap still isn't invoked anywhere in this crate; it
+//! stays a declared dependency for a future command that actually wants
+//! it).
 
 use std::env;
 use std::ffi::OsString;
@@ -52,8 +56,18 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
             return fallback::exec_node_fallback(&argv);
         }
 
-        if commands::is_in_takeover_table(first_str) {
-            return dispatch_takeover(first_str, &argv[1..]);
+        // Probe the first one or two argv tokens against the takeover
+        // table (plan 2.4): a two-word command like `effect add` needs
+        // both tokens to be valid UTF-8 to match at all — a non-UTF-8
+        // second token simply can't equal any (ASCII) table entry, so it
+        // naturally falls through to the one-word probe, then to Node.
+        let second_str = argv.get(1).and_then(|arg| arg.to_str());
+        let probe: Vec<&str> = match second_str {
+            Some(second) => vec![first_str, second],
+            None => vec![first_str],
+        };
+        if let Some((command, consumed)) = commands::match_takeover(&probe) {
+            return dispatch_takeover(command, &argv[consumed..]);
         }
     }
 
@@ -97,6 +111,11 @@ fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
         match command {
             "undo" => (commands::undo::run(&positional), None),
             "redo" => (commands::redo::run(&positional), None),
+            "effect add" => (commands::effect::add(&positional), None),
+            "effect list" => (commands::effect::list(&positional), None),
+            "effect move" => (commands::effect::move_cmd(&positional), None),
+            "effect remove" => (commands::effect::remove(&positional), None),
+            "effect set" => (commands::effect::set(&positional), None),
             "new" => (commands::new::run(&positional), None),
             "open" => (commands::open::run(&positional), None),
             "pack" => (commands::pack::run(&positional), None),
@@ -121,7 +140,7 @@ fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
                 (commands::slide::run(&positional, json_flag), renderer)
             }
             _ => unreachable!(
-                "commands::is_in_takeover_table only admits the 11 names matched above"
+                "commands::match_takeover only returns TAKEOVER_TABLE entries, all handled above"
             ),
         };
 

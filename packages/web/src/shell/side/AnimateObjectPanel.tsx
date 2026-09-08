@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { EffectName, EffectStart } from "@co-motion/core/effects";
+import type { EffectName, EffectStart } from "../../effects.js";
 import type { CanvasController, CanvasState } from "../../canvas.js";
 import { buildCards } from "./animate/cards.js";
 import { ObjectList } from "./animate/ObjectList.js";

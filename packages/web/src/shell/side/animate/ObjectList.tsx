@@ -1,4 +1,4 @@
-import type { EffectName, EffectStart } from "@co-motion/core/effects";
+import type { EffectName, EffectStart } from "../../../effects.js";
 import { EffectCard, type EffectCardData } from "./cards.js";
 
 export interface ObjectListProps {

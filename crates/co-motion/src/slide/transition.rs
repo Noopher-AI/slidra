@@ -2,7 +2,9 @@
 //! `packages/core/src/slide/transition.ts` (full file): a pure
 //! `svg_content -> ...` splice reader/writer, modeled on `notes.rs`. Lives
 //! under `<metadata>` as `<comot:transition>`, a sibling of `<comot:effects>`
-//! and `<comot:notes>`.
+//! and `<comot:notes>`. `read_slide_transition` also backs `effect list`'s
+//! `data.transition` (plan 4.1) — it does not touch `<comot:effects>` at
+//! all, only this sibling node under the same `<metadata>`.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::slide::notes::NOTES_NS as TRANSITION_NS;

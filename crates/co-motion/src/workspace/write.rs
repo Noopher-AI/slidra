@@ -1,13 +1,40 @@
 //! Content-write doors, ported from `packages/core/src/workspace.ts` lines
 //! 549-603 and 1095-1157: `write_presentation_file`/
 //! `write_presentation_file_without_history`/`create_presentation_file`/
-//! `delete_presentation_file`. Every content-writing command in this crate
-//! routes through one of these, so undo/redo is free (`history.rs`'s
-//! staging API) without each command writing its own inverse logic.
+//! `delete_presentation_file`, plus `assertSlidePathListed` (confirming a
+//! virtual path is one of the presentation's declared slides/templates
+//! before any of the doors below touch it — this crate's first content
+//! write path, `effect add`/`remove`/`move`/`set` [E4.T7]). Every
+//! content-writing command in this crate routes through one of these doors,
+//! so undo/redo is free (`history.rs`'s staging API) without each command
+//! writing its own inverse logic.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::history;
+use crate::workspace::project::{ProjectJson, read_project_json, read_template_entries};
 use crate::workspace::{self, virtual_fs};
+
+/// Confirms `virtual_path` is one of the presentation's declared slides
+/// (`project.json`'s `slides` array) or templates (ADR-0013 widening: a
+/// template is edited with exactly the same element/effect commands a
+/// slide is). Neither list is required to exist.
+pub fn assert_slide_path_listed(
+    work_dir: &std::path::Path,
+    virtual_path: &str,
+) -> CoMotionResult<ProjectJson> {
+    let project = read_project_json(work_dir)?;
+    let templates = read_template_entries(&project);
+    let is_slide = project.slides.iter().any(|slide| slide == virtual_path);
+    let is_template = templates
+        .iter()
+        .any(|template| template.file == virtual_path);
+    if !is_slide && !is_template {
+        return Err(CoMotionError::invalid(format!(
+            "不是投影片：{virtual_path}"
+        )));
+    }
+    Ok(project)
+}
 
 /// The single door every content-writing command must use. Snapshots the
 /// file's current content into undo history (committed durable) BEFORE the
@@ -126,6 +153,15 @@ mod tests {
         dir
     }
 
+    fn write_project_json(work_dir: &Path, slides: &[&str], templates: &[&str]) {
+        let slides_json = serde_json::to_string(slides).unwrap();
+        let templates_json = serde_json::to_string(templates).unwrap();
+        let json = format!(
+            r#"{{"formatVersion":4,"name":"Test","canvas":{{"width":1280,"height":720}},"slides":{slides_json},"templates":{templates_json}}}"#
+        );
+        std::fs::write(work_dir.join("project.json"), json).unwrap();
+    }
+
     struct Fixture {
         home: PathBuf,
         work: PathBuf,
@@ -163,6 +199,28 @@ mod tests {
     }
 
     #[test]
+    fn assert_slide_path_listed_accepts_a_declared_slide() {
+        let fixture = Fixture::new("slide-ok");
+        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
+        assert_slide_path_listed(&fixture.work, "slides/001.svg").unwrap();
+    }
+
+    #[test]
+    fn assert_slide_path_listed_accepts_a_declared_template() {
+        let fixture = Fixture::new("template-ok");
+        write_project_json(&fixture.work, &[], &["templates/001.svg"]);
+        assert_slide_path_listed(&fixture.work, "templates/001.svg").unwrap();
+    }
+
+    #[test]
+    fn assert_slide_path_listed_rejects_an_unlisted_path() {
+        let fixture = Fixture::new("unlisted");
+        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
+        let err = assert_slide_path_listed(&fixture.work, "project.json").unwrap_err();
+        assert_eq!(err.message(), "不是投影片：project.json");
+    }
+
+    #[test]
     fn write_presentation_file_overwrites_and_is_undoable() {
         let fixture = Fixture::new("write-basic");
         std::fs::write(fixture.work.join("project.json"), "OLD").unwrap();
@@ -178,6 +236,14 @@ mod tests {
             std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
             "OLD"
         );
+    }
+
+    #[test]
+    fn write_presentation_file_missing_real_file_is_not_found() {
+        let fixture = Fixture::new("write-missing");
+        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
+        let err = write_presentation_file(&fixture.id, "slides/001.svg", "x").unwrap_err();
+        assert!(matches!(err, CoMotionError::NotFound(_)));
     }
 
     #[test]
