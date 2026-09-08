@@ -17,6 +17,7 @@ pub mod chart;
 pub mod commands;
 pub mod container;
 pub mod effects;
+pub mod element;
 pub mod errors;
 pub mod fallback;
 pub mod fonts;

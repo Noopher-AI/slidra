@@ -603,19 +603,22 @@ pub fn set_effect(
 /// slide with no animations anywhere is the common case, not an error.
 ///
 /// Returns `(updated_svg, removed_count)`, mirroring
-/// `removeEffectsTargeting`'s `{ updated, removedCount }`. Applies removals
-/// widest-start-first (descending), the same splice-ordering discipline
-/// `apply_splices` above uses, so an earlier deletion's byte-offset shift
-/// never invalidates a later one's span — implemented directly with
-/// `replace_range` rather than `apply_splices`/`Splice`, since this function
-/// only ever *deletes* whole `<comot:effect>` node spans (never inserts
-/// text), so a four-field `Splice { start, end, text }` builder would be
-/// strictly more machinery than the two-`usize` removal span this needs.
+/// `removeEffectsTargeting`'s `{ updated, removedCount }`.
+///
+/// Node spans here (`ScannedNode::start`/`.end`) are UTF-16 offsets, not
+/// byte offsets (`slide::scan`'s module doc) — removal goes through
+/// `element::splice::apply_splices` (aliased below to avoid colliding with
+/// this file's own, unrelated private `Splice`/`apply_splices`), the one
+/// place allowed to convert between the two, rather than slicing
+/// `svg_content` directly: a `<comot:effect>` sitting after CJK text
+/// elsewhere on the slide must still be removed at the right bytes.
 pub fn remove_effects_targeting(
     svg_content: &str,
     slide_path: &str,
     target_ids: &std::collections::HashSet<String>,
 ) -> CoMotionResult<(String, usize)> {
+    use crate::element::splice::{Splice as ElementSplice, apply_splices as apply_element_splices};
+
     assert_slide_compliant(svg_content, slide_path)?;
     if target_ids.is_empty() {
         return Ok((svg_content.to_string(), 0));
@@ -628,25 +631,21 @@ pub fn remove_effects_targeting(
         return Ok((svg_content.to_string(), 0));
     };
 
-    let mut removal_spans: Vec<(usize, usize)> = list
+    let removal_splices: Vec<ElementSplice> = list
         .children
         .iter()
         .filter(|node| node.tag == "comot:effect")
         .filter_map(|node| {
             let target = attribute_value(node, "target")?;
-            target_ids
-                .contains(&target)
-                .then_some((node.start, node.end))
+            target_ids.contains(&target).then_some(ElementSplice {
+                start: node.start,
+                end: node.end,
+                text: String::new(),
+            })
         })
         .collect();
-    let removed_count = removal_spans.len();
-    removal_spans.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-
-    let mut result = svg_content.to_string();
-    for (start, end) in removal_spans {
-        result.replace_range(start..end, "");
-    }
-    Ok((result, removed_count))
+    let removed_count = removal_splices.len();
+    Ok((apply_element_splices(svg_content, &removal_splices), removed_count))
 }
 
 #[cfg(test)]
@@ -928,6 +927,25 @@ mod tests {
         assert_eq!(removed, 1);
         assert!(!updated.contains(r#"target="el1""#));
         assert!(updated.contains(r#"target="el2""#));
+    }
+
+    /// The load-bearing regression this crate's UTF-16-vs-byte-offset
+    /// contract exists for: a `<comot:effect>` sitting after CJK text
+    /// elsewhere in the document must still be removed at the right bytes.
+    /// Each CJK character is 1 UTF-16 unit but 3 UTF-8 bytes, so treating
+    /// `node.start`/`.end` as byte offsets would remove the wrong span here.
+    #[test]
+    fn remove_effects_targeting_removes_the_right_span_when_cjk_text_precedes_the_list() {
+        let svg = r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"><comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
+        let mut targets = HashSet::new();
+        targets.insert("el1".to_string());
+        let (updated, removed) =
+            remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap();
+        assert_eq!(removed, 1);
+        assert_eq!(
+            updated,
+            r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
+        );
     }
 
     #[test]
