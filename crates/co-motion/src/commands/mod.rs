@@ -12,7 +12,10 @@
 //! command silently becoming Rust-dispatched as a side effect of some other
 //! change.
 
+pub mod asset_import;
+pub mod chart;
 pub mod redo;
+pub mod table;
 pub mod undo;
 
 pub const TAKEOVER_TABLE: &[&str] = &["undo", "redo"];

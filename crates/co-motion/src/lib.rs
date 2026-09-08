@@ -10,14 +10,21 @@
 //! this slice owns (`transform` and `scan` respectively) — sibling
 //! submodules (`geometry::bbox`, `slide::format`, `slide::style`,
 //! `slide::table_grid`, ...) are separate, later commits' responsibility.
+pub mod argv;
+pub mod asset_import;
+pub mod chart;
 pub mod commands;
 pub mod errors;
 pub mod fallback;
 pub mod geometry;
 pub mod history;
+pub mod http;
 pub mod id;
+pub mod media_format;
 pub mod result;
 pub mod slide;
+pub mod splice;
 pub mod svgnum;
+pub mod table;
 pub mod text;
 pub mod workspace;
