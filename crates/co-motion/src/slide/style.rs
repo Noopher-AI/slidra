@@ -20,7 +20,9 @@
 //! literally.
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::slide::scan::{ScannedNode, attribute_value, scan_document};
+use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_document};
+use crate::splice::{Splice, apply_splices, set_attr_splice};
+use crate::text::runs::utf16_offset_to_byte_offset;
 
 /// CSS property names `readSlidePageStyle`/`setSlidePageStyle` read/write on
 /// the root `<svg>`'s own `style` attribute (see that TS module's header
@@ -88,6 +90,122 @@ pub fn read_slide_page_style(svg_content: &str) -> CoMotionResult<PageStyle> {
     })
 }
 
+/// `co-motion slide style set`'s update input. `None` leaves that axis
+/// untouched; `Some("")` clears the declaration; `Some(value)` sets it.
+#[derive(Debug, Clone, Default)]
+pub struct PageStyleUpdate {
+    pub background: Option<String>,
+    pub accent: Option<String>,
+}
+
+/// Parses `style="a:b;c:d"` into an ordered list of declarations, later
+/// occurrences of the same property overwriting the value in place (mirrors
+/// JS `Map#set`'s overwrite-on-duplicate-key semantics: the key keeps its
+/// first-seen position, the value is whatever was assigned last).
+fn parse_style_declarations(style: Option<&str>) -> Vec<(String, String)> {
+    let mut declarations: Vec<(String, String)> = Vec::new();
+    let Some(style) = style else {
+        return declarations;
+    };
+    for part in style.split(';') {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
+        let key = trimmed[..colon].trim().to_string();
+        let value = trimmed[colon + 1..].trim().to_string();
+        if let Some(existing) = declarations.iter_mut().find(|(k, _)| *k == key) {
+            existing.1 = value;
+        } else {
+            declarations.push((key, value));
+        }
+    }
+    declarations
+}
+
+fn serialize_style_declarations(declarations: &[(String, String)]) -> String {
+    declarations
+        .iter()
+        .map(|(property, value)| format!("{property}:{value}"))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// Sets/clears the root `<svg>`'s Page style (`co-motion slide style set`).
+/// At least one of `background`/`accent` must be given.
+pub fn set_slide_page_style(svg_content: &str, update: &PageStyleUpdate) -> CoMotionResult<String> {
+    if update.background.is_none() && update.accent.is_none() {
+        return Err(CoMotionError::invalid(
+            "命令 slide style set 至少要給 --background 或 --accent",
+        ));
+    }
+    let svg_root = require_svg_root(svg_content)?;
+    let mut declarations = parse_style_declarations(attribute_value(&svg_root, "style").as_deref());
+
+    if let Some(background) = &update.background {
+        if background.is_empty() {
+            declarations.retain(|(k, _)| k != BACKGROUND_PROPERTY);
+        } else if let Some(existing) = declarations
+            .iter_mut()
+            .find(|(k, _)| k == BACKGROUND_PROPERTY)
+        {
+            existing.1 = background.clone();
+        } else {
+            declarations.push((BACKGROUND_PROPERTY.to_string(), background.clone()));
+        }
+    }
+    if let Some(accent) = &update.accent {
+        if accent.is_empty() {
+            declarations.retain(|(k, _)| k != ACCENT_PROPERTY);
+        } else if let Some(existing) = declarations.iter_mut().find(|(k, _)| k == ACCENT_PROPERTY) {
+            existing.1 = accent.clone();
+        } else {
+            declarations.push((ACCENT_PROPERTY.to_string(), accent.clone()));
+        }
+    }
+
+    let next_style = serialize_style_declarations(&declarations);
+    if next_style.is_empty() {
+        let Some(existing) = attribute_of(&svg_root, "style") else {
+            return Ok(svg_content.to_string());
+        };
+        let tag_name_end =
+            utf16_offset_to_byte_offset(svg_content, svg_root.start) + 1 + svg_root.tag.len();
+        let mut start = utf16_offset_to_byte_offset(svg_content, existing.start);
+        while start > tag_name_end {
+            let Some(prev_char) = svg_content[..start].chars().next_back() else {
+                break;
+            };
+            if prev_char.is_whitespace() {
+                start -= prev_char.len_utf8();
+            } else {
+                break;
+            }
+        }
+        let end = utf16_offset_to_byte_offset(svg_content, existing.end);
+        return Ok(apply_splices(
+            svg_content,
+            &[Splice {
+                start,
+                end,
+                text: String::new(),
+            }],
+        ));
+    }
+    Ok(apply_splices(
+        svg_content,
+        &[set_attr_splice(
+            svg_content,
+            &svg_root,
+            "style",
+            &next_style,
+        )],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +253,74 @@ mod tests {
     fn missing_svg_root_errors() {
         let err = read_slide_page_style(r#"<g id="a"/>"#).unwrap_err();
         assert!(err.message().contains("根節點不是 <svg>"));
+    }
+
+    #[test]
+    fn write_neither_flag_given_errors() {
+        let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
+        let err = set_slide_page_style(svg, &PageStyleUpdate::default()).unwrap_err();
+        assert!(err.message().contains("至少要給"));
+    }
+
+    #[test]
+    fn write_sets_both_on_svg_with_no_style_attribute() {
+        let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
+        let updated = set_slide_page_style(
+            svg,
+            &PageStyleUpdate {
+                background: Some("#112233".to_string()),
+                accent: Some("#445566".to_string()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            updated,
+            r#"<svg style="background-color:#112233;--comot-accent:#445566" viewBox="0 0 100 100"></svg>"#
+        );
+    }
+
+    #[test]
+    fn write_empty_string_clears_one_declaration_keeps_the_other() {
+        let svg = r#"<svg viewBox="0 0 100 100" style="background-color:#112233;--comot-accent:#445566"></svg>"#;
+        let updated = set_slide_page_style(
+            svg,
+            &PageStyleUpdate {
+                background: Some(String::new()),
+                accent: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            updated,
+            r#"<svg viewBox="0 0 100 100" style="--comot-accent:#445566"></svg>"#
+        );
+    }
+
+    #[test]
+    fn write_clearing_last_declaration_removes_the_whole_style_attribute() {
+        let svg = r#"<svg viewBox="0 0 100 100" style="background-color:#112233"></svg>"#;
+        let updated = set_slide_page_style(
+            svg,
+            &PageStyleUpdate {
+                background: Some(String::new()),
+                accent: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(updated, r#"<svg viewBox="0 0 100 100"></svg>"#);
+    }
+
+    #[test]
+    fn write_clearing_when_style_absent_is_a_no_op() {
+        let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
+        let updated = set_slide_page_style(
+            svg,
+            &PageStyleUpdate {
+                background: Some(String::new()),
+                accent: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(updated, svg);
     }
 }

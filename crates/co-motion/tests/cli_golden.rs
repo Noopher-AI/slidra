@@ -127,9 +127,22 @@ fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
     assert!(output.stdout.is_empty());
 }
 
-/// Acceptance criterion A2: for every one of these argv combinations, the
-/// Rust binary's fallback path must byte-for-byte match the real Node CLI —
-/// stdout, stderr, AND exit code all three.
+/// Acceptance criterion A2: for every one of these argv combinations —
+/// genuinely NOT-yet-Rust-dispatched commands, [E4.T4]'s explicit non-scope
+/// (plan §2 item 3: `element`/`textbox`/`table`/`chart`/`comment`/`effect`/
+/// `asset` families) plus a bare unknown command name — the Rust binary's
+/// fallback path must byte-for-byte match the real Node CLI: stdout,
+/// stderr, AND exit code all three.
+///
+/// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
+/// them explicitly as things this ticket would move to Rust): they no
+/// longer fall back at all, so a byte-parity assertion here would no longer
+/// be testing "did the fallback path forward these bytes untouched" — it
+/// would just coincidentally still pass because the Rust implementation
+/// happens to produce identical bytes, while the test's own name kept
+/// claiming otherwise. See `cat_and_ls_are_byte_identical_to_node_on_every_path`
+/// below for their (differently-reasoned) cross-engine parity coverage, and
+/// `no_takeover_table_command_ever_invokes_node` for A1's "回退不再觸發".
 #[test]
 fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
     let fixture = Fixture::new("fallback-parity");
@@ -150,13 +163,14 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
     let id = extract_id(&open_output);
 
     let cases: Vec<Vec<&str>> = vec![
-        vec!["ls", &id],
-        vec!["ls", &id, "slides"],
-        vec!["cat", &id, "project.json"],
-        vec!["cat", &id, "slides/001.svg"],
-        vec!["ls", "NOPE-does-not-exist"],
-        vec!["cat", &id, "nope.txt"],
         vec!["frobnicate"],
+        vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
+        vec!["textbox", "add"],
+        vec!["table", "create"],
+        vec!["chart", "create"],
+        vec!["comment", "list", &id],
+        vec!["effect", "list", &id, "slides/001.svg"],
+        vec!["asset", "import"],
     ];
 
     let mut failures = Vec::new();
@@ -183,6 +197,154 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
         "fallback parity mismatches:\n{}",
         failures.join("\n---\n")
     );
+}
+
+/// A1: for every one of the 21 registered commands, a successful run must
+/// never start a `node` child process at all — proven structurally (not by
+/// inspecting output) by pointing `PATH` at a directory with no `node`
+/// binary in it. A command that still fell back would fail with "找不到
+/// node" instead of succeeding, so success here is direct evidence the
+/// takeover table actually intercepted it.
+#[test]
+fn no_takeover_table_command_ever_invokes_node() {
+    let fixture = Fixture::new("no-node-invoked");
+
+    // Empty PATH-only directory: `node` cannot be found via PATH lookup.
+    let empty_path_dir =
+        env::temp_dir().join(format!("co-motion-empty-path-{}", std::process::id()));
+    fs::create_dir_all(&empty_path_dir).unwrap();
+
+    let run_without_node = |args: &[&str]| -> Output {
+        Command::new(rust_bin())
+            .args(args)
+            .env("CO_MOTION_HOME", &fixture.home)
+            .env("PATH", &empty_path_dir)
+            .output()
+            .expect("compiled co-motion binary must run")
+    };
+
+    let new_path = fixture.workspace.join("t2.comot");
+    let new_output = run_without_node(&["new", new_path.to_str().unwrap(), "--name", "無node測試"]);
+    assert!(
+        new_output.status.success(),
+        "`new` must succeed without node on PATH: {:?}",
+        new_output
+    );
+
+    let open_output = run_without_node(&["open", new_path.to_str().unwrap()]);
+    assert!(
+        open_output.status.success(),
+        "`open` must succeed without node on PATH: {:?}",
+        open_output
+    );
+    let id = extract_id(&open_output);
+
+    let out_comot = fixture.workspace.join("out.comot");
+    let out_comot_str = out_comot.to_str().unwrap();
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["ls", &id],
+        vec!["cat", &id, "project.json"],
+        vec!["convert", &id],
+        vec![
+            "presentation",
+            "canvas",
+            "set",
+            &id,
+            "--width",
+            "1280",
+            "--height",
+            "720",
+        ],
+        vec!["slide", "add", &id],
+        vec!["template", "list", &id],
+        vec!["pack", &id, out_comot_str],
+    ];
+    for args in &cases {
+        let output = run_without_node(args);
+        assert!(
+            output.status.success(),
+            "args={args:?} must succeed without node on PATH (proves no fallback): {:?}",
+            output
+        );
+    }
+
+    fs::remove_dir_all(&empty_path_dir).ok();
+}
+
+/// Acceptance criterion A3: `cat`/`ls` output bytes must match the Node
+/// CLI's exactly — this is the cross-engine byte comparison method
+/// `Fixture::run_rust`/`run_node` were built for (plan §5 A3), now that
+/// both commands are genuinely Rust-dispatched rather than falling back.
+#[test]
+fn cat_and_ls_are_byte_identical_to_node_on_every_path() {
+    let fixture = Fixture::new("cat-ls-parity");
+    let comot_path = fixture.workspace.join("t.comot");
+
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    assert!(
+        open_output.status.success(),
+        "setup: `open` failed: {:?}",
+        open_output
+    );
+    let id = extract_id(&open_output);
+
+    let cases: Vec<Vec<&str>> = vec![
+        vec!["ls", &id],
+        vec!["ls", &id, "slides"],
+        vec!["ls", "NOPE-does-not-exist"],
+        vec!["cat", &id, "project.json"],
+        vec!["cat", &id, "slides/001.svg"],
+        vec!["cat", &id, "fonts/LICENSE-NotoSansTC.txt"],
+        vec!["cat", &id, "fonts/NotoSansTC-Presentation.ttf"],
+        vec!["cat", &id, "nope.txt"],
+        vec!["cat", &id, "slides"],
+    ];
+
+    let mut failures = Vec::new();
+    for args in &cases {
+        let rust_out = fixture.run_rust(args);
+        let node_out = fixture.run_node(args);
+        if rust_out.stdout != node_out.stdout
+            || rust_out.stderr != node_out.stderr
+            || rust_out.status.code() != node_out.status.code()
+        {
+            failures.push(format!(
+                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
+                rust_out.status.code(),
+                String::from_utf8_lossy(&rust_out.stdout),
+                String::from_utf8_lossy(&rust_out.stderr),
+                node_out.status.code(),
+                String::from_utf8_lossy(&node_out.stdout),
+                String::from_utf8_lossy(&node_out.stderr),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "cat/ls parity mismatches:\n{}",
+        failures.join("\n---\n")
+    );
+}
+
+/// Unknown sub-commands within a taken-over family must be rejected by Rust
+/// itself, never forwarded to Node (A1's "回退不再觸發" — the family name
+/// alone already committed argv[0] to Rust dispatch).
+#[test]
+fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
+    let fixture = Fixture::new("unknown-subcommand");
+    let output = fixture.run_rust(&["slide", "frobnicate"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "未知的子命令：slide frobnicate\n"
+    );
+    assert!(output.stdout.is_empty());
 }
 
 #[test]

@@ -102,24 +102,31 @@ pub fn render(result: &CommandResult, renderer: Option<Renderer<'_>>, json_flag:
     0
 }
 
+/// `docs/spec/cli.md`'s `--json` envelope shape (plan §4.1/D10): single-line
+/// compact JSON, field order `ok, data, message, failureKind`, and `data`/
+/// `failureKind` omitted entirely (not `null`) when absent — never
+/// `to_string_pretty`, which is reserved for the non-`--json` path's `data`
+/// dump (see `render` above).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonEnvelope<'a> {
     ok: bool,
-    data: &'a Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<&'a serde_json::Value>,
     message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     failure_kind: Option<&'static str>,
 }
 
 fn render_json(result: &CommandResult) -> i32 {
     let envelope = JsonEnvelope {
         ok: result.ok,
-        data: &result.data,
+        data: result.data.as_ref(),
         message: &result.message,
         failure_kind: result.failure_kind.map(FailureKind::as_str),
     };
-    let pretty = serde_json::to_string_pretty(&envelope).expect("Value serialization cannot fail");
-    match write_stdout_line(&pretty) {
+    let compact = serde_json::to_string(&envelope).expect("Value serialization cannot fail");
+    match write_stdout_line(&compact) {
         ExitOrContinue::Exit(code) => code,
         ExitOrContinue::Continue => 0,
     }
