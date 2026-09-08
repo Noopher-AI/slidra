@@ -27,7 +27,13 @@ pub fn generate_opaque_id() -> String {
 /// `randomBytes(6).toString("hex")` — used for temp-file name suffixes
 /// (`.stack.json.<hex>.tmp`, `.projects.json.<hex>.tmp`).
 pub fn random_hex_suffix() -> String {
-    random_bytes(6).iter().map(|b| format!("{b:02x}")).collect()
+    use std::fmt::Write;
+    random_bytes(6)
+        .iter()
+        .fold(String::with_capacity(12), |mut out, b| {
+            write!(out, "{b:02x}").expect("writing to a String cannot fail");
+            out
+        })
 }
 
 fn base64url_encode(bytes: &[u8]) -> String {
@@ -141,15 +147,21 @@ mod tests {
 
     #[test]
     fn generate_opaque_id_is_deterministic_under_seed() {
-        std::env::set_var("CO_MOTION_ID_SEED", "golden-fixture-seed-a");
+        unsafe {
+            std::env::set_var("CO_MOTION_ID_SEED", "golden-fixture-seed-a");
+        }
         let a1 = generate_opaque_id();
-        std::env::set_var("CO_MOTION_ID_SEED", "golden-fixture-seed-a");
+        unsafe {
+            std::env::set_var("CO_MOTION_ID_SEED", "golden-fixture-seed-a");
+        }
         // Re-seeding with the SAME value mid-process must not replay bytes
         // already handed out: a fresh generate_opaque_id() call under a
         // constant seed still advances the generator (matches the "must not
         // repeat" contract above), so a1 != a2.
         let a2 = generate_opaque_id();
-        std::env::remove_var("CO_MOTION_ID_SEED");
+        unsafe {
+            std::env::remove_var("CO_MOTION_ID_SEED");
+        }
         assert_eq!(a1.len(), 12);
         assert_eq!(a2.len(), 12);
         assert_ne!(a1, a2);
@@ -159,6 +171,10 @@ mod tests {
     fn random_hex_suffix_is_twelve_lowercase_hex_chars() {
         let suffix = random_hex_suffix();
         assert_eq!(suffix.len(), 12);
-        assert!(suffix.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            suffix
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
     }
 }

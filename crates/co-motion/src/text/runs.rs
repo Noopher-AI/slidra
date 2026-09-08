@@ -88,7 +88,10 @@ struct RunAttrs {
 fn attrs_at(runs: &[TextRun], pos: usize) -> RunAttrs {
     runs.iter()
         .find(|run| run.start <= pos && pos < run.end)
-        .map(|run| RunAttrs { font_weight: run.font_weight.clone(), font_style: run.font_style.clone() })
+        .map(|run| RunAttrs {
+            font_weight: run.font_weight.clone(),
+            font_style: run.font_style.clone(),
+        })
         .unwrap_or_default()
 }
 
@@ -98,7 +101,10 @@ fn merge_adjacent(runs: &[TextRun]) -> Vec<TextRun> {
     let mut merged: Vec<TextRun> = Vec::new();
     for run in sorted {
         if let Some(last) = merged.last_mut() {
-            if last.end == run.start && last.font_weight == run.font_weight && last.font_style == run.font_style {
+            if last.end == run.start
+                && last.font_weight == run.font_weight
+                && last.font_style == run.font_style
+            {
                 last.end = run.end;
                 continue;
             }
@@ -129,7 +135,12 @@ pub struct RunStyleUpdate {
 /// exactly. Adjacent runs whose attributes end up identical are merged back
 /// into one; a resulting run with neither attribute set is dropped rather
 /// than kept as an empty tspan.
-pub fn apply_run_style(runs: &[TextRun], start: usize, end: usize, update: &RunStyleUpdate) -> Vec<TextRun> {
+pub fn apply_run_style(
+    runs: &[TextRun],
+    start: usize,
+    end: usize,
+    update: &RunStyleUpdate,
+) -> Vec<TextRun> {
     let mut boundary_set: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
     boundary_set.insert(start);
     boundary_set.insert(end);
@@ -143,16 +154,30 @@ pub fn apply_run_style(runs: &[TextRun], start: usize, end: usize, update: &RunS
     }
     let boundaries: Vec<usize> = boundary_set.into_iter().collect();
 
-    let untouched: Vec<TextRun> = runs.iter().filter(|run| run.end <= start || run.start >= end).cloned().collect();
+    let untouched: Vec<TextRun> = runs
+        .iter()
+        .filter(|run| run.end <= start || run.start >= end)
+        .cloned()
+        .collect();
     let clipped_before: Vec<TextRun> = runs
         .iter()
         .filter(|run| run.start < start && run.end > start)
-        .map(|run| TextRun { start: run.start, end: start, font_weight: run.font_weight.clone(), font_style: run.font_style.clone() })
+        .map(|run| TextRun {
+            start: run.start,
+            end: start,
+            font_weight: run.font_weight.clone(),
+            font_style: run.font_style.clone(),
+        })
         .collect();
     let clipped_after: Vec<TextRun> = runs
         .iter()
         .filter(|run| run.start < end && run.end > end)
-        .map(|run| TextRun { start: end, end: run.end, font_weight: run.font_weight.clone(), font_style: run.font_style.clone() })
+        .map(|run| TextRun {
+            start: end,
+            end: run.end,
+            font_weight: run.font_weight.clone(),
+            font_style: run.font_style.clone(),
+        })
         .collect();
 
     let mut new_segments: Vec<TextRun> = Vec::new();
@@ -173,7 +198,12 @@ pub fn apply_run_style(runs: &[TextRun], start: usize, end: usize, update: &RunS
             Some(Some(value)) => Some(value.clone()),
         };
         if font_weight.is_some() || font_style.is_some() {
-            new_segments.push(TextRun { start: seg_start, end: seg_end, font_weight, font_style });
+            new_segments.push(TextRun {
+                start: seg_start,
+                end: seg_end,
+                font_weight,
+                font_style,
+            });
         }
     }
 
@@ -203,7 +233,11 @@ fn attribute_value<'a>(node: &'a ScannedNode, name: &str) -> Option<&'a str> {
 /// `read_text_box_runs`'s per-line worker. `svg_content` is indexed in the
 /// same UTF-16 code-unit space as `ScannedNode`'s offsets and `TextRun`'s
 /// `start`/`end` — see the module doc comment.
-fn read_line_content(line_node: &ScannedNode, svg_content: &str, offset: usize) -> (String, Vec<TextRun>) {
+fn read_line_content(
+    line_node: &ScannedNode,
+    svg_content: &str,
+    offset: usize,
+) -> (String, Vec<TextRun>) {
     let unescape = crate::text::escape::unescape_xml_text;
     let mut text = String::new();
     let mut runs = Vec::new();
@@ -213,16 +247,29 @@ fn read_line_content(line_node: &ScannedNode, svg_content: &str, offset: usize) 
             text.push_str(&unescape(&utf16_slice(svg_content, cursor, child.start)));
         }
         let start = offset + utf16_len(&text);
-        text.push_str(&unescape(&utf16_slice(svg_content, child.content_start, child.content_end)));
+        text.push_str(&unescape(&utf16_slice(
+            svg_content,
+            child.content_start,
+            child.content_end,
+        )));
         let font_weight = attribute_value(child, "font-weight").map(str::to_string);
         let font_style = attribute_value(child, "font-style").map(str::to_string);
         if font_weight.is_some() || font_style.is_some() {
-            runs.push(TextRun { start, end: offset + utf16_len(&text), font_weight, font_style });
+            runs.push(TextRun {
+                start,
+                end: offset + utf16_len(&text),
+                font_weight,
+                font_style,
+            });
         }
         cursor = child.end;
     }
     if line_node.content_end > cursor {
-        text.push_str(&unescape(&utf16_slice(svg_content, cursor, line_node.content_end)));
+        text.push_str(&unescape(&utf16_slice(
+            svg_content,
+            cursor,
+            line_node.content_end,
+        )));
     }
     (text, runs)
 }
@@ -237,7 +284,11 @@ fn read_line_content(line_node: &ScannedNode, svg_content: &str, offset: usize) 
 /// appended here, and — matching `wrap_text`'s own contract — it is never
 /// covered by a run.
 pub fn read_text_box_runs(text_node: &ScannedNode, svg_content: &str) -> (String, Vec<TextRun>) {
-    let line_nodes: Vec<&ScannedNode> = text_node.children.iter().filter(|child| child.tag == "tspan").collect();
+    let line_nodes: Vec<&ScannedNode> = text_node
+        .children
+        .iter()
+        .filter(|child| child.tag == "tspan")
+        .collect();
     let mut content = String::new();
     let mut runs: Vec<TextRun> = Vec::new();
     for line_node in line_nodes {
@@ -256,7 +307,12 @@ mod tests {
     use super::*;
 
     fn run(start: usize, end: usize, weight: Option<&str>, style: Option<&str>) -> TextRun {
-        TextRun { start, end, font_weight: weight.map(String::from), font_style: style.map(String::from) }
+        TextRun {
+            start,
+            end,
+            font_weight: weight.map(String::from),
+            font_style: style.map(String::from),
+        }
     }
 
     // --- utf16_offset_to_byte_offset / utf16_len / utf16_slice ---
@@ -293,7 +349,10 @@ mod tests {
 
     #[test]
     fn setting_style_on_empty_runs_creates_one_new_run() {
-        let update = RunStyleUpdate { font_weight: Some(Some("bold".to_string())), font_style: None };
+        let update = RunStyleUpdate {
+            font_weight: Some(Some("bold".to_string())),
+            font_style: None,
+        };
         let result = apply_run_style(&[], 2, 5, &update);
         assert_eq!(result, vec![run(2, 5, Some("bold"), None)]);
     }
@@ -302,16 +361,29 @@ mod tests {
     fn partial_overlap_splits_existing_run_and_keeps_untouched_portion_exact() {
         // Existing run [0,10) bold; apply italic-only over [4,7).
         let existing = vec![run(0, 10, Some("bold"), None)];
-        let update = RunStyleUpdate { font_weight: None, font_style: Some(Some("italic".to_string())) };
+        let update = RunStyleUpdate {
+            font_weight: None,
+            font_style: Some(Some("italic".to_string())),
+        };
         let mut result = apply_run_style(&existing, 4, 7, &update);
         result.sort_by_key(|r| r.start);
-        assert_eq!(result, vec![run(0, 4, Some("bold"), None), run(4, 7, Some("bold"), Some("italic")), run(7, 10, Some("bold"), None),]);
+        assert_eq!(
+            result,
+            vec![
+                run(0, 4, Some("bold"), None),
+                run(4, 7, Some("bold"), Some("italic")),
+                run(7, 10, Some("bold"), None),
+            ]
+        );
     }
 
     #[test]
     fn exact_match_replaces_the_whole_run() {
         let existing = vec![run(0, 5, Some("bold"), None)];
-        let update = RunStyleUpdate { font_weight: Some(None), font_style: Some(Some("italic".to_string())) };
+        let update = RunStyleUpdate {
+            font_weight: Some(None),
+            font_style: Some(Some("italic".to_string())),
+        };
         let result = apply_run_style(&existing, 0, 5, &update);
         assert_eq!(result, vec![run(0, 5, None, Some("italic"))]);
     }
@@ -319,7 +391,10 @@ mod tests {
     #[test]
     fn clearing_the_only_attribute_drops_the_run_entirely() {
         let existing = vec![run(0, 5, Some("bold"), None)];
-        let update = RunStyleUpdate { font_weight: Some(None), font_style: None };
+        let update = RunStyleUpdate {
+            font_weight: Some(None),
+            font_style: None,
+        };
         let result = apply_run_style(&existing, 0, 5, &update);
         assert_eq!(result, Vec::<TextRun>::new());
     }
@@ -328,8 +403,14 @@ mod tests {
     fn adjacent_runs_with_identical_resulting_attrs_are_merged() {
         // Two existing runs [0,5) and [5,10), both bold; applying "bold" again
         // over [3,8) must not leave a seam at 5 or at the update boundaries.
-        let existing = vec![run(0, 5, Some("bold"), None), run(5, 10, Some("bold"), None)];
-        let update = RunStyleUpdate { font_weight: Some(Some("bold".to_string())), font_style: None };
+        let existing = vec![
+            run(0, 5, Some("bold"), None),
+            run(5, 10, Some("bold"), None),
+        ];
+        let update = RunStyleUpdate {
+            font_weight: Some(Some("bold".to_string())),
+            font_style: None,
+        };
         let result = apply_run_style(&existing, 3, 8, &update);
         assert_eq!(result, vec![run(0, 10, Some("bold"), None)]);
     }
@@ -338,18 +419,44 @@ mod tests {
     fn untouched_axis_is_preserved_when_update_omits_it() {
         // Existing run has both weight and style; update only weight -> style survives.
         let existing = vec![run(0, 5, Some("bold"), Some("italic"))];
-        let update = RunStyleUpdate { font_weight: Some(Some("700".to_string())), font_style: None };
+        let update = RunStyleUpdate {
+            font_weight: Some(Some("700".to_string())),
+            font_style: None,
+        };
         let result = apply_run_style(&existing, 0, 5, &update);
         assert_eq!(result, vec![run(0, 5, Some("700"), Some("italic"))]);
     }
 
     // --- read_text_box_runs ---
 
-    fn tspan(content_start: usize, content_end: usize, start: usize, end: usize, attrs: Vec<(&str, &str)>, children: Vec<ScannedNode>) -> ScannedNode {
-        node("tspan", content_start, content_end, start, end, attrs, children)
+    fn tspan(
+        content_start: usize,
+        content_end: usize,
+        start: usize,
+        end: usize,
+        attrs: Vec<(&str, &str)>,
+        children: Vec<ScannedNode>,
+    ) -> ScannedNode {
+        node(
+            "tspan",
+            content_start,
+            content_end,
+            start,
+            end,
+            attrs,
+            children,
+        )
     }
 
-    fn node(tag: &str, content_start: usize, content_end: usize, start: usize, end: usize, attrs: Vec<(&str, &str)>, children: Vec<ScannedNode>) -> ScannedNode {
+    fn node(
+        tag: &str,
+        content_start: usize,
+        content_end: usize,
+        start: usize,
+        end: usize,
+        attrs: Vec<(&str, &str)>,
+        children: Vec<ScannedNode>,
+    ) -> ScannedNode {
         ScannedNode {
             tag: tag.to_string(),
             content_start,

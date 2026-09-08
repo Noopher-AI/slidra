@@ -17,7 +17,11 @@ use crate::text::font::FontMetrics;
 /// Measures the rendered width, in pixels, of `text` at `font_size_px` using
 /// `font`. See the module doc comment for the shaping order this must
 /// preserve.
-pub fn measure_text_width(font: &dyn FontMetrics, text: &str, font_size_px: f64) -> CoMotionResult<f64> {
+pub fn measure_text_width(
+    font: &dyn FontMetrics,
+    text: &str,
+    font_size_px: f64,
+) -> CoMotionResult<f64> {
     // Validation happens BEFORE the empty-text/zero-size early return below
     // — this is the TS source's own order (`text-metrics.ts` lines 602-607),
     // not incidental: an invalid `font_size_px` still errors even when
@@ -33,7 +37,10 @@ pub fn measure_text_width(font: &dyn FontMetrics, text: &str, font_size_px: f64)
     // `for (const character of text)` — JS string iteration also yields one
     // full code point per step (never splitting a surrogate pair), so this
     // is the direct Rust equivalent, not an approximation of it.
-    let glyph_ids: Vec<u16> = text.chars().map(|ch| font.glyph_id_for_code_point(ch as u32)).collect();
+    let glyph_ids: Vec<u16> = text
+        .chars()
+        .map(|ch| font.glyph_id_for_code_point(ch as u32))
+        .collect();
 
     let shaped_glyphs = font.substitute_ligatures(&glyph_ids);
 
@@ -169,7 +176,10 @@ pub(crate) mod test_support {
             result
         }
         fn pair_kerning(&self, glyph_a: u16, glyph_b: u16) -> f64 {
-            self.kerning.get(&(glyph_a, glyph_b)).copied().unwrap_or(0.0)
+            self.kerning
+                .get(&(glyph_a, glyph_b))
+                .copied()
+                .unwrap_or(0.0)
         }
     }
 }
@@ -222,14 +232,19 @@ mod tests {
     #[test]
     fn sums_glyph_advances_scaled_by_font_size_over_units_per_em() {
         // units_per_em=1000, two glyphs of 100 and 200 units, no kerning/ligature.
-        let font = MockFont::default().with_glyph('a', 1, 100.0).with_glyph('b', 2, 200.0);
+        let font = MockFont::default()
+            .with_glyph('a', 1, 100.0)
+            .with_glyph('b', 2, 200.0);
         // (100+200) units * 20px / 1000 upm = 6px.
         assert_eq!(measure_text_width(&font, "ab", 20.0).unwrap(), 6.0);
     }
 
     #[test]
     fn applies_pair_kerning_between_adjacent_glyphs() {
-        let font = MockFont::default().with_glyph('a', 1, 100.0).with_glyph('b', 2, 200.0).with_kerning(1, 2, 50.0);
+        let font = MockFont::default()
+            .with_glyph('a', 1, 100.0)
+            .with_glyph('b', 2, 200.0)
+            .with_kerning(1, 2, 50.0);
         // (100+200+50) units * 10px / 1000 upm = 3.5px.
         assert_eq!(measure_text_width(&font, "ab", 10.0).unwrap(), 3.5);
     }

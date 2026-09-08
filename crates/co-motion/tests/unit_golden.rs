@@ -12,15 +12,17 @@
 //! wherever `cargo test` runs).
 
 use co_motion::svgnum::format_svg_number;
-use co_motion::text::font::{parse_font, DEFAULT_FONT_BYTES};
+use co_motion::text::font::{DEFAULT_FONT_BYTES, parse_font};
 use co_motion::text::render::render_text_box_content;
-use co_motion::text::wrap::{wrap_text, Align, WrapOptions};
+use co_motion::text::wrap::{Align, WrapOptions, wrap_text};
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 
 fn golden_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(name)
 }
 
 #[derive(Deserialize)]
@@ -33,17 +35,29 @@ struct SvgNumberCase {
 fn svgnum_matches_ts_reference_for_every_golden_case() {
     let raw = fs::read_to_string(golden_path("svgnum.json"))
         .expect("tests/golden/svgnum.json must exist — run `node scripts/gen-golden.mjs`");
-    let cases: Vec<SvgNumberCase> = serde_json::from_str(&raw).expect("golden file must be valid JSON");
-    assert!(cases.len() >= 200, "plan AC9 requires >= 200 svgnum golden cases, found {}", cases.len());
+    let cases: Vec<SvgNumberCase> =
+        serde_json::from_str(&raw).expect("golden file must be valid JSON");
+    assert!(
+        cases.len() >= 200,
+        "plan AC9 requires >= 200 svgnum golden cases, found {}",
+        cases.len()
+    );
 
     let mut failures = Vec::new();
     for case in &cases {
         let actual = format_svg_number(case.input);
         if actual != case.expected {
-            failures.push(format!("input={} expected={:?} actual={:?}", case.input, case.expected, actual));
+            failures.push(format!(
+                "input={} expected={:?} actual={:?}",
+                case.input, case.expected, actual
+            ));
         }
     }
-    assert!(failures.is_empty(), "svgnum mismatches against TS golden data:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "svgnum mismatches against TS golden data:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[derive(Deserialize)]
@@ -73,17 +87,32 @@ struct TextWrapFixture {
 /// combination rather than only in isolation.
 #[test]
 fn text_wrap_and_render_matches_ts_reference_fixture() {
-    let raw = fs::read_to_string(golden_path("text_wrap_fixture.json"))
-        .expect("tests/golden/text_wrap_fixture.json must exist — run `node scripts/gen-golden.mjs`");
-    let fixture: TextWrapFixture = serde_json::from_str(&raw).expect("golden file must be valid JSON");
+    let raw = fs::read_to_string(golden_path("text_wrap_fixture.json")).expect(
+        "tests/golden/text_wrap_fixture.json must exist — run `node scripts/gen-golden.mjs`",
+    );
+    let fixture: TextWrapFixture =
+        serde_json::from_str(&raw).expect("golden file must be valid JSON");
 
     let font = parse_font(DEFAULT_FONT_BYTES).expect("embedded default font must parse");
-    let options = WrapOptions { width: fixture.input.width, font: &font, font_size_px: fixture.input.font_size_px, align: Align::Left, indents: None };
+    let options = WrapOptions {
+        width: fixture.input.width,
+        font: &font,
+        font_size_px: fixture.input.font_size_px,
+        align: Align::Left,
+        indents: None,
+    };
 
-    let wrapped = wrap_text(&fixture.input.text, &options).expect("fixture text must wrap without error");
+    let wrapped =
+        wrap_text(&fixture.input.text, &options).expect("fixture text must wrap without error");
     let markup = render_text_box_content(&wrapped.lines, &[]);
     let height = format_svg_number(wrapped.height);
 
-    assert_eq!(markup, fixture.expected_inner_markup, "rendered <tspan> markup diverges from the TS-generated golden fixture");
-    assert_eq!(height, fixture.expected_text_height, "text-box height diverges from the TS-generated golden fixture");
+    assert_eq!(
+        markup, fixture.expected_inner_markup,
+        "rendered <tspan> markup diverges from the TS-generated golden fixture"
+    );
+    assert_eq!(
+        height, fixture.expected_text_height,
+        "text-box height diverges from the TS-generated golden fixture"
+    );
 }

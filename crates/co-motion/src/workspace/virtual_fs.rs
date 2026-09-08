@@ -25,8 +25,12 @@ use std::path::{Path, PathBuf};
 /// nothing outside this module should ever see a `realPath` that didn't come
 /// out of an actual `read_dir` call.
 enum VirtualNode {
-    File { real_path: PathBuf },
-    Directory { children: HashMap<String, VirtualNode> },
+    File {
+        real_path: PathBuf,
+    },
+    Directory {
+        children: HashMap<String, VirtualNode>,
+    },
 }
 
 /// Builds the virtual tree for `work_dir` by recursively enumerating it.
@@ -46,8 +50,8 @@ fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> CoMotio
     // anything is absent — stays a plain `CoMotionError::invalid`, matching
     // the TS original's "only CoMotionNotFoundError is granted a 404"
     // discipline (ticket #11, fourth fix round).
-    let entries =
-        std::fs::read_dir(real_dir).map_err(|_| CoMotionError::invalid("讀取簡報內容時發生錯誤"))?;
+    let entries = std::fs::read_dir(real_dir)
+        .map_err(|_| CoMotionError::invalid("讀取簡報內容時發生錯誤"))?;
     for entry in entries {
         let entry = entry.map_err(|_| CoMotionError::invalid("讀取簡報內容時發生錯誤"))?;
         let file_type = entry
@@ -58,7 +62,12 @@ fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> CoMotio
         if file_type.is_dir() {
             let mut grandchildren = HashMap::new();
             populate(&real_path, &mut grandchildren)?;
-            node.insert(name, VirtualNode::Directory { children: grandchildren });
+            node.insert(
+                name,
+                VirtualNode::Directory {
+                    children: grandchildren,
+                },
+            );
         } else if file_type.is_file() {
             node.insert(name, VirtualNode::File { real_path });
         }
@@ -70,7 +79,10 @@ fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> CoMotio
 /// Leading/trailing/duplicate slashes collapse away; no segment is ever
 /// interpreted, resolved, or normalized against the real filesystem.
 fn split_virtual_path(virtual_path: &str) -> Vec<&str> {
-    virtual_path.split('/').filter(|segment| !segment.is_empty()).collect()
+    virtual_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect()
 }
 
 /// Walks the tree by exact segment lookup. Returns `None` if any step misses
@@ -99,7 +111,11 @@ pub fn list_virtual_entries(work_dir: &Path, virtual_path: &str) -> CoMotionResu
             Ok(names)
         }
         _ => {
-            let display = if virtual_path.is_empty() { "/" } else { virtual_path };
+            let display = if virtual_path.is_empty() {
+                "/"
+            } else {
+                virtual_path
+            };
             Err(CoMotionError::not_found(format!("找不到目錄：{display}")))
         }
     }
@@ -112,10 +128,12 @@ pub fn resolve_virtual_file_path(work_dir: &Path, virtual_path: &str) -> CoMotio
     let root = build_virtual_tree(work_dir)?;
     let segments = split_virtual_path(virtual_path);
     match navigate(&root, &segments) {
-        None => Err(CoMotionError::not_found(format!("找不到檔案：{virtual_path}"))),
-        Some(VirtualNode::Directory { .. }) => {
-            Err(CoMotionError::not_found(format!("不是檔案：{virtual_path}")))
-        }
+        None => Err(CoMotionError::not_found(format!(
+            "找不到檔案：{virtual_path}"
+        ))),
+        Some(VirtualNode::Directory { .. }) => Err(CoMotionError::not_found(format!(
+            "不是檔案：{virtual_path}"
+        ))),
         Some(VirtualNode::File { real_path }) => Ok(real_path.clone()),
     }
 }
@@ -151,8 +169,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("co-motion-test-vfs-{label}-{}", crate::id::random_hex_suffix()));
+        let dir = std::env::temp_dir().join(format!(
+            "co-motion-test-vfs-{label}-{}",
+            crate::id::random_hex_suffix()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -165,7 +185,10 @@ mod tests {
 
         let resolved = resolve_virtual_file_path(&work, "slides/001.svg").unwrap();
         assert_eq!(resolved, work.join("slides").join("001.svg"));
-        assert_eq!(read_virtual_file(&work, "slides/001.svg").unwrap(), "<svg/>");
+        assert_eq!(
+            read_virtual_file(&work, "slides/001.svg").unwrap(),
+            "<svg/>"
+        );
 
         std::fs::remove_dir_all(&work).ok();
     }
@@ -199,7 +222,12 @@ mod tests {
         // `work.join("../secret.txt")` would land on.
         std::fs::write(parent.join("secret.txt"), b"should never be reachable").unwrap();
 
-        for hostile in ["../secret.txt", "/etc/passwd", "slides//001.svg", "a/../../secret.txt"] {
+        for hostile in [
+            "../secret.txt",
+            "/etc/passwd",
+            "slides//001.svg",
+            "a/../../secret.txt",
+        ] {
             let result = resolve_virtual_file_path(&work, hostile);
             assert!(result.is_err(), "expected {hostile:?} to fail to resolve");
             if let Err(err) = result {

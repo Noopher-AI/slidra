@@ -32,7 +32,10 @@
 /// `CoMotionError` is reserved for input this module cannot control, which
 /// a caller passing it a float it just computed is not.
 pub fn format_svg_number(value: f64) -> String {
-    assert!(value.is_finite(), "format_svg_number: value must be finite, got {value}");
+    assert!(
+        value.is_finite(),
+        "format_svg_number: value must be finite, got {value}"
+    );
 
     let rounded = js_to_fixed_4(value);
     if rounded == 0.0 {
@@ -74,7 +77,9 @@ pub fn format_svg_number(value: f64) -> String {
 /// boundary test below for the specific values checked this way.
 fn js_to_fixed_4(value: f64) -> f64 {
     let fixed = format!("{value:.4}");
-    fixed.parse::<f64>().expect("a `{:.4}`-formatted f64 string always reparses as f64")
+    fixed
+        .parse::<f64>()
+        .expect("a `{:.4}`-formatted f64 string always reparses as f64")
 }
 
 /// Ports `String(Number)` for the non-zero branch of `formatSvgNumber`.

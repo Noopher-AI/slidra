@@ -42,24 +42,46 @@ pub const LIST_INDENT_EM: f64 = 1.5;
 /// empty, or has fewer tokens than paragraphs — defaults to `ListKind::None`
 /// (a legacy box with no attribute at all reads as "no list anywhere",
 /// byte-for-byte the pre-list behaviour).
-pub fn parse_list_tokens(raw: Option<&str>, paragraph_count: usize, element_id: &str) -> CoMotionResult<Vec<ListKind>> {
+pub fn parse_list_tokens(
+    raw: Option<&str>,
+    paragraph_count: usize,
+    element_id: &str,
+) -> CoMotionResult<Vec<ListKind>> {
     let tokens: Vec<&str> = match raw {
         None => Vec::new(),
         Some(s) if s.trim().is_empty() => Vec::new(),
-        Some(s) => s.trim().split_whitespace().collect(),
+        Some(s) => s.split_whitespace().collect(),
     };
     for token in &tokens {
         if ListKind::from_token(token).is_none() {
-            return Err(CoMotionError::invalid(format!("元素 {element_id} 的 data-comot-list 含不合法的值：{token}")));
+            return Err(CoMotionError::invalid(format!(
+                "元素 {element_id} 的 data-comot-list 含不合法的值：{token}"
+            )));
         }
     }
-    Ok((0..paragraph_count).map(|i| tokens.get(i).and_then(|t| ListKind::from_token(t)).unwrap_or(ListKind::None)).collect())
+    Ok((0..paragraph_count)
+        .map(|i| {
+            tokens
+                .get(i)
+                .and_then(|t| ListKind::from_token(t))
+                .unwrap_or(ListKind::None)
+        })
+        .collect())
 }
 
 /// `wrap_text`'s `indents` option, one entry per paragraph — non-`None`
 /// paragraphs get `LIST_INDENT_EM * font_size`, everything else 0.
 pub fn list_indents(tokens: &[ListKind], font_size_px: f64) -> Vec<f64> {
-    tokens.iter().map(|&kind| if kind == ListKind::None { 0.0 } else { LIST_INDENT_EM * font_size_px }).collect()
+    tokens
+        .iter()
+        .map(|&kind| {
+            if kind == ListKind::None {
+                0.0
+            } else {
+                LIST_INDENT_EM * font_size_px
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -81,13 +103,19 @@ mod tests {
     #[test]
     fn fewer_tokens_than_paragraphs_pads_remainder_with_none() {
         let tokens = parse_list_tokens(Some("bullet"), 3, "el1").unwrap();
-        assert_eq!(tokens, vec![ListKind::Bullet, ListKind::None, ListKind::None]);
+        assert_eq!(
+            tokens,
+            vec![ListKind::Bullet, ListKind::None, ListKind::None]
+        );
     }
 
     #[test]
     fn parses_one_token_per_paragraph_separated_by_whitespace() {
         let tokens = parse_list_tokens(Some("bullet number none"), 3, "el1").unwrap();
-        assert_eq!(tokens, vec![ListKind::Bullet, ListKind::Number, ListKind::None]);
+        assert_eq!(
+            tokens,
+            vec![ListKind::Bullet, ListKind::Number, ListKind::None]
+        );
     }
 
     #[test]
@@ -99,7 +127,10 @@ mod tests {
     #[test]
     fn invalid_token_errors_with_element_id_and_the_bad_value() {
         let err = parse_list_tokens(Some("bullet garbage"), 2, "el42").unwrap_err();
-        assert_eq!(err.message(), "元素 el42 的 data-comot-list 含不合法的值：garbage");
+        assert_eq!(
+            err.message(),
+            "元素 el42 的 data-comot-list 含不合法的值：garbage"
+        );
     }
 
     #[test]

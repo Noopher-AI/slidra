@@ -35,18 +35,21 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::geometry::transform::{parse_transform, Matrix};
 pub use crate::geometry::bbox::MAX_CONTAINER_DEPTH;
-use crate::slide::scan::{attribute_value, position_at, scan_document, ScannedAttribute, ScannedNode};
-use crate::slide::style::{read_slide_page_style, PageStyle};
+use crate::geometry::transform::{Matrix, parse_transform};
+use crate::slide::scan::{
+    ScannedAttribute, ScannedNode, attribute_value, position_at, scan_document,
+};
+use crate::slide::style::{PageStyle, read_slide_page_style};
 pub use crate::slide::table_grid::TABLE_CONTAINER_TYPE;
-use crate::slide::table_grid::{describe_table_shape_problem, read_table_grid, TableGrid};
+use crate::slide::table_grid::{TableGrid, describe_table_shape_problem, read_table_grid};
 use crate::text::escape::unescape_xml_text;
-use crate::text::runs::{read_text_box_runs, utf16_slice, TextRun};
+use crate::text::runs::{TextRun, read_text_box_runs, utf16_slice};
 
 /// Legal primitive tags (AC 4). `circle` is in because the demo deck uses it
 /// and it is a degenerate `ellipse`.
-pub const SLIDE_PRIMITIVE_TAGS: &[&str] = &["text", "rect", "ellipse", "circle", "line", "image", "path"];
+pub const SLIDE_PRIMITIVE_TAGS: &[&str] =
+    &["text", "rect", "ellipse", "circle", "line", "image", "path"];
 
 /// Explicitly illegal, and `convert` will NOT remove them for you (spec #70,
 /// ADR-0005).
@@ -66,8 +69,14 @@ const PRIMITIVE_CHILD_TAGS: &[&str] = &["tspan"];
 
 /// Attributes the normal form keeps on the container, never on the
 /// primitive.
-pub const CONTAINER_ATTRIBUTES: &[&str] =
-    &["id", "data-comot-name", "data-comot-media", "transform", "data-comot-lock", "data-comot-type"];
+pub const CONTAINER_ATTRIBUTES: &[&str] = &[
+    "id",
+    "data-comot-name",
+    "data-comot-media",
+    "transform",
+    "data-comot-lock",
+    "data-comot-type",
+];
 
 /// The value `data-comot-type` takes on a chart container (E2.T12).
 pub const CHART_CONTAINER_TYPE: &str = "chart";
@@ -116,7 +125,9 @@ fn primitive_kind(tag: &str) -> SlideElementKind {
         "line" => SlideElementKind::Line,
         "image" => SlideElementKind::Image,
         "path" => SlideElementKind::Path,
-        other => unreachable!("primitive tag {other:?} is not one of SLIDE_PRIMITIVE_TAGS; assert_slide_compliant should have rejected it first"),
+        other => unreachable!(
+            "primitive tag {other:?} is not one of SLIDE_PRIMITIVE_TAGS; assert_slide_compliant should have rejected it first"
+        ),
     }
 }
 
@@ -150,7 +161,10 @@ impl SlidePrimitive {
     /// Since `attrs` is already deduplicated to one entry per name (see this
     /// struct's doc comment), a linear scan finds the one and only match.
     pub fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|(key, _)| key == name).map(|(_, value)| value.as_str())
+        self.attrs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
     }
 }
 
@@ -250,15 +264,33 @@ struct Checker<'a> {
     seen_ids: HashSet<String>,
 }
 
-impl<'a> Checker<'a> {
-    fn report(&mut self, element: &ScannedNode, code: ComplianceCode, message: String, element_id: Option<String>) {
+impl Checker<'_> {
+    fn report(
+        &mut self,
+        element: &ScannedNode,
+        code: ComplianceCode,
+        message: String,
+        element_id: Option<String>,
+    ) {
         let (line, column) = position_at(self.svg, element.start);
-        self.issues.push(ComplianceIssue { code, line, column, tag: Some(element.tag.clone()), element_id, message });
+        self.issues.push(ComplianceIssue {
+            code,
+            line,
+            column,
+            tag: Some(element.tag.clone()),
+            element_id,
+            message,
+        });
     }
 
     fn note_id(&mut self, element: &ScannedNode, id: &str) {
         if self.seen_ids.contains(id) {
-            self.report(element, ComplianceCode::DuplicateId, format!("識別碼 {id} 重複出現，每個元素的識別碼必須唯一。"), Some(id.to_string()));
+            self.report(
+                element,
+                ComplianceCode::DuplicateId,
+                format!("識別碼 {id} 重複出現，每個元素的識別碼必須唯一。"),
+                Some(id.to_string()),
+            );
             return;
         }
         self.seen_ids.insert(id.to_string());
@@ -268,14 +300,20 @@ impl<'a> Checker<'a> {
         self.report(
             element,
             ComplianceCode::UnknownTag,
-            format!("<{}> 不是合法的投影片元素，合法圖元為 {}；多邊形與折線請改用 <path>。", element.tag, SLIDE_PRIMITIVE_TAGS.join("、")),
+            format!(
+                "<{}> 不是合法的投影片元素，合法圖元為 {}；多邊形與折線請改用 <path>。",
+                element.tag,
+                SLIDE_PRIMITIVE_TAGS.join("、")
+            ),
             None,
         );
     }
 
     fn walk_primitive_children_only(&mut self, element: &ScannedNode) {
         for child in &element.children {
-            if IGNORED_CHILD_TAGS.contains(&child.tag.as_str()) || PRIMITIVE_CHILD_TAGS.contains(&child.tag.as_str()) {
+            if IGNORED_CHILD_TAGS.contains(&child.tag.as_str())
+                || PRIMITIVE_CHILD_TAGS.contains(&child.tag.as_str())
+            {
                 continue;
             }
             if FORBIDDEN_TAGS.contains(&child.tag.as_str()) {
@@ -299,13 +337,23 @@ impl<'a> Checker<'a> {
 
     fn walk_container(&mut self, element: &ScannedNode, depth: usize) {
         if depth > MAX_CONTAINER_DEPTH {
-            self.report(element, ComplianceCode::TooDeep, format!("容器巢狀超過 {MAX_CONTAINER_DEPTH} 層。"), None);
+            self.report(
+                element,
+                ComplianceCode::TooDeep,
+                format!("容器巢狀超過 {MAX_CONTAINER_DEPTH} 層。"),
+                None,
+            );
             return;
         }
 
         let id = attribute_value(element, "id");
         match id.as_deref() {
-            None => self.report(element, ComplianceCode::MissingId, format!("容器 <g> 沒有 id，識別碼必須掛在容器上。{CONVERT_HINT}"), None),
+            None => self.report(
+                element,
+                ComplianceCode::MissingId,
+                format!("容器 <g> 沒有 id，識別碼必須掛在容器上。{CONVERT_HINT}"),
+                None,
+            ),
             Some(id_str) => self.note_id(element, id_str),
         }
 
@@ -314,51 +362,94 @@ impl<'a> Checker<'a> {
                 self.report(
                     element,
                     ComplianceCode::BadTransform,
-                    format!("容器{}的 transform 無法解析：{}", id_suffix(id.as_deref()), err.message()),
+                    format!(
+                        "容器{}的 transform 無法解析：{}",
+                        id_suffix(id.as_deref()),
+                        err.message()
+                    ),
                     id.clone(),
                 );
             }
         }
 
-        let children: Vec<&ScannedNode> = element.children.iter().filter(|child| !IGNORED_CHILD_TAGS.contains(&child.tag.as_str())).collect();
+        let children: Vec<&ScannedNode> = element
+            .children
+            .iter()
+            .filter(|child| !IGNORED_CHILD_TAGS.contains(&child.tag.as_str()))
+            .collect();
         if children.is_empty() {
-            self.report(element, ComplianceCode::EmptyContainer, format!("容器{}裡沒有任何圖元或子容器。", id_suffix(id.as_deref())), id.clone());
+            self.report(
+                element,
+                ComplianceCode::EmptyContainer,
+                format!("容器{}裡沒有任何圖元或子容器。", id_suffix(id.as_deref())),
+                id.clone(),
+            );
             return;
         }
 
         // A table container relaxes ADR-0012's normal partition (E2.T14).
         if attribute_value(element, "data-comot-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
             if let Some(problem) = describe_table_shape_problem(element) {
-                self.report(element, ComplianceCode::InvalidTableShape, format!("表格容器{}格式不正確：{}", id_suffix(id.as_deref()), problem), id.clone());
-            }
-            return;
-        }
-
-        // A chart container relaxes ADR-0012's normal partition (E2.T12).
-        if attribute_value(element, "data-comot-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
-            let others: Vec<&ScannedNode> = children.iter().filter(|child| child.tag != "comot:chart" && child.tag != "svg").copied().collect();
-            for other in others {
-                if !FORBIDDEN_TAGS.contains(&other.tag.as_str()) {
-                    self.report_unknown(other);
-                }
-            }
-            let chart_count = children.iter().filter(|child| child.tag == "comot:chart").count();
-            let svg_count = children.iter().filter(|child| child.tag == "svg").count();
-            if chart_count != 1 || svg_count != 1 {
                 self.report(
                     element,
-                    ComplianceCode::InvalidChartShape,
-                    format!("圖表容器{}必須恰好包含一個 <comot:chart> 與一個內嵌 <svg>。", id_suffix(id.as_deref())),
+                    ComplianceCode::InvalidTableShape,
+                    format!(
+                        "表格容器{}格式不正確：{}",
+                        id_suffix(id.as_deref()),
+                        problem
+                    ),
                     id.clone(),
                 );
             }
             return;
         }
 
-        let containers: Vec<&ScannedNode> = children.iter().filter(|child| child.tag == "g").copied().collect();
-        let primitives: Vec<&ScannedNode> = children.iter().filter(|child| SLIDE_PRIMITIVE_TAGS.contains(&child.tag.as_str())).copied().collect();
-        let others: Vec<&ScannedNode> =
-            children.iter().filter(|child| child.tag != "g" && !SLIDE_PRIMITIVE_TAGS.contains(&child.tag.as_str())).copied().collect();
+        // A chart container relaxes ADR-0012's normal partition (E2.T12).
+        if attribute_value(element, "data-comot-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
+            let others: Vec<&ScannedNode> = children
+                .iter()
+                .filter(|child| child.tag != "comot:chart" && child.tag != "svg")
+                .copied()
+                .collect();
+            for other in others {
+                if !FORBIDDEN_TAGS.contains(&other.tag.as_str()) {
+                    self.report_unknown(other);
+                }
+            }
+            let chart_count = children
+                .iter()
+                .filter(|child| child.tag == "comot:chart")
+                .count();
+            let svg_count = children.iter().filter(|child| child.tag == "svg").count();
+            if chart_count != 1 || svg_count != 1 {
+                self.report(
+                    element,
+                    ComplianceCode::InvalidChartShape,
+                    format!(
+                        "圖表容器{}必須恰好包含一個 <comot:chart> 與一個內嵌 <svg>。",
+                        id_suffix(id.as_deref())
+                    ),
+                    id.clone(),
+                );
+            }
+            return;
+        }
+
+        let containers: Vec<&ScannedNode> = children
+            .iter()
+            .filter(|child| child.tag == "g")
+            .copied()
+            .collect();
+        let primitives: Vec<&ScannedNode> = children
+            .iter()
+            .filter(|child| SLIDE_PRIMITIVE_TAGS.contains(&child.tag.as_str()))
+            .copied()
+            .collect();
+        let others: Vec<&ScannedNode> = children
+            .iter()
+            .filter(|child| child.tag != "g" && !SLIDE_PRIMITIVE_TAGS.contains(&child.tag.as_str()))
+            .copied()
+            .collect();
 
         for other in others {
             if !FORBIDDEN_TAGS.contains(&other.tag.as_str()) {
@@ -367,7 +458,15 @@ impl<'a> Checker<'a> {
         }
 
         if !containers.is_empty() && !primitives.is_empty() {
-            self.report(element, ComplianceCode::MixedChildren, format!("容器{}同時含有圖元與子容器，容器只能二擇一。", id_suffix(id.as_deref())), id.clone());
+            self.report(
+                element,
+                ComplianceCode::MixedChildren,
+                format!(
+                    "容器{}同時含有圖元與子容器，容器只能二擇一。",
+                    id_suffix(id.as_deref())
+                ),
+                id.clone(),
+            );
         }
 
         for primitive in primitives {
@@ -426,10 +525,19 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
         }
     };
 
-    let mut checker = Checker { svg, issues: Vec::new(), seen_ids: HashSet::new() };
+    let mut checker = Checker {
+        svg,
+        issues: Vec::new(),
+        seen_ids: HashSet::new(),
+    };
 
     if attribute_value(svg_root, "viewBox").is_none() {
-        checker.report(svg_root, ComplianceCode::MissingViewbox, "根節點 <svg> 沒有 viewBox，投影片就沒有座標系。".to_string(), None);
+        checker.report(
+            svg_root,
+            ComplianceCode::MissingViewbox,
+            "根節點 <svg> 沒有 viewBox，投影片就沒有座標系。".to_string(),
+            None,
+        );
     }
 
     for_each_node(&roots, |element| {
@@ -437,7 +545,10 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
             checker.report(
                 element,
                 ComplianceCode::ForbiddenTag,
-                format!("<{}> 不是合法元素，轉換命令不會替你移除，請自行刪除後再轉換。", element.tag),
+                format!(
+                    "<{}> 不是合法元素，轉換命令不會替你移除，請自行刪除後再轉換。",
+                    element.tag
+                ),
                 None,
             );
         }
@@ -455,7 +566,15 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
             continue;
         }
         if SLIDE_PRIMITIVE_TAGS.contains(&child.tag.as_str()) {
-            checker.report(child, ComplianceCode::BarePrimitive, format!("<{}> 是裸圖元，必須包在 <g> 容器裡。{CONVERT_HINT}", child.tag), None);
+            checker.report(
+                child,
+                ComplianceCode::BarePrimitive,
+                format!(
+                    "<{}> 是裸圖元，必須包在 <g> 容器裡。{CONVERT_HINT}",
+                    child.tag
+                ),
+                None,
+            );
             if let Some(bare_id) = attribute_value(child, "id") {
                 checker.note_id(child, &bare_id);
             }
@@ -466,7 +585,11 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
     }
 
     let mut issues = checker.issues;
-    issues.sort_by(|left, right| left.line.cmp(&right.line).then(left.column.cmp(&right.column)));
+    issues.sort_by(|left, right| {
+        left.line
+            .cmp(&right.line)
+            .then(left.column.cmp(&right.column))
+    });
     issues
 }
 
@@ -475,9 +598,18 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
 /// exactly where the slide is wrong instead of quietly coping with it.
 pub fn assert_slide_compliant(svg: &str, slide_path: &str) -> CoMotionResult<()> {
     let issues = check_slide_compliance(svg);
-    let Some(first) = issues.first() else { return Ok(()) };
-    let more = if issues.len() > 1 { format!("（另有 {} 處問題）", issues.len() - 1) } else { String::new() };
-    Err(CoMotionError::invalid(format!("投影片 {slide_path} 不合規（第 {} 行第 {} 欄）：{}{}", first.line, first.column, first.message, more)))
+    let Some(first) = issues.first() else {
+        return Ok(());
+    };
+    let more = if issues.len() > 1 {
+        format!("（另有 {} 處問題）", issues.len() - 1)
+    } else {
+        String::new()
+    };
+    Err(CoMotionError::invalid(format!(
+        "投影片 {slide_path} 不合規（第 {} 行第 {} 欄）：{}{}",
+        first.line, first.column, first.message, more
+    )))
 }
 
 /// A text box's horizontal alignment. Ports the TS source's inline
@@ -499,9 +631,9 @@ pub fn read_text_align(container: &ScannedNode, element_id: &str) -> CoMotionRes
         Some("left") => Ok(TextAlign::Left),
         Some("center") => Ok(TextAlign::Center),
         Some("right") => Ok(TextAlign::Right),
-        Some(other) => {
-            Err(CoMotionError::invalid(format!("元素 {element_id} 的 {TEXT_ALIGN_ATTRIBUTE} 不是合法值（left、center 或 right）：{other}")))
-        }
+        Some(other) => Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 的 {TEXT_ALIGN_ATTRIBUTE} 不是合法值（left、center 或 right）：{other}"
+        ))),
     }
 }
 
@@ -519,7 +651,13 @@ fn to_primitive_attrs(attributes: &[ScannedAttribute]) -> Vec<(String, String)> 
         }
         values.insert(attribute.name.clone(), attribute.value.clone());
     }
-    order.into_iter().map(|key| { let value = values.remove(&key).expect("key was just inserted above"); (key, value) }).collect()
+    order
+        .into_iter()
+        .map(|key| {
+            let value = values.remove(&key).expect("key was just inserted above");
+            (key, value)
+        })
+        .collect()
 }
 
 /// Builds one `SlidePrimitive` from a scanned child node. `svg` is the whole
@@ -528,15 +666,37 @@ fn to_primitive(child: &ScannedNode, svg: &str) -> SlidePrimitive {
     let tag = child.tag.to_lowercase();
     let attrs = to_primitive_attrs(&child.attributes);
     if tag != "text" {
-        return SlidePrimitive { tag, attrs, text: String::new(), tspan_count: 0, runs: Vec::new() };
+        return SlidePrimitive {
+            tag,
+            attrs,
+            text: String::new(),
+            tspan_count: 0,
+            runs: Vec::new(),
+        };
     }
-    let tspan_count = child.children.iter().filter(|grandchild| grandchild.tag == "tspan").count();
+    let tspan_count = child
+        .children
+        .iter()
+        .filter(|grandchild| grandchild.tag == "tspan")
+        .count();
     if tspan_count > 0 {
         let (content, runs) = read_text_box_runs(child, svg);
-        return SlidePrimitive { tag, attrs, text: content, tspan_count, runs };
+        return SlidePrimitive {
+            tag,
+            attrs,
+            text: content,
+            tspan_count,
+            runs,
+        };
     }
     let text = unescape_xml_text(&utf16_slice(svg, child.content_start, child.content_end));
-    SlidePrimitive { tag, attrs, text, tspan_count: 0, runs: Vec::new() }
+    SlidePrimitive {
+        tag,
+        attrs,
+        text,
+        tspan_count: 0,
+        runs: Vec::new(),
+    }
 }
 
 /// Mirrors `Number(text)` narrowly enough for `data-comot-text-width`/
@@ -558,20 +718,34 @@ fn parse_positive_dimension(raw: &str, element_id: &str, attribute: &str) -> CoM
     let value = js_parse_finite(trimmed);
     match value {
         Some(v) if !trimmed.is_empty() && v.is_finite() && v > 0.0 => Ok(v),
-        _ => Err(CoMotionError::invalid(format!("元素 {element_id} 的 {attribute} 不是合法的正數：{raw}"))),
+        _ => Err(CoMotionError::invalid(format!(
+            "元素 {element_id} 的 {attribute} 不是合法的正數：{raw}"
+        ))),
     }
 }
 
 fn to_element(element: &ScannedNode, svg: &str) -> CoMotionResult<SlideElement> {
     let transform = attribute_value(element, "transform");
-    let children: Vec<&ScannedNode> = element.children.iter().filter(|child| !IGNORED_CHILD_TAGS.contains(&child.tag.as_str())).collect();
+    let children: Vec<&ScannedNode> = element
+        .children
+        .iter()
+        .filter(|child| !IGNORED_CHILD_TAGS.contains(&child.tag.as_str()))
+        .collect();
     let is_group = !children.is_empty() && children.iter().all(|child| child.tag == "g");
 
-    let element_id = attribute_value(element, "id").expect("assert_slide_compliant already required every container to have an id");
-    let is_table = attribute_value(element, "data-comot-type").as_deref() == Some(TABLE_CONTAINER_TYPE);
+    let element_id = attribute_value(element, "id")
+        .expect("assert_slide_compliant already required every container to have an id");
+    let is_table =
+        attribute_value(element, "data-comot-type").as_deref() == Some(TABLE_CONTAINER_TYPE);
 
-    let primitives: Vec<SlidePrimitive> =
-        if is_group || is_table { Vec::new() } else { children.iter().map(|child| to_primitive(child, svg)).collect() };
+    let primitives: Vec<SlidePrimitive> = if is_group || is_table {
+        Vec::new()
+    } else {
+        children
+            .iter()
+            .map(|child| to_primitive(child, svg))
+            .collect()
+    };
 
     let kind = if is_table {
         SlideElementKind::Table
@@ -587,19 +761,34 @@ fn to_element(element: &ScannedNode, svg: &str) -> CoMotionResult<SlideElement> 
 
     let text_width = match attribute_value(element, TEXT_WIDTH_ATTRIBUTE) {
         None => None,
-        Some(raw) => Some(parse_positive_dimension(&raw, &element_id, TEXT_WIDTH_ATTRIBUTE)?),
+        Some(raw) => Some(parse_positive_dimension(
+            &raw,
+            &element_id,
+            TEXT_WIDTH_ATTRIBUTE,
+        )?),
     };
     let text_height = match attribute_value(element, TEXT_HEIGHT_ATTRIBUTE) {
         None => None,
-        Some(raw) => Some(parse_positive_dimension(&raw, &element_id, TEXT_HEIGHT_ATTRIBUTE)?),
+        Some(raw) => Some(parse_positive_dimension(
+            &raw,
+            &element_id,
+            TEXT_HEIGHT_ATTRIBUTE,
+        )?),
     };
 
     let text_align = read_text_align(element, &element_id)?;
 
-    let table = if is_table { Some(read_table_grid(element, &element_id)?) } else { None };
+    let table = if is_table {
+        Some(read_table_grid(element, &element_id)?)
+    } else {
+        None
+    };
 
     let child_elements: Vec<SlideElement> = if is_group && !is_table {
-        children.iter().map(|child| to_element(child, svg)).collect::<CoMotionResult<Vec<_>>>()?
+        children
+            .iter()
+            .map(|child| to_element(child, svg))
+            .collect::<CoMotionResult<Vec<_>>>()?
     } else {
         Vec::new()
     };
@@ -627,9 +816,12 @@ pub fn parse_slide(svg: &str, slide_path: Option<&str>) -> CoMotionResult<SlideM
     let slide_path = slide_path.unwrap_or("投影片");
     assert_slide_compliant(svg, slide_path)?;
     let roots = scan_document(svg)?;
-    let svg_root = roots.iter().find(|element| element.tag == "svg").expect("assert_slide_compliant already required a well-formed <svg> root");
-    let view_box_text =
-        attribute_value(svg_root, "viewBox").expect("assert_slide_compliant already required a viewBox on the <svg> root");
+    let svg_root = roots
+        .iter()
+        .find(|element| element.tag == "svg")
+        .expect("assert_slide_compliant already required a well-formed <svg> root");
+    let view_box_text = attribute_value(svg_root, "viewBox")
+        .expect("assert_slide_compliant already required a viewBox on the <svg> root");
 
     let parts: Vec<f64> = view_box_text
         .split(|c: char| c.is_whitespace() || c == ',')
@@ -637,14 +829,29 @@ pub fn parse_slide(svg: &str, slide_path: Option<&str>) -> CoMotionResult<SlideM
         .map(|token| token.parse::<f64>().unwrap_or(f64::NAN))
         .collect();
     if parts.len() != 4 || parts.iter().any(|value| !value.is_finite()) {
-        return Err(CoMotionError::invalid(format!("投影片 {slide_path} 的 viewBox 不是四個數字：{view_box_text}")));
+        return Err(CoMotionError::invalid(format!(
+            "投影片 {slide_path} 的 viewBox 不是四個數字：{view_box_text}"
+        )));
     }
-    let view_box = ViewBox { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+    let view_box = ViewBox {
+        x: parts[0],
+        y: parts[1],
+        width: parts[2],
+        height: parts[3],
+    };
 
-    let elements: Vec<SlideElement> =
-        svg_root.children.iter().filter(|child| child.tag == "g").map(|child| to_element(child, svg)).collect::<CoMotionResult<Vec<_>>>()?;
+    let elements: Vec<SlideElement> = svg_root
+        .children
+        .iter()
+        .filter(|child| child.tag == "g")
+        .map(|child| to_element(child, svg))
+        .collect::<CoMotionResult<Vec<_>>>()?;
 
-    Ok(SlideModel { view_box, elements, page_style: read_slide_page_style(svg)? })
+    Ok(SlideModel {
+        view_box,
+        elements,
+        page_style: read_slide_page_style(svg)?,
+    })
 }
 
 #[cfg(test)]
@@ -652,7 +859,10 @@ mod tests {
     use super::*;
 
     fn codes(svg: &str) -> Vec<ComplianceCode> {
-        check_slide_compliance(svg).into_iter().map(|issue| issue.code).collect()
+        check_slide_compliance(svg)
+            .into_iter()
+            .map(|issue| issue.code)
+            .collect()
     }
 
     fn has(svg: &str, code: ComplianceCode) -> bool {
@@ -809,7 +1019,10 @@ mod tests {
     fn read_text_align_rejects_invalid_value() {
         let node = container_with_align(Some("justify"));
         let err = read_text_align(&node, "e1").unwrap_err();
-        assert_eq!(err.message(), "元素 e1 的 data-comot-text-align 不是合法值（left、center 或 right）：justify");
+        assert_eq!(
+            err.message(),
+            "元素 e1 的 data-comot-text-align 不是合法值（left、center 或 right）：justify"
+        );
     }
 
     // --- parse_slide happy path ---
@@ -818,7 +1031,15 @@ mod tests {
     fn parse_slide_reads_view_box_and_elements() {
         let svg = r#"<svg viewBox="0 0 800 600"><g id="g1"><rect id="r1" x="1" y="2" width="3" height="4"/></g></svg>"#;
         let model = parse_slide(svg, None).unwrap();
-        assert_eq!(model.view_box, ViewBox { x: 0.0, y: 0.0, width: 800.0, height: 600.0 });
+        assert_eq!(
+            model.view_box,
+            ViewBox {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0
+            }
+        );
         assert_eq!(model.elements.len(), 1);
         assert_eq!(model.elements[0].id, "g1");
         assert_eq!(model.elements[0].kind, SlideElementKind::Rect);

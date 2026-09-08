@@ -14,9 +14,14 @@ pub mod runs;
 pub mod wrap;
 
 pub use escape::{escape_xml_attr, escape_xml_text, unescape_xml_text};
-pub use font::{parse_font, FontMetrics, ParsedFont, DEFAULT_FONT_BYTES, DEFAULT_FONT_FAMILY};
-pub use list::{list_indents, parse_list_tokens, ListKind, LIST_INDENT_EM};
+pub use font::{DEFAULT_FONT_BYTES, DEFAULT_FONT_FAMILY, FontMetrics, ParsedFont, parse_font};
+pub use list::{LIST_INDENT_EM, ListKind, list_indents, parse_list_tokens};
 pub use metrics::measure_text_width;
 pub use render::render_text_box_content;
-pub use runs::{apply_run_style, read_text_box_runs, utf16_offset_to_byte_offset, RunStyleUpdate, TextRun};
-pub use wrap::{break_allowed_between, no_break_after, no_break_before, wrap_text, Align, WrapOptions, WrappedLine, WrappedText};
+pub use runs::{
+    RunStyleUpdate, TextRun, apply_run_style, read_text_box_runs, utf16_offset_to_byte_offset,
+};
+pub use wrap::{
+    Align, WrapOptions, WrappedLine, WrappedText, break_allowed_between, no_break_after,
+    no_break_before, wrap_text,
+};

@@ -22,7 +22,9 @@
 use std::collections::HashMap;
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::geometry::transform::{apply_matrix_to_point, compose_matrices, multiply_matrices, Matrix, Point};
+use crate::geometry::transform::{
+    Matrix, Point, apply_matrix_to_point, compose_matrices, multiply_matrices,
+};
 use crate::slide::format::{SlideElement, SlideElementKind, SlidePrimitive};
 use crate::svgnum::format_svg_number;
 use crate::text::font::FontMetrics;
@@ -78,9 +80,18 @@ pub fn format_bbox(bbox: &Bbox) -> FormattedBbox {
 pub fn transform_rect(m: &Matrix, r: &Bbox) -> Bbox {
     let corners = [
         Point { x: r.x, y: r.y },
-        Point { x: r.x + r.width, y: r.y },
-        Point { x: r.x, y: r.y + r.height },
-        Point { x: r.x + r.width, y: r.y + r.height },
+        Point {
+            x: r.x + r.width,
+            y: r.y,
+        },
+        Point {
+            x: r.x,
+            y: r.y + r.height,
+        },
+        Point {
+            x: r.x + r.width,
+            y: r.y + r.height,
+        },
     ]
     .map(|corner| apply_matrix_to_point(m, corner));
     let xs = corners.map(|corner| corner.x);
@@ -89,20 +100,38 @@ pub fn transform_rect(m: &Matrix, r: &Bbox) -> Bbox {
     let min_y = ys.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_x = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let max_y = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    Bbox { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y }
+    Bbox {
+        x: min_x,
+        y: min_y,
+        width: max_x - min_x,
+        height: max_y - min_y,
+    }
 }
 
 /// Ports `unionRects`. An empty slice throws rather than returning a
 /// degenerate zero box — there is no meaningful "bounding box of nothing".
 pub fn union_rects(rects: &[Bbox]) -> CoMotionResult<Bbox> {
     if rects.is_empty() {
-        return Err(CoMotionError::invalid("無法計算邊界框：沒有任何矩形可以聯集"));
+        return Err(CoMotionError::invalid(
+            "無法計算邊界框：沒有任何矩形可以聯集",
+        ));
     }
     let min_x = rects.iter().map(|r| r.x).fold(f64::INFINITY, f64::min);
     let min_y = rects.iter().map(|r| r.y).fold(f64::INFINITY, f64::min);
-    let max_x = rects.iter().map(|r| r.x + r.width).fold(f64::NEG_INFINITY, f64::max);
-    let max_y = rects.iter().map(|r| r.y + r.height).fold(f64::NEG_INFINITY, f64::max);
-    Ok(Bbox { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y })
+    let max_x = rects
+        .iter()
+        .map(|r| r.x + r.width)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = rects
+        .iter()
+        .map(|r| r.y + r.height)
+        .fold(f64::NEG_INFINITY, f64::max);
+    Ok(Bbox {
+        x: min_x,
+        y: min_y,
+        width: max_x - min_x,
+        height: max_y - min_y,
+    })
 }
 
 /// Mirrors the regex `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` that
@@ -135,7 +164,11 @@ fn is_plain_svg_number(text: &str) -> bool {
             frac_digits += 1;
         }
     }
-    let mantissa_ok = if int_digits > 0 { true } else { has_dot && frac_digits > 0 };
+    let mantissa_ok = if int_digits > 0 {
+        true
+    } else {
+        has_dot && frac_digits > 0
+    };
     if !mantissa_ok {
         return false;
     }
@@ -160,12 +193,20 @@ fn is_plain_svg_number(text: &str) -> bool {
 /// where SVG itself defines that default (e.g. `<rect>`'s `x` defaults to
 /// 0) — pass `None` for attributes with no default, and the absence is
 /// reported as an error instead.
-fn number_attr(primitive: &SlidePrimitive, name: &str, fallback: Option<f64>) -> CoMotionResult<f64> {
+fn number_attr(
+    primitive: &SlidePrimitive,
+    name: &str,
+    fallback: Option<f64>,
+) -> CoMotionResult<f64> {
     let raw = match primitive.attr(name) {
         Some(r) if !r.trim().is_empty() => r,
         _ => {
-            return fallback
-                .ok_or_else(|| CoMotionError::invalid(format!("<{}> 缺少計算邊界框需要的屬性：{}", primitive.tag, name)));
+            return fallback.ok_or_else(|| {
+                CoMotionError::invalid(format!(
+                    "<{}> 缺少計算邊界框需要的屬性：{}",
+                    primitive.tag, name
+                ))
+            });
         }
     };
     let text = raw.trim();
@@ -175,7 +216,9 @@ fn number_attr(primitive: &SlidePrimitive, name: &str, fallback: Option<f64>) ->
             primitive.tag, name, text
         )));
     }
-    Ok(text.parse::<f64>().expect("is_plain_svg_number already validated the exact numeric grammar"))
+    Ok(text
+        .parse::<f64>()
+        .expect("is_plain_svg_number already validated the exact numeric grammar"))
 }
 
 /// Everything a `<text>` primitive's box needs that the primitive itself
@@ -203,11 +246,19 @@ pub struct TextBoundsContext<'a> {
 /// Ports `resolveFont`'s lookup-and-error behavior (see `TextBoundsContext`'s
 /// doc comment for why this is a narrow inline stand-in rather than an
 /// import).
-fn resolve_font<'a>(fonts: &'a HashMap<String, Box<dyn FontMetrics>>, font_family: &str, element_id: &str) -> CoMotionResult<&'a dyn FontMetrics> {
+fn resolve_font<'a>(
+    fonts: &'a HashMap<String, Box<dyn FontMetrics>>,
+    font_family: &str,
+    element_id: &str,
+) -> CoMotionResult<&'a dyn FontMetrics> {
     fonts
         .get(font_family)
         .map(|boxed| boxed.as_ref())
-        .ok_or_else(|| CoMotionError::invalid(format!("簡報未內嵌字型 {font_family}，無法重新換行：{element_id}")))
+        .ok_or_else(|| {
+            CoMotionError::invalid(format!(
+                "簡報未內嵌字型 {font_family}，無法重新換行：{element_id}"
+            ))
+        })
 }
 
 /// The box of a `<text>` primitive (NOOP-91 §4.7). Ports `textBounds`.
@@ -228,31 +279,60 @@ fn resolve_font<'a>(fonts: &'a HashMap<String, Box<dyn FontMetrics>>, font_famil
 /// measuring the concatenated string as one line — `SlidePrimitive` exposes
 /// the joined text and the tspan COUNT, never the per-line split, so a
 /// per-line maximum is not computable from it.
-fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> CoMotionResult<Bbox> {
+fn text_bounds(
+    primitive: &SlidePrimitive,
+    context: &TextBoundsContext<'_>,
+) -> CoMotionResult<Bbox> {
     let font_family = primitive
         .attr("font-family")
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| CoMotionError::invalid(format!("<text> 缺少 font-family，無法計算邊界框：{}", context.element_id)))?;
+        .ok_or_else(|| {
+            CoMotionError::invalid(format!(
+                "<text> 缺少 font-family，無法計算邊界框：{}",
+                context.element_id
+            ))
+        })?;
 
-    let font_size = match primitive.attr("font-size").map(str::trim).filter(|s| !s.is_empty()) {
+    let font_size = match primitive
+        .attr("font-size")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         None => 16.0,
         Some(raw) => raw.parse::<f64>().unwrap_or(f64::NAN),
     };
     if !font_size.is_finite() || font_size <= 0.0 {
-        return Err(CoMotionError::invalid(format!("<text> 的 font-size 不是合法的正數，無法計算邊界框：{}", context.element_id)));
+        return Err(CoMotionError::invalid(format!(
+            "<text> 的 font-size 不是合法的正數，無法計算邊界框：{}",
+            context.element_id
+        )));
     }
 
     let font = resolve_font(context.fonts, font_family, &context.element_id)?;
-    let line_height = ((f64::from(font.ascender()) - f64::from(font.descender()) + f64::from(font.line_gap())) / f64::from(font.units_per_em())) * font_size;
+    let line_height = ((f64::from(font.ascender()) - f64::from(font.descender())
+        + f64::from(font.line_gap()))
+        / f64::from(font.units_per_em()))
+        * font_size;
     let ascent = (f64::from(font.ascender()) / f64::from(font.units_per_em())) * font_size;
     // A `<text>` with no tspans is one line; the tspan count is the line
     // count for everything the wrap wrote.
-    let line_count = if primitive.tspan_count == 0 { 1 } else { primitive.tspan_count };
+    let line_count = if primitive.tspan_count == 0 {
+        1
+    } else {
+        primitive.tspan_count
+    };
 
     if let Some(text_width) = context.text_width {
-        let height = context.text_height.unwrap_or(line_count as f64 * line_height);
-        return Ok(Bbox { x: 0.0, y: 0.0, width: text_width, height });
+        let height = context
+            .text_height
+            .unwrap_or(line_count as f64 * line_height);
+        return Ok(Bbox {
+            x: 0.0,
+            y: 0.0,
+            width: text_width,
+            height,
+        });
     }
     if primitive.tspan_count > 0 {
         return Err(CoMotionError::invalid(format!(
@@ -263,7 +343,12 @@ fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> C
     let x = number_attr(primitive, "x", Some(0.0))?;
     let y = number_attr(primitive, "y", Some(0.0))?;
     let width = measure_text_width(font, &primitive.text, font_size)?;
-    Ok(Bbox { x, y: y - ascent, width, height: line_height })
+    Ok(Bbox {
+        x,
+        y: y - ascent,
+        width,
+        height: line_height,
+    })
 }
 
 /// The bounding box of one primitive, in the coordinate system the
@@ -273,44 +358,73 @@ fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> C
 /// `<text>` needs font metrics, so it is only supported when `text` is
 /// given; called without it, a `<text>` errors exactly the message it
 /// always did.
-pub fn primitive_bounds(primitive: &SlidePrimitive, text: Option<&TextBoundsContext<'_>>) -> CoMotionResult<Bbox> {
+pub fn primitive_bounds(
+    primitive: &SlidePrimitive,
+    text: Option<&TextBoundsContext<'_>>,
+) -> CoMotionResult<Bbox> {
     match primitive.tag.as_str() {
         "rect" | "image" | "svg" => {
             let x = number_attr(primitive, "x", Some(0.0))?;
             let y = number_attr(primitive, "y", Some(0.0))?;
             let width = number_attr(primitive, "width", None)?;
             let height = number_attr(primitive, "height", None)?;
-            Ok(Bbox { x, y, width, height })
+            Ok(Bbox {
+                x,
+                y,
+                width,
+                height,
+            })
         }
         "circle" => {
             let cx = number_attr(primitive, "cx", Some(0.0))?;
             let cy = number_attr(primitive, "cy", Some(0.0))?;
             let r = number_attr(primitive, "r", None)?;
-            Ok(Bbox { x: cx - r, y: cy - r, width: 2.0 * r, height: 2.0 * r })
+            Ok(Bbox {
+                x: cx - r,
+                y: cy - r,
+                width: 2.0 * r,
+                height: 2.0 * r,
+            })
         }
         "ellipse" => {
             let cx = number_attr(primitive, "cx", Some(0.0))?;
             let cy = number_attr(primitive, "cy", Some(0.0))?;
             let rx = number_attr(primitive, "rx", None)?;
             let ry = number_attr(primitive, "ry", None)?;
-            Ok(Bbox { x: cx - rx, y: cy - ry, width: 2.0 * rx, height: 2.0 * ry })
+            Ok(Bbox {
+                x: cx - rx,
+                y: cy - ry,
+                width: 2.0 * rx,
+                height: 2.0 * ry,
+            })
         }
         "line" => {
             let x1 = number_attr(primitive, "x1", Some(0.0))?;
             let y1 = number_attr(primitive, "y1", Some(0.0))?;
             let x2 = number_attr(primitive, "x2", Some(0.0))?;
             let y2 = number_attr(primitive, "y2", Some(0.0))?;
-            Ok(Bbox { x: x1.min(x2), y: y1.min(y2), width: (x2 - x1).abs(), height: (y2 - y1).abs() })
+            Ok(Bbox {
+                x: x1.min(x2),
+                y: y1.min(y2),
+                width: (x2 - x1).abs(),
+                height: (y2 - y1).abs(),
+            })
         }
         "path" => {
-            let d = primitive.attr("d").ok_or_else(|| CoMotionError::invalid("<path> 缺少計算邊界框需要的屬性：d"))?;
+            let d = primitive
+                .attr("d")
+                .ok_or_else(|| CoMotionError::invalid("<path> 缺少計算邊界框需要的屬性：d"))?;
             path_bounds(d)
         }
         "text" => match text {
-            None => Err(CoMotionError::invalid("尚無法計算文字元素的邊界框：待 #76 的字型度量落地")),
+            None => Err(CoMotionError::invalid(
+                "尚無法計算文字元素的邊界框：待 #76 的字型度量落地",
+            )),
             Some(context) => text_bounds(primitive, context),
         },
-        other => Err(CoMotionError::invalid(format!("無法計算邊界框：<{other}> 不是合法圖元"))),
+        other => Err(CoMotionError::invalid(format!(
+            "無法計算邊界框：<{other}> 不是合法圖元"
+        ))),
     }
 }
 
@@ -394,7 +508,28 @@ fn tokenize_path_data(d: &str) -> CoMotionResult<Vec<PathTok>> {
     let mut i = 0usize;
     while i < chars.len() {
         let c = chars[i];
-        if matches!(c, 'M' | 'm' | 'L' | 'l' | 'H' | 'h' | 'V' | 'v' | 'C' | 'c' | 'S' | 's' | 'Q' | 'q' | 'T' | 't' | 'A' | 'a' | 'Z' | 'z') {
+        if matches!(
+            c,
+            'M' | 'm'
+                | 'L'
+                | 'l'
+                | 'H'
+                | 'h'
+                | 'V'
+                | 'v'
+                | 'C'
+                | 'c'
+                | 'S'
+                | 's'
+                | 'Q'
+                | 'q'
+                | 'T'
+                | 't'
+                | 'A'
+                | 'a'
+                | 'Z'
+                | 'z'
+        ) {
             tokens.push(PathTok::Command(c));
             i += 1;
             continue;
@@ -412,7 +547,9 @@ fn tokenize_path_data(d: &str) -> CoMotionResult<Vec<PathTok>> {
             continue;
         }
         let snippet: String = chars[i..].iter().take(12).collect();
-        return Err(CoMotionError::invalid(format!("<path> 的 d 語法錯誤：無法解析「{snippet}」")));
+        return Err(CoMotionError::invalid(format!(
+            "<path> 的 d 語法錯誤：無法解析「{snippet}」"
+        )));
     }
     Ok(tokens)
 }
@@ -423,7 +560,9 @@ fn next_number(tokens: &[PathTok], index: &mut usize, command: &str) -> CoMotion
             *index += 1;
             Ok(*v)
         }
-        _ => Err(CoMotionError::invalid(format!("<path> 的 d 語法錯誤：{command} 指令的參數不足"))),
+        _ => Err(CoMotionError::invalid(format!(
+            "<path> 的 d 語法錯誤：{command} 指令的參數不足"
+        ))),
     }
 }
 
@@ -440,7 +579,9 @@ fn cubic_extremes(p0: f64, p1: f64, p2: f64, p3: f64) -> Vec<f64> {
     for t in solve_quadratic(a, b, c) {
         if t > 0.0 && t < 1.0 {
             let u = 1.0 - t;
-            values.push(u * u * u * p0 + 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t * p3);
+            values.push(
+                u * u * u * p0 + 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t * p3,
+            );
         }
     }
     values
@@ -514,7 +655,9 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
             }
             PathTok::Number(_) => {
                 if command.is_empty() {
-                    return Err(CoMotionError::invalid("<path> 的 d 語法錯誤：第一個指令必須是 M 或 m"));
+                    return Err(CoMotionError::invalid(
+                        "<path> 的 d 語法錯誤：第一個指令必須是 M 或 m",
+                    ));
                 }
                 // An `M`/`m` with more than one coordinate pair implicitly
                 // continues as `L`/`l` (SVG 1.1 S8.3.2) — every subsequent
@@ -530,7 +673,11 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
         }
 
         let relative = command == command.to_lowercase();
-        let base = if relative { current } else { Point { x: 0.0, y: 0.0 } };
+        let base = if relative {
+            current
+        } else {
+            Point { x: 0.0, y: 0.0 }
+        };
 
         match command.to_uppercase().as_str() {
             "M" => {
@@ -576,7 +723,10 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
                     }
                 } else {
                     match last_cubic_control {
-                        Some(lc) => Point { x: 2.0 * current.x - lc.x, y: 2.0 * current.y - lc.y },
+                        Some(lc) => Point {
+                            x: 2.0 * current.x - lc.x,
+                            y: 2.0 * current.y - lc.y,
+                        },
                         None => current,
                     }
                 };
@@ -602,7 +752,10 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
                     }
                 } else {
                     match last_quad_control {
-                        Some(lq) => Point { x: 2.0 * current.x - lq.x, y: 2.0 * current.y - lq.y },
+                        Some(lq) => Point {
+                            x: 2.0 * current.x - lq.x,
+                            y: 2.0 * current.y - lq.y,
+                        },
                         None => current,
                     }
                 };
@@ -620,7 +773,9 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
                 // Z takes no arguments; a number here would consume nothing
                 // and spin this loop forever. Report it instead.
                 if matches!(tokens.get(index), Some(PathTok::Number(_))) {
-                    return Err(CoMotionError::invalid("<path> 的 d 語法錯誤：Z 指令後面不能接數字"));
+                    return Err(CoMotionError::invalid(
+                        "<path> 的 d 語法錯誤：Z 指令後面不能接數字",
+                    ));
                 }
                 current = subpath_start;
                 xs.push(current.x);
@@ -629,22 +784,33 @@ pub fn path_bounds(d: &str) -> CoMotionResult<Bbox> {
                 last_quad_control = None;
             }
             "A" => {
-                return Err(CoMotionError::invalid("尚無法計算含橢圓弧（A/a 指令）的 <path> 邊界框"));
+                return Err(CoMotionError::invalid(
+                    "尚無法計算含橢圓弧（A/a 指令）的 <path> 邊界框",
+                ));
             }
             _ => {
-                return Err(CoMotionError::invalid(format!("<path> 的 d 語法錯誤：不支援的指令 {command}")));
+                return Err(CoMotionError::invalid(format!(
+                    "<path> 的 d 語法錯誤：不支援的指令 {command}"
+                )));
             }
         }
     }
 
     if xs.is_empty() {
-        return Err(CoMotionError::invalid("<path> 的 d 沒有任何座標，無法計算邊界框"));
+        return Err(CoMotionError::invalid(
+            "<path> 的 d 沒有任何座標，無法計算邊界框",
+        ));
     }
     let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
     let min_y = ys.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_x = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let max_y = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    Ok(Bbox { x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y })
+    Ok(Bbox {
+        x: min_x,
+        y: min_y,
+        width: max_x - min_x,
+        height: max_y - min_y,
+    })
 }
 
 // --- Element-level bounds (container chain + group/table/primitive union) --
@@ -675,7 +841,10 @@ pub struct ElementBoundsOptions<'a> {
 /// the container chain's matrix applied to each primitive's native
 /// geometry, or the union of the child elements' boxes for a group, or the
 /// declared grid extent for a table. Ports `elementBounds`.
-pub fn element_bounds(element: &SlideElement, options: &ElementBoundsOptions<'_>) -> CoMotionResult<Bbox> {
+pub fn element_bounds(
+    element: &SlideElement,
+    options: &ElementBoundsOptions<'_>,
+) -> CoMotionResult<Bbox> {
     let chain = compose_matrices(options.ancestors);
     bounds_within(element, &chain, 1, options.fonts)
 }
@@ -687,7 +856,9 @@ fn bounds_within(
     fonts: Option<&HashMap<String, Box<dyn FontMetrics>>>,
 ) -> CoMotionResult<Bbox> {
     if depth > MAX_CONTAINER_DEPTH {
-        return Err(CoMotionError::invalid(format!("容器巢狀超過 {MAX_CONTAINER_DEPTH} 層，無法計算邊界框")));
+        return Err(CoMotionError::invalid(format!(
+            "容器巢狀超過 {MAX_CONTAINER_DEPTH} 層，無法計算邊界框"
+        )));
     }
     let matrix = multiply_matrices(ancestor_matrix, &element.matrix);
 
@@ -696,23 +867,42 @@ fn bounds_within(
     // elements, and `element.table`'s `rows` are always core-computed
     // heights already baked into the file.
     if element.kind == SlideElementKind::Table {
-        let table = element.table.as_ref().ok_or_else(|| CoMotionError::invalid(format!("表格 {} 缺少 table 資料", element.id)))?;
+        let table = element.table.as_ref().ok_or_else(|| {
+            CoMotionError::invalid(format!("表格 {} 缺少 table 資料", element.id))
+        })?;
         let width: f64 = table.cols.iter().sum();
         let height: f64 = table.rows.iter().sum();
-        return Ok(transform_rect(&matrix, &Bbox { x: 0.0, y: 0.0, width, height }));
+        return Ok(transform_rect(
+            &matrix,
+            &Bbox {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+            },
+        ));
     }
 
     if element.kind == SlideElementKind::Group {
         if element.children.is_empty() {
-            return Err(CoMotionError::invalid(format!("群組 {} 裡沒有任何子元素，沒有邊界框", element.id)));
+            return Err(CoMotionError::invalid(format!(
+                "群組 {} 裡沒有任何子元素，沒有邊界框",
+                element.id
+            )));
         }
-        let child_boxes: Vec<Bbox> =
-            element.children.iter().map(|child| bounds_within(child, &matrix, depth + 1, fonts)).collect::<CoMotionResult<Vec<_>>>()?;
+        let child_boxes: Vec<Bbox> = element
+            .children
+            .iter()
+            .map(|child| bounds_within(child, &matrix, depth + 1, fonts))
+            .collect::<CoMotionResult<Vec<_>>>()?;
         return union_rects(&child_boxes);
     }
 
     if element.primitives.is_empty() {
-        return Err(CoMotionError::invalid(format!("元素 {} 裡沒有任何圖元，沒有邊界框", element.id)));
+        return Err(CoMotionError::invalid(format!(
+            "元素 {} 裡沒有任何圖元，沒有邊界框",
+            element.id
+        )));
     }
     // The text context is built per element, not per primitive: text_width/
     // text_height are the CONTAINER's own attribute, never an ancestor's.
@@ -726,20 +916,36 @@ fn bounds_within(
     // `LIST_MARKER_ATTRIBUTE`'s doc comment). A chart's `<comot:chart>` data
     // primitive is excluded the same way (E2.T12, `chart/model.ts` out of
     // scope for this port) — it is not an SVG shape at all.
-    let measurable: Vec<&SlidePrimitive> =
-        element.primitives.iter().filter(|primitive| primitive.attr(LIST_MARKER_ATTRIBUTE) != Some("true") && primitive.tag != "comot:chart").collect();
+    let measurable: Vec<&SlidePrimitive> = element
+        .primitives
+        .iter()
+        .filter(|primitive| {
+            primitive.attr(LIST_MARKER_ATTRIBUTE) != Some("true") && primitive.tag != "comot:chart"
+        })
+        .collect();
     let boxes: Vec<Bbox> = measurable
         .iter()
-        .map(|primitive| Ok(transform_rect(&matrix, &primitive_bounds(primitive, text_context.as_ref())?)))
+        .map(|primitive| {
+            Ok(transform_rect(
+                &matrix,
+                &primitive_bounds(primitive, text_context.as_ref())?,
+            ))
+        })
         .collect::<CoMotionResult<Vec<_>>>()?;
     union_rects(&boxes)
 }
 
 /// The element's top-left corner in slide coordinates — the `(x, y)` of
 /// `element_bounds`. Ports `absolutePosition`.
-pub fn absolute_position(element: &SlideElement, options: &ElementBoundsOptions<'_>) -> CoMotionResult<Point> {
+pub fn absolute_position(
+    element: &SlideElement,
+    options: &ElementBoundsOptions<'_>,
+) -> CoMotionResult<Point> {
     let bounds = element_bounds(element, options)?;
-    Ok(Point { x: bounds.x, y: bounds.y })
+    Ok(Point {
+        x: bounds.x,
+        y: bounds.y,
+    })
 }
 
 #[cfg(test)]
@@ -752,14 +958,21 @@ mod tests {
     fn prim(tag: &str, attrs: &[(&str, &str)]) -> SlidePrimitive {
         SlidePrimitive {
             tag: tag.to_string(),
-            attrs: attrs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            attrs: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             text: String::new(),
             tspan_count: 0,
             runs: Vec::new(),
         }
     }
 
-    fn leaf_element(id: &str, kind: SlideElementKind, primitives: Vec<SlidePrimitive>) -> SlideElement {
+    fn leaf_element(
+        id: &str,
+        kind: SlideElementKind,
+        primitives: Vec<SlidePrimitive>,
+    ) -> SlideElement {
         SlideElement {
             id: id.to_string(),
             name: None,
@@ -778,9 +991,20 @@ mod tests {
 
     #[test]
     fn rect_bounds_reads_native_attributes() {
-        let p = prim("rect", &[("x", "1"), ("y", "2"), ("width", "3"), ("height", "4")]);
+        let p = prim(
+            "rect",
+            &[("x", "1"), ("y", "2"), ("width", "3"), ("height", "4")],
+        );
         let b = primitive_bounds(&p, None).unwrap();
-        assert_eq!(b, Bbox { x: 1.0, y: 2.0, width: 3.0, height: 4.0 });
+        assert_eq!(
+            b,
+            Bbox {
+                x: 1.0,
+                y: 2.0,
+                width: 3.0,
+                height: 4.0
+            }
+        );
     }
 
     #[test]
@@ -792,21 +1016,46 @@ mod tests {
 
     #[test]
     fn ellipse_bounds_centers_on_cx_cy() {
-        let p = prim("ellipse", &[("cx", "10"), ("cy", "20"), ("rx", "3"), ("ry", "4")]);
+        let p = prim(
+            "ellipse",
+            &[("cx", "10"), ("cy", "20"), ("rx", "3"), ("ry", "4")],
+        );
         let b = primitive_bounds(&p, None).unwrap();
-        assert_eq!(b, Bbox { x: 7.0, y: 16.0, width: 6.0, height: 8.0 });
+        assert_eq!(
+            b,
+            Bbox {
+                x: 7.0,
+                y: 16.0,
+                width: 6.0,
+                height: 8.0
+            }
+        );
     }
 
     #[test]
     fn line_bounds_normalizes_reversed_endpoints() {
-        let p = prim("line", &[("x1", "10"), ("y1", "10"), ("x2", "2"), ("y2", "1")]);
+        let p = prim(
+            "line",
+            &[("x1", "10"), ("y1", "10"), ("x2", "2"), ("y2", "1")],
+        );
         let b = primitive_bounds(&p, None).unwrap();
-        assert_eq!(b, Bbox { x: 2.0, y: 1.0, width: 8.0, height: 9.0 });
+        assert_eq!(
+            b,
+            Bbox {
+                x: 2.0,
+                y: 1.0,
+                width: 8.0,
+                height: 9.0
+            }
+        );
     }
 
     #[test]
     fn percentage_attribute_is_rejected() {
-        let p = prim("rect", &[("x", "0"), ("y", "0"), ("width", "50%"), ("height", "10")]);
+        let p = prim(
+            "rect",
+            &[("x", "0"), ("y", "0"), ("width", "50%"), ("height", "10")],
+        );
         let err = primitive_bounds(&p, None).unwrap_err();
         assert!(err.message().contains("不是純數字"));
     }
@@ -815,13 +1064,29 @@ mod tests {
     fn path_bounds_of_straight_segments_only() {
         // A 10x10 right triangle: M0,0 L10,0 L10,10 Z
         let b = path_bounds("M0 0 L10 0 L10 10 Z").unwrap();
-        assert_eq!(b, Bbox { x: 0.0, y: 0.0, width: 10.0, height: 10.0 });
+        assert_eq!(
+            b,
+            Bbox {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0
+            }
+        );
     }
 
     #[test]
     fn path_bounds_relative_commands_accumulate_from_current_point() {
         let b = path_bounds("m5 5 l5 0 l0 5 z").unwrap();
-        assert_eq!(b, Bbox { x: 5.0, y: 5.0, width: 5.0, height: 5.0 });
+        assert_eq!(
+            b,
+            Bbox {
+                x: 5.0,
+                y: 5.0,
+                width: 5.0,
+                height: 5.0
+            }
+        );
     }
 
     #[test]
@@ -832,8 +1097,22 @@ mod tests {
 
     #[test]
     fn group_bounds_is_union_of_children() {
-        let child_a = leaf_element("a", SlideElementKind::Rect, vec![prim("rect", &[("x", "0"), ("y", "0"), ("width", "10"), ("height", "10")])]);
-        let child_b = leaf_element("b", SlideElementKind::Rect, vec![prim("rect", &[("x", "20"), ("y", "5"), ("width", "5"), ("height", "5")])]);
+        let child_a = leaf_element(
+            "a",
+            SlideElementKind::Rect,
+            vec![prim(
+                "rect",
+                &[("x", "0"), ("y", "0"), ("width", "10"), ("height", "10")],
+            )],
+        );
+        let child_b = leaf_element(
+            "b",
+            SlideElementKind::Rect,
+            vec![prim(
+                "rect",
+                &[("x", "20"), ("y", "5"), ("width", "5"), ("height", "5")],
+            )],
+        );
         let group = SlideElement {
             id: "g".to_string(),
             name: None,
@@ -848,10 +1127,21 @@ mod tests {
             text_align: TextAlign::Left,
             table: None,
         };
-        let options = ElementBoundsOptions { ancestors: &[], fonts: None };
+        let options = ElementBoundsOptions {
+            ancestors: &[],
+            fonts: None,
+        };
         let bounds = element_bounds(&group, &options).unwrap();
         // Union of [0,0,10,10] and [20,5,5,5] -> x:[0,25], y:[0,10].
-        assert_eq!(bounds, Bbox { x: 0.0, y: 0.0, width: 25.0, height: 10.0 });
+        assert_eq!(
+            bounds,
+            Bbox {
+                x: 0.0,
+                y: 0.0,
+                width: 25.0,
+                height: 10.0
+            }
+        );
     }
 
     #[test]
@@ -870,7 +1160,10 @@ mod tests {
             text_align: TextAlign::Left,
             table: None,
         };
-        let options = ElementBoundsOptions { ancestors: &[], fonts: None };
+        let options = ElementBoundsOptions {
+            ancestors: &[],
+            fonts: None,
+        };
         let err = element_bounds(&group, &options).unwrap_err();
         assert!(err.message().contains("沒有任何子元素"));
     }
@@ -878,16 +1171,33 @@ mod tests {
     #[test]
     fn table_bounds_sums_declared_grid() {
         let mut table_element = leaf_element("t", SlideElementKind::Table, Vec::new());
-        table_element.table = Some(TableGrid { cols: vec![100.0, 200.0], rows: vec![40.0, 60.0] });
-        let options = ElementBoundsOptions { ancestors: &[], fonts: None };
+        table_element.table = Some(TableGrid {
+            cols: vec![100.0, 200.0],
+            rows: vec![40.0, 60.0],
+        });
+        let options = ElementBoundsOptions {
+            ancestors: &[],
+            fonts: None,
+        };
         let bounds = element_bounds(&table_element, &options).unwrap();
-        assert_eq!(bounds, Bbox { x: 0.0, y: 0.0, width: 300.0, height: 100.0 });
+        assert_eq!(
+            bounds,
+            Bbox {
+                x: 0.0,
+                y: 0.0,
+                width: 300.0,
+                height: 100.0
+            }
+        );
     }
 
     #[test]
     fn table_bounds_missing_grid_errors() {
         let table_element = leaf_element("t", SlideElementKind::Table, Vec::new());
-        let options = ElementBoundsOptions { ancestors: &[], fonts: None };
+        let options = ElementBoundsOptions {
+            ancestors: &[],
+            fonts: None,
+        };
         let err = element_bounds(&table_element, &options).unwrap_err();
         assert!(err.message().contains("缺少 table 資料"));
     }
@@ -896,7 +1206,14 @@ mod tests {
     fn too_deep_container_chain_errors() {
         // A single-child chain of groups, MAX_CONTAINER_DEPTH + 2 levels
         // deep, must be rejected rather than silently truncated.
-        let mut current = leaf_element("leaf", SlideElementKind::Rect, vec![prim("rect", &[("x", "0"), ("y", "0"), ("width", "1"), ("height", "1")])]);
+        let mut current = leaf_element(
+            "leaf",
+            SlideElementKind::Rect,
+            vec![prim(
+                "rect",
+                &[("x", "0"), ("y", "0"), ("width", "1"), ("height", "1")],
+            )],
+        );
         for i in 0..(MAX_CONTAINER_DEPTH + 1) {
             current = SlideElement {
                 id: format!("g{i}"),
@@ -913,14 +1230,30 @@ mod tests {
                 table: None,
             };
         }
-        let options = ElementBoundsOptions { ancestors: &[], fonts: None };
+        let options = ElementBoundsOptions {
+            ancestors: &[],
+            fonts: None,
+        };
         let err = element_bounds(&current, &options).unwrap_err();
         assert!(err.message().contains("巢狀超過"));
     }
 
     #[test]
     fn format_bbox_rounds_each_field_independently() {
-        let formatted = format_bbox(&Bbox { x: 1.0, y: 2.5, width: 3.00001, height: -0.0 });
-        assert_eq!(formatted, FormattedBbox { x: "1".to_string(), y: "2.5".to_string(), width: "3".to_string(), height: "0".to_string() });
+        let formatted = format_bbox(&Bbox {
+            x: 1.0,
+            y: 2.5,
+            width: 3.00001,
+            height: -0.0,
+        });
+        assert_eq!(
+            formatted,
+            FormattedBbox {
+                x: "1".to_string(),
+                y: "2.5".to_string(),
+                width: "3".to_string(),
+                height: "0".to_string()
+            }
+        );
     }
 }

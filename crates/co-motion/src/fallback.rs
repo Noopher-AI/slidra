@@ -75,9 +75,7 @@ fn locate_repo_root() -> Option<PathBuf> {
     let mut dir: Option<&Path> = start.parent();
 
     while let Some(candidate) = dir {
-        if candidate.join("Cargo.toml").is_file()
-            && candidate.join(NODE_ENTRY_RELATIVE).is_file()
-        {
+        if candidate.join("Cargo.toml").is_file() && candidate.join(NODE_ENTRY_RELATIVE).is_file() {
             return Some(candidate.to_path_buf());
         }
         dir = candidate.parent();

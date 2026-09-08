@@ -37,11 +37,21 @@ pub struct CommandResult {
 
 impl CommandResult {
     pub fn success(message: impl Into<String>, data: Option<serde_json::Value>) -> Self {
-        CommandResult { ok: true, data, message: message.into(), failure_kind: None }
+        CommandResult {
+            ok: true,
+            data,
+            message: message.into(),
+            failure_kind: None,
+        }
     }
 
     pub fn failure(message: impl Into<String>, failure_kind: FailureKind) -> Self {
-        CommandResult { ok: false, data: None, message: message.into(), failure_kind: Some(failure_kind) }
+        CommandResult {
+            ok: false,
+            data: None,
+            message: message.into(),
+            failure_kind: Some(failure_kind),
+        }
     }
 }
 

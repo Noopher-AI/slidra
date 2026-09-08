@@ -55,6 +55,7 @@ use crate::errors::{CoMotionError, CoMotionResult};
 
 /// One attribute, with the UTF-16 code-unit span it occupies inside the
 /// document (see the module doc comment's "UTF-16 index space" section).
+#[derive(Debug)]
 pub struct ScannedAttribute {
     pub name: String,
     pub value: String,
@@ -64,6 +65,7 @@ pub struct ScannedAttribute {
     pub end: usize,
 }
 
+#[derive(Debug)]
 pub struct ScannedNode {
     /// Tag name exactly as written.
     pub tag: String,
@@ -102,7 +104,7 @@ impl Drop for ScannedNode {
             // already-empty `children`, so the recursion the compiler
             // inserts for that nested call bottoms out in one step instead
             // of diving into a full subtree.
-            pending.extend(node.children.drain(..));
+            pending.append(&mut node.children);
         }
     }
 }
@@ -111,7 +113,10 @@ impl Drop for ScannedNode {
 /// caller in this codebase (ported along with everything else) depends on
 /// this exact tie-break when a tag carries a duplicate attribute name.
 pub fn attribute_of<'a>(element: &'a ScannedNode, name: &str) -> Option<&'a ScannedAttribute> {
-    element.attributes.iter().find(|attribute| attribute.name == name)
+    element
+        .attributes
+        .iter()
+        .find(|attribute| attribute.name == name)
 }
 
 pub fn attribute_value(element: &ScannedNode, name: &str) -> Option<String> {
@@ -309,7 +314,9 @@ fn scan_attributes(
         // the region (the tag's own `>` or `/`), which is never `=`, so it
         // still produces the right error — just like the TS original.
         if char_at(svg, i) != Some('=') {
-            return Err(CoMotionError::invalid(format!("屬性語法錯誤：屬性 {name} 缺少 =")));
+            return Err(CoMotionError::invalid(format!(
+                "屬性語法錯誤：屬性 {name} 缺少 ="
+            )));
         }
         i += 1; // '=' is one ASCII byte
 
@@ -341,7 +348,12 @@ fn scan_attributes(
         let value = svg[value_start..i].to_string();
         let start = tracker.at(svg, name_start);
         let end = tracker.at(svg, i + 1);
-        attributes.push(ScannedAttribute { name, value, start, end });
+        attributes.push(ScannedAttribute {
+            name,
+            value,
+            start,
+            end,
+        });
         i += 1; // skip the closing quote (one ASCII byte)
     }
     Ok(attributes)
@@ -414,7 +426,13 @@ fn read_open_tag(svg: &str, tracker: &mut Utf16Tracker, start: usize) -> CoMotio
 
     let content_start_byte = k + 1;
     let content_start_utf16 = tracker.at(svg, content_start_byte);
-    Ok(OpenTag { tag, attributes, self_closing, content_start_byte, content_start_utf16 })
+    Ok(OpenTag {
+        tag,
+        attributes,
+        self_closing,
+        content_start_byte,
+        content_start_utf16,
+    })
 }
 
 /// A still-open ancestor element, tracked on an explicit stack instead of
@@ -428,7 +446,11 @@ struct OpenFrame {
     children: Vec<ScannedNode>,
 }
 
-fn push_completed_node(stack: &mut [OpenFrame], top_nodes: &mut Vec<ScannedNode>, node: ScannedNode) {
+fn push_completed_node(
+    stack: &mut [OpenFrame],
+    top_nodes: &mut Vec<ScannedNode>,
+    node: ScannedNode,
+) {
     match stack.last_mut() {
         Some(frame) => frame.children.push(node),
         None => top_nodes.push(node),
@@ -575,7 +597,10 @@ mod tests {
     use super::*;
 
     fn err_message(svg: &str) -> String {
-        scan_document(svg).expect_err("expected a parse error").message().to_string()
+        scan_document(svg)
+            .expect_err("expected a parse error")
+            .message()
+            .to_string()
     }
 
     // --- happy path: structure and offsets (verified against a
@@ -592,13 +617,19 @@ mod tests {
         let root = &nodes[0];
         assert_eq!(root.tag, "svg");
         assert!(!root.self_closing);
-        assert_eq!((root.start, root.content_start, root.content_end, root.end), (0, 5, 30, 36));
+        assert_eq!(
+            (root.start, root.content_start, root.content_end, root.end),
+            (0, 5, 30, 36)
+        );
         assert_eq!(root.children.len(), 1);
 
         let rect = &root.children[0];
         assert_eq!(rect.tag, "rect");
         assert!(rect.self_closing);
-        assert_eq!((rect.start, rect.content_start, rect.content_end, rect.end), (5, 30, 30, 30));
+        assert_eq!(
+            (rect.start, rect.content_start, rect.content_end, rect.end),
+            (5, 30, 30, 30)
+        );
         assert_eq!(attribute_value(rect, "id"), Some("a".to_string()));
         assert_eq!(attribute_value(rect, "width"), Some("10".to_string()));
         assert_eq!(attribute_value(rect, "missing"), None);
@@ -632,7 +663,10 @@ mod tests {
         let svg = r#"<path d="M10 10 L20>20" />"#;
         let nodes = scan_document(svg).unwrap();
         assert_eq!(nodes.len(), 1);
-        assert_eq!(attribute_value(&nodes[0], "d"), Some("M10 10 L20>20".to_string()));
+        assert_eq!(
+            attribute_value(&nodes[0], "d"),
+            Some("M10 10 L20>20".to_string())
+        );
     }
 
     #[test]

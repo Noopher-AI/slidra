@@ -34,7 +34,7 @@
 //!    a structurally-corrupt (not merely "format we don't support") optional
 //!    table. Everywhere required-table validation happens (`head`/`hhea`/
 //!    `hmtx`/`cmap`), explicit bounds checks mirror the TS guards exactly.
-//! 2b. One specific runtime (not parse-time) TS throw has no Rust equivalent
+//!    2b. One specific runtime (not parse-time) TS throw has no Rust equivalent
 //!    at all: `buildFormat4Lookup`'s returned closure throws if a computed
 //!    `glyphIndexAddress` lands past the end of the buffer, when looking up
 //!    a *specific code point* after the font has already parsed successfully.
@@ -89,8 +89,10 @@ const TAG_WOFF2: u32 = 0x774f_4632; // 'wOF2'
 /// `packages/core/src/default-font.ts`'s ADR-0016 rationale). Path is
 /// relative to this crate's `Cargo.toml` (`crates/co-motion/`): `../../`
 /// reaches the repo root, then into `packages/core/...`.
-pub const DEFAULT_FONT_BYTES: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf"));
+pub const DEFAULT_FONT_BYTES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf"
+));
 
 /// Matches `packages/core/src/default-font.ts`'s `DEFAULT_FONT_FAMILY` verbatim.
 pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans TC";
@@ -104,7 +106,10 @@ fn corrupt() -> CoMotionError {
 // the TS source's unguarded `DataView` reads. ---
 
 fn u16_at(bytes: &[u8], offset: usize) -> u16 {
-    bytes.get(offset..offset + 2).map(|s| u16::from_be_bytes([s[0], s[1]])).unwrap_or(0)
+    bytes
+        .get(offset..offset + 2)
+        .map(|s| u16::from_be_bytes([s[0], s[1]]))
+        .unwrap_or(0)
 }
 
 fn i16_at(bytes: &[u8], offset: usize) -> i16 {
@@ -112,13 +117,18 @@ fn i16_at(bytes: &[u8], offset: usize) -> i16 {
 }
 
 fn u32_at(bytes: &[u8], offset: usize) -> u32 {
-    bytes.get(offset..offset + 4).map(|s| u32::from_be_bytes([s[0], s[1], s[2], s[3]])).unwrap_or(0)
+    bytes
+        .get(offset..offset + 4)
+        .map(|s| u32::from_be_bytes([s[0], s[1], s[2], s[3]]))
+        .unwrap_or(0)
 }
 
 /// `String.fromCharCode` over 4 raw bytes — each byte maps 1:1 to the
 /// Latin-1 code point of the same value (SFNT tags are always ASCII).
 fn read_tag(bytes: &[u8], offset: usize) -> String {
-    (0..4).map(|i| bytes.get(offset + i).copied().unwrap_or(0) as char).collect()
+    (0..4)
+        .map(|i| bytes.get(offset + i).copied().unwrap_or(0) as char)
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -134,17 +144,29 @@ fn require_table(tables: &HashMap<String, TableRecord>, tag: &str) -> CoMotionRe
         .ok_or_else(|| CoMotionError::invalid(format!("字型檔案缺少必要的資料表：{tag}")))
 }
 
+#[derive(Debug)]
 enum CmapKind {
-    Format12 { groups_start: usize, num_groups: u32 },
-    Format4 { seg_count: u16, end_codes_start: usize, start_codes_start: usize, id_deltas_start: usize, id_range_offsets_start: usize },
+    Format12 {
+        groups_start: usize,
+        num_groups: u32,
+    },
+    Format4 {
+        seg_count: u16,
+        end_codes_start: usize,
+        start_codes_start: usize,
+        id_deltas_start: usize,
+        id_range_offsets_start: usize,
+    },
 }
 
+#[derive(Debug)]
 struct LigatureRule {
     /// Components after the coverage (first) glyph, in match order.
     component_glyphs: Vec<u16>,
     ligature_glyph: u16,
 }
 
+#[derive(Debug)]
 enum PairPosSubtable {
     Format1 {
         coverage: HashMap<u16, u16>,
@@ -171,7 +193,14 @@ enum PairPosSubtable {
 impl PairPosSubtable {
     fn kerning(&self, bytes: &[u8], glyph_a: u16, glyph_b: u16) -> f64 {
         match self {
-            PairPosSubtable::Format1 { coverage, pair_set_offsets, value_format1, value_format2, value1_size, value2_size } => {
+            PairPosSubtable::Format1 {
+                coverage,
+                pair_set_offsets,
+                value_format1,
+                value_format2,
+                value1_size,
+                value2_size,
+            } => {
                 let coverage_index = match coverage.get(&glyph_a) {
                     Some(&i) => i as usize,
                     None => return 0.0,
@@ -216,9 +245,11 @@ impl PairPosSubtable {
                     return 0.0;
                 }
                 let record_size = value1_size + value2_size;
-                let record_offset = class_records_start + (class1 as usize * *class2_count as usize + class2 as usize) * record_size;
+                let record_offset = class_records_start
+                    + (class1 as usize * *class2_count as usize + class2 as usize) * record_size;
                 let (x1, _) = read_value_record_x_advance(bytes, record_offset, *value_format1);
-                let (x2, _) = read_value_record_x_advance(bytes, record_offset + value1_size, *value_format2);
+                let (x2, _) =
+                    read_value_record_x_advance(bytes, record_offset + value1_size, *value_format2);
                 f64::from(x1) + f64::from(x2)
             }
         }
@@ -291,7 +322,10 @@ fn parse_coverage(bytes: &[u8], offset: usize) -> CoMotionResult<HashMap<u16, u1
             let start_coverage_index = u16_at(bytes, range_offset + 4);
             let mut glyph = start_glyph;
             loop {
-                map.insert(glyph, start_coverage_index.wrapping_add(glyph - start_glyph));
+                map.insert(
+                    glyph,
+                    start_coverage_index.wrapping_add(glyph - start_glyph),
+                );
                 if glyph >= end_glyph {
                     break;
                 }
@@ -299,7 +333,9 @@ fn parse_coverage(bytes: &[u8], offset: usize) -> CoMotionResult<HashMap<u16, u1
             }
         }
     } else {
-        return Err(CoMotionError::invalid(format!("不支援的 Coverage 格式：{format}")));
+        return Err(CoMotionError::invalid(format!(
+            "不支援的 Coverage 格式：{format}"
+        )));
     }
     Ok(map)
 }
@@ -336,7 +372,9 @@ fn parse_class_def(bytes: &[u8], offset: usize) -> CoMotionResult<HashMap<u16, u
             }
         }
     } else {
-        return Err(CoMotionError::invalid(format!("不支援的 ClassDef 格式：{format}")));
+        return Err(CoMotionError::invalid(format!(
+            "不支援的 ClassDef 格式：{format}"
+        )));
     }
     Ok(map)
 }
@@ -413,13 +451,19 @@ fn resolve_lookup_indices(bytes: &[u8], table_offset: usize, wanted_tags: &[&str
 
     lookup_indices
         .iter()
-        .map(|&lookup_index| lookup_list_offset + u16_at(bytes, lookup_list_offset + 2 + lookup_index as usize * 2) as usize)
+        .map(|&lookup_index| {
+            lookup_list_offset
+                + u16_at(bytes, lookup_list_offset + 2 + lookup_index as usize * 2) as usize
+        })
         .collect()
 }
 
 /// Builds first-glyph -> candidate ligatures from every 'liga'/'rlig' GSUB
 /// lookup's ligature (type 4) subtables.
-fn parse_ligature_map(bytes: &[u8], gsub: &TableRecord) -> CoMotionResult<HashMap<u16, Vec<LigatureRule>>> {
+fn parse_ligature_map(
+    bytes: &[u8],
+    gsub: &TableRecord,
+) -> CoMotionResult<HashMap<u16, Vec<LigatureRule>>> {
     let mut map: HashMap<u16, Vec<LigatureRule>> = HashMap::new();
     let lookup_offsets = resolve_lookup_indices(bytes, gsub.offset, &["liga", "rlig"]);
     for lookup_offset in lookup_offsets {
@@ -437,18 +481,23 @@ fn parse_ligature_map(bytes: &[u8], gsub: &TableRecord) -> CoMotionResult<HashMa
                 if coverage_index as usize >= lig_set_count as usize {
                     continue;
                 }
-                let lig_set_offset = subtable_offset + u16_at(bytes, subtable_offset + 6 + coverage_index as usize * 2) as usize;
+                let lig_set_offset = subtable_offset
+                    + u16_at(bytes, subtable_offset + 6 + coverage_index as usize * 2) as usize;
                 let ligature_count = u16_at(bytes, lig_set_offset);
                 let mut rules = Vec::with_capacity(ligature_count as usize);
                 for l in 0..ligature_count as usize {
-                    let lig_offset = lig_set_offset + u16_at(bytes, lig_set_offset + 2 + l * 2) as usize;
+                    let lig_offset =
+                        lig_set_offset + u16_at(bytes, lig_set_offset + 2 + l * 2) as usize;
                     let ligature_glyph = u16_at(bytes, lig_offset);
                     let component_count = u16_at(bytes, lig_offset + 2) as usize;
                     let mut component_glyphs = Vec::new();
                     for c in 0..component_count.saturating_sub(1) {
                         component_glyphs.push(u16_at(bytes, lig_offset + 4 + c * 2));
                     }
-                    rules.push(LigatureRule { component_glyphs, ligature_glyph });
+                    rules.push(LigatureRule {
+                        component_glyphs,
+                        ligature_glyph,
+                    });
                 }
                 map.entry(first_glyph).or_insert(rules);
             }
@@ -475,7 +524,12 @@ fn apply_ligatures(glyph_ids: &[u16], ligature_map: &HashMap<u16, Vec<LigatureRu
                 if end > glyph_ids.len() {
                     continue;
                 }
-                if rule.component_glyphs.iter().enumerate().all(|(offset, &g)| glyph_ids[i + 1 + offset] == g) {
+                if rule
+                    .component_glyphs
+                    .iter()
+                    .enumerate()
+                    .all(|(offset, &g)| glyph_ids[i + 1 + offset] == g)
+                {
                     matched = Some(rule);
                     break;
                 }
@@ -510,7 +564,10 @@ fn parse_pair_kerning(bytes: &[u8], gpos: &TableRecord) -> CoMotionResult<Vec<Pa
     Ok(subtables)
 }
 
-fn parse_pair_pos_subtable(bytes: &[u8], subtable_offset: usize) -> CoMotionResult<PairPosSubtable> {
+fn parse_pair_pos_subtable(
+    bytes: &[u8],
+    subtable_offset: usize,
+) -> CoMotionResult<PairPosSubtable> {
     let format = u16_at(bytes, subtable_offset);
     let coverage_offset = subtable_offset + u16_at(bytes, subtable_offset + 2) as usize;
     let value_format1 = u16_at(bytes, subtable_offset + 4);
@@ -523,9 +580,17 @@ fn parse_pair_pos_subtable(bytes: &[u8], subtable_offset: usize) -> CoMotionResu
         let pair_set_count = u16_at(bytes, subtable_offset + 8);
         let mut pair_set_offsets = Vec::with_capacity(pair_set_count as usize);
         for i in 0..pair_set_count as usize {
-            pair_set_offsets.push(subtable_offset + u16_at(bytes, subtable_offset + 10 + i * 2) as usize);
+            pair_set_offsets
+                .push(subtable_offset + u16_at(bytes, subtable_offset + 10 + i * 2) as usize);
         }
-        return Ok(PairPosSubtable::Format1 { coverage, pair_set_offsets, value_format1, value_format2, value1_size, value2_size });
+        return Ok(PairPosSubtable::Format1 {
+            coverage,
+            pair_set_offsets,
+            value_format1,
+            value_format2,
+            value1_size,
+            value2_size,
+        });
     }
 
     if format == 2 {
@@ -550,7 +615,9 @@ fn parse_pair_pos_subtable(bytes: &[u8], subtable_offset: usize) -> CoMotionResu
         });
     }
 
-    Err(CoMotionError::invalid(format!("不支援的 PairPos 格式：{format}")))
+    Err(CoMotionError::invalid(format!(
+        "不支援的 PairPos 格式：{format}"
+    )))
 }
 
 /// Picks a Unicode cmap subtable (format 4 preferred to format 12 in the TS
@@ -574,7 +641,8 @@ fn parse_cmap(bytes: &[u8], cmap: TableRecord) -> CoMotionResult<CmapKind> {
         let platform_id = u16_at(bytes, record_offset);
         let encoding_id = u16_at(bytes, record_offset + 2);
         let subtable_offset = cmap.offset + u32_at(bytes, record_offset + 4) as usize;
-        let is_unicode_platform = platform_id == 0 || (platform_id == 3 && (encoding_id == 1 || encoding_id == 10));
+        let is_unicode_platform =
+            platform_id == 0 || (platform_id == 3 && (encoding_id == 1 || encoding_id == 10));
         if !is_unicode_platform || subtable_offset + 2 > bytes.len() {
             continue;
         }
@@ -604,7 +672,10 @@ fn build_format12(bytes: &[u8], offset: usize) -> CoMotionResult<CmapKind> {
     if groups_start + num_groups as usize * 12 > bytes.len() {
         return Err(corrupt());
     }
-    Ok(CmapKind::Format12 { groups_start, num_groups })
+    Ok(CmapKind::Format12 {
+        groups_start,
+        num_groups,
+    })
 }
 
 fn build_format4(bytes: &[u8], offset: usize) -> CoMotionResult<CmapKind> {
@@ -620,7 +691,13 @@ fn build_format4(bytes: &[u8], offset: usize) -> CoMotionResult<CmapKind> {
     if id_range_offsets_start + seg_count_x2 as usize > bytes.len() {
         return Err(corrupt());
     }
-    Ok(CmapKind::Format4 { seg_count, end_codes_start, start_codes_start, id_deltas_start, id_range_offsets_start })
+    Ok(CmapKind::Format4 {
+        seg_count,
+        end_codes_start,
+        start_codes_start,
+        id_deltas_start,
+        id_range_offsets_start,
+    })
 }
 
 fn lookup_format12(bytes: &[u8], groups_start: usize, num_groups: u32, code_point: u32) -> u16 {
@@ -666,7 +743,10 @@ fn lookup_format4(
         if id_range_offset == 0 {
             return cp.wrapping_add(id_delta as u16);
         }
-        let glyph_index_address = id_range_offsets_start + i as usize * 2 + id_range_offset as usize + (cp - start_code) as usize * 2;
+        let glyph_index_address = id_range_offsets_start
+            + i as usize * 2
+            + id_range_offset as usize
+            + (cp - start_code) as usize * 2;
         if glyph_index_address + 2 > bytes.len() {
             // TS throws here (a structurally-inconsistent idRangeOffset).
             // `glyph_id_for_code_point` has no Result channel (fixed trait
@@ -674,7 +754,11 @@ fn lookup_format4(
             return 0;
         }
         let glyph_id = u16_at(bytes, glyph_index_address);
-        return if glyph_id == 0 { 0 } else { glyph_id.wrapping_add(id_delta as u16) };
+        return if glyph_id == 0 {
+            0
+        } else {
+            glyph_id.wrapping_add(id_delta as u16)
+        };
     }
     0
 }
@@ -682,6 +766,7 @@ fn lookup_format4(
 /// A parsed sfnt (TTF/OTF) font. Owns its source bytes plus every offset/map
 /// needed to answer `FontMetrics` queries — mirrors the TS `parseFont`'s
 /// closures, which all capture the same `DataView` over the original buffer.
+#[derive(Debug)]
 pub struct ParsedFont {
     bytes: Vec<u8>,
     units_per_em: u16,
@@ -712,7 +797,10 @@ pub fn parse_font(bytes: &[u8]) -> CoMotionResult<ParsedFont> {
     if sfnt_version == TAG_WOFF || sfnt_version == TAG_WOFF2 {
         return Err(CoMotionError::invalid("不支援的字型格式，需要 TTF 或 OTF"));
     }
-    if sfnt_version != SFNT_VERSION_TRUETYPE && sfnt_version != SFNT_VERSION_TRUE && sfnt_version != SFNT_TAG_OTTO {
+    if sfnt_version != SFNT_VERSION_TRUETYPE
+        && sfnt_version != SFNT_VERSION_TRUE
+        && sfnt_version != SFNT_TAG_OTTO
+    {
         return Err(corrupt());
     }
 
@@ -804,10 +892,25 @@ impl FontMetrics for ParsedFont {
 
     fn glyph_id_for_code_point(&self, code_point: u32) -> u16 {
         match &self.cmap_kind {
-            CmapKind::Format12 { groups_start, num_groups } => lookup_format12(&self.bytes, *groups_start, *num_groups, code_point),
-            CmapKind::Format4 { seg_count, end_codes_start, start_codes_start, id_deltas_start, id_range_offsets_start } => {
-                lookup_format4(&self.bytes, *seg_count, *end_codes_start, *start_codes_start, *id_deltas_start, *id_range_offsets_start, code_point)
-            }
+            CmapKind::Format12 {
+                groups_start,
+                num_groups,
+            } => lookup_format12(&self.bytes, *groups_start, *num_groups, code_point),
+            CmapKind::Format4 {
+                seg_count,
+                end_codes_start,
+                start_codes_start,
+                id_deltas_start,
+                id_range_offsets_start,
+            } => lookup_format4(
+                &self.bytes,
+                *seg_count,
+                *end_codes_start,
+                *start_codes_start,
+                *id_deltas_start,
+                *id_range_offsets_start,
+                code_point,
+            ),
         }
     }
 
@@ -884,7 +987,13 @@ mod tests {
     fn apply_ligatures_substitutes_matching_run_and_continues_after() {
         // Glyphs [10, 11] -> ligature glyph 99 (e.g. "fi" -> ligature).
         let mut map = HashMap::new();
-        map.insert(10u16, vec![LigatureRule { component_glyphs: vec![11], ligature_glyph: 99 }]);
+        map.insert(
+            10u16,
+            vec![LigatureRule {
+                component_glyphs: vec![11],
+                ligature_glyph: 99,
+            }],
+        );
         let result = apply_ligatures(&[10, 11, 5], &map);
         assert_eq!(result, vec![99, 5]);
     }
@@ -892,7 +1001,13 @@ mod tests {
     #[test]
     fn apply_ligatures_does_not_match_when_components_dont_follow() {
         let mut map = HashMap::new();
-        map.insert(10u16, vec![LigatureRule { component_glyphs: vec![11], ligature_glyph: 99 }]);
+        map.insert(
+            10u16,
+            vec![LigatureRule {
+                component_glyphs: vec![11],
+                ligature_glyph: 99,
+            }],
+        );
         let result = apply_ligatures(&[10, 5, 11], &map);
         assert_eq!(result, vec![10, 5, 11]);
     }
@@ -1023,7 +1138,12 @@ mod tests {
         cmap.extend_from_slice(&format4);
 
         // --- Table directory ---
-        let tables: Vec<(&str, &[u8])> = vec![("head", &head), ("hhea", &hhea), ("hmtx", &hmtx), ("cmap", &cmap)];
+        let tables: Vec<(&str, &[u8])> = vec![
+            ("head", &head),
+            ("hhea", &hhea),
+            ("hmtx", &hmtx),
+            ("cmap", &cmap),
+        ];
         let mut out = Vec::new();
         out.extend_from_slice(&SFNT_VERSION_TRUETYPE.to_be_bytes());
         out.extend_from_slice(&(tables.len() as u16).to_be_bytes());

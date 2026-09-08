@@ -15,17 +15,12 @@ use crate::text::metrics::measure_text_width;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Align {
+    #[default]
     Left,
     Center,
     Right,
-}
-
-impl Default for Align {
-    fn default() -> Self {
-        Align::Left
-    }
 }
 
 // Every field is `Copy` (`f64`, `Align`, a shared reference, and
@@ -63,6 +58,7 @@ pub struct WrappedLine {
     pub hard_break: bool,
 }
 
+#[derive(Debug)]
 pub struct WrappedText {
     pub lines: Vec<WrappedLine>,
     pub line_height: f64,
@@ -88,7 +84,9 @@ const CJK_RANGES: &[(u32, u32)] = &[
 ];
 
 fn is_cjk(code_point: u32) -> bool {
-    CJK_RANGES.iter().any(|&(start, end)| code_point >= start && code_point <= end)
+    CJK_RANGES
+        .iter()
+        .any(|&(start, end)| code_point >= start && code_point <= end)
 }
 
 // Closing/trailing punctuation a line must never end immediately before, and
@@ -151,7 +149,10 @@ struct WrappedParagraphLine {
 }
 
 fn code_points_to_string(code_points: &[u32], from: usize, to: usize) -> String {
-    code_points[from..to].iter().filter_map(|&cp| char::from_u32(cp)).collect()
+    code_points[from..to]
+        .iter()
+        .filter_map(|&cp| char::from_u32(cp))
+        .collect()
 }
 
 /// Greedy first-fit line breaking of one paragraph (no `"\n"` inside it), by
@@ -165,7 +166,12 @@ fn code_points_to_string(code_points: &[u32], from: usize, to: usize) -> String 
 /// an unbroken run wider than the box, e.g. one long Latin word — breaks
 /// immediately before the code point that would overflow, so those lines
 /// never exceed `width`.
-fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: f64) -> CoMotionResult<Vec<WrappedParagraphLine>> {
+fn wrap_paragraph(
+    text: &str,
+    width: f64,
+    font: &dyn FontMetrics,
+    font_size_px: f64,
+) -> CoMotionResult<Vec<WrappedParagraphLine>> {
     let code_points: Vec<u32> = text.chars().map(|ch| ch as u32).collect();
 
     if code_points.is_empty() {
@@ -173,7 +179,10 @@ fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: 
         // this path never calls measure_text_width — an invalid
         // font_size_px is NOT caught for a wholly-empty paragraph, exactly
         // mirroring the TS source's own early return.
-        return Ok(vec![WrappedParagraphLine { text: String::new(), width: 0.0 }]);
+        return Ok(vec![WrappedParagraphLine {
+            text: String::new(),
+            width: 0.0,
+        }]);
     }
 
     let mut lines: Vec<WrappedParagraphLine> = Vec::new();
@@ -200,7 +209,9 @@ fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: 
                 break;
             }
             accumulated = candidate;
-            if cursor + 1 < code_points.len() && break_allowed_between(code_points[cursor], code_points[cursor + 1]) {
+            if cursor + 1 < code_points.len()
+                && break_allowed_between(code_points[cursor], code_points[cursor + 1])
+            {
                 break_at = Some(cursor + 1);
                 break_width = accumulated;
             }
@@ -209,7 +220,10 @@ fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: 
 
         if cursor == code_points.len() {
             // Everything from `start` fits on one final line.
-            lines.push(WrappedParagraphLine { text: code_points_to_string(&code_points, start, cursor), width: accumulated });
+            lines.push(WrappedParagraphLine {
+                text: code_points_to_string(&code_points, start, cursor),
+                width: accumulated,
+            });
             break;
         }
 
@@ -218,7 +232,10 @@ fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: 
             // the box on its own: it takes its own (overflowing) line.
             let sole_text = code_points_to_string(&code_points, start, start + 1);
             let sole_width = measure_text_width(font, &sole_text, font_size_px)?;
-            lines.push(WrappedParagraphLine { text: sole_text, width: sole_width });
+            lines.push(WrappedParagraphLine {
+                text: sole_text,
+                width: sole_width,
+            });
             start += 1;
             continue;
         }
@@ -227,12 +244,18 @@ fn wrap_paragraph(text: &str, width: f64, font: &dyn FontMetrics, font_size_px: 
         // cursor >= start) — the `> start` check mirrors the TS source's own
         // `if (breakAt > start)` guard against its `-1` sentinel exactly.
         if let Some(break_at) = break_at.filter(|&b| b > start) {
-            lines.push(WrappedParagraphLine { text: code_points_to_string(&code_points, start, break_at), width: break_width });
+            lines.push(WrappedParagraphLine {
+                text: code_points_to_string(&code_points, start, break_at),
+                width: break_width,
+            });
             start = break_at;
         } else {
             // No permitted break anywhere in this run: character-level
             // emergency break right before the code point that overflowed.
-            lines.push(WrappedParagraphLine { text: code_points_to_string(&code_points, start, cursor), width: accumulated });
+            lines.push(WrappedParagraphLine {
+                text: code_points_to_string(&code_points, start, cursor),
+                width: accumulated,
+            });
             start = cursor;
         }
     }
@@ -269,18 +292,29 @@ pub fn wrap_text(text: &str, options: &WrapOptions) -> CoMotionResult<WrappedTex
     let units_per_em = f64::from(options.font.units_per_em());
     let ascent = (f64::from(options.font.ascender()) / units_per_em) * options.font_size_px;
     // hhea-derived line height (ascender - descender + lineGap), per em.
-    let line_height = ((f64::from(options.font.ascender()) - f64::from(options.font.descender()) + f64::from(options.font.line_gap())) / units_per_em)
+    let line_height = ((f64::from(options.font.ascender()) - f64::from(options.font.descender())
+        + f64::from(options.font.line_gap()))
+        / units_per_em)
         * options.font_size_px;
 
     let paragraphs: Vec<&str> = text.split('\n').collect();
     let mut lines: Vec<WrappedLine> = Vec::new();
 
     for (paragraph_index, paragraph) in paragraphs.iter().enumerate() {
-        let indent = options.indents.and_then(|indents| indents.get(paragraph_index)).copied().unwrap_or(0.0);
+        let indent = options
+            .indents
+            .and_then(|indents| indents.get(paragraph_index))
+            .copied()
+            .unwrap_or(0.0);
         if indent >= options.width {
             return Err(CoMotionError::invalid("列表縮排大於文字框寬度，無法排版"));
         }
-        let paragraph_lines = wrap_paragraph(paragraph, options.width - indent, options.font, options.font_size_px)?;
+        let paragraph_lines = wrap_paragraph(
+            paragraph,
+            options.width - indent,
+            options.font,
+            options.font_size_px,
+        )?;
         let is_last_paragraph = paragraph_index == paragraphs.len() - 1;
         let paragraph_line_count = paragraph_lines.len();
         for (line_index, paragraph_line) in paragraph_lines.into_iter().enumerate() {
@@ -297,7 +331,12 @@ pub fn wrap_text(text: &str, options: &WrapOptions) -> CoMotionResult<WrappedTex
     }
 
     let height = (lines.len() as f64) * line_height;
-    Ok(WrappedText { lines, line_height, ascent, height })
+    Ok(WrappedText {
+        lines,
+        line_height,
+        ascent,
+        height,
+    })
 }
 
 #[cfg(test)]
@@ -359,7 +398,13 @@ mod tests {
     #[test]
     fn empty_string_produces_one_empty_line() {
         let font = monospace_font();
-        let options = WrapOptions { width: 500.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 500.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("", &options).unwrap();
         assert_eq!(result.lines.len(), 1);
         assert_eq!(result.lines[0].text, "");
@@ -370,7 +415,13 @@ mod tests {
     fn text_that_fits_on_one_line_produces_a_single_line() {
         let font = monospace_font();
         // Each char is 100 units * 10px / 1000 upm = 1px; 5 chars = 5px total; width 100 is plenty.
-        let options = WrapOptions { width: 100.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 100.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("hello", &options).unwrap();
         assert_eq!(result.lines.len(), 1);
         assert_eq!(result.lines[0].text, "hello");
@@ -383,7 +434,13 @@ mod tests {
         // Each char = 100 units * 10px / 1000upm = 1px. "aaa bbb" is 7 chars = 7px.
         // width=5 -> "aaa " (4px, then adding 'b' would make 5px... let's
         // just assert the space-break behavior qualitatively.
-        let options = WrapOptions { width: 4.5, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 4.5,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("aaa bbb", &options).unwrap();
         // "aaa " fits at 4px (accumulated at cursor pointing at the space),
         // adding 'b' would make it 5 chars = 5px > 4.5, so break after the
@@ -397,7 +454,13 @@ mod tests {
         let font = monospace_font();
         // width smaller than a single character's width (1px) -> emergency
         // single-char line that is allowed to overflow.
-        let options = WrapOptions { width: 0.5, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 0.5,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("ab", &options).unwrap();
         assert_eq!(result.lines.len(), 2);
         assert_eq!(result.lines[0].text, "a");
@@ -411,7 +474,13 @@ mod tests {
         let font = monospace_font();
         // "aaaaaa" (no spaces/CJK/punctuation anywhere) at width=3px (3 chars) forces
         // a character-level break exactly at the overflow point.
-        let options = WrapOptions { width: 3.5, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 3.5,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("aaaaaa", &options).unwrap();
         assert_eq!(result.lines[0].text, "aaa");
         assert_eq!(result.lines[1].text, "aaa");
@@ -420,7 +489,13 @@ mod tests {
     #[test]
     fn hard_break_flag_set_only_on_final_line_of_non_last_paragraph() {
         let font = monospace_font();
-        let options = WrapOptions { width: 1000.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 1000.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("aa\nbb\ncc", &options).unwrap();
         assert_eq!(result.lines.len(), 3);
         assert!(result.lines[0].hard_break); // end of paragraph "aa", not the last paragraph
@@ -431,7 +506,13 @@ mod tests {
     #[test]
     fn y_increases_by_line_height_across_the_whole_wrapped_text_not_per_paragraph() {
         let font = monospace_font();
-        let options = WrapOptions { width: 1000.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 1000.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("a\nb\nc", &options).unwrap();
         let step = result.lines[1].y - result.lines[0].y;
         assert!((step - result.line_height).abs() < 1e-9);
@@ -443,10 +524,30 @@ mod tests {
     fn alignment_center_uses_indent_and_right_does_not() {
         let font = monospace_font();
         let indents = [20.0];
-        let base = WrapOptions { width: 100.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: Some(&indents) };
+        let base = WrapOptions {
+            width: 100.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: Some(&indents),
+        };
         let left = wrap_text("hi", &base).unwrap();
-        let center = wrap_text("hi", &WrapOptions { align: Align::Center, ..base }).unwrap();
-        let right = wrap_text("hi", &WrapOptions { align: Align::Right, ..base }).unwrap();
+        let center = wrap_text(
+            "hi",
+            &WrapOptions {
+                align: Align::Center,
+                ..base
+            },
+        )
+        .unwrap();
+        let right = wrap_text(
+            "hi",
+            &WrapOptions {
+                align: Align::Right,
+                ..base
+            },
+        )
+        .unwrap();
 
         let line_width = left.lines[0].width;
         assert_eq!(left.lines[0].x, 20.0); // left: x == indent
@@ -459,7 +560,13 @@ mod tests {
     fn list_indent_greater_than_or_equal_to_width_errors() {
         let font = monospace_font();
         let indents = [50.0];
-        let options = WrapOptions { width: 50.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: Some(&indents) };
+        let options = WrapOptions {
+            width: 50.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: Some(&indents),
+        };
         let err = wrap_text("hi", &options).unwrap_err();
         assert_eq!(err.message(), "列表縮排大於文字框寬度，無法排版");
     }
@@ -467,18 +574,36 @@ mod tests {
     #[test]
     fn zero_or_negative_width_errors() {
         let font = monospace_font();
-        let options = WrapOptions { width: 0.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 0.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let err = wrap_text("hi", &options).unwrap_err();
         assert_eq!(err.message(), "文字框寬度必須是大於 0 的數字");
 
-        let options_neg = WrapOptions { width: -5.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options_neg = WrapOptions {
+            width: -5.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         assert!(wrap_text("hi", &options_neg).is_err());
     }
 
     #[test]
     fn carriage_return_in_text_errors() {
         let font = monospace_font();
-        let options = WrapOptions { width: 100.0, font: &font, font_size_px: 10.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 100.0,
+            font: &font,
+            font_size_px: 10.0,
+            align: Align::Left,
+            indents: None,
+        };
         let err = wrap_text("a\rb", &options).unwrap_err();
         assert_eq!(err.message(), "文字內容不接受 \\r，硬換行請用 \\n");
     }
@@ -486,12 +611,21 @@ mod tests {
     #[test]
     fn ascent_and_line_height_derive_from_font_metrics() {
         let font = monospace_font(); // ascender=800, descender=-200, line_gap=0, upm=1000
-        let options = WrapOptions { width: 1000.0, font: &font, font_size_px: 100.0, align: Align::Left, indents: None };
+        let options = WrapOptions {
+            width: 1000.0,
+            font: &font,
+            font_size_px: 100.0,
+            align: Align::Left,
+            indents: None,
+        };
         let result = wrap_text("hi", &options).unwrap();
         // ascent = 800/1000 * 100 = 80
         assert_eq!(result.ascent, 80.0);
         // line_height = (800 - (-200) + 0)/1000 * 100 = 100
         assert_eq!(result.line_height, 100.0);
-        assert_eq!(result.height, result.lines.len() as f64 * result.line_height);
+        assert_eq!(
+            result.height,
+            result.lines.len() as f64 * result.line_height
+        );
     }
 }

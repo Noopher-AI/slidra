@@ -37,7 +37,14 @@ pub struct Point {
 }
 
 /// Ports the `IDENTITY` constant.
-pub const IDENTITY: Matrix = Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 };
+pub const IDENTITY: Matrix = Matrix {
+    a: 1.0,
+    b: 0.0,
+    c: 0.0,
+    d: 1.0,
+    e: 0.0,
+    f: 0.0,
+};
 
 const DEG_TO_RAD: f64 = std::f64::consts::PI / 180.0;
 
@@ -66,20 +73,14 @@ fn find_char_from(s: &str, from: usize, ch: char) -> Option<usize> {
 fn is_js_whitespace(ch: char) -> bool {
     matches!(
         ch,
-        '\t' | '\n'
-            | '\u{0B}'
-            | '\u{0C}'
-            | '\r'
-            | ' '
-            | '\u{A0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202F}'
-            | '\u{205F}'
-            | '\u{3000}'
-            | '\u{FEFF}'
+        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
     )
 }
 
@@ -100,7 +101,9 @@ fn arity_for(name: &str) -> CoMotionResult<&'static [usize]> {
         "rotate" => Ok(&[1, 3]),
         "skewX" => Ok(&[1]),
         "skewY" => Ok(&[1]),
-        _ => Err(CoMotionError::invalid(format!("不支援的 transform 函式：{name}"))),
+        _ => Err(CoMotionError::invalid(format!(
+            "不支援的 transform 函式：{name}"
+        ))),
     }
 }
 
@@ -158,7 +161,9 @@ pub fn parse_transform(value: Option<&str>) -> CoMotionResult<Matrix> {
             }
         }
         if char_at(text, i) != Some('(') {
-            return Err(CoMotionError::invalid(format!("transform 語法錯誤：{name} 後面缺少 (")));
+            return Err(CoMotionError::invalid(format!(
+                "transform 語法錯誤：{name} 後面缺少 ("
+            )));
         }
         let close = match find_char_from(text, i, ')') {
             Some(p) => p,
@@ -208,7 +213,11 @@ fn is_svg_number_token(token: &str) -> bool {
     // `(\d+\.?\d*|\.\d+)`: either at least one integer digit (dot and
     // fraction digits both optional), or a dot followed by at least one
     // fraction digit with no integer digit at all.
-    let mantissa_ok = if int_digits > 0 { true } else { has_dot && frac_digits > 0 };
+    let mantissa_ok = if int_digits > 0 {
+        true
+    } else {
+        has_dot && frac_digits > 0
+    };
     if !mantissa_ok {
         return false;
     }
@@ -235,8 +244,10 @@ fn is_svg_number_token(token: &str) -> bool {
 fn parse_arguments(name: &str, args_text: &str) -> CoMotionResult<Vec<f64>> {
     let arity = arity_for(name)?;
 
-    let tokens: Vec<&str> =
-        args_text.split(|c: char| c == ',' || is_js_whitespace(c)).filter(|t| !t.is_empty()).collect();
+    let tokens: Vec<&str> = args_text
+        .split(|c: char| c == ',' || is_js_whitespace(c))
+        .filter(|t| !t.is_empty())
+        .collect();
 
     let mut values = Vec::with_capacity(tokens.len());
     for token in tokens {
@@ -253,13 +264,19 @@ fn parse_arguments(name: &str, args_text: &str) -> CoMotionResult<Vec<f64>> {
         // char-for-char in an environment with a Rust compiler available;
         // flagged here rather than silently assumed watertight.
         let value: f64 = token.parse().map_err(|_| {
-            CoMotionError::invalid(format!("transform 語法錯誤：{name} 的參數不是數字（{token}）"))
+            CoMotionError::invalid(format!(
+                "transform 語法錯誤：{name} 的參數不是數字（{token}）"
+            ))
         })?;
         values.push(value);
     }
 
     if !arity.contains(&values.len()) {
-        let arity_desc = arity.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(" 或 ");
+        let arity_desc = arity
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(" 或 ");
         return Err(CoMotionError::invalid(format!(
             "transform 語法錯誤：{name} 收到 {} 個參數，應為 {arity_desc} 個",
             values.len()
@@ -277,31 +294,84 @@ fn parse_arguments(name: &str, args_text: &str) -> CoMotionResult<Vec<f64>> {
 /// future drift into a crash instead of a clean error.
 fn function_to_matrix(name: &str, args: &[f64]) -> CoMotionResult<Matrix> {
     match name {
-        "matrix" => Ok(Matrix { a: args[0], b: args[1], c: args[2], d: args[3], e: args[4], f: args[5] }),
-        "translate" => {
-            Ok(Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: args[0], f: if args.len() == 2 { args[1] } else { 0.0 } })
-        }
+        "matrix" => Ok(Matrix {
+            a: args[0],
+            b: args[1],
+            c: args[2],
+            d: args[3],
+            e: args[4],
+            f: args[5],
+        }),
+        "translate" => Ok(Matrix {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 1.0,
+            e: args[0],
+            f: if args.len() == 2 { args[1] } else { 0.0 },
+        }),
         "scale" => {
             let sx = args[0];
             let sy = if args.len() == 2 { args[1] } else { sx };
-            Ok(Matrix { a: sx, b: 0.0, c: 0.0, d: sy, e: 0.0, f: 0.0 })
+            Ok(Matrix {
+                a: sx,
+                b: 0.0,
+                c: 0.0,
+                d: sy,
+                e: 0.0,
+                f: 0.0,
+            })
         }
         "rotate" => {
             let radians = args[0] * DEG_TO_RAD;
             let (sin, cos) = radians.sin_cos();
-            let rotation = Matrix { a: cos, b: sin, c: -sin, d: cos, e: 0.0, f: 0.0 };
+            let rotation = Matrix {
+                a: cos,
+                b: sin,
+                c: -sin,
+                d: cos,
+                e: 0.0,
+                f: 0.0,
+            };
             if args.len() == 1 {
                 return Ok(rotation);
             }
             // rotate(angle cx cy) === translate(cx cy) rotate(angle) translate(-cx -cy)
             let (cx, cy) = (args[1], args[2]);
-            let to_center = Matrix { e: cx, f: cy, ..IDENTITY };
-            let from_center = Matrix { e: -cx, f: -cy, ..IDENTITY };
-            Ok(multiply_matrices(&multiply_matrices(&to_center, &rotation), &from_center))
+            let to_center = Matrix {
+                e: cx,
+                f: cy,
+                ..IDENTITY
+            };
+            let from_center = Matrix {
+                e: -cx,
+                f: -cy,
+                ..IDENTITY
+            };
+            Ok(multiply_matrices(
+                &multiply_matrices(&to_center, &rotation),
+                &from_center,
+            ))
         }
-        "skewX" => Ok(Matrix { a: 1.0, b: 0.0, c: (args[0] * DEG_TO_RAD).tan(), d: 1.0, e: 0.0, f: 0.0 }),
-        "skewY" => Ok(Matrix { a: 1.0, b: (args[0] * DEG_TO_RAD).tan(), c: 0.0, d: 1.0, e: 0.0, f: 0.0 }),
-        _ => Err(CoMotionError::invalid(format!("不支援的 transform 函式：{name}"))),
+        "skewX" => Ok(Matrix {
+            a: 1.0,
+            b: 0.0,
+            c: (args[0] * DEG_TO_RAD).tan(),
+            d: 1.0,
+            e: 0.0,
+            f: 0.0,
+        }),
+        "skewY" => Ok(Matrix {
+            a: 1.0,
+            b: (args[0] * DEG_TO_RAD).tan(),
+            c: 0.0,
+            d: 1.0,
+            e: 0.0,
+            f: 0.0,
+        }),
+        _ => Err(CoMotionError::invalid(format!(
+            "不支援的 transform 函式：{name}"
+        ))),
     }
 }
 
@@ -330,7 +400,10 @@ pub fn compose_matrices(chain: &[Matrix]) -> Matrix {
 
 /// Ports `applyMatrixToPoint`.
 pub fn apply_matrix_to_point(m: &Matrix, p: Point) -> Point {
-    Point { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f }
+    Point {
+        x: m.a * p.x + m.c * p.y + m.e,
+        y: m.b * p.x + m.d * p.y + m.f,
+    }
 }
 
 /// Ports `invertMatrix`. A degenerate matrix (zero determinant) returns
@@ -338,7 +411,9 @@ pub fn apply_matrix_to_point(m: &Matrix, p: Point) -> Point {
 pub fn invert_matrix(m: &Matrix) -> CoMotionResult<Matrix> {
     let det = m.a * m.d - m.b * m.c;
     if det == 0.0 {
-        return Err(CoMotionError::invalid("transform 無法反轉：矩陣的行列式為 0"));
+        return Err(CoMotionError::invalid(
+            "transform 無法反轉：矩陣的行列式為 0",
+        ));
     }
     Ok(Matrix {
         a: m.d / det,
@@ -371,7 +446,9 @@ pub fn decompose_matrix(m: &Matrix) -> CoMotionResult<TransformParts> {
     let scale_x = m.a.hypot(m.b);
     let determinant = m.a * m.d - m.b * m.c;
     if scale_x == 0.0 || determinant == 0.0 {
-        return Err(CoMotionError::invalid("transform 無法拆解：矩陣已退化（縮放為 0）"));
+        return Err(CoMotionError::invalid(
+            "transform 無法拆解：矩陣已退化（縮放為 0）",
+        ));
     }
     // With no skew, (a, b) and (c, d) are perpendicular. Comparing their dot
     // product against the magnitudes rather than against an absolute
@@ -389,7 +466,11 @@ pub fn decompose_matrix(m: &Matrix) -> CoMotionResult<TransformParts> {
         rotation: m.b.atan2(m.a) / DEG_TO_RAD,
         scale_x,
         // determinant < 0 means one axis is mirrored; hypot alone cannot see it.
-        scale_y: if determinant < 0.0 { -scale_y_raw } else { scale_y_raw },
+        scale_y: if determinant < 0.0 {
+            -scale_y_raw
+        } else {
+            scale_y_raw
+        },
     })
 }
 
@@ -400,7 +481,11 @@ pub fn decompose_matrix(m: &Matrix) -> CoMotionResult<TransformParts> {
 /// not shared code, see this file's module doc comment for why.
 fn format_number(value: f64) -> String {
     let rounded: f64 = format!("{value:.4}").parse().unwrap_or(0.0);
-    if rounded == 0.0 { "0".to_string() } else { format!("{rounded}") }
+    if rounded == 0.0 {
+        "0".to_string()
+    } else {
+        format!("{rounded}")
+    }
 }
 
 /// Ports `formatTransform`: serializes parts back into a transform-list,
@@ -438,12 +523,42 @@ mod tests {
     const EPS: f64 = 1e-9;
 
     fn assert_matrix_close(actual: Matrix, expected: Matrix) {
-        assert!((actual.a - expected.a).abs() < EPS, "a: {} vs {}", actual.a, expected.a);
-        assert!((actual.b - expected.b).abs() < EPS, "b: {} vs {}", actual.b, expected.b);
-        assert!((actual.c - expected.c).abs() < EPS, "c: {} vs {}", actual.c, expected.c);
-        assert!((actual.d - expected.d).abs() < EPS, "d: {} vs {}", actual.d, expected.d);
-        assert!((actual.e - expected.e).abs() < EPS, "e: {} vs {}", actual.e, expected.e);
-        assert!((actual.f - expected.f).abs() < EPS, "f: {} vs {}", actual.f, expected.f);
+        assert!(
+            (actual.a - expected.a).abs() < EPS,
+            "a: {} vs {}",
+            actual.a,
+            expected.a
+        );
+        assert!(
+            (actual.b - expected.b).abs() < EPS,
+            "b: {} vs {}",
+            actual.b,
+            expected.b
+        );
+        assert!(
+            (actual.c - expected.c).abs() < EPS,
+            "c: {} vs {}",
+            actual.c,
+            expected.c
+        );
+        assert!(
+            (actual.d - expected.d).abs() < EPS,
+            "d: {} vs {}",
+            actual.d,
+            expected.d
+        );
+        assert!(
+            (actual.e - expected.e).abs() < EPS,
+            "e: {} vs {}",
+            actual.e,
+            expected.e
+        );
+        assert!(
+            (actual.f - expected.f).abs() < EPS,
+            "f: {} vs {}",
+            actual.f,
+            expected.f
+        );
     }
 
     #[test]
@@ -456,26 +571,66 @@ mod tests {
     #[test]
     fn translate_with_one_argument_defaults_y_to_zero() {
         let m = parse_transform(Some("translate(10)")).unwrap();
-        assert_matrix_close(m, Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 10.0, f: 0.0 });
+        assert_matrix_close(
+            m,
+            Matrix {
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: 1.0,
+                e: 10.0,
+                f: 0.0,
+            },
+        );
     }
 
     #[test]
     fn translate_with_two_arguments_and_comma_separator() {
         let m = parse_transform(Some("translate(10, 20)")).unwrap();
-        assert_matrix_close(m, Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 10.0, f: 20.0 });
+        assert_matrix_close(
+            m,
+            Matrix {
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: 1.0,
+                e: 10.0,
+                f: 20.0,
+            },
+        );
     }
 
     #[test]
     fn scale_with_one_argument_applies_uniformly() {
         let m = parse_transform(Some("scale(2)")).unwrap();
-        assert_matrix_close(m, Matrix { a: 2.0, b: 0.0, c: 0.0, d: 2.0, e: 0.0, f: 0.0 });
+        assert_matrix_close(
+            m,
+            Matrix {
+                a: 2.0,
+                b: 0.0,
+                c: 0.0,
+                d: 2.0,
+                e: 0.0,
+                f: 0.0,
+            },
+        );
     }
 
     #[test]
     fn rotate_90_degrees_matches_hand_computed_matrix() {
         // cos(90) = 0, sin(90) = 1 -- exact values, not implementation output.
         let m = parse_transform(Some("rotate(90)")).unwrap();
-        assert_matrix_close(m, Matrix { a: 0.0, b: 1.0, c: -1.0, d: 0.0, e: 0.0, f: 0.0 });
+        assert_matrix_close(
+            m,
+            Matrix {
+                a: 0.0,
+                b: 1.0,
+                c: -1.0,
+                d: 0.0,
+                e: 0.0,
+                f: 0.0,
+            },
+        );
     }
 
     #[test]
@@ -489,7 +644,10 @@ mod tests {
         let translate_to = parse_transform(Some("translate(10 20)")).unwrap();
         let rotate_only = parse_transform(Some("rotate(90)")).unwrap();
         let translate_back = parse_transform(Some("translate(-10 -20)")).unwrap();
-        let expected = multiply_matrices(&multiply_matrices(&translate_to, &rotate_only), &translate_back);
+        let expected = multiply_matrices(
+            &multiply_matrices(&translate_to, &rotate_only),
+            &translate_back,
+        );
         assert_matrix_close(combined, expected);
     }
 
@@ -507,7 +665,17 @@ mod tests {
     #[test]
     fn matrix_function_maps_arguments_positionally() {
         let m = parse_transform(Some("matrix(1 2 3 4 5 6)")).unwrap();
-        assert_matrix_close(m, Matrix { a: 1.0, b: 2.0, c: 3.0, d: 4.0, e: 5.0, f: 6.0 });
+        assert_matrix_close(
+            m,
+            Matrix {
+                a: 1.0,
+                b: 2.0,
+                c: 3.0,
+                d: 4.0,
+                e: 5.0,
+                f: 6.0,
+            },
+        );
     }
 
     #[test]
@@ -543,8 +711,22 @@ mod tests {
     #[test]
     fn multiply_matrices_applies_inner_first() {
         // outer = translate(10,0), inner = scale(2) -> outer(inner(p))
-        let outer = Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 10.0, f: 0.0 };
-        let inner = Matrix { a: 2.0, b: 0.0, c: 0.0, d: 2.0, e: 0.0, f: 0.0 };
+        let outer = Matrix {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 1.0,
+            e: 10.0,
+            f: 0.0,
+        };
+        let inner = Matrix {
+            a: 2.0,
+            b: 0.0,
+            c: 0.0,
+            d: 2.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let combined = multiply_matrices(&outer, &inner);
         let p = apply_matrix_to_point(&combined, Point { x: 3.0, y: 3.0 });
         assert!((p.x - 16.0).abs() < EPS);
@@ -558,7 +740,14 @@ mod tests {
 
     #[test]
     fn invert_matrix_undoes_the_original() {
-        let m = Matrix { a: 2.0, b: 0.0, c: 0.0, d: 4.0, e: 10.0, f: -5.0 };
+        let m = Matrix {
+            a: 2.0,
+            b: 0.0,
+            c: 0.0,
+            d: 4.0,
+            e: 10.0,
+            f: -5.0,
+        };
         let inv = invert_matrix(&m).unwrap();
         let round_trip = multiply_matrices(&inv, &m);
         assert_matrix_close(round_trip, IDENTITY);
@@ -566,7 +755,14 @@ mod tests {
 
     #[test]
     fn invert_degenerate_matrix_is_an_error() {
-        let m = Matrix { a: 0.0, b: 0.0, c: 0.0, d: 0.0, e: 0.0, f: 0.0 };
+        let m = Matrix {
+            a: 0.0,
+            b: 0.0,
+            c: 0.0,
+            d: 0.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let err = invert_matrix(&m).unwrap_err();
         assert!(err.message().contains("無法反轉"));
     }
@@ -584,7 +780,14 @@ mod tests {
 
     #[test]
     fn decompose_degenerate_zero_scale_is_an_error() {
-        let m = Matrix { a: 0.0, b: 0.0, c: 0.0, d: 0.0, e: 0.0, f: 0.0 };
+        let m = Matrix {
+            a: 0.0,
+            b: 0.0,
+            c: 0.0,
+            d: 0.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let err = decompose_matrix(&m).unwrap_err();
         assert!(err.message().contains("已退化"));
     }
@@ -592,26 +795,51 @@ mod tests {
     #[test]
     fn decompose_skewed_matrix_is_an_error() {
         // (a,b) = (1,0), (c,d) = (1,1): not perpendicular -- carries skew.
-        let m = Matrix { a: 1.0, b: 0.0, c: 1.0, d: 1.0, e: 0.0, f: 0.0 };
+        let m = Matrix {
+            a: 1.0,
+            b: 0.0,
+            c: 1.0,
+            d: 1.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let err = decompose_matrix(&m).unwrap_err();
         assert!(err.message().contains("傾斜"));
     }
 
     #[test]
     fn format_transform_of_all_defaults_is_empty_string() {
-        let parts = TransformParts { translate_x: 0.0, translate_y: 0.0, rotation: 0.0, scale_x: 1.0, scale_y: 1.0 };
+        let parts = TransformParts {
+            translate_x: 0.0,
+            translate_y: 0.0,
+            rotation: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+        };
         assert_eq!(format_transform(&parts), "");
     }
 
     #[test]
     fn format_transform_omits_default_segments_and_keeps_the_rest() {
-        let parts = TransformParts { translate_x: 0.0, translate_y: 0.0, rotation: -15.0, scale_x: 1.0, scale_y: 1.0 };
+        let parts = TransformParts {
+            translate_x: 0.0,
+            translate_y: 0.0,
+            rotation: -15.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+        };
         assert_eq!(format_transform(&parts), "rotate(-15)");
     }
 
     #[test]
     fn format_transform_includes_translate_and_scale_with_expected_text() {
-        let parts = TransformParts { translate_x: 640.0, translate_y: 330.0, rotation: 0.0, scale_x: 2.0, scale_y: 2.0 };
+        let parts = TransformParts {
+            translate_x: 640.0,
+            translate_y: 330.0,
+            rotation: 0.0,
+            scale_x: 2.0,
+            scale_y: 2.0,
+        };
         assert_eq!(format_transform(&parts), "translate(640 330) scale(2 2)");
     }
 }

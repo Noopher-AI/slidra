@@ -20,7 +20,7 @@
 //! literally.
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::slide::scan::{attribute_value, scan_document, ScannedNode};
+use crate::slide::scan::{ScannedNode, attribute_value, scan_document};
 
 /// CSS property names `readSlidePageStyle`/`setSlidePageStyle` read/write on
 /// the root `<svg>`'s own `style` attribute (see that TS module's header
@@ -35,7 +35,10 @@ const ACCENT_PROPERTY: &str = "--comot-accent";
 /// well-formed slide, so this is never expected to discard a large tree.
 fn require_svg_root(svg_content: &str) -> CoMotionResult<ScannedNode> {
     let roots = scan_document(svg_content)?;
-    roots.into_iter().find(|node| node.tag == "svg").ok_or_else(|| CoMotionError::invalid("投影片的根節點不是 <svg>"))
+    roots
+        .into_iter()
+        .find(|node| node.tag == "svg")
+        .ok_or_else(|| CoMotionError::invalid("投影片的根節點不是 <svg>"))
 }
 
 /// A slide's Page style (#200 §4.4): background colour and accent colour.
@@ -62,7 +65,9 @@ fn declaration_value(style: Option<&str>, property: &str) -> Option<String> {
         if trimmed.is_empty() {
             continue;
         }
-        let Some(colon) = trimmed.find(':') else { continue };
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
         let key = trimmed[..colon].trim();
         let value = trimmed[colon + 1..].trim();
         if key == property {
@@ -91,21 +96,39 @@ mod tests {
     fn reads_background_and_accent_when_both_declared() {
         let svg = r#"<svg viewBox="0 0 100 100" style="background-color:#112233;--comot-accent:#445566"></svg>"#;
         let style = read_slide_page_style(svg).unwrap();
-        assert_eq!(style, PageStyle { background: Some("#112233".to_string()), accent: Some("#445566".to_string()) });
+        assert_eq!(
+            style,
+            PageStyle {
+                background: Some("#112233".to_string()),
+                accent: Some("#445566".to_string())
+            }
+        );
     }
 
     #[test]
     fn no_style_attribute_yields_both_none() {
         let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
         let style = read_slide_page_style(svg).unwrap();
-        assert_eq!(style, PageStyle { background: None, accent: None });
+        assert_eq!(
+            style,
+            PageStyle {
+                background: None,
+                accent: None
+            }
+        );
     }
 
     #[test]
     fn style_attribute_with_only_one_property_leaves_the_other_none() {
         let svg = r#"<svg viewBox="0 0 100 100" style="background-color:#000000"></svg>"#;
         let style = read_slide_page_style(svg).unwrap();
-        assert_eq!(style, PageStyle { background: Some("#000000".to_string()), accent: None });
+        assert_eq!(
+            style,
+            PageStyle {
+                background: Some("#000000".to_string()),
+                accent: None
+            }
+        );
     }
 
     #[test]

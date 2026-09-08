@@ -13,7 +13,7 @@
 //! "complete" port — that completeness is intentionally deferred.
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::slide::scan::{attribute_of, attribute_value, ScannedNode};
+use crate::slide::scan::{ScannedNode, attribute_of, attribute_value};
 
 /// `data-comot-type="table"`'s value (`TABLE_CONTAINER_TYPE` in the TS
 /// source). `slide/format.rs` re-exports this rather than duplicating the
@@ -51,7 +51,10 @@ pub struct TableGrid {
 /// decimal list produced by `format_svg_number`, so this divergence is
 /// believed unreachable on real documents.
 fn is_finite_number_token(token: &str) -> bool {
-    token.parse::<f64>().map(|value| value.is_finite()).unwrap_or(false)
+    token
+        .parse::<f64>()
+        .map(|value| value.is_finite())
+        .unwrap_or(false)
 }
 
 /// Ports the regex `^(\d+),(\d+)$` from `describeTableShapeProblem`'s cell
@@ -67,7 +70,8 @@ fn parse_cell_address(raw: &str) -> Option<(u128, u128)> {
     if row_str.is_empty() || col_str.is_empty() {
         return None;
     }
-    if !row_str.bytes().all(|b| b.is_ascii_digit()) || !col_str.bytes().all(|b| b.is_ascii_digit()) {
+    if !row_str.bytes().all(|b| b.is_ascii_digit()) || !col_str.bytes().all(|b| b.is_ascii_digit())
+    {
         return None;
     }
     Some((row_str.parse().ok()?, col_str.parse().ok()?))
@@ -97,25 +101,34 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
         return Some("data-comot-rows 不是合法的數字列表".to_string());
     }
 
-    let source_count = container.children.iter().filter(|child| child.tag == TABLE_SOURCE_TAG).count();
+    let source_count = container
+        .children
+        .iter()
+        .filter(|child| child.tag == TABLE_SOURCE_TAG)
+        .count();
     if source_count > 1 {
         return Some(format!("表格容器必須恰好包含一個 <{TABLE_SOURCE_TAG}>"));
     }
 
-    let first_non_cell = container
-        .children
-        .iter()
-        .find(|child| child.tag != TABLE_SOURCE_TAG && attribute_of(child, "data-comot-cell").is_none());
+    let first_non_cell = container.children.iter().find(|child| {
+        child.tag != TABLE_SOURCE_TAG && attribute_of(child, "data-comot-cell").is_none()
+    });
     if let Some(offender) = first_non_cell {
         return Some(format!("表格容器不可含有非儲存格的 <{}>", offender.tag));
     }
 
-    let cell_nodes = container.children.iter().filter(|child| attribute_of(child, "data-comot-cell").is_some());
+    let cell_nodes = container
+        .children
+        .iter()
+        .filter(|child| attribute_of(child, "data-comot-cell").is_some());
     for cell_node in cell_nodes {
         if cell_node.tag != "g" {
             return Some("儲存格必須是 <g> 容器".to_string());
         }
-        let address = attribute_of(cell_node, "data-comot-cell").expect("just filtered on this attribute existing").value.as_str();
+        let address = attribute_of(cell_node, "data-comot-cell")
+            .expect("just filtered on this attribute existing")
+            .value
+            .as_str();
         let (row, col) = match parse_cell_address(address) {
             Some(rc) => rc,
             None => return Some(format!("data-comot-cell 格式錯誤：{address}")),
@@ -123,7 +136,11 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
         if row >= rows.len() as u128 || col >= cols.len() as u128 {
             return Some(format!("儲存格 ({row},{col}) 超出表格範圍"));
         }
-        if cell_node.children.iter().any(|grandchild| grandchild.tag == "g") {
+        if cell_node
+            .children
+            .iter()
+            .any(|grandchild| grandchild.tag == "g")
+        {
             return Some(format!("儲存格 ({row},{col}) 內不可含有子 <g>"));
         }
     }
@@ -140,7 +157,9 @@ fn parse_number_list(raw: &str, element_id: &str, attr: &str) -> CoMotionResult<
                 .parse::<f64>()
                 .ok()
                 .filter(|value| value.is_finite())
-                .ok_or_else(|| CoMotionError::invalid(format!("元素 {element_id} 的 {attr} 含非數字：{token}")))
+                .ok_or_else(|| {
+                    CoMotionError::invalid(format!("元素 {element_id} 的 {attr} 含非數字：{token}"))
+                })
         })
         .collect()
 }
@@ -199,21 +218,30 @@ mod tests {
     fn non_numeric_cols_is_a_problem() {
         let svg = r#"<g id="t1" data-comot-type="table" data-comot-cols="a b" data-comot-rows="40"><g data-comot-cell="0,0"><rect/></g></g>"#;
         let container = table_container(svg);
-        assert_eq!(describe_table_shape_problem(&container), Some("data-comot-cols 不是合法的數字列表".to_string()));
+        assert_eq!(
+            describe_table_shape_problem(&container),
+            Some("data-comot-cols 不是合法的數字列表".to_string())
+        );
     }
 
     #[test]
     fn cell_out_of_range_is_a_problem() {
         let svg = r#"<g id="t1" data-comot-type="table" data-comot-cols="100" data-comot-rows="40"><g data-comot-cell="0,5"><rect/></g></g>"#;
         let container = table_container(svg);
-        assert_eq!(describe_table_shape_problem(&container), Some("儲存格 (0,5) 超出表格範圍".to_string()));
+        assert_eq!(
+            describe_table_shape_problem(&container),
+            Some("儲存格 (0,5) 超出表格範圍".to_string())
+        );
     }
 
     #[test]
     fn non_cell_child_is_a_problem() {
         let svg = r#"<g id="t1" data-comot-type="table" data-comot-cols="100" data-comot-rows="40"><rect/></g>"#;
         let container = table_container(svg);
-        assert_eq!(describe_table_shape_problem(&container), Some("表格容器不可含有非儲存格的 <rect>".to_string()));
+        assert_eq!(
+            describe_table_shape_problem(&container),
+            Some("表格容器不可含有非儲存格的 <rect>".to_string())
+        );
     }
 
     #[test]
@@ -221,7 +249,13 @@ mod tests {
         let svg = r#"<g id="t1" data-comot-type="table" data-comot-cols="100 200.5" data-comot-rows="40 60"><g data-comot-cell="0,0"><rect/></g></g>"#;
         let container = table_container(svg);
         let grid = read_table_grid(&container, "t1").unwrap();
-        assert_eq!(grid, TableGrid { cols: vec![100.0, 200.5], rows: vec![40.0, 60.0] });
+        assert_eq!(
+            grid,
+            TableGrid {
+                cols: vec![100.0, 200.5],
+                rows: vec![40.0, 60.0]
+            }
+        );
     }
 
     #[test]

@@ -58,7 +58,9 @@ pub fn resolve_home() -> PathBuf {
 /// unset. This is the one deliberate behavioral gap in this port — flagged
 /// here rather than silently guessed at.
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// Read-only registry access: resolving a presentation id to the `workDir`
@@ -124,7 +126,12 @@ pub mod registry {
                     return Err(CoMotionError::invalid(format!("簡報登記資料已損毀：{id}")));
                 }
             };
-            registry.insert(id.clone(), RegistryEntry { work_dir: PathBuf::from(work_dir) });
+            registry.insert(
+                id.clone(),
+                RegistryEntry {
+                    work_dir: PathBuf::from(work_dir),
+                },
+            );
         }
         Ok(registry)
     }
@@ -169,7 +176,9 @@ pub mod registry {
         fn co_motion_home_unset_vs_empty_string() {
             let _guard = ENV_LOCK.lock().unwrap();
             let previous = std::env::var_os("CO_MOTION_HOME");
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
 
             // Unset: falls back to $HOME/.comotion.
             let home_env = std::env::var_os("HOME");
@@ -180,14 +189,16 @@ pub mod registry {
 
             // Empty string: TS's `??` only falls back on undefined/null, so
             // an empty string is used as-is, NOT treated as unset.
-            std::env::set_var("CO_MOTION_HOME", "");
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", "");
+            }
             let empty_result = resolve_home();
             assert_eq!(empty_result, PathBuf::from(""));
             assert_ne!(empty_result, unset_result);
 
             match previous {
-                Some(value) => std::env::set_var("CO_MOTION_HOME", value),
-                None => std::env::remove_var("CO_MOTION_HOME"),
+                Some(value) => unsafe { std::env::set_var("CO_MOTION_HOME", value) },
+                None => unsafe { std::env::remove_var("CO_MOTION_HOME") },
             }
         }
 
@@ -195,7 +206,9 @@ pub mod registry {
         fn missing_projects_json_is_empty_registry_not_error() {
             let _guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir("missing-file");
-            std::env::set_var("CO_MOTION_HOME", &home);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
 
             let err = lookup("whatever-id").unwrap_err();
             // NotFound (not InvalidRequest) proves the missing file was
@@ -203,7 +216,9 @@ pub mod registry {
             assert!(matches!(err, CoMotionError::NotFound(_)));
             assert_eq!(err.message(), "找不到識別碼對應的簡報：whatever-id");
 
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&home).ok();
         }
 
@@ -212,13 +227,17 @@ pub mod registry {
             let _guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir("malformed");
             std::fs::write(home.join("projects.json"), "{not valid json").unwrap();
-            std::env::set_var("CO_MOTION_HOME", &home);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
 
             let err = lookup("any-id").unwrap_err();
             assert!(matches!(err, CoMotionError::InvalidRequest(_)));
             assert_eq!(err.message(), "簡報登記資料已損毀");
 
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&home).ok();
         }
 
@@ -227,12 +246,16 @@ pub mod registry {
             let _guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir("missing-workdir");
             std::fs::write(home.join("projects.json"), r#"{"abc123":{"foo":"bar"}}"#).unwrap();
-            std::env::set_var("CO_MOTION_HOME", &home);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
 
             let err = lookup("abc123").unwrap_err();
             assert_eq!(err.message(), "簡報登記資料已損毀：abc123");
 
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&home).ok();
         }
 
@@ -245,13 +268,17 @@ pub mod registry {
                 r#"{"known-id":{"workDir":"/tmp/somewhere"}}"#,
             )
             .unwrap();
-            std::env::set_var("CO_MOTION_HOME", &home);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
 
             let err = lookup("unknown-id").unwrap_err();
             assert!(matches!(err, CoMotionError::NotFound(_)));
             assert_eq!(err.message(), "找不到識別碼對應的簡報：unknown-id");
 
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&home).ok();
         }
 
@@ -264,12 +291,16 @@ pub mod registry {
                 r#"{"known-id":{"workDir":"/tmp/known-work-dir"}}"#,
             )
             .unwrap();
-            std::env::set_var("CO_MOTION_HOME", &home);
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
 
             let entry = lookup("known-id").unwrap();
             assert_eq!(entry.work_dir, PathBuf::from("/tmp/known-work-dir"));
 
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&home).ok();
         }
     }

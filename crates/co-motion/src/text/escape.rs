@@ -20,7 +20,9 @@
 /// Order matters: `&` first, so the `&` it inserts for `<`/`>` below is
 /// never itself re-escaped.
 pub fn escape_xml_text(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// `escape_xml_text`'s exact inverse, for the three entities this codebase
@@ -34,7 +36,9 @@ pub fn escape_xml_text(text: &str) -> String {
 /// reference (`&#65;`) in element text content is out of this function's
 /// scope — nothing this codebase's own write paths ever produce needs one.
 pub fn unescape_xml_text(text: &str) -> String {
-    text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 /// `escape_xml_text` plus quoting, for building a double-quoted attribute
@@ -75,6 +79,9 @@ mod tests {
 
     #[test]
     fn escape_attr_also_escapes_double_quotes() {
-        assert_eq!(escape_xml_attr(r#"say "hi" & <bye>"#), "say &quot;hi&quot; &amp; &lt;bye&gt;");
+        assert_eq!(
+            escape_xml_attr(r#"say "hi" & <bye>"#),
+            "say &quot;hi&quot; &amp; &lt;bye&gt;"
+        );
     }
 }

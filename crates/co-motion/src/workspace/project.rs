@@ -75,12 +75,28 @@ pub fn read_project_json(work_dir: &Path) -> CoMotionResult<ProjectJson> {
         serde_json::from_str(&text).map_err(|_| CoMotionError::invalid("簡報設定檔已損毀"))?;
     let obj = validate_project_json(&value)?;
 
-    let format_version = obj.get("formatVersion").and_then(Value::as_f64).expect("validated as number");
-    let name = obj.get("name").and_then(Value::as_str).expect("validated as string").to_string();
-    let canvas_obj = obj.get("canvas").and_then(Value::as_object).expect("validated as object");
+    let format_version = obj
+        .get("formatVersion")
+        .and_then(Value::as_f64)
+        .expect("validated as number");
+    let name = obj
+        .get("name")
+        .and_then(Value::as_str)
+        .expect("validated as string")
+        .to_string();
+    let canvas_obj = obj
+        .get("canvas")
+        .and_then(Value::as_object)
+        .expect("validated as object");
     let canvas = Canvas {
-        width: canvas_obj.get("width").and_then(Value::as_f64).expect("validated as number"),
-        height: canvas_obj.get("height").and_then(Value::as_f64).expect("validated as number"),
+        width: canvas_obj
+            .get("width")
+            .and_then(Value::as_f64)
+            .expect("validated as number"),
+        height: canvas_obj
+            .get("height")
+            .and_then(Value::as_f64)
+            .expect("validated as number"),
     };
     let slides = obj
         .get("slides")
@@ -90,7 +106,13 @@ pub fn read_project_json(work_dir: &Path) -> CoMotionResult<ProjectJson> {
         .map(|s| s.as_str().expect("validated as string").to_string())
         .collect();
 
-    Ok(ProjectJson { format_version, name, canvas, slides, raw: obj.clone() })
+    Ok(ProjectJson {
+        format_version,
+        name,
+        canvas,
+        slides,
+        raw: obj.clone(),
+    })
 }
 
 /// Structural validation of an already-JSON-parsed `project.json`, ported
@@ -107,10 +129,14 @@ fn validate_project_json(value: &Value) -> CoMotionResult<&serde_json::Map<Strin
         .ok_or_else(|| CoMotionError::invalid("project.json 格式錯誤：內容不是物件"))?;
 
     if !matches!(obj.get("formatVersion"), Some(Value::Number(_))) {
-        return Err(CoMotionError::invalid("project.json 格式錯誤：缺少或型別錯誤的 formatVersion"));
+        return Err(CoMotionError::invalid(
+            "project.json 格式錯誤：缺少或型別錯誤的 formatVersion",
+        ));
     }
     if !matches!(obj.get("name"), Some(Value::String(_))) {
-        return Err(CoMotionError::invalid("project.json 格式錯誤：缺少或型別錯誤的 name"));
+        return Err(CoMotionError::invalid(
+            "project.json 格式錯誤：缺少或型別錯誤的 name",
+        ));
     }
     let canvas_ok = matches!(
         obj.get("canvas"),
@@ -119,14 +145,22 @@ fn validate_project_json(value: &Value) -> CoMotionResult<&serde_json::Map<Strin
                 && matches!(c.get("height"), Some(Value::Number(_)))
     );
     if !canvas_ok {
-        return Err(CoMotionError::invalid("project.json 格式錯誤：缺少或型別錯誤的 canvas"));
+        return Err(CoMotionError::invalid(
+            "project.json 格式錯誤：缺少或型別錯誤的 canvas",
+        ));
     }
     let slides = match obj.get("slides") {
         Some(Value::Array(arr)) => arr,
-        _ => return Err(CoMotionError::invalid("project.json 格式錯誤：slides 不是陣列")),
+        _ => {
+            return Err(CoMotionError::invalid(
+                "project.json 格式錯誤：slides 不是陣列",
+            ));
+        }
     };
     if !slides.iter().all(Value::is_string) {
-        return Err(CoMotionError::invalid("project.json 格式錯誤：slides 內含無效項目"));
+        return Err(CoMotionError::invalid(
+            "project.json 格式錯誤：slides 內含無效項目",
+        ));
     }
     if let Some(fonts) = obj.get("fonts") {
         validate_fonts(fonts)?;
@@ -136,7 +170,9 @@ fn validate_project_json(value: &Value) -> CoMotionResult<&serde_json::Map<Strin
     }
     if let Some(transition) = obj.get("transition") {
         if !transition.is_string() {
-            return Err(CoMotionError::invalid("project.json 格式錯誤：transition 不是字串"));
+            return Err(CoMotionError::invalid(
+                "project.json 格式錯誤：transition 不是字串",
+            ));
         }
     }
 
@@ -163,14 +199,25 @@ fn validate_fonts(value: &Value) -> CoMotionResult<()> {
             }
         }
         for path_field in ["file", "licenseFile"] {
-            let path = obj.get(path_field).and_then(Value::as_str).expect("validated above");
+            let path = obj
+                .get(path_field)
+                .and_then(Value::as_str)
+                .expect("validated above");
             if path.starts_with('/') || path.split('/').any(|segment| segment == "..") {
-                return Err(CoMotionError::invalid("project.json 格式錯誤：fonts 內含不合法的路徑"));
+                return Err(CoMotionError::invalid(
+                    "project.json 格式錯誤：fonts 內含不合法的路徑",
+                ));
             }
         }
-        let family = obj.get("family").and_then(Value::as_str).expect("validated above").to_string();
+        let family = obj
+            .get("family")
+            .and_then(Value::as_str)
+            .expect("validated above")
+            .to_string();
         if !seen_families.insert(family) {
-            return Err(CoMotionError::invalid("project.json 格式錯誤：fonts 內有重複的 family"));
+            return Err(CoMotionError::invalid(
+                "project.json 格式錯誤：fonts 內有重複的 family",
+            ));
         }
     }
     Ok(())
@@ -188,15 +235,15 @@ fn validate_templates(value: &Value) -> CoMotionResult<()> {
         if entry.is_string() {
             continue;
         }
-        let obj = entry
-            .as_object()
-            .ok_or_else(|| CoMotionError::invalid("project.json 格式錯誤：templates 內含無效項目"))?;
+        let obj = entry.as_object().ok_or_else(|| {
+            CoMotionError::invalid("project.json 格式錯誤：templates 內含無效項目")
+        })?;
         let file = match obj.get("file") {
             Some(Value::String(s)) => s,
             _ => {
                 return Err(CoMotionError::invalid(
                     "project.json 格式錯誤：templates 內的項目缺少或型別錯誤的 file",
-                ))
+                ));
             }
         };
         if !matches!(obj.get("name"), Some(Value::String(_))) {
@@ -205,7 +252,9 @@ fn validate_templates(value: &Value) -> CoMotionResult<()> {
             ));
         }
         if file.starts_with('/') || file.split('/').any(|segment| segment == "..") {
-            return Err(CoMotionError::invalid("project.json 格式錯誤：templates 內含不合法的路徑"));
+            return Err(CoMotionError::invalid(
+                "project.json 格式錯誤：templates 內含不合法的路徑",
+            ));
         }
     }
     Ok(())
@@ -229,13 +278,24 @@ pub fn read_template_entries(project: &ProjectJson) -> Vec<TemplateEntry> {
                 // segment, or the whole string when there is no "/".
                 let base = bare.rsplit('/').next().unwrap_or(bare);
                 let name = base.strip_suffix(".svg").unwrap_or(base).to_string();
-                TemplateEntry { file: bare.to_string(), name }
+                TemplateEntry {
+                    file: bare.to_string(),
+                    name,
+                }
             } else {
                 // Shape already confirmed by `validate_templates`.
                 let obj = entry.as_object().expect("validated shape");
                 TemplateEntry {
-                    file: obj.get("file").and_then(Value::as_str).expect("validated").to_string(),
-                    name: obj.get("name").and_then(Value::as_str).expect("validated").to_string(),
+                    file: obj
+                        .get("file")
+                        .and_then(Value::as_str)
+                        .expect("validated")
+                        .to_string(),
+                    name: obj
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .expect("validated")
+                        .to_string(),
                 }
             }
         })
@@ -247,8 +307,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(label: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("co-motion-test-project-{label}-{}", crate::id::random_hex_suffix()));
+        let dir = std::env::temp_dir().join(format!(
+            "co-motion-test-project-{label}-{}",
+            crate::id::random_hex_suffix()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -277,7 +339,10 @@ mod tests {
             r#"{"formatVersion":1,"canvas":{"width":1,"height":1},"slides":[]}"#,
         );
         let err = read_project_json(&work).unwrap_err();
-        assert_eq!(err.message(), "project.json 格式錯誤：缺少或型別錯誤的 name");
+        assert_eq!(
+            err.message(),
+            "project.json 格式錯誤：缺少或型別錯誤的 name"
+        );
         std::fs::remove_dir_all(&work).ok();
     }
 
@@ -299,8 +364,14 @@ mod tests {
         assert_eq!(
             entries,
             vec![
-                TemplateEntry { file: "templates/001.svg".to_string(), name: "001".to_string() },
-                TemplateEntry { file: "templates/002.svg".to_string(), name: "Custom".to_string() },
+                TemplateEntry {
+                    file: "templates/001.svg".to_string(),
+                    name: "001".to_string()
+                },
+                TemplateEntry {
+                    file: "templates/002.svg".to_string(),
+                    name: "Custom".to_string()
+                },
             ]
         );
         std::fs::remove_dir_all(&work).ok();
@@ -319,8 +390,14 @@ mod tests {
         let project = read_project_json(&work).unwrap();
         // Order preserved: the extra field is exactly where it was.
         let keys: Vec<&str> = project.raw.keys().map(String::as_str).collect();
-        assert_eq!(keys, vec!["formatVersion", "name", "canvas", "slides", "savedAt"]);
-        assert_eq!(project.raw.get("savedAt").and_then(Value::as_f64), Some(1788887227268.932_f64));
+        assert_eq!(
+            keys,
+            vec!["formatVersion", "name", "canvas", "slides", "savedAt"]
+        );
+        assert_eq!(
+            project.raw.get("savedAt").and_then(Value::as_f64),
+            Some(1788887227268.932_f64)
+        );
 
         // Round-trip through serialize -> parse again: the float compares
         // exactly equal (serde_json's float formatting always produces the

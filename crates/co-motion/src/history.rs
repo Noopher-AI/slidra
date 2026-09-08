@@ -94,6 +94,7 @@ struct StackFile {
     open_group: Option<HistoryGroup>,
 }
 
+#[derive(Debug)]
 pub struct UndoResult {
     pub restored_paths: Vec<String>,
 }
@@ -107,7 +108,9 @@ fn stack_path(home: &Path, id: &str) -> PathBuf {
 }
 
 fn snapshot_path(home: &Path, id: &str, snapshot_id: &str) -> PathBuf {
-    history_dir_for(home, id).join("snapshots").join(snapshot_id)
+    history_dir_for(home, id)
+        .join("snapshots")
+        .join(snapshot_id)
 }
 
 /// Reads and parses `stack.json`. A genuinely missing file (never edited
@@ -127,7 +130,11 @@ fn read_stack(home: &Path, id: &str) -> CoMotionResult<StackFile> {
     let raw = match std::fs::read_to_string(stack_path(home, id)) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(StackFile { undo: Vec::new(), redo: Vec::new(), open_group: None });
+            return Ok(StackFile {
+                undo: Vec::new(),
+                redo: Vec::new(),
+                open_group: None,
+            });
         }
         Err(_) => return Err(CoMotionError::invalid("復原歷史已損毀")),
     };
@@ -180,7 +187,8 @@ fn write_snapshot(home: &Path, id: &str, snapshot_id: &str, content: &[u8]) -> C
 /// always a hard error here — never skip the entry and pretend the group is
 /// smaller than it is.
 fn read_snapshot(home: &Path, id: &str, snapshot_id: &str) -> CoMotionResult<Vec<u8>> {
-    std::fs::read(snapshot_path(home, id, snapshot_id)).map_err(|_| CoMotionError::invalid("復原歷史已損毀"))
+    std::fs::read(snapshot_path(home, id, snapshot_id))
+        .map_err(|_| CoMotionError::invalid("復原歷史已損毀"))
 }
 
 /// Deletes one snapshot file. A file that is already gone is not an error
@@ -218,7 +226,10 @@ fn push_group_to_undo_stack(list: &mut Vec<HistoryGroup>, group: HistoryGroup) -
 /// rather than an error — the existence check `apply_group` needs to tell
 /// "overwrite" apart from "create"/"delete" while capturing the inverse of
 /// either direction.
-fn read_virtual_file_bytes_or_none(work_dir: &Path, virtual_path: &str) -> CoMotionResult<Option<Vec<u8>>> {
+fn read_virtual_file_bytes_or_none(
+    work_dir: &Path,
+    virtual_path: &str,
+) -> CoMotionResult<Option<Vec<u8>>> {
     match virtual_fs::read_virtual_file_bytes(work_dir, virtual_path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(CoMotionError::NotFound(_)) => Ok(None),
@@ -234,7 +245,10 @@ fn read_virtual_file_bytes_or_none(work_dir: &Path, virtual_path: &str) -> CoMot
 /// an external caller.
 fn derived_real_path(work_dir: &Path, virtual_path: &str) -> PathBuf {
     let mut path = work_dir.to_path_buf();
-    for segment in virtual_path.split('/').filter(|segment| !segment.is_empty()) {
+    for segment in virtual_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+    {
         path.push(segment);
     }
     path
@@ -252,7 +266,9 @@ fn delete_real_file_if_present(work_dir: &Path, virtual_path: &str) -> CoMotionR
         Ok(()) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
         // real_path is a real filesystem path (ADR-0004) — never quote it.
-        Err(_) => Err(CoMotionError::invalid(format!("刪除檔案時發生錯誤：{virtual_path}"))),
+        Err(_) => Err(CoMotionError::invalid(format!(
+            "刪除檔案時發生錯誤：{virtual_path}"
+        ))),
     }
 }
 
@@ -294,8 +310,10 @@ fn apply_group(
     for entry in &group.entries {
         let current = read_virtual_file_bytes_or_none(work_dir, &entry.virtual_path)?;
         match current {
-            None => inverse_entries
-                .push(HistoryEntry { virtual_path: entry.virtual_path.clone(), snapshot_id: None }),
+            None => inverse_entries.push(HistoryEntry {
+                virtual_path: entry.virtual_path.clone(),
+                snapshot_id: None,
+            }),
             Some(bytes) => {
                 let inverse_snapshot_id = id::generate_opaque_id();
                 write_snapshot(home, id, &inverse_snapshot_id, &bytes)?;
@@ -339,7 +357,10 @@ fn apply_group(
     }
 
     Ok(ApplyGroupResult {
-        inverse_group: HistoryGroup { group_id: group.group_id.clone(), entries: inverse_entries },
+        inverse_group: HistoryGroup {
+            group_id: group.group_id.clone(),
+            entries: inverse_entries,
+        },
         restored_paths,
         consumed_snapshot_ids,
     })
@@ -350,10 +371,16 @@ pub fn undo(id: &str) -> CoMotionResult<UndoResult> {
     let home = workspace::resolve_home();
     let work_dir = workspace::resolve_work_dir(id)?;
     let mut stack = read_stack(&home, id)?;
-    let group = stack.undo.pop().ok_or_else(|| CoMotionError::invalid("沒有可復原的操作"))?;
+    let group = stack
+        .undo
+        .pop()
+        .ok_or_else(|| CoMotionError::invalid("沒有可復原的操作"))?;
 
-    let ApplyGroupResult { inverse_group, restored_paths, consumed_snapshot_ids } =
-        apply_group(&home, id, &work_dir, &group)?;
+    let ApplyGroupResult {
+        inverse_group,
+        restored_paths,
+        consumed_snapshot_ids,
+    } = apply_group(&home, id, &work_dir, &group)?;
     // No cap on this push — see UNDO_STACK_CAP's doc comment.
     stack.redo.push(inverse_group);
     write_stack(&home, id, &stack)?;
@@ -375,16 +402,25 @@ pub fn redo(id: &str) -> CoMotionResult<UndoResult> {
     let home = workspace::resolve_home();
     let work_dir = workspace::resolve_work_dir(id)?;
     let mut stack = read_stack(&home, id)?;
-    let group = stack.redo.pop().ok_or_else(|| CoMotionError::invalid("沒有可重做的操作"))?;
+    let group = stack
+        .redo
+        .pop()
+        .ok_or_else(|| CoMotionError::invalid("沒有可重做的操作"))?;
 
-    let ApplyGroupResult { inverse_group, restored_paths, consumed_snapshot_ids } =
-        apply_group(&home, id, &work_dir, &group)?;
+    let ApplyGroupResult {
+        inverse_group,
+        restored_paths,
+        consumed_snapshot_ids,
+    } = apply_group(&home, id, &work_dir, &group)?;
     let evicted_snapshot_ids = push_group_to_undo_stack(&mut stack.undo, inverse_group);
     write_stack(&home, id, &stack)?;
 
     // Only now is the new stack durable, so only now is it safe to delete
     // the snapshot files this redo consumed, plus any cap-evicted group's.
-    for snapshot_id in consumed_snapshot_ids.iter().chain(evicted_snapshot_ids.iter()) {
+    for snapshot_id in consumed_snapshot_ids
+        .iter()
+        .chain(evicted_snapshot_ids.iter())
+    {
         delete_snapshot(&home, id, snapshot_id)?;
     }
     Ok(UndoResult { restored_paths })
@@ -395,8 +431,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("co-motion-test-history-{label}-{}", id::random_hex_suffix()));
+        let dir = std::env::temp_dir().join(format!(
+            "co-motion-test-history-{label}-{}",
+            id::random_hex_suffix()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -407,7 +445,8 @@ mod tests {
     /// literal string `"test_id"`, not the variable's value — exactly the
     /// mistake this comment exists to head off after catching it once here.
     fn register(home: &Path, test_id: &str, work_dir: &Path) {
-        let work_dir_json = serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
+        let work_dir_json =
+            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
         let id_json = serde_json::to_string(test_id).unwrap();
         let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
         std::fs::write(home.join("projects.json"), json).unwrap();
@@ -437,14 +476,22 @@ mod tests {
             let home = temp_dir(&format!("{label}-home"));
             let work = temp_dir(&format!("{label}-work"));
             register(&home, test_id, &work);
-            std::env::set_var("CO_MOTION_HOME", &home);
-            Fixture { home, work, _guard: guard }
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
+            Fixture {
+                home,
+                work,
+                _guard: guard,
+            }
         }
     }
 
     impl Drop for Fixture {
         fn drop(&mut self) {
-            std::env::remove_var("CO_MOTION_HOME");
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
             std::fs::remove_dir_all(&self.home).ok();
             std::fs::remove_dir_all(&self.work).ok();
         }
@@ -467,7 +514,12 @@ mod tests {
         let slide_path = fixture.work.join("slides").join("001.svg");
         std::fs::write(&slide_path, b"<svg>ORIGINAL</svg>").unwrap();
 
-        write_snapshot_file(&fixture.home, "pid-roundtrip", "snap-before", b"<svg>BEFORE</svg>");
+        write_snapshot_file(
+            &fixture.home,
+            "pid-roundtrip",
+            "snap-before",
+            b"<svg>BEFORE</svg>",
+        );
         write_stack_json(
             &fixture.home,
             "pid-roundtrip",
@@ -475,14 +527,25 @@ mod tests {
         );
 
         let undo_result = undo("pid-roundtrip").unwrap();
-        assert_eq!(undo_result.restored_paths, vec!["slides/001.svg".to_string()]);
+        assert_eq!(
+            undo_result.restored_paths,
+            vec!["slides/001.svg".to_string()]
+        );
         assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>BEFORE</svg>");
         // The consumed snapshot is deleted only after the stack.json write
         // that drops the last reference to it succeeds.
-        assert!(!fixture.home.join("history/pid-roundtrip/snapshots/snap-before").exists());
+        assert!(
+            !fixture
+                .home
+                .join("history/pid-roundtrip/snapshots/snap-before")
+                .exists()
+        );
 
         let redo_result = redo("pid-roundtrip").unwrap();
-        assert_eq!(redo_result.restored_paths, vec!["slides/001.svg".to_string()]);
+        assert_eq!(
+            redo_result.restored_paths,
+            vec!["slides/001.svg".to_string()]
+        );
         assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>ORIGINAL</svg>");
 
         drop(fixture);
@@ -519,8 +582,18 @@ mod tests {
         // Current on-disk content: the state AFTER both edits.
         std::fs::write(&slide_path, b"V3-after-both-edits").unwrap();
 
-        write_snapshot_file(&fixture.home, "pid-twice", "snap-v1", b"V1-before-first-edit");
-        write_snapshot_file(&fixture.home, "pid-twice", "snap-v2", b"V2-before-second-edit");
+        write_snapshot_file(
+            &fixture.home,
+            "pid-twice",
+            "snap-v1",
+            b"V1-before-first-edit",
+        );
+        write_snapshot_file(
+            &fixture.home,
+            "pid-twice",
+            "snap-v2",
+            b"V2-before-second-edit",
+        );
         write_stack_json(
             &fixture.home,
             "pid-twice",
@@ -576,8 +649,7 @@ mod tests {
         assert_eq!(result.restored_paths, vec!["live/001.svg".to_string()]);
         assert_eq!(std::fs::read(&live_path).unwrap(), b"redo-content");
 
-        let stack_text =
-            std::fs::read_to_string(stack_path(&fixture.home, "pid-cap")).unwrap();
+        let stack_text = std::fs::read_to_string(stack_path(&fixture.home, "pid-cap")).unwrap();
         let stack_value: serde_json::Value = serde_json::from_str(&stack_text).unwrap();
         let undo_array = stack_value["undo"].as_array().unwrap();
         assert_eq!(undo_array.len(), UNDO_STACK_CAP);
@@ -588,8 +660,18 @@ mod tests {
 
         // Evicted group's snapshot is gone; the redo's own consumed
         // snapshot is gone too.
-        assert!(!fixture.home.join("history/pid-cap/snapshots/snap-u0").exists());
-        assert!(!fixture.home.join("history/pid-cap/snapshots/snap-r1").exists());
+        assert!(
+            !fixture
+                .home
+                .join("history/pid-cap/snapshots/snap-u0")
+                .exists()
+        );
+        assert!(
+            !fixture
+                .home
+                .join("history/pid-cap/snapshots/snap-r1")
+                .exists()
+        );
 
         drop(fixture);
     }
