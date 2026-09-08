@@ -370,6 +370,24 @@ describe("chat: session/request_permission allows only the co-motion program", (
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
+  it("allows Codex's shell argv after validating the entire script", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: ["/bin/zsh", "-lc", "co-motion text set abc slides/001.svg el-1 '新標題'"],
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  it.each([
+    [["/bin/zsh", "-lc", "co-motion ls; touch /tmp/bypass"]],
+    [["/bin/bash", "-c", "co-motion ls $(whoami)"]],
+    [["/bin/zsh", "-lc", "co-motion ls", "extra"]],
+    [["/tmp/zsh", "-lc", "co-motion ls"]],
+    [["/bin/zsh", "-lc", 123]],
+    [["/bin/zsh", "-lc", "rm -rf /tmp/example"]],
+  ])("refuses unsafe or unrecognized Codex argv %j", async (permissionCommand) => {
+    expect(await permissionOutcomeFor({ permissionCommand })).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
   it("refuses a command that is not co-motion at all", async () => {
     const outcome = await permissionOutcomeFor({ permissionCommand: "rm -rf ~" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
@@ -1165,6 +1183,18 @@ describe("chat: the author can see the command run (ticket #17)", () => {
       output: "zsh: command not found: co-motion\nexit code 127",
     });
   });
+
+  it.each([
+    { toolCallRawOutput: "command output" },
+    { toolCallRawOutput: [{ type: "text", text: "command output" }] },
+  ])(
+    "accepts adapter tool updates with non-object rawOutput %j",
+    async ({ toolCallRawOutput }) => {
+      const events = await commandEventsFor({ toolCallRawOutput });
+      expect(events.filter((event) => event.event === "chat-command-update").map((event) => event.data))
+        .toContainEqual({ toolCallId: "fake-command-call", status: "completed" });
+    },
+  );
 
   it("never relays a tool call that is not a shell command", async () => {
     const events = await commandEventsFor({ toolCallOmitCommand: true });
