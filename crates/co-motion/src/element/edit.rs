@@ -1227,6 +1227,107 @@ mod tests {
         assert_eq!(unlocked_again, svg);
     }
 
+    // Round-1 review (NOOP-300, debt item 3): every fixture above this point
+    // is pure ASCII, so a leading-CJK offset bug (UTF-16 code-unit vs. byte
+    // offset — the exact class of bug `effects::remove_effects_targeting`
+    // had, per this crate's `effects` module tests) would slip through
+    // undetected here. Each CJK character is 1 UTF-16 unit but 3 UTF-8
+    // bytes, so a `<title>投影片標題文字</title>` prefix (7 CJK chars) shifts
+    // every later byte offset by 14 relative to its UTF-16 offset — large
+    // enough that a wrong conversion reliably corrupts or panics rather than
+    // accidentally landing on the right byte by coincidence.
+    fn slide_with_cjk_title(children: &str) -> String {
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><title>投影片標題文字</title>{children}</svg>"#
+        )
+    }
+
+    #[test]
+    fn insert_after_a_leading_cjk_title_appends_at_the_correct_byte_offset() {
+        let svg = slide_with_cjk_title(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
+        let input = InsertElementInput {
+            x: Some(1.0),
+            y: Some(2.0),
+            width: Some(3.0),
+            height: Some(4.0),
+            ..Default::default()
+        };
+        let updated = insert_element(
+            &svg,
+            "slides/001.svg",
+            "el-new",
+            &input,
+            InsertElementKind::Rect,
+        )
+        .unwrap();
+        assert!(updated.ends_with(
+            r#"<g id="el-new" transform="translate(1 2)"><rect x="0" y="0" width="3" height="4"/></g></svg>"#
+        ));
+    }
+
+    #[test]
+    fn delete_after_a_leading_cjk_title_removes_the_correct_node() {
+        let svg = slide_with_cjk_title(
+            r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let updated = delete_elements(&svg, "slides/001.svg", &["a".to_string()]).unwrap();
+        assert_eq!(
+            updated,
+            slide_with_cjk_title(r#"<g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#)
+        );
+    }
+
+    #[test]
+    fn move_after_a_leading_cjk_title_rewrites_the_correct_transform() {
+        let svg = slide_with_cjk_title(
+            r#"<g id="a" transform="translate(5 5)"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let updated =
+            move_elements(&svg, "slides/001.svg", &["a".to_string()], 1.0, 1.0, false).unwrap();
+        assert_eq!(
+            updated,
+            slide_with_cjk_title(
+                r#"<g id="a" transform="translate(6 6)"><rect x="0" y="0" width="1" height="1"/></g>"#
+            )
+        );
+    }
+
+    #[test]
+    fn rotate_after_a_leading_cjk_title_rewrites_the_correct_transform() {
+        let svg = slide_with_cjk_title(
+            r#"<g id="a" transform="rotate(10)"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let updated =
+            rotate_elements(&svg, "slides/001.svg", &["a".to_string()], 5.0, false).unwrap();
+        assert_eq!(
+            updated,
+            slide_with_cjk_title(
+                r#"<g id="a" transform="rotate(15)"><rect x="0" y="0" width="1" height="1"/></g>"#
+            )
+        );
+    }
+
+    #[test]
+    fn order_after_a_leading_cjk_title_swaps_the_correct_siblings() {
+        let svg = slide_with_cjk_title(
+            r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let updated = reorder_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            OrderDirection::Front,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            updated,
+            slide_with_cjk_title(
+                r#"<g id="b"><rect x="0" y="0" width="1" height="1"/></g><g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#
+            )
+        );
+    }
+
     #[test]
     fn validate_id_list_rejects_empty_and_duplicate() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);

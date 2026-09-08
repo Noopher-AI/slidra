@@ -375,6 +375,73 @@ mod tests {
     }
 
     #[test]
+    fn write_presentation_file_failure_reverts_the_undo_group_and_leaves_no_orphan_snapshot() {
+        // Round-1 review (NOOP-300, M3): removing the `revert_committed_entries`
+        // call in `write_presentation_file` left 291 tests green — nothing
+        // exercised the "commit succeeded, the actual write then failed"
+        // branch. A directory swapped in for the slide file (the reviewer's
+        // suggested approach) does not reach that branch: `write_presentation_file`
+        // resolves `real_path` via `resolve_virtual_file_path` BEFORE staging,
+        // and that resolution already rejects a directory ("不是檔案：…"), so
+        // the function would return before ever calling `commit_snapshot_entries`.
+        // A read-only file does reach it: `resolve_virtual_file_path` (a stat)
+        // and `stage_snapshot_entries` (a read) both still succeed, and only
+        // the final `std::fs::write` — which needs write permission, not just
+        // an existing regular file — fails.
+        use std::os::unix::fs::PermissionsExt;
+
+        let work = temp_dir("write-fail");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("write-fail", "pid-write-fail");
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-write-fail":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        let slide_path = work.join("slides/001.svg");
+        std::fs::set_permissions(&slide_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let write_result =
+            write_presentation_file("pid-write-fail", "slides/001.svg", "<svg>EDITED</svg>");
+        // Restore write permission immediately so the fixture's own Drop
+        // (which removes `work`) does not itself fail.
+        std::fs::set_permissions(&slide_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let err = write_result.unwrap_err();
+        assert_eq!(err.message(), "寫入投影片時發生錯誤：slides/001.svg");
+        assert_eq!(
+            std::fs::read_to_string(&slide_path).unwrap(),
+            "<svg>ORIGINAL</svg>",
+            "a failed write must not have touched the file's content"
+        );
+
+        let undo_err = history::undo("pid-write-fail").unwrap_err();
+        assert_eq!(
+            undo_err.message(),
+            "沒有可復原的操作",
+            "the failed write must not occupy an undo slot"
+        );
+
+        let snapshots_dir = fixture
+            .home
+            .join("history")
+            .join("pid-write-fail")
+            .join("snapshots");
+        let orphan_count = std::fs::read_dir(&snapshots_dir)
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        assert_eq!(
+            orphan_count, 0,
+            "a reverted commit must not leave an orphan snapshot file on disk"
+        );
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
     fn write_presentation_file_without_history_does_not_occupy_undo_step() {
         let work = temp_dir("write-no-history");
         write_project_with_slide_and_template(&work);
