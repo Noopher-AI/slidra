@@ -13,6 +13,7 @@
 //! follow when it lands.
 
 pub mod edit;
+pub mod group;
 pub mod splice;
 
 use crate::slide::scan::{ScannedNode, attribute_value};

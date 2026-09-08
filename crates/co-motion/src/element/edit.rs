@@ -543,7 +543,7 @@ fn apply_transform_delta(
     svg: &str,
     id: &str,
     force: bool,
-    mutate: impl FnOnce(TransformParts) -> TransformParts,
+    mutate: impl FnOnce(TransformParts) -> CoMotionResult<TransformParts>,
 ) -> CoMotionResult<String> {
     let roots = scan_document(svg)?;
     let svg_root = require_svg_root(&roots)?;
@@ -573,7 +573,7 @@ pub fn move_elements(
         current = apply_transform_delta(&current, id, force, |mut parts| {
             parts.translate_x += dx;
             parts.translate_y += dy;
-            parts
+            Ok(parts)
         })?;
     }
     Ok(current)
@@ -599,7 +599,7 @@ pub fn rotate_elements(
     for id in element_ids {
         current = apply_transform_delta(&current, id, force, |mut parts| {
             parts.rotation += degrees;
-            parts
+            Ok(parts)
         })?;
     }
     Ok(current)

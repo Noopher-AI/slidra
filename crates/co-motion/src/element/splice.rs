@@ -145,14 +145,22 @@ pub fn set_attr_splice(node: &ScannedNode, attr: &str, value: &str) -> Splice {
 /// `parse_transform`/`decompose_matrix` are themselves fallible (plan
 /// section 3.4's move/rotate contract row: "目標既有的 transform 含傾斜…
 /// 無法拆解" is exactly this path surfacing).
+///
+/// `mutate` is fallible (`CoMotionResult`, not a bare `TransformParts`)
+/// because `element::group`'s ungroup uses this to install an entirely
+/// NEW matrix (the group's folded into the child's), which itself can be
+/// degenerate — `?`-able there, not just at the "old parts" decomposition
+/// this function already does. `element::edit`'s move/rotate callers,
+/// whose mutate is plain infallible field arithmetic, simply wrap their
+/// return in `Ok`.
 pub fn build_transform_splice(
     svg: &str,
     container: &ScannedNode,
-    mutate: impl FnOnce(TransformParts) -> TransformParts,
+    mutate: impl FnOnce(TransformParts) -> CoMotionResult<TransformParts>,
 ) -> CoMotionResult<Splice> {
     let attr = attribute_of(container, "transform");
     let matrix = parse_transform(attr.map(|a| a.value.as_str()))?;
-    let next_parts = mutate(decompose_matrix(&matrix)?);
+    let next_parts = mutate(decompose_matrix(&matrix)?)?;
     let next_transform = format_transform(&next_parts);
 
     if let Some(attr) = attr {
@@ -276,7 +284,7 @@ mod tests {
         let node = &roots[0];
         let inserted = build_transform_splice(svg, node, |mut parts| {
             parts.translate_x += 10.0;
-            parts
+            Ok(parts)
         })
         .unwrap();
         let updated = apply_splices(svg, &[inserted]);
@@ -292,7 +300,7 @@ mod tests {
         let node2 = &roots2[0];
         let removed = build_transform_splice(&updated, node2, |mut parts| {
             parts.translate_x -= 10.0;
-            parts
+            Ok(parts)
         })
         .unwrap();
         let back = apply_splices(&updated, &[removed]);
