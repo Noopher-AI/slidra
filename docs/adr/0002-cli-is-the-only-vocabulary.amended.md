@@ -6,6 +6,11 @@
 >
 > **仍然成立的**：CLI 是唯一的操作語彙、`co-motion serve` 是它的常駐模式、前端不得擁有 CLI 沒有的操作、
 > 一次操作＝一條命令＝一步 undo、不變式要靠結構而非紀律。那才是本 ADR 的核心。
+>
+> **第二則修訂（S7/#255）**：「Considered Options」列出的否決理由——server fork subprocess 呼叫 CLI，每條命令要付
+> 100–300ms 的 process 啟動成本——**不再成立**。取代它的條款是「**同一支二進位**」：`co-motion` 是唯一入口與唯一
+> 寫入者；`serve`／`export` 由它 `exec` Node；Node 端需要再 spawn 命令時，一律用同一支二進位（見
+> `CO_MOTION_BIN`），不從 PATH 找。命令集的規範性定義見 `docs/spec/cli.md`。
 
 CoMotion 要同時服務兩種編輯者：透過視覺編輯器操作的人，與透過 shell 操作的 agent。若兩者各有一套介面，能力會漂移，人與 agent 就無法真正在同一份簡報上協作。
 
