@@ -50,11 +50,11 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 ## Skills
 
 下面每一個 skill 的完整步驟，都放在你工作目錄的 `.agents/skills/<名稱>/SKILL.md`（Claude Code 讀的是同一份內容的 `.claude/skills/<名稱>/SKILL.md`）。
-作者在 CoMotion 的輸入框打斜線時，看到的是加了 `comotion-` 前綴的名稱。**只要作者的訊息以 `/comotion-<名稱>` 或 `/<名稱>` 開頭，就代表他要你照那個 skill 做**：先讀該 `SKILL.md`，再照裡面的步驟執行，斜線後面的文字就是這個 skill 的輸入。
+每個 skill 的名稱都以 `comotion-` 開頭，目錄名、`SKILL.md` 的 `name`、作者打的斜線命令三者完全一致。**只要作者的訊息以 `/comotion-<名稱>` 開頭，就代表他要你照那個 skill 做**：先讀該 `SKILL.md`，再照裡面的步驟執行，斜線後面的文字就是這個 skill 的輸入。
 
 | 作者打的 | skill | 什麼時候用 |
 |---|---|---|
-| `/comotion-new-slide` | `new-slide` | 加一頁講某件事 |
-| `/comotion-outline` | `outline` | 把一份大綱或文章長成整份投影片 |
-| `/comotion-reshape` | `reshape` | 逐則處理釘選留言，改完刪留言 |
-| `/comotion-check` | `check` | 全份結構體檢，只留言不動手 |
+| `/comotion-new-slide` | `comotion-new-slide` | 加一頁講某件事 |
+| `/comotion-outline` | `comotion-outline` | 把一份大綱或文章長成整份投影片 |
+| `/comotion-reshape` | `comotion-reshape` | 逐則處理釘選留言，改完刪留言 |
+| `/comotion-check` | `comotion-check` | 全份結構體檢，只留言不動手 |

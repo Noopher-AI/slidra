@@ -21,14 +21,16 @@ describe("[NOOP-236] shipped work directory documentation", () => {
   it("has exactly the four shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-    expect(dirNames.sort()).toEqual(["check", "new-slide", "outline", "reshape"]);
+    // The `comotion-` namespace lives in the directory name itself, so the
+    // name an author types is the name the agent registered (#248).
+    expect(dirNames.sort()).toEqual(["comotion-check", "comotion-new-slide", "comotion-outline", "comotion-reshape"]);
 
     for (const dirName of dirNames) {
       const text = await readFile(path.join(bundledSkillDir, dirName, "SKILL.md"), "utf8");
       const { name, description } = parseSkillFrontmatter(text, dirName);
       expect(name).toBe(dirName);
       expect(description.length).toBeGreaterThan(0);
-      if (dirName !== "new-slide") {
+      if (dirName !== "comotion-new-slide") {
         // new-slide predates the six-section convention (T2, unmerged when
         // this table was written) and is exempt from it.
         for (const section of REQUIRED_SKILL_SECTIONS) {
@@ -65,7 +67,7 @@ describe("[NOOP-236] shipped work directory documentation", () => {
     const skillsSection = text.slice(text.indexOf("## Skills"));
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-    const tableRows = [...skillsSection.matchAll(/^\|\s*`\/comotion-([a-z-]+)`/gm)].map((match) => match[1]);
+    const tableRows = [...skillsSection.matchAll(/^\|\s*`\/(comotion-[a-z-]+)`/gm)].map((match) => match[1]);
     expect(tableRows.sort()).toEqual(dirNames.sort());
   });
 });
