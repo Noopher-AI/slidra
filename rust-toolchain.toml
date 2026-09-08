@@ -1,0 +1,9 @@
+# Pinned by NOOP-278 (GitHub #257) Run 1, written from this pod which has no
+# Rust toolchain to query `rustc --version` against. The channel below is a
+# placeholder satisfying the edition 2024 minimum (>= 1.85); Run 2 (executed
+# in the rebuilt image where `cargo`/`rustc` exist) must overwrite it with the
+# actual toolchain version read back from `rustc --version`, per the plan's
+# section 6.5.
+[toolchain]
+channel = "1.85.0"
+components = ["rustfmt", "clippy"]

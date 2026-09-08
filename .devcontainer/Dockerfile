@@ -70,3 +70,15 @@ RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
 
 USER dev
 ENV HOME=/home/dev
+
+# Rust toolchain for the co-motion CLI skeleton (NOOP-278 / GitHub #257).
+# `--default-toolchain none` deliberately leaves rustup without a pinned
+# version here: `rust-toolchain.toml` (repo root) is the single source of
+# truth for the channel, and it is only visible to `rustup` once the repo is
+# mounted in postCreateCommand — not at image-build time, when the build
+# context is just `.devcontainer/`. Installing the toolchain itself (`rustup
+# show`, which auto-installs the pinned channel on first use) therefore also
+# happens in postCreateCommand, not here.
+ENV CARGO_HOME=/home/dev/.cargo RUSTUP_HOME=/home/dev/.rustup
+ENV PATH=/home/dev/.cargo/bin:$PATH
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal

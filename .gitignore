@@ -20,6 +20,9 @@ dist/
 node_modules/
 *.tsbuildinfo
 
+# Rust build artifacts (Cargo.lock is committed; the crate is a binary crate)
+/target/
+
 # Local quick-start scratch
 .quickstart/
 
