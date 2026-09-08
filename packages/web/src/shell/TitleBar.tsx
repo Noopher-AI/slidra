@@ -18,6 +18,8 @@ export interface TitleBarProps {
   savedStatusText: string | null;
   /** 真實的 /api/chat/stream 連線狀態，由 App 從 streamReady 推導。既有 e2e 契約（.agent-dot）延續自舊殼，此處保留同一個節點。 */
   agentConnection: AgentConnection;
+  /** 目前選定的 agent 名稱（`GET /api/agent` 的 label），尚未取得或未選時為 null——此時只顯示連線狀態。 */
+  agentLabel: string | null;
   /** T5/NOOP-93/#110：agent 持有編輯鎖時，undo/redo 一律停用（不送請求）。 */
   editingFrozen: boolean;
   onUndo(): void;
@@ -47,6 +49,16 @@ const AGENT_LABEL: Record<AgentConnection, string> = {
 };
 
 /**
+ * 連上線之後，「Agent connected」這句話已經沒有新資訊了——真正想知道的是
+ * 現在跑的是哪一個 agent，所以連上線時改顯示它的名稱。connecting／
+ * disconnected 仍用原本的狀態文案（那時名稱不是重點，而且可能還沒取得）。
+ */
+function agentStatusText(connection: AgentConnection, label: string | null): string {
+  if (connection === "connected" && label !== null) return label;
+  return AGENT_LABEL[connection];
+}
+
+/**
  * 標題列 (New v3)。版面依 02-DESIGN_DOC.md §3：品牌／undo-redo／檔名／
  * Open-Save-Export／Play。
  *
@@ -60,6 +72,7 @@ export function TitleBar({
   deckName,
   savedStatusText,
   agentConnection,
+  agentLabel,
   editingFrozen,
   onUndo,
   onRedo,
@@ -126,7 +139,7 @@ export function TitleBar({
       <span className="spacer" />
       <span className={`agent-dot agent-dot-${agentConnection}`}>
         <i />
-        {AGENT_LABEL[agentConnection]}
+        {agentStatusText(agentConnection, agentLabel)}
       </span>
       <div className="titlebar-actions">
         <input

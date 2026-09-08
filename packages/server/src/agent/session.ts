@@ -120,6 +120,12 @@ interface ChatEvents {
     status: acp.ToolCallStatus;
     output?: string;
   }) => void;
+  /**
+   * The agent's own `available_commands_update` — a session-level fact, not
+   * a turn-scoped one (see `getReportedCommands`'s own comment for why it
+   * is stored separately from the other, turn-scoped events above).
+   */
+  "available-commands": (payload: { commands: readonly acp.AvailableCommand[] }) => void;
 }
 
 /**
@@ -165,6 +171,17 @@ export class AgentChatSession extends EventEmitter {
   private turnQueue: Promise<void> = Promise.resolve();
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
+  /**
+   * The most recent `available_commands_update` the agent has sent, or `[]`
+   * if it has never sent one. Unlike the turn-scoped events above, this
+   * arrives outside any turn (typically right after `session/new`, before
+   * the 編輯規約 prompt) and is a standing fact about the session, not
+   * something to relay once and forget — `serve.ts` reads it back via
+   * `getReportedCommands()` whenever it needs to recompute the `/` list
+   * (e.g. serving `GET /api/agent/commands`), not only at the moment it was
+   * reported.
+   */
+  private reportedCommands: readonly acp.AvailableCommand[] = [];
   /**
    * `toolCallId`s already relayed to the author as commands (ticket #17).
    * A `tool_call_update` carries only the id — never `rawInput` again — so
@@ -234,6 +251,11 @@ export class AgentChatSession extends EventEmitter {
 
   private emitTyped<K extends keyof ChatEvents>(event: K, ...args: Parameters<ChatEvents[K]>): void {
     this.emit(event, ...args);
+  }
+
+  /** The agent's most recently reported `available_commands_update`, or `[]` if it has never sent one. */
+  getReportedCommands(): readonly acp.AvailableCommand[] {
+    return this.reportedCommands;
   }
 
   /**
@@ -494,8 +516,19 @@ export class AgentChatSession extends EventEmitter {
   private buildClient(): acp.Client {
     return {
       sessionUpdate: async (params: acp.SessionNotification) => {
-        if (!this.relayingCurrentTurn) return;
         const update = params.update;
+        // Unlike every other update kind below, this one is session-level
+        // bookkeeping, not part of any particular turn — it almost always
+        // arrives between `session/new` and the very first turn (see
+        // `getReportedCommands`'s own comment), while `relayingCurrentTurn`
+        // is still false. Handling it above that guard is what makes it
+        // ever reach here at all.
+        if (update.sessionUpdate === "available_commands_update") {
+          this.reportedCommands = update.availableCommands;
+          this.emitTyped("available-commands", { commands: update.availableCommands });
+          return;
+        }
+        if (!this.relayingCurrentTurn) return;
         if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
           this.emitTyped("chat-chunk", { text: update.content.text });
           return;
@@ -508,9 +541,12 @@ export class AgentChatSession extends EventEmitter {
           this.relayCommandUpdate(update);
           return;
         }
-        // Remaining update kinds (thoughts, plans, available commands) are
-        // the agent's own bookkeeping, not something the author asked to
-        // see — this sidebar is a view of the work, not a debug log.
+        // Remaining update kinds (thoughts, plans) are the agent's own
+        // bookkeeping, not something the author asked to see — this
+        // sidebar is a view of the work, not a debug log. `available
+        // commands` used to be lumped in here too; it now has its own
+        // branch above, handled unconditionally rather than only during a
+        // turn.
       },
       requestPermission: async (params: acp.RequestPermissionRequest) => {
         // Only a command actually about to run needs the floor — a request
@@ -691,7 +727,17 @@ export class AgentChatSession extends EventEmitter {
     return { content: applyLineWindow(content, params.line, params.limit) };
   }
 
-  /** Attaches one SSE stream to this session's events; returns a detach function. */
+  /**
+   * Attaches one SSE stream to this session's events; returns a detach
+   * function. Deliberately does NOT forward `available-commands`: that
+   * event is a session-level fact with no turn to belong to, and every
+   * event this stream (`/api/chat/stream`) carries is turn bookkeeping
+   * (`turnInFlight`/`setWorking` on the client side) — mixing a
+   * conversation-unrelated notification into it would make "is the agent
+   * working" readable from an event that has nothing to do with a turn.
+   * `serve.ts` broadcasts it separately over `/api/events` instead (see
+   * `commands.ts` and the `agent-commands` SSE event).
+   */
   attachStream(send: (event: keyof ChatEvents, data: unknown) => void): () => void {
     const onChunk: ChatEvents["chat-chunk"] = (payload) => send("chat-chunk", payload);
     const onDone: ChatEvents["chat-done"] = (payload) => send("chat-done", payload);

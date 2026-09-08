@@ -302,6 +302,50 @@ describe("startLiveReload", () => {
     expect(onExportEvent).not.toHaveBeenCalled();
   });
 
+  it("calls onCommandsChange with the parsed agent-commands payload ([E3.T3] #232/#236)", () => {
+    let fake: FakeEventSource | undefined;
+    const onCommandsChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onCommandsChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-commands", {
+      commands: [
+        { name: "outline", description: "從大綱建立投影片", source: "bundled" },
+        { name: "review", description: "", source: "agent" },
+      ],
+    });
+
+    expect(onCommandsChange).toHaveBeenNthCalledWith(1, [
+      { name: "outline", description: "從大綱建立投影片" },
+      { name: "review", description: "" },
+    ]);
+  });
+
+  it("drops a malformed agent-commands payload instead of fabricating a list ([E3.T3] #232/#236)", () => {
+    let fake: FakeEventSource | undefined;
+    const onCommandsChange = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onCommandsChange,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-commands", { commands: [{ name: "outline" }] }); // missing description
+    fake!.emit("agent-commands", { commands: "not-an-array" });
+    fake!.emit("agent-commands", {}); // missing commands entirely
+
+    expect(onCommandsChange).not.toHaveBeenCalled();
+  });
+
   it("ignores events of a different type", () => {
     let fake: FakeEventSource | undefined;
     const onChange = vi.fn();

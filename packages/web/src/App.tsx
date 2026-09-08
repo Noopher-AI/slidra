@@ -4,6 +4,7 @@ import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsse
 import { appendMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
+import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
@@ -143,6 +144,14 @@ export function App() {
   const [saveState, setSaveState] = useState<SaveState>({ known: false });
   const [openError, setOpenError] = useState<string | null>(null);
 
+  // [E3.T3] #232/#236: the `/` command list — agent report ∪ bundled
+  // skills ∪ user skills (architecture decision on #232/#236 — not a
+  // fallback, all three are standing sources). `[]` means "nothing
+  // reported/found yet", same meaning `GET /api/agent/commands` gives an
+  // agent that has never reported and two empty/missing skill
+  // directories — SlashMenu shows the fixed hint text for that case.
+  const [commands, setCommands] = useState<SlashCommandOption[]>([]);
+
   // NOOP-93 §4.7: the Export dropdown's own open/closed state, and the
   // job UI state derived from `export` SSE events (or set directly by
   // handleExportPick for the 202/409 response itself, which arrives before
@@ -185,6 +194,8 @@ export function App() {
   // real ACP session state need a new server route, out of this unit's
   // file ownership).
   const [agentConnection, setAgentConnection] = useState<AgentConnection>("connecting");
+  // 目前選定的 agent 名稱，供標題列顯示。null = 還沒取得或尚未選定 agent。
+  const [agentLabel, setAgentLabel] = useState<string | null>(null);
   const everConnectedRef = useRef(false);
 
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
@@ -400,6 +411,7 @@ export function App() {
       onFrozenChange: setEditingFrozen,
       onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
+      onCommandsChange: setCommands,
     });
     // The stream's own editing-frozen/editing-unfrozen carry no replay
     // (same reasoning as presentation-changed) — the state as of *this*
@@ -414,6 +426,22 @@ export function App() {
         // "not frozen" on a genuine failure; better to say nothing and let
         // the next presentation-changed/editing-frozen event correct it.
       });
+    // [E3.T3]: same "GET seeds the initial value, SSE carries updates, no
+    // fallback on failure" shape as /api/editing above — a fetch failure
+    // leaves `commands` at its initial `[]` rather than fabricating a list.
+    // 標題列的 agent 名稱：和上面同一個「GET 取初值」的形狀。目前沒有對應的
+    // SSE 事件可訂閱，切換 agent 只能經由 API，重新整理即會更新。
+    void fetch("/api/agent")
+      .then((response) => response.json())
+      .then((data: { current: string | null; agents: Array<{ kind: string; label: string }> }) => {
+        const current = data.agents.find((agent) => agent.kind === data.current);
+        setAgentLabel(current?.label ?? null);
+      })
+      .catch(() => {});
+    void fetch("/api/agent/commands")
+      .then((response) => response.json())
+      .then((data: { commands: SlashCommandOption[] }) => setCommands(data.commands))
+      .catch(() => {});
     presentationLoaderRef.current?.load();
     void refreshSaveState();
     void refreshComments();
@@ -1322,6 +1350,7 @@ export function App() {
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
           savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
           agentConnection={agentConnection}
+          agentLabel={agentLabel}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
@@ -1453,6 +1482,7 @@ export function App() {
                   const comment = comments.find((c) => c.id === commentId);
                   if (comment) void deletePinnedComment(comment);
                 }}
+                commands={commands}
               />
             }
           />

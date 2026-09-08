@@ -1,3 +1,4 @@
+import type * as acp from "@agentclientprotocol/sdk";
 import { CoMotionError } from "@co-motion/core";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type ChatStreamSend } from "./session.js";
@@ -102,6 +103,10 @@ export class AgentManager {
   private detachFromSession: (() => void) | undefined;
   /** Every `/api/chat/stream` connection's send function — persists across a session swap (§4.5). */
   private readonly externalListeners = new Set<ChatStreamSend>();
+  /** Detaches the internal `available-commands` subscription from whichever session is currently live. */
+  private detachCommandsFromSession: (() => void) | undefined;
+  /** Listeners for "the agent reported a fresh command list" — persists across a session swap, like `externalListeners`. */
+  private readonly commandsListeners = new Set<() => void>();
 
   constructor(options: AgentManagerOptions) {
     this.presentationId = options.presentationId;
@@ -135,6 +140,19 @@ export class AgentManager {
   private rewireSession(nextSession: AgentChatSession | undefined): void {
     this.detachFromSession?.();
     this.detachFromSession = nextSession?.attachStream(this.forwardToExternal);
+    // `available-commands` is session-level, not turn-scoped, so it rides its
+    // own subscription rather than `attachStream` (see the session's own
+    // docstring). Re-pointed here for the same reason the stream is: the `/`
+    // list must keep updating across a session swap.
+    this.detachCommandsFromSession?.();
+    this.detachCommandsFromSession = undefined;
+    if (nextSession) {
+      const forward = () => {
+        for (const listener of this.commandsListeners) listener();
+      };
+      nextSession.on("available-commands", forward);
+      this.detachCommandsFromSession = () => nextSession.off("available-commands", forward);
+    }
   }
 
   /**
@@ -238,6 +256,24 @@ export class AgentManager {
     this.externalListeners.add(send);
     return () => {
       this.externalListeners.delete(send);
+    };
+  }
+
+  /** The kind currently selected, or null when none is — the `/` command list needs it to resolve the user skill directory. */
+  currentKind(): AgentKind | null {
+    return this.current;
+  }
+
+  /** The current session's latest agent-reported command list; empty when no agent is selected. */
+  getReportedCommands(): readonly acp.AvailableCommand[] {
+    return this.session?.getReportedCommands() ?? [];
+  }
+
+  /** Subscribes to "the agent reported a fresh command list", across session swaps; returns an unsubscribe function. */
+  onAvailableCommands(listener: () => void): () => void {
+    this.commandsListeners.add(listener);
+    return () => {
+      this.commandsListeners.delete(listener);
     };
   }
 
