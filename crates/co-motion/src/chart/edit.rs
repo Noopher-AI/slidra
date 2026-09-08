@@ -118,10 +118,10 @@ pub fn create_chart_element(
     if !x.is_finite() || !y.is_finite() {
         return Err(CoMotionError::invalid("--x/--y 必須是有限數字"));
     }
-    if !width.is_finite() || !(width > 0.0) {
+    if !width.is_finite() || width <= 0.0 {
         return Err(CoMotionError::invalid("--width 必須是大於 0 的有限數字"));
     }
-    if !height.is_finite() || !(height > 0.0) {
+    if !height.is_finite() || height <= 0.0 {
         return Err(CoMotionError::invalid("--height 必須是大於 0 的有限數字"));
     }
 
