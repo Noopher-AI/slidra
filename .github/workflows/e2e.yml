@@ -73,3 +73,6 @@ jobs:
 
       - name: Run design contract & contrast tests
         run: npx vitest run packages/web/test/design-contract.test.ts packages/web/test/tokens.test.ts packages/web/test/contrast.test.ts
+
+      - name: Run unit test suite
+        run: npm test
