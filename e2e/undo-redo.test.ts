@@ -215,7 +215,7 @@ it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/und
     await waitForAgentConnected(page);
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input input").fill("改標題");
+    await page.locator(".chat-input textarea").fill("改標題");
     await page.locator(".chat-input button").click();
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);

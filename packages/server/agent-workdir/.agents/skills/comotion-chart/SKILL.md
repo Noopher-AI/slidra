@@ -1,5 +1,5 @@
 ---
-name: chart
+name: comotion-chart
 description: 用一組貼上的數列資料在指定頁做出圖表，可選類型、雙軸與堆疊
 ---
 

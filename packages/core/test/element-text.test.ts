@@ -452,6 +452,43 @@ describe("substituteDynamicText", () => {
 // NOOP-129 Review round-1 FAIL item 2: Plan §6.4 promised these 4 tests and
 // none were written — a mutation check proved `rewrapTextBoxContent` /
 // `replaceContainerText` / `setTextRunStyle` can each drop their
+// A plain `<text>` does not break lines on "\n" — writing several lines
+// into one means they all render on top of each other on one line, which is
+// what `text set` used to do silently. These pin the fix: N lines in, N
+// `<tspan>`s out, positioned from what the element already had.
+describe("text set lays multi-line text out as one <tspan> per line", () => {
+  let fontBook: ReadonlyMap<string, FontMetrics>;
+
+  beforeAll(async () => {
+    fontBook = new Map([[FAMILY, parseFont(new Uint8Array(await readFile(bundledFontPath)))]]);
+  });
+
+  it("rebuilds an existing multi-tspan element, keeping its x and its line gap", () => {
+    const svg =
+      '<svg><text id="el-a" font-size="24"><tspan x="80" y="220">一</tspan>' +
+      '<tspan x="80" y="260">二</tspan><tspan x="80" y="300">三</tspan></text></svg>';
+
+    const result = replaceElementText(svg, "el-a", "一\n三");
+
+    expect(result).toBe('<svg><text id="el-a" font-size="24"><tspan x="80" y="220">一</tspan><tspan x="80" y="260">三</tspan></text></svg>');
+  });
+
+  it("grows a single-line <text> into tspans, stepping by the font's line height", () => {
+    const svg = `<svg><text id="el-a" font-family="${FAMILY}" font-size="40" x="80" y="220">舊</text></svg>`;
+
+    const result = replaceElementText(svg, "el-a", "一\n二", { fontBook });
+
+    expect(result).toContain('<tspan x="80" y="220">一</tspan>');
+    expect(result).toMatch(/<tspan x="80" y="2[0-9.]+">二<\/tspan>/);
+  });
+
+  it("leaves single-line text exactly as it was", () => {
+    const svg = '<svg><text id="el-a" x="80" y="220">舊</text></svg>';
+
+    expect(replaceElementText(svg, "el-a", "新", { fontBook })).toBe('<svg><text id="el-a" x="80" y="220">新</text></svg>');
+  });
+});
+
 // `data-comot-text-height` write with all 1076 unit tests staying green.
 // Every expected height below comes from the font's own hhea fields via the
 // documented lineHeight formula (`text-wrap.test.ts`'s own convention),

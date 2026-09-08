@@ -1,5 +1,5 @@
 ---
-name: style
+name: comotion-style
 description: 統一整份簡報的字級、顏色、字重與字型，或把某一頁的樣式套到全部
 ---
 

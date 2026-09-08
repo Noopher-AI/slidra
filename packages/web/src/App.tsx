@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { SaveState } from "@co-motion/core";
+import { fromAgentResponse, type AgentUiStatus } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
-import { appendMessage, type ChatMessage } from "./chat-messages.js";
+import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
-import { startLiveReload, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
+import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
@@ -11,6 +12,7 @@ import { createPresentationInfoLoader, type PresentationInfo } from "./presentat
 import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
+import { SettingsDialog } from "./shell/settings/SettingsDialog.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
@@ -194,9 +196,38 @@ export function App() {
   // real ACP session state need a new server route, out of this unit's
   // file ownership).
   const [agentConnection, setAgentConnection] = useState<AgentConnection>("connecting");
-  // 目前選定的 agent 名稱，供標題列顯示。null = 還沒取得或尚未選定 agent。
-  const [agentLabel, setAgentLabel] = useState<string | null>(null);
   const everConnectedRef = useRef(false);
+
+  // [E3.T5] NOOP-230/#234: the settings dialog's agent tab drives off this
+  // one piece of state — `GET /api/agent` seeds it, `POST /api/agent/probe`
+  // and a successful `POST /api/agent/select` both refresh it via the same
+  // `refreshAgentStatus()` (below), and `agent-changed` SSE events do too
+  // (the mount effect's `onAgentChanged`). `loading` is this state's own
+  // initial value; `fromAgentResponse` itself never produces it.
+  const [agentStatus, setAgentStatus] = useState<AgentUiStatus>({ kind: "loading" });
+  // True while a GET /api/agent or POST /api/agent/probe is in flight
+  // (Plan §4.4 row 1 — deliberately covers both, not just the probe POST).
+  const [agentProbing, setAgentProbing] = useState(false);
+  // The card mid-POST /api/agent/select ("切換中…", Plan §4.5), and that
+  // request's own error strip (409 editing / 400 / 500 / network).
+  const [agentSwitchingKind, setAgentSwitchingKind] = useState<AgentKind | null>(null);
+  const [agentActionError, setAgentActionError] = useState<string | null>(null);
+  // 標題列 agent 名稱：unset 時回退成 null（沿用既有「Agent connected」泛用
+  // 文案，Plan §4.9），loading/error 也還沒有名字可顯示；ready/unauthenticated
+  // 都有已知的 label（未登入不代表不知道是哪個 agent）。
+  const agentLabel =
+    agentStatus.kind === "ready" || agentStatus.kind === "unauthenticated" ? agentStatus.label : null;
+  // [E3.T5]: the settings dialog's own open/closed state (Plan §4.2). Toggled
+  // by the titlebar gear, force-opened by the chat empty state's "開啟設定"
+  // button, closed by the dialog itself (Esc/mask/close button).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Plan §3.6: only the mutual-exclusion obligation this ticket owns —
+  // opening settings must close the Export dropdown (Dock/Rail menus stay
+  // untouched, per the plan's own note: the mask already swallows their
+  // mousedown, so they simply become unreachable underneath it).
+  useEffect(() => {
+    if (settingsOpen) setExportOpen(false);
+  }, [settingsOpen]);
 
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
   // assumed from "the promise resolved". Synced only from fullscreenchange
@@ -412,6 +443,16 @@ export function App() {
       onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
       onCommandsChange: setCommands,
+      // [E3.T5] NOOP-230 §4.4/Plan §4.6: the only place a system message is
+      // ever inserted for a switch — POST /api/agent/select's own 200
+      // response never inserts one (Plan §4.5 step 6), including when this
+      // same tab is the one that issued the switch: this SSE event is how
+      // that tab hears about its own change too, same as every other
+      // no-replay event on this stream.
+      onAgentChanged: (event) => {
+        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
+        void refreshAgentStatus();
+      },
     });
     // The stream's own editing-frozen/editing-unfrozen carry no replay
     // (same reasoning as presentation-changed) — the state as of *this*
@@ -429,15 +470,10 @@ export function App() {
     // [E3.T3]: same "GET seeds the initial value, SSE carries updates, no
     // fallback on failure" shape as /api/editing above — a fetch failure
     // leaves `commands` at its initial `[]` rather than fabricating a list.
-    // 標題列的 agent 名稱：和上面同一個「GET 取初值」的形狀。目前沒有對應的
-    // SSE 事件可訂閱，切換 agent 只能經由 API，重新整理即會更新。
-    void fetch("/api/agent")
-      .then((response) => response.json())
-      .then((data: { current: string | null; agents: Array<{ kind: string; label: string }> }) => {
-        const current = data.agents.find((agent) => agent.kind === data.current);
-        setAgentLabel(current?.label ?? null);
-      })
-      .catch(() => {});
+    // [E3.T5] NOOP-230 §4.4: agent 狀態走同一個形狀，但這裡確實有對應的 SSE
+    // 事件可訂閱（agent-changed，見下方 onAgentChanged）——`App.tsx:432-433`
+    // 舊註解說的「沒有對應事件」在 NOOP-230 落地後已經不成立。
+    void refreshAgentStatus();
     void fetch("/api/agent/commands")
       .then((response) => response.json())
       .then((data: { commands: SlashCommandOption[] }) => setCommands(data.commands))
@@ -839,6 +875,89 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  /**
+   * `GET /api/agent` (NOOP-230 §4.4) — the one place `agentStatus` is ever
+   * set from a cached read. Used for the initial mount fetch, after a
+   * successful `POST /api/agent/select` (Plan §4.5 step 3: re-GET rather
+   * than reusing select's own partial `{ok,current,source}` response), and
+   * whenever `agent-changed` arrives. A malformed response is dropped
+   * (`fromAgentResponse` returning `null`) — the previous value is kept,
+   * same "errors over fallbacks" rule every other GET in this file follows.
+   * A network failure surfaces as `{ kind: "error" }` rather than being
+   * swallowed, since ChatPanel's empty state has nothing else to show for
+   * "the agent list itself could not be read".
+   */
+  async function refreshAgentStatus(): Promise<void> {
+    setAgentProbing(true);
+    try {
+      const response = await fetch("/api/agent");
+      const data: unknown = await response.json();
+      const parsed = fromAgentResponse(data);
+      if (parsed) setAgentStatus(parsed);
+    } catch {
+      setAgentStatus({ kind: "error", message: "無法取得 agent 狀態：連線已中斷" });
+    } finally {
+      setAgentProbing(false);
+    }
+  }
+
+  /** `POST /api/agent/probe` (Plan §4.4 "重新偵測") — always reruns both login probes (§7.7), unlike the cached `GET /api/agent` above. Failure leaves `agentStatus` at its last known value (Plan: "失敗 → 顯示錯誤列，狀態維持舊值"). */
+  async function handleProbeAgent(): Promise<void> {
+    setAgentProbing(true);
+    setAgentActionError(null);
+    try {
+      const response = await fetch("/api/agent/probe", { method: "POST" });
+      const data: unknown = await response.json();
+      const parsed = fromAgentResponse(data);
+      if (parsed) setAgentStatus(parsed);
+    } catch {
+      setAgentActionError("重新偵測失敗：連線已中斷");
+    } finally {
+      setAgentProbing(false);
+    }
+  }
+
+  /**
+   * `POST /api/agent/select` (Plan §4.5) — deliberately pessimistic, no
+   * optimistic `current` update: a switch replaces the whole ACP session,
+   * and rolling an optimistic update back on failure would visibly flicker
+   * between agents and race `agent-changed`'s own write to the same state.
+   */
+  async function handleSelectAgent(kind: AgentKind): Promise<void> {
+    setAgentSwitchingKind(kind);
+    setAgentActionError(null);
+    let response: Response;
+    try {
+      response = await fetch("/api/agent/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+    } catch {
+      setAgentActionError("切換 agent 失敗：連線已中斷");
+      setAgentSwitchingKind(null);
+      return;
+    }
+    if (response.ok) {
+      await refreshAgentStatus();
+      setAgentSwitchingKind(null);
+      return;
+    }
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    setAgentActionError(body.error ?? "切換 agent 失敗");
+    setAgentSwitchingKind(null);
+  }
+
+  /** Titlebar gear — a toggle, same as Export's own button (Plan §4.2). */
+  function toggleSettings(): void {
+    setSettingsOpen((open) => !open);
+  }
+
+  /** ChatPanel empty state's "開啟設定" — always opens, never toggles (Plan §4.7: "與齒輪走同一條路" means the same destination, not the same click semantics). */
+  function openSettings(): void {
+    setSettingsOpen(true);
+  }
+
   /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
   async function refreshSaveState(): Promise<void> {
     try {
@@ -1135,7 +1254,7 @@ export function App() {
    * author's own message (`Draft with agent`'s fixed prefix included —
    * §4.8 of the plan: the author sees what was actually sent).
    */
-  async function sendChatText(text: string): Promise<void> {
+  async function sendChatText(text: string, displayText?: string): Promise<void> {
     if (!streamReady) {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
@@ -1144,8 +1263,14 @@ export function App() {
       return;
     }
     const id = nextMessageIdRef.current++;
-    setMessages((prev) => appendMessage(prev, id, "author", text));
+    setMessages((prev) => appendMessage(prev, id, "author", displayText ?? text));
     setError(null);
+    // The turn starts here, not at its first SSE event: an agent that
+    // reads and thinks for a while before saying anything would otherwise
+    // leave the author looking at a screen with no sign it is working.
+    // Every ending — `chat-done`, `chat-error`, a dropped stream — still
+    // clears it from chat-stream.ts, as does a send that never landed.
+    setWorking(true);
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -1153,8 +1278,16 @@ export function App() {
         body: JSON.stringify({ text }),
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
+        setWorking(false);
         setError(body.error ?? "傳送訊息失敗");
+        // NOOP-230 §4.4/Plan §4.8: a `reason`-carrying 409 means the server's
+        // own agent state disagrees with what this tab last knew (unset/
+        // unauthenticated) — re-GET so the empty state appears immediately,
+        // instead of waiting for the author to happen to open settings.
+        if (response.status === 409 && (body.reason === "unset" || body.reason === "unauthenticated")) {
+          void refreshAgentStatus();
+        }
       }
     } catch {
       // `fetch` rejects (rather than resolving with a non-OK response) when
@@ -1165,15 +1298,23 @@ export function App() {
       // when it was not — fabricating success is forbidden here. Reuses
       // the same `error` state the non-OK branch above uses, naming the
       // message so it is clear which one failed.
+      setWorking(false);
       setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
   }
 
+  /**
+   * An empty draft is still a real request when comments are pinned —
+   * "do what the pins say" — so it goes out, with the conversation showing
+   * a placeholder rather than an empty bubble. The placeholder is only
+   * what is *displayed*; what reaches the agent is the pinned-comment
+   * context plus its own instruction (session.ts), never this text.
+   */
   async function sendMessage(): Promise<void> {
     const text = draft.trim();
-    if (!text) return;
+    if (!text && comments.length === 0) return;
     setDraft("");
-    await sendChatText(text);
+    await sendChatText(text, text ? undefined : `（未輸入訊息，只送出 ${comments.length} 則釘選留言）`);
   }
 
   /**
@@ -1372,6 +1513,18 @@ export function App() {
           canPlay={hasSlides}
         />
       )}
+      {shellVisible && settingsOpen && (
+        <SettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          status={agentStatus}
+          probing={agentProbing}
+          editingFrozen={editingFrozen}
+          switchingKind={agentSwitchingKind}
+          switchError={agentActionError}
+          onSelect={(kind) => void handleSelectAgent(kind)}
+          onProbe={() => void handleProbeAgent()}
+        />
+      )}
       {shellVisible && (
         <div className="app-notices">
           {liveReloadError && (
@@ -1483,12 +1636,14 @@ export function App() {
                   if (comment) void deletePinnedComment(comment);
                 }}
                 commands={commands}
+                agent={agentStatus}
+                onOpenSettings={openSettings}
               />
             }
           />
         )}
       </div>
-      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} />}
+      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} settingsOpen={settingsOpen} onOpenSettings={toggleSettings} />}
     </div>
   );
 }

@@ -140,6 +140,62 @@
   color: var(--ink-500);
 }
 
+/* [E3.T5]: agent 切換的確認訊息——role="status"（非 assertive），與
+   .chat-notice（串流斷線、role="alert"）刻意分開，見 chat-messages.ts 的
+   SystemMessage 註解。 */
+.chat-system {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  border-radius: var(--radius-md-segmented);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* [E3.T5] Plan §4.7：沒有可用 agent 時的聊天空狀態，接在既有訊息下方。 */
+.chat-empty-state {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+  background: var(--surface-1);
+  border-radius: var(--radius-md-segmented);
+}
+.chat-empty-state-title {
+  margin: 0;
+  color: var(--ink-900);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+.chat-empty-state-body {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+.chat-empty-state-body code {
+  font-family: var(--font-mono);
+  color: var(--ink-700);
+}
+.chat-empty-state-button {
+  height: var(--control-h);
+  padding-inline: var(--space-6);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.chat-empty-state-button:hover {
+  background: var(--brand-red-hover);
+}
+
 /* 對話裡的一則系統通知（ticket #19）：不是任何一方的發言。 */
 .chat-notice {
   align-self: stretch;
@@ -197,8 +253,9 @@
 }
 
 /* 輸入框是一張白卡：上半是輸入列，下半是提示 + 圓角送出鈕；焦點框畫在整
-   張卡上（不是 input 自己）。`.chat-input input` / `.chat-input button`
-   選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層 footer。 */
+   張卡上（不是 textarea 自己）。`.chat-input textarea` / `.chat-input
+   button` 選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層
+   footer。 */
 .chat-input {
   position: relative; /* anchors .slash-menu, which floats above this card */
   flex: none;
@@ -214,11 +271,16 @@
   border-color: var(--brand-red-ring);
 }
 
-.chat-input input {
-  /* Firefox min-width fix (NOOP-51): a bare <input> keeps its size=20
-     intrinsic width as its flex-item automatic minimum unless told
-     otherwise, so it doesn't yield the space the submit button needs. */
+.chat-input textarea {
+  /* Firefox min-width fix (NOOP-51): a bare field keeps its intrinsic
+     width as its flex-item automatic minimum unless told otherwise, so it
+     doesn't yield the space the submit button needs. */
   min-width: 0;
+  /* Multi-line: starts one row tall and grows with the content (height is
+     set from JS in ChatPanel), up to a cap after which it scrolls. */
+  resize: none;
+  overflow-y: auto;
+  max-height: 10em;
   padding: var(--space-4) var(--space-5) var(--space-1);
   box-sizing: border-box;
   background: transparent;
@@ -227,11 +289,11 @@
   font: inherit;
   font-size: var(--text-base);
 }
-.chat-input input::placeholder {
+.chat-input textarea::placeholder {
   color: var(--ink-400);
   opacity: 1;
 }
-.chat-input input:focus-visible {
+.chat-input textarea:focus-visible {
   outline: none;
 }
 

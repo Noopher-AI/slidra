@@ -1,5 +1,5 @@
 ---
-name: notes
+name: comotion-notes
 description: 依每頁內容補上口語化的簡報者備忘稿，可指定總時長或單頁時長
 ---
 

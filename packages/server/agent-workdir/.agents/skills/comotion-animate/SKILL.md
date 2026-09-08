@@ -1,5 +1,5 @@
 ---
-name: animate
+name: comotion-animate
 description: 為指定頁或整份簡報加上依序揭露的動畫效果與頁面轉場，可指定保守或活潑
 ---
 

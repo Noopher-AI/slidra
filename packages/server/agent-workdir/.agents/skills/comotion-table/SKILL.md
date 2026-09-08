@@ -1,5 +1,5 @@
 ---
-name: table
+name: comotion-table
 description: 把貼上的 Markdown 或 CSV 表格在指定頁做成表格，可綁定既有資料資產
 ---
 

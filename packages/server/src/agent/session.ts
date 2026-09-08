@@ -23,6 +23,12 @@ import type { EditingLock } from "../editing-lock.js";
  * agent that tries to write directly can correct itself on the very next
  * turn (user story 32) instead of merely learning that it failed.
  */
+/** Sent in place of 【作者的訊息】 when the author submitted no text but has comments pinned. */
+const NO_MESSAGE_INSTRUCTION = "作者沒有輸入訊息，只送出上面這些釘選的留言——請依這些留言處理這份簡報。";
+
+/** Refused turn: no text typed and nothing pinned, so there is nothing to act on. */
+const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，也沒有釘選的留言）";
+
 const WRITE_REFUSED_MESSAGE =
   "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
 
@@ -289,7 +295,18 @@ export class AgentChatSession extends EventEmitter {
       const comments = await listAllComments(this.presentationId);
       const context = buildCommentContext(comments);
       if (context !== null) {
-        prompt = `${context}\n\n【作者的訊息】\n${text}`;
+        // An empty message with comments pinned means "do what the pins
+        // say" — the pins are the request, so the agent is told exactly
+        // that rather than being handed an empty 【作者的訊息】 block to
+        // interpret on its own.
+        prompt =
+          text.trim() === ""
+            ? `${context}\n\n${NO_MESSAGE_INSTRUCTION}`
+            : `${context}\n\n【作者的訊息】\n${text}`;
+      } else if (text.trim() === "") {
+        // Nothing typed and nothing pinned: there is no request at all.
+        this.emitTyped("chat-error", { message: EMPTY_MESSAGE_MESSAGE });
+        return;
       }
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });

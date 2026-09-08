@@ -1,4 +1,5 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { AgentUiStatus } from "../../agent-status.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
@@ -12,6 +13,10 @@ export interface ChatPanelProps {
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
+  agent: AgentUiStatus;
+  /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
+  onOpenSettings(): void;
   /**
    * [E2.T8] §4.7: every pinned comment, deck-wide, sorted/numbered by
    * `sortComments`. Rendered as "Pinned context <n>" — empty means the
@@ -34,7 +39,7 @@ export interface ChatPanelProps {
 /**
  * 對話分頁 — 逐字搬自 App.tsx（NOOP-271/#154 之後、New v3 殼重建之前的版
  * 本），class 名稱一個都沒改。這是刻意的：e2e/freeze.test.ts 用
- * `.chat-input button` / `.chat-input input` 驅動 agent 編輯鎖的凍結流程，
+ * `.chat-input button` / `.chat-input textarea` 驅動 agent 編輯鎖的凍結流程，
  * e2e/helpers/launch.ts 的 `openApp({ waitForAgent: true })` 輪詢
  * `.agent-dot`（在 TitleBar.tsx，不在這裡，但同一個「不改既有契約」的原
  * 則）——兩者都不能因為殼重建而跟著變。訊息／草稿等狀態仍然留在
@@ -49,18 +54,47 @@ export function ChatPanel({
   draft,
   onDraftChange,
   onSubmit,
+  agent,
+  onOpenSettings,
   comments,
   onPinnedClick,
   onPinnedRemove,
   commands,
 }: ChatPanelProps) {
   const hasComments = comments.length > 0;
+  // [E3.T5] Plan §4.7: `loading`/`error` leave the input's own disabled
+  // state untouched — it stays governed by `streamReady` alone, exactly as
+  // before this ticket ("還不知道" is not "知道不行"; this must not become
+  // "disable defensively just in case"). Only `unset`/`unauthenticated`
+  // disable the `<textarea>` itself — the Send button additionally keeps the
+  // pre-existing `!streamReady` gate, since sending is refused either way.
+  const agentBlocksInput = agent.kind === "unset" || agent.kind === "unauthenticated";
+  const sendDisabled = !streamReady || agentBlocksInput;
+  const inputPlaceholder =
+    agent.kind === "unset"
+      ? "請先在設定中選擇 agent"
+      : agent.kind === "unauthenticated"
+        ? `${agent.label} 尚未登入`
+        : streamReady
+          ? "Tell the agent how to change this deck…"
+          : "Connecting to chat, please wait…";
 
   // [E3.T3] #232/#236's slash-command menu. Two UI states only: which item
   // is highlighted, and whether Esc has dismissed the menu for the current
   // trigger span.
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+
+  // Multi-line input: the textarea starts one row tall and re-measures on
+  // every draft change so it grows with the content (CSS caps the height
+  // and scrolls beyond that).
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draft]);
 
   const query = slashQuery(draft);
   // Esc's dismissal is scoped to "the trigger span currently in progress"
@@ -88,7 +122,7 @@ export function ChatPanel({
     setSelectedIndex(0);
   }
 
-  function handleSlashKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleSlashKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (!showMenu) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -117,16 +151,14 @@ export function ChatPanel({
 
   /**
    * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `comotion-logic-v3.js` 的
-   * `draftKey`）——plain `↵` 維持既有的原生隱式送出不變（下面沒有攔它）。
-   * `preventDefault` 先擋掉瀏覽器對帶修飾鍵 Enter 一樣會觸發的隱式送出，
-   * 避免呼叫兩次；`streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤
-   * 路徑不得繞過它。
+   * `draftKey`）——輸入框是 textarea，plain `↵` 換行不送出。
+   * `streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤路徑不得繞過它。
    */
-  function handleDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key !== "Enter") return;
     if (!(event.metaKey || event.ctrlKey)) return;
     event.preventDefault();
-    if (!streamReady) return;
+    if (sendDisabled) return;
     onSubmit();
   }
 
@@ -135,7 +167,7 @@ export function ChatPanel({
    * slash menu open (a modifier-Enter is unambiguously "send", never
    * "complete"); every other key goes to the menu first.
    */
-  function handleInputKeyDownAll(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleInputKeyDownAll(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       handleDraftKeyDown(event);
       return;
@@ -150,6 +182,10 @@ export function ChatPanel({
         {messages.map((message) =>
           message.role === "notice" ? (
             <p key={message.id} className="chat-notice" role="alert">
+              {message.text}
+            </p>
+          ) : message.role === "system" ? (
+            <p key={message.id} className="chat-system" role="status">
               {message.text}
             </p>
           ) : message.role === "command" ? (
@@ -171,6 +207,26 @@ export function ChatPanel({
               {message.text}
             </p>
           ),
+        )}
+        {agent.kind === "unset" && (
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-title">尚未選擇 agent</p>
+            <p className="chat-empty-state-body">請先選擇要用哪一個 agent 來改這份簡報</p>
+            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
+              開啟設定
+            </button>
+          </div>
+        )}
+        {agent.kind === "unauthenticated" && (
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-title">{agent.label} 尚未登入</p>
+            <p className="chat-empty-state-body">
+              請在終端機執行 <code>{agent.loginCommand}</code>
+            </p>
+            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
+              開啟設定
+            </button>
+          </div>
         )}
         {working && <p className="chat-working">agent is working…</p>}
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
@@ -216,16 +272,19 @@ export function ChatPanel({
         }}
       >
         {showMenu && <SlashMenu commands={filtered} selectedIndex={effectiveIndex} onSelect={selectCommand} />}
-        <input
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleInputKeyDownAll}
-          placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
+          disabled={agentBlocksInput}
+          placeholder={inputPlaceholder}
         />
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={!streamReady}>
+          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
             ↑
           </button>
         </div>
