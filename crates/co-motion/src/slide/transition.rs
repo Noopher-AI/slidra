@@ -228,6 +228,15 @@ mod tests {
     const BLANK_SVG: &str =
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n";
 
+    /// Has a real child so `content_start` (before it) and `content_end`
+    /// (after it) are distinct byte offsets — `BLANK_SVG` has none, so both
+    /// collapse to the same point and a `.contains(...)` assertion on it
+    /// cannot tell a "first child" insert from a "last child" one apart
+    /// (confirmed by mutating the insertion point to `content_end`: `cargo
+    /// test` still passed). Mirrors real slides — `demo/slides/001.svg`/
+    /// `002.svg` have no `<metadata>` but do have sibling content.
+    const SVG_WITH_CHILD: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-a\"/></svg>\n";
+
     #[test]
     fn read_missing_transition_returns_default() {
         let t = read_slide_transition(BLANK_SVG).unwrap();
@@ -237,7 +246,7 @@ mod tests {
     #[test]
     fn write_creates_metadata_and_transition_when_absent() {
         let updated = set_slide_transition(
-            BLANK_SVG,
+            SVG_WITH_CHILD,
             SlideTransition {
                 enter: SlideTransitionEdge {
                     effect: PageTransitionEffect::Fade,
@@ -250,9 +259,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(updated.contains(
-            "<metadata><comot:transition xmlns:comot=\"https://co-motion.dev/ns\" enter=\"fade\" enter-duration=\"0.4\" exit=\"none\" exit-duration=\"0.5\"/></metadata>"
-        ));
+        assert_eq!(
+            updated,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:transition xmlns:comot=\"https://co-motion.dev/ns\" enter=\"fade\" enter-duration=\"0.4\" exit=\"none\" exit-duration=\"0.5\"/></metadata><g id=\"el-a\"/></svg>\n"
+        );
         let read_back = read_slide_transition(&updated).unwrap();
         assert_eq!(read_back.enter.effect, PageTransitionEffect::Fade);
         assert_eq!(read_back.enter.duration, 0.4);

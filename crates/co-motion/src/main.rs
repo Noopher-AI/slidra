@@ -118,7 +118,7 @@ fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
                     } else {
                         None
                     };
-                (commands::slide::run(&positional), renderer)
+                (commands::slide::run(&positional, json_flag), renderer)
             }
             _ => unreachable!(
                 "commands::is_in_takeover_table only admits the 11 names matched above"

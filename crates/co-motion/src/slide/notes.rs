@@ -103,12 +103,24 @@ mod tests {
     const BLANK_SVG: &str =
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n";
 
+    /// Has a real child (`<g id="el-a"/>`) so `content_start` (before it) and
+    /// `content_end` (after it, before `</svg>`) are distinct byte offsets —
+    /// `BLANK_SVG` above has none, so both offsets collapse to the same
+    /// point and a `starts_with`/`contains` assertion on it cannot tell a
+    /// "first child" insert from a "last child" one apart (confirmed by
+    /// mutating the insertion point to `content_end`: `cargo test` still
+    /// passed). Mirrors real slides — `demo/slides/001.svg`/`002.svg` have
+    /// no `<metadata>` but do have sibling content — so this is the
+    /// production-shaped case, not an edge case.
+    const SVG_WITH_CHILD: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-a\"/></svg>\n";
+
     #[test]
     fn creates_metadata_as_first_child_when_absent() {
-        let updated = set_slide_notes(BLANK_SVG, "hello").unwrap();
-        assert!(updated.starts_with(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:notes xmlns:comot=\"https://co-motion.dev/ns\">hello</comot:notes></metadata></svg>"
-        ));
+        let updated = set_slide_notes(SVG_WITH_CHILD, "hello").unwrap();
+        assert_eq!(
+            updated,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:notes xmlns:comot=\"https://co-motion.dev/ns\">hello</comot:notes></metadata><g id=\"el-a\"/></svg>\n"
+        );
     }
 
     #[test]

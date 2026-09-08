@@ -9,12 +9,12 @@ use crate::slide::style::PageStyleUpdate;
 use crate::slide::transition::PageTransitionEffect;
 use crate::workspace::{self, project::read_project_json, virtual_fs, write as ws_write};
 
-pub fn run(args: &[String]) -> CommandResult {
+pub fn run(args: &[String], json_flag: bool) -> CommandResult {
     let sub = args.first().map(String::as_str);
     let rest: &[String] = args.get(1..).unwrap_or(&[]);
 
     match sub {
-        Some("render") => run_render(rest),
+        Some("render") => run_render(rest, json_flag),
         Some("add") => run_add(rest),
         Some("delete") => run_delete(rest),
         Some("duplicate") => run_duplicate(rest),
@@ -42,7 +42,7 @@ fn failure_kind_for(err: &CoMotionError) -> FailureKind {
     }
 }
 
-fn run_render(args: &[String]) -> CommandResult {
+fn run_render(args: &[String], json_flag: bool) -> CommandResult {
     let id = match argv::require_positional(args, 0, "slide render", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
@@ -52,10 +52,21 @@ fn run_render(args: &[String]) -> CommandResult {
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
     match render_slide_for_display(&id, &path) {
-        Ok(content) => CommandResult::success(
-            format!("已渲染：{path}"),
-            Some(serde_json::json!({ "content": content })),
-        ),
+        // `docs/spec/cli.md`'s renderer contract ("渲染規則與 `cat` 完全相同"):
+        // under `--json` the raw bytes go through `crate::base64::encode`
+        // (see `cat::run`'s json_flag branch); the non-`--json` path keeps
+        // the raw string so `render()` above still writes it byte-for-byte.
+        Ok(content) => {
+            let content_value = if json_flag {
+                serde_json::Value::String(crate::base64::encode(content.as_bytes()))
+            } else {
+                serde_json::Value::String(content)
+            };
+            CommandResult::success(
+                format!("已渲染：{path}"),
+                Some(serde_json::json!({ "content": content_value })),
+            )
+        }
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
 }
@@ -374,38 +385,44 @@ mod tests {
 
     #[test]
     fn unknown_subcommand_fails_with_trailing_space() {
-        let result = run(&[]);
+        let result = run(&[], false);
         assert!(!result.ok);
         assert_eq!(result.message, "未知的子命令：slide ");
     }
 
     #[test]
     fn unknown_notes_subcommand_fails() {
-        let result = run(&["notes".to_string(), "frobnicate".to_string()]);
+        let result = run(&["notes".to_string(), "frobnicate".to_string()], false);
         assert!(!result.ok);
         assert_eq!(result.message, "未知的子命令：slide notes frobnicate");
     }
 
     #[test]
     fn notes_set_missing_text_fails() {
-        let result = run(&[
-            "notes".to_string(),
-            "set".to_string(),
-            "id".to_string(),
-            "slides/001.svg".to_string(),
-        ]);
+        let result = run(
+            &[
+                "notes".to_string(),
+                "set".to_string(),
+                "id".to_string(),
+                "slides/001.svg".to_string(),
+            ],
+            false,
+        );
         assert!(!result.ok);
         assert_eq!(result.message, "命令 slide notes set 缺少參數：text");
     }
 
     #[test]
     fn transition_set_no_fields_fails() {
-        let result = run(&[
-            "transition".to_string(),
-            "set".to_string(),
-            "id".to_string(),
-            "slides/001.svg".to_string(),
-        ]);
+        let result = run(
+            &[
+                "transition".to_string(),
+                "set".to_string(),
+                "id".to_string(),
+                "slides/001.svg".to_string(),
+            ],
+            false,
+        );
         assert!(!result.ok);
         assert_eq!(
             result.message,
@@ -415,26 +432,32 @@ mod tests {
 
     #[test]
     fn transition_set_invalid_enter_fails() {
-        let result = run(&[
-            "transition".to_string(),
-            "set".to_string(),
-            "id".to_string(),
-            "slides/001.svg".to_string(),
-            "--enter".to_string(),
-            "bogus".to_string(),
-        ]);
+        let result = run(
+            &[
+                "transition".to_string(),
+                "set".to_string(),
+                "id".to_string(),
+                "slides/001.svg".to_string(),
+                "--enter".to_string(),
+                "bogus".to_string(),
+            ],
+            false,
+        );
         assert!(!result.ok);
         assert_eq!(result.message, "slide transition set 不支援的 enter：bogus");
     }
 
     #[test]
     fn style_set_neither_flag_fails() {
-        let result = run(&[
-            "style".to_string(),
-            "set".to_string(),
-            "id".to_string(),
-            "slides/001.svg".to_string(),
-        ]);
+        let result = run(
+            &[
+                "style".to_string(),
+                "set".to_string(),
+                "id".to_string(),
+                "slides/001.svg".to_string(),
+            ],
+            false,
+        );
         assert!(!result.ok);
         assert_eq!(
             result.message,
