@@ -1313,21 +1313,102 @@ it("⌘D 複製選取，位移是 viewBox 的 +3%/+4%，新元素成為選取，
   }
 });
 
-it("⌘] 將選取移到最上層（element order front/up 的鍵盤入口）", async () => {
+it("⌘]／⌘[／⌘⇧]／⌘⇧[ 的鍵盤層序入口（element order up/down/front/back，焦點在 iframe 內）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+
+    // 起始 z 順序（檔案順序，由下到上）：el-a, el-b, el-c, el-caption, el-text,
+    // el-group, el-group-rotate, el-group-scale（見 fixture）。
+    await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
+
+    // ⌘⇧BracketRight（front）— 必須用實體鍵名，Shift+"]" 字面字元寫法在
+    // 未修正的程式碼上就會巧合通過，等同沒測（見計畫 §3 已驗證 1）。
+    let after = "";
+    await page.keyboard.press("ControlOrMeta+Shift+BracketRight");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf('id="el-group-scale"') < after.indexOf('id="el-a"');
+      })
+      .toBe(true);
+
+    // ⌘⇧BracketLeft（back）— el-a 回到最前
+    await page.keyboard.press("ControlOrMeta+Shift+BracketLeft");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf('id="el-a"') < after.indexOf('id="el-b"');
+      })
+      .toBe(true);
+
+    // ⌘]（up，無回歸）— el-a 上移一層，越過 el-b
+    await page.keyboard.press("Meta+]");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf("el-b") < after.indexOf('id="el-a"');
+      })
+      .toBe(true);
+
+    // ⌘[（down，無回歸）— el-a 下移一層，回到 el-b 之前
+    await page.keyboard.press("Meta+[");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf('id="el-a"') < after.indexOf('id="el-b"');
+      })
+      .toBe(true);
+
+    for (let i = 0; i < 4; i++) {
+      const undo = await registry.dispatch("undo", { id: presentationId });
+      expect(undo.ok).toBe(true);
+    }
+    expect(await readSlide(registry, presentationId)).toBe(before);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘⇧]／⌘⇧[ 的鍵盤層序入口（element order front/back，焦點在父文件）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
 
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
-    await page.keyboard.press("Meta+]");
-    await page.waitForTimeout(150);
 
-    const after = await readSlide(registry, presentationId);
-    expect(after.indexOf("el-b")).toBeLessThan(after.indexOf('id="el-a"'));
+    // 把焦點移回父文件而不清掉選取（計畫 §3 已驗證 2）：blur 掉 iframe、
+    // 讓 body 拿到焦點，選取狀態列仍顯示原本選中的元素。
+    await page.evaluate(() => (document.querySelector("iframe.slide-frame") as HTMLIFrameElement | null)?.blur());
+    await page.evaluate(() => document.body.focus());
+    const active = await page.evaluate(() => document.activeElement?.tagName);
+    expect(active).toBe("BODY");
+    const selName = page.locator(".status-selection-chip");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
 
-    const undo = await registry.dispatch("undo", { id: presentationId });
-    expect(undo.ok).toBe(true);
+    let after = "";
+    await page.keyboard.press("ControlOrMeta+Shift+BracketRight");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf('id="el-group-scale"') < after.indexOf('id="el-a"');
+      })
+      .toBe(true);
+
+    await page.keyboard.press("ControlOrMeta+Shift+BracketLeft");
+    await expect
+      .poll(async () => {
+        after = await readSlide(registry, presentationId);
+        return after.indexOf('id="el-a"') < after.indexOf('id="el-b"');
+      })
+      .toBe(true);
+
+    for (let i = 0; i < 2; i++) {
+      const undo = await registry.dispatch("undo", { id: presentationId });
+      expect(undo.ok).toBe(true);
+    }
     expect(await readSlide(registry, presentationId)).toBe(before);
   } finally {
     await cleanup();
@@ -1550,3 +1631,4 @@ it("POST /api/command 的白名單：黑名單命令回 403，簡報位元組不
     await cleanup();
   }
 });
+
