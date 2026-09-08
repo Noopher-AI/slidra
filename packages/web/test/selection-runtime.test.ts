@@ -799,9 +799,32 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "a", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Delete", meta: false, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "]", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "a", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Delete", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "]", code: "", meta: true, ctrl: false, shift: true, alt: false },
+    ]);
+  });
+
+  it("⌘⇧BracketRight／⌘⇧BracketLeft（真實鍵盤送出的 }/{ + code）也會被中繼成 stage-key，訊息含 code", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", { key: "}", code: "BracketRight", metaKey: true, shiftKey: true, cancelable: true }),
+    );
+    win.dispatchEvent(
+      new KeyboardEventCtor("keydown", { key: "{", code: "BracketLeft", metaKey: true, shiftKey: true, cancelable: true }),
+    );
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "}", code: "BracketRight", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "{", code: "BracketLeft", meta: true, ctrl: false, shift: true, alt: false },
     ]);
   });
 
@@ -820,8 +843,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "z", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Z", meta: false, ctrl: true, shift: true, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "z", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "Z", code: "", meta: false, ctrl: true, shift: true, alt: false },
     ]);
   });
 
@@ -1069,6 +1092,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
         source: "comot-selection",
         event: "stage-key",
         key: "Delete",
+        code: "",
         meta: false,
         ctrl: false,
         shift: false,

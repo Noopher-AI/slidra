@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 
@@ -43,6 +44,22 @@ export function ChatPanel({
   onPinnedRemove,
 }: ChatPanelProps) {
   const hasComments = comments.length > 0;
+
+  /**
+   * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `comotion-logic-v3.js` 的
+   * `draftKey`）——plain `↵` 維持既有的原生隱式送出不變（下面沒有攔它）。
+   * `preventDefault` 先擋掉瀏覽器對帶修飾鍵 Enter 一樣會觸發的隱式送出，
+   * 避免呼叫兩次；`streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤
+   * 路徑不得繞過它。
+   */
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key !== "Enter") return;
+    if (!(event.metaKey || event.ctrlKey)) return;
+    event.preventDefault();
+    if (!streamReady) return;
+    onSubmit();
+  }
+
   return (
     <aside className="chat-sidebar">
       <div className="chat-messages">
@@ -118,12 +135,13 @@ export function ChatPanel({
         <input
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={handleDraftKeyDown}
           placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
         />
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
-          <span className="chat-input-hint">↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (↵)" disabled={!streamReady}>
+          <span className="chat-input-hint">⌘↵ to send</span>
+          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={!streamReady}>
             ↑
           </button>
         </div>

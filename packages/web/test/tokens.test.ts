@@ -163,8 +163,6 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--icon-control",
   "--dur-panel",
   "--ease-panel",
-  "--accent-hi",
-  "--s-titlebar",
   "--r",
   "--s-raised",
   "--line",

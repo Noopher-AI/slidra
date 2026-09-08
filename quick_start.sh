@@ -3,7 +3,7 @@
 # quick_start.sh — 一鍵啟動 CoMotion 前端，供人工驗收使用。
 #
 # 它做的事：
-#   1. 安裝相依套件（node_modules 不存在時）
+#   1. 同步相依套件（含各 workspace 的新增相依）
 #   2. 建置 core / cli / server（tsc -b）與 web（vite build）
 #   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
 #   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
@@ -62,11 +62,10 @@ BLANK_ID_FILE="$DEMO_DIR/blank-presentation-id"
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
 
 # 1. 相依套件 ---------------------------------------------------------------
-# package.json 比 node_modules 新，代表相依有變動（新增／移除）但還沒重裝過。
-if [ ! -d "$ROOT/node_modules" ] || [ "$ROOT/package.json" -nt "$ROOT/node_modules" ]; then
-  step "安裝相依套件"
-  npm install
-fi
+# 切換分支可能只改 workspace 的 package.json 或 lockfile；node_modules
+# 目錄的時間戳也不能證明上次安裝已完成。交由 npm 同步整個相依樹。
+step "同步相依套件"
+npm install
 
 # 2. 建置 -------------------------------------------------------------------
 # serve 只吃 packages/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
@@ -93,36 +92,13 @@ if [ ! -x "$CLI" ]; then
 fi
 
 step "檢查 agent"
-CLAUDE_ADAPTER_PRESENT=0
-CODEX_ADAPTER_PRESENT=0
-command -v claude-code-acp >/dev/null 2>&1 && CLAUDE_ADAPTER_PRESENT=1
-command -v codex-acp >/dev/null 2>&1 && CODEX_ADAPTER_PRESENT=1
-
-if [ -n "$AGENT" ]; then
-  case "$AGENT" in
-    claude)
-      if [ "$CLAUDE_ADAPTER_PRESENT" -eq 0 ]; then
-        echo "指定的 agent 尚未安裝：Claude Code。請執行「npm install -g @zed-industries/claude-code-acp」安裝後再試一次。" >&2
-        exit 1
-      fi
-      ;;
-    codex)
-      if [ "$CODEX_ADAPTER_PRESENT" -eq 0 ]; then
-        echo "指定的 agent 尚未安裝：Codex。請執行「npm install -g @zed-industries/codex-acp」安裝後再試一次。" >&2
-        exit 1
-      fi
-      ;;
-  esac
-elif [ "$CLAUDE_ADAPTER_PRESENT" -eq 0 ] && [ "$CODEX_ADAPTER_PRESENT" -eq 0 ]; then
-  cat >&2 <<'MSG'
-找不到任何可用的 agent，CoMotion 的聊天功能需要先安裝以下其中一個：
-- Claude Code：npm install -g @zed-industries/claude-code-acp
-- Codex：npm install -g @zed-industries/codex-acp
-安裝完成後重新執行 npm run verify:setup。
-MSG
+# NOOP-230：兩個 adapter（claude-code-acp／codex-acp）現在是 @co-motion/server
+# 的一般 npm 相依，隨第 1 步的 npm install 一起裝好，不用再另外全域安裝、也
+# 不用探測 PATH。「要用哪一個」改成使用者層級設定（settings.json）或
+# --agent 這次覆蓋一次，沒選時 serve 照常啟動，只是聊天功能要等選定才能用。
+if [ -n "$AGENT" ] && [ "$AGENT" != "claude" ] && [ "$AGENT" != "codex" ]; then
+  echo "--agent 必須是 claude 或 codex。" >&2
   exit 1
-elif [ "$CLAUDE_ADAPTER_PRESENT" -eq 1 ] && [ "$CODEX_ADAPTER_PRESENT" -eq 1 ]; then
-  echo "提醒：偵測到多個 agent，未指定時 serve 會在第一則訊息時報錯，建議加 --agent claude 或 --agent codex。"
 fi
 
 # 4. 簡報 ---------------------------------------------------------------------

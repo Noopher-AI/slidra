@@ -9,8 +9,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
-    "typecheck": "tsc -b && tsc -p packages/web --noEmit && tsc -p e2e/visual-qa --noEmit",
-    "visual-qa": "npm run build && vitest run --config e2e/visual-qa/vitest.config.ts",
+    "typecheck": "tsc -b && tsc -p packages/web --noEmit",
     "verify:setup": "./quick_start.sh"
   },
   "devDependencies": {

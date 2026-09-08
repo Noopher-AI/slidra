@@ -18,12 +18,17 @@
 `command not found: co-motion`**，因為那個行程沒有經過腳本的 PATH 修正。已知限制，
 修法是一律用 `npm run verify:setup` 啟動，不要手動組指令。
 
-## agent adapter 要另外全域安裝
+## agent 不用另外安裝，但要選一個才能聊天
 
-`claude-code-acp` / `codex-acp` 是 CoMotion 之外的東西，`npm install` 不會帶進來，
-需要各自 `npm install -g` 安裝。偵測到兩個都裝了但沒指定 `--agent` 時，腳本只會
-提醒、不會擋——真正需要指定的時機是聊天功能送出第一則訊息時，此時偵測到多個未
-指定會直接報錯。
+`claude-code-acp` / `codex-acp`（NOOP-230 起）是 `@co-motion/server` 的一般 npm
+相依，`npm install` 就裝好，不用再全域安裝。`--agent` 只覆蓋這一次 serve 用哪一
+個；沒帶的話看使用者設定檔（`<CO_MOTION_HOME>/settings.json`）之前選過的，兩者都
+沒有時 serve 照常啟動，只是聊天會回報「尚未選擇 agent」，直到選定為止。
+
+前置腳本每次會執行 `npm install` 同步 workspace 相依，避免切換分支後漏裝
+adapter。Codex adapter 使用唯讀沙箱與逐次請求授權；編輯規約要求命令經過
+CoMotion 的 `allow_once` 白名單檢查後執行，才能寫入簡報與復原快照。
+不需要把使用者的 Codex 全域設定改成完整存取。
 
 ## `--fresh` 什麼時候非用不可
 

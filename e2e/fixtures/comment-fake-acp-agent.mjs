@@ -27,7 +27,7 @@
 //     asserts on (proof the comment-context prefix, built server-side by
 //     session.ts, really reached the agent; §4.4 of the plan).
 
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { execFile } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 

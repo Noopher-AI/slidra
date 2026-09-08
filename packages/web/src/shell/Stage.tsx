@@ -21,8 +21,10 @@ import {
   panBy,
   pressSpace,
   releaseSpace,
+  setZoom,
   toggleHand,
   zoomByWheel,
+  zoomFit,
   type HandState,
   type ZoomPanState,
 } from "./stage-view.js";
@@ -126,6 +128,35 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onWindowBlur);
     };
+  }, [shellVisible]);
+
+  // ⌘0／⌘+／⌘=／⌘− (05-INTERACTIONS.feature「縮放選單」/06-KEYBOARD 表)：
+  // 同一組數學搬到鍵盤入口，不重寫——ZoomMenu 的 +/− 按鈕也是同樣不帶錨點
+  // 的 `setZoom(current, current.zoom * 1.25)`，Fit 是 `zoomFit`。播放模式
+  // 沒有舞台縮放的概念，跟著 shellVisible 一起停用（同上面 Space 效果）。
+  useEffect(() => {
+    if (!shellVisible) return;
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (isTextInputTarget(event.target)) return;
+      if (event.key === "0") {
+        event.preventDefault();
+        setZoomPan((current) => zoomFit(current));
+        return;
+      }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setZoomPan((current) => setZoom(current, current.zoom * 1.25));
+        return;
+      }
+      if (event.key === "-") {
+        event.preventDefault();
+        setZoomPan((current) => setZoom(current, current.zoom / 1.25));
+        return;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [shellVisible]);
 
   // 抓取模式（✋ 或 Space 暫時抓取）狀態變動時同步推給 canvas.ts——它是唯一
