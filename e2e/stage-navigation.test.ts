@@ -278,7 +278,7 @@ it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片�
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("grab");
 
     // 焦點在 chat 輸入框時按 Space 打出空白字元，不進抓取模式。
-    const chatInput = page.locator(".chat-input input");
+    const chatInput = page.locator(".chat-input textarea");
     await chatInput.click();
     await chatInput.press("Space");
     expect(await chatInput.inputValue()).toBe(" ");
@@ -380,7 +380,7 @@ it("⌘0／⌘+／⌘−：回到 Fit、放大一級、縮小一級，且百分�
     expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
 
     // 焦點在輸入框時，⌘0 完全不動（守衛同既有四個 keydown effect）。
-    const chatInput = page.locator(".chat-input input");
+    const chatInput = page.locator(".chat-input textarea");
     await chatInput.click();
     await page.keyboard.press("Meta+=");
     expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
