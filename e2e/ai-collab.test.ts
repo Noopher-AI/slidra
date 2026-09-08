@@ -169,9 +169,12 @@ async function openApp(server: RunningServer, options: { waitForAgent?: boolean 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   if (options.waitForAgent) {
-    await expect
-      .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("connected");
+    // TitleBar.tsx shows the connected agent's own label ("Claude Code"),
+    // not the literal word "connected", once it is live — the stable,
+    // connection-state-derived signal is the `agent-dot-connected` class
+    // (`agent-dot agent-dot-${agentConnection}`), never the text content.
+    await page.locator(".agent-dot.agent-dot-connected").waitFor({ timeout: 30_000 });
+    expect(await page.locator(".agent-dot").textContent()).toBe("Claude Code");
   }
   return page;
 }
@@ -557,12 +560,17 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     // "outline" comes from the bundled skill directory, which is populated
     // before the server ever starts — no need to wait for the agent's own
     // report (which does not exist yet, see the test above) to complete
-    // this one.
-    await input.fill("/out");
+    // this one. commands.ts's `collectSlashCommands` namespaces every
+    // bundled skill with `BUNDLED_PREFIX` ("comotion-") before the `/`
+    // list ever reaches the client, precisely so an author can tell a
+    // CoMotion-shipped skill apart from an agent-reported or user one — so
+    // the bundled "outline" skill is exposed (and must be typed) as
+    // "comotion-outline", never bare "outline".
+    await input.fill("/comotion-out");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");
     const completed = await input.inputValue();
-    expect(completed).toBe("/outline ");
+    expect(completed).toBe("/comotion-outline ");
 
     // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
     await input.fill(`${completed}這是參數`);
@@ -570,7 +578,7 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     await page.locator(".chat-input button:not([disabled])").click();
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/outline 這是參數");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-outline 這是參數");
   } finally {
     await cleanup();
   }

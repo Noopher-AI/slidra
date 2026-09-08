@@ -212,7 +212,12 @@ it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/und
     });
     await page.goto(frozen.server.url);
     await page.frameLocator("iframe.slide-frame").locator("svg text").first().waitFor({ timeout: 30_000 });
-    await expect.poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 }).toContain("connected");
+    // TitleBar.tsx shows the connected agent's own label ("Claude Code"),
+    // not the literal word "connected", once it is live — the stable,
+    // connection-state-derived signal is the `agent-dot-connected` class
+    // (`agent-dot agent-dot-${agentConnection}`), never the text content.
+    await page.locator(".agent-dot.agent-dot-connected").waitFor({ timeout: 30_000 });
+    expect(await page.locator(".agent-dot").textContent()).toBe("Claude Code");
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
     await page.locator(".chat-input input").fill("改標題");

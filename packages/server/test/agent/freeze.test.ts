@@ -1,9 +1,10 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
@@ -14,10 +15,11 @@ import type { AgentAdapterConfig } from "../../src/agent/session.js";
 // chat.test.ts, never the real Claude Code/Codex, never a mock of
 // AgentChatSession or history.ts itself.
 
-const fixturePath = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "fixtures/multi-command-fake-acp-agent.mjs",
-);
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(testDir, "../../../..");
+const tscPath = path.join(rootDir, "node_modules/.bin/tsc");
+
+const fixturePath = path.join(testDir, "fixtures/multi-command-fake-acp-agent.mjs");
 
 let coMotionHome: string;
 let comotDir: string;
@@ -25,6 +27,34 @@ let logDir: string;
 let logPath: string;
 let registry: CommandRegistry;
 let servers: RunningServer[];
+
+// Same rationale as packages/cli/test/bin.test.ts's own beforeAll: every
+// scenario here has the fake agent shell out to the real `co-motion` bin
+// (never a mock, never the in-process registry directly — see the file
+// comment above), which requires packages/cli/dist (and, transitively,
+// packages/core/dist) to exist. Without this, the file passes when run
+// right after a full `npm run build` but fails wholesale under plain
+// `npm test` — which runs before `npm run build` in the documented
+// validation sequence — because each spawned `co-motion` command throws
+// before ever touching the presentation, which surfaces here as either a
+// stuck `waitForLog` timeout or a turn that ends with an empty, discarded
+// undo group (see AC2-c).
+//
+// `tsc -b` alone is not enough here, unlike bin.test.ts: this file's
+// commands (`text set`, `element insert`, `textbox add`, `convert`) exercise
+// text/SVG measurement, which reads a bundled font from
+// packages/core/dist/assets — populated only by @co-motion/core's own
+// `build` npm script (`tsc -b && cp src/assets dist/assets`), a step plain
+// `tsc -b` does not run. bin.test.ts's commands (open/cat) never touch that
+// path, so it never needed this.
+beforeAll(() => {
+  execFileSync(tscPath, ["-b"], { cwd: rootDir, stdio: "ignore" });
+  execFileSync(
+    process.execPath,
+    ["-e", "require('node:fs').cpSync('packages/core/src/assets','packages/core/dist/assets',{recursive:true})"],
+    { cwd: rootDir, stdio: "ignore" },
+  );
+}, 60_000);
 
 beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-freeze-home-"));

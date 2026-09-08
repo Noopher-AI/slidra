@@ -117,7 +117,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
 export interface OpenAppOptions {
   /** Defaults to { width: 1440, height: 900 }. */
   viewport?: { width: number; height: number };
-  /** Wait for `.agent-dot` to contain "connected". Defaults to `false`. */
+  /** Wait for the agent-dot to reach its connected state. Defaults to `false`. */
   waitForAgent?: boolean;
   /** Wait for `document.fonts.ready`. Defaults to `false`. */
   waitForFonts?: boolean;
@@ -135,9 +135,12 @@ export async function openApp(browser: Browser, server: RunningServer, options: 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   if (waitForAgent) {
-    await expect
-      .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("connected");
+    // TitleBar.tsx shows the connected agent's own label ("Claude Code"),
+    // not the literal word "connected", once it is live — the stable,
+    // connection-state-derived signal is the `agent-dot-connected` class
+    // (`agent-dot agent-dot-${agentConnection}`), never the text content.
+    await page.locator(".agent-dot.agent-dot-connected").waitFor({ timeout: 30_000 });
+    expect(await page.locator(".agent-dot").textContent()).toBe("Claude Code");
   }
   if (waitForFonts) {
     await page.evaluate(() => document.fonts.ready);
