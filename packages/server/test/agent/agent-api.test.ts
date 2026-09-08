@@ -369,7 +369,12 @@ describe("POST /api/agent/select", () => {
     const lines = await readLog();
     const secondPidIndex = lines.findIndex((line) => line.pid === secondPid);
     const newSessionFirstPrompt = lines.slice(secondPidIndex + 1).find((line) => line.prompt !== undefined);
-    expect(newSessionFirstPrompt?.prompt).toEqual([{ type: "text", text: buildEditorialBrief(id) }]);
+    expect(newSessionFirstPrompt?.prompt).toEqual([{
+      type: "text", text: expect.stringContaining(buildEditorialBrief(id)),
+    }]);
+    expect(newSessionFirstPrompt?.prompt).toEqual([{
+      type: "text", text: expect.stringContaining("sandbox_permissions=require_escalated"),
+    }]);
   });
 
   it("A9: refused (409, reason 'editing') while the agent holds the floor; session unswapped", async () => {

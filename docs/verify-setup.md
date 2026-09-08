@@ -25,6 +25,11 @@
 個；沒帶的話看使用者設定檔（`<CO_MOTION_HOME>/settings.json`）之前選過的，兩者都
 沒有時 serve 照常啟動，只是聊天會回報「尚未選擇 agent」，直到選定為止。
 
+前置腳本每次會執行 `npm install` 同步 workspace 相依，避免切換分支後漏裝
+adapter。Codex adapter 使用唯讀沙箱與逐次請求授權；編輯規約要求命令經過
+CoMotion 的 `allow_once` 白名單檢查後執行，才能寫入簡報與復原快照。
+不需要把使用者的 Codex 全域設定改成完整存取。
+
 ## `--fresh` 什麼時候非用不可
 
 改了 `demo/` 之後。腳本不會自動重打包既有的示範簡報——重打包會換一組簡報識別碼，

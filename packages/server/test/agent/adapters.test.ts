@@ -28,7 +28,9 @@ describe("resolveAdapterConfig", () => {
   it("codex: resolves to a real file on disk, spawned via process.execPath", () => {
     const config = resolveAdapterConfig("codex");
     expect(config.command).toBe(process.execPath);
-    expect(config.args).toHaveLength(1);
+    expect(config.args?.slice(1)).toEqual([
+      "-c", 'approval_policy="on-request"', "-c", 'sandbox_mode="read-only"',
+    ]);
     expect(existsSync(config.args![0])).toBe(true);
     expect(config.args![0]).toContain(path.join("@zed-industries", "codex-acp"));
   });

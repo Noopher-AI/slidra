@@ -86,5 +86,11 @@ const require = createRequire(import.meta.url);
 export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   const spec = adapterSpecFor(kind);
   const resolved = require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
-  return { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
+  // Ask CoMotion before running untrusted commands. Its allow_once gate
+  // authorizes the CLI to write presentation history outside the empty
+  // ACP cwd, without granting the agent a writable presentation directory.
+  const args = kind === "codex"
+    ? [resolved, "-c", 'approval_policy="on-request"', "-c", 'sandbox_mode="read-only"']
+    : [resolved];
+  return { kind: spec.kind, label: spec.label, command: process.execPath, args };
 }

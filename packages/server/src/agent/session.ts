@@ -4,7 +4,7 @@ import { Readable, Writable } from "node:stream";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import {
   CoMotionError,
   CoMotionNotFoundError,
@@ -48,8 +48,8 @@ export function buildCommentContext(comments: readonly SlideCommentWithPath[]): 
 
 /**
  * Everything needed to spawn one ACP adapter subprocess. Real production
- * code builds this from a `selectAdapter()` result (command = the adapter
- * executable name, resolved via PATH). Tests build it by pointing `command`
+ * code builds this from `resolveAdapterConfig()` (Node plus the packaged
+ * adapter entry point). Tests build it by pointing `command`
  * at `process.execPath` and `args` at the fake ACP agent fixture — the same
  * shape, so `AgentChatSession` cannot tell the difference.
  */
@@ -496,9 +496,13 @@ export class AgentChatSession extends EventEmitter {
     // `session/prompt` call, never folded into the author's first message.
     // `relayingCurrentTurn` stays false so any reply to it never reaches
     // the browser as if it were a response to something the author typed.
+    const brief = buildEditorialBrief(this.presentationId);
+    const executionGuidance = this.config.kind === "codex"
+      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 co-motion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權或執行其他 shell 命令。"
+      : "";
     await connection.prompt({
       sessionId: this.sessionId,
-      prompt: [{ type: "text", text: buildEditorialBrief(this.presentationId) }],
+      prompt: [{ type: "text", text: brief + executionGuidance }],
     });
   }
 
@@ -559,7 +563,7 @@ export class AgentChatSession extends EventEmitter {
    * see; this event travels the other way, to the person who owns the
    * machine ("擋的是 agent，不是人").
    */
-  private relayCommandStart(update: { toolCallId: string; rawInput?: Record<string, unknown>; status?: acp.ToolCallStatus }): void {
+  private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
     if (command === undefined) return;
     this.relayedToolCalls.add(update.toolCallId);
@@ -760,27 +764,27 @@ export class AgentChatSession extends EventEmitter {
   }
 }
 
-/**
- * Pulls the shell command string a permission request is asking to run out
- * of `toolCall.rawInput`. ACP does not standardize this field's shape — it
- * is passed through verbatim from whatever tool the agent itself defined
- * (`rawInput` is untyped in the schema) — so this only recognizes the one
- * shape Claude Code's own Bash tool uses (`{ command: string, ... }`).
- * Anything else — a missing rawInput, a non-object, a non-string `command`
- * — returns undefined, which `decidePermission` treats as "cannot
- * determine the command" and refuses (fail closed).
- */
 /** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */
 function isAllowedCommand(params: acp.RequestPermissionRequest): boolean {
   const command = extractCommand(params.toolCall);
   return command !== undefined && isCoMotionCommand(command);
 }
 
-function extractCommand(toolCall: { rawInput?: Record<string, unknown> }): string | undefined {
+/** Recognizes Claude's command string and Codex's shell argv; unknown shapes fail closed. */
+function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
   const rawInput = toolCall.rawInput;
   if (typeof rawInput !== "object" || rawInput === null) return undefined;
   const command = (rawInput as Record<string, unknown>).command;
-  return typeof command === "string" ? command : undefined;
+  if (typeof command === "string") return command;
+  // Codex sends the actual exec argv, including its shell wrapper. Only
+  // unwrap a known shell with exactly one script; the existing allowlist
+  // still validates that entire script (never the display title/parsed_cmd).
+  if (!Array.isArray(command) || command.length !== 3 || !command.every((arg) => typeof arg === "string")) {
+    return undefined;
+  }
+  if (!["/bin/zsh", "/bin/bash", "/bin/sh", "zsh", "bash", "sh"].includes(command[0])) return undefined;
+  if (command[1] !== "-c" && command[1] !== "-lc") return undefined;
+  return command[2];
 }
 
 /**

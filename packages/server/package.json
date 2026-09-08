@@ -11,7 +11,7 @@
   "dependencies": {
     "@co-motion/cli": "*",
     "@co-motion/core": "*",
-    "@zed-industries/agent-client-protocol": "^0.4.5",
+    "@agentclientprotocol/sdk": "0.14.1",
     "@zed-industries/claude-code-acp": "0.16.2",
     "@zed-industries/codex-acp": "0.16.0",
     "playwright": "^1.62.1"

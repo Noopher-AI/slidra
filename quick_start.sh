@@ -3,7 +3,7 @@
 # quick_start.sh — 一鍵啟動 CoMotion 前端，供人工驗收使用。
 #
 # 它做的事：
-#   1. 安裝相依套件（node_modules 不存在時）
+#   1. 同步相依套件（含各 workspace 的新增相依）
 #   2. 建置 core / cli / server（tsc -b）與 web（vite build）
 #   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
 #   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
@@ -62,11 +62,10 @@ BLANK_ID_FILE="$DEMO_DIR/blank-presentation-id"
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
 
 # 1. 相依套件 ---------------------------------------------------------------
-# package.json 比 node_modules 新，代表相依有變動（新增／移除）但還沒重裝過。
-if [ ! -d "$ROOT/node_modules" ] || [ "$ROOT/package.json" -nt "$ROOT/node_modules" ]; then
-  step "安裝相依套件"
-  npm install
-fi
+# 切換分支可能只改 workspace 的 package.json 或 lockfile；node_modules
+# 目錄的時間戳也不能證明上次安裝已完成。交由 npm 同步整個相依樹。
+step "同步相依套件"
+npm install
 
 # 2. 建置 -------------------------------------------------------------------
 # serve 只吃 packages/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
