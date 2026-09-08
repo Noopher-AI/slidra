@@ -66,7 +66,7 @@ export function ChatPanel({
   // state untouched — it stays governed by `streamReady` alone, exactly as
   // before this ticket ("還不知道" is not "知道不行"; this must not become
   // "disable defensively just in case"). Only `unset`/`unauthenticated`
-  // disable the `<input>` itself — the Send button additionally keeps the
+  // disable the `<textarea>` itself — the Send button additionally keeps the
   // pre-existing `!streamReady` gate, since sending is refused either way.
   const agentBlocksInput = agent.kind === "unset" || agent.kind === "unauthenticated";
   const sendDisabled = !streamReady || agentBlocksInput;

@@ -1511,8 +1511,6 @@ export function App() {
             })();
           }}
           canPlay={hasSlides}
-          settingsOpen={settingsOpen}
-          onOpenSettings={toggleSettings}
         />
       )}
       {shellVisible && settingsOpen && (
@@ -1645,7 +1643,7 @@ export function App() {
           />
         )}
       </div>
-      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} />}
+      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} settingsOpen={settingsOpen} onOpenSettings={toggleSettings} />}
     </div>
   );
 }

@@ -40,9 +40,6 @@ export interface TitleBarProps {
   /** 從第一頁播放（▶Play 旁的小按鈕）。 */
   onPlayFromStart(): void;
   canPlay: boolean;
-  /** [E3.T5]: the settings dialog's own open/closed state — drives the gear button's `aria-expanded` and its toggle behaviour (open↔close on repeated clicks, same as Export). */
-  settingsOpen: boolean;
-  onOpenSettings(): void;
 }
 
 const AGENT_LABEL: Record<AgentConnection, string> = {
@@ -90,8 +87,6 @@ export function TitleBar({
   onPlay,
   onPlayFromStart,
   canPlay,
-  settingsOpen,
-  onOpenSettings,
 }: TitleBarProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -194,17 +189,6 @@ export function TitleBar({
             <Icon name="fromstart" size="inline" />
           </button>
         </div>
-        <button
-          type="button"
-          className="titlebar-icon-button titlebar-settings-button"
-          title="Settings"
-          aria-label="Settings"
-          aria-haspopup="dialog"
-          aria-expanded={settingsOpen}
-          onClick={onOpenSettings}
-        >
-          <Icon name="settings" size="inline" />
-        </button>
       </div>
     </header>
   );

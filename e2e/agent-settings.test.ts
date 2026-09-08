@@ -80,7 +80,7 @@ async function openPage(server: StartedServer["server"]): Promise<Page> {
 }
 
 async function openSettingsDialog(page: Page): Promise<void> {
-  await page.locator(".titlebar-settings-button").click();
+  await page.locator(".status-settings-button").click();
   await expect.poll(() => page.locator('[role="dialog"][aria-label="Settings"]').isVisible()).toBe(true);
 }
 
@@ -214,7 +214,7 @@ it("A3: 切換 agent 後系統訊息、標題列、下一則訊息與編輯鎖",
   // both A3 assertions: the next message really reaches the new (codex)
   // session, AND the editing lock it takes disables the settings dialog's
   // switch buttons for the freeze window before that session's turn ends.
-  await page.locator(".chat-input input").fill("改標題");
+  await page.locator(".chat-input textarea").fill("改標題");
   await page.locator('.chat-input button[type="submit"]').click();
 
   async function isFrozen(): Promise<boolean> {
@@ -255,7 +255,7 @@ it("A4: 沒有 agent 時聊天面板顯示空狀態，輸入框停用，開啟�
 
   await expect.poll(() => page.locator(".chat-empty-state").count(), { timeout: 10_000 }).toBeGreaterThan(0);
   expect(await textOf(page, ".chat-empty-state")).toContain("尚未選擇 agent");
-  expect(await page.locator(".chat-input input").isDisabled()).toBe(true);
+  expect(await page.locator(".chat-input textarea").isDisabled()).toBe(true);
   expect(await page.locator('.chat-input button[type="submit"]').isDisabled()).toBe(true);
 
   await page.locator(".chat-empty-state-button").click();

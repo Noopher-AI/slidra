@@ -168,13 +168,6 @@ button:disabled {
   gap: var(--space-2);
   flex: none;
 }
-/* [E3.T5]: the settings gear sits after .titlebar-play-group inside the
-   same flex row — reuses .titlebar-icon-button's own sizing/hover rule
-   above, this only adds the extra breathing room .titlebar-play-group
-   already gets via its own margin-left. */
-.titlebar-settings-button {
-  margin-left: var(--space-1);
-}
 .titlebar-button {
   display: inline-flex;
   align-items: center;
@@ -324,6 +317,14 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* [E3.T5]: the settings gear is the status bar's last item — the bottom
+   right corner of the shell. Reuses .slide-nav-button's own sizing/hit-area
+   rule below; this only adds the gap that separates it from the page nav
+   it sits beside. */
+.status-settings-button {
+  flex: none;
+  margin-left: var(--space-3);
 }
 .status-page {
   display: flex;
