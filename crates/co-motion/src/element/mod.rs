@@ -16,6 +16,7 @@ pub mod arrange;
 pub mod edit;
 pub mod group;
 pub mod splice;
+pub mod text;
 
 use crate::slide::scan::{ScannedNode, attribute_value};
 

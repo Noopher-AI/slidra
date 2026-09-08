@@ -66,6 +66,26 @@ pub fn require_raw_positional<'a>(
     }
 }
 
+/// A `--force` that may ONLY appear at exactly `index` (`text set`'s
+/// `new-text`, `textbox width`'s `width`, `textbox align`'s `align` all fix
+/// `--force` to the position right after their own last positional).
+/// Absent -> `false`; the literal string `"--force"` there -> `true`;
+/// anything else in that slot is an unknown trailing argument, not a
+/// missing flag — mirrors `argv.ts`'s `requireTrailingForceFlag`.
+pub fn require_trailing_force_flag(
+    args: &[String],
+    index: usize,
+    command: &str,
+) -> CoMotionResult<bool> {
+    match args.get(index) {
+        None => Ok(false),
+        Some(value) if value == "--force" => Ok(true),
+        Some(value) => Err(CoMotionError::invalid(format!(
+            "命令 {command} 未知的參數：{value}"
+        ))),
+    }
+}
+
 /// The value following `flag` in `args`, or `None` when the flag is simply
 /// absent. `Err` when the flag is present but has no value (end of args, or
 /// the next token is itself flag-shaped).
