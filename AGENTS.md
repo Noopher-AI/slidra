@@ -21,6 +21,12 @@ Single-context：root `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
 兩種準備方式：不加旗標得到 e2e 的四頁 demo（驗既有行為），`--blank` 得到空白簡報
 （驗從零開始的路徑）。細節與這個指令涵蓋不到的情況見 `docs/verify-setup.md`。
 
+`npm test`（單元測試）自帶 `npm run build` 前置（root `package.json`），不需要在跑之前手動
+`npm run build`；`packages/server/test/agent/` 底下會真的 shell out 到 `co-motion` CLI 的測試
+（`freeze.test.ts`／`agent-api.test.ts`）在 `beforeAll` 用 `requireCliBuilt()` 守住這個依賴——
+繞過 `npm test` 直接 `npx vitest run <單檔>` 時若忘記先 build，會得到可讀的錯誤而不是一串
+30 秒逾時。
+
 ## 驗證清單的規則
 
 PR 的「給人類的驗證清單」裡寫出來的每一條指令，都必須**實際跑過**、貼得出真實輸出。

@@ -1,0 +1,20 @@
+import { access } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+
+/**
+ * Throws before any server starts if `packages/cli/dist/bin.js` is missing —
+ * these tests shell out to the built `co-motion` CLI (multi-command fake ACP
+ * fixture), and a missing dist produces 30s `waitForLog` timeouts instead of
+ * a readable failure (NOOP-233 Wave 1 integration).
+ */
+export async function requireCliBuilt(): Promise<void> {
+  const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
+  try {
+    await access(cliDistBin);
+  } catch {
+    throw new Error("packages/cli/dist 不存在，請先執行 npm run build");
+  }
+}

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
@@ -13,6 +13,7 @@ import type { AgentSource } from "../../src/agent/manager.js";
 import type { CommandOutcome, CommandRunner } from "../../src/agent/probe.js";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { agentSettingsPath } from "../../src/agent/settings.js";
+import { requireCliBuilt } from "./require-cli-built.js";
 
 // HTTP boundary (§6.2): routing, status codes, SSE broadcast, and real
 // session switching — driven against a real `startServe`, real fake-ACP
@@ -291,6 +292,8 @@ describe("GET /api/agent", () => {
 });
 
 describe("POST /api/agent/select", () => {
+  beforeAll(requireCliBuilt);
+
   it("A5: persists across a restart — select codex, close, reopen with the same CO_MOTION_HOME, GET /api/agent still reports codex/settings", async () => {
     const id = await openFreshPresentation();
     const server1 = await serve({
