@@ -9,13 +9,15 @@
 //! module is CLI plumbing only, mirroring `packages/cli/src/commands/
 //! element/index.ts`'s split from `packages/core/src/element-*.ts`.
 //!
-//! Registered so far (phases P3-P4 of the ticket's commit sequence): the ten
-//! structural commands plus `scale`/`resize`/`style set`. `align`/
-//! `distribute` (P5), `copy`/`cut`/`paste`/`duplicate` (P7) are not yet
+//! Registered so far (phases P3-P5 of the ticket's commit sequence): the ten
+//! structural commands, `scale`/`resize`/`style set`, and `align`/
+//! `distribute`. `copy`/`cut`/`paste`/`duplicate` (P7) are not yet
 //! registered — see this module's `TAKEOVER` doc for why an entry is never
 //! added ahead of a working handler.
 
+pub mod align;
 pub mod delete;
+pub mod distribute;
 pub mod group;
 pub mod insert;
 pub mod lock;
@@ -51,6 +53,8 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["element", "scale"],
     &["element", "resize"],
     &["element", "style", "set"],
+    &["element", "align"],
+    &["element", "distribute"],
 ];
 
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
@@ -68,6 +72,8 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
         ["scale"] => scale::run(args),
         ["resize"] => resize::run(args),
         ["style", "set"] => style_set::run(args),
+        ["align"] => align::run(args),
+        ["distribute"] => distribute::run(args),
         _ => unreachable!("commands::element::TAKEOVER only lists entries dispatch handles"),
     }
 }
@@ -423,6 +429,71 @@ mod tests {
         assert_eq!(result.message, "樣式屬性 rx 不在樣式白名單內");
         // Rejected before any write — the slide file is untouched.
         assert!(!fixture.read_slide().contains("rx"));
+    }
+
+    #[test]
+    fn align_and_distribute_via_the_cli_layer() {
+        let fixture = Fixture::new("align-distribute");
+        fixture.write_slide(&slide(
+            r#"<g id="a"><rect x="0" y="0" width="10" height="10"/></g><g id="b" transform="translate(15 5)"><rect x="0" y="0" width="10" height="10"/></g><g id="c" transform="translate(100 0)"><rect x="0" y="0" width="10" height="10"/></g>"#,
+        ));
+
+        let aligned = dispatch(
+            &["element", "align"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a,b,c".to_string(),
+                "top".to_string(),
+            ],
+        );
+        assert!(aligned.ok, "{}", aligned.message);
+        // "top" moves every target's y to the union's top edge (0) — "b"
+        // had y=5, so it moves up by 5.
+        assert!(
+            fixture
+                .read_slide()
+                .contains(r#"<g id="b" transform="translate(15 0)">"#)
+        );
+
+        let distributed = dispatch(
+            &["element", "distribute"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a,b,c".to_string(),
+                "horizontal".to_string(),
+            ],
+        );
+        assert!(distributed.ok, "{}", distributed.message);
+
+        for _ in 0..2 {
+            history::undo(&fixture.id).unwrap();
+        }
+        assert!(
+            fixture
+                .read_slide()
+                .contains(r#"<g id="b" transform="translate(15 5)">"#)
+        );
+    }
+
+    #[test]
+    fn align_rejects_direction_outside_the_fixed_set_via_the_cli_layer() {
+        let fixture = Fixture::new("align-bad-direction");
+        fixture.write_slide(&slide(
+            r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        ));
+        let result = dispatch(
+            &["element", "align"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "a,b".to_string(),
+                "middle".to_string(),
+            ],
+        );
+        assert!(!result.ok);
+        assert_eq!(result.message, "element align 不支援的方向：middle");
     }
 
     #[test]

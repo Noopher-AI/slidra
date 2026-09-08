@@ -12,6 +12,7 @@
 //! comment for the UTF-16-offset contract every other submodule here must
 //! follow when it lands.
 
+pub mod arrange;
 pub mod edit;
 pub mod group;
 pub mod splice;
