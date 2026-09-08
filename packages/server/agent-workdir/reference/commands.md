@@ -440,7 +440,7 @@
 
 **參數**：`<presentation-id>` `<template-path>`。
 **用途**：刪除一個範本。
-**範例**：`co-motion template delete <presentation-id> templates/標題頁.svg`
+**範例**：`co-motion template delete <presentation-id> templates/001.svg`
 
 ## template list
 
@@ -452,7 +452,7 @@
 
 **參數**：`<presentation-id>` `<template-path>` `<new-name>`。
 **用途**：重新命名一個範本。
-**範例**：`co-motion template rename <presentation-id> templates/標題頁.svg '封面'`
+**範例**：`co-motion template rename <presentation-id> templates/001.svg '封面'`
 
 ## text list set
 
