@@ -26,6 +26,8 @@ function markupFor(agentConnection: AgentConnection, agentLabel: string | null):
     onPlay: () => {},
     onPlayFromStart: () => {},
     canPlay: true,
+    settingsOpen: false,
+    onOpenSettings: () => {},
   };
   return renderToStaticMarkup(createElement(TitleBar, props));
 }

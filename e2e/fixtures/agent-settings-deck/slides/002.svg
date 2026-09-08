@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <text id="el-second-title" data-comot-name="標題" x="640" y="180" text-anchor="middle" font-size="72">第二頁</text>
+  <image id="el-second-photo" data-comot-name="照片" href="../assets/photo.png" x="540" y="280" width="200" height="200"/>
+</svg>

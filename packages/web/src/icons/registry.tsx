@@ -75,7 +75,13 @@ export type IconName =
   // 對應的字形——這兩個不是任何既有圖示的重新命名，是這次新增的最小集合。
   | "chevron-up"
   | "chevron-down"
-  | "close";
+  | "close"
+  // [E3.T5]: titlebar settings (gear) button — no existing icon or
+  // prototype path covers a gear, so this one is hand-drawn to the same
+  // 0 0 20 20 grid/stroke-1.5 contract as every other icon here: eight
+  // teeth swept between root r=5.6 and tip r=7.6 around a r=2.6 hub, so
+  // its 2.47..17.53 extent matches the neighbouring save/close icons.
+  | "settings";
 
 /**
  * Canonical grid for every icon is `0 0 20 20` (Icon.tsx always renders
@@ -306,4 +312,10 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   "chevron-up": <path d="M5 12.5l5-5 5 5" />,
   "chevron-down": <path d="M5 7.5l5 5 5-5" />,
   close: <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" />,
+  settings: (
+    <>
+      <circle cx={10} cy={10} r={2.6} />
+      <path d="M8.79 4.53L9.01 2.47A7.6 7.6 0 0 1 10.99 2.47L11.21 4.53A5.6 5.6 0 0 1 13.01 5.28L14.63 3.97A7.6 7.6 0 0 1 16.03 5.37L14.72 6.99A5.6 5.6 0 0 1 15.47 8.79L17.53 9.01A7.6 7.6 0 0 1 17.53 10.99L15.47 11.21A5.6 5.6 0 0 1 14.72 13.01L16.03 14.63A7.6 7.6 0 0 1 14.63 16.03L13.01 14.72A5.6 5.6 0 0 1 11.21 15.47L10.99 17.53A7.6 7.6 0 0 1 9.01 17.53L8.79 15.47A5.6 5.6 0 0 1 6.99 14.72L5.37 16.03A7.6 7.6 0 0 1 3.97 14.63L5.28 13.01A5.6 5.6 0 0 1 4.53 11.21L2.47 10.99A7.6 7.6 0 0 1 2.47 9.01L4.53 8.79A5.6 5.6 0 0 1 5.28 6.99L3.97 5.37A7.6 7.6 0 0 1 5.37 3.97L6.99 5.28Z" />
+    </>
+  ),
 };

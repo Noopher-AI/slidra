@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import type { AgentUiStatus } from "../../agent-status.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
@@ -12,6 +13,10 @@ export interface ChatPanelProps {
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
+  agent: AgentUiStatus;
+  /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
+  onOpenSettings(): void;
   /**
    * [E2.T8] §4.7: every pinned comment, deck-wide, sorted/numbered by
    * `sortComments`. Rendered as "Pinned context <n>" — empty means the
@@ -49,12 +54,30 @@ export function ChatPanel({
   draft,
   onDraftChange,
   onSubmit,
+  agent,
+  onOpenSettings,
   comments,
   onPinnedClick,
   onPinnedRemove,
   commands,
 }: ChatPanelProps) {
   const hasComments = comments.length > 0;
+  // [E3.T5] Plan §4.7: `loading`/`error` leave the input's own disabled
+  // state untouched — it stays governed by `streamReady` alone, exactly as
+  // before this ticket ("還不知道" is not "知道不行"; this must not become
+  // "disable defensively just in case"). Only `unset`/`unauthenticated`
+  // disable the `<textarea>` itself — the Send button additionally keeps the
+  // pre-existing `!streamReady` gate, since sending is refused either way.
+  const agentBlocksInput = agent.kind === "unset" || agent.kind === "unauthenticated";
+  const sendDisabled = !streamReady || agentBlocksInput;
+  const inputPlaceholder =
+    agent.kind === "unset"
+      ? "請先在設定中選擇 agent"
+      : agent.kind === "unauthenticated"
+        ? `${agent.label} 尚未登入`
+        : streamReady
+          ? "Tell the agent how to change this deck…"
+          : "Connecting to chat, please wait…";
 
   // [E3.T3] #232/#236's slash-command menu. Two UI states only: which item
   // is highlighted, and whether Esc has dismissed the menu for the current
@@ -135,7 +158,7 @@ export function ChatPanel({
     if (event.key !== "Enter") return;
     if (!(event.metaKey || event.ctrlKey)) return;
     event.preventDefault();
-    if (!streamReady) return;
+    if (sendDisabled) return;
     onSubmit();
   }
 
@@ -161,6 +184,10 @@ export function ChatPanel({
             <p key={message.id} className="chat-notice" role="alert">
               {message.text}
             </p>
+          ) : message.role === "system" ? (
+            <p key={message.id} className="chat-system" role="status">
+              {message.text}
+            </p>
           ) : message.role === "command" ? (
             <div
               key={message.id}
@@ -180,6 +207,26 @@ export function ChatPanel({
               {message.text}
             </p>
           ),
+        )}
+        {agent.kind === "unset" && (
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-title">尚未選擇 agent</p>
+            <p className="chat-empty-state-body">請先選擇要用哪一個 agent 來改這份簡報</p>
+            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
+              開啟設定
+            </button>
+          </div>
+        )}
+        {agent.kind === "unauthenticated" && (
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-title">{agent.label} 尚未登入</p>
+            <p className="chat-empty-state-body">
+              請在終端機執行 <code>{agent.loginCommand}</code>
+            </p>
+            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
+              開啟設定
+            </button>
+          </div>
         )}
         {working && <p className="chat-working">agent is working…</p>}
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
@@ -231,12 +278,13 @@ export function ChatPanel({
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleInputKeyDownAll}
-          placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
+          disabled={agentBlocksInput}
+          placeholder={inputPlaceholder}
         />
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={!streamReady}>
+          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
             ↑
           </button>
         </div>
