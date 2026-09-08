@@ -30,7 +30,7 @@
 // The new title is taken from E2E_NEW_TITLE so the test owns the string it
 // asserts on.
 
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { execFile } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 

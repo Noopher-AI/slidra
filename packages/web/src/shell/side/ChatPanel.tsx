@@ -88,7 +88,7 @@ export function ChatPanel({
     setSelectedIndex(0);
   }
 
-  function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleSlashKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (!showMenu) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -113,6 +113,34 @@ export function ChatPanel({
       event.preventDefault();
       setDismissed(true);
     }
+  }
+
+  /**
+   * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `comotion-logic-v3.js` 的
+   * `draftKey`）——plain `↵` 維持既有的原生隱式送出不變（下面沒有攔它）。
+   * `preventDefault` 先擋掉瀏覽器對帶修飾鍵 Enter 一樣會觸發的隱式送出，
+   * 避免呼叫兩次；`streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤
+   * 路徑不得繞過它。
+   */
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key !== "Enter") return;
+    if (!(event.metaKey || event.ctrlKey)) return;
+    event.preventDefault();
+    if (!streamReady) return;
+    onSubmit();
+  }
+
+  /**
+   * One `onKeyDown` for the input: ⌘↵／Ctrl+↵ always sends, even with the
+   * slash menu open (a modifier-Enter is unambiguously "send", never
+   * "complete"); every other key goes to the menu first.
+   */
+  function handleInputKeyDownAll(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      handleDraftKeyDown(event);
+      return;
+    }
+    handleSlashKeyDown(event);
   }
 
   return (
@@ -191,13 +219,13 @@ export function ChatPanel({
         <input
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
-          onKeyDown={handleInputKeyDown}
+          onKeyDown={handleInputKeyDownAll}
           placeholder={streamReady ? "Tell the agent how to change this deck…" : "Connecting to chat, please wait…"}
         />
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
-          <span className="chat-input-hint">↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (↵)" disabled={!streamReady}>
+          <span className="chat-input-hint">⌘↵ to send</span>
+          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={!streamReady}>
             ↑
           </button>
         </div>

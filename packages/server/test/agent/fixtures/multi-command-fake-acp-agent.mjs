@@ -35,7 +35,7 @@
 // chat-error on the client side — tests must not need this fixture to
 // swallow a failure they should be seeing.
 
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { appendFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { Readable, Writable } from "node:stream";

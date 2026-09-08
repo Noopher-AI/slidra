@@ -760,6 +760,8 @@ interface SelectionMessage {
   alt?: boolean;
   /** "stage-key" only — the relayed `KeyboardEvent.key`. */
   key?: string;
+  /** "stage-key" only — the relayed `KeyboardEvent.code` (physical key, layout/Shift independent). */
+  code?: string;
   /** "table-cell-click"/"table-cell-dblclick"/"table-cell-contextmenu"/"table-cells" only (E2.T14). */
   row?: number;
   col?: number;
@@ -1546,8 +1548,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (message.key === "Delete" || message.key === "Backspace") void deleteSelection();
       else if (message.key === "a" && (modifiers.meta || modifiers.ctrl)) selectAll();
       else if (message.key === "d" && (modifiers.meta || modifiers.ctrl)) void duplicateSelection();
-      else if (message.key === "]" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "front" : "up");
-      else if (message.key === "[" && (modifiers.meta || modifiers.ctrl)) void orderSelection(modifiers.shift ? "back" : "down");
+      else if (
+        (message.key === "]" || message.key === "}" || message.code === "BracketRight") &&
+        (modifiers.meta || modifiers.ctrl)
+      )
+        void orderSelection(modifiers.shift ? "front" : "up");
+      else if (
+        (message.key === "[" || message.key === "{" || message.code === "BracketLeft") &&
+        (modifiers.meta || modifiers.ctrl)
+      )
+        void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
       // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
       // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key
@@ -3635,12 +3645,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /**
    * Reads the selection box's colours from this document's own tokens.css
-   * (--accent-hi, --s-titlebar) so selection-runtime.js — living in an
-   * opaque-origin document with no access to this document's :root — never
-   * has to hard-code them (ADR-0011). Read fresh on every render() call
-   * rather than cached, so a future token change takes effect immediately.
+   * so selection-runtime.js — living in an opaque-origin document with no
+   * access to this document's :root — never has to hard-code them
+   * (ADR-0011). Read fresh on every render() call rather than cached, so a
+   * future token change takes effect immediately.
+   *
+   * NOOP-90/T2 §0: reads the design package's own tokens, replacing the
+   * old-shell compatibility values this used to read — see
+   * `styles/selection.css`'s updated contract note.
    */
-  /** NOOP-90/T2 §0: reads the design package's own tokens (`--brand-red`/`--surface-white`, tokens.css), replacing the old-shell compatibility values (`--accent-hi`/`--s-titlebar`) this used to read — see `styles/selection.css`'s updated contract note. */
   function selectionColors(): { accent: string; handle: string } {
     const rootStyle = getComputedStyle(document.documentElement);
     return {

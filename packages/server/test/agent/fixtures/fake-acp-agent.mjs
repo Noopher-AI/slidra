@@ -111,7 +111,7 @@
 // alive — the direct evidence for "a failed start must not leak its
 // subprocess".
 
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { appendFileSync, existsSync, realpathSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
 import path from "node:path";
@@ -278,6 +278,7 @@ class FakeAgent {
           sessionUpdate: "tool_call_update",
           toolCallId,
           status: config.toolCallOutcome ?? "completed",
+          rawOutput: config.toolCallRawOutput,
           content:
             config.toolCallOutput === undefined
               ? undefined

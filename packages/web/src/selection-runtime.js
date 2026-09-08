@@ -2035,8 +2035,14 @@
     // so ⌘C/⌘X/⌘V are relayed as ordinary keys and handled with the async
     // `navigator.clipboard` API on the host side (canvas.ts's "stage-key"
     // handler), exactly like every other shortcut in this list.
+    // event.key for Shift+] is "}" on a US layout (not "]"), and on
+    // non-US layouts the bracket may sit on a different key entirely —
+    // event.code identifies the physical key regardless of layout or
+    // Shift, so it is checked alongside the character forms.
+    if (event.code === "BracketRight" || event.code === "BracketLeft") return true;
     return (
       event.key === "a" || event.key === "d" || event.key === "]" || event.key === "[" ||
+      event.key === "}" || event.key === "{" ||
       event.key === "z" || event.key === "Z" || event.key === "c" || event.key === "x" || event.key === "v"
     );
   }
@@ -2053,6 +2059,7 @@
     post({
       event: "stage-key",
       key: event.key,
+      code: event.code,
       meta: event.metaKey,
       ctrl: event.ctrlKey,
       shift: event.shiftKey,

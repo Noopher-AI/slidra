@@ -26,7 +26,7 @@ CoMotion 是一個開源的 SVG-first 投影片編輯工具。它要讓不必熟
 ## 形狀
 
 ```
-React 外殼（面板／聊天／工具列）＋ vanilla 畫布
+React 外殼（頂列／左側縮圖軌／舞台底部 Dock／右側 Chat·Style·Animate 分頁）＋ vanilla 畫布
     ↓
 co-motion serve          ← CLI 的常駐模式
     ↓
@@ -38,7 +38,7 @@ co-motion serve          ← CLI 的常駐模式
 - 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
-- 動態以 `data-comot-step`、`data-comot-enter` 等屬性表達，由 CoMotion 的 runtime 依步驟驅動。
+- 動態是投影片 `<metadata>` 裡一份有序的效果清單（`<comot:effect>`，ADR-0009），由 CoMotion 的 runtime 依清單切出的步驟驅動。
 - 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
@@ -52,9 +52,9 @@ co-motion serve          ← CLI 的常駐模式
 
 它驗證的假設是：**一個現成的 coding agent，只靠一則編輯規約加一組 CLI 命令，就能編輯投影片。** 這個假設不成立，其他都不必做。
 
-**不含**：動畫、影音、拖拉編輯、`.comot` 打包。
+**不含**：動畫、影音、拖拉編輯、`.comot` 打包。（這是第一顆曳光彈當時的邊界，現在動畫、影音、拖拉編輯與 `.comot` 打包都已交付——`object-animation.test.ts`／`player-media.test.ts`／`direct-manipulation.test.ts`／`packDirectory` 各自是它們的驗收證據。這一段保留原始記錄，不是目前功能範圍；目前範圍見上面「形狀」一節與 `docs/adr/`。）
 
-暫不預設簡報匯入匯出格式、即時多人協作、雲端服務、完整動畫時間軸、AI 自動生成整份簡報或商業化功能。它們是否需要，應在第一條路徑可用後再決定。
+暫不預設簡報匯入格式、即時多人協作、雲端服務、完整動畫時間軸、AI 自動生成整份簡報或商業化功能。匯出已支援 PDF（見下方「尚待決定」）。它們是否需要，應在第一條路徑可用後再決定。
 
 ## 命名格式
 
@@ -81,4 +81,4 @@ co-motion serve          ← CLI 的常駐模式
 - CLI 命令集合的具體設計：動詞、參數與定址寫法。
 - 是否讓 agent 看得到渲染後的畫面（`co-motion screenshot`）。目前延後。
 - Agent 一次執行多條命令後，使用者要如何一次退回整個回合。目前只有逐條 undo。
-- 匯出成可分享格式（HTML、PDF 等）的時機。那是 server 端的功能，MVP 不做。
+- 匯出成 PDF 以外其餘可分享格式（如 HTML）的時機——PDF（含逐頁與逐效果步驟兩種）已支援，見 `export-cli.test.ts`／`export-gui.test.ts`。

@@ -2,7 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type * as acp from "@zed-industries/agent-client-protocol";
+import type * as acp from "@agentclientprotocol/sdk";
 import type { AgentKind } from "./adapters.js";
 
 /**

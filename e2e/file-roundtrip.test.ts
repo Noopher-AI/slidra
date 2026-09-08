@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { openPresentation, packDirectory, resolveWorkDir } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
 
 /**
  * #210 條件 1 — Open／Save round-trips a `.comot` byte-for-byte, and
@@ -284,5 +286,45 @@ describe("POST /api/open (#210 條件 1)", () => {
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("沒有收到檔案內容");
+  });
+});
+
+describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器——上面兩個 describe 都是純 HTTP，這裡才有 App.tsx 的 keydown handler）", () => {
+  let browser: Browser;
+
+  it("按 ⌘S：POST /api/save 被送出，GET /api/save-state 回 dirty: false", async () => {
+    await requireBuilt(rootDir);
+    browser = await chromium.launch();
+    const started = await startServerFor({ deckDir, prefix: "roundtrip-cmd-s" });
+    try {
+      const page = await openApp(browser, started.server);
+      // startServerFor 用 registry.dispatch("open", { path: comotPath }) 開檔，
+      // 這條路徑一定帶 sourcePath（見 helpers/launch.ts 本身的說明），
+      // /api/save 才有東西可以寫回。先真的改動一次，dirty 才會是 true——
+      // 不改就按 ⌘S，看到 dirty: false 證明不了 ⌘S 做了什麼（本來就是 false）。
+      const setResult = await started.registry.dispatch("text set", {
+        id: started.presentationId,
+        slidePath: "slides/001.svg",
+        elementId: "el-title",
+        newText: "⌘S 測試",
+      });
+      expect(setResult.ok).toBe(true);
+      await expect
+        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
+        .toEqual({ known: true, dirty: true, fileName: "deck.comot" });
+
+      // 焦點刻意留在父文件（不點投影片）：⌘S 的 keydown 監聽掛在 App.tsx 的
+      // `document`，焦點若先移進 sandbox iframe，這個按鍵事件根本不會冒泡
+      // 回父文件（跨 iframe 邊界不冒泡），⌘S 就打不到——這裡驗證的正是「焦點
+      // 在父文件時」這個最直接可達的路徑。
+      await page.keyboard.press("Meta+s");
+
+      await expect
+        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
+        .toEqual({ known: true, dirty: false, fileName: "deck.comot" });
+    } finally {
+      await browser.close();
+      await started.cleanup();
+    }
   });
 });

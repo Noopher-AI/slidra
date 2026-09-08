@@ -14,8 +14,12 @@ import {
   savePresentation,
   resolveCoMotionHome,
 } from "@co-motion/core";
-import { AgentChatSession, type AgentAdapterConfig } from "./agent/session.js";
+import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
+import { deployAgentWorkdir } from "./agent/workdir.js";
+import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
+import { resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
+import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
@@ -49,14 +53,38 @@ export interface ServeOptions {
   port?: number;
   host?: string;
   /**
-   * The already-selected ACP adapter to spawn on the first chat message.
-   * Required: `cli.ts` always resolves one via `selectAdapter()` before
-   * calling `startServe` (§3 — no fallback, no degraded mode), so "serve
-   * without an agent" is not a state production ever reaches. Making this
-   * required (rather than optional with a 500 fallback) makes that state
-   * unrepresentable instead of merely unreached.
+   * An already-selected ACP adapter to spawn immediately, treated as
+   * `source: "cli"` for whichever kind it names.
+   *
+   * NOOP-230: no longer required — "no agent selected yet" is now a fully
+   * supported state (serve always starts; see `initialAgent` below), so
+   * this field alone can no longer express everything callers need. It is
+   * kept, and kept optional-but-still-authoritative for its own kind,
+   * purely for backward compatibility: five existing test suites and the
+   * e2e harness (`e2e/helpers/launch.ts`) already construct one directly
+   * and must keep working unchanged. When both this and `initialAgent` are
+   * given, `initialAgent` wins.
    */
-  agent: AgentAdapterConfig;
+  agent?: AgentAdapterConfig;
+  /**
+   * What agent (if any) `serve` starts already pointed at, and why
+   * (`AgentSource` — NOOP-230 §4.3). This is `cli.ts`'s way of handing
+   * over what it resolved from `--agent`/`settings.json`. Omitted, with
+   * `agent` also omitted, means no agent is selected — chat stays gated
+   * off (409) until `POST /api/agent/select` picks one; every other route
+   * works as usual.
+   */
+  initialAgent?: { kind: AgentKind | null; source: AgentSource };
+  /**
+   * Test-only injection seams for `AgentManager`'s login probe and adapter
+   * resolution (`probe.ts`/`adapters.ts`). Production code (`cli.ts`) never
+   * sets this — real serve always probes the real CLIs and resolves the
+   * real adapter packages from `node_modules`.
+   */
+  agentManager?: {
+    runCommand?: CommandRunner;
+    resolveAdapter?: (kind: AgentKind) => AgentAdapterConfig;
+  };
   /**
    * Directory the built frontend is served from. Omitted everywhere in
    * production (`cli.ts`, the e2e smoke test), where it resolves to the
@@ -103,6 +131,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   if (project.slides.length === 0) {
     throw new CoMotionError("簡報沒有投影片");
   }
+  const agentWorkdir = await deployAgentWorkdir();
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -111,11 +140,47 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const disposers: Array<() => Promise<void>> = [];
 
   // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
-  // lifecycle (AgentChatSession) and the human editing routes below. Its
-  // frozen/unfrozen events are forwarded onto the same /api/events fan-out
-  // `presentation-changed` already uses — no second SSE stream.
+  // lifecycle (AgentManager -> AgentChatSession) and the human editing
+  // routes below. Its frozen/unfrozen events are forwarded onto the same
+  // /api/events fan-out `presentation-changed` already uses — no second SSE
+  // stream.
   const editingLock = new EditingLock();
-  const chatSession = new AgentChatSession(options.agent, presentationId, editingLock);
+
+  // Starts watching only lazily, on the first /api/events connection (see
+  // changes.ts) — creating the handle itself touches no filesystem, so no
+  // rollback is needed if listen() below fails. Built before the manager
+  // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
+  const changeBroadcaster = createChangeBroadcaster(presentationId);
+  disposers.push(() => changeBroadcaster.dispose());
+
+  // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
+  // login status, the one live AgentChatSession, and swapping that session
+  // out on POST /api/agent/select) — serve.ts no longer constructs
+  // AgentChatSession directly. `initialAgent` (cli.ts's resolved
+  // kind/source) wins when given; falling back to `agent` (see its own
+  // docstring) keeps every existing direct-`agent` caller unchanged.
+  const initialAgent: { kind: AgentKind | null; source: AgentSource } =
+    options.initialAgent ?? (options.agent ? { kind: options.agent.kind, source: "cli" } : { kind: null, source: "none" });
+  const fallbackAgent = options.agent;
+  const resolveAdapter =
+    options.agentManager?.resolveAdapter ??
+    ((kind: AgentKind): AgentAdapterConfig =>
+      fallbackAgent && kind === fallbackAgent.kind ? fallbackAgent : resolveAdapterConfig(kind));
+  const manager = new AgentManager({
+    presentationId,
+    editingLock,
+    workdir: agentWorkdir,
+    initial: initialAgent,
+    runCommand: options.agentManager?.runCommand,
+    resolveAdapter,
+    onAgentChanged: (payload) => changeBroadcaster.broadcast("agent-changed", payload),
+    // Back-compat (see `agent`'s own docstring above and AgentManagerOptions.
+    // assumeLoggedIn's docstring): a directly-given `agent` has no real
+    // "logged in" concept to probe, so its kind is exempted from the real
+    // probe rather than gated on whatever a real `claude`/`codex` CLI
+    // happens to report on the host running the tests.
+    assumeLoggedIn: fallbackAgent && !options.agentManager?.runCommand ? new Set([fallbackAgent.kind]) : undefined,
+  });
   // Every SSE stream `/api/chat/stream` has ever opened, still connected.
   // `server.close()` waits for established connections rather than
   // closing them, and an SSE stream never ends on its own — so these must
@@ -124,14 +189,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const chatStreams = createChatStreamRegistry();
   disposers.push(async () => {
     chatStreams.closeAll();
-    await chatSession.dispose();
+    await manager.dispose();
   });
-
-  // Starts watching only lazily, on the first /api/events connection (see
-  // changes.ts) — creating the handle itself touches no filesystem, so no
-  // rollback is needed if listen() below fails.
-  const changeBroadcaster = createChangeBroadcaster(presentationId);
-  disposers.push(() => changeBroadcaster.dispose());
 
   const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
   const onUnfrozen = () => changeBroadcaster.broadcast("editing-unfrozen", {});
@@ -154,18 +213,21 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // crash on `options.agent.kind` for those callers just because this
   // unrelated feature also lives here.
   let skillDirs: SkillDirs | undefined;
-  const computeSlashCommands = () => {
-    skillDirs ??= resolveSkillDirs(options.agent.kind, options.skillDirs);
-    return collectSlashCommands(chatSession.getReportedCommands(), skillDirs);
+  const computeSlashCommands = (): Promise<SlashCommand[]> => {
+    const kind = manager.currentKind();
+    // No agent selected yet: no agent report and no user skill directory to
+    // point at, so the list is legitimately empty rather than an error.
+    if (kind === null) return Promise.resolve([]);
+    skillDirs ??= resolveSkillDirs(kind, options.skillDirs);
+    return collectSlashCommands(manager.getReportedCommands(), skillDirs);
   };
-  const onAvailableCommands = () => {
+  const detachCommands = manager.onAvailableCommands(() => {
     void computeSlashCommands().then((commands) => {
       changeBroadcaster.broadcast("agent-commands", { commands });
     });
-  };
-  chatSession.on("available-commands", onAvailableCommands);
+  });
   disposers.push(async () => {
-    chatSession.off("available-commands", onAvailableCommands);
+    detachCommands();
   });
 
   // NOOP-93 §4.4: one export job at a time, for this server's whole
@@ -183,7 +245,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       registry,
       presentationId,
       staticDir,
-      chatSession,
+      manager,
       chatStreams,
       changeBroadcaster,
       editingLock,
@@ -249,7 +311,7 @@ async function handleRequest(
   registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
-  chatSession: AgentChatSession,
+  manager: AgentManager,
   chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
   editingLock: EditingLock,
@@ -296,7 +358,18 @@ async function handleRequest(
 
     if (req.method === "POST") {
       if (url.pathname === "/api/chat") {
-        await handleChatPost(chatSession, req, res);
+        await handleChatPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/probe") {
+        // NOOP-230 §4.4: same shape as GET /api/agent, but always reruns
+        // both login probes rather than reading the cache (§7.7).
+        const status = await manager.probe();
+        sendJson(res, 200, status);
+        return;
+      }
+      if (url.pathname === "/api/agent/select") {
+        await handleAgentSelectPost(manager, req, res);
         return;
       }
       if (url.pathname === "/api/command") {
@@ -379,6 +452,14 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/agent") {
+      // NOOP-230 §4.4: cached — never reprobes on its own (§7.7). Use
+      // POST /api/agent/probe for a fresh read.
+      const status = await manager.status();
+      sendJson(res, 200, status);
+      return;
+    }
+
     if (url.pathname === "/api/editing") {
       sendJson(res, 200, { frozen: editingLock.getState() === "agent" });
       return;
@@ -432,7 +513,7 @@ async function handleRequest(
     }
 
     if (url.pathname === "/api/chat/stream") {
-      chatStreams.open(chatSession, res);
+      chatStreams.open(manager, res);
       return;
     }
 
@@ -486,12 +567,28 @@ async function handleRequest(
  * `POST /api/chat` — accepts the author's message and returns immediately;
  * the reply is never awaited here, it streams separately over
  * `/api/chat/stream`.
+ *
+ * NOOP-230 §4.4: gated ahead of the existing JSON/empty-string validation —
+ * no agent selected, or the selected one not logged in, is refused with a
+ * 409 naming why (`reason: "unset" | "unauthenticated"`) before the body is
+ * even parsed.
  */
-async function handleChatPost(
-  chatSession: AgentChatSession,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
+async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const status = await manager.status();
+  if (status.current === null) {
+    sendJson(res, 409, { error: "尚未選擇 agent，請先在設定中選擇要使用的 agent", reason: "unset", kind: null });
+    return;
+  }
+  const card = status.agents.find((agent) => agent.kind === status.current)!;
+  if (card.status === "unauthenticated") {
+    sendJson(res, 409, {
+      error: `${card.label} 尚未登入，請在終端機執行 ${card.loginCommand}`,
+      reason: "unauthenticated",
+      kind: status.current,
+    });
+    return;
+  }
+
   let body: unknown;
   try {
     body = JSON.parse(await readBody(req));
@@ -504,8 +601,39 @@ async function handleChatPost(
     sendJson(res, 400, { error: "訊息內容不可為空" });
     return;
   }
-  chatSession.sendMessage(text);
+  manager.sendMessage(text);
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/agent/select` (NOOP-230 §4.4). `kind` is the only accepted
+ * body shape; `AgentManager.select` itself decides whether this is a same-
+ * kind settings-only write or an actual session swap (see its own
+ * docstring) — this handler only translates its outcome/errors to HTTP.
+ */
+async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    return;
+  }
+  const kind = (body as { kind?: unknown } | null)?.kind;
+  if (kind !== "claude" && kind !== "codex") {
+    sendJson(res, 400, { error: "kind 必須是下列其中一個值：claude、codex" });
+    return;
+  }
+  try {
+    const status = await manager.select(kind);
+    sendJson(res, 200, { ok: true, current: status.current, source: status.source });
+  } catch (error) {
+    if (error instanceof AgentSwitchLockedError) {
+      sendJson(res, 409, { error: error.message, reason: "editing" });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "選擇 agent 失敗" });
+  }
 }
 
 /**
@@ -697,16 +825,25 @@ export function createChatStreamRegistry() {
      * ended, carries `stopReason`), `chat-error` (a clear-text failure,
      * e.g. not logged in).
      *
+     * Binds to the `AgentManager` facade, not a specific `AgentChatSession`
+     * (NOOP-230 §4.5): switching agents via `POST /api/agent/select`
+     * disposes the old session (which `removeAllListeners()`s) and builds a
+     * fresh one — binding directly to a session instance would silently go
+     * deaf on every already-open `/api/chat/stream` connection the moment
+     * that happens. `AgentManager.attachStream` only rewires its own
+     * internal subscription on a swap; this stream's registration here is
+     * never touched.
+     *
      * Throws once shutdown has started, rather than handing the client a
      * 200 that will never carry a single byte.
      */
-    open(chatSession: AgentChatSession, res: ServerResponse): void {
+    open(manager: AgentManager, res: ServerResponse): void {
       if (closing) {
         throw new CoMotionError("伺服器正在關閉");
       }
       const stream = openEventStream(res);
       streams.add(stream);
-      const detach = chatSession.attachStream((event, data) => stream.send(event, data));
+      const detach = manager.attachStream((event, data) => stream.send(event, data));
       res.once("close", () => {
         detach();
         streams.delete(stream);

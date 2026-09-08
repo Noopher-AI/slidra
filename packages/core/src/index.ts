@@ -41,6 +41,7 @@ export type { PageStyle, PageStyleUpdate } from "./slide-style.js";
 export { setSlideViewBox, setPresentationCanvas, assertValidCanvasDimension } from "./presentation-canvas.js";
 export type { PresentationCanvasResult } from "./presentation-canvas.js";
 export { MEDIA_FORMATS, detectMediaFormat } from "./media-format.js";
+export { readVirtualFile } from "./virtual-fs.js";
 export type { MediaFormatEntry, MediaKind } from "./media-format.js";
 export {
   resolveAssetImport,

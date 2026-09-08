@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -370,6 +370,24 @@ describe("chat: session/request_permission allows only the co-motion program", (
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
+  it("allows Codex's shell argv after validating the entire script", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: ["/bin/zsh", "-lc", "co-motion text set abc slides/001.svg el-1 '新標題'"],
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  it.each([
+    [["/bin/zsh", "-lc", "co-motion ls; touch /tmp/bypass"]],
+    [["/bin/bash", "-c", "co-motion ls $(whoami)"]],
+    [["/bin/zsh", "-lc", "co-motion ls", "extra"]],
+    [["/tmp/zsh", "-lc", "co-motion ls"]],
+    [["/bin/zsh", "-lc", 123]],
+    [["/bin/zsh", "-lc", "rm -rf /tmp/example"]],
+  ])("refuses unsafe or unrecognized Codex argv %j", async (permissionCommand) => {
+    expect(await permissionOutcomeFor({ permissionCommand })).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
   it("refuses a command that is not co-motion at all", async () => {
     const outcome = await permissionOutcomeFor({ permissionCommand: "rm -rf ~" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
@@ -587,7 +605,7 @@ describe("chat: shutdown does not hang on an open stream", () => {
 });
 
 describe("chat: session cwd", () => {
-  it("hands the agent a fresh empty temp directory, never the real process cwd or a path under CO_MOTION_HOME", async () => {
+  it("hands the agent the deployed product work directory as its cwd, never the real process cwd (NOOP-238)", async () => {
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
@@ -604,11 +622,87 @@ describe("chat: session cwd", () => {
 
     // Never the real project directory the CLI was launched from.
     expect(sentCwd).not.toBe(process.cwd());
-    // Never anywhere under CO_MOTION_HOME — that would disclose where the
-    // home is, and `..` from there reaches `work/<id>`, the presentation's
-    // real work directory (ADR-0004).
-    const relativeToHome = path.relative(coMotionHome, sentCwd);
-    expect(relativeToHome.startsWith("..") || path.isAbsolute(relativeToHome)).toBe(true);
+    // Exactly `<CO_MOTION_HOME>/agent`, resolved — the product work
+    // directory `deployAgentWorkdir()` deploys before `startServe` ever
+    // constructs the session (NOOP-238). The escape-hatch this test used to
+    // assert ("never under CO_MOTION_HOME") is inverted by design: `../work/<id>`
+    // is no longer reachable from here, because `fs/read_text_file`'s
+    // containment is the deployed directory's own real tree
+    // (`classifyAgentReadPath`/`readAgentWorkdirFile`), not a string prefix
+    // check an agent could try to walk out of.
+    const expectedWorkdir = await realpath(path.join(coMotionHome, "agent"));
+    expect(sentCwd).toBe(expectedWorkdir);
+  });
+
+  it("lets the agent read the deployed CLAUDE.md via a relative path (NOOP-238)", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: "CLAUDE.md",
+      }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下你的工作手冊入口");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    const sourceClaudeMd = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../agent-workdir/CLAUDE.md",
+    );
+    expect(result?.readTextFileResult).toBe(await readFile(sourceClaudeMd, "utf8"));
+  });
+
+  it("lets the agent read a file under the deployed .claude/skills tree via a relative path (NOOP-238)", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        readTextFileOnPromptIndex: 1,
+        readTextFilePath: ".claude/skills/probe/SKILL.md",
+      }),
+    );
+    // Written directly into the *deployed* target after `serve()` has
+    // already run `deployAgentWorkdir()` once — not into the repo's
+    // `agent-workdir/` source, which this test must never touch, and which
+    // a second deploy would overwrite anyway. This only proves the read
+    // wiring reaches the real, already-deployed `.claude/skills` tree; skill
+    // *content* is out of this ticket's scope (T6/T7).
+    const skillDir = path.join(coMotionHome, "agent", ".claude", "skills", "probe");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
+
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "讀一下這個 skill");
+    await done;
+    await sse.close();
+
+    const log = await readFakeAgentLog();
+    const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
+    expect(result?.readTextFileResult).toBe("測試用 skill 內容");
+  });
+});
+
+describe("chat: serve close does not delete the deployed work directory (NOOP-238)", () => {
+  it("leaves the work directory's AGENTS.md readable and unchanged after close()", async () => {
+    const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
+    // This test owns close()/assert itself — see the shutdown-hang test
+    // above for why afterEach must not also try to close it.
+    servers = servers.filter((running) => running !== server);
+    await server.close();
+
+    const sourceAgentsMd = await readFile(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../agent-workdir/AGENTS.md"),
+      "utf8",
+    );
+    const deployedAgentsMd = await readFile(path.join(coMotionHome, "agent", "AGENTS.md"), "utf8");
+    expect(deployedAgentsMd).toBe(sourceAgentsMd);
   });
 });
 
@@ -854,7 +948,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
   // Fix 3 (ticket #7): a real, conforming ACP agent sends `path` as an
   // *absolute* path rooted at the session cwd it was handed — never the
   // bare relative virtual path the brief names (confirmed against a real
-  // `claude-code-acp` 0.12.6 probe). The tests below drive the fake agent
+  // `claude-code-acp` 0.12.6 probe). The test below drives the fake agent
   // through `readTextFileAbsoluteUnderCwd`, which reproduces exactly that
   // shape: it resolves the cwd it received via `session/new` and joins the
   // relative path onto the resolved form, the same thing the real adapter
@@ -866,6 +960,15 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
         readTextFileOnPromptIndex: 1,
+        // The fixture builds this path by calling fs.realpathSync on the
+        // cwd it received — the same resolution step a real adapter
+        // performs, confirmed against a real `claude-code-acp` 0.12.6: the
+        // cwd sent to `session/new` was `/var/folders/...`, but the `path`
+        // a subsequent `fs/read_text_file` sent back was
+        // `/private/var/folders/...` (macOS resolves that `/var` symlink).
+        // A prefix comparison against an unresolved cwd string would fail
+        // here on every macOS run; comparing against the resolved form is
+        // what this test exists to catch, and what actually matches.
         readTextFileAbsoluteUnderCwd: "slides/001.svg",
       }),
       id,
@@ -884,40 +987,6 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     // string was handed to `readPresentationFile` verbatim.
     expect(result?.readTextFileResult).toBe(expected.data!.content);
   });
-
-  it(
-    "survives the /var vs /private/var mismatch: the agent resolves the cwd's symlinks (macOS) before echoing an absolute path back, and the read still succeeds",
-    async () => {
-      const id = await openFreshPresentation();
-      const server = await serve(
-        fakeAgent({
-          replies: [["(ack)"], ["好的"]],
-          readTextFileOnPromptIndex: 1,
-          // The fixture builds this path by calling fs.realpathSync on the
-          // cwd it received — the same resolution step a real adapter
-          // performs. A prefix comparison against the raw, unresolved
-          // mkdtemp string would fail here on every macOS run (the trap
-          // this test exists to catch); comparing against the resolved
-          // form (this fix) succeeds.
-          readTextFileAbsoluteUnderCwd: "slides/001.svg",
-        }),
-        id,
-      );
-      const stream = await fetch(`${server.url}/api/chat/stream`);
-      const sse = new SseReader(stream);
-      const done = sse.readUntil((e) => e.event === "chat-done");
-      await postChat(server, "讀一下投影片");
-      await done;
-      await sse.close();
-
-      const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-      const log = await readFakeAgentLog();
-      const result = log.find((entry) => "readTextFileResult" in entry) as
-        | { readTextFileResult?: string }
-        | undefined;
-      expect(result?.readTextFileResult).toBe(expected.data!.content);
-    },
-  );
 
   it("honours line and limit when the whole slide is read this way (the ordinary case, not an edge case)", async () => {
     const id = await openFreshPresentation();
@@ -1165,6 +1234,18 @@ describe("chat: the author can see the command run (ticket #17)", () => {
       output: "zsh: command not found: co-motion\nexit code 127",
     });
   });
+
+  it.each([
+    { toolCallRawOutput: "command output" },
+    { toolCallRawOutput: [{ type: "text", text: "command output" }] },
+  ])(
+    "accepts adapter tool updates with non-object rawOutput %j",
+    async ({ toolCallRawOutput }) => {
+      const events = await commandEventsFor({ toolCallRawOutput });
+      expect(events.filter((event) => event.event === "chat-command-update").map((event) => event.data))
+        .toContainEqual({ toolCallId: "fake-command-call", status: "completed" });
+    },
+  );
 
   it("never relays a tool call that is not a shell command", async () => {
     const events = await commandEventsFor({ toolCallOmitCommand: true });

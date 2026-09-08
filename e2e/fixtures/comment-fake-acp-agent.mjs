@@ -40,7 +40,7 @@
 //     `agent-commands` SSE event actually reacts to a *later* report, not
 //     only the first one.
 
-import * as acp from "@zed-industries/agent-client-protocol";
+import * as acp from "@agentclientprotocol/sdk";
 import { execFile } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 

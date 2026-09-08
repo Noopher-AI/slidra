@@ -20,8 +20,8 @@ import { PlayChrome } from "./shell/PlayChrome.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 
 /**
- * WebKit still ships only the prefixed `webkitExitFullscreen` (matching
- * e2e/fullscreen-spike.test.ts). Shared by toggleFullscreen() and
+ * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
+ * toggleFullscreen() and
  * handleExitPlay() below rather than duplicated — exitFullscreen() needs no
  * transient activation, unlike requestFullscreen(), so it is safe to call
  * from either place without a fresh click.
@@ -614,6 +614,19 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // event.key for Shift+] is "}" on a US layout (not "]"), and on
+  // non-US layouts the bracket may sit on a different key entirely —
+  // event.code identifies the physical key regardless of layout or
+  // Shift. Both are accepted so the order shortcuts fire from the
+  // physical bracket key a real keyboard sends, not just the character
+  // string a same-layout dispatch happens to produce.
+  function isBracketRightInput(event: KeyboardEvent): boolean {
+    return event.key === "]" || event.key === "}" || event.code === "BracketRight";
+  }
+  function isBracketLeftInput(event: KeyboardEvent): boolean {
+    return event.key === "[" || event.key === "{" || event.code === "BracketLeft";
+  }
+
   // ⌘A／Delete／Backspace／⌘D／⌘]／⌘[／⌘⇧]／⌘⇧[ (NOOP-90/T2 §4.4) — the
   // PARENT document's own half of the keyboard relay. When focus sits
   // INSIDE the sandboxed iframe (e.g. right after clicking a slide
@@ -647,12 +660,12 @@ export function App() {
         void controller.duplicateSelection();
         return;
       }
-      if (withModifier && event.key === "]") {
+      if (withModifier && isBracketRightInput(event)) {
         event.preventDefault();
         void controller.orderSelection(event.shiftKey ? "front" : "up");
         return;
       }
-      if (withModifier && event.key === "[") {
+      if (withModifier && isBracketLeftInput(event)) {
         event.preventDefault();
         void controller.orderSelection(event.shiftKey ? "back" : "down");
         return;
@@ -934,7 +947,7 @@ export function App() {
   // must never call exitPlay(). Leaving fullscreen (including Esc) returns
   // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是
   // 另一種模式). Registers both the unprefixed and WebKit-prefixed event
-  // names, matching e2e/fullscreen-spike.test.ts.
+  // names.
   useEffect(() => {
     function onFullscreenChange(): void {
       setIsFullscreen(isCanvasAreaFullscreen(wellRef.current));
