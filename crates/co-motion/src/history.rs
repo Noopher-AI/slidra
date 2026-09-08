@@ -1,14 +1,16 @@
 //! Undo/redo for presentation content. Ported from
-//! `packages/core/src/history.ts`, scoped to this ticket's "undo/redo stack
-//! semantics" slice only: `stack.json`/`snapshots/` storage, and the
-//! `undo`/`redo` commands themselves. The TS file's *write-path* staging API
-//! (`stageSnapshotEntries`/`commitSnapshotEntries`/`discardSnapshotEntries`/
-//! `finalizeCommittedEntries`/`revertCommittedEntries`/`beginHistoryGroup`/
-//! `endHistoryGroup`/`recordSnapshot`) belongs to the content-editing command
-//! layer (`writePresentationFile` and friends), which is not yet ported to
-//! Rust — there is nothing here for those commands to call into yet, so
-//! porting that half now would be dead code with no caller. See the final
-//! report's "spec requires but not done" note.
+//! `packages/core/src/history.ts`. Covers `stack.json`/`snapshots/`
+//! storage, the `undo`/`redo` commands, and the write-path staging API
+//! (`stage_snapshot_entries`/`commit_snapshot_entries`/
+//! `finalize_committed_entries`/`revert_committed_entries`, `pub(crate)`)
+//! that `workspace::write::write_presentation_file` is built on — the first
+//! caller for that half, added alongside `effect add`/`remove`/`move`/
+//! `set` ([E4.T7]). `beginHistoryGroup`/`endHistoryGroup`/`recordSnapshot`
+//! are NOT ported: every command that writes through this ticket's staging
+//! API writes exactly one file per call, so a bare
+//! `stage`/`commit`/`finalize` sequence (no open-group bookkeeping) is
+//! already one undo step — there is no multi-command "turn" grouping need
+//! yet for any Rust-dispatched command to open or close.
 //!
 //! Storage lives at `<CO_MOTION_HOME>/history/<presentation-id>/`, a sibling
 //! of `work/<id>/` under the same home — never inside the work directory
@@ -56,7 +58,7 @@ const UNDO_STACK_CAP: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct HistoryEntry {
+pub(crate) struct HistoryEntry {
     /// e.g. "slides/001.svg"
     virtual_path: String,
     /// Filename under `snapshots/`, holding the file's content from
@@ -88,10 +90,19 @@ struct HistoryGroup {
 /// entirely, same as it rejects `undo`/`redo` being missing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StackFile {
+pub(crate) struct StackFile {
     undo: Vec<HistoryGroup>,
     redo: Vec<HistoryGroup>,
     open_group: Option<HistoryGroup>,
+}
+
+/// Result of `commit_snapshot_entries`, mirroring `packages/core/src/history.ts`'s
+/// `CommitResult`. See that function's doc comment for the caller contract:
+/// hold both fields until you know whether to `finalize_committed_entries`
+/// or `revert_committed_entries`.
+pub(crate) struct CommitResult {
+    pub(crate) previous_stack: StackFile,
+    pub(crate) pending_deletion_snapshot_ids: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -220,6 +231,112 @@ fn push_group_to_undo_stack(list: &mut Vec<HistoryGroup>, group: HistoryGroup) -
         }
     }
     evicted_snapshot_ids
+}
+
+/// Writes a snapshot file for each listed path's *current* content, taken
+/// before the caller overwrites it — but does not touch the undo/redo
+/// stacks yet. Split out from a single-shot "record" so a caller
+/// (`workspace::write::write_presentation_file`) can snapshot first,
+/// attempt its actual content write, and only then decide whether to
+/// `commit_snapshot_entries` (write succeeded) or discard (write failed) —
+/// so a failed write never occupies an undo slot. Mirrors
+/// `packages/core/src/history.ts`'s `stageSnapshotEntries`.
+pub(crate) fn stage_snapshot_entries(
+    id: &str,
+    virtual_paths: &[String],
+) -> CoMotionResult<Vec<HistoryEntry>> {
+    let home = workspace::resolve_home();
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let mut entries = Vec::with_capacity(virtual_paths.len());
+    for virtual_path in virtual_paths {
+        let content = virtual_fs::read_virtual_file_bytes(&work_dir, virtual_path)?;
+        let snapshot_id = id::generate_opaque_id();
+        write_snapshot(&home, id, &snapshot_id, &content)?;
+        entries.push(HistoryEntry {
+            virtual_path: virtual_path.clone(),
+            snapshot_id: Some(snapshot_id),
+        });
+    }
+    Ok(entries)
+}
+
+/// Commits previously staged entries onto the undo timeline: with an open
+/// group, the entries are appended to it; otherwise they become their own
+/// single-command undo group immediately. Every call clears the redo stack.
+///
+/// Unlike an ordinary "set -> undo -> set" loop, this does NOT delete the
+/// cleared redo entries' (or any cap-evicted group's) snapshot files itself
+/// — see `CommitResult`'s doc comment. Mirrors
+/// `packages/core/src/history.ts`'s `commitSnapshotEntries`.
+pub(crate) fn commit_snapshot_entries(
+    id: &str,
+    entries: Vec<HistoryEntry>,
+) -> CoMotionResult<CommitResult> {
+    let home = workspace::resolve_home();
+    let mut stack = read_stack(&home, id)?;
+    let previous_stack = stack.clone();
+
+    let mut pending_deletion_snapshot_ids = Vec::new();
+    for group in &stack.redo {
+        for entry in &group.entries {
+            if let Some(snapshot_id) = &entry.snapshot_id {
+                pending_deletion_snapshot_ids.push(snapshot_id.clone());
+            }
+        }
+    }
+    stack.redo.clear();
+
+    if let Some(open_group) = &mut stack.open_group {
+        open_group.entries.extend(entries);
+    } else {
+        let evicted = push_group_to_undo_stack(
+            &mut stack.undo,
+            HistoryGroup {
+                group_id: id::generate_opaque_id(),
+                entries,
+            },
+        );
+        pending_deletion_snapshot_ids.extend(evicted);
+    }
+
+    write_stack(&home, id, &stack)?;
+
+    Ok(CommitResult {
+        previous_stack,
+        pending_deletion_snapshot_ids,
+    })
+}
+
+/// Deletes the snapshot files a `commit_snapshot_entries` call orphaned,
+/// once the caller knows that commit will never be reverted. Mirrors
+/// `packages/core/src/history.ts`'s `finalizeCommittedEntries`.
+pub(crate) fn finalize_committed_entries(id: &str, snapshot_ids: &[String]) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    for snapshot_id in snapshot_ids {
+        delete_snapshot(&home, id, snapshot_id)?;
+    }
+    Ok(())
+}
+
+/// Reverses one `commit_snapshot_entries(id, entries)` call whose caller's
+/// next step — making the new content visible — then failed. Writes
+/// `previous_stack` back verbatim and discards `entries`' own staged
+/// snapshot files (the failed write's own "before" content, never
+/// referenced by the restored stack). Mirrors
+/// `packages/core/src/history.ts`'s `revertCommittedEntries`.
+pub(crate) fn revert_committed_entries(
+    id: &str,
+    entries: &[HistoryEntry],
+    previous_stack: &StackFile,
+) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    write_stack(&home, id, previous_stack)?;
+    for entry in entries {
+        if let Some(snapshot_id) = &entry.snapshot_id {
+            delete_snapshot(&home, id, snapshot_id)?;
+        }
+    }
+    Ok(())
 }
 
 /// `read_virtual_file_bytes`, except a genuinely-absent path is `None`

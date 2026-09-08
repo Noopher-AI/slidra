@@ -11,6 +11,7 @@
 //! submodules (`geometry::bbox`, `slide::format`, `slide::style`,
 //! `slide::table_grid`, ...) are separate, later commits' responsibility.
 pub mod commands;
+pub mod effects;
 pub mod errors;
 pub mod fallback;
 pub mod geometry;

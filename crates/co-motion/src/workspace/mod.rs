@@ -1,12 +1,12 @@
-//! Workspace read paths, ported from the READ half of
-//! `packages/core/src/workspace.ts` (home-dir resolution, the registry read,
-//! id-to-workDir lookup) plus `project-json.ts` and `virtual-fs.ts` in the
-//! `project`/`virtual_fs` submodules. This module WRITES NOTHING: no
-//! `projects.json` write, no container packing/unpacking, no format-version
-//! migration — all of that belongs to a later ticket. The only writes in
-//! this crate live in `history.rs` (`stack.json`, `snapshots/`, and,
-//! transitively through `undo`/`redo`, files inside a project's own work
-//! dir), using paths this module resolves.
+//! Workspace resolution, ported from `packages/core/src/workspace.ts`
+//! (home-dir resolution, the registry read, id-to-workDir lookup,
+//! `assertSlidePathListed`/`writePresentationFile`) plus `project-json.ts`
+//! and `virtual-fs.ts` in the `project`/`virtual_fs` submodules. This module
+//! writes no `projects.json` and does no container packing/unpacking or
+//! format-version migration — all of that belongs to a later ticket. The
+//! writes it DOES perform (via `write`) are presentation content edits
+//! through the undo/redo staging API in `history.rs` — the same mechanism
+//! `undo`/`redo` themselves replay.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -22,9 +22,12 @@
 //! - `project` — `project.json` read/parse/validate (see `project.rs`).
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
+//! - `write` — `assert_slide_path_listed`/`write_presentation_file` (see
+//!   `write.rs`).
 
 pub mod project;
 pub mod virtual_fs;
+pub mod write;
 
 use crate::errors::CoMotionResult;
 use std::path::PathBuf;
