@@ -26,6 +26,8 @@ function markupFor(agentConnection: AgentConnection, agentLabel: string | null):
     onPlay: () => {},
     onPlayFromStart: () => {},
     canPlay: true,
+    settingsOpen: false,
+    onOpenSettings: () => {},
   };
   return renderToStaticMarkup(createElement(TitleBar, props));
 }
@@ -54,5 +56,37 @@ describe("TitleBar agent 連線指示（NOOP-233 Wave 1 整合驗證）", () => 
     const markup = markupFor("disconnected", null);
     expect(markup).toContain("agent-dot-disconnected");
     expect(markup).toContain("Agent disconnected");
+  });
+});
+
+describe("TitleBar 齒輪鈕（[E3.T5] Plan §4.9）", () => {
+  it("渲染帶正確 aria 屬性的齒輪鈕，settingsOpen 反映在 aria-expanded 上", () => {
+    const props: TitleBarProps = {
+      deckName: "deck.comot",
+      savedStatusText: "Saved",
+      agentConnection: "connected",
+      agentLabel: "Claude Code",
+      editingFrozen: false,
+      onUndo: () => {},
+      onRedo: () => {},
+      onOpenFile: () => {},
+      onSave: () => {},
+      exportOpen: false,
+      onExportToggle: () => {},
+      onExportClose: () => {},
+      onExportPick: () => {},
+      exportState: { kind: "idle" },
+      onExportDismiss: () => {},
+      onPlay: () => {},
+      onPlayFromStart: () => {},
+      canPlay: true,
+      settingsOpen: true,
+      onOpenSettings: () => {},
+    };
+    const markup = renderToStaticMarkup(createElement(TitleBar, props));
+    expect(markup).toContain("titlebar-settings-button");
+    expect(markup).toContain('aria-label="Settings"');
+    expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('aria-expanded="true"');
   });
 });

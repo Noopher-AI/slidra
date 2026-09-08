@@ -168,6 +168,13 @@ button:disabled {
   gap: var(--space-2);
   flex: none;
 }
+/* [E3.T5]: the settings gear sits after .titlebar-play-group inside the
+   same flex row — reuses .titlebar-icon-button's own sizing/hover rule
+   above, this only adds the extra breathing room .titlebar-play-group
+   already gets via its own margin-left. */
+.titlebar-settings-button {
+  margin-left: var(--space-1);
+}
 .titlebar-button {
   display: inline-flex;
   align-items: center;
