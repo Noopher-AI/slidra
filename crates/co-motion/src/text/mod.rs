@@ -5,6 +5,7 @@
 //! `text-metrics.ts` instead of under `text/`) and `escape` (ported out of
 //! `element-text.ts` — see `escape.rs`'s own header comment for why).
 
+pub mod dynamic;
 pub mod escape;
 pub mod font;
 pub mod list;

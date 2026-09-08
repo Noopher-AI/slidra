@@ -1,12 +1,12 @@
-//! Workspace resolution, ported from `packages/core/src/workspace.ts`
-//! (home-dir resolution, the registry read, id-to-workDir lookup,
-//! `assertSlidePathListed`/`writePresentationFile`) plus `project-json.ts`
-//! and `virtual-fs.ts` in the `project`/`virtual_fs` submodules. This module
-//! writes no `projects.json` and does no container packing/unpacking or
-//! format-version migration — all of that belongs to a later ticket. The
-//! writes it DOES perform (via `write`) are presentation content edits
-//! through the undo/redo staging API in `history.rs` — the same mechanism
-//! `undo`/`redo` themselves replay.
+//! Workspace read AND write paths. Originally ([E4.T2]) ported from only the
+//! READ half of `packages/core/src/workspace.ts` (home-dir resolution, the
+//! registry read, id-to-workDir lookup) plus `project-json.ts` and
+//! `virtual-fs.ts` in the `project`/`virtual_fs` submodules — this crate's
+//! `registry` submodule now also writes `projects.json` ([E4.T4]:
+//! `new`/`open`/`pack` need to register/update a presentation), and
+//! `write.rs` holds the content-write doors (`assertSlidePathListed`,
+//! `write_presentation_file` and friends). Container packing/unpacking
+//! lives in `container.rs`; format-version migration lives in `migrate.rs`.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -19,12 +19,16 @@
 //! - `registry::lookup(id) -> CoMotionResult<RegistryEntry>` — the lower-level
 //!   read `resolve_work_dir` is built on, in case a future caller needs more
 //!   of the registry entry than just `work_dir`.
-//! - `project` — `project.json` read/parse/validate (see `project.rs`).
+//! - `registry::write_registry`/`registry::work_dir_for`/
+//!   `registry::max_mtime_in_directory` — the write-side primitives `open`/
+//!   `pack` need (see `registry`'s own doc comment).
+//! - `project` — `project.json` read/parse/validate/write (see `project.rs`).
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
-//! - `write` — `assert_slide_path_listed`/`write_presentation_file` (see
-//!   `write.rs`).
+//! - `write` — `assert_slide_path_listed`/`write_presentation_file` and
+//!   friends (see `write.rs`).
 
+pub mod migrate;
 pub mod project;
 pub mod virtual_fs;
 pub mod write;
@@ -78,13 +82,16 @@ pub mod registry {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
-    /// One `projects.json` entry, read-only. Only `work_dir` is modeled:
-    /// the ticket's scope is "resolving a presentation id to its workDir",
-    /// not the full `RegistryEntry` shape (`sourcePath`/`savedAt`) that
-    /// `workspace.ts`'s save-state tracking uses — a later ticket's job.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    /// One `projects.json` entry. `source_path`/`saved_at` ([E4.T4]): the
+    /// `.comot` path `open`/`pack` last read from or wrote to, and the work
+    /// directory's own max-mtime reading at that moment — absent for a
+    /// pre-[E4.T4] registry entry (read side must tolerate missing fields,
+    /// see `is_registry_entry`).
+    #[derive(Debug, Clone, PartialEq)]
     pub struct RegistryEntry {
         pub work_dir: PathBuf,
+        pub source_path: Option<PathBuf>,
+        pub saved_at: Option<f64>,
     }
 
     fn registry_path(home: &Path) -> PathBuf {
@@ -98,7 +105,7 @@ pub mod registry {
     /// to empty (same stance the TS original documents: falling back to
     /// empty here would make every previously opened presentation
     /// unreachable).
-    fn read_registry(home: &Path) -> CoMotionResult<HashMap<String, RegistryEntry>> {
+    pub(crate) fn read_registry(home: &Path) -> CoMotionResult<HashMap<String, RegistryEntry>> {
         let raw = match std::fs::read_to_string(registry_path(home)) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -119,8 +126,8 @@ pub mod registry {
 
         let mut registry = HashMap::with_capacity(obj.len());
         for (id, value) in obj {
-            let work_dir = value
-                .as_object()
+            let entry_obj = value.as_object();
+            let work_dir = entry_obj
                 .and_then(|entry| entry.get("workDir"))
                 .and_then(Value::as_str);
             let work_dir = match work_dir {
@@ -129,14 +136,127 @@ pub mod registry {
                     return Err(CoMotionError::invalid(format!("簡報登記資料已損毀：{id}")));
                 }
             };
+            let source_path = entry_obj
+                .and_then(|entry| entry.get("sourcePath"))
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let saved_at = entry_obj
+                .and_then(|entry| entry.get("savedAt"))
+                .and_then(Value::as_f64);
             registry.insert(
                 id.clone(),
                 RegistryEntry {
                     work_dir: PathBuf::from(work_dir),
+                    source_path,
+                    saved_at,
                 },
             );
         }
         Ok(registry)
+    }
+
+    /// Atomically writes the registry: a private temp file first, then
+    /// `rename`d over the real `projects.json` — a crash or a full disk
+    /// mid-write can never leave `projects.json` truncated or half-written.
+    /// Entries are written in sorted-by-id order for a deterministic file
+    /// (the TS original's `Map` preserves insertion order instead, which
+    /// Rust's `HashMap` does not track — sorting is the closest equivalent
+    /// that keeps repeated writes of the same registry byte-identical).
+    pub fn write_registry(
+        home: &Path,
+        registry: &HashMap<String, RegistryEntry>,
+    ) -> CoMotionResult<()> {
+        std::fs::create_dir_all(home)
+            .map_err(|_| CoMotionError::invalid("無法寫入簡報登記資料"))?;
+        let mut ids: Vec<&String> = registry.keys().collect();
+        ids.sort();
+        let mut map = serde_json::Map::with_capacity(ids.len());
+        for id in ids {
+            let entry = &registry[id];
+            let mut obj = serde_json::Map::new();
+            obj.insert(
+                "workDir".to_string(),
+                Value::String(entry.work_dir.to_string_lossy().into_owned()),
+            );
+            if let Some(source_path) = &entry.source_path {
+                obj.insert(
+                    "sourcePath".to_string(),
+                    Value::String(source_path.to_string_lossy().into_owned()),
+                );
+            }
+            if let Some(saved_at) = entry.saved_at {
+                obj.insert(
+                    "savedAt".to_string(),
+                    serde_json::Number::from_f64(saved_at)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null),
+                );
+            }
+            map.insert(id.clone(), Value::Object(obj));
+        }
+        let mut json = serde_json::to_string_pretty(&map)
+            .map_err(|_| CoMotionError::invalid("無法寫入簡報登記資料"))?;
+        json.push('\n');
+
+        let final_path = registry_path(home);
+        let temp_path = home.join(format!(
+            ".projects.json.{}.tmp",
+            crate::id::random_hex_suffix()
+        ));
+        let write_result: std::io::Result<()> = (|| {
+            std::fs::write(&temp_path, &json)?;
+            std::fs::rename(&temp_path, &final_path)?;
+            Ok(())
+        })();
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(CoMotionError::invalid("無法寫入簡報登記資料"));
+        }
+        Ok(())
+    }
+
+    /// The real work directory a fresh presentation id should live at —
+    /// `<home>/work/<id>/`. Callers create it; this function only computes
+    /// the path.
+    pub fn work_dir_for(home: &Path, id: &str) -> PathBuf {
+        home.join("work").join(id)
+    }
+
+    /// The newest `mtime`, in milliseconds since the Unix epoch, of `dir`
+    /// itself or anything nested inside it — used to snapshot "the work
+    /// directory's content is known to match `sourcePath` byte-for-byte"
+    /// at `open`/`pack` time (`RegistryEntry.saved_at`).
+    pub fn max_mtime_in_directory(dir: &Path) -> CoMotionResult<f64> {
+        let metadata = std::fs::metadata(dir)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        let mut max = mtime_millis(&metadata)?;
+        let entries = std::fs::read_dir(dir)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        for entry in entries {
+            let entry = entry.map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+            let file_type = entry
+                .file_type()
+                .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+            let full_path = entry.path();
+            if file_type.is_dir() {
+                max = max.max(max_mtime_in_directory(&full_path)?);
+            } else if file_type.is_file() {
+                let file_metadata = std::fs::metadata(&full_path)
+                    .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+                max = max.max(mtime_millis(&file_metadata)?);
+            }
+        }
+        Ok(max)
+    }
+
+    fn mtime_millis(metadata: &std::fs::Metadata) -> CoMotionResult<f64> {
+        let modified = metadata
+            .modified()
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        let duration = modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        Ok(duration.as_secs_f64() * 1000.0)
     }
 
     /// Resolves an opaque presentation id to its registry entry — the one
@@ -149,6 +269,24 @@ pub mod registry {
         registry
             .remove(id)
             .ok_or_else(|| CoMotionError::not_found(format!("找不到識別碼對應的簡報：{id}")))
+    }
+
+    /// Test-only convenience: registers `id -> work_dir` with no
+    /// `source_path`/`saved_at`, matching a pre-[E4.T4] registry entry —
+    /// used by sibling modules' `#[cfg(test)]` fixtures so each doesn't
+    /// hand-roll `projects.json` JSON text.
+    #[cfg(test)]
+    pub(crate) fn register_for_test(home: &Path, id: &str, work_dir: &Path) {
+        let mut registry = HashMap::new();
+        registry.insert(
+            id.to_string(),
+            RegistryEntry {
+                work_dir: work_dir.to_path_buf(),
+                source_path: None,
+                saved_at: None,
+            },
+        );
+        write_registry(home, &registry).expect("test fixture write must succeed");
     }
 
     /// Serializes access to the `CO_MOTION_HOME` env var across this

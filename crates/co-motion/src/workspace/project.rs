@@ -115,6 +115,14 @@ pub fn read_project_json(work_dir: &Path) -> CoMotionResult<ProjectJson> {
     })
 }
 
+/// The `container.rs`-facing entry point: runs the same structural check
+/// `read_project_json` runs, discarding the parsed fields — `unpack_container`
+/// only needs to know the file is well-formed, not read it back apart.
+pub fn validate_project_json_value(value: &Value) -> CoMotionResult<()> {
+    validate_project_json(value)?;
+    Ok(())
+}
+
 /// Structural validation of an already-JSON-parsed `project.json`, ported
 /// from `validateProjectJson`. An empty `slides` array is structurally
 /// valid. Unknown extra fields are accepted, never rejected (forward
@@ -302,6 +310,58 @@ pub fn read_template_entries(project: &ProjectJson) -> Vec<TemplateEntry> {
         .collect()
 }
 
+/// Serializes `project.json`'s frozen write format: `serde_json`'s default
+/// 2-space pretty printer plus exactly one trailing newline — matches
+/// `` `${JSON.stringify(x, null, 2)}\n` ``. Key order is whatever `map`
+/// iterates in (a `serde_json::Map` with the `preserve_order` feature is
+/// insertion-ordered; `insert` on an existing key updates the value without
+/// moving its position — matching JS object spread's own semantics for an
+/// overridden existing key).
+pub fn serialize_project_json(map: &serde_json::Map<String, Value>) -> String {
+    let mut json = serde_json::to_string_pretty(map).expect("Value serialization cannot fail");
+    json.push('\n');
+    json
+}
+
+/// The one `project.json` write point every slide/template-mutating command
+/// routes through (mirrors `slide-ops.ts`'s `writeProject`). `raw` must
+/// already hold whatever field changes the caller wants (e.g. an updated
+/// `slides` array) — this function's only jobs are bumping `formatVersion`
+/// to the crate's current value and normalizing a present `templates` field
+/// to the object-entry shape (`read_template_entries`'s same rule, applied
+/// in place rather than requiring a full `ProjectJson`).
+pub fn write_project(id: &str, mut raw: serde_json::Map<String, Value>) -> CoMotionResult<()> {
+    raw.insert(
+        "formatVersion".to_string(),
+        Value::from(crate::presentation::FORMAT_VERSION),
+    );
+    if let Some(templates) = raw.get("templates").cloned() {
+        raw.insert(
+            "templates".to_string(),
+            normalize_templates_value(&templates),
+        );
+    }
+    let content = serialize_project_json(&raw);
+    crate::workspace::write::write_presentation_file(id, "project.json", &content)
+}
+
+fn normalize_templates_value(templates: &Value) -> Value {
+    let entries = templates.as_array().cloned().unwrap_or_default();
+    let normalized: Vec<Value> = entries
+        .iter()
+        .map(|entry| {
+            if let Some(bare) = entry.as_str() {
+                let base = bare.rsplit('/').next().unwrap_or(bare);
+                let name = base.strip_suffix(".svg").unwrap_or(base);
+                serde_json::json!({ "file": bare, "name": name })
+            } else {
+                entry.clone()
+            }
+        })
+        .collect();
+    Value::Array(normalized)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +476,26 @@ mod tests {
         let err = read_project_json(&work).unwrap_err();
         assert_eq!(err.message(), "簡報設定檔已損毀");
         std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn serialize_project_json_uses_two_space_indent_and_trailing_newline() {
+        let mut map = serde_json::Map::new();
+        map.insert("a".to_string(), Value::from(1));
+        let json = serialize_project_json(&map);
+        assert_eq!(json, "{\n  \"a\": 1\n}\n");
+    }
+
+    #[test]
+    fn normalize_templates_value_upgrades_bare_strings_leaves_objects_alone() {
+        let templates = serde_json::json!(["templates/001.svg", {"file": "templates/002.svg", "name": "Custom"}]);
+        let normalized = normalize_templates_value(&templates);
+        assert_eq!(
+            normalized,
+            serde_json::json!([
+                {"file": "templates/001.svg", "name": "001"},
+                {"file": "templates/002.svg", "name": "Custom"}
+            ])
+        );
     }
 }

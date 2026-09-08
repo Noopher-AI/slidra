@@ -488,8 +488,8 @@ fn effect_to_json(effect: &Effect) -> Value {
 
 fn transition_to_json(transition: &SlideTransition) -> Value {
     json!({
-        "enter": { "effect": transition.enter.effect, "duration": json_number(transition.enter.duration) },
-        "exit": { "effect": transition.exit.effect, "duration": json_number(transition.exit.duration) },
+        "enter": { "effect": transition.enter.effect.as_str(), "duration": json_number(transition.enter.duration) },
+        "exit": { "effect": transition.exit.effect.as_str(), "duration": json_number(transition.exit.duration) },
     })
 }
 

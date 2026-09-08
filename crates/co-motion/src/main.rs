@@ -20,7 +20,7 @@ use std::ffi::OsString;
 
 use co_motion::commands;
 use co_motion::fallback;
-use co_motion::result;
+use co_motion::result::{self, Renderer};
 
 fn main() {
     let argv: Vec<OsString> = env::args_os().skip(1).collect();
@@ -75,42 +75,74 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
 }
 
 /// Runs a takeover-table command's handler and renders its `CommandResult`.
-/// `--json` is a Rust-only flag (plan 4.3): meaningful only here, stripped
-/// from the positional arguments the command handler sees, and never
-/// forwarded to Node (the fallback path above never parses or forwards
-/// `--json` specially — if it reaches Node at all, Node reports its own
-/// "unknown argument" error, which is correct: `--json` has no meaning
-/// outside the takeover table).
+/// `--json` is a Rust-only flag: meaningful only here, stripped from the
+/// positional arguments the command handler sees, and never forwarded to
+/// Node (the fallback path above never parses or forwards `--json`
+/// specially — if it reaches Node at all, Node reports its own "unknown
+/// argument" error, which is correct: `--json` has no meaning outside the
+/// takeover table).
+///
+/// D9: `--json` is recognised ONLY as the LAST token of `rest` — a
+/// deliberate change from this ticket's predecessor, which stripped it from
+/// any position. Several commands take free-text as their final positional
+/// (`slide notes set`'s `text`, `template rename`'s `new-name`) and those
+/// may legitimately equal the literal string `"--json"`; `--json` itself is
+/// a Rust-only flag with no TS-side byte-compatibility burden, so this
+/// narrower rule is safe to adopt outright.
 fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
-    let mut json_flag = false;
-    let mut positional: Vec<String> = Vec::new();
-    for arg in rest {
-        match arg.to_str() {
-            Some("--json") => json_flag = true,
-            Some(s) => positional.push(s.to_string()),
-            // A non-UTF-8 extra positional argument here would be ignored
-            // by undo/redo anyway (only args[0], the id, is read — see
-            // plan 4.1's "undo <id> extra" row) — lossy-converting it
-            // rather than erroring keeps that "ignored" behavior intact
-            // instead of turning a harmless extra argument into a crash.
-            None => positional.push(arg.to_string_lossy().into_owned()),
-        }
+    let mut positional: Vec<String> = rest
+        .iter()
+        .map(|arg| {
+            arg.to_str().map(str::to_string).unwrap_or_else(|| {
+                // A non-UTF-8 extra positional argument would be ignored by
+                // most handlers anyway — lossy-converting it rather than
+                // erroring keeps "ignored" behavior intact instead of
+                // turning a harmless extra argument into a crash.
+                arg.to_string_lossy().into_owned()
+            })
+        })
+        .collect();
+    let json_flag = positional.last().map(String::as_str) == Some("--json");
+    if json_flag {
+        positional.pop();
     }
 
-    let command_result = match command {
-        "undo" => commands::undo::run(&positional),
-        "redo" => commands::redo::run(&positional),
-        "effect add" => commands::effect::add(&positional),
-        "effect list" => commands::effect::list(&positional),
-        "effect move" => commands::effect::move_cmd(&positional),
-        "effect remove" => commands::effect::remove(&positional),
-        "effect set" => commands::effect::set(&positional),
-        _ => unreachable!("commands::match_takeover only returns TAKEOVER_TABLE entries"),
-    };
+    let (command_result, renderer): (co_motion::result::CommandResult, Option<Renderer<'_>>) =
+        match command {
+            "undo" => (commands::undo::run(&positional), None),
+            "redo" => (commands::redo::run(&positional), None),
+            "effect add" => (commands::effect::add(&positional), None),
+            "effect list" => (commands::effect::list(&positional), None),
+            "effect move" => (commands::effect::move_cmd(&positional), None),
+            "effect remove" => (commands::effect::remove(&positional), None),
+            "effect set" => (commands::effect::set(&positional), None),
+            "new" => (commands::new::run(&positional), None),
+            "open" => (commands::open::run(&positional), None),
+            "pack" => (commands::pack::run(&positional), None),
+            "convert" => (commands::convert::run(&positional), None),
+            "presentation" => (commands::presentation::run(&positional), None),
+            "template" => (commands::template::run(&positional), None),
+            "ls" => (
+                commands::ls::run(&positional),
+                Some(&commands::ls::render as Renderer<'_>),
+            ),
+            "cat" => (
+                commands::cat::run(&positional, json_flag),
+                Some(&commands::cat::render as Renderer<'_>),
+            ),
+            "slide" => {
+                let renderer: Option<Renderer<'_>> =
+                    if positional.first().map(String::as_str) == Some("render") {
+                        Some(&commands::slide::render as Renderer<'_>)
+                    } else {
+                        None
+                    };
+                (commands::slide::run(&positional, json_flag), renderer)
+            }
+            _ => unreachable!(
+                "commands::match_takeover only returns TAKEOVER_TABLE entries, all handled above"
+            ),
+        };
 
-    // None of this ticket's takeover-table commands has a renderer (plan
-    // 3.1 confirmed all five `effect` commands are `render: null` in the TS
-    // registry, same as `undo`/`redo`) — `None` here is correct, not a
-    // placeholder.
-    result::render(&command_result, None, json_flag)
+    result::render(&command_result, renderer, json_flag)
 }
