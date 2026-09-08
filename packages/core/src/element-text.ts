@@ -423,6 +423,85 @@ function findNodeById(nodes: readonly ScannedNode[], elementId: string): Scanned
  * width using the style already on the `<text>` primitive. `fontBook` is
  * required in that case — a text box with no font book throws.
  */
+/**
+ * Rewrites a plain (non-text-box) `<text>`'s content for `text set`.
+ *
+ * SVG's `<text>` does not break lines on newline characters: writing
+ * "第一點\n第三點" straight into one `<text>` renders as a single run
+ * ("第一點 第三點"), silently destroying a multi-line element's layout.
+ * That is what a `<tspan>` per line is for, and it is what this rebuilds —
+ * so `text set` writing N lines produces N lines on screen, whether the
+ * element already had `<tspan>`s or was a single-line `<text>`.
+ *
+ * Geometry is taken from what is already there, never invented: `x` and the
+ * first line's `y` come from the existing first `<tspan>` (or the `<text>`
+ * itself), and the line step comes from the gap between the first two
+ * existing `<tspan>`s. With no such gap to read (a single-line element
+ * growing into several), the font's own line height is measured — the same
+ * metric `wrapText` uses for text boxes — which is why `fontBook` is
+ * required in that one case.
+ *
+ * Single-line new text for an element that had no `<tspan>`s keeps the old
+ * behaviour exactly: the content string is replaced and nothing else moves.
+ */
+function renderPlainTextContent(
+  textNode: ScannedNode,
+  newText: string,
+  elementId: string,
+  options: ReplaceElementTextOptions,
+): string {
+  const tspans = textNode.children.filter((child) => child.tag === "tspan");
+  const lines = newText.split("\n");
+  if (lines.length === 1 && tspans.length === 0) return escapeXmlText(newText);
+
+  const numberFrom = (node: ScannedNode | undefined, name: string): number | null => {
+    if (!node) return null;
+    const raw = attributeValue(node, name);
+    if (raw === null || raw.trim() === "") return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const x = numberFrom(tspans[0], "x") ?? numberFrom(textNode, "x") ?? 0;
+  const firstY = numberFrom(tspans[0], "y") ?? numberFrom(textNode, "y") ?? 0;
+  const secondY = numberFrom(tspans[1], "y");
+  let step: number;
+  if (secondY !== null) {
+    step = secondY - firstY;
+  } else {
+    // No existing gap to copy: the line step has to be measured from the
+    // font. Without a font book there is nothing to measure with, and this
+    // is the one case where the old single-`<text>` write is still the
+    // right answer — the element was single-line to begin with, so writing
+    // the raw string back preserves exactly what callers of this pure
+    // function (which has always taken `fontBook` as optional) got before.
+    // Every real `text set` goes through `setElementText`, which always
+    // resolves the presentation's fonts, so the CLI path does lay it out.
+    if (!options.fontBook) return escapeXmlText(newText);
+    // Read the two font attributes directly rather than through
+    // `readTextFontInfo`: that one also rejects `text-anchor` (a text box
+    // cannot be centred), but a plain `<text>` may well be centred, and
+    // laying its lines out is fine — the `<tspan>`s keep the same `x` and
+    // inherit the anchor, so centred text stays centred.
+    const declaredFamily = attributeValue(textNode, "font-family");
+    const fontFamily = declaredFamily === null || declaredFamily.trim() === "" ? DEFAULT_FONT_FAMILY : declaredFamily;
+    const fontSizeRaw = attributeValue(textNode, "font-size");
+    const fontSize = fontSizeRaw === null || fontSizeRaw.trim() === "" ? 16 : Number(fontSizeRaw);
+    if (!Number.isFinite(fontSize) || fontSize <= 0) {
+      throw new CoMotionError(`元素的 font-size 不是合法的正數，無法排出多行文字：${elementId}`);
+    }
+    const font = resolveFont(options.fontBook, fontFamily, elementId);
+    step = ((font.ascender - font.descender + font.lineGap) / font.unitsPerEm) * fontSize;
+  }
+
+  return lines
+    .map(
+      (line, index) =>
+        `<tspan x="${formatSvgNumber(x)}" y="${formatSvgNumber(firstY + index * step)}">${escapeXmlText(line)}</tspan>`,
+    )
+    .join("");
+}
+
 function replaceContainerText(
   svgContent: string,
   elementId: string,
@@ -475,7 +554,7 @@ function replaceContainerText(
 
   return (
     svgContent.slice(0, textNode.contentStart) +
-    escapeXmlText(newText) +
+    renderPlainTextContent(textNode, newText, elementId, options) +
     svgContent.slice(textNode.contentEnd)
   );
 }
@@ -535,7 +614,11 @@ export function replaceElementText(
   if (node.selfClosing) {
     throw new CoMotionError(`元素沒有文字內容：${elementId}`);
   }
-  return svgContent.slice(0, node.contentStart) + escapeXmlText(newText) + svgContent.slice(node.contentEnd);
+  return (
+    svgContent.slice(0, node.contentStart) +
+    renderPlainTextContent(node, newText, elementId, options) +
+    svgContent.slice(node.contentEnd)
+  );
 }
 
 /**

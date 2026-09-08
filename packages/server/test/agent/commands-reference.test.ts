@@ -1,9 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CommandRegistry, createDefaultRegistry } from "@co-motion/cli";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
+import { resolveAgentWorkdirSource } from "../../src/agent/workdir.js";
 
 // NOOP-238: `reference/commands.md` is hand-written, not generated —
 // `CommandDefinition` carries no name/parameter/purpose metadata to
@@ -112,5 +113,29 @@ describe("[NOOP-238] 編輯規約 and reference/commands.md stay consistent (A16
   it("has been slimmed to name only `text set` and `comment list` as syntax examples (A18)", () => {
     expect(commandsMentionedIn(brief).sort()).toEqual(["comment list", "text set"]);
     expect(brief).toContain("reference/commands.md");
+  });
+
+  // [E3.T6] #236/#237: same guarantee as A16/A17 above, extended to the
+  // work directory's own documentation — AGENTS.md and the shipped
+  // SKILL.md files reference `co-motion` commands too, and those mentions
+  // must stay real (in the registry) and documented (in this same file).
+  it("AGENTS.md and every shipped SKILL.md name only commands that exist in the registry and are documented (A4)", async () => {
+    const registrySet = new Set(registryNames);
+    const headings = new Set(extractHeadings(await readCommandsReference()));
+    const workdirSource = resolveAgentWorkdirSource();
+    const agentsMd = await readFile(path.join(workdirSource, "AGENTS.md"), "utf8");
+    const skillDirs = await readdir(path.join(workdirSource, ".agents", "skills"), { withFileTypes: true });
+    const skillTexts = await Promise.all(
+      skillDirs
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => readFile(path.join(workdirSource, ".agents", "skills", entry.name, "SKILL.md"), "utf8")),
+    );
+
+    for (const text of [agentsMd, ...skillTexts]) {
+      for (const name of commandsMentionedIn(text)) {
+        expect(registrySet.has(name)).toBe(true);
+        expect(headings.has(name), `${name} 在工作目錄文件提到，但 reference/commands.md 沒有這一節`).toBe(true);
+      }
+    }
   });
 });

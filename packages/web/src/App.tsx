@@ -1254,7 +1254,7 @@ export function App() {
    * author's own message (`Draft with agent`'s fixed prefix included —
    * §4.8 of the plan: the author sees what was actually sent).
    */
-  async function sendChatText(text: string): Promise<void> {
+  async function sendChatText(text: string, displayText?: string): Promise<void> {
     if (!streamReady) {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
@@ -1263,8 +1263,14 @@ export function App() {
       return;
     }
     const id = nextMessageIdRef.current++;
-    setMessages((prev) => appendMessage(prev, id, "author", text));
+    setMessages((prev) => appendMessage(prev, id, "author", displayText ?? text));
     setError(null);
+    // The turn starts here, not at its first SSE event: an agent that
+    // reads and thinks for a while before saying anything would otherwise
+    // leave the author looking at a screen with no sign it is working.
+    // Every ending — `chat-done`, `chat-error`, a dropped stream — still
+    // clears it from chat-stream.ts, as does a send that never landed.
+    setWorking(true);
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -1273,6 +1279,7 @@ export function App() {
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
+        setWorking(false);
         setError(body.error ?? "傳送訊息失敗");
         // NOOP-230 §4.4/Plan §4.8: a `reason`-carrying 409 means the server's
         // own agent state disagrees with what this tab last knew (unset/
@@ -1291,15 +1298,23 @@ export function App() {
       // when it was not — fabricating success is forbidden here. Reuses
       // the same `error` state the non-OK branch above uses, naming the
       // message so it is clear which one failed.
+      setWorking(false);
       setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
   }
 
+  /**
+   * An empty draft is still a real request when comments are pinned —
+   * "do what the pins say" — so it goes out, with the conversation showing
+   * a placeholder rather than an empty bubble. The placeholder is only
+   * what is *displayed*; what reaches the agent is the pinned-comment
+   * context plus its own instruction (session.ts), never this text.
+   */
   async function sendMessage(): Promise<void> {
     const text = draft.trim();
-    if (!text) return;
+    if (!text && comments.length === 0) return;
     setDraft("");
-    await sendChatText(text);
+    await sendChatText(text, text ? undefined : `（未輸入訊息，只送出 ${comments.length} 則釘選留言）`);
   }
 
   /**

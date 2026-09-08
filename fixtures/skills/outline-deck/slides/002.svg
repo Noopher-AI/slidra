@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">範本頁的備忘稿。</comot:notes></metadata>
+  <g id="el-body-title" data-comot-name="標題">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="40">範本內容頁標題</text>
+  </g>
+  <g id="el-body-bullets" data-comot-name="要點">
+    <text x="80" y="220" font-family="Noto Sans TC" font-size="24">範本要點一</text>
+  </g>
+</svg>

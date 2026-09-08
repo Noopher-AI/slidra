@@ -149,7 +149,10 @@ describe("text set", () => {
     expect(decoded).toBe(tricky);
   });
 
-  it("allows a newline in the new text, stored escaped as a literal character", async () => {
+  // A newline is accepted, and it means a line break: SVG's <text> ignores
+  // the character itself, so the two lines are written as two <tspan>s —
+  // otherwise they would render on top of each other on one line.
+  it("lays a newline out as two tspans, not one run containing the character", async () => {
     const { id, elementId } = await openFreshPresentation();
 
     const result = await registry.dispatch("text set", {
@@ -161,7 +164,9 @@ describe("text set", () => {
 
     expect(result.ok).toBe(true);
     const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-    expect(after.data!.content).toContain("第一行\n第二行");
+    expect(after.data!.content).toContain(">第一行</tspan>");
+    expect(after.data!.content).toContain(">第二行</tspan>");
+    expect(after.data!.content).not.toContain("第一行\n第二行");
   });
 
   it("fails with a clear error when the slide path does not exist", async () => {

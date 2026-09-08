@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { AgentUiStatus } from "../../agent-status.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
@@ -39,7 +39,7 @@ export interface ChatPanelProps {
 /**
  * 對話分頁 — 逐字搬自 App.tsx（NOOP-271/#154 之後、New v3 殼重建之前的版
  * 本），class 名稱一個都沒改。這是刻意的：e2e/freeze.test.ts 用
- * `.chat-input button` / `.chat-input input` 驅動 agent 編輯鎖的凍結流程，
+ * `.chat-input button` / `.chat-input textarea` 驅動 agent 編輯鎖的凍結流程，
  * e2e/helpers/launch.ts 的 `openApp({ waitForAgent: true })` 輪詢
  * `.agent-dot`（在 TitleBar.tsx，不在這裡，但同一個「不改既有契約」的原
  * 則）——兩者都不能因為殼重建而跟著變。訊息／草稿等狀態仍然留在
@@ -85,6 +85,17 @@ export function ChatPanel({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
+  // Multi-line input: the textarea starts one row tall and re-measures on
+  // every draft change so it grows with the content (CSS caps the height
+  // and scrolls beyond that).
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draft]);
+
   const query = slashQuery(draft);
   // Esc's dismissal is scoped to "the trigger span currently in progress"
   // (contract: continuing to type must NOT reopen it) — only reset the
@@ -111,7 +122,7 @@ export function ChatPanel({
     setSelectedIndex(0);
   }
 
-  function handleSlashKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleSlashKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (!showMenu) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -140,12 +151,10 @@ export function ChatPanel({
 
   /**
    * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `comotion-logic-v3.js` 的
-   * `draftKey`）——plain `↵` 維持既有的原生隱式送出不變（下面沒有攔它）。
-   * `preventDefault` 先擋掉瀏覽器對帶修飾鍵 Enter 一樣會觸發的隱式送出，
-   * 避免呼叫兩次；`streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤
-   * 路徑不得繞過它。
+   * `draftKey`）——輸入框是 textarea，plain `↵` 換行不送出。
+   * `streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤路徑不得繞過它。
    */
-  function handleDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key !== "Enter") return;
     if (!(event.metaKey || event.ctrlKey)) return;
     event.preventDefault();
@@ -158,7 +167,7 @@ export function ChatPanel({
    * slash menu open (a modifier-Enter is unambiguously "send", never
    * "complete"); every other key goes to the menu first.
    */
-  function handleInputKeyDownAll(event: KeyboardEvent<HTMLInputElement>): void {
+  function handleInputKeyDownAll(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       handleDraftKeyDown(event);
       return;
@@ -263,7 +272,9 @@ export function ChatPanel({
         }}
       >
         {showMenu && <SlashMenu commands={filtered} selectedIndex={effectiveIndex} onSelect={selectCommand} />}
-        <input
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleInputKeyDownAll}

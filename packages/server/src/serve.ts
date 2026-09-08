@@ -605,7 +605,12 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
     return;
   }
   const text = (body as { text?: unknown } | null)?.text;
-  if (typeof text !== "string" || text.trim() === "") {
+  // An empty message is allowed through: with comments pinned, "no text"
+  // is a real request ("do what the pins say"), and only the session —
+  // which reads the pins off disk a moment from now — can tell that case
+  // apart from an empty message with nothing pinned to it. That one is
+  // refused there, not here.
+  if (typeof text !== "string") {
     sendJson(res, 400, { error: "訊息內容不可為空" });
     return;
   }

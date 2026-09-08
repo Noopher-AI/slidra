@@ -128,7 +128,7 @@ it("在瀏覽器裡送出訊息後，畫布上的 SVG 文字真的變了", async
   // The send button is disabled until the chat SSE stream is open, so
   // waiting for it is also waiting for the stream.
   await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-  await page.locator(".chat-input input").fill("把標題改掉");
+  await page.locator(".chat-input textarea").fill("把標題改掉");
   await page.locator(".chat-input button").click();
 
   // The whole chain in one assertion: POST /api/chat -> fake agent ->
