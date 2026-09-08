@@ -53,7 +53,7 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * `CoMotion (New v3).dc.html` 的 ctx bar；內容是原型情境列加上原本元素右鍵選單
  * 的項目（review 決定拿掉右鍵選單、全部併到左鍵這一列）：
  * 「Comment to AI ｜ Edit style ｜ Edit animation（僅選取元素有動畫時）｜
- * 前後層四項（只有圖示） ｜ Duplicate ｜ Delete」。
+ * 前後層四項（只有圖示） ｜ Copy／Cut／Paste（[E2.T18] 新增）｜ Duplicate ｜ Delete」。
  * Order／Duplicate／Delete 接到 controller 的同一組方法（鍵盤與 Arrange 選單
  * 共用）；Comment to AI 是佈局佔位按鈕，功能屬 NOOP-67；Edit style（#200/NOOP-69）
  * 只切右欄到 Style › Object，不送任何命令、不改選取。

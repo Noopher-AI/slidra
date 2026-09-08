@@ -73,7 +73,7 @@ CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
 ## 形狀
 
 ```
-React 外殼（面板／聊天／工具列）＋ vanilla 畫布
+React 外殼（頂列／左側縮圖軌／舞台底部 Dock／右側 Chat·Style·Animate 分頁）＋ vanilla 畫布
     ↓
 co-motion serve          ← CLI 的常駐模式
     ↓
@@ -85,8 +85,8 @@ co-motion serve          ← CLI 的常駐模式
 - 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。編輯期間解壓在工作目錄，儲存時重新打包（ADR-0003）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
-- 動態寫在每張投影片 SVG 的 `<metadata>` 裡，是一份有序的效果清單，由 CoMotion 的 runtime 依步驟驅動。
-- 播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
+- 動態是投影片 `<metadata>` 裡一份有序的效果清單（`<comot:effect>`，ADR-0009），由 CoMotion 的 runtime 依清單切出的步驟驅動。
+- 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
 決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。

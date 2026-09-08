@@ -6,6 +6,12 @@
 > **仍然成立的**：虛擬檔案結構、`fs/write_text_file` 一律拒絕、不洩漏真實路徑、
 > 元素用不透明穩定識別碼定址、SVG 必須保持精簡（檔案大小＝每輪對話的 token 成本）。
 
+> **NOOP-238（GitHub #235）在第三層開了另一個明確的洞：agent session 的 cwd 不再是每次連線都重新產生的空白暫存目錄，而是套件內建、`co-motion serve` 每次啟動都整個重鋪的產品工作目錄（`<CO_MOTION_HOME>/agent`——與簡報自己的真實工作目錄 `work/<id>` 是兩個不同的東西，後者仍然完全不可讀）。`fs/read_text_file` 的讀取範圍相應放寬為「簡報虛擬路徑（相對路徑第一段是 `project.json`、`slides`、`assets` 或 `fonts` 的其中之一）＋這個工作目錄本身的真實檔案（唯讀）」。
+>
+> 工作目錄的讀取重用 `readVirtualFile` 既有的結構性容納，**不做**這份 ADR 原本設想的「`realpath` 之後再檢查一次仍在目錄內」：`buildVirtualTree` 只收 `isDirectory()`/`isFile()` 的項目，一個指向目錄外的 symlink 從未被記進虛擬樹，因此結構上就查不到，不需要再疊一層 guard 式檢查。
+>
+> **仍然成立的**：`fs/write_text_file` 一律拒絕、不洩漏真實路徑、命令白名單不變、`work/<id>` 不可讀、元素用不透明穩定識別碼定址。
+
 ADR-0002 要求所有修改都經由語意化命令。但只要 agent 看得到真實檔案路徑，它就會用 `cat`、`sed`、`grep`——讀寫是綁在一起的，紀律擋不住。
 
 因此 CoMotion 不讓 agent 接觸真實檔案系統，改為透過 CLI 提供一個虛擬檔案結構：agent 看得到完整內容，但沒有任何寫入入口。

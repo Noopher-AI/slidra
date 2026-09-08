@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { chromium, type Browser, type Response as PWResponse } from "playwright";
+import { chromium, type Browser, type Frame, type Response as PWResponse } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
@@ -89,6 +89,19 @@ async function startServerFor(): Promise<{
       await rm(comotDir, { recursive: true, force: true });
     },
   };
+}
+
+/**
+ * Same disambiguation `e2e/selection.test.ts`'s own `canvasFrame` uses: the
+ * main slide iframe is told apart from the overview thumbnails (also
+ * `srcdoc` documents) by its `class="slide-frame"` element.
+ */
+async function canvasFrame(page: import("playwright").Page): Promise<Frame> {
+  for (const frame of page.frames()) {
+    const element = await frame.frameElement().catch(() => null);
+    if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
+  }
+  throw new Error("找不到主畫布的 iframe.slide-frame");
 }
 
 async function requireBuilt(filePath: string, message: string): Promise<void> {
@@ -230,6 +243,77 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
     const seeked = await audio.evaluate((el: HTMLAudioElement) => el.currentTime);
     expect(seeked).toBeGreaterThan(target - 0.2);
     expect(seeked).toBeLessThan(target + 0.2);
+  } finally {
+    await cleanup();
+  }
+});
+
+// selection-runtime.js's `findMediaControlTarget` guard (checked first in
+// both the "click" and "pointerdown" window listeners) has zero coverage
+// otherwise — a mutation test removing both call sites left the full unit
+// (2041/2041) and e2e (358 綠) suites green (NOOP-225 review round 1). These
+// two are the regression it was missing: without the guard, a click/drag
+// that lands on the control bar is indistinguishable from one that lands on
+// empty stage, and falls through to the plain "clicked outside, clear
+// selection" / "no element hit, start a marquee" paths below it.
+it("元素被選取時點 .media-play：選取狀態不受影響（[E2.T17] 舞台媒體控制守衛）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+    const selectionChip = page.locator(".status-selection-chip");
+
+    await expect
+      .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+    const frame = await canvasFrame(page);
+    await frame.locator("#el-video-placeholder").click();
+    await expect.poll(() => selectionChip.textContent()).toBe("Selected: el-video-placeholder");
+
+    const video = frame.locator("video");
+    await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
+    const playButton = frame.locator('[data-comot-media-control="play"]').first();
+    await playButton.click();
+
+    // 播放鍵本身仍要正常運作——守衛不能把整顆按鈕擋死，只能擋掉「點擊落在
+    // 控制列上」被誤判為「點在空白處」而觸發的清除選取。
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 }).toBe(false);
+    expect(await selectionChip.textContent()).toBe("Selected: el-video-placeholder");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("在 .media-seek 上按住拖曳：不產生 marquee、不改變選取（[E2.T17] 舞台媒體控制守衛）", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url);
+    const selectionChip = page.locator(".status-selection-chip");
+
+    await expect
+      .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
+      .toBe("媒體播放測試");
+    const frame = await canvasFrame(page);
+    await expect.poll(() => frame.locator('[data-comot-media-control="seek"]').count()).toBeGreaterThan(0);
+    await expect.poll(() => selectionChip.textContent()).toBe("");
+
+    const marqueeDisplay = () =>
+      frame.evaluate(() => {
+        const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+        const marquee = host?.shadowRoot?.querySelector(".marquee") as HTMLElement | null;
+        return marquee?.style.display ?? null;
+      });
+
+    const seek = frame.locator('[data-comot-media-control="seek"]').first();
+    await seek.hover();
+    await page.mouse.down();
+    await page.mouse.move(200, 200, { steps: 5 }); // 遠超 DRAG_THRESHOLD_PX，若守衛失效會被判成 marquee 手勢
+    expect(await marqueeDisplay()).not.toBe("block");
+    await page.mouse.up();
+
+    expect(await marqueeDisplay()).not.toBe("block");
+    expect(await selectionChip.textContent()).toBe("");
   } finally {
     await cleanup();
   }

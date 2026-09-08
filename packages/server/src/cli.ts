@@ -1,9 +1,8 @@
 import { createDefaultRegistry } from "@co-motion/cli";
-import { CoMotionError } from "@co-motion/core";
 import { startServe } from "./serve.js";
-import { commandExistsOnPath, detectAdapters } from "./agent/detect.js";
-import { selectAdapter } from "./agent/select.js";
+import { readAgentSettings } from "./agent/settings.js";
 import type { AgentKind } from "./agent/adapters.js";
+import type { AgentSource } from "./agent/manager.js";
 
 /**
  * Entry point for `co-motion serve <presentation-id>`.
@@ -15,6 +14,14 @@ import type { AgentKind } from "./agent/adapters.js";
  * `@co-motion/server` back — that would make the project-reference graph
  * circular. Routing through the untyped bin shim is what keeps the two
  * packages' build graph acyclic while still sharing one `co-motion` binary.
+ *
+ * NOOP-230: serve now always starts, whether or not an agent is selected —
+ * "no agent" is a supported state (chat stays gated off with a 409 until
+ * one is picked), not a startup failure. What used to be startup-time
+ * detection + selection (`detect.ts`/`select.ts`, both removed) is now just
+ * resolving *which kind, if any, and why* (`--agent` > `settings.json` >
+ * neither) — actually spawning and probing login status is
+ * `AgentManager`'s job, inside `startServe`.
  */
 export async function runServeCli(argv: string[]): Promise<number> {
   const parsed = parseServeArgv(argv);
@@ -25,17 +32,18 @@ export async function runServeCli(argv: string[]): Promise<number> {
 
   const registry = createDefaultRegistry();
 
-  // Detection runs at startup, before the socket is ever bound (§3): a
-  // missing or ambiguous agent must fail loudly and early, never silently
-  // discovered on the first chat message.
-  const available = await detectAdapters(commandExistsOnPath);
-  let adapter;
+  // A broken settings.json must never prevent serve from starting (§4.1's
+  // division of labor: settings.ts reports honestly, cli.ts is the one
+  // place allowed to catch that and continue with `agent: null`).
+  let settingsAgent: AgentKind | null = null;
   try {
-    adapter = selectAdapter(available, parsed.agent);
+    settingsAgent = (await readAgentSettings()).agent;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    return 1;
   }
+
+  const kind: AgentKind | null = parsed.agent ?? settingsAgent ?? null;
+  const source: AgentSource = parsed.agent !== undefined ? "cli" : settingsAgent !== null ? "settings" : "none";
 
   let server;
   try {
@@ -43,15 +51,17 @@ export async function runServeCli(argv: string[]): Promise<number> {
       registry,
       presentationId: parsed.presentationId,
       port: parsed.port,
-      agent: { kind: adapter.kind, label: adapter.label, command: adapter.command },
+      initialAgent: { kind, source },
     });
   } catch (error) {
+    // Unrelated to agent selection — a missing presentation, a bound port,
+    // etc. Still a hard startup failure.
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 
   console.log(`CoMotion 已啟動：${server.url}`);
-  console.log(`使用的 agent：${adapter.label}`);
+  await printAgentStatusLine(server.url);
 
   await new Promise<void>((resolve) => {
     const shutdown = () => {
@@ -62,6 +72,38 @@ export async function runServeCli(argv: string[]): Promise<number> {
   });
 
   return 0;
+}
+
+/**
+ * Prints exactly one line describing the agent serve started with — via
+ * the server's own `POST /api/agent/probe` (the same endpoint the frontend
+ * uses), rather than reaching into `AgentManager` directly: `startServe`'s
+ * return value intentionally exposes nothing beyond `{ port, url, close }`,
+ * and by this point the server is already listening, so this is a real,
+ * already-live probe, not a separate code path that could drift from what
+ * the UI itself would show.
+ */
+async function printAgentStatusLine(serverUrl: string): Promise<void> {
+  const response = await fetch(`${serverUrl}/api/agent/probe`, { method: "POST" });
+  const status = (await response.json()) as {
+    current: AgentKind | null;
+    agents: Array<{ kind: AgentKind; label: string; status: "available" | "unauthenticated"; loginCommand: string }>;
+  };
+  if (status.current === null) {
+    console.log("尚未選擇 agent，聊天功能待設定；serve 其餘功能照常。");
+    return;
+  }
+  const card = status.agents.find((agent) => agent.kind === status.current);
+  if (!card) {
+    // Unreachable given AgentManager always reports both ADAPTER_SPECS
+    // kinds — a thrown error here would mean the two have drifted apart.
+    throw new Error(`/api/agent/probe did not report a card for current kind: ${status.current}`);
+  }
+  if (card.status === "available") {
+    console.log(`使用的 agent：${card.label}`);
+  } else {
+    console.log(`使用的 agent：${card.label}（尚未登入，請在終端機執行 ${card.loginCommand}）`);
+  }
 }
 
 function parseServeArgv(

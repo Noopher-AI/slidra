@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "產品說明會（範本）",
+  "canvas": { "width": 1280, "height": 720 },
+  "slides": ["slides/001.svg", "slides/002.svg"]
+}

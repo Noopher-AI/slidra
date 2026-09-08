@@ -4,6 +4,9 @@ import { Icon } from "../icons/index.js";
 export interface StatusBarProps {
   state: CanvasState;
   controller: CanvasController | null;
+  /** [E3.T5]: the settings dialog's own open/closed state — drives the gear button's `aria-expanded` and its toggle behaviour (open↔close on repeated clicks, same as Export). */
+  settingsOpen: boolean;
+  onOpenSettings(): void;
 }
 
 /**
@@ -15,7 +18,7 @@ export interface StatusBarProps {
  * 測的是 canvas.ts/iframe-runtime 本身的選取語意，這裡只換了外層容器的
  * class 名稱，不動計算邏輯）。
  */
-export function StatusBar({ state, controller }: StatusBarProps) {
+export function StatusBar({ state, controller, settingsOpen, onOpenSettings }: StatusBarProps) {
   const slideCount = state.slides.length;
   const hasSlides = slideCount > 0;
 
@@ -65,6 +68,17 @@ export function StatusBar({ state, controller }: StatusBarProps) {
           <Icon name="next" size="inline" />
         </button>
       </span>
+      <button
+        type="button"
+        className="slide-nav-button status-settings-button"
+        title="Settings"
+        aria-label="Settings"
+        aria-haspopup="dialog"
+        aria-expanded={settingsOpen}
+        onClick={onOpenSettings}
+      >
+        <Icon name="settings" size="inline" />
+      </button>
     </footer>
   );
 }

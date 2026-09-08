@@ -132,6 +132,37 @@ it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法�
   expect(clipboardText).toContain('id="el-solo"');
 });
 
+it("06-KEYBOARD ⌘X：元素離開投影片且進系統剪貼簿，一筆歷史，undo 還原", async () => {
+  const started = await start();
+  const page = await openWithClipboard(started);
+  const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
+
+  const selChip = page.locator(".status-selection-chip");
+  await slideFrame(page).locator("#el-solo").click();
+  await expect.poll(() => selChip.textContent()).not.toBe("");
+  await page.keyboard.press("Meta+x");
+  await expect
+    .poll(async () => (await readSlide(started.registry, started.presentationId, "slides/001.svg")).includes('id="el-solo"'), {
+      timeout: 10_000,
+    })
+    .toBe(false);
+  await expect.poll(() => readSystemClipboardText(page), { timeout: 10_000 }).toContain("el-solo");
+
+  const clipboardText = await readSystemClipboardText(page);
+  expect(clipboardText).toMatch(/^<svg/);
+  expect(clipboardText).toContain('data-comot-clipboard="elements"');
+  expect(clipboardText).toContain('id="el-solo"');
+
+  const afterCut = await readSlide(started.registry, started.presentationId, "slides/001.svg");
+  expect(afterCut).not.toContain('id="el-solo"');
+  expect(afterCut).not.toBe(before);
+
+  await page.keyboard.press("Meta+z");
+  await expect
+    .poll(() => readSlide(started.registry, started.presentationId, "slides/001.svg"), { timeout: 10_000 })
+    .toBe(before);
+});
+
 it("A1：元素同頁貼上 — 新 <g>，新 id ≠ 原 id，位移恰為 PASTE_OFFSET_STEP", async () => {
   const started = await start();
   const page = await openWithClipboard(started);

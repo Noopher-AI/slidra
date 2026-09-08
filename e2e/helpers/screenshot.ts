@@ -54,10 +54,11 @@ const UPDATE_ENV_VAR = "UPDATE_APPEARANCE_BASELINES";
 
 /**
  * Set to `1` to skip the pixel comparison entirely and treat every call as
- * passing. Baselines are macOS-rendered; CI runs on Ubuntu, where font
- * rasterization differs enough that a pixel-level compare against those
- * baselines fails deterministically, not flakily. See AGENTS.md's
- * "視覺回歸的把關分工" section for the local/CI split this implements.
+ * passing. Baselines are `ubuntu-latest`-rendered (CI's own runner); a local
+ * machine's font rasterization (especially macOS) differs enough that a
+ * pixel-level compare against those baselines fails deterministically, not
+ * flakily. See AGENTS.md's "視覺回歸的把關分工" section for the local/CI
+ * split this implements.
  */
 const SKIP_ENV_VAR = "SKIP_APPEARANCE_BASELINES";
 

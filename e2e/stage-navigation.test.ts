@@ -278,7 +278,7 @@ it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片�
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("grab");
 
     // 焦點在 chat 輸入框時按 Space 打出空白字元，不進抓取模式。
-    const chatInput = page.locator(".chat-input input");
+    const chatInput = page.locator(".chat-input textarea");
     await chatInput.click();
     await chatInput.press("Space");
     expect(await chatInput.inputValue()).toBe(" ");
@@ -326,6 +326,64 @@ it("縮放選單：從工具列正上方中央長出，含 −/百分比/+/Fit/�
     await expect.poll(() => page.locator(".dock-zoom-control").textContent()).toBe("100%");
     const transform = await stageTransform(page);
     expect(scaleOf(transform)).toBeCloseTo(1, 5);
+  } finally {
+    await started.cleanup();
+  }
+});
+
+it("中鍵拖曳：留白區平移畫布、不改變選取（06-KEYBOARD_AND_GESTURES.md「中鍵拖曳」）", async () => {
+  const { started, page } = await start("stage-nav-middle-drag");
+  try {
+    // 先選一個元素，平移不該動到它。
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    const selectionChip = page.locator(".status-selection-chip");
+    await expect.poll(() => selectionChip.textContent()).not.toBe("");
+
+    // Stage.tsx 的 `shouldPan = event.button === 1 || ...` 是父文件自己的
+    // mousedown 處理，只在事件真的落在父文件（留白區）才會收到——本輪實測
+    // 確認：中鍵落在投影片本體（iframe 內容）上沒有反應，因為
+    // selection-runtime.js 的 pointerdown 監聽對非左鍵一律提前 return（見
+    // PR 報告「規格要求但這次沒做的」）。這裡驗證留白區這一半確實可用。
+    const beforeTransform = await stageTransform(page);
+    const point = await gutterPoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down({ button: "middle" });
+    await page.mouse.move(point.x + 40, point.y + 30, { steps: 5 });
+    await page.mouse.up({ button: "middle" });
+
+    await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
+    expect(await selectionChip.textContent()).not.toBe("");
+  } finally {
+    await started.cleanup();
+  }
+});
+
+it("⌘0／⌘+／⌘−：回到 Fit、放大一級、縮小一級，且百分比文字同步", async () => {
+  const { started, page } = await start("stage-nav-zoom-keys");
+  try {
+    expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
+
+    await page.keyboard.press("Meta+=");
+    await expect.poll(() => page.locator(".dock-zoom-control").textContent()).not.toBe("100%");
+    const afterIn = scaleOf(await stageTransform(page));
+    expect(afterIn).toBeCloseTo(1.25, 5);
+
+    await page.keyboard.press("Meta+-");
+    await expect.poll(async () => scaleOf(await stageTransform(page))).toBeCloseTo(1, 5);
+    expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
+
+    // 從一個非 100% 的縮放值用 ⌘0 回到 Fit（100%、置中）。
+    await page.keyboard.press("Meta+=");
+    await expect.poll(() => page.locator(".dock-zoom-control").textContent()).not.toBe("100%");
+    await page.keyboard.press("Meta+0");
+    await expect.poll(async () => scaleOf(await stageTransform(page))).toBeCloseTo(1, 5);
+    expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
+
+    // 焦點在輸入框時，⌘0 完全不動（守衛同既有四個 keydown effect）。
+    const chatInput = page.locator(".chat-input textarea");
+    await chatInput.click();
+    await page.keyboard.press("Meta+=");
+    expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
   } finally {
     await started.cleanup();
   }

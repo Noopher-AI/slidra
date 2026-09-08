@@ -3,11 +3,12 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
+import { requireCliBuilt } from "./require-cli-built.js";
 
 // T5 (NOOP-93/#110): the agent-turn/undo-group/freeze contract, driven over
 // HTTP with a real subprocess fake ACP agent — same Seam B discipline as
@@ -208,6 +209,8 @@ async function openFreshPresentationForCommandExecution(): Promise<CommandExecut
 }
 
 describe("T5: agent-turn undo grouping and editing freeze", () => {
+  beforeAll(requireCliBuilt);
+
   it("AC1: one turn's several commands undo together as a single group, and a second undo hits the empty stack", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);

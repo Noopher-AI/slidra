@@ -1,0 +1,123 @@
+import type { AgentKind } from "./live-reload.js";
+
+/**
+ * [E3.T5] NOOP-230 §4.4's `GET /api/agent` / `POST /api/agent/probe`
+ * response, restated here as the exact shape this module parses (never
+ * imported from `@co-motion/server` — the browser bundle must never depend
+ * on a Node-only package, same rule `ExportFormat`/`AgentKind` in
+ * live-reload.ts already follow).
+ */
+export type AgentSource = "cli" | "settings" | "none";
+export type AgentAvailability = "available" | "unauthenticated";
+
+export interface AgentResponseCard {
+  kind: AgentKind;
+  label: string;
+  status: AgentAvailability;
+  loginCommand: string;
+  detail?: string;
+}
+
+export interface AgentResponse {
+  current: AgentKind | null;
+  source: AgentSource;
+  agents: AgentResponseCard[];
+}
+
+/**
+ * One agent card, translated for `AgentTab` (Plan §4.4's table drives off
+ * this, plus the two external booleans `probing`/`editingFrozen` that this
+ * module knows nothing about). `inUse` is derived here (`kind ===
+ * response.current`) so callers never recompute it.
+ */
+export interface AgentCardView {
+  kind: AgentKind;
+  label: string;
+  status: AgentAvailability;
+  loginCommand: string;
+  detail?: string;
+  inUse: boolean;
+}
+
+/**
+ * The titlebar/chat-panel-facing agent state (Plan §4.1). `loading` is this
+ * module's caller's own initial value before the first `GET /api/agent`
+ * resolves — `fromAgentResponse` itself never produces it.
+ */
+export type AgentUiStatus =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "unset"; agents: AgentCardView[] }
+  | {
+      kind: "unauthenticated";
+      current: AgentKind;
+      label: string;
+      loginCommand: string;
+      /** [E3.T5] §4.4's "本次由命令列指定" badge reads this — `true` only while `source === "cli"` and this agent is the current one. */
+      source: AgentSource;
+      agents: AgentCardView[];
+    }
+  | {
+      kind: "ready";
+      current: AgentKind;
+      label: string;
+      /** Same as above. */
+      source: AgentSource;
+      agents: AgentCardView[];
+    };
+
+function toCardView(card: AgentResponseCard, current: AgentKind | null): AgentCardView {
+  return {
+    kind: card.kind,
+    label: card.label,
+    status: card.status,
+    loginCommand: card.loginCommand,
+    detail: card.detail,
+    inUse: card.kind === current,
+  };
+}
+
+function isValidCard(value: unknown): value is AgentResponseCard {
+  if (typeof value !== "object" || value === null) return false;
+  const { kind, label, status, loginCommand, detail } = value as Record<string, unknown>;
+  if (kind !== "claude" && kind !== "codex") return false;
+  if (typeof label !== "string") return false;
+  if (status !== "available" && status !== "unauthenticated") return false;
+  if (typeof loginCommand !== "string") return false;
+  if (detail !== undefined && typeof detail !== "string") return false;
+  return true;
+}
+
+/**
+ * Parses `GET /api/agent` / `POST /api/agent/probe`'s JSON body into
+ * {@link AgentUiStatus}. A malformed response returns `null` — the caller
+ * keeps its previous value rather than this function fabricating one
+ * (errors over fallbacks, same rule `live-reload.ts`'s own parsers follow).
+ */
+export function fromAgentResponse(data: unknown): AgentUiStatus | null {
+  if (typeof data !== "object" || data === null) return null;
+  const { current, source, agents } = data as Record<string, unknown>;
+  if (current !== null && current !== "claude" && current !== "codex") return null;
+  if (source !== "cli" && source !== "settings" && source !== "none") return null;
+  if (!Array.isArray(agents) || !agents.every(isValidCard)) return null;
+
+  const views = agents.map((card) => toCardView(card, current));
+
+  if (current === null) return { kind: "unset", agents: views };
+
+  const currentCard = agents.find((card) => card.kind === current);
+  if (!currentCard) return null;
+
+  if (currentCard.status === "unauthenticated") {
+    return {
+      kind: "unauthenticated",
+      current,
+      label: currentCard.label,
+      loginCommand: currentCard.loginCommand,
+      source,
+      agents: views,
+    };
+  }
+
+  return { kind: "ready", current, label: currentCard.label, source, agents: views };
+}

@@ -124,6 +124,18 @@ export class CommandRegistry {
   }
 
   /**
+   * Every registered command name, in registration order. The only public
+   * way to enumerate the registry — added so `reference/commands.md` (a
+   * hand-written document, not generated: `CommandDefinition` carries no
+   * parameter/purpose metadata to generate from) can be checked against it
+   * for coverage, without a test reaching for the private `definitions` map
+   * the way `packages/cli/test/registry-split.test.ts` already does.
+   */
+  names(): string[] {
+    return [...this.definitions.keys()];
+  }
+
+  /**
    * Looks up a command's terminal renderer, if any. Used only by the CLI
    * bin layer to decide how to print a successful result.
    */

@@ -1,4 +1,4 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,8 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
+import { compareScreenshot, settleForScreenshot, settledBox, type Box } from "./helpers/screenshot.js";
+import { waitForAgentConnected } from "./helpers/launch.js";
 
 /**
  * [E2.T8] `05-INTERACTIONS.feature`「與 AI 協作」— the four scenarios that
@@ -38,6 +39,23 @@ const baselineDir = path.join(e2eDir, "__screenshots__/ai-collab");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
+/**
+ * 把 boundingBox 取整並夾在 viewport 內——尺寸不符是 compareScreenshot 的無容忍硬失敗
+ * （helpers/screenshot.ts）。角落各自四捨五入（而不是 x/y 與 width/height 分開四捨五入）
+ * 是刻意的：後者在 box 邊界落在 .5 附近時，x 與 width 可能各自進位到不同方向，兩次執行
+ * 算出的尺寸就會差 1px。從角落算可以消掉這個誤差（抄自 e2e/table.test.ts 的 snapClip）。
+ */
+function snapClip(box: Box): Box {
+  const x = Math.max(0, Math.round(box.x));
+  const y = Math.max(0, Math.round(box.y));
+  const right = Math.min(VIEWPORT.width, Math.round(box.x + box.width));
+  const bottom = Math.min(VIEWPORT.height, Math.round(box.y + box.height));
+  const width = right - x;
+  const height = bottom - y;
+  if (width <= 0 || height <= 0) throw new Error(`clip 尺寸無效：${width}x${height}`);
+  return { x, y, width, height };
+}
+
 let browser: Browser;
 let openPages: Page[] = [];
 
@@ -65,7 +83,10 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
   }
 }
 
-async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
+async function startServerFor(
+  agentEnv: Record<string, string> = {},
+  skills: { bundled?: Record<string, string>; user?: Record<string, string> } = {},
+): Promise<{
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
@@ -75,6 +96,24 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-files-"));
   const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-deck-"));
+  // [E3.T3] #232/#236: never resolve against the real machine's
+  // `~/.claude/skills` — a real skill directory happening to exist on
+  // whatever machine runs this suite would silently leak into `/` list
+  // assertions (Plan §6.3). Always temp dirs, populated per-test via
+  // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
+  // skill directory name) when a test needs a deterministic entry.
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-user-"));
+  for (const [dir, entries] of [
+    [bundledSkillsDir, skills.bundled] as const,
+    [userSkillsDir, skills.user] as const,
+  ]) {
+    for (const [name, frontmatter] of Object.entries(entries ?? {})) {
+      const skillDir = path.join(dir, name);
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
+    }
+  }
   process.env.CO_MOTION_HOME = coMotionHome;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
@@ -99,7 +138,13 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({
+    registry,
+    presentationId,
+    port: 0,
+    agent,
+    skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },
+  });
 
   return {
     server,
@@ -112,6 +157,8 @@ async function startServerFor(agentEnv: Record<string, string> = {}): Promise<{
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
+      await rm(bundledSkillsDir, { recursive: true, force: true });
+      await rm(userSkillsDir, { recursive: true, force: true });
     },
   };
 }
@@ -123,16 +170,14 @@ async function openApp(server: RunningServer, options: { waitForAgent?: boolean 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
   if (options.waitForAgent) {
-    await expect
-      .poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 })
-      .toContain("connected");
+    await waitForAgentConnected(page);
   }
   return page;
 }
 
 async function sendChatMessage(page: Page, text: string): Promise<void> {
   await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-  await page.locator(".chat-input input").fill(text);
+  await page.locator(".chat-input textarea").fill(text);
   await page.locator(".chat-input button").click();
 }
 
@@ -164,8 +209,7 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
     await composer.locator("textarea").fill("把這個標題改短一點");
 
     await settleForScreenshot(page);
-    const box = await composer.boundingBox();
-    if (!box) throw new Error("找不到留言框");
+    const box = snapClip(await settledBox(composer, "留言框"));
     await compareScreenshot(page, { name: "comment-composer", baselineDir, clip: box });
 
     await composer.getByRole("button", { name: "Add comment" }).click();
@@ -176,6 +220,49 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
 
     const comments = await listComments(registry, presentationId, "slides/001.svg");
     expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "把這個標題改短一點" })]);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘Enter 等同按 Add comment", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+
+    const bar = page.locator(".context-bar");
+    await expect.poll(() => bar.isVisible(), { timeout: 5000 }).toBe(true);
+    await bar.getByRole("button", { name: "Comment to AI" }).click();
+
+    const composer = page.locator(".comment-composer");
+    await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
+    await composer.locator("textarea").fill("⌘Enter 儲存留言測試");
+    await composer.locator("textarea").press("Meta+Enter");
+
+    await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
+    const pin = page.locator(".comment-pin");
+    await expect.poll(() => pin.textContent(), { timeout: 5000 }).toBe("1");
+
+    const comments = await listComments(registry, presentationId, "slides/001.svg");
+    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "⌘Enter 儲存留言測試" })]);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("⌘↵ 送出聊天（06-KEYBOARD_AND_GESTURES.md）：在聊天輸入框按 ⌘Enter 等同按 Send", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    const input = page.locator(".chat-input textarea");
+    await input.fill("⌘Enter 送出測試");
+    await input.press("Meta+Enter");
+
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("⌘Enter 送出測試");
+    expect(await input.inputValue()).toBe(""); // 送出後清空輸入框
   } finally {
     await cleanup();
   }
@@ -252,8 +339,7 @@ it("送出：留言隨訊息一起送給 agent（context 前綴真的抵達）�
     expect(await page.locator(".chat-input-pinned").textContent()).toBe("2 pinned");
 
     await settleForScreenshot(page);
-    const box = await pinned.boundingBox();
-    if (!box) throw new Error("找不到 Pinned context");
+    const box = snapClip(await settledBox(pinned, "Pinned context"));
     await compareScreenshot(page, { name: "pinned-context", baselineDir, clip: box });
 
     await sendChatMessage(page, "麻煩照留言處理");
@@ -264,6 +350,30 @@ it("送出：留言隨訊息一起送給 agent（context 前綴真的抵達）�
     expect(replyText).toContain("把標題改短");
     expect(replyText).toContain("slides/002.svg page");
     expect(replyText).toContain("整頁重寫");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("送出：有釘選留言時，輸入框留空也送得出去（留言本身就是要求）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "把標題改短" });
+
+    const page = await openApp(server, { waitForAgent: true });
+    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    await page.locator(".chat-input button").click(); // 一個字都沒打
+
+    // 對話裡顯示的是佔位字，不是空泡泡。
+    const authored = page.locator(".chat-message-author").last();
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toBe("（未輸入訊息，只送出 1 則釘選留言）");
+
+    // 假 agent 回聲收到的 prompt：留言與「沒有輸入訊息」的指示都在，沒有空的【作者的訊息】。
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("把標題改短");
+    const replyText = (await reply.textContent()) ?? "";
+    expect(replyText).toContain("作者沒有輸入訊息");
+    expect(replyText).not.toContain("【作者的訊息】");
   } finally {
     await cleanup();
   }
@@ -280,8 +390,7 @@ it("Agent 編輯中（持鎖）：titlebar 凍結徽章截圖（AC5）", async (
     await expect.poll(() => badge.isVisible(), { timeout: 30_000 }).toBe(true);
 
     await settleForScreenshot(page);
-    const box = await page.locator(".titlebar").boundingBox();
-    if (!box) throw new Error("找不到 titlebar");
+    const box = snapClip(await settledBox(page.locator(".titlebar"), "titlebar"));
     await compareScreenshot(page, { name: "titlebar-frozen", baselineDir, clip: box });
   } finally {
     await cleanup();
@@ -306,9 +415,22 @@ it("從大綱草擬：走真實 UI 入口，agent 真的插入新頁（AC2）＋
     const commandCard = page.locator(".chat-command-in_progress");
     await expect.poll(() => commandCard.isVisible(), { timeout: 30_000 }).toBe(true);
 
+    // `co-motion slide add <presentationId> --at 1` 裡的 presentationId 是
+    // generateOpaqueId() 產生的隨機 12 字元，每次 open 都不同，會讓截圖逐像素
+    // 比對不穩定（計畫 §4.3）。截圖前先斷言真的顯示的是這條指令，再換成等長
+    // 固定佔位字串（等寬字，寬度不變），最後斷言替換確實生效。
+    const commandText = commandCard.locator(".chat-command-text");
+    expect(await commandText.textContent()).toBe(`co-motion slide add ${presentationId} --at 1`);
+    const placeholderId = "e2eFixedId00";
+    expect(placeholderId).toHaveLength(12);
+    expect(presentationId).toHaveLength(12);
+    await commandText.evaluate((el, ph) => {
+      el.textContent = el.textContent!.replace(ph.real, ph.placeholder);
+    }, { real: presentationId, placeholder: placeholderId });
+    expect(await commandText.textContent()).toBe(`co-motion slide add ${placeholderId} --at 1`);
+
     await settleForScreenshot(page);
-    const box = await commandCard.boundingBox();
-    if (!box) throw new Error("找不到 Running 指令卡");
+    const box = snapClip(await settledBox(commandCard, "Running 指令卡"));
     await compareScreenshot(page, { name: "running-command-card", baselineDir, clip: box });
 
     // AC2：新頁真的被插入，不只是 UI 事件——縮圖列 +1、project.json 的
@@ -365,6 +487,115 @@ it("AC8(b)：agent 用 comment 命令寫入後，不重新整理，GUI 的 Pinne
     const pinnedItems = page.locator(".chat-pinned-item");
     await expect.poll(() => pinnedItems.count(), { timeout: 30_000 }).toBe(1);
     expect(await pinnedItems.first().textContent()).toContain(AGENT_COMMENT);
+  } finally {
+    await cleanup();
+  }
+});
+
+// [E3.T3] #232/#236: the `/` slash-command menu. Not a new e2e file (Plan
+// §6.2/§7 — no new e2e file this ticket authorises) — this suite already
+// starts a real server+browser with a fake agent that can echo prompts
+// verbatim, exactly what these two scenarios need.
+
+it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報更新即時變動", async () => {
+  const { server, cleanup } = await startServerFor({
+    E2E_AVAILABLE_COMMANDS: JSON.stringify([
+      { name: "draft", description: "草擬一頁新投影片" },
+      { name: "publish", description: "發布目前版本" },
+    ]),
+    E2E_AVAILABLE_COMMANDS_UPDATE: JSON.stringify([
+      { name: "draft", description: "草擬一頁新投影片" },
+      { name: "archive", description: "封存目前簡報" },
+    ]),
+  });
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    const input = page.locator(".chat-input textarea");
+    const menu = page.locator(".slash-menu");
+    const menuItem = page.locator(".slash-menu-item");
+
+    // Before any message is sent, the agent hasn't reported anything yet
+    // (session.ts: the ACP subprocess is spawned lazily on the first chat
+    // message) — sending one first is what actually makes its
+    // availableCommands report land.
+    await sendChatMessage(page, "打個招呼");
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("打個招呼");
+
+    // 清單全部出現，含描述（AC1 的畫面驗證部分）。
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
+    expect(await menuItem.nth(0).textContent()).toContain("draft");
+    expect(await menuItem.nth(0).textContent()).toContain("草擬一頁新投影片");
+    expect(await menuItem.nth(1).textContent()).toContain("publish");
+
+    // ↓↓ 從 draft 選到 publish，再繞回 draft，Enter 補全成 "/draft "。
+    await input.press("ArrowDown");
+    await input.press("ArrowDown");
+    await expect.poll(() => menuItem.nth(0).getAttribute("aria-selected"), { timeout: 5000 }).toBe("true");
+    await input.press("Enter");
+    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe("/draft ");
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0); // 補全後 draft 不再符合觸發條件，選單自動關閉
+
+    // Esc：重新打開後關閉，且在同一個觸發區段內繼續打字不重開。
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
+    await input.press("Escape");
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
+    await input.press("d"); // 仍在觸發條件內（"/d"），但 Esc 關閉狀態必須持續
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
+    await input.fill(""); // 離開觸發條件，Esc 的關閉狀態重置
+    await input.fill("/");
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2); // 重新打開
+
+    // 回報更新後，不重新整理頁面，清單即時變動：publish 消失、archive 出現。
+    // （這則訊息本身不觸發任何 agent 回覆——假 agent 送出更新後直接
+    // end_turn，見 comment-fake-acp-agent.mjs 的「更新命令」分支——所以這裡
+    // 直接輪詢選單內容，而不是等待一則不存在的新訊息。）
+    await input.fill("");
+    await sendChatMessage(page, "更新命令");
+    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe(""); // sendMessage() 清空 draft 後才輪到這裡打 "/"
+    await input.fill("/");
+    await expect.poll(() => menuItem.allTextContents(), { timeout: 30_000 }).toEqual(
+      expect.arrayContaining([expect.stringContaining("archive")]),
+    );
+    const namesAfterUpdate = (await menuItem.allTextContents()).join(" ");
+    expect(namesAfterUpdate).toContain("draft");
+    expect(namesAfterUpdate).toContain("archive");
+    expect(namesAfterUpdate).not.toContain("publish");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
+  const { server, cleanup } = await startServerFor(
+    {},
+    { bundled: { "comotion-outline": "---\nname: comotion-outline\ndescription: 從大綱建立投影片\n---\n" } },
+  );
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    const input = page.locator(".chat-input textarea");
+
+    // "comotion-outline" comes from the bundled skill directory, which is
+    // populated before the server ever starts — no need to wait for the
+    // agent's own report (which does not exist yet, see the test above) to
+    // complete this one. A shipped skill's directory name carries the
+    // `comotion-` namespace itself, so what the author types is exactly
+    // what the agent has registered (#248).
+    await input.fill("/comotion-out");
+    await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
+    await input.press("Enter");
+    const completed = await input.inputValue();
+    expect(completed).toBe("/comotion-outline ");
+
+    // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
+    await input.fill(`${completed}這是參數`);
+    await expect.poll(() => page.locator(".slash-menu").count(), { timeout: 5000 }).toBe(0); // 含空白，觸發條件已不成立
+    await page.locator(".chat-input button:not([disabled])").click();
+
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-outline 這是參數");
   } finally {
     await cleanup();
   }

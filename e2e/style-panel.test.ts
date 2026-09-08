@@ -435,6 +435,20 @@ it("B3 Slide size 預設鈕（4:3）：project.json/viewBox 改變、元素 tran
     await selectAndOpenStyleObject(page, frame, "el-b");
     await fillField(page, "opacity", "0.9");
     await expect.poll(async () => readSlide(registry, presentationId)).toContain('opacity="0.9"');
+    // This write echoes back over the live-reload SSE stream and drives
+    // canvas.ts's reload(): it clears the selection, re-fetches the slide,
+    // then re-applies the selection once the iframe's new document finishes
+    // loading (`keepSelectionAcrossReload`/`selectOnceLoaded`). That clear-
+    // then-reselect round trip flips `hasSelection` false→true, and App.tsx's
+    // effect (`setSub(hasSelection ? "object" : "page")`) follows it — if
+    // that flip back to "object" lands AFTER this test has already switched
+    // to Style › Page, it unmounts the Page panel out from under the very
+    // next click (`element was detached from the DOM`). Waiting for the
+    // edited element's own attribute to show up in the reloaded iframe
+    // means the frame has already loaded its new document, so
+    // `selectOnceLoaded`'s reselect — hooked to that same `load` event — has
+    // already run and the "object" flip is already behind us.
+    await expect.poll(() => frame.locator("#el-b rect").getAttribute("opacity")).toBe("0.9");
 
     await openStylePage(page);
     await page.locator('button.style-page-preset:has-text("4:3")').click();

@@ -1,4 +1,5 @@
 import type { SaveState } from "@co-motion/core";
+import type { SlashCommandOption } from "./slash-commands.js";
 
 /**
  * NOOP-93 §4.4 — restated here rather than imported: `@co-motion/server`'s
@@ -8,6 +9,15 @@ import type { SaveState } from "@co-motion/core";
  * `TemplateEntry`.
  */
 export type ExportFormat = "pdf" | "pdf-frames";
+
+/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@co-motion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
+export type AgentKind = "claude" | "codex";
+
+/** [E3.T5] NOOP-230 §4.4: the `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
+export interface AgentChangedEvent {
+  kind: AgentKind;
+  label: string;
+}
 export type ExportSseEvent =
   | { jobId: string; format: ExportFormat; state: "queued" }
   | { jobId: string; format: ExportFormat; state: "running"; totalFrames: number; completedFrames: number }
@@ -76,6 +86,18 @@ const SAVE_STATE_EVENT = "save-state";
 // this one (§4.7's table, "重新整理頁面後" row) — a reload deliberately
 // loses in-flight job UI state, so there is nothing to seed on mount.
 const EXPORT_EVENT = "export";
+// [E3.T3] #232/#236: fanned out by serve.ts whenever the agent sends a
+// fresh `available_commands_update` — same "no replay, GET for the initial
+// value" contract as editing-frozen/save-state above (`GET
+// /api/agent/commands` is the caller's own initial fetch, made once on
+// mount the same way `/api/editing` is).
+const AGENT_COMMANDS_EVENT = "agent-commands";
+// [E3.T5] NOOP-230 §4.4: fanned out by `AgentManager.select()` whenever it
+// actually swaps to a different agent kind (never for a same-kind
+// settings-only select) — same "no replay, GET for the initial value"
+// contract as the other events on this stream (`GET /api/agent` is the
+// caller's own initial fetch).
+const AGENT_CHANGED_EVENT = "agent-changed";
 const EVENTS_PATH = "/api/events";
 const DEFAULT_ERROR_MESSAGE = "即時預覽已中斷";
 
@@ -118,6 +140,10 @@ export function startLiveReload(options: {
   onSaveStateChange?: (state: SaveState) => void;
   /** NOOP-93 §4.4: fired for every `export` SSE event — queued/running/progress/done/error, in that legal order, for at most one active job at a time. */
   onExportEvent?: (event: ExportSseEvent) => void;
+  /** [E3.T3] #232/#236: fired with the freshly recomputed `/` command list whenever the agent reports a new one. A malformed payload is dropped, the previous list kept — same as `onSaveStateChange`. */
+  onCommandsChange?: (commands: SlashCommandOption[]) => void;
+  /** [E3.T5] NOOP-230 §4.4: fired whenever `AgentManager.select()` actually swaps to a different agent kind. A malformed payload is dropped, nothing fired — same as `onCommandsChange`. */
+  onAgentChanged?: (event: AgentChangedEvent) => void;
   eventSourceFactory?: (url: string) => EventSource;
 }): LiveReload {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
@@ -150,6 +176,16 @@ export function startLiveReload(options: {
   source.addEventListener(EXPORT_EVENT, (event) => {
     const parsed = parseExportEventData(event);
     if (parsed) options.onExportEvent?.(parsed);
+  });
+
+  source.addEventListener(AGENT_COMMANDS_EVENT, (event) => {
+    const commands = parseAgentCommandsEventData(event);
+    if (commands) options.onCommandsChange?.(commands);
+  });
+
+  source.addEventListener(AGENT_CHANGED_EVENT, (event) => {
+    const parsed = parseAgentChangedEventData(event);
+    if (parsed) options.onAgentChanged?.(parsed);
   });
 
   source.addEventListener(WATCH_ERROR_EVENT, (event) => {
@@ -208,6 +244,46 @@ function parseSaveStateEventData(event: Event): SaveState | undefined {
   const { dirty, fileName } = parsed as { dirty?: unknown; fileName?: unknown };
   if (typeof dirty !== "boolean" || typeof fileName !== "string") return undefined;
   return { known: true, dirty, fileName };
+}
+
+/** Parses an `agent-commands` SSE payload — same `{ commands: [{name,description,source}] }` shape `GET /api/agent/commands` returns. Malformed → dropped, previous list kept (errors over fallbacks); `source` is read by the server but not needed here, so it is not validated. */
+function parseAgentCommandsEventData(event: Event): SlashCommandOption[] | undefined {
+  const data = (event as MessageEvent).data;
+  if (typeof data !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null || !("commands" in parsed)) return undefined;
+  const commands = (parsed as { commands: unknown }).commands;
+  if (!Array.isArray(commands)) return undefined;
+  const result: SlashCommandOption[] = [];
+  for (const entry of commands) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const { name, description } = entry as { name?: unknown; description?: unknown };
+    if (typeof name !== "string" || typeof description !== "string") return undefined;
+    result.push({ name, description });
+  }
+  return result;
+}
+
+/** Parses an `agent-changed` SSE payload — same `{ kind, label }` shape `POST /api/agent/select`'s 200 response and `GET /api/agent`'s `agents[]` entries use. Malformed → dropped (errors over fallbacks). */
+function parseAgentChangedEventData(event: Event): AgentChangedEvent | undefined {
+  const data = (event as MessageEvent).data;
+  if (typeof data !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const { kind, label } = parsed as { kind?: unknown; label?: unknown };
+  if (kind !== "claude" && kind !== "codex") return undefined;
+  if (typeof label !== "string") return undefined;
+  return { kind, label };
 }
 
 /** Parses an `export` SSE payload — same shape `export/job.ts`'s `ExportEvent` sends. An unparseable/malformed payload (or an unrecognised `state`) is dropped, never fabricated (errors over fallbacks). */

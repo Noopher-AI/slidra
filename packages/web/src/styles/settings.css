@@ -1,0 +1,256 @@
+/* ═══════════════════════════════════════════════════════════════
+   Settings dialog (Plan §3.6/D2): mask + centred dialog copied from
+   rail.css's .outline-modal-* rules (same shape, renamed) — a plain
+   fixed/inset/grid mask, not the anchored-popover shape use-floating-layer.ts's
+   consumers use.
+   ═══════════════════════════════════════════════════════════════ */
+
+.settings-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: var(--s-overlay);
+}
+
+.settings-dialog {
+  width: calc(var(--panel-w) * 2);
+  max-width: 90vw;
+  max-height: 80vh;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border-radius: var(--radius-xl-dialog);
+  box-shadow: var(--shadow-dialog);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.settings-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-dialog-title {
+  margin: 0;
+  font-size: var(--text-lg-dialog);
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.settings-dialog-close {
+  width: var(--control-h-compact);
+  height: var(--control-h-compact);
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--ink-500);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.settings-dialog-close:hover {
+  background: var(--surface-2);
+  color: var(--ink-700);
+}
+
+.settings-dialog-body {
+  display: flex;
+  gap: var(--space-8);
+  min-height: 0;
+}
+
+.settings-tabs {
+  flex: none;
+  width: calc(var(--panel-w) / 4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.settings-tab {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--ink-700);
+  font-size: var(--text-base);
+  font-weight: 600;
+  text-align: left;
+}
+.settings-tab:hover {
+  background: var(--surface-1);
+}
+.settings-tab[aria-selected="true"] {
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+}
+
+.settings-tab-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* ── Agent 分頁（AgentTab.tsx） ── */
+
+.agent-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.agent-tab-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-tab-probe-button {
+  height: var(--control-h);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.agent-tab-probe-button:not(:disabled):hover {
+  border-color: var(--ink-300);
+  background: var(--surface-0);
+}
+
+.agent-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.agent-card {
+  padding: var(--space-6);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.agent-card-label {
+  font-size: var(--text-md-panel-title);
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.agent-card-in-use-badge {
+  padding: calc(var(--space-1) / 2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  font-size: var(--text-xs-hint);
+  font-weight: 700;
+}
+
+.agent-card-cli-badge {
+  color: var(--ink-400);
+  font-size: var(--text-xs-hint);
+}
+
+.agent-card-status {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+
+.agent-card-detail {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--brand-red-tint);
+  border-radius: var(--radius-md-segmented);
+  color: var(--ink-900);
+  font-size: var(--text-xs-hint);
+}
+
+.agent-card-login {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.agent-card-login-command {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-1);
+  border-radius: var(--radius-sm);
+  color: var(--ink-700);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card-copy-button {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.agent-card-copy-button:hover {
+  border-color: var(--ink-300);
+}
+
+.agent-card-copy-error {
+  color: var(--brand-red-hover);
+  font-size: var(--text-xs-hint);
+}
+
+.agent-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.agent-card-use-button {
+  height: var(--control-h);
+  padding-inline: var(--space-6);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.agent-card-use-button:not(:disabled):hover {
+  background: var(--brand-red-hover);
+}
+.agent-card-use-button:disabled {
+  background: var(--ink-200);
+}
+
+.agent-card-frozen-hint {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: var(--text-xs-hint);
+}
+
+.agent-card-error,
+.agent-tab-switch-error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--brand-red-tint);
+  border-radius: var(--radius-md-segmented);
+  color: var(--ink-900);
+  font-size: var(--text-sm);
+}

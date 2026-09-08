@@ -8,7 +8,7 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
+import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type StartedServer } from "./helpers/launch.js";
 
 /**
  * NOOP-60/#197 驗收條件第 4 條：「Undo／Redo 按鈕與快捷鍵透過 CLI 生效，
@@ -212,10 +212,10 @@ it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/und
     });
     await page.goto(frozen.server.url);
     await page.frameLocator("iframe.slide-frame").locator("svg text").first().waitFor({ timeout: 30_000 });
-    await expect.poll(() => page.locator(".agent-dot").textContent().catch(() => null), { timeout: 30_000 }).toContain("connected");
+    await waitForAgentConnected(page);
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input input").fill("改標題");
+    await page.locator(".chat-input textarea").fill("改標題");
     await page.locator(".chat-input button").click();
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
