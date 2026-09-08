@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "typecheck": "tsc -b && tsc -p packages/web --noEmit",
     "verify:setup": "./quick_start.sh"
