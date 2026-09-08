@@ -5,14 +5,15 @@
 //! `registry` submodule now also writes `projects.json` ([E4.T4]:
 //! `new`/`open`/`pack` need to register/update a presentation), and
 //! `write.rs` holds the content-write doors (`assertSlidePathListed`,
-//! `write_presentation_file` and friends). Container packing/unpacking
-//! lives in `container.rs`; format-version migration lives in `migrate.rs`.
-//! NOOP-281/F5 adds `list_presentation_entries` (`asset import`'s
-//! conflict-free-filename scan) directly to this file, and a `fonts`
-//! submodule for a presentation's embedded font book — every other write
-//! this ticket's 26 commands need (`write_presentation_file`/
-//! `create_presentation_file`/`assert_slide_path_listed`) reuses `write.rs`'s
-//! existing doors rather than adding its own.
+//! `write_presentation_file` and friends, plus — as of [E4.T5] —
+//! `require_slide` and the per-presentation clipboard file I/O). Container
+//! packing/unpacking lives in `container.rs`; format-version migration lives
+//! in `migrate.rs`. NOOP-281/F5 adds `list_presentation_entries` (`asset
+//! import`'s conflict-free-filename scan) directly to this file, and a
+//! `fonts` submodule for a presentation's embedded font book — every other
+//! write this crate's commands need (`write_presentation_file`/
+//! `create_presentation_file`/`assert_slide_path_listed`/`require_slide`)
+//! reuses `write.rs`'s existing doors rather than adding its own.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -32,8 +33,8 @@
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
 //! - `fonts` — a presentation's embedded font book (see `fonts.rs`).
-//! - `write` — `assert_slide_path_listed`/`write_presentation_file` and
-//!   friends (see `write.rs`).
+//! - `write` — `assert_slide_path_listed`/`write_presentation_file`/
+//!   `require_slide` and the clipboard file I/O (see `write.rs`).
 //! - `list_presentation_entries(id, virtual_path) -> CoMotionResult<Vec<String>>`
 //!   — `asset import`'s conflict-free-filename scan of `assets/`/`assets/data/`.
 

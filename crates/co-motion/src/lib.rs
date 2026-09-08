@@ -19,6 +19,7 @@ pub mod container;
 pub mod effects;
 pub mod errors;
 pub mod fallback;
+pub mod fonts;
 pub mod geometry;
 pub mod history;
 pub mod http;

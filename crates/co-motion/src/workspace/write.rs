@@ -1,29 +1,59 @@
-//! Content-write doors, ported from `packages/core/src/workspace.ts` lines
-//! 549-603 and 1095-1157: `write_presentation_file`/
-//! `write_presentation_file_without_history`/`create_presentation_file`/
-//! `delete_presentation_file`, plus `assertSlidePathListed` (confirming a
-//! virtual path is one of the presentation's declared slides/templates
-//! before any of the doors below touch it — this crate's first content
-//! write path, `effect add`/`remove`/`move`/`set` [E4.T7]). Every
-//! content-writing command in this crate routes through one of these doors,
-//! so undo/redo is free (`history.rs`'s staging API) without each command
-//! writing its own inverse logic.
+//! The write half of `packages/core/src/workspace.ts`. `write_presentation_file`
+//! (the one door every content-writing command in this ticket goes through),
+//! `assert_slide_path_listed` (the widened slide-or-template membership
+//! check every one of them opens with), and the per-presentation clipboard
+//! file's raw I/O (`workspace.ts:1298-1322`) are this ticket's own additions.
+//! `write_presentation_file_without_history` (`presentation canvas set`'s
+//! one exception door), `create_presentation_file` (`slide add`/`template
+//! add`'s new-file door), and `delete_presentation_file` (`slide delete`/
+//! `template delete`'s door) predate this ticket ([E4.T7]/F3) and are carried
+//! over unchanged in spirit — every content-writing command in this crate
+//! routes through one of these doors, so undo/redo is free (`history.rs`'s
+//! staging API) without each command writing its own inverse logic.
+//! `workspace/mod.rs`'s doc comment ("This module WRITES NOTHING") predates
+//! all of this — see this file for the write path that comment now points to.
+//!
+//! Bundles the four-step boilerplate every one of TS's per-command write
+//! wrappers (`setElementText`, `addTextBox`, `insertSlideElement`, ...)
+//! repeats verbatim — resolve the work dir, confirm the real file exists,
+//! confirm it's a listed slide/template, read it — into one `require_slide`
+//! call, so this ticket's ~19 `element`/`text`/`textbox` command handlers
+//! don't each hand-roll the same four lines.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::history;
-use crate::workspace::project::{ProjectJson, read_project_json, read_template_entries};
-use crate::workspace::{self, virtual_fs};
+use crate::workspace::project::{self, ProjectJson};
+use crate::workspace::virtual_fs;
+use crate::workspace::{self};
+use std::path::{Path, PathBuf};
 
-/// Confirms `virtual_path` is one of the presentation's declared slides
-/// (`project.json`'s `slides` array) or templates (ADR-0013 widening: a
-/// template is edited with exactly the same element/effect commands a
-/// slide is). Neither list is required to exist.
+/// A slide (or template) resolved and read, ready for a pure mutation
+/// function to transform. Bundles what `require_slide` had to look up along
+/// the way — `work_dir` (needed again by `write_presentation_file`) and
+/// `project` (some commands, e.g. `element style set`'s table-container
+/// check, need more of it than just membership) — so a caller never has to
+/// re-derive either.
+#[derive(Debug)]
+pub struct RequiredSlide {
+    pub work_dir: PathBuf,
+    pub project: ProjectJson,
+    pub content: String,
+}
+
+/// Confirms `virtual_path` is one of the presentation's declared slides OR
+/// templates (ADR-0013 widened this from slides-only), returning the parsed
+/// `project.json` so the caller doesn't read it twice. `comment *`'s own,
+/// narrower "slides only, no templates" rule (plan section 3.7 / 4 table E)
+/// is intentionally NOT this function — it lives next to `commands::comment`
+/// as its own tiny check, mirroring `slide-ops.ts`'s local `requireSlidePath`
+/// being a distinct, narrower function from this one (`workspace.ts`'s
+/// `assertSlidePathListed`), not a parameterization of it.
 pub fn assert_slide_path_listed(
-    work_dir: &std::path::Path,
+    work_dir: &Path,
     virtual_path: &str,
 ) -> CoMotionResult<ProjectJson> {
-    let project = read_project_json(work_dir)?;
-    let templates = read_template_entries(&project);
+    let project = project::read_project_json(work_dir)?;
+    let templates = project::read_template_entries(&project);
     let is_slide = project.slides.iter().any(|slide| slide == virtual_path);
     let is_template = templates
         .iter()
@@ -36,23 +66,53 @@ pub fn assert_slide_path_listed(
     Ok(project)
 }
 
-/// The single door every content-writing command must use. Snapshots the
-/// file's current content into undo history (committed durable) BEFORE the
-/// content write itself — so nothing makes the new content visible until
-/// the undo group that reverts it is already durable. If the content write
-/// then fails, the commit is unwound.
+/// Resolves, membership-checks, and reads one slide/template — the shared
+/// first step of every `element`/`text`/`textbox` command handler. Order
+/// matters and is preserved from the TS original: a missing real file is
+/// reported before "not a slide" (`workspace.ts:521-522`'s comment), and
+/// both are reported before the file is ever read.
+pub fn require_slide(id: &str, slide_path: &str) -> CoMotionResult<RequiredSlide> {
+    let work_dir = workspace::resolve_work_dir(id)?;
+    virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    let project = assert_slide_path_listed(&work_dir, slide_path)?;
+    let content = virtual_fs::read_virtual_file(&work_dir, slide_path)?;
+    Ok(RequiredSlide {
+        work_dir,
+        project,
+        content,
+    })
+}
+
+/// The single door every content-writing command must use (plan section
+/// 0/3.2; NOOP-337's write ordering). Snapshots the file's current content
+/// into undo history before overwriting it, so any command that writes
+/// through here gets undo for free without writing its own inverse logic.
+///
+/// The undo group is committed BEFORE the content write itself (not after —
+/// see `history::commit_snapshot_entries`'s doc for why): a caller that
+/// polls with a fixed delay after issuing a command could otherwise observe
+/// the new content on disk before the commit that makes `undo` recognize
+/// it, and see `undo` reject with "沒有可復原的操作" even though the edit it
+/// means to revert is already visible. If the content write itself then
+/// fails, the commit is unwound (`revert_committed_entries`) — a failed
+/// command must not occupy an undo slot, and it must not leave an orphan
+/// snapshot file either.
 pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> CoMotionResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
     let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
-    let entries = history::stage_snapshot_entries(id, &[virtual_path.to_string()])?;
-    let commit = history::commit_snapshot_entries(id, entries.clone())?;
+    let entries = history::stage_snapshot_entries(id, &[virtual_path])?;
+    let history::CommitResult {
+        previous_stack,
+        pending_deletion_snapshot_ids,
+    } = history::commit_snapshot_entries(id, entries.clone())?;
+
     match std::fs::write(&real_path, content) {
         Ok(()) => {
-            history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
+            history::finalize_committed_entries(id, &pending_deletion_snapshot_ids)?;
             Ok(())
         }
         Err(_) => {
-            history::revert_committed_entries(id, &entries, commit.previous_stack)?;
+            history::revert_committed_entries(id, &entries, &previous_stack)?;
             // real_path is a real filesystem path (ADR-0004) — never quote it.
             Err(CoMotionError::invalid(format!(
                 "寫入投影片時發生錯誤：{virtual_path}"
@@ -61,9 +121,9 @@ pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> C
     }
 }
 
-/// The one exception door: only `presentation canvas set` uses this — page
-/// size never occupies an undo step. No snapshot/commit bracket at all, so
-/// nothing is pushed onto the undo stack.
+/// The one exception door: only `presentation canvas set` (F3's command)
+/// uses this — page size never occupies an undo step. No snapshot/commit
+/// bracket at all, so nothing is pushed onto the undo stack.
 pub fn write_presentation_file_without_history(
     id: &str,
     virtual_path: &str,
@@ -121,7 +181,7 @@ pub fn create_presentation_file(
 pub fn delete_presentation_file(id: &str, virtual_path: &str) -> CoMotionResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
     let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
-    let entries = history::stage_snapshot_entries(id, &[virtual_path.to_string()])?;
+    let entries = history::stage_snapshot_entries(id, &[virtual_path])?;
     match std::fs::remove_file(&real_path) {
         Ok(()) => {
             let commit = history::commit_snapshot_entries(id, entries)?;
@@ -138,11 +198,47 @@ pub fn delete_presentation_file(id: &str, virtual_path: &str) -> CoMotionResult<
     }
 }
 
+/// `<CO_MOTION_HOME>/clipboard/<presentationId>.json` — sibling to
+/// `history/<id>/`, outside the working directory (packing the working dir
+/// into `.comot` must never leak clipboard contents). Per-id filing is the
+/// entire mechanism enforcing "same presentation only".
+fn clipboard_file_path(home: &Path, id: &str) -> PathBuf {
+    home.join("clipboard").join(format!("{id}.json"))
+}
+
+/// Reads the presentation's clipboard file's raw text. Returns `Err` with
+/// "剪貼簿是空的" when the file has never been written (ENOENT) — the
+/// caller (`element paste`, P7) is what turns that into a `Failed`
+/// `CommandResult`. JSON-parsing the text into a typed payload, and the
+/// "剪貼簿資料已損毀" error a parse failure produces, is deliberately NOT
+/// this function's job — it belongs to whichever typed payload shape reads
+/// it (`element::clipboard::ClipboardPayload`, P7), which this ticket's
+/// foundation phase does not yet define.
+pub fn read_clipboard_file(id: &str) -> CoMotionResult<String> {
+    let home = workspace::resolve_home();
+    match std::fs::read_to_string(clipboard_file_path(&home, id)) {
+        Ok(text) => Ok(text),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            Err(CoMotionError::invalid("剪貼簿是空的"))
+        }
+        Err(_) => Err(CoMotionError::invalid("無法讀取剪貼簿")),
+    }
+}
+
+/// Writes `contents` (already-serialized JSON) to the presentation's
+/// clipboard file, creating the `clipboard/` directory on first use. Never
+/// touches undo history — the clipboard file is not presentation content.
+pub fn write_clipboard_file(id: &str, contents: &str) -> CoMotionResult<()> {
+    let home = workspace::resolve_home();
+    let dir = home.join("clipboard");
+    std::fs::create_dir_all(&dir).map_err(|_| CoMotionError::invalid("無法寫入剪貼簿"))?;
+    std::fs::write(clipboard_file_path(&home, id), contents)
+        .map_err(|_| CoMotionError::invalid("無法寫入剪貼簿"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry;
-    use std::path::{Path, PathBuf};
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -153,36 +249,31 @@ mod tests {
         dir
     }
 
-    fn write_project_json(work_dir: &Path, slides: &[&str], templates: &[&str]) {
-        let slides_json = serde_json::to_string(slides).unwrap();
-        let templates_json = serde_json::to_string(templates).unwrap();
-        let json = format!(
-            r#"{{"formatVersion":4,"name":"Test","canvas":{{"width":1280,"height":720}},"slides":{slides_json},"templates":{templates_json}}}"#
-        );
-        std::fs::write(work_dir.join("project.json"), json).unwrap();
-    }
-
     struct Fixture {
         home: PathBuf,
         work: PathBuf,
-        id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
-        fn new(label: &str) -> Self {
-            let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
+        fn new(label: &str, test_id: &str) -> Self {
+            let guard = workspace::registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let work = temp_dir(&format!("{label}-work"));
-            let id = format!("test-{label}");
+            let work_dir_json =
+                serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+            let id_json = serde_json::to_string(test_id).unwrap();
+            std::fs::write(
+                home.join("projects.json"),
+                format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#),
+            )
+            .unwrap();
             unsafe {
                 std::env::set_var("CO_MOTION_HOME", &home);
             }
-            registry::register_for_test(&home, &id, &work);
             Fixture {
                 home,
                 work,
-                id,
                 _guard: guard,
             }
         }
@@ -198,110 +289,189 @@ mod tests {
         }
     }
 
-    #[test]
-    fn assert_slide_path_listed_accepts_a_declared_slide() {
-        let fixture = Fixture::new("slide-ok");
-        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
-        assert_slide_path_listed(&fixture.work, "slides/001.svg").unwrap();
+    fn write_project_with_slide_and_template(work: &Path) {
+        std::fs::write(
+            work.join("project.json"),
+            r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},
+            "slides":["slides/001.svg"],"templates":["templates/001.svg"]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(work.join("slides")).unwrap();
+        std::fs::create_dir_all(work.join("templates")).unwrap();
+        std::fs::write(work.join("slides/001.svg"), "<svg>ORIGINAL</svg>").unwrap();
+        std::fs::write(work.join("templates/001.svg"), "<svg>TEMPLATE</svg>").unwrap();
     }
 
     #[test]
-    fn assert_slide_path_listed_accepts_a_declared_template() {
-        let fixture = Fixture::new("template-ok");
-        write_project_json(&fixture.work, &[], &["templates/001.svg"]);
-        assert_slide_path_listed(&fixture.work, "templates/001.svg").unwrap();
-    }
-
-    #[test]
-    fn assert_slide_path_listed_rejects_an_unlisted_path() {
-        let fixture = Fixture::new("unlisted");
-        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
-        let err = assert_slide_path_listed(&fixture.work, "project.json").unwrap_err();
+    fn assert_slide_path_listed_accepts_both_slides_and_templates() {
+        let work = temp_dir("listed");
+        write_project_with_slide_and_template(&work);
+        assert!(assert_slide_path_listed(&work, "slides/001.svg").is_ok());
+        assert!(assert_slide_path_listed(&work, "templates/001.svg").is_ok());
+        let err = assert_slide_path_listed(&work, "project.json").unwrap_err();
         assert_eq!(err.message(), "不是投影片：project.json");
+        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
-    fn write_presentation_file_overwrites_and_is_undoable() {
-        let fixture = Fixture::new("write-basic");
-        std::fs::write(fixture.work.join("project.json"), "OLD").unwrap();
-        write_presentation_file(&fixture.id, "project.json", "NEW").unwrap();
+    fn require_slide_reports_a_missing_real_file_before_not_a_slide() {
+        let work = temp_dir("missing-real-file");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("missing-real-file", "pid-missing-real");
+        std::fs::rename(&fixture.work, "/nonexistent-should-not-be-hit").ok();
+        // Re-point the registry at `work` (created above, separately from
+        // the fixture's own work dir) so the ONLY thing under test is
+        // "slides/999.svg" not existing on disk.
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-missing-real":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        let err = require_slide("pid-missing-real", "slides/999.svg").unwrap_err();
+        // resolve_virtual_file_path's "找不到檔案" error, not
+        // assert_slide_path_listed's "不是投影片" — proves the real-file
+        // check ran first.
+        assert_eq!(err.message(), "找不到檔案：slides/999.svg");
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn write_presentation_file_round_trips_through_undo() {
+        let work = temp_dir("write-roundtrip");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("write-roundtrip", "pid-write-roundtrip");
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-write-roundtrip":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        let slide = require_slide("pid-write-roundtrip", "slides/001.svg").unwrap();
+        assert_eq!(slide.content, "<svg>ORIGINAL</svg>");
+        write_presentation_file("pid-write-roundtrip", "slides/001.svg", "<svg>EDITED</svg>")
+            .unwrap();
         assert_eq!(
-            std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
-            "NEW"
+            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            "<svg>EDITED</svg>"
         );
 
-        let undo_result = crate::history::undo(&fixture.id).unwrap();
-        assert_eq!(undo_result.restored_paths, vec!["project.json".to_string()]);
-        assert_eq!(
-            std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
-            "OLD"
-        );
-    }
-
-    #[test]
-    fn write_presentation_file_missing_real_file_is_not_found() {
-        let fixture = Fixture::new("write-missing");
-        write_project_json(&fixture.work, &["slides/001.svg"], &[]);
-        let err = write_presentation_file(&fixture.id, "slides/001.svg", "x").unwrap_err();
-        assert!(matches!(err, CoMotionError::NotFound(_)));
-    }
-
-    #[test]
-    fn write_presentation_file_without_history_does_not_occupy_undo_step() {
-        let fixture = Fixture::new("write-no-history");
-        std::fs::write(fixture.work.join("project.json"), "OLD").unwrap();
-        write_presentation_file_without_history(&fixture.id, "project.json", "NEW").unwrap();
-        assert_eq!(
-            std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
-            "NEW"
-        );
-
-        let err = crate::history::undo(&fixture.id).unwrap_err();
-        assert_eq!(err.message(), "沒有可復原的操作");
-    }
-
-    #[test]
-    fn create_presentation_file_rejects_existing_path() {
-        let fixture = Fixture::new("create-exists");
-        std::fs::write(fixture.work.join("project.json"), "X").unwrap();
-        let err = create_presentation_file(&fixture.id, "project.json", b"Y").unwrap_err();
-        assert_eq!(err.message(), "檔案已存在：project.json");
-    }
-
-    #[test]
-    fn create_presentation_file_writes_new_file_and_undo_deletes_it() {
-        let fixture = Fixture::new("create-new");
-        std::fs::write(fixture.work.join("project.json"), "{}").unwrap();
-        create_presentation_file(&fixture.id, "assets/new.png", b"\x89PNG").unwrap();
-        assert_eq!(
-            std::fs::read(fixture.work.join("assets/new.png")).unwrap(),
-            b"\x89PNG"
-        );
-
-        let undo_result = crate::history::undo(&fixture.id).unwrap();
-        assert_eq!(
-            undo_result.restored_paths,
-            vec!["assets/new.png".to_string()]
-        );
-        assert!(!Path::new(&fixture.work).join("assets/new.png").exists());
-    }
-
-    #[test]
-    fn delete_presentation_file_removes_and_undo_restores() {
-        let fixture = Fixture::new("delete-basic");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        std::fs::write(fixture.work.join("slides/001.svg"), b"<svg/>").unwrap();
-        delete_presentation_file(&fixture.id, "slides/001.svg").unwrap();
-        assert!(!fixture.work.join("slides/001.svg").exists());
-
-        let undo_result = crate::history::undo(&fixture.id).unwrap();
+        let undo_result = history::undo("pid-write-roundtrip").unwrap();
         assert_eq!(
             undo_result.restored_paths,
             vec!["slides/001.svg".to_string()]
         );
         assert_eq!(
-            std::fs::read(fixture.work.join("slides/001.svg")).unwrap(),
-            b"<svg/>"
+            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            "<svg>ORIGINAL</svg>"
         );
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn write_presentation_file_without_history_does_not_occupy_undo_step() {
+        let work = temp_dir("write-no-history");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("write-no-history", "pid-write-no-history");
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-write-no-history":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        write_presentation_file_without_history(
+            "pid-write-no-history",
+            "slides/001.svg",
+            "<svg>EDITED</svg>",
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            "<svg>EDITED</svg>"
+        );
+
+        let err = history::undo("pid-write-no-history").unwrap_err();
+        assert_eq!(err.message(), "沒有可復原的操作");
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn create_presentation_file_rejects_existing_path_and_undo_deletes_a_created_one() {
+        let work = temp_dir("create");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("create", "pid-create");
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-create":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        let err = create_presentation_file("pid-create", "slides/001.svg", b"Y").unwrap_err();
+        assert_eq!(err.message(), "檔案已存在：slides/001.svg");
+
+        create_presentation_file("pid-create", "assets/new.png", b"\x89PNG").unwrap();
+        assert_eq!(
+            std::fs::read(work.join("assets/new.png")).unwrap(),
+            b"\x89PNG"
+        );
+
+        let undo_result = history::undo("pid-create").unwrap();
+        assert_eq!(undo_result.restored_paths, vec!["assets/new.png".to_string()]);
+        assert!(!work.join("assets/new.png").exists());
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn delete_presentation_file_removes_and_undo_restores() {
+        let work = temp_dir("delete");
+        write_project_with_slide_and_template(&work);
+        let fixture = Fixture::new("delete", "pid-delete");
+        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
+        std::fs::write(
+            fixture.home.join("projects.json"),
+            format!(r#"{{"pid-delete":{{"workDir":{work_dir_json}}}}}"#),
+        )
+        .unwrap();
+
+        delete_presentation_file("pid-delete", "slides/001.svg").unwrap();
+        assert!(!work.join("slides/001.svg").exists());
+
+        let undo_result = history::undo("pid-delete").unwrap();
+        assert_eq!(
+            undo_result.restored_paths,
+            vec!["slides/001.svg".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            "<svg>ORIGINAL</svg>"
+        );
+
+        drop(fixture);
+        std::fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn clipboard_file_round_trips_and_missing_file_is_reported_as_empty() {
+        let fixture = Fixture::new("clipboard", "pid-clipboard");
+        let err = read_clipboard_file("pid-clipboard").unwrap_err();
+        assert_eq!(err.message(), "剪貼簿是空的");
+
+        write_clipboard_file("pid-clipboard", r#"{"sourceSlidePath":"slides/001.svg"}"#).unwrap();
+        let read_back = read_clipboard_file("pid-clipboard").unwrap();
+        assert_eq!(read_back, r#"{"sourceSlidePath":"slides/001.svg"}"#);
+
+        drop(fixture);
     }
 }
