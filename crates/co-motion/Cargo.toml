@@ -2,6 +2,7 @@
 name = "co-motion"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85.0"
 
 [lib]
 name = "co_motion"
@@ -15,3 +16,4 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+ureq = "2"
