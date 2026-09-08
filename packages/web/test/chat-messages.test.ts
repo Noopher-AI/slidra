@@ -4,6 +4,7 @@ import {
   appendCommandMessage,
   appendMessage,
   appendNoticeMessage,
+  appendSystemMessage,
   markUnfinishedCommandsInterrupted,
   updateCommandMessage,
   type ChatMessage,
@@ -134,6 +135,21 @@ describe("chat-messages: a stream interruption is its own fact (ticket #19)", ()
     expect(appendNoticeMessage(messages, 1, "連線中斷")).toEqual([
       { id: 0, role: "author", text: "改標題" },
       { id: 1, role: "notice", text: "連線中斷" },
+    ]);
+  });
+});
+
+// [E3.T5] §7 決定 D3: a system message ("switched to agent X") is not a
+// NoticeMessage — that type's existing meaning is "the stream broke, a
+// turn's ending was lost" (role="alert"). A routine switch confirmation is
+// role="status" and must stay distinguishable from a lost-turn notice.
+describe("chat-messages: a system message is neither speech nor a lost-turn notice ([E3.T5] D3)", () => {
+  it("appendSystemMessage records a system event, with its own id", () => {
+    const messages = appendMessage([], 0, "author", "改標題");
+
+    expect(appendSystemMessage(messages, 1, "已切換到 Codex，接下來的訊息由它處理")).toEqual([
+      { id: 0, role: "author", text: "改標題" },
+      { id: 1, role: "system", text: "已切換到 Codex，接下來的訊息由它處理" },
     ]);
   });
 });

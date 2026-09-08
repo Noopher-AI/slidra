@@ -346,6 +346,42 @@ describe("startLiveReload", () => {
     expect(onCommandsChange).not.toHaveBeenCalled();
   });
 
+  it("calls onAgentChanged with the parsed agent-changed payload ([E3.T5], NOOP-230 §4.4)", () => {
+    let fake: FakeEventSource | undefined;
+    const onAgentChanged = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onAgentChanged,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-changed", { kind: "codex", label: "Codex" });
+
+    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "codex", label: "Codex" });
+  });
+
+  it("drops a malformed agent-changed payload instead of fabricating a value ([E3.T5])", () => {
+    let fake: FakeEventSource | undefined;
+    const onAgentChanged = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onAgentChanged,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-changed", { kind: "not-a-real-kind", label: "Codex" });
+    fake!.emit("agent-changed", { kind: "codex" }); // missing label
+    fake!.emit("agent-changed", {});
+
+    expect(onAgentChanged).not.toHaveBeenCalled();
+  });
+
   it("ignores events of a different type", () => {
     let fake: FakeEventSource | undefined;
     const onChange = vi.fn();

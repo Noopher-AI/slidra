@@ -63,7 +63,23 @@ export interface NoticeMessage {
   text: string;
 }
 
-export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage;
+/**
+ * Something that happened to the conversation itself, said by nobody —
+ * same shape as {@link NoticeMessage}, but a different fact ([E3.T5] §7
+ * decision D3): a routine confirmation ("switched to agent X"), not a lost
+ * turn. Kept as its own type rather than reusing `NoticeMessage` because
+ * that type's rendering (`role="alert"`, assertive) is specifically for
+ * "the stream broke, that turn's ending is gone" — an ordinary switch
+ * confirmation must render `role="status"` instead, and merging the two
+ * would make that distinction impossible to keep straight later.
+ */
+export interface SystemMessage {
+  id: number;
+  role: "system";
+  text: string;
+}
+
+export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage | SystemMessage;
 
 /** Appends a brand-new message (author or agent) with the given id. */
 export function appendMessage(
@@ -90,6 +106,11 @@ export function appendChunkToMessage(messages: ChatMessage[], id: number, text: 
 /** Appends a notice about the conversation itself — a lost turn, not speech. */
 export function appendNoticeMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
   return [...messages, { id, role: "notice", text }];
+}
+
+/** Appends a system message — a routine fact about the conversation (e.g. an agent switch), not a lost turn. */
+export function appendSystemMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
+  return [...messages, { id, role: "system", text }];
 }
 
 /**
