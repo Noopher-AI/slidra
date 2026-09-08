@@ -8,6 +8,9 @@ import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { packDirectory } from "@co-motion/core";
 import { startServe, type RunningServer } from "../../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../../packages/server/src/agent/session.js";
+import type { AgentKind } from "../../packages/server/src/agent/adapters.js";
+import type { AgentSource } from "../../packages/server/src/agent/manager.js";
+import type { CommandRunner } from "../../packages/server/src/agent/probe.js";
 
 const e2eDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = path.join(e2eDir, "..");
@@ -53,6 +56,35 @@ export interface StartServerOptions {
   agentFixture?: string;
   /** [E2.T8]: merged over the default agent env (`E2E_PRESENTATION_ID`/`E2E_NEW_TITLE`, both still set unless overridden here). */
   agentEnv?: Record<string, string>;
+  /**
+   * [E3.T5]: what `serve` starts already pointed at — same field
+   * `ServeOptions.initialAgent` (`serve.ts`). Given at all, this wins over
+   * the default `agent` config above (`serve.ts`'s own precedence) — used
+   * to reach the "unset"/"cli"-sourced starting points `agentEnv` alone
+   * cannot express.
+   */
+  initialAgent?: { kind: AgentKind | null; source: AgentSource };
+  /**
+   * [E3.T5]: injected login-probe runner (`probe.ts`'s `CommandRunner` seam)
+   * — given at all, `assumeLoggedIn` is never set (`serve.ts`'s own
+   * precedence), so login status is 100% controlled by this function
+   * instead of the default `agent` config's real-CLI-probing shortcut.
+   */
+  runCommand?: CommandRunner;
+  /**
+   * [E3.T5]: resolves each `AgentKind` to the adapter `serve` spawns for it
+   * — required alongside `runCommand` so a select doesn't fall through to
+   * the real `@zed-industries/*` adapters. Takes this call's own
+   * `presentationId` as a second argument (this helper's own convenience,
+   * not `ServeOptions.agentManager.resolveAdapter`'s real signature —
+   * translated to it below): `AgentManager`'s constructor calls
+   * `resolveAdapter` *synchronously* whenever `initialAgent.kind` is
+   * non-null, which is before `startServerFor` has returned `presentationId`
+   * to its caller — a fixture needing it (e.g.
+   * `editing-fake-acp-agent.mjs`'s `E2E_PRESENTATION_ID`) has no other way
+   * to receive the real value in time.
+   */
+  resolveAdapter?: (kind: AgentKind, presentationId: string) => AgentAdapterConfig;
 }
 
 export interface StartedServer {
@@ -64,7 +96,16 @@ export interface StartedServer {
 
 /** Packs `deckDir` (optionally with fonts injected) and starts a real server against it. */
 export async function startServerFor(options: StartServerOptions): Promise<StartedServer> {
-  const { deckDir, prefix, injectFonts = false, agentFixture: agentFixtureOverride, agentEnv } = options;
+  const {
+    deckDir,
+    prefix,
+    injectFonts = false,
+    agentFixture: agentFixtureOverride,
+    agentEnv,
+    initialAgent,
+    runCommand,
+    resolveAdapter,
+  } = options;
   const coMotionHome = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-home-`));
   const comotDir = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-files-`));
   process.env.CO_MOTION_HOME = coMotionHome;
@@ -98,7 +139,17 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({
+    registry,
+    presentationId,
+    port: 0,
+    agent,
+    initialAgent,
+    agentManager: {
+      runCommand,
+      resolveAdapter: resolveAdapter && ((kind) => resolveAdapter(kind, presentationId)),
+    },
+  });
 
   return {
     server,
