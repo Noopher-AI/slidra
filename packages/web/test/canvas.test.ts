@@ -447,6 +447,48 @@ const playDeckMarkup: Record<string, string> = {
   "slides/002.svg": '<svg data-testid="s2"><rect id="el-b"/></svg>',
 };
 
+// [E4.T7]: `render()`/`renderPlay()` both now fetch a slide's effect plan
+// from `GET /api/effects/<path>` (`fetchSlideEffectPlan`) instead of
+// deriving it locally from the already-fetched markup — every fetch mock
+// in this file that exercises play mode or the animate panel must answer
+// that route too, or `computePlayerPlan`'s fetch rejects and the test
+// falls into the same "effect list failed to parse" fallback path a
+// genuinely broken deck would (see the "效果清單無法解析時" test below,
+// which relies on exactly that fallback — deliberately, via its own
+// `/api/effects/` mock returning a non-2xx response).
+interface EffectRouteFixture {
+  target: string;
+  family: string;
+  effect: string;
+  start: string;
+  duration?: number;
+  delay?: number;
+}
+const DEFAULT_TRANSITION_FIXTURE = {
+  enter: { effect: "none", duration: 0.6 },
+  exit: { effect: "none", duration: 0.5 },
+};
+/** Builds a `GET /api/effects/` response `Response`, 1-based `index` and grouped into steps like the real route. */
+function effectsRouteResponse(effects: EffectRouteFixture[]): Response {
+  const wireEffects = effects.map((effect, i) => ({ duration: 0.6, delay: 0, ...effect, index: i + 1 }));
+  const steps: Array<{ effects: typeof wireEffects }> = [];
+  for (const effect of wireEffects) {
+    if (effect.start === "on-click") {
+      steps.push({ effects: [effect] });
+    } else {
+      steps[steps.length - 1]!.effects.push(effect);
+    }
+  }
+  return new Response(JSON.stringify({ effects: wireEffects, steps, transition: DEFAULT_TRANSITION_FIXTURE }), {
+    status: 200,
+  });
+}
+
+const playDeckEffects: Record<string, EffectRouteFixture[]> = {
+  "slides/001.svg": [{ target: "el-a", family: "enter", effect: "fade", start: "on-click" }],
+  "slides/002.svg": [],
+};
+
 function stubPlayDeck(): void {
   vi.stubGlobal(
     "fetch",
@@ -455,9 +497,13 @@ function stubPlayDeck(): void {
       if (url.endsWith("/api/presentation")) {
         return new Response(JSON.stringify(playDeck), { status: 200 });
       }
-      const match = /\/api\/files\/(.+)$/.exec(url);
-      if (match && playDeckMarkup[match[1]]) {
-        return new Response(playDeckMarkup[match[1]], { status: 200 });
+      const filesMatch = /\/api\/files\/(.+)$/.exec(url);
+      if (filesMatch && playDeckMarkup[filesMatch[1]]) {
+        return new Response(playDeckMarkup[filesMatch[1]], { status: 200 });
+      }
+      const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
+      if (effectsMatch && playDeckEffects[effectsMatch[1]]) {
+        return effectsRouteResponse(playDeckEffects[effectsMatch[1]]);
       }
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -544,6 +590,12 @@ describe("mountCanvas 的播放模式", () => {
               <rect id="el-a"/>
             </svg>`,
             { status: 200 },
+          );
+        }
+        if (url.endsWith("/api/effects/slides/001.svg")) {
+          return new Response(
+            JSON.stringify({ error: "第 1 項（target 為 el-a） 的 family 值「build」尚未實作。" }),
+            { status: 500 },
           );
         }
         throw new Error(`unexpected fetch: ${url}`);
@@ -717,6 +769,10 @@ describe("mountCanvas 的播放模式", () => {
   <rect id="el-b"/>
 </svg>`,
     };
+    const noEffectEffects: Record<string, EffectRouteFixture[]> = {
+      "slides/001.svg": [],
+      "slides/002.svg": [{ target: "el-b", family: "enter", effect: "fade", start: "on-click" }],
+    };
 
     vi.stubGlobal(
       "fetch",
@@ -725,9 +781,13 @@ describe("mountCanvas 的播放模式", () => {
         if (url.endsWith("/api/presentation")) {
           return new Response(JSON.stringify(noEffectDeck), { status: 200 });
         }
-        const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && noEffectMarkup[match[1]]) {
-          return new Response(noEffectMarkup[match[1]], { status: 200 });
+        const filesMatch = /\/api\/files\/(.+)$/.exec(url);
+        if (filesMatch && noEffectMarkup[filesMatch[1]]) {
+          return new Response(noEffectMarkup[filesMatch[1]], { status: 200 });
+        }
+        const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
+        if (effectsMatch && noEffectEffects[effectsMatch[1]]) {
+          return effectsRouteResponse(noEffectEffects[effectsMatch[1]]);
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -904,9 +964,13 @@ describe("mountCanvas 的播放模式", () => {
           await slowView;
           return new Response(playDeckMarkup["slides/001.svg"], { status: 200 });
         }
-        const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && playDeckMarkup[match[1]]) {
-          return new Response(playDeckMarkup[match[1]], { status: 200 });
+        const filesMatch = /\/api\/files\/(.+)$/.exec(url);
+        if (filesMatch && playDeckMarkup[filesMatch[1]]) {
+          return new Response(playDeckMarkup[filesMatch[1]], { status: 200 });
+        }
+        const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
+        if (effectsMatch && playDeckEffects[effectsMatch[1]]) {
+          return effectsRouteResponse(playDeckEffects[effectsMatch[1]]);
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -1028,6 +1092,13 @@ describe("mountCanvas 的播放模式", () => {
         }
         if (url.endsWith("/api/files/slides/001.svg")) return new Response(brokenMarkup, { status: 200 });
         if (url.endsWith("/api/files/slides/002.svg")) return new Response(fineMarkup, { status: 200 });
+        if (url.endsWith("/api/effects/slides/001.svg")) {
+          return new Response(
+            JSON.stringify({ error: "第 1 項（target 為 el-a） 的 family 值「build」尚未實作。" }),
+            { status: 500 },
+          );
+        }
+        if (url.endsWith("/api/effects/slides/002.svg")) return effectsRouteResponse([]);
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1135,6 +1206,9 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
             { status: 200 },
           );
         }
+        if (url.endsWith("/api/effects/slides/001.svg")) {
+          return effectsRouteResponse([{ target: "el-a", family: "enter", effect: "fade", start: "on-click" }]);
+        }
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1221,10 +1295,14 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
         if (url.endsWith("/api/presentation")) {
           return new Response(JSON.stringify(deck), { status: 200 });
         }
-        const match = /\/api\/files\/(.+)$/.exec(url);
-        if (match && markup[match[1]]) {
-          return new Response(markup[match[1]], { status: 200 });
+        const filesMatch = /\/api\/files\/(.+)$/.exec(url);
+        if (filesMatch && markup[filesMatch[1]]) {
+          return new Response(markup[filesMatch[1]], { status: 200 });
         }
+        // None of this describe block's fixtures carry a `<comot:effects>`
+        // list (only `<comot:transition>`) — every slide legitimately has
+        // no effects, matching the route's own "never had one" plan (D3).
+        if (/\/api\/effects\/(.+)$/.exec(url)) return effectsRouteResponse([]);
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1393,6 +1471,9 @@ describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
         }
         if (url.endsWith("/api/files/slides/001.svg")) {
           return new Response(hostileMarkup, { status: 200 });
+        }
+        if (url.endsWith("/api/effects/slides/001.svg")) {
+          return effectsRouteResponse([{ target: hostileId, family: "enter", effect: "fade", start: "on-click" }]);
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),

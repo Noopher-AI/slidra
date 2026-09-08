@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -78,8 +78,14 @@ describe("effect add", () => {
     await registry.dispatch("effect add", {
       id, slidePath: "slides/001.svg", elementIds: [a, b], family: "enter", effect: "zoom", start: "after-previous",
     });
-    const listed = await registry.dispatch<{ effects: Array<{ start: string }> }>("effect list", { id, slidePath: "slides/001.svg" });
-    expect(listed.data!.effects.map((item) => item.start)).toEqual(["after-previous", "with-previous"]);
+    // Read back via `cat`, not `effect list`: this fixture's first effect is
+    // deliberately `start="after-previous"` to prove `addEffects` doesn't
+    // force it — but [E4.T7]'s `effect list` now derives `steps` from the
+    // list, which requires the first item to be `on-click` (a genuinely
+    // different, list-level concern from what this test is proving), and
+    // would report this list as damaged.
+    const starts = [...(await readSlide(id)).matchAll(/start="([^"]+)"/g)].map((match) => match[1]);
+    expect(starts).toEqual(["after-previous", "with-previous"]);
   });
 
   it("element-id 不存在時失敗，not-found", async () => {
@@ -189,6 +195,104 @@ describe("effect list on a slide with no effect list", () => {
     const result = await registry.dispatch("effect list", { id, slidePath: "slides/001.svg" });
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/沒有效果清單/);
+  });
+});
+
+// [E4.T7]: `effect list`'s `data` grows `steps`/`transition` — the "step
+// plan" computation this ticket moves out of the browser
+// (`packages/web/src/player-plan.ts`'s former `deriveSteps`) and into this
+// command's own `data`.
+describe("effect list: steps and transition", () => {
+  it("data.steps 依 on-click 分組，data.effects[0].index 是 1-based", async () => {
+    const { id, a, b } = await openWithTwoRects();
+    await registry.dispatch("effect add", { id, slidePath: "slides/001.svg", elementIds: [a], family: "enter", effect: "fade" });
+    await registry.dispatch("effect add", {
+      id, slidePath: "slides/001.svg", elementIds: [b], family: "enter", effect: "zoom", start: "with-previous",
+    });
+    await registry.dispatch("effect add", { id, slidePath: "slides/001.svg", elementIds: [a], family: "exit", effect: "fade-out" });
+
+    const listed = await registry.dispatch<{
+      effects: Array<{ index: number; target: string }>;
+      steps: Array<{ effects: Array<{ target: string }> }>;
+    }>("effect list", { id, slidePath: "slides/001.svg" });
+
+    expect(listed.ok).toBe(true);
+    expect(listed.data!.effects[0].index).toBe(1);
+    expect(listed.data!.effects.map((item) => item.index)).toEqual([1, 2, 3]);
+    // First two effects (on-click, with-previous) share step 1; the third
+    // (on-click) opens step 2.
+    expect(listed.data!.steps).toHaveLength(2);
+    expect(listed.data!.steps[0].effects).toHaveLength(2);
+    expect(listed.data!.steps[1].effects).toHaveLength(1);
+  });
+
+  it("data.transition 在沒有 <comot:transition> 時回預設值", async () => {
+    const { id, a } = await openWithTwoRects();
+    await registry.dispatch("effect add", { id, slidePath: "slides/001.svg", elementIds: [a], family: "enter", effect: "fade" });
+
+    const listed = await registry.dispatch<{
+      transition: { enter: { effect: string; duration: number }; exit: { effect: string; duration: number } };
+    }>("effect list", { id, slidePath: "slides/001.svg" });
+
+    expect(listed.data!.transition).toEqual({
+      enter: { effect: "none", duration: 0.6 },
+      exit: { effect: "none", duration: 0.5 },
+    });
+  });
+});
+
+// [E4.T7] D2 round-trip: this replaces `packages/web/test/effects.test.ts`'s
+// deleted "貼上後 parseEffects 讀得到" case (that test exercised the
+// browser's now-removed namespace-tolerant reader; this one exercises the
+// same underlying guarantee — a pasted effect list is readable — through
+// the command layer `effect list` now serves instead).
+describe("effect list after element copy/paste (D2 round-trip)", () => {
+  it("複製帶效果的元素、貼到沒有效果清單的投影片後，effect list 讀得到", async () => {
+    const slide1 =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+      '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+      '<comot:effect target="el-a" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>' +
+      "</comot:effects></metadata>" +
+      '<g id="el-a" transform="translate(10 20)"><rect x="0" y="0" width="5" height="5"/></g>' +
+      "</svg>";
+    const slide2 = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
+    const { zipSync } = await import("fflate");
+    const zipped = zipSync({
+      "project.json": new TextEncoder().encode(
+        JSON.stringify({
+          formatVersion: 1,
+          name: "D2 round-trip",
+          canvas: { width: 1280, height: 720 },
+          slides: ["slides/001.svg", "slides/002.svg"],
+        }),
+      ),
+      "slides/001.svg": new TextEncoder().encode(slide1),
+      "slides/002.svg": new TextEncoder().encode(slide2),
+    });
+    const comotPath = path.join(comotDir, "d2-roundtrip.comot");
+    await writeFile(comotPath, zipped);
+    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const id = opened.data!.id;
+
+    // slides/002.svg has no `<comot:effects>` at all yet.
+    const beforePaste = await registry.dispatch("effect list", { id, slidePath: "slides/002.svg" });
+    expect(beforePaste.ok).toBe(false);
+
+    await registry.dispatch("element copy", { id, slidePath: "slides/001.svg", elementIds: ["el-a"] });
+    const pasted = await registry.dispatch<{ elementIds: string[] }>("element paste", {
+      id, slidePath: "slides/002.svg", dx: 0, dy: 0,
+    });
+    expect(pasted.ok).toBe(true);
+    const newId = pasted.data!.elementIds[0];
+
+    const listed = await registry.dispatch<{ effects: Array<{ target: string; family: string; effect: string }> }>(
+      "effect list",
+      { id, slidePath: "slides/002.svg" },
+    );
+    expect(listed.ok).toBe(true);
+    expect(listed.data!.effects).toEqual([
+      expect.objectContaining({ target: newId, family: "enter", effect: "fade" }),
+    ]);
   });
 });
 

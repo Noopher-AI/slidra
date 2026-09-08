@@ -466,6 +466,92 @@ describe("startServe", () => {
     expect(body.error).not.toContain(coMotionHome);
   });
 
+  // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
+  // step-by-step export now fetch instead of computing it themselves in
+  // the browser. Reuses `openFreshPresentation` + `convert` (a compliant,
+  // `<g>`-wrapped slide is required for `effect add`, same fixture shape
+  // `packages/cli/test/effect.test.ts` uses) rather than a hand-built
+  // container, since these tests exercise the route end-to-end through the
+  // real in-process registry, not a mocked one.
+  describe("GET /api/effects/", () => {
+    async function openConvertedPresentation(): Promise<string> {
+      const id = await openFreshPresentation();
+      const converted = await registry.dispatch("convert", { id });
+      expect(converted.ok).toBe(true);
+      return id;
+    }
+
+    it("responds 200 with effects/steps/transition for a slide with an effect list", async () => {
+      const id = await openConvertedPresentation();
+      const svg = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+      const elementId = /id="(el-[^"]+)"/.exec(svg.data!.content)![1]!;
+      const added = await registry.dispatch("effect add", {
+        id, slidePath: "slides/001.svg", elementIds: [elementId], family: "enter", effect: "fade",
+      });
+      expect(added.ok).toBe(true);
+
+      const server = await serve(id);
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.effects).toEqual([
+        expect.objectContaining({ target: elementId, family: "enter", effect: "fade", index: 1 }),
+      ]);
+      expect(body.steps).toEqual([{ effects: body.effects }]);
+      expect(body.transition).toEqual({
+        enter: { effect: "none", duration: 0.6 },
+        exit: { effect: "none", duration: 0.5 },
+      });
+    });
+
+    it("responds 200 with an empty plan for a declared slide that never had an effect list", async () => {
+      const id = await openConvertedPresentation();
+      const server = await serve(id);
+
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual({
+        effects: [],
+        steps: [],
+        transition: { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } },
+      });
+    });
+
+    it("responds 404 for a virtual path that is not a declared slide", async () => {
+      const id = await openConvertedPresentation();
+      const server = await serve(id);
+
+      const response = await fetch(`${server.url}/api/effects/project.json`);
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe("不是投影片：project.json");
+    });
+
+    it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
+      const id = await openConvertedPresentation();
+      const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+      const original = await readFile(realSlidePath, "utf-8");
+      const damaged = original.replace(
+        "</svg>",
+        '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+          '<comot:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
+          "</comot:effects></metadata></svg>",
+      );
+      await writeFile(realSlidePath, damaged);
+
+      const server = await serve(id);
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toContain("尚未實作");
+    });
+  });
+
   it("rejects with an explicit Traditional Chinese error at open time when project.json lacks slides", async () => {
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
