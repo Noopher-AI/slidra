@@ -13,6 +13,7 @@
 //! follow when it lands.
 
 pub mod arrange;
+pub mod clipboard;
 pub mod edit;
 pub mod group;
 pub mod splice;

@@ -9,15 +9,17 @@
 //! module is CLI plumbing only, mirroring `packages/cli/src/commands/
 //! element/index.ts`'s split from `packages/core/src/element-*.ts`.
 //!
-//! Registered so far (phases P3-P5 of the ticket's commit sequence): the ten
-//! structural commands, `scale`/`resize`/`style set`, and `align`/
-//! `distribute`. `copy`/`cut`/`paste`/`duplicate` (P7) are not yet
-//! registered — see this module's `TAKEOVER` doc for why an entry is never
-//! added ahead of a working handler.
+//! Registered so far (phases P3-P7 of the ticket's commit sequence): the ten
+//! structural commands, `scale`/`resize`/`style set`, `align`/`distribute`,
+//! and `copy`/`cut`/`paste`/`duplicate`. See this module's `TAKEOVER` doc
+//! for why an entry is never added ahead of a working handler.
 
 pub mod align;
+pub mod copy;
+pub mod cut;
 pub mod delete;
 pub mod distribute;
+pub mod duplicate;
 pub mod group;
 pub mod insert;
 pub mod lock;
@@ -25,6 +27,7 @@ pub mod lock;
 pub mod move_cmd;
 pub mod name_set;
 pub mod order;
+pub mod paste;
 pub mod resize;
 pub mod rotate;
 pub mod scale;
@@ -55,6 +58,10 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["element", "style", "set"],
     &["element", "align"],
     &["element", "distribute"],
+    &["element", "copy"],
+    &["element", "cut"],
+    &["element", "paste"],
+    &["element", "duplicate"],
 ];
 
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
@@ -74,6 +81,10 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
         ["style", "set"] => style_set::run(args),
         ["align"] => align::run(args),
         ["distribute"] => distribute::run(args),
+        ["copy"] => copy::run(args),
+        ["cut"] => cut::run(args),
+        ["paste"] => paste::run(args),
+        ["duplicate"] => duplicate::run(args),
         _ => unreachable!("commands::element::TAKEOVER only lists entries dispatch handles"),
     }
 }
@@ -519,5 +530,219 @@ mod tests {
             result.failure_kind,
             Some(crate::result::FailureKind::NotFound)
         );
+    }
+
+    #[test]
+    fn copy_writes_the_clipboard_file_and_does_not_touch_history_or_the_slide() {
+        let fixture = Fixture::new("copy");
+        let original = slide(
+            r##"<g id="el-a" transform="translate(5 5)"><rect x="0" y="0" width="10" height="10" fill="#ff0000"/></g>"##,
+        );
+        fixture.write_slide(&original);
+
+        let result = dispatch(
+            &["element", "copy"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "el-a".to_string(),
+            ],
+        );
+        assert!(result.ok, "{}", result.message);
+        let svg = result.data.as_ref().unwrap()["svg"].as_str().unwrap();
+        assert!(svg.contains(r#"data-comot-clipboard="elements""#), "{svg}");
+        assert!(svg.contains(r##"transform="translate(5 5)""##), "{svg}");
+
+        assert_eq!(
+            fixture.read_slide(),
+            original,
+            "copy must not mutate the slide"
+        );
+        let undo_err = history::undo(&fixture.id).unwrap_err();
+        assert_eq!(
+            undo_err.message(),
+            "沒有可復原的操作",
+            "copy must not occupy an undo step"
+        );
+    }
+
+    #[test]
+    fn cut_removes_the_element_and_occupies_one_undo_step() {
+        let fixture = Fixture::new("cut");
+        fixture.write_slide(&slide(
+            r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        ));
+
+        let result = dispatch(
+            &["element", "cut"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "el-a".to_string(),
+            ],
+        );
+        assert!(result.ok, "{}", result.message);
+        assert!(!fixture.read_slide().contains("el-a"));
+
+        let undo = history::undo(&fixture.id).unwrap();
+        assert_eq!(undo.restored_paths, vec!["slides/001.svg".to_string()]);
+        assert!(
+            fixture.read_slide().contains("el-a"),
+            "undo must restore the cut element"
+        );
+    }
+
+    #[test]
+    fn paste_from_the_internal_clipboard_file_after_a_copy() {
+        let fixture = Fixture::new("copy-then-paste");
+        fixture.write_slide(&slide(
+            r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        ));
+
+        let copied = dispatch(
+            &["element", "copy"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "el-a".to_string(),
+            ],
+        );
+        assert!(copied.ok, "{}", copied.message);
+
+        let pasted = dispatch(
+            &["element", "paste"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "--dx".to_string(),
+                "10".to_string(),
+                "--dy".to_string(),
+                "10".to_string(),
+            ],
+        );
+        assert!(pasted.ok, "{}", pasted.message);
+        let element_ids = pasted.data.as_ref().unwrap()["elementIds"]
+            .as_array()
+            .unwrap();
+        assert_eq!(element_ids.len(), 1);
+        let new_id = element_ids[0].as_str().unwrap();
+        assert_ne!(
+            new_id, "el-a",
+            "paste must regenerate ids, never reuse the source id"
+        );
+        assert!(fixture.read_slide().contains(&format!(r#"id="{new_id}""#)));
+        // Original untouched, new one carries the dx/dy translate.
+        assert!(fixture.read_slide().contains(r#"<g id="el-a">"#));
+    }
+
+    #[test]
+    fn paste_without_svg_file_and_no_prior_copy_reports_the_clipboard_is_empty() {
+        let fixture = Fixture::new("paste-empty");
+        fixture.write_slide(&slide(""));
+
+        let result = dispatch(
+            &["element", "paste"],
+            &[fixture.id.clone(), "slides/001.svg".to_string()],
+        );
+        assert!(!result.ok);
+        assert_eq!(result.message, "剪貼簿是空的");
+    }
+
+    #[test]
+    fn paste_svg_file_reads_a_local_file_and_never_touches_the_internal_clipboard_file() {
+        let fixture = Fixture::new("paste-svg-file");
+        fixture.write_slide(&slide(""));
+
+        let svg_file_path = fixture.work.join("external.svg");
+        std::fs::write(
+            &svg_file_path,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:comot="https://co-motion.dev/ns" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/999.svg"><g id="el-from-file"><rect x="0" y="0" width="1" height="1"/></g></svg>"#,
+        )
+        .unwrap();
+
+        let result = dispatch(
+            &["element", "paste"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "--svg-file".to_string(),
+                svg_file_path.to_string_lossy().into_owned(),
+            ],
+        );
+        assert!(result.ok, "{}", result.message);
+        assert!(fixture.read_slide().contains("<rect"));
+
+        // The internal clipboard file was never written by a paste — a
+        // second, plain paste (no --svg-file) with nothing ever copied must
+        // still report an empty clipboard.
+        let second = dispatch(
+            &["element", "paste"],
+            &[fixture.id.clone(), "slides/001.svg".to_string()],
+        );
+        assert!(!second.ok);
+        assert_eq!(second.message, "剪貼簿是空的");
+    }
+
+    #[test]
+    fn paste_svg_file_not_found_reports_the_missing_local_path() {
+        let fixture = Fixture::new("paste-svg-file-missing");
+        fixture.write_slide(&slide(""));
+
+        let result = dispatch(
+            &["element", "paste"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "--svg-file".to_string(),
+                "/definitely/does/not/exist.svg".to_string(),
+            ],
+        );
+        assert!(!result.ok);
+        assert_eq!(
+            result.message,
+            "找不到來源檔案：/definitely/does/not/exist.svg"
+        );
+    }
+
+    #[test]
+    fn duplicate_creates_a_new_element_without_touching_the_clipboard_file() {
+        let fixture = Fixture::new("duplicate");
+        fixture.write_slide(&slide(
+            r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        ));
+
+        let result = dispatch(
+            &["element", "duplicate"],
+            &[
+                fixture.id.clone(),
+                "slides/001.svg".to_string(),
+                "el-a".to_string(),
+                "--dx".to_string(),
+                "5".to_string(),
+                "--dy".to_string(),
+                "5".to_string(),
+            ],
+        );
+        assert!(result.ok, "{}", result.message);
+        let element_ids = result.data.as_ref().unwrap()["elementIds"]
+            .as_array()
+            .unwrap();
+        assert_eq!(element_ids.len(), 1);
+        let new_id = element_ids[0].as_str().unwrap();
+        assert_ne!(new_id, "el-a");
+        assert!(
+            fixture.read_slide().contains("el-a"),
+            "the source element must still be there"
+        );
+        assert!(fixture.read_slide().contains(new_id));
+
+        // Duplicate must not have written the presentation's clipboard file
+        // — a subsequent plain paste must still report an empty clipboard.
+        let pasted = dispatch(
+            &["element", "paste"],
+            &[fixture.id.clone(), "slides/001.svg".to_string()],
+        );
+        assert!(!pasted.ok);
+        assert_eq!(pasted.message, "剪貼簿是空的");
     }
 }

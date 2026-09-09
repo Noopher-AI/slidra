@@ -263,7 +263,10 @@ fn resolve_font<'a>(
 
 /// Reads the family + size a `<text>` node's own attributes declare, for
 /// re-wrapping a text box's content.
-pub(crate) fn read_text_font_info(text_node: &ScannedNode, element_id: &str) -> CoMotionResult<(String, f64)> {
+pub(crate) fn read_text_font_info(
+    text_node: &ScannedNode,
+    element_id: &str,
+) -> CoMotionResult<(String, f64)> {
     let declared_family = attribute_value(text_node, "font-family");
     let font_family = declared_family
         .as_deref()
