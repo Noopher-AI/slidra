@@ -1,5 +1,7 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionNotFoundError, MEDIA_FORMATS, readPresentationFileBytes } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError } from "./comotion/errors.js";
+import { readPresentationBytes } from "./comotion/reads.js";
+import { MEDIA_MIME_TYPES } from "./media-types.js";
 
 /**
  * Byte-preserving read for `assets/` content (images, video, audio) that
@@ -10,26 +12,17 @@ import { CoMotionError, CoMotionNotFoundError, MEDIA_FORMATS, readPresentationFi
  * serve.ts for why.
  */
 
-// Media extensions/MIME types are derived from `@co-motion/core`'s
-// `MEDIA_FORMATS` (NOOP-90/T4) — the single source of truth for every
-// image/video/audio format co-motion recognises, shared with asset import's
-// magic-byte detection. This table must stay in lockstep with the player's
-// own extension allow-list (packages/web/src/player-plan.ts's
-// VIDEO_EXTENSIONS/AUDIO_EXTENSIONS, ticket #30) — an extension the player
-// accepts but this table does not falls back to application/octet-stream
-// below, which some browsers refuse to decode as media even though the
-// bytes are fine. A web test (packages/web/test/player-plan.test.ts)
-// asserts every entry in the player's allow-list resolves to a
-// non-octet-stream type here, specifically to keep the two lists from
-// drifting apart again. (Dev-Leader ruling on NOOP-99: player-plan.ts's own
-// lists stay independent literals — bringing them onto this same source is
-// left for a follow-up ticket that is allowed to touch packages/web.)
-const MEDIA_MIME_TYPES: Record<string, string> = Object.fromEntries(
-  MEDIA_FORMATS.flatMap((format) => [
-    [format.extension, format.mimeType] as const,
-    ...format.aliasExtensions.map((alias) => [alias, format.mimeType] as const),
-  ]),
-);
+// Media extensions/MIME types come from `media-types.ts` (NOOP-90/T4,
+// [E4.T9]/F7) — a literal expansion of `packages/core`'s `MEDIA_FORMATS`
+// table (the server no longer imports that package at all). This table
+// must stay in lockstep with the player's own extension allow-list
+// (packages/web/src/player-plan.ts's VIDEO_EXTENSIONS/AUDIO_EXTENSIONS,
+// ticket #30) — an extension the player accepts but this table does not
+// falls back to application/octet-stream below, which some browsers refuse
+// to decode as media even though the bytes are fine. A web test
+// (packages/web/test/player-plan.test.ts) asserts every entry in the
+// player's allow-list resolves to a non-octet-stream type here,
+// specifically to keep the two lists from drifting apart again.
 
 const MIME_TYPES: Record<string, string> = {
   ...MEDIA_MIME_TYPES,
@@ -157,7 +150,7 @@ export async function handleRawRequest(
 ): Promise<void> {
   let bytes: Buffer;
   try {
-    bytes = await readPresentationFileBytes(presentationId, virtualPath);
+    bytes = await readPresentationBytes(presentationId, virtualPath);
   } catch (error) {
     if (error instanceof CoMotionNotFoundError) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });

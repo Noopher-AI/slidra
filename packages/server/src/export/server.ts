@@ -3,7 +3,6 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandRegistry } from "@co-motion/cli";
 import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
 
 /**
@@ -32,7 +31,6 @@ import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRa
  * chat session, or editing lock).
  */
 export interface ExportServerOptions {
-  registry: CommandRegistry;
   presentationId: string;
   /** Defaults to an OS-assigned ephemeral port — this is a private, short-lived server for one export run, never a long-lived service with a fixed address to remember. */
   port?: number;
@@ -50,12 +48,12 @@ export interface RunningExportServer {
 const DEFAULT_HOST = "127.0.0.1";
 
 export async function startExportServer(options: ExportServerOptions): Promise<RunningExportServer> {
-  const { registry, presentationId } = options;
+  const { presentationId } = options;
   const host = options.host ?? DEFAULT_HOST;
   const staticDir = options.staticDir ?? resolveWebDist();
 
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, req, res);
+    void handleRequest(presentationId, staticDir, req, res);
   });
 
   await listen(server, options.port ?? 0, host);
@@ -87,7 +85,6 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 }
 
 async function handleRequest(
-  registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
   req: IncomingMessage,
@@ -110,17 +107,17 @@ async function handleRequest(
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (url.pathname === "/api/presentation") {
-      await handlePresentationRoute(registry, presentationId, res);
+      await handlePresentationRoute(presentationId, res);
       return;
     }
     if (url.pathname.startsWith("/api/files/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(registry, presentationId, virtualPath, res);
+      await handleFilesRoute(presentationId, virtualPath, res);
       return;
     }
     if (url.pathname.startsWith("/api/effects/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
-      await handleEffectsRoute(registry, presentationId, virtualPath, res);
+      await handleEffectsRoute(presentationId, virtualPath, res);
       return;
     }
     if (url.pathname.startsWith("/api/raw/")) {
