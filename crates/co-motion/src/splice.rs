@@ -12,10 +12,19 @@
 
 use crate::errors::CoMotionError;
 use crate::text::FontMetrics;
+use crate::text::runs::utf16_offset_to_byte_offset;
 use std::collections::HashMap;
 
-/// A byte-range replacement against an SVG source string: `[start, end)` is
-/// replaced with `text`. Ported from `element-text.ts`'s `Splice` interface.
+/// A range replacement against an SVG source string: `[start, end)` is
+/// replaced with `text`. Ported from `element-text.ts`'s `Splice`
+/// interface. `start`/`end` are **UTF-16 code-unit offsets** — the same
+/// index space `ScannedNode.start`/`.end`/`.content_start`/`.content_end`
+/// use (see `slide/scan.rs`'s module doc, "The UTF-16 index space"), which
+/// is where every caller's `start`/`end` values come from. This is NOT the
+/// Rust byte offset a `&str` slices by — `apply_splices` converts before
+/// slicing (see its own doc comment) precisely so callers can pass a
+/// `ScannedNode` field straight through without a conversion step of their
+/// own at every call site.
 #[derive(Debug, Clone)]
 pub struct Splice {
     pub start: usize,
@@ -29,13 +38,14 @@ pub struct Splice {
 /// string. Splices must not overlap (the caller's responsibility, exactly
 /// as in the TS original).
 ///
-/// Byte-offset based (matching `ScannedNode.start`/`.end`, which are UTF-8
-/// byte offsets — see `slide/scan.rs`), so this operates on `svg`'s raw
-/// bytes rather than `char` boundaries directly. `splice.text` is always
-/// itself valid UTF-8 (it is markup this crate generated), so `[u8]`
-/// slicing at `start`/`end` — which always land on tag/attribute
-/// boundaries, never mid-codepoint, because every offset in this crate
-/// comes from `scan_document` — reassembles into valid UTF-8.
+/// `start`/`end` are UTF-16 code-unit offsets (see `Splice`'s doc comment)
+/// — converted to Rust byte offsets via `utf16_offset_to_byte_offset`
+/// before any slicing, since a `&str` is byte-indexed. Skipping this
+/// conversion silently corrupts every document containing a CJK or astral
+/// character before a splice point (a 3-byte UTF-8 CJK character is one
+/// UTF-16 code unit but three UTF-8 bytes) — confirmed by hand against a
+/// real corrupted-output repro during this ticket's manual verification,
+/// not a hypothetical.
 pub fn apply_splices(svg: &str, splices: &[Splice]) -> String {
     let mut ordered: Vec<&Splice> = splices.iter().collect();
     ordered.sort_by(|a, b| b.start.cmp(&a.start));
@@ -43,10 +53,12 @@ pub fn apply_splices(svg: &str, splices: &[Splice]) -> String {
     let bytes = svg.as_bytes();
     let mut result = bytes.to_vec();
     for splice in ordered {
+        let start = utf16_offset_to_byte_offset(svg, splice.start);
+        let end = utf16_offset_to_byte_offset(svg, splice.end);
         let mut next = Vec::with_capacity(result.len());
-        next.extend_from_slice(&result[..splice.start]);
+        next.extend_from_slice(&result[..start]);
         next.extend_from_slice(splice.text.as_bytes());
-        next.extend_from_slice(&result[splice.end..]);
+        next.extend_from_slice(&result[end..]);
         result = next;
     }
     String::from_utf8(result).expect("splices only ever cut at UTF-8-safe boundaries")

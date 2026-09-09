@@ -169,10 +169,17 @@ pub fn create_chart_element(
         .iter()
         .find(|node| node.tag == "svg")
         .expect("assert_slide_compliant already confirmed the root is <svg>");
+    // `content_end` is a UTF-16 code-unit offset (see `slide/scan.rs`'s
+    // module doc and `crate::splice::Splice`'s doc comment) — must be
+    // converted to a Rust byte offset before slicing `svg_content`, or a
+    // CJK/astral character anywhere earlier in the document corrupts the
+    // insertion point.
+    let content_end =
+        crate::text::runs::utf16_offset_to_byte_offset(svg_content, svg_root.content_end);
     Ok(format!(
         "{}{markup}{}",
-        &svg_content[..svg_root.content_end],
-        &svg_content[svg_root.content_end..]
+        &svg_content[..content_end],
+        &svg_content[content_end..]
     ))
 }
 

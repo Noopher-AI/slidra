@@ -438,4 +438,68 @@ mod tests {
         );
         assert_eq!(fixture.slide(), before_second_create);
     }
+
+    /// Regression: `ScannedNode` offsets are UTF-16 code-unit offsets (see
+    /// `slide/scan.rs`'s module doc), not Rust byte offsets. A slide with
+    /// CJK text/attribute content BEFORE the insertion point — the common
+    /// case, since every real deck's title slide has one — reproduces the
+    /// exact corruption a raw `&svg_content[..content_end]` byte-slice
+    /// produced during this ticket's manual verification: the markup
+    /// landed a few bytes into the middle of the preceding element's own
+    /// closing tag. Every other test in this crate's chart/table fixtures
+    /// used ASCII-only slide content and could not have caught this.
+    #[test]
+    fn create_after_cjk_content_produces_well_formed_xml() {
+        let fixture = Fixture::new("cjk-before-insert", "pid-chart-cjk");
+        std::fs::write(
+            fixture.work.join("slides/001.svg"),
+            r#"<svg viewBox="0 0 1280 720">
+  <g id="el-title" data-comot-name="標題">
+    <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">示範簡報</text>
+  </g>
+</svg>"#,
+        )
+        .unwrap();
+
+        let create_result = run(&s(&["create", fixture.id, "slides/001.svg"]), None);
+        assert!(create_result.ok, "{}", create_result.message);
+        let element_id = create_result.data.unwrap()["elementId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let svg = fixture.slide();
+        // The preceding element's closing tags must survive intact —
+        // this is exactly what the UTF-16/byte-offset bug corrupted.
+        assert!(svg.contains("</text>\n  </g>\n"));
+        assert!(svg.contains(&format!("<g id=\"{element_id}\" data-comot-type=\"chart\"")));
+        assert!(svg.trim_end().ends_with("</svg>"));
+
+        // The written bytes must also round-trip through the scanner
+        // without a "not a legal tag" structural error — the failure
+        // mode this bug actually produced end to end.
+        crate::slide::scan::scan_document(&svg)
+            .expect("markup must be well-formed after insertion");
+
+        // A subsequent edit on the same (now CJK-preceded) document must
+        // also succeed, exercising the splice path (not just the initial
+        // insert path).
+        let data_result = run(
+            &s(&[
+                "data",
+                "set",
+                fixture.id,
+                "slides/001.svg",
+                &element_id,
+                "--categories",
+                "A,B",
+                "--series",
+                "S=1,2",
+            ]),
+            None,
+        );
+        assert!(data_result.ok, "{}", data_result.message);
+        crate::slide::scan::scan_document(&fixture.slide())
+            .expect("markup must remain well-formed after a splice-based edit");
+    }
 }

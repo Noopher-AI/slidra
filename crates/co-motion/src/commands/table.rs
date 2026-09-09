@@ -801,4 +801,66 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(result.failure_kind, Some(FailureKind::NotFound));
     }
+
+    /// Regression: same UTF-16/byte-offset hazard as
+    /// `commands::chart`'s identical test — see that test's doc comment.
+    /// Table's write path has its own direct-slice call sites
+    /// (`table::edit::update_table`/`create_table_element`), independent
+    /// of chart's, so this needs its own regression coverage.
+    #[test]
+    fn create_and_cell_set_after_cjk_content_produces_well_formed_xml() {
+        let fixture = Fixture::new("cjk-before-insert", "pid-table-cjk");
+        std::fs::write(
+            fixture.work.join("slides/001.svg"),
+            r#"<svg viewBox="0 0 1280 720">
+  <g id="el-title" data-comot-name="標題">
+    <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">示範簡報</text>
+  </g>
+</svg>"#,
+        )
+        .unwrap();
+
+        let create_result = run(&s(&[
+            "create",
+            fixture.id,
+            "slides/001.svg",
+            "--rows",
+            "1",
+            "--cols",
+            "1",
+            "--x",
+            "0",
+            "--y",
+            "0",
+        ]));
+        assert!(create_result.ok, "{}", create_result.message);
+        let element_id = create_result.data.unwrap()["elementId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let svg = fixture.slide();
+        assert!(svg.contains("</text>\n  </g>\n"));
+        crate::slide::scan::scan_document(&svg)
+            .expect("markup must be well-formed after insertion");
+
+        let set_result = run(&s(&[
+            "cell",
+            "set",
+            fixture.id,
+            "slides/001.svg",
+            &element_id,
+            "--row",
+            "0",
+            "--col",
+            "0",
+            "--text",
+            "你好",
+        ]));
+        assert!(set_result.ok, "{}", set_result.message);
+        let svg_after_edit = fixture.slide();
+        assert!(svg_after_edit.contains("你好"));
+        crate::slide::scan::scan_document(&svg_after_edit)
+            .expect("markup must remain well-formed after a splice-based edit");
+    }
 }

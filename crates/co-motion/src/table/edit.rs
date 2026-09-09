@@ -61,10 +61,16 @@ fn update_table(
     let container = require_table_container(&roots, element_id)?;
     let transform = attribute_value(container, "transform");
     let markup = render_table_markup(&next, element_id, transform.as_deref(), fonts)?;
+    // `start`/`end` are UTF-16 code-unit offsets (see `slide/scan.rs`'s
+    // module doc) — must be converted to Rust byte offsets before slicing
+    // `svg_content`, or a CJK/astral character earlier in the document
+    // corrupts the splice point.
+    let start = crate::text::runs::utf16_offset_to_byte_offset(svg_content, container.start);
+    let end = crate::text::runs::utf16_offset_to_byte_offset(svg_content, container.end);
     Ok(format!(
         "{}{markup}{}",
-        &svg_content[..container.start],
-        &svg_content[container.end..]
+        &svg_content[..start],
+        &svg_content[end..]
     ))
 }
 
@@ -199,10 +205,14 @@ pub fn create_table_element(
         .iter()
         .find(|node| node.tag == "svg")
         .expect("assert_slide_compliant already confirmed the root is <svg>");
+    // See `update_table`'s identical conversion above for why this cannot
+    // be a direct byte-index slice.
+    let content_end =
+        crate::text::runs::utf16_offset_to_byte_offset(svg_content, svg_root.content_end);
     Ok(format!(
         "{}{markup}{}",
-        &svg_content[..svg_root.content_end],
-        &svg_content[svg_root.content_end..]
+        &svg_content[..content_end],
+        &svg_content[content_end..]
     ))
 }
 
