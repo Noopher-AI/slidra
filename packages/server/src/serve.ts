@@ -942,14 +942,15 @@ function resolveWebDist(): string {
 /**
  * The one font every build ships (`DEFAULT_FONT_FAMILY`), read directly off
  * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
- * longer imports that package). `packages/core/src/assets/fonts/` is the
- * same physical file the Rust binary's own `include_bytes!` embeds
- * (`crates/co-motion/src/presentation.rs:25`) — when F9 moves that source
- * file, this path and that `include_bytes!` must move together.
+ * longer imports that package). Repo-root `assets/fonts/` is the same
+ * physical file the Rust binary's own `include_bytes!` embeds
+ * (`crates/co-motion/src/presentation.rs`) — both moved together off
+ * `packages/core/src/assets/fonts/` when that package was deleted
+ * ([E4.T12]).
  */
 function resolveDefaultFontPath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, "../../core/src/assets/fonts/NotoSansTC-Presentation.ttf");
+  return path.join(here, "../../../assets/fonts/NotoSansTC-Presentation.ttf");
 }
 
 async function serveStatic(staticDir: string, pathname: string, res: ServerResponse): Promise<void> {
