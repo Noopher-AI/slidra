@@ -16,6 +16,7 @@ use co_motion::geometry::bbox::{
     primitive_bounds,
 };
 use co_motion::geometry::transform::IDENTITY;
+use co_motion::media_format::{MediaKind, detect_media_format};
 use co_motion::slide::format::{SlideElement, SlideElementKind, SlidePrimitive, TextAlign};
 use co_motion::slide::scan::{ScannedNode, scan_document};
 use co_motion::slide::table_grid::TableGrid;
@@ -639,6 +640,91 @@ fn text_wrap_extra_cases_match_ts_reference() {
     assert!(
         failures.is_empty(),
         "text-wrap extra-case mismatches against TS golden data:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[derive(Deserialize)]
+struct MediaFormatExpected {
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    kind: String,
+    #[serde(rename = "aliasExtensions")]
+    alias_extensions: Vec<String>,
+    extension: String,
+}
+
+#[derive(Deserialize)]
+struct MediaFormatCase {
+    label: String,
+    bytes: Vec<u8>,
+    expected: Option<MediaFormatExpected>,
+}
+
+/// Acceptance criterion A9: `detect_media_format` against every golden
+/// case's REAL `detectMediaFormat` (TS) output, not this port's own
+/// reasoning about what the TS behavior should be — the fixture generator
+/// imports and calls the actual `packages/core/dist/media-format.js`.
+#[test]
+fn media_format_matches_ts_reference_for_every_golden_case() {
+    let raw = fs::read_to_string(golden_path("media_format.json"))
+        .expect("tests/golden/media_format.json must exist — run `node scripts/gen-golden.mjs`");
+    let cases: Vec<MediaFormatCase> =
+        serde_json::from_str(&raw).expect("golden file must be valid JSON");
+    assert!(
+        cases.len() >= 15,
+        "expected at least one golden case per recognised format, found {}",
+        cases.len()
+    );
+
+    let mut failures = Vec::new();
+    for case in &cases {
+        let actual = detect_media_format(&case.bytes);
+        match (&case.expected, actual) {
+            (None, None) => {}
+            (Some(expected), Some(actual)) => {
+                let kind_str = match actual.kind {
+                    MediaKind::Image => "image",
+                    MediaKind::Video => "video",
+                    MediaKind::Audio => "audio",
+                };
+                let alias: Vec<String> = actual
+                    .alias_extensions
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                if expected.extension != actual.extension
+                    || expected.mime_type != actual.mime_type
+                    || expected.kind != kind_str
+                    || expected.alias_extensions != alias
+                {
+                    failures.push(format!(
+                        "case={:?}: expected {}/{}/{}/{:?}, got {}/{}/{}/{:?}",
+                        case.label,
+                        expected.extension,
+                        expected.mime_type,
+                        expected.kind,
+                        expected.alias_extensions,
+                        actual.extension,
+                        actual.mime_type,
+                        kind_str,
+                        alias
+                    ));
+                }
+            }
+            (expected, actual) => {
+                failures.push(format!(
+                    "case={:?}: expected {:?}, got {:?}",
+                    case.label,
+                    expected.is_some(),
+                    actual.is_some()
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "media_format mismatches against TS golden data:\n{}",
         failures.join("\n")
     );
 }
