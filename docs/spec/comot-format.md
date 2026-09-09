@@ -2,7 +2,7 @@
 
 ## 這份文件的地位
 
-這份文件是 `.comot` 容器格式與 `~/.comotion/`（`CO_MOTION_HOME`）工作區佈局的唯一規範性文件。與現行 TypeScript 實作不一致時，以本文為準——`formatVersion` 4 與 1→4 遷移規則是本規格新定案的內容，現行 TypeScript 停留在 `formatVersion` 3，不會回頭實作 4；4 由 Rust 版落地。除此之外的內容（容器佈局、`project.json` 既有欄位、`comot:*` 元素、`CO_MOTION_HOME` 佈局）描述的是現行且會延續到 Rust 版的行為，不是新設計。
+這份文件是 `.comot` 容器格式與 `~/.comotion/`（`CO_MOTION_HOME`）工作區佈局的唯一規範性文件。TypeScript 引擎已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據；`formatVersion` 4 與 1→4 遷移規則已由 Rust 版落地。
 
 `docs/adr/` 記錄的是決策史（為什麼當初這樣選），本文件記錄的是目前與未來的結構性事實。兩者衝突時以本文件為準。
 
@@ -17,7 +17,7 @@
 - `templates/`：可選。範本（`template add` 產生）與 `slides/` 同構，一份 `.svg` 一個範本，檔名不強制格式（現行實作用流水號，例如 `templates/001.svg`）。
 - `assets/data/`：`asset import --as csv` 的資料資產落點，與一般媒體共用 `assets/` 目錄但是子目錄，序號空間與 `assets/` 下的媒體檔互不干擾。
 
-解壓安全規則（`unpackContainer`，`packages/core/src/container.ts`）：**先全量驗證，再落地**。zip 裡的每一個 entry 路徑，只要是絕對路徑，或解析後會落在目標目錄之外（也就是含有能跳出目標目錄的 `..` 片段），整個壓縮檔就被拒收——不做部分解壓、不做路徑清洗、不嘗試修正。任何一步失敗（entry 路徑不合法、`project.json` 缺失或格式錯誤、`formatVersion` 太新），已經寫出的目標目錄會被整個刪除，不留下半成品。
+解壓安全規則（`unpack_container`，`crates/co-motion/src/container.rs`）：**先全量驗證，再落地**。zip 裡的每一個 entry 路徑，只要是絕對路徑，或解析後會落在目標目錄之外（也就是含有能跳出目標目錄的 `..` 片段），整個壓縮檔就被拒收——不做部分解壓、不做路徑清洗、不嘗試修正。任何一步失敗（entry 路徑不合法、`project.json` 缺失或格式錯誤、`formatVersion` 太新），已經寫出的目標目錄會被整個刪除，不留下半成品。
 
 ## `project.json`
 
@@ -48,7 +48,7 @@
 - **元素 id 格式**：`el-` 前綴 + 12 個字元的 base64url（`generateOpaqueId()`：9 個隨機位元組 base64url 編碼後恰好 12 字元；`generateElementId()` 再加上 `el-` 前綴）。純亂數產生，id 本身不可解碼出任何路徑或語意（ADR-0004）。
 - **容器的兩個已知例外**（ADR-0012 amendment）：圖表容器與表格容器不是「包一或多個圖元的 `<g>`」，而是各自的資料元素 + 渲染結果組合，細節見下方「圖表容器」與「表格容器」兩節。
 
-`data-comot-*` 屬性總表（目前 repo 內實際出現的完整集合，`grep -rhoP 'data-comot-[a-zA-Z-]+' packages/core/src`）：
+`data-comot-*` 屬性總表（目前 repo 內實際出現的完整集合，`grep -rhoP 'data-comot-[a-zA-Z-]+' crates/co-motion/src`）：
 
 | 屬性 | 用在哪裡 | 意義 |
 |---|---|---|
@@ -66,7 +66,7 @@
 | `data-comot-type="table"`、`data-comot-cols`、`data-comot-rows`、`data-comot-header`、`data-comot-theme` | 表格容器 `<g>` | 見下方「表格容器」 |
 | `data-comot-cell`、`data-comot-span`、`data-comot-repeat`、`data-comot-generated`、`data-comot-align` | 表格儲存格 `<g>` | 見下方「表格容器」 |
 
-（此表以目前程式碼實際使用到的屬性為準，逐項精確驗證規則以對應的 `packages/core/src` 模組——`element-text.ts`、`element-edit.ts`、`table/model.ts`、`chart/model.ts`——為權威來源；本表是總覽，不是每個屬性驗證規則的完整重述。）
+（此表以目前程式碼實際使用到的屬性為準，逐項精確驗證規則以對應的 `crates/co-motion/src` 模組——`element/text.rs`、`element/edit.rs`、`table/model.rs`、`chart/model.rs`——為權威來源；本表是總覽，不是每個屬性驗證規則的完整重述。）
 
 ## `<metadata>` 內的 `comot:*`
 
@@ -179,7 +179,7 @@ ADR-0012 amendment 的第二個例外形狀：一個 `data-comot-type="table"` �
 
 ## `formatVersion`
 
-`FORMAT_VERSION`（目前 TypeScript 端的常數值）是 **3**；本規格新定案 **4**，由 Rust 版落地，TypeScript 端不會回頭實作。`formatVersion` 大於目前建置支援的最大值時整份拒絕開啟。
+`FORMAT_VERSION`（`crates/co-motion/src/presentation.rs`）是 **4**，本規格定案的值。`formatVersion` 大於目前建置支援的最大值時整份拒絕開啟。
 
 **v4 只改三項**（不得增減）：
 

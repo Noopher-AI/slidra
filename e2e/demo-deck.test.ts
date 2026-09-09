@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Locator } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
+import { workDirFor } from "../packages/server/src/comotion/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -41,7 +42,6 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -55,7 +55,6 @@ let presentationId: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
 
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
@@ -514,16 +513,35 @@ it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", a
     '  </g>\n' +
     "</svg>\n";
 
-  const { normaliseSlideSvg, generateElementId } = await import("@co-motion/core");
-  const converted = normaliseSlideSvg(bare, { generateId: generateElementId }).svg;
-  // Guard against a tautology: if conversion were a no-op, comparing the
-  // two renders would prove nothing at all.
-  expect(converted).not.toBe(bare);
-  expect(converted).toContain("<g ");
-
   const dir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pixel-"));
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
+    // `normaliseSlideSvg`/`generateElementId` (the TypeScript engine's own
+    // conversion functions) no longer exist ([E4.T12]) — the only public
+    // door to the same conversion is now `co-motion convert`, which acts on
+    // an already-open presentation's slide file on disk, not a raw string.
+    // A throwaway presentation under the same `registry`/`CO_MOTION_HOME`
+    // this file's `beforeAll` already set up (never the shared 4-page demo
+    // presentation the walkthrough tests below depend on) gives `convert`
+    // something to act on: write `bare` as its `slides/001.svg`, run
+    // `convert`, read the result back.
+    const convertComotPath = path.join(dir, "convert-test.comot");
+    const newResult = await registry.dispatch("new", { path: convertComotPath, name: "轉檔前後像素比對" });
+    expect(newResult.ok).toBe(true);
+    const opened = await registry.dispatch<{ id: string }>("open", { path: convertComotPath });
+    const convertTestId = opened.data!.id;
+    const workDir = await workDirFor(convertTestId);
+    await writeFile(path.join(workDir, "slides/001.svg"), bare, "utf-8");
+    const convertResult = await registry.dispatch("convert", { id: convertTestId });
+    expect(convertResult.ok).toBe(true);
+    const catResult = await registry.dispatch<{ content: string }>("cat", { id: convertTestId, path: "slides/001.svg" });
+    expect(catResult.ok).toBe(true);
+    const converted = catResult.data!.content;
+    // Guard against a tautology: if conversion were a no-op, comparing the
+    // two renders would prove nothing at all.
+    expect(converted).not.toBe(bare);
+    expect(converted).toContain("<g ");
+
     await mkdir(path.join(dir, "assets"), { recursive: true });
     await copyFile(path.join(demoDir, "assets/photo.svg"), path.join(dir, "assets/photo.svg"));
     await writeFile(path.join(dir, "bare.svg"), bare, "utf-8");

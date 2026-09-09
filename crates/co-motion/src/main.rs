@@ -20,7 +20,7 @@ use std::ffi::OsString;
 use std::io::Read;
 
 use co_motion::commands;
-use co_motion::fallback;
+use co_motion::node_entry;
 use co_motion::result::{self, Renderer};
 
 fn main() {
@@ -30,15 +30,17 @@ fn main() {
 
 fn dispatch(argv: Vec<OsString>) -> i32 {
     let Some(first) = argv.first() else {
-        // argv 為空（`co-motion`）— 回退 Node，讓它印「缺少命令名稱」並以
-        // exit 1 結束，逐位元組對齊既有行為。
-        return fallback::exec_node_fallback(&argv);
+        // argv 為空（`co-motion`）— 沒有並存期回退可以轉手了，Rust 自己報
+        // 錯，逐位元組對齊既有文案（原本由 Node 印出同一句話）。
+        eprintln!("缺少命令名稱");
+        return 1;
     };
 
     // Non-UTF-8 argv[0] can never match a takeover-table name (all of which
     // are ASCII) or "--version"/"serve"/"export", so it always falls
-    // through to the final fallback call below — untouched, no lossy
-    // conversion performed on it (plan 4.1's "非 UTF-8 位元組" row).
+    // through to the final "未知的命令" branch below — untouched, no lossy
+    // conversion performed on it until it is actually printed (plan 4.1's
+    // "非 UTF-8 位元組" row).
     if let Some(first_str) = first.to_str() {
         if first_str == "--version" || first_str == "-V" {
             // This is a deliberate, ticket-scoped behavior CHANGE from the
@@ -50,11 +52,13 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         }
 
         if first_str == "serve" || first_str == "export" {
-            // Always falls back, even when arguments are missing/malformed
-            // — Rust never pre-validates these, Node's own error path
+            // The only two names that still exec Node — spec's `## 不經
+            // registry 的入口`, not a coexistence-era fallback. Always
+            // taken even when arguments are missing/malformed — Rust never
+            // pre-validates these, Node's own error path
             // (`runServeCli`/`runExportCli`) is the single source of truth
-            // for their argument errors (plan 4.1).
-            return fallback::exec_node_fallback(&argv);
+            // for their argument errors (plan 4.1/4.2).
+            return node_entry::exec_node(&argv);
         }
     }
 
@@ -91,7 +95,22 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         }
     }
 
-    fallback::exec_node_fallback(&argv)
+    // Nothing matched: this ticket removes the coexistence-era fallback to
+    // Node for everything outside serve/export (plan section 0.1/2.1) —
+    // argv[0] alone is reported, `to_string_lossy()` so a non-UTF-8 token
+    // still prints something rather than panicking (plan 4.1's "合法但奇怪"
+    // rows). This also covers a registered family name used with a
+    // sub-command outside its own takeover entries when that family itself
+    // is not in `TAKEOVER_TABLE` (e.g. `element frobnicate`) — deliberately
+    // NOT the family's own "未知的子命令：<family> <sub>" wording, which
+    // stays reserved for families that ARE in `TAKEOVER_TABLE` (`slide`,
+    // `chart`, `table`, `asset`, `presentation`, `template` — see
+    // `dispatch_legacy_takeover`/`dispatch_asset`): reproducing that
+    // wording for every other family here would be exactly the per-family
+    // unknown-subcommand error surface `commands::mod`'s own doc comment
+    // says this design avoids.
+    eprintln!("未知的命令：{}", first.to_string_lossy());
+    1
 }
 
 /// Runs an [E4.T5]-mechanism takeover-table command's handler and renders

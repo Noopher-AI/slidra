@@ -1,8 +1,9 @@
 //! The takeover table: the exact, closed set of `argv[0]` names this binary
-//! dispatches itself. Everything else falls back to the Node CLI (see
-//! `fallback.rs`) — this is what makes coexistence safe: adding a Rust
-//! command is opt-in, one name at a time, never "whatever main.rs happens
-//! to parse".
+//! dispatches itself. `serve`/`export` are the two names `main.rs` execs
+//! Node for instead (`node_entry.rs` — a normative entry point per spec,
+//! not a fallback); everything else that matches neither is rejected by
+//! `main.rs` as "未知的命令" — there is no longer a second engine to defer
+//! to.
 //!
 //! Two matching mechanisms coexist here, one per generation of families:
 //!
@@ -21,11 +22,11 @@
 //!   LONGEST registered sequence that is a literal prefix of argv (plan
 //!   section 1.4, decision D2) — not a family-prefix match — specifically
 //!   so that an unregistered subcommand of a known family (e.g. `element
-//!   frobnicate`) matches NOTHING and falls all the way through to Node,
-//!   which prints its own byte-for-byte error text. A family-prefix match
-//!   would instead require Rust to reproduce every family's "unknown
-//!   subcommand" error text itself, which is exactly the extra
-//!   error-surface this design avoids.
+//!   frobnicate`) matches NOTHING and falls all the way through to
+//!   `main.rs`'s final "未知的命令：<argv[0]>" branch. A family-prefix
+//!   match would instead require Rust to reproduce every family's own
+//!   "unknown subcommand" error text (`未知的子命令：<family> <sub>`)
+//!   itself, which is exactly the extra error-surface this design avoids.
 //!
 //! `main.rs`'s `dispatch` tries the [E4.T5] mechanism (`resolve_takeover`)
 //! first, then falls back to the legacy one (`match_takeover`) — the two

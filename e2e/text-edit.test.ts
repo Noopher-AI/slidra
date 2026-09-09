@@ -1,11 +1,11 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory, resolvePresentationFonts, wrapText } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
@@ -15,7 +15,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * tests. Modelled on e2e/direct-manipulation.test.ts's startServerFor/
  * openApp shape and its font-staging trick (the fixture's project.json
  * declares "Noto Sans TC" but ships no font bytes; this file copies the
- * real ones from packages/core/src/assets/fonts into a throwaway staging
+ * real ones from assets/fonts into a throwaway staging
  * dir before packing, same as that file does).
  *
  * Entry point exercised: `beginTextEdit` via the runtime's own
@@ -29,25 +29,25 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/text-edit-deck");
-const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 const VIEWPORT = { width: 1440, height: 900 };
 const VIEWBOX = { width: 1280, height: 720 };
 const baselineDir = path.join(e2eDir, "__screenshots__/text-edit");
-const TEXT_WIDTH = 220;
 const FONT_SIZE = 24;
 
 let browser: Browser;
 let openPages: Page[] = [];
+let fontDataUrl: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
+  const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));
+  fontDataUrl = `data:font/ttf;base64,${fontBytes.toString("base64")}`;
 });
 
 afterAll(async () => {
@@ -132,6 +132,48 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
   if (!result.ok) throw new Error(result.message);
   return result.data!.content;
+}
+
+/** `<g id="elementId" ... data-comot-text-width="N">`'s declared wrap width. */
+function readDeclaredTextWidth(svg: string, elementId: string): number {
+  const match = new RegExp(`<g id="${elementId}"[^>]*data-comot-text-width="([^"]+)"`).exec(svg);
+  if (!match) throw new Error(`找不到 ${elementId} 的 data-comot-text-width`);
+  return Number(match[1]);
+}
+
+/**
+ * Chromium's own `getComputedTextLength()` for `text` at `fontSizePx` in the
+ * real embedded presentation font — same technique as
+ * text-metrics.test.ts's `renderedWidthInChromium`, the external ground
+ * truth this file's wrap assertions compare against post-[E4.T12] (the
+ * TypeScript engine's own `wrapText`, previously used as the oracle here,
+ * no longer exists).
+ */
+async function renderedWidthInChromium(page: Page, text: string, fontSizePx: number): Promise<number> {
+  return page.evaluate(
+    async ([url, family, sampleText, size]) => {
+      const style = document.createElement("style");
+      style.textContent = `@font-face{font-family:"${family}";src:url("${url}") format("truetype");}`;
+      document.head.appendChild(style);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      textEl.setAttribute("font-family", family);
+      textEl.setAttribute("font-size", String(size));
+      textEl.textContent = sampleText;
+      svg.appendChild(textEl);
+      document.body.appendChild(svg);
+
+      await document.fonts.load(`${size}px "${family}"`);
+      await document.fonts.ready;
+
+      const length = textEl.getComputedTextLength();
+      svg.remove();
+      style.remove();
+      return length;
+    },
+    [fontDataUrl, "Noto Sans TC", text, fontSizePx] as const,
+  );
 }
 
 /** Whether the runtime's hidden edit textarea currently has document focus inside the sandboxed slide iframe — the signal that `begin-text-edit`'s async round trip (font fetch included) has actually landed. */
@@ -348,7 +390,7 @@ function readTransformAttr(svg: string, elementId: string): string {
   return elementMatch ? elementMatch[1] : "";
 }
 
-it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行與 wrapText 算出的一致，整段編輯只送一條命令，undo 一格回到原字串（AC1/AC2）", async () => {
+it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行內容不丟字、每行實際渲染寬度都在宣告寬度內，整段編輯只送一條命令，undo 一格回到原字串（AC1/AC2）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const before = await readSlide(registry, presentationId);
@@ -382,15 +424,23 @@ it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行與 
     const after = await readSlide(registry, presentationId);
     const actualLines = readTspans(after, "el-text");
 
-    const fonts = await resolvePresentationFonts(presentationId);
-    const font = fonts.get("Noto Sans TC")!;
-    const expectedWrap = wrapText(finalText, { width: TEXT_WIDTH, font, fontSizePx: FONT_SIZE });
-
-    expect(actualLines.length).toBe(expectedWrap.lines.length);
-    expect(actualLines.length).toBeGreaterThan(1); // The fixture's whole point: this text must actually wrap.
-    for (let i = 0; i < expectedWrap.lines.length; i++) {
-      expect(actualLines[i].text).toBe(expectedWrap.lines[i].text);
-      expect(actualLines[i].y).toBeCloseTo(expectedWrap.lines[i].y, 3);
+    // Non-circular wrap assertions (post-[E4.T12]: the TypeScript engine's
+    // `wrapText`, previously this test's oracle, no longer exists — Rust
+    // comparing against Rust would be circular). (a) the fixture's whole
+    // point: this text must actually wrap; (b) no content is lost or
+    // reordered across the line breaks; (c) every line actually fits its
+    // declared width in a real browser (Chromium's `getComputedTextLength()`,
+    // the same external ground truth text-metrics.test.ts uses) — an
+    // external check stronger than the old same-engine comparison.
+    expect(actualLines.length).toBeGreaterThan(1);
+    expect(actualLines.map((line) => line.text).join("").replace(/\s+/g, "")).toBe(
+      finalText.replace(/\s+/g, ""),
+    );
+    const declaredWidth = readDeclaredTextWidth(after, "el-text");
+    for (const line of actualLines) {
+      if (line.text === "") continue; // A trailing empty wrapped line has nothing to measure.
+      const renderedWidth = await renderedWidthInChromium(page, line.text, FONT_SIZE);
+      expect(renderedWidth, `行 "${line.text}" 的實際渲染寬度`).toBeLessThanOrEqual(declaredWidth * 1.005);
     }
 
     const undo = await registry.dispatch("undo", { id: presentationId });

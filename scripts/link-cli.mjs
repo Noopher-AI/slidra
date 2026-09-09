@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // NOOP-278: after `cargo build --release`, point `node_modules/.bin/co-motion`
-// at the Rust binary instead of the npm-workspaces-generated symlink to
-// `packages/cli/bin/co-motion.js`.
-//
-// `node_modules/.bin/co-motion` is rebuilt by npm itself (from
-// `packages/cli/package.json`'s `bin` field) on every `npm install`/`npm
-// ci`, so this has to re-run at the END of every build, and has to `rm`
-// the existing entry first — renaming over it isn't enough because npm's
-// version is itself a symlink, not a plain file.
-//
-// This script does NOT touch `packages/cli/package.json`'s `bin` field —
-// that field is npm workspaces' own source of truth for what a fresh
-// `npm install` wires up by default, and changing it would make the
-// post-install state (before this script has run) unpredictable.
+// at the Rust binary. [E4.T12] deletes `packages/cli` — with it, the
+// npm-workspaces-generated symlink this script used to race against (`npm
+// install` recreating `node_modules/.bin/co-motion` from
+// `packages/cli/package.json`'s own `bin` field) is gone too, but this
+// script still has to run at the END of every build: nothing else creates
+// `node_modules/.bin/co-motion` at all now that there is no `bin`-declaring
+// workspace package for npm to wire up by default.
 
 import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

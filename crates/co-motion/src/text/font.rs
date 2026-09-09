@@ -88,10 +88,10 @@ const TAG_WOFF2: u32 = 0x774f_4632; // 'wOF2'
 /// engine never depends on a font "happening to be installed" (mirrors
 /// `packages/core/src/default-font.ts`'s ADR-0016 rationale). Path is
 /// relative to this crate's `Cargo.toml` (`crates/co-motion/`): `../../`
-/// reaches the repo root, then into `packages/core/...`.
+/// reaches the repo root, then into `assets/fonts/...`.
 pub const DEFAULT_FONT_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf"
+    "/../../assets/fonts/NotoSansTC-Presentation.ttf"
 ));
 
 /// Matches `packages/core/src/default-font.ts`'s `DEFAULT_FONT_FAMILY` verbatim.

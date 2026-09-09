@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -26,7 +26,6 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 // Where npm's workspace linking puts the `co-motion` executable. This is
 // the PATH the fake agent's shell command resolves through — the same
@@ -47,7 +46,6 @@ beforeAll(async () => {
   // "the bundle itself is broken" a failure it can see. Missing build
   // output is an explicit error — never a skip, never a silent pass.
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
 
   browser = await chromium.launch();
   // Printed so a passing run visibly says which real browser it drove,

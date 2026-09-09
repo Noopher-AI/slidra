@@ -7,22 +7,23 @@ import { chromium, type Browser } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { requireBuilt } from "./helpers/launch.js";
 import { loadPdf } from "./helpers/pdf.js";
 
 /**
  * `co-motion export` (#210 條件 2/4, NOOP-93 §4.3/§4.5). Spawns the real
- * `bin/co-motion.js` (§6.2's "公開邊界二" — never `runExportCli` called
- * in-process, that would skip the exact bin-dispatch branch this ticket
- * had to get right) and reads the produced PDF through `pdf.ts`'s
- * `pdf.js`-backed helper (§6.2's "公開邊界三" — never asserting on PDF
- * bytes/internal structure directly).
+ * compiled `co-motion` binary (§6.2's "公開邊界二" — never `runExportCli`
+ * called in-process, that would skip the exact bin-dispatch branch this
+ * ticket had to get right; [E4.T12]: this is now the strongest form of that
+ * boundary — the Rust binary itself execs Node for `export`, closer to a
+ * real invocation than the deleted Node shim ever was) and reads the
+ * produced PDF through `pdf.ts`'s `pdf.js`-backed helper (§6.2's "公開邊界
+ * 三" — never asserting on PDF bytes/internal structure directly).
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const binPath = path.join(rootDir, "packages/cli/bin/co-motion.js");
 const coMotionBinPath = path.join(rootDir, "target/release/co-motion");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const brokenEffectsDeckDir = path.join(rootDir, "e2e/fixtures/broken-effects-deck");
@@ -37,8 +38,8 @@ interface CliResult {
 function runCli(args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     execFile(
-      "node",
-      [binPath, ...args],
+      coMotionBinPath,
+      args,
       { cwd: options.cwd, env: options.env ?? process.env, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error && typeof error.code !== "number") {
@@ -71,26 +72,33 @@ beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-export-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-export-files-"));
   registry = createDefaultRegistry();
-  // openFixture() below dispatches "open" in-process (this test's own
-  // process), which resolves CO_MOTION_HOME itself — it must see the same
-  // home the spawned `co-motion export` child is given via `env()`, or the
-  // two processes register/read from two different homes entirely.
+  // openFixture() below dispatches "open"/"new" through `registry`, which
+  // ([E4.T12]: the deleted TypeScript engine's in-process registry is gone)
+  // now shells out to the real compiled binary via
+  // `packages/server/src/comotion/bin.ts`'s `resolveCoMotionBin()` — it
+  // reads `process.env` directly, not the `env()` object below (that one
+  // only covers the separately-spawned `runCli` child), so both variables
+  // must be set here too, or `registry.dispatch` fails before `runCli` is
+  // ever reached.
   process.env.CO_MOTION_HOME = coMotionHome;
+  process.env.CO_MOTION_BIN = coMotionBinPath;
 });
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function env(): NodeJS.ProcessEnv {
-  // [E4.T9]/F7: `co-motion export`'s `runExportCli` now spawns the Rust
-  // binary itself (`loadProject`) — in production this is always set by
-  // the Rust launcher before it execs into this same Node entry point
-  // (`crates/co-motion/src/fallback.rs:40`), but this test spawns
-  // `packages/cli/bin/co-motion.js` directly (the "public boundary two"
-  // the module comment above names), bypassing that launcher entirely.
+  // [E4.T9]/F7/[E4.T12]: `co-motion export`'s `runExportCli` spawns the
+  // Rust binary itself (`loadProject`) for CLI-driven exports — in
+  // production `CO_MOTION_BIN` is always set by the Rust launcher before it
+  // execs into the Node entry point (`crates/co-motion/src/node_entry.rs`);
+  // this test now goes through that exact launcher too (`runCli` spawns
+  // `coMotionBinPath` directly), so setting it here mirrors a real
+  // invocation rather than working around one.
   return { ...process.env, CO_MOTION_HOME: coMotionHome, CO_MOTION_BIN: coMotionBinPath };
 }
 

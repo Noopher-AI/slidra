@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { resolveWorkDir } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { workDirFor } from "../packages/server/src/comotion/home.js";
 import { requireBuilt } from "./helpers/launch.js";
 
 /**
@@ -26,7 +26,7 @@ import { requireBuilt } from "./helpers/launch.js";
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/co-motion");
-const fontPath = path.join(rootDir, "packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf");
+const fontPath = path.join(rootDir, "assets/fonts/NotoSansTC-Presentation.ttf");
 
 const FAMILY = "Noto Sans TC";
 const SLIDE_PATH = "slides/001.svg";
@@ -87,7 +87,7 @@ afterAll(async () => {
 
 /** `<tspan>` line texts and `data-comot-text-width`, read straight off the CLI-written file — this is "驗證 CLI 輸出", not a second parser. */
 async function readTextboxLines(elementId: string): Promise<{ lines: string[]; width: number }> {
-  const workDir = await resolveWorkDir(presentationId);
+  const workDir = await workDirFor(presentationId);
   const svg = await readFile(path.join(workDir, SLIDE_PATH), "utf-8");
   const openTagMatch = new RegExp(`<g id="${elementId}"[^>]*data-comot-text-width="([^"]+)"[^>]*>`).exec(svg);
   if (!openTagMatch) throw new Error(`找不到文字框容器：${elementId}`);

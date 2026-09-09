@@ -9,7 +9,6 @@
 **參數**：`<presentation-id>` `<source>`（本機絕對路徑或 `http(s)://` URL）、`--as csv`（選填，宣告這是資料資產而非媒體）。
 **用途**：把一張圖片／影片／音訊（或宣告 `--as csv` 時的一份資料表）匯入簡報的 `assets/` 目錄。只認檔頭位元組，不看副檔名。
 **範例**：`co-motion asset import <presentation-id> https://example.com/photo.png`
-> 這個命令由使用者或 CoMotion 本身使用，agent 通常用不到；且目前 CLI 的參數解析（`argv.ts`）尚未接上這個命令名稱，`co-motion asset import ...` 目前無法透過命令列實際呼叫（既有缺口，非本次改動範圍）。
 
 ## cat
 

@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Page } from "playwright";
 import { expect } from "vitest";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./cli.js";
+import { packDirectory } from "./pack.js";
 import { startServe, type RunningServer } from "../../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../../packages/server/src/agent/session.js";
 import type { AgentKind } from "../../packages/server/src/agent/adapters.js";
@@ -15,25 +15,22 @@ import type { CommandRunner } from "../../packages/server/src/agent/probe.js";
 const e2eDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = path.join(e2eDir, "..");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const coMotionBin = path.join(rootDir, "target/release/co-motion");
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 /**
- * Checks that `packages/web/dist/index.html`, `packages/cli/dist/bin.js`
- * (still needed: this file's own `createDefaultRegistry()`/`registry.dispatch`
- * calls below run the in-process TypeScript registry directly, independent
- * of what `co-motion serve` itself spawns) and `target/release/co-motion`
- * (`co-motion serve`'s own read/write path, [E4.T9]/F7) all exist under
+ * Checks that `packages/web/dist/index.html` and `target/release/co-motion`
+ * (`co-motion serve`'s own read/write path, and this file's own
+ * `createDefaultRegistry()`/`registry.dispatch` calls below, both go
+ * through the same compiled binary now — [E4.T9]/F7, [E4.T12]) exist under
  * `rootDir` — callers must build before running these tests.
  */
 export async function requireBuilt(rootDir: string): Promise<void> {
   const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-  const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
   await requireExists(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireExists(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   await requireExists(path.join(rootDir, "target/release/co-motion"), "target/release/co-motion 不存在，請先執行 npm run build");
 }
 
@@ -51,7 +48,7 @@ export interface StartServerOptions {
   /** Prefix used for the mkdtemp directories, e.g. "grid". */
   prefix: string;
   /**
-   * Inject `packages/core/src/assets/fonts` into the deck's `fonts/` before
+   * Inject `assets/fonts` into the deck's `fonts/` before
    * packing (ADR-0016 decision 2). Defaults to `false` — most decks are not
    * font-injected, and unconditional injection would change their `.comot`
    * content and break byte-exact appearance baselines.
