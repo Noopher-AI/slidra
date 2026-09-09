@@ -1,10 +1,11 @@
-import { readFile, rm, writeFile, mkdtemp } from "node:fs/promises";
+import { readFile, rm, writeFile, mkdtemp, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ARGV_ENCODERS, encodeCommandArgv } from "../src/comotion/argv.js";
 import { runJsonCommand } from "../src/comotion/command.js";
 import { readPresentationBytes, readPresentationText, renderSlide } from "../src/comotion/reads.js";
+import { readSaveState } from "../src/comotion/save-state.js";
 import { COMMAND_WHITELIST } from "../src/command-endpoint.js";
 
 const ID = "P1";
@@ -361,5 +362,73 @@ describe("comotion/reads.ts: read decoding", () => {
     await expect(readPresentationText("p1", "assets/photo.png")).rejects.toThrow(
       "assets/photo.png 是二進位資產，無法以文字讀取",
     );
+  });
+});
+
+/**
+ * NOOP-334r2 債 1: `readSaveState`'s `Math.floor(maxMtimeMs) >
+ * Math.floor(entry.savedAt)` comparison (see that function's own doc
+ * comment for why it floors both sides) shipped with no test pinning the
+ * one input it exists for — a same-integer-millisecond `maxMtime`/`savedAt`
+ * pair whose fractional parts differ. Round 1's M3 mutation check (revert
+ * to a plain `>`) survived every existing test green.
+ */
+describe("comotion/save-state.ts: readSaveState 的整數毫秒比較", () => {
+  let home: string;
+  let workDir: string;
+  let previousHome: string | undefined;
+
+  beforeEach(async () => {
+    home = await mkdtemp(path.join(tmpdir(), "co-motion-comotion-test-home-"));
+    workDir = await mkdtemp(path.join(tmpdir(), "co-motion-comotion-test-workdir-"));
+    previousHome = process.env.CO_MOTION_HOME;
+    process.env.CO_MOTION_HOME = home;
+  });
+
+  afterEach(async () => {
+    if (previousHome === undefined) delete process.env.CO_MOTION_HOME;
+    else process.env.CO_MOTION_HOME = previousHome;
+    await rm(home, { recursive: true, force: true });
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  async function writeRegistry(savedAt: number): Promise<void> {
+    await writeFile(
+      path.join(home, "projects.json"),
+      `${JSON.stringify({ P1: { workDir, sourcePath: "/x/deck.comot", savedAt } }, null, 2)}\n`,
+    );
+  }
+
+  it("dirty is false when maxMtime and savedAt fall in the same integer millisecond", async () => {
+    const file = path.join(workDir, "slide.svg");
+    await writeFile(file, "x");
+    // Seconds, not ms — fs.utimes takes seconds. 1_700_000_000.0005s ->
+    // mtimeMs whose whole-millisecond part is 1_700_000_000_000, same as
+    // the `savedAt` below, but with a nonzero fractional remainder.
+    const t = 1_700_000_000.0005;
+    await utimes(file, t, t);
+    await utimes(workDir, t, t);
+    await writeRegistry(1_700_000_000_000);
+
+    await expect(readSaveState("P1")).resolves.toEqual({
+      known: true,
+      dirty: false,
+      fileName: "deck.comot",
+    });
+  });
+
+  it("dirty is true when maxMtime's whole millisecond is genuinely later than savedAt's", async () => {
+    const file = path.join(workDir, "slide.svg");
+    await writeFile(file, "x");
+    const t = 1_700_000_000.0005;
+    await utimes(file, t, t);
+    await utimes(workDir, t, t);
+    await writeRegistry(1_699_999_999_999);
+
+    await expect(readSaveState("P1")).resolves.toEqual({
+      known: true,
+      dirty: true,
+      fileName: "deck.comot",
+    });
   });
 });
