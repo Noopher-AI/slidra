@@ -267,12 +267,79 @@ mod tests {
 
     // `takeover_table_is_exactly_undo_and_redo`, the tripwire this module's
     // previous revision carried, is removed rather than updated in place —
-    // see the `test: prune` commit's message for why. Its replacement lives
-    // in the CLI golden test suite once every family's commands are
-    // registered (plan section 6.5, phase P9): asserting the FULL 29-command
-    // membership here, before any family has a single real handler, would
-    // just be re-deriving `CORE_TAKEOVER` — not a stronger assertion, a
-    // vacuous one.
+    // see the `test: prune` commit's message for why. Its replacement is
+    // below, now that P9 has landed every family's commands: asserting the
+    // FULL 29-command membership before that point would just have
+    // re-derived `CORE_TAKEOVER` — not a stronger assertion, a vacuous one.
+
+    #[test]
+    fn takeover_table_is_exactly_the_29_registered_commands_no_more_no_fewer() {
+        // Round-1 review (NOOP-283/NOOP-292) debt item 2, deferred to P9 by
+        // Dev-Leader's ruling on NOOP-309: the weaker
+        // `flattened_table_has_no_duplicate_command` test below proves no
+        // command is registered twice, but never proves the table is
+        // exactly this ticket's 29 — it would pass equally well with 5
+        // commands registered, or 40. This is the exhaustive version:
+        // exact set equality, hand-written independently of
+        // `commands::element`/`text`/`textbox`/`comment`'s own `TAKEOVER`
+        // constants (re-deriving from them would just check the table
+        // against itself).
+        let expected: std::collections::HashSet<CommandTokens> = [
+            &["element", "insert"][..],
+            &["element", "delete"][..],
+            &["element", "move"][..],
+            &["element", "scale"][..],
+            &["element", "resize"][..],
+            &["element", "rotate"][..],
+            &["element", "style", "set"][..],
+            &["element", "order"][..],
+            &["element", "group"][..],
+            &["element", "ungroup"][..],
+            &["element", "align"][..],
+            &["element", "distribute"][..],
+            &["element", "name", "set"][..],
+            &["element", "copy"][..],
+            &["element", "cut"][..],
+            &["element", "paste"][..],
+            &["element", "duplicate"][..],
+            &["element", "lock"][..],
+            &["element", "unlock"][..],
+            &["text", "set"][..],
+            &["text", "style", "set"][..],
+            &["text", "list", "set"][..],
+            &["textbox", "add"][..],
+            &["textbox", "width"][..],
+            &["textbox", "align"][..],
+            &["comment", "add"][..],
+            &["comment", "edit"][..],
+            &["comment", "delete"][..],
+            &["comment", "list"][..],
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(expected.len(), 29, "this test's own list drifted from 29");
+
+        // Scoped to this ticket's four families, not `flattened_takeover_table()`
+        // as a whole — that also carries `CORE_TAKEOVER`'s pre-existing
+        // `undo`/`redo` (a prior ticket's entries, already covered by
+        // `undo_and_redo_still_resolve_as_single_token_commands` above),
+        // which are no more "this ticket's 29 commands" than a sixth
+        // family would be.
+        let actual: std::collections::HashSet<CommandTokens> = element::TAKEOVER
+            .iter()
+            .chain(text::TAKEOVER)
+            .chain(textbox::TAKEOVER)
+            .chain(comment::TAKEOVER)
+            .copied()
+            .collect();
+
+        let missing: Vec<_> = expected.difference(&actual).collect();
+        let extra: Vec<_> = actual.difference(&expected).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "takeover table diverges from the exact 29-command set — missing={missing:?} extra={extra:?}"
+        );
+    }
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {

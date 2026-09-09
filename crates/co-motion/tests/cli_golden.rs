@@ -128,18 +128,20 @@ fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
 }
 
 /// Acceptance criterion A2: for every one of these argv combinations —
-/// genuinely NOT-yet-Rust-dispatched commands, [E4.T4]'s explicit non-scope
-/// (plan §2 item 3: `element`/`textbox`/`comment` families, plus
-/// [E4.T7]'s `effect` family for any sub-command that isn't one of its five
-/// takeover-table entries) plus a bare unknown command name — the Rust
-/// binary's fallback path must byte-for-byte match the real Node CLI:
-/// stdout, stderr, AND exit code all three. `table`/`chart`/`asset` moved
-/// OUT of this test as of NOOP-281/F5, the same way `ls`/`cat` moved out
-/// under [E4.T4] (see the doc comment below): those three families are now
-/// entirely Rust-dispatched (`commands::match_takeover` takes over on the
-/// first argv token alone, unlike `effect`'s five specific two-word
-/// entries), so no sub-command under them ever reaches the fallback path
-/// to compare.
+/// genuinely NOT-yet-Rust-dispatched commands, plus [E4.T7]'s `effect`
+/// family for any sub-command that isn't one of its five takeover-table
+/// entries, plus a bare unknown command name — the Rust binary's fallback
+/// path must byte-for-byte match the real Node CLI: stdout, stderr, AND
+/// exit code all three. `table`/`chart`/`asset` moved OUT of this test as
+/// of NOOP-281/F5, the same way `ls`/`cat` moved out under [E4.T4] (see the
+/// doc comment below): those three families are now entirely
+/// Rust-dispatched (`commands::match_takeover` takes over on the first
+/// argv token alone, unlike `effect`'s five specific two-word entries), so
+/// no sub-command under them ever reaches the fallback path to compare.
+/// [E4.T5] moves `element`/`text`/`textbox`/`comment` out the same way —
+/// its own `takeover_table_contains_all_29_commands` below is that
+/// ticket's differently-reasoned equivalent of
+/// `cat_and_ls_are_byte_identical_to_node_on_every_path`'s coverage.
 ///
 /// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
 /// them explicitly as things this ticket would move to Rust): they no
@@ -171,9 +173,6 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
 
     let cases: Vec<Vec<&str>> = vec![
         vec!["frobnicate"],
-        vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
-        vec!["textbox", "add"],
-        vec!["comment", "list", &id],
         // Not one of `effect`'s five takeover-table entries (add/list/
         // move/remove/set) — must still fall back, unlike those five.
         vec!["effect", "duplicate", &id, "slides/001.svg"],
@@ -2181,4 +2180,468 @@ fn chart_data_set_reads_csv_from_stdin() {
     drop(empty_child.stdin.take());
     let empty_result = empty_child.wait_with_output().unwrap();
     assert!(!empty_result.status.success(), "empty stdin must fail");
+}
+
+// --- NOOP-309 P9: the remaining plan section 6.1 layer-1 (CLI-boundary)
+// tests for this ticket's 29 commands ------------------------------------
+
+/// Every one of this ticket's 29 commands, as its full token sequence —
+/// mirrors `commands::TAKEOVER`'s combined table 1:1. Kept as a literal
+/// list here (not re-derived from the crate) because the whole point of
+/// this test is an independent, hand-written cross-check against that
+/// table, run through the actual compiled binary rather than the table's
+/// own in-process `flattened_takeover_table()` (see `commands/mod.rs`'s
+/// unit test of the same shape, which is the same assertion one layer
+/// down, in-process rather than via a spawned binary).
+const ALL_29_COMMANDS: &[&[&str]] = &[
+    &["element", "insert"],
+    &["element", "delete"],
+    &["element", "move"],
+    &["element", "scale"],
+    &["element", "resize"],
+    &["element", "rotate"],
+    &["element", "style", "set"],
+    &["element", "order"],
+    &["element", "group"],
+    &["element", "ungroup"],
+    &["element", "align"],
+    &["element", "distribute"],
+    &["element", "name", "set"],
+    &["element", "copy"],
+    &["element", "cut"],
+    &["element", "paste"],
+    &["element", "duplicate"],
+    &["element", "lock"],
+    &["element", "unlock"],
+    &["text", "set"],
+    &["text", "style", "set"],
+    &["text", "list", "set"],
+    &["textbox", "add"],
+    &["textbox", "width"],
+    &["textbox", "align"],
+    &["comment", "add"],
+    &["comment", "edit"],
+    &["comment", "delete"],
+    &["comment", "list"],
+];
+
+/// Acceptance criterion A1 (plan section 6.1, layer 1): every one of the
+/// 29 commands must actually be dispatched by the Rust binary, not merely
+/// produce output that happens to look right because it fell through to
+/// Node. `--json` is the probe: it is a Rust-only flag (`main.rs`'s own
+/// doc comment) that the Node CLI does not understand at all — if a
+/// command's tokens fell through to `fallback::exec_node_fallback`, Node
+/// would receive a bare `--json` positional it has no parsing rule for and
+/// would never emit this crate's `{"ok": ..., "failureKind": ...}`
+/// envelope shape. Calling every command with ZERO further arguments is
+/// deliberate, not a shortcut: every one of these 29 handlers' `try_run`
+/// calls `require_positional`/`require_id_list` before touching the
+/// filesystem (verified by inspection — `commands/element/insert.rs` reads
+/// `--kind` first, every other command reads `presentation-id` first), so
+/// this reaches a real Rust-rendered failure envelope for all 29 without
+/// needing a live workspace at all.
+#[test]
+fn takeover_table_contains_all_29_commands() {
+    assert_eq!(
+        ALL_29_COMMANDS.len(),
+        29,
+        "this test's own command list drifted from 29 — fix the list, not the assertion"
+    );
+
+    let mut failures = Vec::new();
+    for tokens in ALL_29_COMMANDS {
+        let mut args: Vec<&str> = tokens.to_vec();
+        args.push("--json");
+        let output = Command::new(rust_bin())
+            .args(&args)
+            .output()
+            .expect("binary must run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed: Option<serde_json::Value> = serde_json::from_str(stdout.trim()).ok();
+        let is_rust_json_envelope = parsed.as_ref().is_some_and(|value| {
+            value.get("ok") == Some(&serde_json::Value::Bool(false))
+                && value.get("failureKind").is_some()
+        });
+        if !is_rust_json_envelope {
+            failures.push(format!(
+                "{tokens:?}: expected a Rust-rendered `--json` failure envelope \
+                 (a fallback to Node would never emit one), got stdout={stdout:?} stderr={:?}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "commands not actually taken over by the Rust binary:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// Sets up a fresh presentation via the (only content-editing-capable) Node
+/// engine and returns `(presentation id, the default slide's first element
+/// id)` — the shared starting point every test below builds its own
+/// `Fixture` around.
+fn new_and_open(fixture: &Fixture) -> (String, String) {
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    // The freshly-created default template is not `assert_slide_compliant`
+    // (its `<text>` runs bare, not wrapped in a `<g>` container) until
+    // `convert` runs — every `element::edit`/`element::clipboard` command
+    // this file exercises below opens with that check (unlike
+    // `element::text`'s commands, which deliberately skip it — see that
+    // module's own doc comment), so setup needs this step where the
+    // existing `build_edited_fixture` above (only ever used with `text
+    // set`) does not.
+    let convert_output = fixture.run_node(&["convert", &id]);
+    assert!(
+        convert_output.status.success(),
+        "setup: `convert` failed: {:?}",
+        convert_output
+    );
+    let svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&svg));
+    (id, element_id)
+}
+
+/// Pulls the `data` JSON block out of a command's default (non-`--json`)
+/// stdout — `<message>\n{...pretty JSON...}\n`, the same shape
+/// `extract_id` above already relies on for `open`. Any `{`/`}` bytes
+/// embedded inside a JSON string value (e.g. an `id="..."` inside the
+/// copied `svg` field) are handled correctly because `serde_json::from_str`
+/// parses the whole remaining slice as one JSON value, not by
+/// brace-counting.
+fn extract_data_json(output: &Output) -> serde_json::Value {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json_start = stdout
+        .find('{')
+        .expect("stdout must contain a JSON data block");
+    serde_json::from_str(&stdout[json_start..]).expect("data JSON must parse")
+}
+
+fn extract_copy_svg(output: &Output) -> String {
+    extract_data_json(output)["svg"]
+        .as_str()
+        .expect("element copy's data must have a string `svg` field")
+        .to_string()
+}
+
+fn count_top_level_groups(svg: &[u8]) -> usize {
+    String::from_utf8_lossy(svg).matches("<g ").count()
+}
+
+/// Acceptance criterion A9 (plan section 6.1, layer 1): the clipboard
+/// exchange format — both the presentation-scoped internal clipboard file
+/// and the portable `--svg-file`/`svg` system-clipboard string
+/// (ADR-0010/[E2.T18] 決定 2) — must be interchangeable between engines in
+/// every direction a real GUI ⌘C/⌘V could hit: copy in one engine, paste in
+/// the other, via either transport. Plus the fail-closed case: pasting a
+/// value that is not a valid clipboard payload at all must be rejected
+/// without ever touching the target file (ADR-0010's allowlist sanitizer
+/// exists precisely to make "reject" the only thing malformed input can
+/// do).
+#[test]
+fn clipboard_interop_round_trips_across_engines_both_via_internal_file_and_svg_file() {
+    // Direction 1: Rust copy (internal clipboard file) -> Node paste (internal clipboard file).
+    {
+        let fixture = Fixture::new("clip-rust-copy-node-paste-internal");
+        let (id, element_id) = new_and_open(&fixture);
+        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+        let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
+        assert!(copy_out.status.success(), "rust copy failed: {copy_out:?}");
+
+        let paste_out = fixture.run_node(&["element", "paste", &id, "slides/001.svg"]);
+        assert!(
+            paste_out.status.success(),
+            "node paste (after rust copy, internal file) failed: {paste_out:?}"
+        );
+
+        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+        assert_eq!(
+            count_top_level_groups(&after),
+            count_top_level_groups(&before) + 1,
+            "expected exactly one new <g> element after paste"
+        );
+    }
+
+    // Direction 2: Node copy (internal clipboard file) -> Rust paste (internal clipboard file).
+    {
+        let fixture = Fixture::new("clip-node-copy-rust-paste-internal");
+        let (id, element_id) = new_and_open(&fixture);
+        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+        let copy_out = fixture.run_node(&["element", "copy", &id, "slides/001.svg", &element_id]);
+        assert!(copy_out.status.success(), "node copy failed: {copy_out:?}");
+
+        let paste_out = fixture.run_rust(&["element", "paste", &id, "slides/001.svg"]);
+        assert!(
+            paste_out.status.success(),
+            "rust paste (after node copy, internal file) failed: {paste_out:?}"
+        );
+
+        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+        assert_eq!(
+            count_top_level_groups(&after),
+            count_top_level_groups(&before) + 1,
+            "expected exactly one new <g> element after paste"
+        );
+    }
+
+    // Direction 3: Rust copy's exported `svg` field -> local file -> Node paste --svg-file.
+    {
+        let fixture = Fixture::new("clip-rust-copy-node-paste-svgfile");
+        let (id, element_id) = new_and_open(&fixture);
+        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+        let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
+        assert!(copy_out.status.success(), "rust copy failed: {copy_out:?}");
+        let svg_path = fixture.workspace.join("rust-copy.svg");
+        fs::write(&svg_path, extract_copy_svg(&copy_out)).unwrap();
+
+        let paste_out = fixture.run_node(&[
+            "element",
+            "paste",
+            &id,
+            "slides/001.svg",
+            "--svg-file",
+            svg_path.to_str().unwrap(),
+        ]);
+        assert!(
+            paste_out.status.success(),
+            "node paste --svg-file (rust-produced svg) failed: {paste_out:?}"
+        );
+
+        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+        assert_eq!(
+            count_top_level_groups(&after),
+            count_top_level_groups(&before) + 1,
+            "expected exactly one new <g> element after --svg-file paste"
+        );
+    }
+
+    // Direction 4: Node copy's exported `svg` field -> local file -> Rust paste --svg-file.
+    {
+        let fixture = Fixture::new("clip-node-copy-rust-paste-svgfile");
+        let (id, element_id) = new_and_open(&fixture);
+        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+        let copy_out = fixture.run_node(&["element", "copy", &id, "slides/001.svg", &element_id]);
+        assert!(copy_out.status.success(), "node copy failed: {copy_out:?}");
+        let svg_path = fixture.workspace.join("node-copy.svg");
+        fs::write(&svg_path, extract_copy_svg(&copy_out)).unwrap();
+
+        let paste_out = fixture.run_rust(&[
+            "element",
+            "paste",
+            &id,
+            "slides/001.svg",
+            "--svg-file",
+            svg_path.to_str().unwrap(),
+        ]);
+        assert!(
+            paste_out.status.success(),
+            "rust paste --svg-file (node-produced svg) failed: {paste_out:?}"
+        );
+
+        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+        assert_eq!(
+            count_top_level_groups(&after),
+            count_top_level_groups(&before) + 1,
+            "expected exactly one new <g> element after --svg-file paste"
+        );
+    }
+
+    // Negative: a value that is not a valid clipboard payload at all must
+    // be rejected, and must never touch the target slide file.
+    {
+        let fixture = Fixture::new("clip-malformed-svgfile-fails-closed");
+        let (id, _element_id) = new_and_open(&fixture);
+        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+        let bogus_path = fixture.workspace.join("bogus.svg");
+        fs::write(&bogus_path, "this is not a co-motion clipboard payload").unwrap();
+
+        let paste_out = fixture.run_rust(&[
+            "element",
+            "paste",
+            &id,
+            "slides/001.svg",
+            "--svg-file",
+            bogus_path.to_str().unwrap(),
+        ]);
+        assert!(
+            !paste_out.status.success(),
+            "a malformed --svg-file payload must fail: {paste_out:?}"
+        );
+
+        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+        assert_eq!(
+            before, after,
+            "a failed paste must leave the slide byte-unchanged"
+        );
+    }
+}
+
+/// `undo` array length in `stack.json`, or `0` when the file does not exist
+/// yet (before the presentation's first successful edit).
+fn undo_len(fixture: &Fixture, id: &str) -> usize {
+    let path = fixture.home.join("history").join(id).join("stack.json");
+    match fs::read_to_string(&path) {
+        Ok(raw) => {
+            let value: serde_json::Value =
+                serde_json::from_str(&raw).expect("stack.json must be valid JSON");
+            value
+                .get("undo")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0)
+        }
+        Err(_) => 0,
+    }
+}
+
+/// Acceptance criterion A6 (plan section 6.1, layer 1): every successful
+/// write command occupies exactly one undo step, and a failing command
+/// occupies none — checked directly against `stack.json`'s `undo` array
+/// length rather than inferring it from `undo`'s own success/failure,
+/// which only proves the stack is non-empty/empty, not that each
+/// individual command added exactly one entry. Five commands, one from
+/// each of the four families that write presentation content
+/// (`element`/`text`/`textbox`/`comment`), run in sequence against the
+/// same live presentation.
+#[test]
+fn undo_step_accounting_advances_by_exactly_one_on_success_and_not_at_all_on_failure() {
+    let fixture = Fixture::new("undo-step-accounting");
+    let (id, element_id) = new_and_open(&fixture);
+
+    let successful_commands: Vec<Vec<String>> = vec![
+        vec![
+            "element".into(),
+            "move".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            element_id.clone(),
+            "--dx".into(),
+            "1".into(),
+            "--dy".into(),
+            "1".into(),
+        ],
+        vec![
+            "text".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            element_id.clone(),
+            "改過的標題".into(),
+        ],
+        vec![
+            "element".into(),
+            "lock".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            element_id.clone(),
+        ],
+        vec![
+            "comment".into(),
+            "add".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            "page".into(),
+            "hello".into(),
+        ],
+        vec![
+            "textbox".into(),
+            "add".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            "--x".into(),
+            "10".into(),
+            "--y".into(),
+            "10".into(),
+            "--width".into(),
+            "100".into(),
+            "--text".into(),
+            "hi".into(),
+        ],
+    ];
+
+    for args in &successful_commands {
+        let before_len = undo_len(&fixture, &id);
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = fixture.run_rust(&arg_refs);
+        assert!(
+            output.status.success(),
+            "expected {args:?} to succeed: {output:?}"
+        );
+        let after_len = undo_len(&fixture, &id);
+        assert_eq!(
+            after_len,
+            before_len + 1,
+            "expected {args:?} to add exactly one undo step (before={before_len}, after={after_len})"
+        );
+    }
+
+    // Failure case: an unknown element id must fail without touching the
+    // undo stack at all.
+    let before_len = undo_len(&fixture, &id);
+    let failing_output = fixture.run_rust(&[
+        "element",
+        "move",
+        &id,
+        "slides/001.svg",
+        "nope-does-not-exist",
+        "--dx",
+        "1",
+        "--dy",
+        "1",
+    ]);
+    assert!(
+        !failing_output.status.success(),
+        "expected a move against an unknown element id to fail: {failing_output:?}"
+    );
+    let after_len = undo_len(&fixture, &id);
+    assert_eq!(
+        after_len, before_len,
+        "a failing command must not add an undo step"
+    );
+}
+
+/// Acceptance criterion A9's negative half: `element copy` is read-only —
+/// it must never modify the slide file it reads from, and must never
+/// occupy an undo step (it isn't presentation content, per
+/// `workspace::write::write_clipboard_file`'s own doc comment).
+#[test]
+fn copy_does_not_touch_the_slide_or_history() {
+    let fixture = Fixture::new("copy-no-side-effects");
+    let (id, element_id) = new_and_open(&fixture);
+    let before_svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let before_undo_len = undo_len(&fixture, &id);
+    let stack_path = fixture.home.join("history").join(&id).join("stack.json");
+    let stack_existed_before = stack_path.exists();
+
+    let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
+    assert!(copy_out.status.success(), "copy failed: {copy_out:?}");
+
+    let after_svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_eq!(
+        before_svg, after_svg,
+        "element copy must never modify the slide file it reads from"
+    );
+    let after_undo_len = undo_len(&fixture, &id);
+    assert_eq!(
+        after_undo_len, before_undo_len,
+        "element copy must never occupy an undo step"
+    );
+    assert_eq!(
+        stack_path.exists(),
+        stack_existed_before,
+        "element copy must never create undo history where none existed"
+    );
 }
