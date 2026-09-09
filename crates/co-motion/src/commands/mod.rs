@@ -342,6 +342,34 @@ mod tests {
     }
 
     #[test]
+    fn takeover_table_is_exactly_the_declared_set() {
+        assert_eq!(
+            TAKEOVER_TABLE,
+            [
+                "asset",
+                "cat",
+                "chart",
+                "convert",
+                "effect add",
+                "effect list",
+                "effect move",
+                "effect remove",
+                "effect set",
+                "ls",
+                "new",
+                "open",
+                "pack",
+                "presentation",
+                "redo",
+                "slide",
+                "table",
+                "template",
+                "undo",
+            ]
+        );
+    }
+
+    #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
         assert_eq!(REGISTERED_COMMAND_NAMES.len(), 52);
         assert_eq!(

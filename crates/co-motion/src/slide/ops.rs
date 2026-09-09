@@ -654,6 +654,35 @@ mod tests {
     }
 
     #[test]
+    fn mint_element_ids_handles_cjk_content_before_the_minted_id() {
+        // NOOP-317 debt item 2 (M3 mutation survived): `ScannedNode`/
+        // `ScannedAttribute` positions are UTF-16 code-unit offsets (see
+        // `slide/scan.rs`'s `Utf16Tracker`), but `svg_content` is a UTF-8
+        // Rust `&str`, so `mint_element_ids` must run every position through
+        // `utf16_offset_to_byte_offset` before slicing it. Each CJK
+        // character below is ONE UTF-16 code unit but THREE UTF-8 bytes, so
+        // a version that spliced using the raw UTF-16 offset as a byte
+        // offset would either panic (non-char-boundary slice) or splice the
+        // wrong bytes instead of the `id` attribute.
+        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><text>中文本文標籤</text><rect id=\"a\" width=\"1\"/></svg>";
+        let mut counter = 0;
+        let mut gen_fn = move || {
+            counter += 1;
+            format!("new-{counter}")
+        };
+        let updated = mint_element_ids(svg, &mut gen_fn).unwrap();
+        assert!(
+            updated.contains("中文本文標籤"),
+            "CJK text content must survive untouched: {updated}"
+        );
+        assert!(
+            updated.contains("id=\"new-1\""),
+            "id attribute must be spliced at the correct byte offset: {updated}"
+        );
+        assert!(!updated.contains("id=\"a\""));
+    }
+
+    #[test]
     fn add_slide_appends_and_writes_project_json() {
         let fixture = Fixture::new("add-slide");
         let result = add_slide(
