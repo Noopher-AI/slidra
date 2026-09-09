@@ -493,7 +493,10 @@ mod tests {
         );
 
         let undo_result = history::undo("pid-create").unwrap();
-        assert_eq!(undo_result.restored_paths, vec!["assets/new.png".to_string()]);
+        assert_eq!(
+            undo_result.restored_paths,
+            vec!["assets/new.png".to_string()]
+        );
         assert!(!work.join("assets/new.png").exists());
 
         drop(fixture);

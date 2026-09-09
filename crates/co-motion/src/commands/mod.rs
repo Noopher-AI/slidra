@@ -459,9 +459,18 @@ mod tests {
         // `chart`/`table`/`asset` are single-word `TAKEOVER_TABLE` entries
         // (unlike `effect`'s two-word entries) — confirm the one-word
         // fallback branch still matches them.
-        assert_eq!(match_takeover(&["chart", "create", "pid"]), Some(("chart", 1)));
-        assert_eq!(match_takeover(&["table", "create", "pid"]), Some(("table", 1)));
-        assert_eq!(match_takeover(&["asset", "import", "pid"]), Some(("asset", 1)));
+        assert_eq!(
+            match_takeover(&["chart", "create", "pid"]),
+            Some(("chart", 1))
+        );
+        assert_eq!(
+            match_takeover(&["table", "create", "pid"]),
+            Some(("table", 1))
+        );
+        assert_eq!(
+            match_takeover(&["asset", "import", "pid"]),
+            Some(("asset", 1))
+        );
     }
 
     #[test]

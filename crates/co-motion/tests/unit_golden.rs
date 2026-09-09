@@ -647,7 +647,6 @@ fn text_wrap_extra_cases_match_ts_reference() {
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // [E4.T4] A2: every repo `project.json` fixture, packed and opened through
 // Rust, ends up at `formatVersion` 4, and `pack` -> `open` round-trips the
@@ -952,7 +951,6 @@ fn migrated_project_json_uses_the_frozen_write_format() {
     fs::remove_dir_all(&work).ok();
 }
 
-
 #[derive(Deserialize)]
 struct MediaFormatExpected {
     #[serde(rename = "mimeType")]
@@ -1037,7 +1035,6 @@ fn media_format_matches_ts_reference_for_every_golden_case() {
         failures.join("\n")
     );
 }
-
 
 // --- element_commands.json --------------------------------------------
 //

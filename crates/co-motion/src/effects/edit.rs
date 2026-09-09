@@ -645,7 +645,10 @@ pub fn remove_effects_targeting(
         })
         .collect();
     let removed_count = removal_splices.len();
-    Ok((apply_element_splices(svg_content, &removal_splices), removed_count))
+    Ok((
+        apply_element_splices(svg_content, &removal_splices),
+        removed_count,
+    ))
 }
 
 #[cfg(test)]
@@ -939,8 +942,7 @@ mod tests {
         let svg = r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"><comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
         let mut targets = HashSet::new();
         targets.insert("el1".to_string());
-        let (updated, removed) =
-            remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap();
+        let (updated, removed) = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap();
         assert_eq!(removed, 1);
         assert_eq!(
             updated,
@@ -950,12 +952,10 @@ mod tests {
 
     #[test]
     fn remove_effects_targeting_duplicate_effects_list_is_a_loud_error() {
-        let svg = format!(
-            r#"<svg viewBox="0 0 100 100"><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
-        );
+        let svg = r#"<svg viewBox="0 0 100 100"><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
         let mut targets = HashSet::new();
         targets.insert("el1".to_string());
-        let err = remove_effects_targeting(&svg, "slides/001.svg", &targets).unwrap_err();
+        let err = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap_err();
         assert!(err.message().contains("2 組效果清單"));
     }
 }
