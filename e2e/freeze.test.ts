@@ -30,6 +30,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -79,6 +80,8 @@ async function startServerFor(): Promise<{ server: RunningServer; cleanup: () =>
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-freeze-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-freeze-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "player-deck.comot");
@@ -99,13 +102,14 @@ async function startServerFor(): Promise<{ server: RunningServer; cleanup: () =>
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -183,6 +187,8 @@ async function startServerForDrag(): Promise<{
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-freeze-dm-files-"));
   const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-freeze-dm-deck-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   await cp(dmDeckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -207,7 +213,7 @@ async function startServerForDrag(): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -216,6 +222,7 @@ async function startServerForDrag(): Promise<{
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });

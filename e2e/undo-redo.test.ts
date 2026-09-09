@@ -29,6 +29,7 @@ import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type Star
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -161,6 +162,8 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-undoredo-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-undoredo-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -181,7 +184,7 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -190,6 +193,7 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },

@@ -20,6 +20,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -55,6 +56,8 @@ beforeAll(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "demo.comot");
@@ -74,13 +77,14 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ registry, presentationId, port: 0, agent });
+  server = await startServe({ presentationId, port: 0, agent });
 });
 
 afterAll(async () => {
   await browser?.close();
   await server?.close();
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
   if (comotDir) await rm(comotDir, { recursive: true, force: true });
 });
@@ -128,6 +132,8 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
   const altHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-home-"));
   const altFilesDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-files-"));
   process.env.CO_MOTION_HOME = altHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(altFilesDir, "deck.comot");
@@ -147,13 +153,15 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     },
   };
 
-  const altServer = await startServe({ registry, presentationId, port: 0, agent });
+  const altServer = await startServe({ presentationId, port: 0, agent });
 
   return {
     server: altServer,
     cleanup: async () => {
       await altServer.close();
       process.env.CO_MOTION_HOME = savedHome;
+      // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+      process.env.CO_MOTION_BIN = coMotionBin;
       await rm(deckDir, { recursive: true, force: true });
       await rm(altHome, { recursive: true, force: true });
       await rm(altFilesDir, { recursive: true, force: true });

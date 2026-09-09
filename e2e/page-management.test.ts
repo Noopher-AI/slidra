@@ -28,6 +28,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -73,6 +74,8 @@ async function startServerFor(): Promise<{
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -92,7 +95,7 @@ async function startServerFor(): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -101,6 +104,7 @@ async function startServerFor(): Promise<{
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -120,6 +124,8 @@ async function startRegistryFor(): Promise<{
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -132,6 +138,7 @@ async function startRegistryFor(): Promise<{
     presentationId,
     cleanup: async () => {
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
