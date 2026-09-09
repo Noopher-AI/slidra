@@ -1,11 +1,35 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 /**
  * `POST /api/command` (NOOP-91 §4.9). Seam B: the real server over real
@@ -30,7 +54,6 @@ const SLIDE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g
 let coMotionHome: string;
 let comotDir: string;
 let staticRoot: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -38,13 +61,14 @@ beforeEach(async () => {
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-files-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-static-"));
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -65,13 +89,13 @@ async function openDeck(fileName: string): Promise<string> {
   });
   const comotPath = path.join(comotDir, fileName);
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
 async function serve(presentationId: string): Promise<RunningServer> {
   const server = await startServe({
-    registry,
     presentationId,
     port: 0,
     agent: fakeAgent,
@@ -102,19 +126,15 @@ async function postCommand(
 }
 
 async function readSlide(presentationId: string): Promise<string> {
-  const result = await registry.dispatch<{ content: string }>("cat", {
-    id: presentationId,
-    path: "slides/001.svg",
-  });
-  return result.data!.content;
+  const result = await runCli<Array<{ path: string; content: string }>>(["cat", presentationId, "slides/001.svg"]);
+  expect(result.ok).toBe(true);
+  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
 }
 
 async function readProjectJson(presentationId: string): Promise<Record<string, unknown>> {
-  const result = await registry.dispatch<{ content: string }>("cat", {
-    id: presentationId,
-    path: "project.json",
-  });
-  return JSON.parse(result.data!.content);
+  const result = await runCli<Array<{ path: string; content: string }>>(["cat", presentationId, "project.json"]);
+  expect(result.ok).toBe(true);
+  return JSON.parse(Buffer.from(result.data![0]!.content, "base64").toString("utf-8"));
 }
 
 it("白名單內的 element move 會實際改到投影片，並回 200 與 CommandResult", async () => {
@@ -253,38 +273,13 @@ it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", 
   expect(await readSlide(id)).toBe(before);
 });
 
-it("白名單內的命令都不會被擋在 403（NOOP-141 的常用分頁按鈕新增的九條、NOOP-144 的 text set 也在內）", async () => {
-  const id = await openDeck("whitelist.comot");
-  const server = await serve(id);
-
-  for (const name of [
-    "element move",
-    "element scale",
-    "element rotate",
-    "textbox width",
-    "text set",
-    "slide add",
-    "element copy",
-    "element cut",
-    "element paste",
-    "element insert",
-    "textbox add",
-    "element align",
-    "element distribute",
-    "element order",
-    // [E2.T11]: replaces `presentation transition set` (removed).
-    "slide transition set",
-    "element resize",
-    "element delete",
-    "element duplicate",
-    "table cell copy",
-    "table cell cut",
-    "table cell paste",
-  ]) {
-    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg", name: "fade", enter: "fade" } });
-    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
-  }
-});
+// The three "every whitelisted name is not 403" loop tests that used to
+// live here (this one, plus the 14-command table loop and the 8-command
+// chart loop below) are deleted (plan §6.1) — merged into
+// `comotion.test.ts`'s "COMMAND_WHITELIST ⇔ 編碼器鍵集合完全相等" test,
+// which asserts the same fact (every whitelisted name has an encoder, so
+// none of them can 403) as a pure unit test that also proves each name
+// encodes to a real argv, without spawning 43 subprocesses.
 
 it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
   const id = await openDeck("resize.comot");
@@ -378,31 +373,6 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
-it("E2.T14：表格的 14 條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
-  const id = await openDeck("table-whitelist.comot");
-  const server = await serve(id);
-
-  for (const name of [
-    "table create",
-    "table cell set",
-    "table cell style set",
-    "table merge",
-    "table col width",
-    "table col insert",
-    "table col delete",
-    "table row insert",
-    "table row delete",
-    "table theme set",
-    "table header set",
-    "table bind",
-    "table refresh",
-    "table set",
-  ]) {
-    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
-    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
-  }
-});
-
 it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
   const id = await openDeck("table-create.comot");
   const server = await serve(id);
@@ -415,25 +385,6 @@ it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片",
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
   expect(await readSlide(id)).toContain('data-comot-type="table"');
-});
-
-it("E2.T12：圖表的八條命令都在 COMMAND_WHITELIST 內，不會被擋在 403", async () => {
-  const id = await openDeck("chart-whitelist.comot");
-  const server = await serve(id);
-
-  for (const name of [
-    "chart create",
-    "chart data set",
-    "chart type set",
-    "chart palette set",
-    "chart axis set",
-    "chart stack set",
-    "chart legend set",
-    "chart option set",
-  ]) {
-    const { status } = await postCommand(server, { name, input: { slidePath: "slides/001.svg" } });
-    expect(status, `${name} 不應該被白名單擋下`).not.toBe(403);
-  }
 });
 
 it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
@@ -489,7 +440,8 @@ async function openTextBoxDeck(fileName: string): Promise<string> {
   });
   const comotPath = path.join(comotDir, fileName);
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
