@@ -13,6 +13,7 @@
 
 use std::env;
 use std::ffi::OsString;
+use std::io::Read;
 
 use co_motion::commands;
 use co_motion::fallback;
@@ -86,11 +87,58 @@ fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
     let command_result = match command {
         "undo" => commands::undo::run(&positional),
         "redo" => commands::redo::run(&positional),
-        _ => unreachable!("commands::is_in_takeover_table only admits undo/redo"),
+        "chart" => {
+            let stdin_csv = maybe_read_stdin_csv(&positional);
+            commands::chart::run(&positional, stdin_csv)
+        }
+        "table" => commands::table::run(&positional),
+        "asset" => dispatch_asset(&positional),
+        _ => unreachable!("commands::is_in_takeover_table only admits the declared set"),
     };
 
-    // Neither undo nor redo has a renderer (plan 3.2 confirmed their output
-    // is the println!/JSON-pretty path, not a raw-bytes renderer) — `None`
-    // here is correct for this ticket, not a placeholder.
+    // None of undo/redo/chart/table/asset has a renderer (plan 3.2/4.3, and
+    // cli.md's own "Renderer 命令" list names only `cat`/`ls`/`slide
+    // render`) — `None` here is correct, not a placeholder.
     result::render(&command_result, None, json_flag)
+}
+
+/// `chart data set --csv -`'s stdin substitution: `cli.md` requires this to
+/// happen at the process entry layer (here), never inside argv parsing,
+/// since a future `serve` mode bypasses argv entirely. Scans for a literal
+/// `--csv` immediately followed by `-` anywhere in `positional` — safe to
+/// do unconditionally for every `chart` invocation because `--csv` is
+/// unique to `chart data set` among all 8 chart subcommands, so this can
+/// never misfire on an unrelated flag. Reads ALL of stdin as UTF-8; a
+/// read failure (stdin not valid UTF-8, or genuinely empty with no data
+/// available) is treated as "no stdin substitution" and left to
+/// `commands::chart::run`'s own "--csv - 只能從命令列使用" fallback rather
+/// than surfacing a raw I/O error here.
+fn maybe_read_stdin_csv(positional: &[String]) -> Option<String> {
+    let has_csv_dash = positional
+        .windows(2)
+        .any(|pair| pair[0] == "--csv" && pair[1] == "-");
+    if !has_csv_dash {
+        return None;
+    }
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf).ok()?;
+    Some(buf)
+}
+
+/// `asset`'s only subcommand is `import` — `docs/spec/cli.md`'s "asset"
+/// section (the same section that specifies `argv::asset::parse_import`'s
+/// grammar) states any other value reports `未知的子命令：asset <x>`
+/// (single token, unlike `chart`/`table`'s two-token unknown-subcommand
+/// message — matching that section's literal wording).
+fn dispatch_asset(positional: &[String]) -> result::CommandResult {
+    match positional.first() {
+        Some(first) if first == "import" => commands::asset_import::run(&positional[1..]),
+        other => result::CommandResult::failure(
+            format!(
+                "未知的子命令：asset {}",
+                other.map(String::as_str).unwrap_or("")
+            ),
+            result::FailureKind::Failed,
+        ),
+    }
 }

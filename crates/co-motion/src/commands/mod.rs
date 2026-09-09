@@ -4,13 +4,21 @@
 //! command is opt-in, one name at a time, never "whatever main.rs happens
 //! to parse".
 //!
-//! This ticket's takeover table is exactly `["undo", "redo"]` (plan section
-//! 7, item 1; acceptance criterion A11) — a future ticket (F3) grows this
-//! list one command at a time. `takeover_table_is_exactly_undo_and_redo`
-//! below is a deliberate tripwire: F3 adding a command WILL break this test,
-//! and that's the point — it forces a conscious edit here rather than a
-//! command silently becoming Rust-dispatched as a side effect of some other
-//! change.
+//! This is the TOP-LEVEL command word only (`argv[0]`) — `chart`/`table`
+//! each cover many multi-word subcommands (`chart data set`, `table cell
+//! style set`, ...) whose own dispatch happens one level down, in
+//! `argv::chart`/`argv::table`'s `parse`. NOOP-281/F5 grows this table from
+//! `["undo", "redo"]` to include `chart`/`table`/`asset` (26 commands
+//! across those three top-level words — see `argv::chart`/`argv::table`/
+//! `argv::asset` for the exact per-command list).
+//!
+//! `takeover_table_is_exactly_the_declared_set` below is a deliberate
+//! tripwire (renamed from `takeover_table_is_exactly_undo_and_redo` by this
+//! same commit that first grew the table past two entries): a future
+//! ticket adding another top-level command WILL break this test, and
+//! that's the point — it forces a conscious edit here rather than a
+//! command silently becoming Rust-dispatched as a side effect of some
+//! other change.
 
 pub mod asset_import;
 pub mod chart;
@@ -18,7 +26,7 @@ pub mod redo;
 pub mod table;
 pub mod undo;
 
-pub const TAKEOVER_TABLE: &[&str] = &["undo", "redo"];
+pub const TAKEOVER_TABLE: &[&str] = &["undo", "redo", "chart", "table", "asset"];
 
 pub fn is_in_takeover_table(name: &str) -> bool {
     TAKEOVER_TABLE.contains(&name)
@@ -29,15 +37,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn takeover_table_is_exactly_undo_and_redo() {
-        assert_eq!(TAKEOVER_TABLE, ["undo", "redo"]);
+    fn takeover_table_is_exactly_the_declared_set() {
+        assert_eq!(TAKEOVER_TABLE, ["undo", "redo", "chart", "table", "asset"]);
     }
 
     #[test]
     fn ls_is_not_in_the_takeover_table() {
-        // `ls` has a renderer and looks trivially portable, which is exactly
-        // why plan section 2 calls it out by name as something Execute must
-        // NOT move to Rust in this ticket (that's F3's job).
+        // `ls` has a renderer and looks trivially portable — a later
+        // ticket's job, not this one's.
         assert!(!is_in_takeover_table("ls"));
     }
 }
