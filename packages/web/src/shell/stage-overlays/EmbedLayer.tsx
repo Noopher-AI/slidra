@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { embedPlayerSrc } from "@co-motion/core/embed";
+import { embedPlayerSrc } from "../../embed.js";
 import type { CanvasController, EmbedState } from "../../canvas.js";
 import { bindYouTubePlayer, loadYouTubeApi, type YouTubePlayer } from "./youtube-player.js";
 

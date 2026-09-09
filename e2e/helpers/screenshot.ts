@@ -179,11 +179,21 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
 /**
  * Waits until `page` — and, if present, its main slide `iframe.slide-frame`
  * — is render-stable before a screenshot is taken: fonts loaded in both
- * documents, then two animation frames so any in-flight layout/paint from
- * the most recent DOM change has settled. This is on top of, not instead
- * of, each call site's own `waitForTimeout(50)` — that wait is about DOM
- * writes landing; this one is about the render pipeline catching up
- * afterwards.
+ * documents, the titlebar's own agent-connection badge past its transient
+ * "Agent connected" placeholder (`TitleBar.tsx`'s `.agent-dot` — an
+ * unrelated async SSE/fetch race that a broad sweep across this suite
+ * confirmed exposed, not caused, by F8/NOOP-289: every affected baseline's
+ * pixel differences are confined to this titlebar text/chat-panel chrome,
+ * never the canvas/product content), then two animation frames so any
+ * in-flight layout/paint from the most recent DOM change has settled. This
+ * is on top of, not instead of, each call site's own `waitForTimeout(50)`
+ * — that wait is about DOM writes landing; this one is about the render
+ * pipeline (and this one async badge) catching up afterwards.
+ *
+ * The agent-dot wait is bounded and never throws: a caller with no agent
+ * configured, or whose fixture never reaches "connected", still gets a
+ * screenshot — just without this extra settle, exactly like before this
+ * wait existed.
  */
 export async function settleForScreenshot(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready);
@@ -193,12 +203,52 @@ export async function settleForScreenshot(page: Page): Promise<void> {
     await slideFrame.evaluate(() => document.fonts.ready).catch(() => {});
   }
 
+  await waitForAgentBadgeSettled(page);
+
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       }),
   );
+}
+
+/**
+ * Bounded (1.5s), best-effort wait for `.agent-dot`'s text to stop reading
+ * the generic "Agent connected" placeholder — see `settleForScreenshot`'s
+ * own doc comment for why. Resolves (never rejects) whether or not the
+ * element exists, ever changes, or the timeout is hit — this must never
+ * be the reason a screenshot test hangs or fails.
+ *
+ * Every `Locator` call below carries an explicit short `timeout`: without
+ * one, Playwright's own actionability wait (`textContent()` retries for up
+ * to its 30s default) is what actually runs when `.agent-dot` does not
+ * exist at all — play mode hides the whole titlebar, so this function's
+ * very first call would otherwise block for 30 real seconds, long past
+ * `PlayChrome.tsx`'s 2.5s control-bar auto-hide timer (`play-awake`'s own
+ * screenshot went from "controls visible" to "already faded" this way —
+ * a self-inflicted regression from this wait's first version, not a
+ * pre-existing one; caught by re-running the whole suite after adding it).
+ */
+async function waitForAgentBadgeSettled(page: Page): Promise<void> {
+  const deadline = Date.now() + 1500;
+  const badge = page.locator(".agent-dot").first();
+  while (Date.now() < deadline) {
+    const text = await badge.textContent({ timeout: 200 }).catch(() => null);
+    if (text === null || text.trim() !== "Agent connected") break;
+    await page.waitForTimeout(50);
+  }
+  // Same startup race, a second incidental symptom of it: the status bar's
+  // settings gear (StatusBar.tsx, unconditionally rendered once mounted —
+  // nothing about it depends on any single ticket) was also caught
+  // mid-render in some of the same baselines. Bounded and non-throwing for
+  // the same reason as the badge wait above.
+  const deadline2 = Date.now() + 1500;
+  const settingsButton = page.locator(".status-settings-button").first();
+  while (Date.now() < deadline2) {
+    if (await settingsButton.isVisible().catch(() => false)) return;
+    await page.waitForTimeout(50);
+  }
 }
 
 /** Finds the main canvas iframe (`class="slide-frame"`), if the page has one. */

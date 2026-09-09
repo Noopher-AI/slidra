@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { CanvasController, CanvasSelection } from "../src/canvas.js";
-import type { SlideElement } from "@co-motion/core/slide";
+import type { SlideElement } from "../src/slide-dom.js";
 import { computeGroupButtonState, Dock, DockToast, groupToastText, type DockProps } from "../src/shell/dock/Dock.js";
 import { ShapeMenu } from "../src/shell/dock/menus/ShapeMenu.js";
 

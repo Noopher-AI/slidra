@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { serializeClipboardSvg } from "@co-motion/core/clipboard";
 import { classifyClipboardText } from "../src/clipboard/payload.js";
 import { copyCommandFor, cutCommandFor, pasteCommandFor, type ClipboardTarget } from "../src/clipboard/dispatch.js";
 
-const elementsSvg = serializeClipboardSvg({
-  sourceSlidePath: "slides/001.svg",
-  elements: ['<g id="el-a"><rect width="10" height="10"/></g>'],
-  effects: [],
-  viewBox: "0 0 1280 720",
-});
+// F8 (NOOP-289 決定 C1): recognition is now a shallow DOMParser check on the
+// root `<svg>`'s own marker attribute (`data-comot-clipboard="elements"`) —
+// this literal is the same shape core's `serializeClipboardSvg`
+// writes (element-clipboard.ts), inlined rather than generated, since the
+// web bundle no longer depends on core at all.
+const elementsSvg =
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:comot="https://co-motion.dev/ns" viewBox="0 0 1280 720" ' +
+  'data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+  '<g id="el-a"><rect width="10" height="10"/></g></svg>';
 
 describe("classifyClipboardText", () => {
   it("classifies null/undefined/empty/whitespace-only as empty", () => {

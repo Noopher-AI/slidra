@@ -1,5 +1,7 @@
-import type { SaveState } from "@co-motion/core";
 import type { SlashCommandOption } from "./slash-commands.js";
+
+/** core's own `SaveState` shape (`workspace.ts`), restated here rather than imported (F8, NOOP-289): the browser bundle no longer depends on core at all. */
+export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
 
 /**
  * NOOP-93 §4.4 — restated here rather than imported: `@co-motion/server`'s

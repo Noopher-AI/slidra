@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { SlideElement } from "@co-motion/core/slide";
+import type { SlideElement } from "../../slide-dom.js";
 import type { CanvasController, CanvasState } from "../../canvas.js";
 import { summarizeSelection, type StyleReadResult } from "../../style-attrs.js";
 import { StyleField } from "./style/StyleField.js";
