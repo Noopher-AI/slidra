@@ -330,12 +330,12 @@ const CLIPBOARD_SOURCE_ATTR: &str = "data-comot-source";
 const SANITIZE_PLACEHOLDER_VIEWBOX: &str = "0 0 1280 720";
 
 /// [E2.T7]/D2: `EFFECTS_NS` — the ONE shared namespace `<comot:effects>`
-/// lives in everywhere it's read or written (`effects::EFFECTS_NS`,
+/// lives in everywhere it's read or written (`effects::edit::EFFECTS_NS`,
 /// `packages/web/src/effects.ts`, `packages/core/src/notes.ts`'s
 /// `NOTES_NS`). Reused directly, not redeclared — this ticket's own
 /// `effects::remove_effects_targeting` (P2 foundation) already established
 /// that constant.
-use crate::effects::EFFECTS_NS;
+use crate::effects::edit::EFFECTS_NS;
 
 const XML_NAMED_ENTITIES: [(&str, char); 5] = [
     ("amp", '&'),
