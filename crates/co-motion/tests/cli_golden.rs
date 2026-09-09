@@ -224,6 +224,60 @@ fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
     assert!(output.stdout.is_empty());
 }
 
+/// Regression: an argv[0] that matches neither takeover mechanism (never
+/// registered at all, e.g. `frobnicate`; or a legacy-table-eligible name
+/// used with a sub-command that isn't, e.g. `effect duplicate`; or an
+/// [E4.T5]-family name outside its own table, e.g. `element frobnicate`)
+/// must be rejected by Rust's own "未知的命令" branch, never forwarded to
+/// Node — [E4.T12] deletes that fallback outright (plan section 0.1/2.1).
+/// Previously only exercised via the deleted
+/// `fallback_path_is_byte_identical_to_node_for_every_non_takeover_command`,
+/// which compared against the now-deleted Node CLI; this keeps the
+/// behavior itself under test, reusing
+/// `no_takeover_table_command_ever_invokes_node`'s empty-`PATH` technique
+/// so that a reintroduced fallback would surface as "找不到 node" instead
+/// of silently passing.
+#[test]
+fn unknown_command_never_falls_back_to_node() {
+    let fixture = Fixture::new("unknown-command-no-fallback");
+
+    let empty_path_dir = env::temp_dir().join(format!(
+        "co-motion-empty-path-unknown-command-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&empty_path_dir).unwrap();
+
+    let run_without_node = |args: &[&str]| -> Output {
+        Command::new(rust_bin())
+            .args(args)
+            .env("CO_MOTION_HOME", &fixture.home)
+            .env("PATH", &empty_path_dir)
+            .output()
+            .expect("compiled co-motion binary must run")
+    };
+
+    let cases: &[(&[&str], &str)] = &[
+        (&["frobnicate"], "frobnicate"),
+        (
+            &["effect", "duplicate", "irrelevant-id", "slides/001.svg"],
+            "effect",
+        ),
+        (&["element", "frobnicate"], "element"),
+    ];
+    for (args, unknown_name) in cases {
+        let output = run_without_node(args);
+        assert_eq!(output.status.code(), Some(1), "args={args:?}: {output:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!("未知的命令：{unknown_name}\n"),
+            "args={args:?}"
+        );
+        assert!(output.stdout.is_empty(), "args={args:?}: {output:?}");
+    }
+
+    fs::remove_dir_all(&empty_path_dir).ok();
+}
+
 #[test]
 fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     let fixture = Fixture::new("undo-empty");

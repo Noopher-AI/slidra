@@ -747,20 +747,26 @@ mod tests {
     /// keeps the behavior itself under test.
     #[test]
     fn add_slide_at_non_integer_errors() {
+        // Fixture starts with 1 slide, so `max` is 1 and `0.5` is in range
+        // — this isolates the `fract() != 0.0` branch from the `> max`
+        // branch, which `add_slide_at_out_of_range_errors` already covers.
         let fixture = Fixture::new("add-slide-non-integer");
         let err = add_slide(
             &fixture.id,
             AddSlideInput {
                 template_path: None,
-                at: Some(1.5),
+                at: Some(0.5),
             },
         )
         .unwrap_err();
-        assert!(err.message().contains("超出範圍"));
+        assert!(err.message().contains("0.5"));
     }
 
     #[test]
     fn move_slide_to_non_integer_index_errors() {
+        // After the extra `add_slide`, there are 2 slides, so `max` is
+        // `len() - 1 == 1` and `0.5` is in range — isolates the non-integer
+        // check from the range check the same way as above.
         let fixture = Fixture::new("move-slide-non-integer");
         add_slide(
             &fixture.id,
@@ -770,8 +776,8 @@ mod tests {
             },
         )
         .unwrap();
-        let err = move_slide(&fixture.id, "slides/001.svg", 1.5).unwrap_err();
-        assert!(err.message().contains("超出範圍"));
+        let err = move_slide(&fixture.id, "slides/001.svg", 0.5).unwrap_err();
+        assert!(err.message().contains("0.5"));
     }
 
     #[test]
