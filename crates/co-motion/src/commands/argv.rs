@@ -40,6 +40,26 @@ pub fn require_positional<'a>(
     }
 }
 
+/// Same as `require_positional`, minus the `is_flag_like` check: a
+/// presentation id is minted by `generate_opaque_id` (9 random bytes,
+/// base64url-encoded — the alphabet includes `-`), so roughly 1 in 4096
+/// ids happen to start with `--`. The id is not something a caller
+/// chooses, so it must never be rejected as "missing" for looking
+/// flag-shaped.
+pub fn require_id_positional<'a>(
+    args: &'a [String],
+    index: usize,
+    command: &str,
+    arg_name: &str,
+) -> CoMotionResult<&'a str> {
+    match args.get(index) {
+        Some(value) => Ok(value.as_str()),
+        None => Err(CoMotionError::invalid(format!(
+            "命令 {command} 缺少參數：{arg_name}"
+        ))),
+    }
+}
+
 /// A "last positional taken by fixed index verbatim" value — `element name
 /// set`'s `name`, `element style set`'s `value`, `text set`'s `new-text`,
 /// `comment add`'s `text`. These, unlike every other positional, are
@@ -187,6 +207,22 @@ mod tests {
         let args = vec!["--dx".to_string(), "10".to_string()];
         let err = require_positional(&args, 0, "element move", "element-ids").unwrap_err();
         assert_eq!(err.message(), "命令 element move 缺少參數：element-ids");
+    }
+
+    #[test]
+    fn require_id_positional_accepts_a_dash_prefixed_id() {
+        let args = vec!["--IXET6Q29_h".to_string(), "slides/001.svg".to_string()];
+        assert_eq!(
+            require_id_positional(&args, 0, "element insert", "id").unwrap(),
+            "--IXET6Q29_h"
+        );
+    }
+
+    #[test]
+    fn require_id_positional_still_rejects_a_missing_positional() {
+        let args: Vec<String> = vec![];
+        let err = require_id_positional(&args, 0, "element insert", "id").unwrap_err();
+        assert_eq!(err.message(), "命令 element insert 缺少參數：id");
     }
 
     #[test]

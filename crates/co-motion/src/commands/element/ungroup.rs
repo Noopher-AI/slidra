@@ -1,13 +1,13 @@
 //! `co-motion element ungroup` argv layer.
 
-use crate::commands::argv::{require_id_list, require_positional};
+use crate::commands::argv::{require_id_list, require_id_positional, require_positional};
 use crate::element::group;
 use crate::errors::CoMotionResult;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element ungroup", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element ungroup", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element ungroup", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element ungroup")?;
 

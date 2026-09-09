@@ -1,13 +1,15 @@
 //! `co-motion element rotate` argv layer.
 
-use crate::commands::argv::{has_flag, require_id_list, require_number_flag, require_positional};
+use crate::commands::argv::{
+    has_flag, require_id_list, require_id_positional, require_number_flag, require_positional,
+};
 use crate::element::edit;
 use crate::errors::CoMotionResult;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element rotate", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element rotate", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element rotate", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element rotate")?;
     let degrees = require_number_flag(args, "--degrees", "element rotate")?;

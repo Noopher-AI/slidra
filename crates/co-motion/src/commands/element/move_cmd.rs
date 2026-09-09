@@ -1,14 +1,16 @@
 //! `co-motion element move` argv layer. Named `move_cmd` (not `move`) —
 //! `move` is a Rust keyword and cannot be a module identifier.
 
-use crate::commands::argv::{has_flag, require_id_list, require_number_flag, require_positional};
+use crate::commands::argv::{
+    has_flag, require_id_list, require_id_positional, require_number_flag, require_positional,
+};
 use crate::element::edit;
 use crate::errors::CoMotionResult;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element move", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element move", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element move", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element move")?;
     let dx = require_number_flag(args, "--dx", "element move")?;

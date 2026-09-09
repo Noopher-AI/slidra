@@ -2868,3 +2868,152 @@ fn copy_does_not_touch_the_slide_or_history() {
         "element copy must never create undo history where none existed"
     );
 }
+
+/// FAIL 1 (NOOP-334r2): a presentation id minted by `generate_opaque_id`
+/// has roughly 1/4096 odds of starting with `--` (its base64url alphabet
+/// includes `-`) — before this fix, every argv toolkit's
+/// `require_positional` treated a `--`-prefixed id as a missing positional
+/// (`is_flag_like`), making an already-open presentation with such an id
+/// permanently unreachable. This writes a `--`-prefixed id directly into
+/// `projects.json` (Dev-Leader's decision (ii): fix the RESOLVING end, not
+/// mint-time retry — an already-registered id must keep working) and
+/// drives one command through each of the four argv toolkits (`argv/mod.rs`
+/// root, `argv/mod.rs::ct`, `commands/argv.rs`, `commands/effect.rs`'s
+/// private copy) to prove every one of them now accepts it.
+#[test]
+fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
+    let fixture = Fixture::new("dash-prefixed-id");
+    let (id, element_id) = new_and_open(&fixture);
+
+    const DASH_ID: &str = "--IXET6Q29_h";
+    {
+        let registry_path = fixture.home.join("projects.json");
+        let raw = fs::read_to_string(&registry_path).unwrap();
+        let mut registry: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let entry = registry
+            .as_object_mut()
+            .unwrap()
+            .remove(&id)
+            .expect("the freshly opened id must be registered");
+        registry
+            .as_object_mut()
+            .unwrap()
+            .insert(DASH_ID.to_string(), entry);
+        fs::write(
+            &registry_path,
+            serde_json::to_string_pretty(&registry).unwrap(),
+        )
+        .unwrap();
+    }
+
+    // Toolkit A (`argv/mod.rs` root): `cat`'s read path. Asserting the
+    // `--json` `content` equals the real on-disk bytes (not just "ok")
+    // proves the dash id actually resolved to the right work dir.
+    let cat_out = fixture.run_rust(&["cat", DASH_ID, "project.json", "--json"]);
+    let cat_env = json_envelope(&cat_out);
+    assert_eq!(cat_env["ok"], serde_json::json!(true), "cat: {cat_out:?}");
+    let real_bytes = {
+        let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
+        let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
+        let work_dir = registry[DASH_ID]["workDir"].as_str().unwrap().to_string();
+        fs::read(PathBuf::from(work_dir).join("project.json")).unwrap()
+    };
+    assert_eq!(
+        cat_env["data"][0]["content"],
+        serde_json::json!(co_motion::base64::encode(&real_bytes)),
+        "cat --json content must be the real project.json bytes, base64-encoded"
+    );
+
+    // Toolkit A: `ls`.
+    let ls_out = fixture.run_rust(&["ls", DASH_ID, "--json"]);
+    assert_eq!(
+        json_envelope(&ls_out)["ok"],
+        serde_json::json!(true),
+        "ls: {ls_out:?}"
+    );
+
+    // Toolkit A: `slide add` — a write path, not just a read.
+    let slide_add_out = fixture.run_rust(&["slide", "add", DASH_ID, "--json"]);
+    assert_eq!(
+        json_envelope(&slide_add_out)["ok"],
+        serde_json::json!(true),
+        "slide add: {slide_add_out:?}"
+    );
+
+    // Toolkit B (`commands/argv.rs`): `element insert` — the id is at
+    // index 1 here (index 0 is `kind`), the one non-index-0 id slot in the
+    // whole crate.
+    let insert_out = fixture.run_rust(&[
+        "element",
+        "insert",
+        "rect",
+        DASH_ID,
+        "slides/001.svg",
+        "--x",
+        "1",
+        "--y",
+        "1",
+        "--width",
+        "1",
+        "--height",
+        "1",
+        "--json",
+    ]);
+    assert_eq!(
+        json_envelope(&insert_out)["ok"],
+        serde_json::json!(true),
+        "element insert: {insert_out:?}"
+    );
+
+    // Toolkit C (`argv/mod.rs::ct`): `table create`.
+    let table_out = fixture.run_rust(&[
+        "table",
+        "create",
+        DASH_ID,
+        "slides/001.svg",
+        "--rows",
+        "2",
+        "--cols",
+        "2",
+        "--x",
+        "0",
+        "--y",
+        "0",
+        "--json",
+    ]);
+    assert_eq!(
+        json_envelope(&table_out)["ok"],
+        serde_json::json!(true),
+        "table create: {table_out:?}"
+    );
+
+    // Toolkit D (`commands/effect.rs`'s own private copy): `effect add`.
+    let effect_out = fixture.run_rust(&[
+        "effect",
+        "add",
+        DASH_ID,
+        "slides/001.svg",
+        &element_id,
+        "--family",
+        "enter",
+        "--effect",
+        "fade",
+        "--json",
+    ]);
+    assert_eq!(
+        json_envelope(&effect_out)["ok"],
+        serde_json::json!(true),
+        "effect add: {effect_out:?}"
+    );
+
+    // Reverse assertion (behavior contract's last row, §4.1): the fix only
+    // widens the ID slot — a genuinely MISSING non-id positional (`cat`'s
+    // `path`) must still be rejected exactly as before.
+    let cat_missing_path = fixture.run_rust(&["cat", DASH_ID, "--json"]);
+    let cat_missing_env = json_envelope(&cat_missing_path);
+    assert_eq!(cat_missing_env["ok"], serde_json::json!(false));
+    assert_eq!(
+        cat_missing_env["message"],
+        serde_json::json!("命令 cat 缺少參數：path")
+    );
+}

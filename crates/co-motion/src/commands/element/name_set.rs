@@ -4,14 +4,16 @@
 //! sequence before this handler is ever reached (plan section 1.4) — there
 //! is no "element name <anything-else>" case left to reject here.
 
-use crate::commands::argv::{require_id_list, require_positional, require_raw_positional};
+use crate::commands::argv::{
+    require_id_list, require_id_positional, require_positional, require_raw_positional,
+};
 use crate::element::group;
 use crate::errors::CoMotionResult;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element name set", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element name set", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element name set", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element name set")?;
     // Raw positional, not `require_positional`: an empty string clears the

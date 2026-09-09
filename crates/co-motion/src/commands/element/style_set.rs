@@ -4,7 +4,7 @@
 //! same naming choice for `element name set`.
 
 use crate::commands::argv::{
-    has_flag, require_id_list, require_positional, require_raw_positional,
+    has_flag, require_id_list, require_id_positional, require_positional, require_raw_positional,
 };
 use crate::element::edit;
 use crate::errors::CoMotionResult;
@@ -13,7 +13,7 @@ use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element style set", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element style set", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element style set", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element style set")?;
     let attr = require_positional(args, 3, "element style set", "attr")?.to_string();

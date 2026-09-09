@@ -24,7 +24,7 @@
 //! `main.rs`'s dispatch — out of this file's and this ticket's scope
 //! (orchestrator-owned).
 
-use super::ct::{optional_flag, require_positional};
+use super::ct::{optional_flag, require_id_positional, require_positional};
 use crate::errors::CoMotionError;
 
 #[derive(Debug, PartialEq)]
@@ -40,7 +40,7 @@ pub struct AssetImportArgs {
 /// token has been consumed by the caller — the same convention
 /// `argv::chart`/`argv::table`'s per-subcommand parsers use.
 pub fn parse_import(args: &[String]) -> Result<AssetImportArgs, CoMotionError> {
-    let id = require_positional(args, 0, "asset import", "presentation-id")?;
+    let id = require_id_positional(args, 0, "asset import", "presentation-id")?;
     let source = require_positional(args, 1, "asset import", "source")?;
     let as_format = optional_flag(args, "--as")?;
     Ok(AssetImportArgs {

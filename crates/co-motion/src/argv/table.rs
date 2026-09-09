@@ -9,8 +9,8 @@ use crate::table::clipboard::{CellAnchor, CellRange, parse_cell_anchor, parse_ce
 use crate::table::edit::{CreateTableInput, MergeTableCellsInput, SetCellStyleInput};
 
 use super::ct::{
-    has_flag, is_flag_like, optional_flag, optional_number_flag, require_flag, require_number_flag,
-    require_positional,
+    has_flag, is_flag_like, optional_flag, optional_number_flag, require_flag,
+    require_id_positional, require_number_flag, require_positional,
 };
 
 #[derive(Debug)]
@@ -130,7 +130,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("create") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "table create", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table create", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table create", "slide-path")?;
         let rows = require_number_flag(args, "--rows", "table create")?;
         let cols = require_number_flag(args, "--cols", "table create")?;
@@ -166,7 +166,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("refresh") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "table refresh", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table refresh", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table refresh", "slide-path")?;
         let element_id = require_positional(args, 2, "table refresh", "element-id")?;
         return Ok(TableCommand::Refresh {
@@ -178,7 +178,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("bind") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "table bind", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table bind", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table bind", "slide-path")?;
         let element_id = require_positional(args, 2, "table bind", "element-id")?;
         let source = require_flag(args, "--source", "table bind")?;
@@ -194,7 +194,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("set") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "table set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table set", "slide-path")?;
         let element_id = require_positional(args, 2, "table set", "element-id")?;
         let from = optional_flag(args, "--from")?;
@@ -218,7 +218,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("merge") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "table merge", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table merge", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table merge", "slide-path")?;
         let element_id = require_positional(args, 2, "table merge", "element-id")?;
         let row = require_number_flag(args, "--row", "table merge")?;
@@ -249,7 +249,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("cell") && level2 == Some("copy") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table cell copy", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table cell copy", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell copy", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell copy", "element-id")?;
         let range = parse_cell_range(&require_flag(args, "--range", "table cell copy")?)?;
@@ -263,7 +263,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("cell") && level2 == Some("cut") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table cell cut", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table cell cut", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell cut", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell cut", "element-id")?;
         let range = parse_cell_range(&require_flag(args, "--range", "table cell cut")?)?;
@@ -277,7 +277,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("cell") && level2 == Some("paste") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table cell paste", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table cell paste", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell paste", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell paste", "element-id")?;
         let anchor = parse_cell_anchor(&require_flag(args, "--at", "table cell paste")?)?;
@@ -293,7 +293,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("cell") && level2 == Some("set") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table cell set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table cell set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell set", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell set", "element-id")?;
         let row = require_number_flag(args, "--row", "table cell set")?;
@@ -311,7 +311,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("cell") && level2 == Some("style") && level3 == Some("set") {
         let args = &rest[3..];
-        let id = require_positional(args, 0, "table cell style set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table cell style set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell style set", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell style set", "element-id")?;
         let row = require_number_flag(args, "--row", "table cell style set")?;
@@ -355,7 +355,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("col") && level2 == Some("width") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table col width", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table col width", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col width", "slide-path")?;
         let element_id = require_positional(args, 2, "table col width", "element-id")?;
         let col = require_number_flag(args, "--col", "table col width")?;
@@ -373,7 +373,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("col") && level2 == Some("insert") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table col insert", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table col insert", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col insert", "slide-path")?;
         let element_id = require_positional(args, 2, "table col insert", "element-id")?;
         let at = require_number_flag(args, "--at", "table col insert")?;
@@ -387,7 +387,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("col") && level2 == Some("delete") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table col delete", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table col delete", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col delete", "slide-path")?;
         let element_id = require_positional(args, 2, "table col delete", "element-id")?;
         let at = require_number_flag(args, "--at", "table col delete")?;
@@ -401,7 +401,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("row") && level2 == Some("insert") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table row insert", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table row insert", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table row insert", "slide-path")?;
         let element_id = require_positional(args, 2, "table row insert", "element-id")?;
         let at = require_number_flag(args, "--at", "table row insert")?;
@@ -415,7 +415,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("row") && level2 == Some("delete") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table row delete", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table row delete", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table row delete", "slide-path")?;
         let element_id = require_positional(args, 2, "table row delete", "element-id")?;
         let at = require_number_flag(args, "--at", "table row delete")?;
@@ -429,7 +429,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("theme") && level2 == Some("set") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table theme set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table theme set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table theme set", "slide-path")?;
         let element_id = require_positional(args, 2, "table theme set", "element-id")?;
         let theme = require_positional(args, 3, "table theme set", "theme")?;
@@ -443,7 +443,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
 
     if level1 == Some("header") && level2 == Some("set") {
         let args = &rest[2..];
-        let id = require_positional(args, 0, "table header set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "table header set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table header set", "slide-path")?;
         let element_id = require_positional(args, 2, "table header set", "element-id")?;
         let value = require_positional(args, 3, "table header set", "true|false")?;

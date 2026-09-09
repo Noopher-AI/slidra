@@ -57,6 +57,23 @@ fn require_positional(
     }
 }
 
+/// Same as `require_positional`, minus the `is_flag_like` check — a
+/// presentation id minted by `generate_opaque_id` has roughly 1/4096 odds
+/// of starting with `--`, and the product mints it, not the caller.
+fn require_id_positional(
+    args: &[String],
+    index: usize,
+    command: &str,
+    arg_name: &str,
+) -> CoMotionResult<String> {
+    match args.get(index) {
+        Some(value) if !value.is_empty() => Ok(value.clone()),
+        _ => Err(CoMotionError::invalid(format!(
+            "命令 {command} 缺少參數：{arg_name}"
+        ))),
+    }
+}
+
 fn require_flag(args: &[String], flag: &str, command: &str) -> CoMotionResult<String> {
     let Some(index) = args.iter().position(|a| a == flag) else {
         return Err(CoMotionError::invalid(format!(
@@ -188,7 +205,7 @@ struct AddArgs {
 
 fn parse_add(args: &[String]) -> CoMotionResult<AddArgs> {
     const COMMAND: &str = "effect add";
-    let id = require_positional(args, 0, COMMAND, "presentation-id")?;
+    let id = require_id_positional(args, 0, COMMAND, "presentation-id")?;
     let slide_path = require_positional(args, 1, COMMAND, "slide-path")?;
     let element_ids = require_id_list(args, 2, COMMAND)?;
     let family = require_flag(args, "--family", COMMAND)?;
@@ -258,7 +275,7 @@ fn run_add(parsed: AddArgs) -> CommandResult {
 
 pub fn remove(args: &[String]) -> CommandResult {
     const COMMAND: &str = "effect remove";
-    let id = match require_positional(args, 0, COMMAND, "presentation-id") {
+    let id = match require_id_positional(args, 0, COMMAND, "presentation-id") {
         Ok(v) => v,
         Err(err) => return argv_error(err.message().to_string()),
     };
@@ -294,7 +311,7 @@ pub fn remove(args: &[String]) -> CommandResult {
 
 pub fn move_cmd(args: &[String]) -> CommandResult {
     const COMMAND: &str = "effect move";
-    let id = match require_positional(args, 0, COMMAND, "presentation-id") {
+    let id = match require_id_positional(args, 0, COMMAND, "presentation-id") {
         Ok(v) => v,
         Err(err) => return argv_error(err.message().to_string()),
     };
@@ -341,7 +358,7 @@ pub fn move_cmd(args: &[String]) -> CommandResult {
 
 pub fn set(args: &[String]) -> CommandResult {
     const COMMAND: &str = "effect set";
-    let id = match require_positional(args, 0, COMMAND, "presentation-id") {
+    let id = match require_id_positional(args, 0, COMMAND, "presentation-id") {
         Ok(v) => v,
         Err(err) => return argv_error(err.message().to_string()),
     };
@@ -406,7 +423,7 @@ pub fn set(args: &[String]) -> CommandResult {
 
 pub fn list(args: &[String]) -> CommandResult {
     const COMMAND: &str = "effect list";
-    let id = match require_positional(args, 0, COMMAND, "presentation-id") {
+    let id = match require_id_positional(args, 0, COMMAND, "presentation-id") {
         Ok(v) => v,
         Err(err) => return argv_error(err.message().to_string()),
     };
@@ -518,6 +535,22 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(result.message, "命令 effect add 缺少參數：presentation-id");
         assert_eq!(result.failure_kind, None);
+    }
+
+    #[test]
+    fn require_id_positional_accepts_a_dash_prefixed_id() {
+        let args = vec!["--IXET6Q29_h".to_string()];
+        assert_eq!(
+            require_id_positional(&args, 0, "effect list", "presentation-id").unwrap(),
+            "--IXET6Q29_h"
+        );
+    }
+
+    #[test]
+    fn require_id_positional_still_rejects_a_missing_positional() {
+        let args: Vec<String> = vec![];
+        let err = require_id_positional(&args, 0, "effect list", "presentation-id").unwrap_err();
+        assert_eq!(err.message(), "命令 effect list 缺少參數：presentation-id");
     }
 
     #[test]

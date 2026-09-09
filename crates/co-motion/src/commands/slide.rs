@@ -43,7 +43,7 @@ fn failure_kind_for(err: &CoMotionError) -> FailureKind {
 }
 
 fn run_render(args: &[String], json_flag: bool) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "slide render", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "slide render", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -98,7 +98,7 @@ fn render_slide_for_display(id: &str, slide_path: &str) -> Result<String, CoMoti
 }
 
 fn run_add(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "slide add", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "slide add", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -129,7 +129,7 @@ fn run_add(args: &[String]) -> CommandResult {
 }
 
 fn run_delete(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "slide delete", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "slide delete", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -147,7 +147,7 @@ fn run_delete(args: &[String]) -> CommandResult {
 }
 
 fn run_duplicate(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "slide duplicate", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "slide duplicate", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -165,7 +165,7 @@ fn run_duplicate(args: &[String]) -> CommandResult {
 }
 
 fn run_move(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "slide move", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "slide move", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -207,7 +207,8 @@ fn run_notes(args: &[String]) -> CommandResult {
         );
     }
     let notes_args: &[String] = args.get(1..).unwrap_or(&[]);
-    let id = match argv::require_positional(notes_args, 0, "slide notes set", "presentation-id") {
+    let id = match argv::require_id_positional(notes_args, 0, "slide notes set", "presentation-id")
+    {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -243,7 +244,8 @@ fn run_transition(args: &[String]) -> CommandResult {
     }
     let trans_args: &[String] = args.get(1..).unwrap_or(&[]);
     let id =
-        match argv::require_positional(trans_args, 0, "slide transition set", "presentation-id") {
+        match argv::require_id_positional(trans_args, 0, "slide transition set", "presentation-id")
+        {
             Ok(v) => v,
             Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
         };
@@ -325,7 +327,8 @@ fn run_style(args: &[String]) -> CommandResult {
         );
     }
     let style_args: &[String] = args.get(1..).unwrap_or(&[]);
-    let id = match argv::require_positional(style_args, 0, "slide style set", "presentation-id") {
+    let id = match argv::require_id_positional(style_args, 0, "slide style set", "presentation-id")
+    {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };

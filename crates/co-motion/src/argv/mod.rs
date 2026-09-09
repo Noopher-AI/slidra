@@ -53,6 +53,25 @@ pub fn require_positional(
     }
 }
 
+/// Same as `require_positional`, minus the `is_flag_like` check: a
+/// presentation id is minted by `generate_opaque_id` (9 random bytes,
+/// base64url-encoded — `id.rs`'s alphabet includes `-`), so roughly 1 in
+/// 4096 ids happen to start with `--`. The product itself mints these ids;
+/// a user has no way to avoid one. Rejecting them as "missing" here would
+/// make an already-open presentation permanently unreachable through this
+/// argv slot. Every other check (missing, empty string) is unchanged.
+pub fn require_id_positional(
+    args: &[String],
+    index: usize,
+    command: &str,
+    arg_name: &str,
+) -> Result<String, String> {
+    match args.get(index) {
+        Some(value) if !value.is_empty() => Ok(value.clone()),
+        _ => Err(format!("命令 {command} 缺少參數：{arg_name}")),
+    }
+}
+
 /// The value following `flag` in `args`, or an error when the flag is
 /// absent or has no legal value.
 pub fn require_flag(args: &[String], flag: &str, command: &str) -> Result<String, String> {
@@ -195,6 +214,28 @@ mod tests {
     }
 
     #[test]
+    fn require_id_positional_accepts_a_dash_prefixed_id() {
+        let args = vec!["--IXET6Q29_h".to_string()];
+        assert_eq!(
+            require_id_positional(&args, 0, "cat", "id").unwrap(),
+            "--IXET6Q29_h"
+        );
+    }
+
+    #[test]
+    fn require_id_positional_still_rejects_missing_and_empty() {
+        let args = vec!["".to_string()];
+        assert_eq!(
+            require_id_positional(&args, 0, "cat", "id").unwrap_err(),
+            "命令 cat 缺少參數：id"
+        );
+        assert_eq!(
+            require_id_positional(&args, 1, "cat", "id").unwrap_err(),
+            "命令 cat 缺少參數：id"
+        );
+    }
+
+    #[test]
     fn require_flag_finds_value_after_flag() {
         let args = vec!["--width".to_string(), "100".to_string()];
         assert_eq!(require_flag(&args, "--width", "cmd").unwrap(), "100");
@@ -301,6 +342,23 @@ mod ct {
         }
     }
 
+    /// Same as `require_positional`, minus the `is_flag_like` check — see
+    /// `super::require_id_positional`'s doc for why a presentation id must
+    /// accept a `--`-prefixed value.
+    pub(super) fn require_id_positional(
+        args: &[String],
+        index: usize,
+        command: &str,
+        arg_name: &str,
+    ) -> Result<String, CoMotionError> {
+        match args.get(index) {
+            Some(value) => Ok(value.clone()),
+            None => Err(CoMotionError::invalid(format!(
+                "命令 {command} 缺少參數：{arg_name}"
+            ))),
+        }
+    }
+
     /// The value immediately following `flag` in `args`. Errors if `flag`
     /// is absent, or present with no value (or a flag-shaped "value").
     pub(super) fn require_flag(
@@ -382,6 +440,22 @@ mod ct {
             let args = vec!["--foo".to_string()];
             let err = require_positional(&args, 0, "cmd", "path").unwrap_err();
             assert_eq!(err.message(), "命令 cmd 缺少參數：path");
+        }
+
+        #[test]
+        fn require_id_positional_accepts_a_dash_prefixed_id() {
+            let args = vec!["--IXET6Q29_h".to_string()];
+            assert_eq!(
+                require_id_positional(&args, 0, "table create", "id").unwrap(),
+                "--IXET6Q29_h"
+            );
+        }
+
+        #[test]
+        fn require_id_positional_still_rejects_a_missing_positional() {
+            let args: Vec<String> = vec![];
+            let err = require_id_positional(&args, 0, "table create", "id").unwrap_err();
+            assert_eq!(err.message(), "命令 table create 缺少參數：id");
         }
 
         #[test]

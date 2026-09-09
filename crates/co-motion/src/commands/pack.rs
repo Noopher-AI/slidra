@@ -7,7 +7,7 @@ use crate::{argv, container, workspace};
 use std::path::{Path, PathBuf};
 
 pub fn run(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "pack", "id") {
+    let id = match argv::require_id_positional(args, 0, "pack", "id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
