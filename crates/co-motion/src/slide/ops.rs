@@ -738,6 +738,42 @@ mod tests {
         assert!(err.message().contains("超出範圍"));
     }
 
+    /// Regression: `assert_valid_index` rejects a non-integer float
+    /// (`--at 1.5`) the same way it rejects an out-of-range one — same
+    /// contract as TS's `assertValidIndex`. Previously only exercised via
+    /// `crates/co-motion/tests/cli_golden.rs`'s
+    /// `slide_add_and_move_reject_non_integer_position_byte_identical_to_node`,
+    /// which was deleted with the Node CLI it cross-checked against; this
+    /// keeps the behavior itself under test.
+    #[test]
+    fn add_slide_at_non_integer_errors() {
+        let fixture = Fixture::new("add-slide-non-integer");
+        let err = add_slide(
+            &fixture.id,
+            AddSlideInput {
+                template_path: None,
+                at: Some(1.5),
+            },
+        )
+        .unwrap_err();
+        assert!(err.message().contains("超出範圍"));
+    }
+
+    #[test]
+    fn move_slide_to_non_integer_index_errors() {
+        let fixture = Fixture::new("move-slide-non-integer");
+        add_slide(
+            &fixture.id,
+            AddSlideInput {
+                template_path: None,
+                at: None,
+            },
+        )
+        .unwrap();
+        let err = move_slide(&fixture.id, "slides/001.svg", 1.5).unwrap_err();
+        assert!(err.message().contains("超出範圍"));
+    }
+
     #[test]
     fn delete_slide_removes_file_and_updates_project() {
         let fixture = Fixture::new("delete-slide");
