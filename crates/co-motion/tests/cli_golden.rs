@@ -129,11 +129,17 @@ fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
 
 /// Acceptance criterion A2: for every one of these argv combinations —
 /// genuinely NOT-yet-Rust-dispatched commands, [E4.T4]'s explicit non-scope
-/// (plan §2 item 3: `element`/`textbox`/`table`/`chart`/`comment`/`asset`
-/// families, plus [E4.T7]'s `effect` family for any sub-command that isn't
-/// one of its five takeover-table entries) plus a bare unknown command
-/// name — the Rust binary's fallback path must byte-for-byte match the
-/// real Node CLI: stdout, stderr, AND exit code all three.
+/// (plan §2 item 3: `element`/`textbox`/`comment` families, plus
+/// [E4.T7]'s `effect` family for any sub-command that isn't one of its five
+/// takeover-table entries) plus a bare unknown command name — the Rust
+/// binary's fallback path must byte-for-byte match the real Node CLI:
+/// stdout, stderr, AND exit code all three. `table`/`chart`/`asset` moved
+/// OUT of this test as of NOOP-281/F5, the same way `ls`/`cat` moved out
+/// under [E4.T4] (see the doc comment below): those three families are now
+/// entirely Rust-dispatched (`commands::match_takeover` takes over on the
+/// first argv token alone, unlike `effect`'s five specific two-word
+/// entries), so no sub-command under them ever reaches the fallback path
+/// to compare.
 ///
 /// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
 /// them explicitly as things this ticket would move to Rust): they no
@@ -167,13 +173,10 @@ fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
         vec!["frobnicate"],
         vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
         vec!["textbox", "add"],
-        vec!["table", "create"],
-        vec!["chart", "create"],
         vec!["comment", "list", &id],
         // Not one of `effect`'s five takeover-table entries (add/list/
         // move/remove/set) — must still fall back, unlike those five.
         vec!["effect", "duplicate", &id, "slides/001.svg"],
-        vec!["asset", "import"],
     ];
 
     let mut failures = Vec::new();
@@ -733,6 +736,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         "rust redo must restore the exact post-edit bytes"
     );
 }
+
 
 // ---------------------------------------------------------------------------
 // effect add / remove / move / set / list ([E4.T7], plan 6.1/6.2)
@@ -1570,4 +1574,611 @@ fn slide_add_and_move_reject_non_integer_position_byte_identical_to_node() {
         "non-integer position parity mismatches:\n{}",
         failures.join("\n---\n")
     );
+}
+
+// ---------------------------------------------------------------------------
+// NOOP-281/F5: chart, table, and asset import command golden tests.
+// ---------------------------------------------------------------------------
+
+/// Replaces every `el-<12 chars>` id in `svg` with a placeholder assigned in
+/// order of first appearance, so a Rust-engine run and a Node-engine run of
+/// the same command sequence — each generating its own fresh random ids —
+/// can be compared byte-for-byte. Mirrors `normalize_stack_ids`'s id
+/// normalization above, applied to slide SVG content instead of
+/// `stack.json`.
+fn normalize_element_ids(svg: &str) -> String {
+    const NEEDLE: &str = "el-";
+    let mut out = String::with_capacity(svg.len());
+    let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut rest = svg;
+    loop {
+        let Some(pos) = rest.find(NEEDLE) else {
+            out.push_str(rest);
+            break;
+        };
+        let (before, after_needle_start) = rest.split_at(pos);
+        out.push_str(before);
+        let after_needle = &after_needle_start[NEEDLE.len()..];
+        // An id is exactly 12 base64url characters (A-Za-z0-9-_).
+        let id_len = after_needle
+            .char_indices()
+            .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '-' || *c == '_'))
+            .map(|(idx, _)| idx)
+            .unwrap_or(after_needle.len())
+            .min(12);
+        let raw_id = format!("el-{}", &after_needle[..id_len]);
+        let next_index = seen.len() + 1;
+        let placeholder = seen
+            .entry(raw_id)
+            .or_insert_with(|| format!("<EL_{next_index}>"))
+            .clone();
+        out.push_str(&placeholder);
+        rest = &after_needle[id_len..];
+    }
+    out
+}
+
+#[test]
+fn normalize_element_ids_assigns_placeholders_in_order_of_first_appearance() {
+    let svg =
+        r#"<g id="el-AAAAAAAAAAAA"><g id="el-BBBBBBBBBBBB"/></g><rect fill="el-AAAAAAAAAAAA"/>"#;
+    let normalized = normalize_element_ids(svg);
+    assert_eq!(
+        normalized,
+        r#"<g id="<EL_1>"><g id="<EL_2>"/></g><rect fill="<EL_1>"/>"#
+    );
+}
+
+/// Acceptance criterion A2 (extended from NOOP-277's undo/redo-only version
+/// to this ticket's 26 new commands): every one of them must actually be
+/// dispatched by Rust, not merely happen to produce output that looks
+/// right because it fell through to a Node fallback that isn't even on
+/// `PATH`. `fallback::exec_node_fallback` prints the literal string "找不到
+/// node" only when `Command::new("node")` itself fails to spawn — so with
+/// `PATH` pointed at a directory with no `node` binary, any of these 26
+/// commands producing that exact stderr would prove it fell back instead
+/// of being handled by the Rust takeover table.
+#[test]
+fn chart_table_asset_commands_are_dispatched_by_rust_not_node() {
+    let fixture = Fixture::new("dispatch-not-node");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.run_node(&["convert", &id]);
+
+    let create = fixture.run_node(&["chart", "create", &id, "slides/001.svg"]);
+    let chart_el = extract_id_field(&create.stdout, "elementId");
+    let create_table = fixture.run_node(&[
+        "table",
+        "create",
+        &id,
+        "slides/001.svg",
+        "--rows",
+        "1",
+        "--cols",
+        "1",
+        "--x",
+        "0",
+        "--y",
+        "0",
+    ]);
+    let table_el = extract_id_field(&create_table.stdout, "elementId");
+
+    let cases: Vec<Vec<String>> = vec![
+        vec![
+            "chart".into(),
+            "create".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+        ],
+        vec![
+            "chart".into(),
+            "data".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "--categories".into(),
+            "A,B".into(),
+            "--series".into(),
+            "S=1,2".into(),
+        ],
+        vec![
+            "chart".into(),
+            "type".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "line".into(),
+        ],
+        vec![
+            "chart".into(),
+            "axis".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "single".into(),
+        ],
+        vec![
+            "chart".into(),
+            "legend".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "none".into(),
+        ],
+        vec![
+            "chart".into(),
+            "option".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "grid".into(),
+            "false".into(),
+        ],
+        vec![
+            "chart".into(),
+            "palette".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "cool".into(),
+        ],
+        vec![
+            "chart".into(),
+            "stack".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            chart_el.clone(),
+            "off".into(),
+        ],
+        vec![
+            "table".into(),
+            "create".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            "--rows".into(),
+            "1".into(),
+            "--cols".into(),
+            "1".into(),
+            "--x".into(),
+            "0".into(),
+            "--y".into(),
+            "0".into(),
+        ],
+        vec![
+            "table".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "--markdown".into(),
+            "|a|\n|-|\n|1|".into(),
+        ],
+        vec![
+            "table".into(),
+            "cell".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "--row".into(),
+            "0".into(),
+            "--col".into(),
+            "0".into(),
+            "--text".into(),
+            "x".into(),
+        ],
+        vec![
+            "table".into(),
+            "cell".into(),
+            "style".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "--row".into(),
+            "0".into(),
+            "--col".into(),
+            "0".into(),
+            "align".into(),
+            "center".into(),
+        ],
+        vec![
+            "table".into(),
+            "cell".into(),
+            "copy".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "--range".into(),
+            "0,0:0,0".into(),
+        ],
+        vec![
+            "table".into(),
+            "theme".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "light".into(),
+        ],
+        vec![
+            "table".into(),
+            "header".into(),
+            "set".into(),
+            id.clone(),
+            "slides/001.svg".into(),
+            table_el.clone(),
+            "true".into(),
+        ],
+        vec![
+            "asset".into(),
+            "import".into(),
+            id.clone(),
+            "/definitely/missing/x.png".into(),
+        ],
+    ];
+
+    let mut failures = Vec::new();
+    for args in &cases {
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = Command::new(rust_bin())
+            .args(&arg_refs)
+            .env("CO_MOTION_HOME", &fixture.home)
+            .env("PATH", "/nonexistent")
+            .output()
+            .expect("compiled co-motion binary must run");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.trim() == "找不到 node" {
+            failures.push(format!("args={args:?} fell back to node: {stderr}"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "dispatch-by-rust failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+fn extract_id_field(stdout: &[u8], field: &str) -> String {
+    let text = String::from_utf8_lossy(stdout);
+    let json_start = text.find('{').expect("output must contain a JSON body");
+    let value: serde_json::Value =
+        serde_json::from_str(&text[json_start..]).expect("output JSON must parse");
+    value[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("output JSON must have a string {field}: {text}"))
+        .to_string()
+}
+
+/// Acceptance criteria A5/A6: the same fixture, run through the full
+/// sequence of `chart *`/`table *` commands via the Rust binary, must
+/// produce a byte-identical (id-normalized) slide to the same sequence run
+/// through the real Node CLI.
+///
+/// Parametrized over all 6 `CHART_TYPES` (not just `line`) — a Review FAIL
+/// on this ticket's first round found that a deliberate geometry mutation
+/// in `render.rs`'s `donut` inner-radius computation went undetected by
+/// `cargo test --lib`/`cli_golden`/`unit_golden` because this was the only
+/// cross-engine chart golden test and it only ever exercised `line`. Each
+/// type gets its own fixture/run rather than sharing one, since `type set`
+/// itself needs to be the type under test, not a step within a shared
+/// sequence.
+#[test]
+fn chart_command_sequence_matches_node_byte_for_byte() {
+    let chart_types: &[&str] = &["bar", "hbar", "line", "area", "pie", "donut"];
+
+    for &chart_type in chart_types {
+        let chart_ops: &[&[&str]] = &[
+            &[
+                "data",
+                "set",
+                "--categories",
+                "Q1,Q2,Q3",
+                "--series",
+                "Revenue=120,150,170",
+            ],
+            &["type", "set", chart_type],
+            &["palette", "set", "cool", "--color", "Revenue=#5B6DEA"],
+            &["axis", "set", "single"],
+            &["legend", "set", "right"],
+            &["option", "set", "grid", "false"],
+            &["stack", "set", "off"],
+        ];
+
+        let node_svg = run_chart_sequence(|fixture, args| fixture.run_node(args), chart_ops);
+        let rust_svg = run_chart_sequence(|fixture, args| fixture.run_rust(args), chart_ops);
+        assert_eq!(
+            normalize_element_ids(&rust_svg),
+            normalize_element_ids(&node_svg),
+            "rust and node chart command sequences diverged for type={chart_type:?}"
+        );
+    }
+}
+
+fn run_chart_sequence(runner: impl Fn(&Fixture, &[&str]) -> Output, ops: &[&[&str]]) -> String {
+    let fixture = Fixture::new("chart-sequence");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.run_node(&["convert", &id]);
+
+    let create = runner(&fixture, &["chart", "create", &id, "slides/001.svg"]);
+    assert!(create.status.success(), "chart create failed: {create:?}");
+    let element_id = extract_id_field(&create.stdout, "elementId");
+
+    // Every entry in `ops` is a two-word verb ("data set", "type set", ...)
+    // followed by that command's own flags/positionals — id/slide-path/
+    // element-id are inserted right after the verb, mirroring every
+    // `chart *` subcommand's own argv shape (see `argv::chart::parse`).
+    for op in ops {
+        let mut full: Vec<&str> = vec!["chart", op[0], op[1], &id, "slides/001.svg", &element_id];
+        full.extend_from_slice(&op[2..]);
+        let out = runner(&fixture, &full);
+        assert!(out.status.success(), "op {full:?} failed: {out:?}");
+    }
+
+    String::from_utf8(fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout).unwrap()
+}
+
+/// Acceptance criteria A5/A6 (table half): a full `table *` sequence run
+/// through Rust must match the same sequence run through Node,
+/// byte-for-byte after id normalization.
+#[test]
+fn table_command_sequence_matches_node_byte_for_byte() {
+    let node_svg = run_table_sequence(|fixture, args| fixture.run_node(args));
+    let rust_svg = run_table_sequence(|fixture, args| fixture.run_rust(args));
+    assert_eq!(
+        normalize_element_ids(&rust_svg),
+        normalize_element_ids(&node_svg),
+        "rust and node table command sequences diverged"
+    );
+}
+
+fn run_table_sequence(runner: impl Fn(&Fixture, &[&str]) -> Output) -> String {
+    let fixture = Fixture::new("table-sequence");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.run_node(&["convert", &id]);
+
+    let create = runner(
+        &fixture,
+        &[
+            "table",
+            "create",
+            &id,
+            "slides/001.svg",
+            "--rows",
+            "2",
+            "--cols",
+            "2",
+            "--x",
+            "10",
+            "--y",
+            "10",
+        ],
+    );
+    assert!(create.status.success(), "table create failed: {create:?}");
+    let element_id = extract_id_field(&create.stdout, "elementId");
+
+    let ops: Vec<Vec<&str>> = vec![
+        vec![
+            "table",
+            "cell",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--row",
+            "0",
+            "--col",
+            "0",
+            "--text",
+            "A",
+        ],
+        vec![
+            "table",
+            "cell",
+            "style",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--row",
+            "0",
+            "--col",
+            "0",
+            "align",
+            "center",
+        ],
+        vec![
+            "table",
+            "col",
+            "width",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--col",
+            "0",
+            "--width",
+            "200",
+        ],
+        vec![
+            "table",
+            "row",
+            "insert",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--at",
+            "1",
+        ],
+        vec![
+            "table",
+            "col",
+            "insert",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--at",
+            "1",
+        ],
+        vec![
+            "table",
+            "theme",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "light",
+        ],
+        vec![
+            "table",
+            "header",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "false",
+        ],
+    ];
+    for op in &ops {
+        let out = runner(&fixture, op);
+        assert!(out.status.success(), "op {op:?} failed: {out:?}");
+    }
+
+    String::from_utf8(fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout).unwrap()
+}
+
+/// Acceptance criterion A3: `co-motion asset import <id> <path>` works from
+/// the command line, landing bytes exactly as imported under `assets/`.
+#[test]
+fn asset_import_local_file_lands_under_assets_via_rust_binary() {
+    let fixture = Fixture::new("asset-import-cli");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+
+    let png_path = fixture.workspace.join("tiny.png");
+    let png_bytes: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01];
+    fs::write(&png_path, png_bytes).unwrap();
+
+    let import_result = fixture.run_rust(&["asset", "import", &id, png_path.to_str().unwrap()]);
+    assert!(import_result.status.success(), "{import_result:?}");
+    let path_field = extract_id_field(&import_result.stdout, "path");
+    assert_eq!(path_field, "assets/tiny.png");
+
+    // `cat` decodes strict UTF-8 and refuses binary content ("是二進位資產，
+    // 無法以文字讀取") — not a usable read path for this assertion. Read the
+    // real file back directly via the registry's workDir instead, the same
+    // shortcut `packages/cli/test/asset-import.test.ts`'s
+    // `readRealAssetBytes` uses.
+    let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
+    let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
+    let work_dir = registry[&id]["workDir"].as_str().unwrap();
+    let real_bytes = fs::read(PathBuf::from(work_dir).join("assets/tiny.png")).unwrap();
+    assert_eq!(real_bytes, png_bytes);
+}
+
+/// Acceptance criterion A4: `chart data set --csv -` reads CSV from
+/// stdin, producing the exact same `<comot:chart>` data a `--csv <file>`
+/// import of the equivalent content would.
+#[test]
+fn chart_data_set_reads_csv_from_stdin() {
+    let fixture = Fixture::new("chart-csv-stdin");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.run_node(&["convert", &id]);
+
+    let create = fixture.run_rust(&["chart", "create", &id, "slides/001.svg"]);
+    let element_id = extract_id_field(&create.stdout, "elementId");
+
+    let csv_text = "Quarter,Revenue\nQ1,120\nQ2,150\n";
+    let csv_path = fixture.workspace.join("q.csv");
+    fs::write(&csv_path, csv_text).unwrap();
+    let via_file = fixture.run_rust(&[
+        "chart",
+        "data",
+        "set",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--csv",
+        csv_path.to_str().unwrap(),
+    ]);
+    assert!(via_file.status.success(), "{via_file:?}");
+    let svg_via_file = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    // Undo the file-based data set, then repeat via stdin.
+    fixture.run_rust(&["undo", &id]);
+    let mut child = std::process::Command::new(rust_bin())
+        .args([
+            "chart",
+            "data",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--csv",
+            "-",
+        ])
+        .env("CO_MOTION_HOME", &fixture.home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("compiled co-motion binary must run");
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(csv_text.as_bytes())
+            .unwrap();
+    }
+    let via_stdin = child.wait_with_output().unwrap();
+    assert!(via_stdin.status.success(), "{via_stdin:?}");
+    let svg_via_stdin = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    assert_eq!(
+        svg_via_stdin, svg_via_file,
+        "--csv - must produce byte-identical output to --csv <equivalent file>"
+    );
+
+    // Empty stdin must fail, not silently succeed with an empty chart.
+    let mut empty_child = std::process::Command::new(rust_bin())
+        .args([
+            "chart",
+            "data",
+            "set",
+            &id,
+            "slides/001.svg",
+            &element_id,
+            "--csv",
+            "-",
+        ])
+        .env("CO_MOTION_HOME", &fixture.home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("compiled co-motion binary must run");
+    drop(empty_child.stdin.take());
+    let empty_result = empty_child.wait_with_output().unwrap();
+    assert!(!empty_result.status.success(), "empty stdin must fail");
 }

@@ -1,14 +1,18 @@
 //! Undo/redo for presentation content. Ported from
-//! `packages/core/src/history.ts`, scoped to this ticket's "undo/redo stack
-//! semantics" slice only: `stack.json`/`snapshots/` storage, and the
-//! `undo`/`redo` commands themselves. The TS file's *write-path* staging API
-//! (`stageSnapshotEntries`/`commitSnapshotEntries`/`discardSnapshotEntries`/
-//! `finalizeCommittedEntries`/`revertCommittedEntries`/`beginHistoryGroup`/
-//! `endHistoryGroup`/`recordSnapshot`) belongs to the content-editing command
-//! layer (`writePresentationFile` and friends), which is not yet ported to
-//! Rust — there is nothing here for those commands to call into yet, so
-//! porting that half now would be dead code with no caller. See the final
-//! report's "spec requires but not done" note.
+//! `packages/core/src/history.ts`: `stack.json`/`snapshots/` storage, the
+//! `undo`/`redo` commands, and — added by [E4.T4] — the write-path
+//! staging API (`stageSnapshotEntries`/`commitSnapshotEntries`/
+//! `discardSnapshotEntries`/`finalizeCommittedEntries`/
+//! `revertCommittedEntries`) that `workspace::mod.rs`'s and
+//! `workspace::write.rs`'s `write_presentation_file`/`create_presentation_file`
+//! doors are built on. NOT ported:
+//! `beginHistoryGroup`/`endHistoryGroup`/`recordSnapshot` — those group
+//! multiple commands into one undo step for the server's agent-turn API
+//! (out of scope for every CLI command this ticket adds; `openGroup` is
+//! read/round-tripped by `read_stack`/`write_stack` below but never set by
+//! anything in this crate, so `commit_snapshot_entries` always takes the
+//! "no open group" branch — which is exactly why plan §5's A14 holds: every
+//! write-path call in this crate is its own one-command undo group).
 //!
 //! Storage lives at `<CO_MOTION_HOME>/history/<presentation-id>/`, a sibling
 //! of `work/<id>/` under the same home — never inside the work directory
@@ -23,14 +27,22 @@
 //! - `redo(id) -> CoMotionResult<UndoResult>` — redoes the most recently
 //!   undone group, moving it back onto the undo stack (subject to the same
 //!   `UNDO_STACK_CAP` as any other push onto that stack).
+//! - `stage_snapshot_entries` / `stage_new_file_entry` / `commit_snapshot_entries`
+//!   / `finalize_committed_entries` / `revert_committed_entries` /
+//!   `discard_snapshot_entries` — the write-path staging API; see each
+//!   function's own doc comment. `workspace::mod.rs` and `workspace::write.rs`
+//!   are their only callers.
 //!
-//! Both take only `id` (not `work_dir`/`history_dir` explicitly) and resolve
-//! `CO_MOTION_HOME` plus the work directory themselves via `crate::workspace`
-//! — mirroring `undoLastGroup`/`redoLastGroup`'s actual TS signatures
-//! (`(id: string)`, internally calling `resolveCoMotionHome`/
+//! `undo`/`redo` take only `id` (not `work_dir`/`history_dir` explicitly) and
+//! resolve `CO_MOTION_HOME` plus the work directory themselves via
+//! `crate::workspace` — mirroring `undoLastGroup`/`redoLastGroup`'s actual TS
+//! signatures (`(id: string)`, internally calling `resolveCoMotionHome`/
 //! `resolveWorkDir`) rather than pushing that resolution onto every call
 //! site. A CLI command handler for `co-motion undo`/`redo` needs only the
-//! presentation id argv already gives it.
+//! presentation id argv already gives it. The staging functions mirror their
+//! TS counterparts' own signatures the same way: each takes only `id` (plus
+//! whatever entries/paths it operates on) and resolves `CO_MOTION_HOME`/the
+//! work directory itself.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id;
@@ -86,6 +98,9 @@ pub(crate) struct HistoryGroup {
 /// for the file to parse as a valid stack at all — the TS original's
 /// `isStackFile` rejects a `stack.json` with the `openGroup` key missing
 /// entirely, same as it rejects `undo`/`redo` being missing.
+/// Opaque outside this module (fields stay private) — `workspace::mod.rs`
+/// only ever holds a value of this type (via `CommitResult::previous_stack`)
+/// to hand back, unexamined, to `revert_committed_entries`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StackFile {

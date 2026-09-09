@@ -24,6 +24,12 @@ pub fn generate_opaque_id() -> String {
     base64url_encode(&random_bytes(9))
 }
 
+/// Ports `generateElementId` (`packages/core/src/id.ts`): the same opaque
+/// id, prefixed with `el-` so it is recognizable as an element reference.
+pub fn generate_element_id() -> String {
+    format!("el-{}", generate_opaque_id())
+}
+
 /// `randomBytes(6).toString("hex")` — used for temp-file name suffixes
 /// (`.stack.json.<hex>.tmp`, `.projects.json.<hex>.tmp`).
 pub fn random_hex_suffix() -> String {
@@ -165,6 +171,13 @@ mod tests {
         assert_eq!(a1.len(), 12);
         assert_eq!(a2.len(), 12);
         assert_ne!(a1, a2);
+    }
+
+    #[test]
+    fn generate_element_id_has_el_dash_prefix_and_twelve_char_suffix() {
+        let id = generate_element_id();
+        assert!(id.starts_with("el-"));
+        assert_eq!(id.len(), "el-".len() + 12);
     }
 
     #[test]

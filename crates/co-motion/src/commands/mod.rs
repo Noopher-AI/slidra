@@ -6,27 +6,33 @@
 //!
 //! `TAKEOVER_TABLE` is keyed on `argv[0]` (D1, plan §7) for most families — a
 //! hit routes the rest of argv into that family's own sub-command dispatch
-//! (`commands::slide::run`, etc.) — except `effect`, whose entries are the
-//! full two-word `"effect <sub>"` form ([E4.T7]; `match_takeover` tries the
-//! two-token join first, falling back to the single first token, so
-//! `undo`/`redo`/every single-word family still match via the second
-//! branch). `REGISTERED_COMMAND_NAMES` is the fuller list of actual
-//! registered command names (family plus sub-command, where one exists) —
-//! [E4.T4]'s full scope, and what A1's acceptance criterion is checked
-//! against, not `TAKEOVER_TABLE` itself.
+//! (`commands::slide::run`, `argv::chart`/`argv::table`'s `parse`, etc.) —
+//! except `effect`, whose entries are the full two-word `"effect <sub>"`
+//! form ([E4.T7]; `match_takeover` tries the two-token join first, falling
+//! back to the single first token, so `undo`/`redo`/`chart`/`table`/`asset`/
+//! every other single-word family still match via the second branch).
+//! `REGISTERED_COMMAND_NAMES` is the fuller list of actual registered
+//! command names (family plus sub-command, where one exists) — [E4.T4]'s
+//! full scope plus NOOP-281/F5's 26 `chart`/`table`/`asset` commands, and
+//! what A1's acceptance criterion is checked against, not `TAKEOVER_TABLE`
+//! itself.
 //!
 //! `undo`/`redo` were this crate's first two takeover-table entries (F2);
-//! [E4.T4] grew the table to the 11 `argv[0]` names, and [E4.T7] added
-//! `effect`'s five two-word entries on top. The exact-contents tripwire
-//! tests below (`takeover_table_is_exactly_the_11_argv0_names_plus_effect`,
-//! `registered_command_names_is_exactly_the_21_command_names`) are
-//! deliberate, same spirit as F2's original
-//! `takeover_table_is_exactly_undo_and_redo`: a future ticket adding a
-//! command WILL break one of them, forcing a conscious edit here rather
-//! than a command silently becoming Rust-dispatched as a side effect of
-//! some other change.
+//! [E4.T4] grew the table to the 11 `argv[0]` names, [E4.T7] added
+//! `effect`'s five two-word entries on top, and NOOP-281/F5 adds `chart`/
+//! `table`/`asset` (26 commands across those three top-level words — see
+//! `argv::chart`/`argv::table`/`argv::asset` for the exact per-command
+//! list). The exact-contents tripwire tests below
+//! (`takeover_table_is_exactly_the_declared_set`,
+//! `registered_command_names_is_exactly_the_declared_set`) are deliberate,
+//! same spirit as F2's original `takeover_table_is_exactly_undo_and_redo`:
+//! a future ticket adding a command WILL break one of them, forcing a
+//! conscious edit here rather than a command silently becoming
+//! Rust-dispatched as a side effect of some other change.
 
+pub mod asset_import;
 pub mod cat;
+pub mod chart;
 pub mod convert;
 pub mod effect;
 pub mod ls;
@@ -36,11 +42,14 @@ pub mod pack;
 pub mod presentation;
 pub mod redo;
 pub mod slide;
+pub mod table;
 pub mod template;
 pub mod undo;
 
 pub const TAKEOVER_TABLE: &[&str] = &[
+    "asset",
     "cat",
+    "chart",
     "convert",
     "effect add",
     "effect list",
@@ -54,6 +63,7 @@ pub const TAKEOVER_TABLE: &[&str] = &[
     "presentation",
     "redo",
     "slide",
+    "table",
     "template",
     "undo",
 ];
@@ -85,11 +95,12 @@ pub fn is_in_takeover_table(name: &str) -> bool {
     TAKEOVER_TABLE.contains(&name)
 }
 
-/// The 26 full registered command names this crate's scope covers —
-/// `argv[0]` alone for the 6 single-level commands, `"<family> <sub...>"`
-/// for the rest. `undo`/`redo` are commands F2 already registered;
-/// [E4.T4] left their entries exactly as they were, and [E4.T7] added the
-/// five `effect` sub-commands on top.
+/// The 52 full registered command names this crate's scope covers —
+/// `argv[0]` alone for the single-level commands, `"<family> <sub...>"` for
+/// the rest. `undo`/`redo` are commands F2 already registered; [E4.T4] left
+/// their entries exactly as they were, [E4.T7] added the five `effect`
+/// sub-commands, and NOOP-281/F5 added the 26 `chart`/`table`/`asset`
+/// commands.
 pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "new",
     "open",
@@ -117,6 +128,32 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "effect set",
     "undo",
     "redo",
+    "chart create",
+    "chart type set",
+    "chart data set",
+    "chart axis set",
+    "chart legend set",
+    "chart option set",
+    "chart palette set",
+    "chart stack set",
+    "table create",
+    "table set",
+    "table bind",
+    "table refresh",
+    "table header set",
+    "table theme set",
+    "table merge",
+    "table cell set",
+    "table cell style set",
+    "table cell copy",
+    "table cell cut",
+    "table cell paste",
+    "table row insert",
+    "table row delete",
+    "table col insert",
+    "table col delete",
+    "table col width",
+    "asset import",
 ];
 
 #[cfg(test)]
@@ -124,11 +161,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn takeover_table_is_exactly_the_11_argv0_names_plus_effect() {
+    fn takeover_table_is_exactly_the_declared_set() {
         assert_eq!(
             TAKEOVER_TABLE,
             [
+                "asset",
                 "cat",
+                "chart",
                 "convert",
                 "effect add",
                 "effect list",
@@ -142,6 +181,7 @@ mod tests {
                 "presentation",
                 "redo",
                 "slide",
+                "table",
                 "template",
                 "undo",
             ]
@@ -149,8 +189,8 @@ mod tests {
     }
 
     #[test]
-    fn registered_command_names_is_exactly_the_26_command_names() {
-        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 26);
+    fn registered_command_names_is_exactly_the_declared_set() {
+        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 52);
         assert_eq!(
             REGISTERED_COMMAND_NAMES,
             [
@@ -180,6 +220,32 @@ mod tests {
                 "effect set",
                 "undo",
                 "redo",
+                "chart create",
+                "chart type set",
+                "chart data set",
+                "chart axis set",
+                "chart legend set",
+                "chart option set",
+                "chart palette set",
+                "chart stack set",
+                "table create",
+                "table set",
+                "table bind",
+                "table refresh",
+                "table header set",
+                "table theme set",
+                "table merge",
+                "table cell set",
+                "table cell style set",
+                "table cell copy",
+                "table cell cut",
+                "table cell paste",
+                "table row insert",
+                "table row delete",
+                "table col insert",
+                "table col delete",
+                "table col width",
+                "asset import",
             ]
         );
     }
@@ -233,5 +299,15 @@ mod tests {
         // two-word forms are; an incomplete "effect" argv (no subcommand)
         // must fall through to the Node fallback, not error out of Rust.
         assert_eq!(match_takeover(&["effect"]), None);
+    }
+
+    #[test]
+    fn match_takeover_single_word_family_matches_one_word_command() {
+        // `chart`/`table`/`asset` are single-word `TAKEOVER_TABLE` entries
+        // (unlike `effect`'s two-word entries) — confirm the one-word
+        // fallback branch still matches them.
+        assert_eq!(match_takeover(&["chart", "create", "pid"]), Some(("chart", 1)));
+        assert_eq!(match_takeover(&["table", "create", "pid"]), Some(("table", 1)));
+        assert_eq!(match_takeover(&["asset", "import", "pid"]), Some(("asset", 1)));
     }
 }

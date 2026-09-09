@@ -520,3 +520,17 @@ describe("parseArgv element insert — video/audio kind ([E2.T17] plan §4.5)", 
     );
   });
 });
+
+describe("parseArgv asset import（NOOP-281/F5：cli.md 的並存期已知限制，補上 case \"asset\"）", () => {
+  it("解析 asset import <id> <source> [--as <value>]", () => {
+    const parsed = parseArgv(["asset", "import", "p1", "./sales.csv", "--as", "csv"]);
+    expect(parsed).toEqual({
+      name: "asset import",
+      input: { id: "p1", source: "./sales.csv", as: "csv" },
+    });
+  });
+
+  it("未知的 asset 子命令拋出「未知的子命令」錯誤", () => {
+    expect(() => parseArgv(["asset", "export", "p1"])).toThrow("未知的子命令：asset export p1");
+  });
+});

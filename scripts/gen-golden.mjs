@@ -525,9 +525,64 @@ async function genTextWrapExtraCases() {
   writeJson("text_wrap_extra_cases.json", cases);
 }
 
+// --- media_format.json ----------------------------------------------------
+//
+// NOOP-281/F5: `detect_media_format`'s byte-header sniffing (~15 formats)
+// had only hand-written Rust unit tests whose expected values were reasoned
+// by the same porting pass that wrote the function — self-verification, the
+// exact pattern this ticket's own review guidance flags as weak evidence
+// for a byte-magic-number table. This fixture runs the REAL
+// `detectMediaFormat` (`packages/core/dist/media-format.js`) against the
+// same byte sequences, plus the "extension lies, header wins" case, so the
+// Rust port is checked against the TS oracle instead of against its own
+// reasoning about the TS oracle.
+async function genMediaFormat() {
+  const { detectMediaFormat } = await import(
+    join(repoRoot, "packages/core/dist/media-format.js")
+  );
+
+  function repeatZeros(n) {
+    return new Array(n).fill(0);
+  }
+  function bytesOf(str) {
+    return Array.from(Buffer.from(str, "latin1"));
+  }
+
+  const cases = [
+    { label: "png", bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0] },
+    { label: "jpeg", bytes: [0xff, 0xd8, 0xff, 0xe0, 0, 0] },
+    { label: "gif", bytes: bytesOf("GIF89a....") },
+    { label: "webp", bytes: [...bytesOf("RIFF"), 0, 0, 0, 0, ...bytesOf("WEBP")] },
+    { label: "wav", bytes: [...bytesOf("RIFF"), 0, 0, 0, 0, ...bytesOf("WAVE")] },
+    { label: "riff-unknown-format-tag", bytes: [...bytesOf("RIFF"), 0, 0, 0, 0, ...bytesOf("AVI ")] },
+    { label: "mp4-generic-brand", bytes: [0, 0, 0, 0x18, ...bytesOf("ftyp"), ...bytesOf("isom")] },
+    { label: "mov-qt-brand", bytes: [0, 0, 0, 0x14, ...bytesOf("ftyp"), ...bytesOf("qt  ")] },
+    { label: "m4v", bytes: [0, 0, 0, 0x18, ...bytesOf("ftyp"), ...bytesOf("M4V ")] },
+    { label: "m4a", bytes: [0, 0, 0, 0x18, ...bytesOf("ftyp"), ...bytesOf("M4A ")] },
+    { label: "webm", bytes: [0x1a, 0x45, 0xdf, 0xa3, 0, 0] },
+    { label: "ogv-theora", bytes: [...bytesOf("OggS"), ...repeatZeros(20), ...bytesOf("\x80theora")] },
+    { label: "opus", bytes: [...bytesOf("OggS"), ...repeatZeros(20), ...bytesOf("OpusHead")] },
+    { label: "oga-vorbis", bytes: [...bytesOf("OggS"), ...repeatZeros(20), ...bytesOf("\x01vorbis")] },
+    { label: "ogg-unrecognised-codec-is-none", bytes: [...bytesOf("OggS"), ...repeatZeros(40)] },
+    { label: "mp3-id3", bytes: [...bytesOf("ID3"), 3, 0, 0, 0, 0, 0, 0] },
+    { label: "mp3-frame-sync-layer-iii", bytes: [0xff, 0xfb, 0x90, 0x00] },
+    { label: "aac-adts-frame-sync", bytes: [0xff, 0xf1, 0x50, 0x80] },
+    { label: "unknown-bytes-is-none", bytes: [0, 1, 2, 3, 4, 5, 6, 7] },
+  ];
+
+  const results = cases.map(({ label, bytes }) => ({
+    label,
+    bytes,
+    expected: detectMediaFormat(new Uint8Array(bytes)),
+  }));
+
+  writeJson("media_format.json", results);
+}
+
 await genSvgNumber();
 await genTextWrapFixture();
 await genScan();
 await genBbox();
 await genFont();
 await genTextWrapExtraCases();
+await genMediaFormat();

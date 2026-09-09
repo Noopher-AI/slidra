@@ -167,6 +167,52 @@ describe("chart data set", () => {
     expect(svg).toContain('name="Revenue" values="120,150"');
   });
 
+  /**
+   * NOOP-299/F5 test-budget prune: takes over `e2e/chart.test.ts`'s deleted
+   * "AC-7" case's one input-path-independence assertion. AC-7 never opened a
+   * browser (it only ever called `registry.dispatch` directly, same as this
+   * file), so the two tests immediately above already cover its "--csv"/
+   * "--csv-asset" input paths individually — this test is the only piece
+   * AC-7 added beyond that: that both paths, given equivalent CSV content,
+   * produce byte-identical `<comot:chart>` data. Keeping that one assertion
+   * here (the cheaper, non-e2e layer) rather than in `e2e/` is a pure win —
+   * every e2e case adds wall-clock time to every PR's CI run.
+   */
+  it("--csv 與 --csv-asset 對等內容產出的 <comot:chart> 資料位元組相同", async () => {
+    const { id } = await openFreshPresentation();
+    const csvContent = "Quarter,Revenue,Cost\nQ1,120,80\nQ2,150,90\nQ3,170,95\n";
+
+    await writeRealAssetFile(id, "assets/data/quarterly.csv", csvContent);
+    const elementViaAsset = await createChart(id);
+    const assetResult = await registry.dispatch("chart data set", {
+      id, slidePath: "slides/001.svg", elementId: elementViaAsset, csvAsset: "assets/data/quarterly.csv",
+    });
+    expect(assetResult.ok).toBe(true);
+
+    const localCsvPath = path.join(sourceDir, "quarterly.csv");
+    await writeFile(localCsvPath, csvContent, "utf-8");
+    const elementViaFile = await createChart(id);
+    const fileResult = await registry.dispatch("chart data set", {
+      id, slidePath: "slides/001.svg", elementId: elementViaFile, csv: localCsvPath,
+    });
+    expect(fileResult.ok).toBe(true);
+
+    const svg = await readSlide(id);
+    function extractChartData(svg: string, elementId: string): string {
+      const marker = `id="${elementId}"`;
+      const containerStart = svg.indexOf(marker);
+      expect(containerStart).toBeGreaterThanOrEqual(0);
+      const dataStart = svg.indexOf("<comot:chart", containerStart);
+      const dataEnd = svg.indexOf("</comot:chart>", dataStart) + "</comot:chart>".length;
+      return svg.slice(dataStart, dataEnd);
+    }
+    const dataViaAsset = extractChartData(svg, elementViaAsset);
+    const dataViaFile = extractChartData(svg, elementViaFile);
+    expect(dataViaAsset).toContain('<comot:categories values="Q1,Q2,Q3"/>');
+    expect(dataViaAsset).toContain('name="Revenue" values="120,150,170"');
+    expect(dataViaFile).toBe(dataViaAsset);
+  });
+
   it("NOOP-159r2 FAIL 2：CSV 類別名稱含逗號時明確報錯，不寫入損壞資料（Reviewer 重現步驟）", async () => {
     const { id } = await openFreshPresentation();
     const elementId = await createChart(id);

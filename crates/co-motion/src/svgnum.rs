@@ -82,7 +82,13 @@ fn js_to_fixed_4(value: f64) -> f64 {
         .expect("a `{:.4}`-formatted f64 string always reparses as f64")
 }
 
-/// Ports `String(Number)` for the non-zero branch of `formatSvgNumber`.
+/// Ports `String(Number)`, used both by the non-zero branch of
+/// `format_svg_number` below AND — made `pub` by NOOP-281/F5 — directly by
+/// callers that need JS's bare `String(number)` semantics WITHOUT
+/// `formatSvgNumber`'s 4-decimal rounding: chart data-label text
+/// (`chart/render.ts`'s `esc(String(value))`) and `table/edit.ts`'s
+/// `translate(${x} ${y})` transform, both confirmed (plan section 4.6) to
+/// use plain `String(Number)`, not `formatSvgNumber`.
 ///
 /// Rust's `f64` `Display` impl produces the shortest decimal string that
 /// round-trips back to the same `f64` — the same *goal* as JS's
@@ -99,8 +105,9 @@ fn js_to_fixed_4(value: f64) -> f64 {
 /// algorithm (including its exponential-notation thresholds) purely to
 /// cover a magnitude range no SVG coordinate or transform value in this
 /// codebase will ever reach is over-engineering for this ticket; flagging
-/// it here is instead of silently assuming it away.
-fn format_js_number(value: f64) -> String {
+/// it here is instead of silently assuming it away. Chart/table golden
+/// fixtures must not exercise this range — see plan section 4.6's final row.
+pub fn format_js_number(value: f64) -> String {
     format!("{value}")
 }
 

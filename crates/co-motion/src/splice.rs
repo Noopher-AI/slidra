@@ -1,9 +1,12 @@
-//! `Splice`/`apply_splices`/`set_attr_splice`, ported from
-//! `packages/core/src/element-text.ts`'s splice primitives (the subset this
-//! ticket needs: `Splice`, `applySplices`, `setAttrSplice`). Every slide
-//! mutation in this ticket (notes/transition/style/canvas/normalise) is a
-//! byte-range replacement against the raw SVG string, never a
-//! parse-then-re-serialize — this is the shared plumbing for that.
+//! `Splice`/`apply_splices`/`set_attr_splice`/`resolve_font`, ported from
+//! `packages/core/src/element-text.ts`'s splice primitives (`Splice`,
+//! `applySplices`, `setAttrSplice`, `resolveFont`). Every slide mutation in
+//! the F4 ticket (notes/transition/style/canvas/normalise) is a byte-range
+//! replacement against the raw SVG string, never a parse-then-re-serialize —
+//! this is the shared plumbing for that. The chart/table write paths
+//! (`chart/edit.rs`, `table/edit.rs`) reuse the same `Splice`/`apply_splices`
+//! plumbing for their own container-level splices, and `table/layout.rs`
+//! uses `resolve_font` to re-measure/wrap a cell's `<text>`.
 //!
 //! `Splice.start`/`end` here are always Rust **byte** offsets — the opposite
 //! convention from `slide::scan::ScannedNode`/`ScannedAttribute`, whose
@@ -14,11 +17,14 @@
 //! `Splice` — every caller of `apply_splices` in this crate must have
 //! already done the same conversion for any splice it builds by hand
 //! (notes/transition/style all insert at a `content_start`, which needs the
-//! same treatment).
+//! same treatment; so does `chart/edit.rs`'s `splice_chart_element`).
 
+use crate::errors::CoMotionError;
 use crate::slide::scan::{ScannedNode, attribute_of};
+use crate::text::FontMetrics;
 use crate::text::escape::escape_xml_attr;
 use crate::text::runs::utf16_offset_to_byte_offset;
+use std::collections::HashMap;
 
 /// A byte-range replacement against an SVG string: `[start, end)` is
 /// replaced with `text`. Offsets are Rust byte offsets — see module doc.
@@ -72,6 +78,23 @@ pub fn set_attr_splice(svg: &str, node: &ScannedNode, attr: &str, value: &str) -
     }
 }
 
+/// Resolves `font_family` in `fonts`, throwing the same "缺少字型" error
+/// every text-box measurement call uses on a miss. Ported from
+/// `element-text.ts`'s exported `resolveFont`, used here by the table
+/// write path (`table/layout.rs`) to re-measure/wrap a cell's text.
+pub fn resolve_font<'a>(
+    fonts: &'a HashMap<String, crate::text::font::ParsedFont>,
+    font_family: &str,
+    element_id: &str,
+) -> Result<&'a dyn FontMetrics, CoMotionError> {
+    match fonts.get(font_family) {
+        Some(font) => Ok(font as &dyn FontMetrics),
+        None => Err(CoMotionError::invalid(format!(
+            "簡報未內嵌字型 {font_family}，無法重新換行：{element_id}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +135,19 @@ mod tests {
             }],
         );
         assert_eq!(result, "AXB");
+    }
+
+    #[test]
+    fn resolve_font_missing_family_reports_element_id() {
+        let fonts = HashMap::new();
+        // `&dyn FontMetrics` has no `Debug` impl, so `unwrap_err()` (which
+        // requires the `Ok` side to be `Debug`) can't be used here.
+        match resolve_font(&fonts, "Missing Family", "el-abc123") {
+            Err(err) => assert_eq!(
+                err.message(),
+                "簡報未內嵌字型 Missing Family，無法重新換行：el-abc123"
+            ),
+            Ok(_) => panic!("expected an error"),
+        }
     }
 }
