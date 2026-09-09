@@ -1,8 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { CoMotionError, readSaveState, reopenPresentationInPlace, resolveCoMotionHome, sanitizeAssetBaseName } from "@co-motion/core";
+import { CoMotionError } from "./comotion/errors.js";
+import { runJsonCommand } from "./comotion/command.js";
+import { maxMtimeInDirectory, readProjectsRegistry, resolveCoMotionHome, writeProjectsRegistry } from "./comotion/home.js";
+import { readSaveState } from "./comotion/save-state.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { broadcastSaveState } from "./save-state.js";
 
@@ -10,16 +13,21 @@ import { broadcastSaveState } from "./save-state.js";
  * `POST /api/open` (NOOP-93, §4.1) — the GUI's Open action. A browser's
  * `<input type="file">` only ever hands over bytes, never a real filesystem
  * path (§2 point 6, §7 decision 6), so this is the same "raw body + a
- * filename header" shape `POST /api/asset` already established
- * (`asset-upload.ts`'s `readLimitedBinaryBody`, copied here rather than
- * shared — the two bodies mean different things and there is no third
- * caller yet to justify factoring them together).
+ * filename header" shape `POST /api/asset` already established.
  *
  * The uploaded bytes are staged under `<CO_MOTION_HOME>/opened/<opaque>/`
  * and become the presentation's new `sourcePath` — Save from here on
  * writes back to that staged copy, never to wherever the file actually
  * lives on the author's own machine, because this server was never told
  * that path (§7 decision 6's documented limitation).
+ *
+ * [E4.T9]/F7: there is no CLI command that swaps an existing id's content
+ * while keeping the id itself (every route, the change broadcaster, and
+ * the agent chat session are all bound to the id `serve` started on).
+ * `co-motion open <staged-file> --json` always mints a *new* id, so this
+ * module implements "reopen in place" itself (plan §3.8): open into a
+ * throwaway id, then move that id's on-disk content into the real id's
+ * work directory, then discard the throwaway id and the old undo history.
  */
 
 const FILE_NAME_HEADER = "x-co-motion-file-name";
@@ -28,6 +36,15 @@ const UNNAMED_FALLBACK = "未命名.comot";
 
 /** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.comot` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
 export const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
+
+const ILLEGAL_FILESYSTEM_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
+
+/** Ported verbatim from `packages/core`'s `asset-import.ts` (§3.7) — this file's only private copy, used to turn the uploaded file's display name into a safe on-disk staging name. */
+function sanitizeAssetBaseName(sourceName: string): string {
+  const withoutExtension = sourceName.replace(/\.[^./]+$/, "");
+  const sanitized = withoutExtension.replace(ILLEGAL_FILESYSTEM_CHARS, "_").trim();
+  return sanitized.length > 0 ? sanitized : "asset";
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -55,6 +72,61 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+/**
+ * Replaces presentation `id`'s work directory content in place with
+ * `stagedPath`'s, without changing `id` itself — plan §3.8, ported from
+ * `packages/core`'s `reopenPresentationInPlace`, with the actual unpack
+ * moved into the Rust binary: `co-motion open <stagedPath> --json` does the
+ * zip decompression, `project.json` validation and formatVersion migration
+ * (a fresh, throwaway id `id2`); this function only moves files around
+ * afterwards.
+ *
+ * The real work directory (`workDirFor(id)`) is never deleted or recreated
+ * — only its children are swapped — because `fs.watch(workDir, {recursive:
+ * true})` (`watch.ts`) holds a handle on that exact inode; recreating the
+ * directory would kill a live `serve` watcher out from under a running
+ * server. `id`'s staging directory (`workDirFor(id2)`) and its `projects.json`
+ * entry are removed once the swap is durable.
+ */
+async function reopenPresentationInPlace(id: string, stagedPath: string): Promise<void> {
+  const home = resolveCoMotionHome();
+  const registry = await readProjectsRegistry();
+  const entry = registry.get(id);
+  if (!entry) {
+    throw new CoMotionError(`找不到識別碼對應的簡報：${id}`);
+  }
+
+  const opened = await runJsonCommand<{ id: string }>(["open", stagedPath]);
+  if (!opened.ok) {
+    throw new CoMotionError(opened.message);
+  }
+  const id2 = opened.data?.id;
+  if (typeof id2 !== "string") {
+    throw new CoMotionError("open 回傳的資料格式錯誤");
+  }
+
+  const registryAfterOpen = await readProjectsRegistry();
+  const stagedEntry = registryAfterOpen.get(id2);
+  if (!stagedEntry) {
+    throw new CoMotionError(`找不到識別碼對應的簡報：${id2}`);
+  }
+
+  const existingChildren = await readdir(entry.workDir);
+  await Promise.all(existingChildren.map((name) => rm(path.join(entry.workDir, name), { recursive: true, force: true })));
+  const stagedChildren = await readdir(stagedEntry.workDir);
+  await Promise.all(
+    stagedChildren.map((name) => rename(path.join(stagedEntry.workDir, name), path.join(entry.workDir, name))),
+  );
+
+  const finalRegistry = await readProjectsRegistry();
+  finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt: await maxMtimeInDirectory(entry.workDir) });
+  finalRegistry.delete(id2);
+  await writeProjectsRegistry(finalRegistry);
+
+  await rm(stagedEntry.workDir, { recursive: true, force: true }).catch(() => {});
+  await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
 }
 
 /**
@@ -115,7 +187,7 @@ export async function handleOpenPost(
     // Validates the uploaded bytes (a real zip, a valid project.json, a
     // supported formatVersion) before touching the live work directory —
     // see reopenPresentationInPlace's own comment. Its CoMotionError
-    // messages (from unpackContainer / assertSupportedFormatVersion) are
+    // messages (relayed from `co-motion open`'s own JSON message) are
     // relayed verbatim, matching §4.1's table.
     await reopenPresentationInPlace(presentationId, stagedPath);
   } catch (error) {
