@@ -9,8 +9,6 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@co-motion/cli": "*",
-    "@co-motion/core": "*",
     "@agentclientprotocol/sdk": "0.14.1",
     "@zed-industries/claude-code-acp": "0.16.2",
     "@zed-industries/codex-acp": "0.16.0",

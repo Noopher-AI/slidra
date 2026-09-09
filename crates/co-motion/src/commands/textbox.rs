@@ -48,7 +48,8 @@ fn parse_align(
 mod add {
     use super::*;
     use crate::commands::argv::{
-        optional_flag, optional_number_flag, require_number_flag, require_positional,
+        optional_flag, optional_number_flag, require_id_positional, require_number_flag,
+        require_positional,
     };
     use crate::element::text::{self, AddTextBoxInput};
     use crate::errors::CoMotionResult;
@@ -57,7 +58,7 @@ mod add {
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "textbox add", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "textbox add", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "textbox add", "slide-path")?.to_string();
         let x = require_number_flag(args, "--x", "textbox add")?;
         let y = require_number_flag(args, "--y", "textbox add")?;
@@ -106,14 +107,16 @@ mod add {
 
 mod width {
     use super::*;
-    use crate::commands::argv::{require_positional, require_trailing_force_flag};
+    use crate::commands::argv::{
+        require_id_positional, require_positional, require_trailing_force_flag,
+    };
     use crate::element::text;
     use crate::errors::{CoMotionError, CoMotionResult};
     use crate::fonts;
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "textbox width", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "textbox width", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "textbox width", "slide-path")?.to_string();
         let element_id = require_positional(args, 2, "textbox width", "element-id")?.to_string();
         let width_raw = require_positional(args, 3, "textbox width", "width")?;
@@ -147,14 +150,16 @@ mod width {
 
 mod align {
     use super::*;
-    use crate::commands::argv::{require_positional, require_trailing_force_flag};
+    use crate::commands::argv::{
+        require_id_positional, require_positional, require_trailing_force_flag,
+    };
     use crate::element::text;
     use crate::errors::CoMotionResult;
     use crate::fonts;
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "textbox align", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "textbox align", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "textbox align", "slide-path")?.to_string();
         let element_id = require_positional(args, 2, "textbox align", "element-id")?.to_string();
         let align_raw = require_positional(args, 3, "textbox align", "align")?;

@@ -22,7 +22,7 @@ pub fn run(args: &[String]) -> CommandResult {
 }
 
 fn run_add(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "template add", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "template add", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -44,7 +44,7 @@ fn run_add(args: &[String]) -> CommandResult {
 }
 
 fn run_list(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "template list", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "template list", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -61,7 +61,7 @@ fn run_list(args: &[String]) -> CommandResult {
 }
 
 fn run_rename(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "template rename", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "template rename", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
@@ -89,7 +89,7 @@ fn run_rename(args: &[String]) -> CommandResult {
 }
 
 fn run_delete(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "template delete", "presentation-id") {
+    let id = match argv::require_id_positional(args, 0, "template delete", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };

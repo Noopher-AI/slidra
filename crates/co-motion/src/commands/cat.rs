@@ -11,7 +11,7 @@ use crate::{argv, workspace};
 /// before argv parsing happens here, not only pass it to `result::render`
 /// afterwards.
 pub fn run(args: &[String], json_flag: bool) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "cat", "id") {
+    let id = match argv::require_id_positional(args, 0, "cat", "id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };

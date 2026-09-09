@@ -1,8 +1,10 @@
-import { cp, mkdir, realpath, rename, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, realpath, rename, rm } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoMotionError, CoMotionNotFoundError, readVirtualFile, resolveCoMotionHome } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
+import { resolveCoMotionHome } from "../comotion/home.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -55,26 +57,94 @@ export function classifyAgentReadPath(rawPath: string, workdirReal: string): Age
 }
 
 /**
- * Reads a file out of the deployed work directory's real tree. A thin
- * wrapper around `@co-motion/core`'s `readVirtualFile` — the same
- * structural containment a presentation's own virtual tree uses (symlinks
- * are excluded because `buildVirtualTree` only records `isDirectory()`/
- * `isFile()` entries, so `..`/symlink escapes resolve to nothing rather
- * than needing a second `realpath` guard).
+ * A minimal private copy of `packages/core`'s `virtual-fs.ts` structural
+ * containment ([E4.T9]/F7 — the server no longer imports that package),
+ * scoped to exactly what `readAgentWorkdirFile` below needs: build a tree
+ * by enumerating real directories/files only (never following symlinks —
+ * `readdir(withFileTypes:true)`'s `Dirent` only reports `isDirectory()`/
+ * `isFile()` for the entry itself, so a symlink is neither and is silently
+ * excluded), then resolve a caller-supplied relative path by exact segment
+ * lookup. A path with a segment like ".." is just a literal name that was
+ * never discovered on disk — it structurally cannot resolve to anything,
+ * the same guarantee core's own virtual filesystem gives a presentation's
+ * content.
+ */
+type WorkdirNode = { type: "file"; realPath: string } | { type: "directory"; children: Map<string, WorkdirNode> };
+
+async function buildWorkdirTree(realDir: string): Promise<WorkdirNode> {
+  const root: WorkdirNode = { type: "directory", children: new Map() };
+  await populateWorkdirTree(realDir, root);
+  return root;
+}
+
+async function populateWorkdirTree(realDir: string, node: Extract<WorkdirNode, { type: "directory" }>): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(realDir, { withFileTypes: true });
+  } catch {
+    // realDir is a real filesystem path inside the deployed work directory
+    // (ADR-0004) — never quote it, even for a plain permission/I-O error.
+    throw new CoMotionError("讀取工作目錄時發生錯誤");
+  }
+  for (const entry of entries) {
+    const realPath = path.join(realDir, entry.name);
+    if (entry.isDirectory()) {
+      const child: WorkdirNode = { type: "directory", children: new Map() };
+      node.children.set(entry.name, child);
+      await populateWorkdirTree(realPath, child);
+    } else if (entry.isFile()) {
+      node.children.set(entry.name, { type: "file", realPath });
+    }
+  }
+}
+
+function navigateWorkdirTree(root: WorkdirNode, relativePath: string): WorkdirNode | undefined {
+  let current = root;
+  for (const segment of relativePath.split("/").filter((part) => part.length > 0)) {
+    if (current.type !== "directory") return undefined;
+    const next = current.children.get(segment);
+    if (!next) return undefined;
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * Reads a file out of the deployed work directory's real tree, through the
+ * structural containment above — the same guarantee a presentation's own
+ * virtual tree gives.
  *
- * The one case `readVirtualFile` gets wrong for this caller: an empty path
- * (or one made of only `/`/`.`) resolves to the tree's own root, which
- * `readVirtualFile` reports as "不是檔案" (found a directory, not a file).
- * That reads as if the agent asked for *something* and got a directory —
- * but an empty path did not name anything at all, so it is refused as
- * "找不到檔案" instead, before the root is ever reached.
+ * The one case this must get right that a bare tree lookup would not: an
+ * empty path (or one made of only `/`/`.`) resolves to the tree's own
+ * root, which is a directory, not a file. That would otherwise read as if
+ * the agent asked for *something* and got a directory — but an empty path
+ * did not name anything at all, so it is refused as "找不到檔案" instead,
+ * before the root is ever reached.
  */
 export async function readAgentWorkdirFile(workdirReal: string, relativePath: string): Promise<string> {
   const hasSegment = relativePath.split("/").some((segment) => segment.length > 0);
   if (!hasSegment) {
     throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
   }
-  return readVirtualFile(workdirReal, relativePath);
+  const root = await buildWorkdirTree(workdirReal);
+  const node = navigateWorkdirTree(root, relativePath);
+  if (!node) {
+    throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
+  }
+  if (node.type !== "file") {
+    throw new CoMotionNotFoundError(`不是檔案：${relativePath}`);
+  }
+  let buffer: Buffer;
+  try {
+    buffer = await readFile(node.realPath);
+  } catch {
+    throw new CoMotionError(`讀取檔案時發生錯誤：${relativePath}`);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
+  } catch {
+    throw new CoMotionError(`${relativePath} 是二進位資產，無法以文字讀取`);
+  }
 }
 
 /**

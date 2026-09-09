@@ -1,6 +1,8 @@
 //! `co-motion element scale` argv layer.
 
-use crate::commands::argv::{has_flag, require_id_list, require_number_flag, require_positional};
+use crate::commands::argv::{
+    has_flag, require_id_list, require_id_positional, require_number_flag, require_positional,
+};
 use crate::element::edit;
 use crate::errors::CoMotionResult;
 use crate::fonts;
@@ -8,7 +10,7 @@ use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element scale", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element scale", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element scale", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element scale")?;
     let factor = require_number_flag(args, "--factor", "element scale")?;

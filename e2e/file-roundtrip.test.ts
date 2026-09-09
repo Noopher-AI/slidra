@@ -22,6 +22,7 @@ import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const deckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const fakeAgentFixture = path.join(rootDir, "packages/server/test/agent/fixtures/fake-acp-agent.mjs");
 const fakeAgent: AgentAdapterConfig = {
@@ -46,13 +47,15 @@ async function startHarness(): Promise<Harness> {
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-files-"));
   const staticDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-static-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const comotPath = path.join(comotDir, "a.comot");
   await packDirectory(deckDir, comotPath);
   const { id: presentationId } = await openPresentation(comotPath);
 
   const registry = createDefaultRegistry();
-  const server = await startServe({ registry, presentationId, port: 0, agent: fakeAgent, staticDir });
+  const server = await startServe({ presentationId, port: 0, agent: fakeAgent, staticDir });
 
   return { server, registry, presentationId, comotPath, coMotionHome, comotDir, staticDir };
 }
@@ -60,6 +63,7 @@ async function startHarness(): Promise<Harness> {
 async function stopHarness(harness: Harness): Promise<void> {
   await harness.server.close();
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(harness.coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -128,6 +132,8 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     secondHome = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-home2-"));
     const previousHome = process.env.CO_MOTION_HOME;
     process.env.CO_MOTION_HOME = secondHome;
+    // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+    process.env.CO_MOTION_BIN = coMotionBin;
     try {
       const { id: secondId } = await openPresentation(comotPath);
       const secondWorkDir = await resolveWorkDir(secondId);
@@ -148,6 +154,8 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
       expect(editedSlide).toContain("roundtrip 已編輯");
     } finally {
       process.env.CO_MOTION_HOME = previousHome;
+      // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+      process.env.CO_MOTION_BIN = coMotionBin;
     }
   });
 

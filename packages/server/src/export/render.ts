@@ -2,7 +2,7 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { chromium } from "playwright";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError } from "../comotion/errors.js";
 
 export type ExportFormat = "pdf" | "pdf-frames";
 

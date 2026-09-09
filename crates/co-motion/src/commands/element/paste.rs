@@ -1,6 +1,8 @@
 //! `co-motion element paste` argv layer.
 
-use crate::commands::argv::{optional_flag, optional_number_flag, require_positional};
+use crate::commands::argv::{
+    optional_flag, optional_number_flag, require_id_positional, require_positional,
+};
 use crate::element::clipboard;
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id::generate_element_id;
@@ -8,7 +10,7 @@ use crate::result::CommandResult;
 use crate::workspace::write;
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element paste", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element paste", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element paste", "slide-path")?.to_string();
     let dx = optional_number_flag(args, "--dx", "element paste")?.unwrap_or(0.0);
     let dy = optional_number_flag(args, "--dy", "element paste")?.unwrap_or(0.0);

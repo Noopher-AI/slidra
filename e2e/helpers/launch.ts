@@ -17,19 +17,24 @@ const rootDir = path.join(e2eDir, "..");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 /**
- * Checks that `packages/web/dist/index.html` and `packages/cli/dist/bin.js`
- * exist under `rootDir`, throwing the same messages the 27 pre-extraction
- * copies used — callers must build before running these tests.
+ * Checks that `packages/web/dist/index.html`, `packages/cli/dist/bin.js`
+ * (still needed: this file's own `createDefaultRegistry()`/`registry.dispatch`
+ * calls below run the in-process TypeScript registry directly, independent
+ * of what `co-motion serve` itself spawns) and `target/release/co-motion`
+ * (`co-motion serve`'s own read/write path, [E4.T9]/F7) all exist under
+ * `rootDir` — callers must build before running these tests.
  */
 export async function requireBuilt(rootDir: string): Promise<void> {
   const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
   const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
   await requireExists(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
   await requireExists(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
+  await requireExists(path.join(rootDir, "target/release/co-motion"), "target/release/co-motion 不存在，請先執行 npm run build");
 }
 
 async function requireExists(filePath: string, message: string): Promise<void> {
@@ -109,6 +114,10 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   const coMotionHome = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-home-`));
   const comotDir = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-files-`));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: `co-motion serve` now spawns the Rust binary for every read
+  // and write — `CO_MOTION_BIN` must be set before `startServe` below, or
+  // startup fails immediately on the presentation load.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   let deckStagingDir: string | undefined;
   let packSource = deckDir;
@@ -140,7 +149,6 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   };
 
   const server = await startServe({
-    registry,
     presentationId,
     port: 0,
     agent,
@@ -158,6 +166,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       if (deckStagingDir) await rm(deckStagingDir, { recursive: true, force: true });

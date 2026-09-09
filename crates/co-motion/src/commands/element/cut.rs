@@ -1,6 +1,6 @@
 //! `co-motion element cut` argv layer.
 
-use crate::commands::argv::{require_id_list, require_positional};
+use crate::commands::argv::{require_id_list, require_id_positional, require_positional};
 use crate::element::clipboard;
 use crate::element::edit;
 use crate::errors::{CoMotionError, CoMotionResult};
@@ -13,7 +13,7 @@ use crate::workspace::write;
 /// clipboard write must never leave the presentation already edited) —
 /// mirrors `workspace.ts`'s `cutSlideElements` ordering exactly.
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element cut", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element cut", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element cut", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element cut")?;
 

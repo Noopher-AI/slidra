@@ -1,6 +1,6 @@
 //! `co-motion element align` argv layer.
 
-use crate::commands::argv::{require_id_list, require_positional};
+use crate::commands::argv::{require_id_list, require_id_positional, require_positional};
 use crate::element::arrange::{self, AlignDirection};
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::fonts;
@@ -22,7 +22,7 @@ fn parse_direction(raw: &str) -> CoMotionResult<AlignDirection> {
 }
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element align", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element align", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element align", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element align")?;
     let direction = parse_direction(require_positional(args, 3, "element align", "direction")?)?;

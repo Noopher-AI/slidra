@@ -1,6 +1,8 @@
 //! `co-motion element duplicate` argv layer.
 
-use crate::commands::argv::{optional_number_flag, require_id_list, require_positional};
+use crate::commands::argv::{
+    optional_number_flag, require_id_list, require_id_positional, require_positional,
+};
 use crate::element::clipboard;
 use crate::errors::CoMotionResult;
 use crate::id::generate_element_id;
@@ -12,7 +14,7 @@ use crate::workspace::write;
 /// actual clipboard — no `write_clipboard_file`/`read_clipboard_file` call
 /// anywhere in this handler.
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element duplicate", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element duplicate", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element duplicate", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element duplicate")?;
     let dx = optional_number_flag(args, "--dx", "element duplicate")?.unwrap_or(0.0);

@@ -23,6 +23,7 @@ import { loadPdf } from "./helpers/pdf.js";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const binPath = path.join(rootDir, "packages/cli/bin/co-motion.js");
+const coMotionBinPath = path.join(rootDir, "target/release/co-motion");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const brokenEffectsDeckDir = path.join(rootDir, "e2e/fixtures/broken-effects-deck");
 const backdropFilterDeckDir = path.join(rootDir, "e2e/fixtures/backdrop-filter-deck");
@@ -84,7 +85,13 @@ afterEach(async () => {
 });
 
 function env(): NodeJS.ProcessEnv {
-  return { ...process.env, CO_MOTION_HOME: coMotionHome };
+  // [E4.T9]/F7: `co-motion export`'s `runExportCli` now spawns the Rust
+  // binary itself (`loadProject`) — in production this is always set by
+  // the Rust launcher before it execs into this same Node entry point
+  // (`crates/co-motion/src/fallback.rs:40`), but this test spawns
+  // `packages/cli/bin/co-motion.js` directly (the "public boundary two"
+  // the module comment above names), bypassing that launcher entirely.
+  return { ...process.env, CO_MOTION_HOME: coMotionHome, CO_MOTION_BIN: coMotionBinPath };
 }
 
 async function openFixture(deckDir: string): Promise<string> {

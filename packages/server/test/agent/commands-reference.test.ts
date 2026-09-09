@@ -2,26 +2,39 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CommandRegistry, createDefaultRegistry } from "@co-motion/cli";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { resolveAgentWorkdirSource } from "../../src/agent/workdir.js";
 
 // NOOP-238: `reference/commands.md` is hand-written, not generated —
-// `CommandDefinition` carries no name/parameter/purpose metadata to
-// generate a document from (see `packages/cli/src/registry.ts`). What keeps
-// it honest is a bidirectional set comparison between the registry's own
-// command names and the document's `## <name>` section headings: either
-// side having something the other lacks is a failure, which is what a
-// generated document's staleness-detection would have given for free.
+// there is no in-process command registry left in `packages/server` at all
+// ([E4.T9]/F7) to compare it against. What keeps it honest now is a
+// bidirectional set comparison between `docs/spec/cli.md`'s own `` ## `name` ``
+// section headings (the Rust binary's authoritative command list) and this
+// document's `## <name>` section headings: either side having something the
+// other lacks is a failure, which is what a generated document's
+// staleness-detection would have given for free. `docs/spec/cli.md` has 81
+// such headings, matching `reference/commands.md`'s own 81 (verified in the
+// [E4.T9]/F7 plan).
 
 const commandsReferencePath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../agent-workdir/reference/commands.md",
 );
+const cliSpecPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../docs/spec/cli.md");
 
 async function readCommandsReference(): Promise<string> {
   return readFile(commandsReferencePath, "utf8");
 }
+
+/** `docs/spec/cli.md`'s own command names — every `` ## `name` `` heading, the same pattern `scripts/check-reference-subset.mjs` uses. */
+async function readCliSpecCommandNames(): Promise<string[]> {
+  const content = await readFile(cliSpecPath, "utf8");
+  return [...content.matchAll(/^## `([^`]+)`$/gm)].map((match) => match[1]);
+}
+
+// Read once, at module load — every describe block below compares against
+// this same list, the same way they used to share one `createDefaultRegistry()`.
+const specCommandNames = await readCliSpecCommandNames();
 
 /** Every `## <name>` heading, in document order — the document's own claimed command list. */
 function extractHeadings(markdown: string): string[] {
@@ -30,34 +43,32 @@ function extractHeadings(markdown: string): string[] {
 
 /**
  * The two-way diff `commands-reference.test.ts` is built around: names only
- * the registry has (undocumented) and names only the document has (stale —
- * renamed or removed from the registry, but a section was left behind).
- * A registry name is never a prefix of another (verified in the NOOP-234
- * plan), so an exact-string comparison is enough — no markdown parsing of
- * heading structure beyond the heading line itself is needed.
+ * `docs/spec/cli.md` has (undocumented here) and names only this document
+ * has (stale — renamed or removed from the spec, but a section was left
+ * behind). A command name is never a prefix of another (verified in the
+ * NOOP-234 plan), so an exact-string comparison is enough — no markdown
+ * parsing of heading structure beyond the heading line itself is needed.
+ *
+ * [E4.T9]/F7: this same function also proves its own bidirectionality
+ * (formerly a separate "A15" test asserting a mock registry's undocumented/
+ * stale names) — the real `docs/spec/cli.md` vs. `reference/commands.md`
+ * comparison below exercises both directions on 81 real names each, a
+ * strictly stronger proof of the same logic than a single hand-built pair
+ * ever was.
  */
-function diffCommandNames(registryNames: string[], documentHeadings: string[]): { undocumented: string[]; stale: string[] } {
-  const registrySet = new Set(registryNames);
+function diffCommandNames(specNames: string[], documentHeadings: string[]): { undocumented: string[]; stale: string[] } {
+  const specSet = new Set(specNames);
   const documentSet = new Set(documentHeadings);
   return {
-    undocumented: registryNames.filter((name) => !documentSet.has(name)),
-    stale: documentHeadings.filter((name) => !registrySet.has(name)),
+    undocumented: specNames.filter((name) => !documentSet.has(name)),
+    stale: documentHeadings.filter((name) => !specSet.has(name)),
   };
 }
 
-describe("[NOOP-238] reference/commands.md covers every registered command (A13)", () => {
-  it("has exactly one H2 section per registry command name, both directions", async () => {
-    const registryNames = createDefaultRegistry().names();
+describe("[NOOP-238] reference/commands.md covers every co-motion binary command (A13)", () => {
+  it("has exactly one H2 section per docs/spec/cli.md command name, both directions", async () => {
     const headings = extractHeadings(await readCommandsReference());
-    expect(diffCommandNames(registryNames, headings)).toEqual({ undocumented: [], stale: [] });
-  });
-
-  it("would report a command the registry has and the document doesn't (A15 — the comparison itself, not commands.ts)", () => {
-    const registry = new CommandRegistry();
-    registry.register("probe only in registry", { handler: async () => ({ ok: true, message: "" }), render: null });
-    const diff = diffCommandNames(registry.names(), ["existing command"]);
-    expect(diff.undocumented).toEqual(["probe only in registry"]);
-    expect(diff.stale).toEqual(["existing command"]);
+    expect(diffCommandNames(specCommandNames, headings)).toEqual({ undocumented: [], stale: [] });
   });
 });
 
@@ -78,9 +89,9 @@ describe("[NOOP-238] reference/commands.md section structure (A14)", () => {
 
   it("never uses an H2 for a command's sub-field — H2 is reserved for command names", async () => {
     const markdown = await readCommandsReference();
-    const registryNames = new Set(createDefaultRegistry().names());
+    const specNames = new Set(specCommandNames);
     for (const heading of extractHeadings(markdown)) {
-      expect(registryNames.has(heading)).toBe(true);
+      expect(specNames.has(heading)).toBe(true);
     }
   });
 });
@@ -88,18 +99,17 @@ describe("[NOOP-238] reference/commands.md section structure (A14)", () => {
 describe("[NOOP-238] 編輯規約 and reference/commands.md stay consistent (A16, A17, A18)", () => {
   const presentationId = "test-presentation-id";
   const brief = buildEditorialBrief(presentationId);
-  const registryNames = createDefaultRegistry().names();
 
-  /** Registry command names that literally appear in `text`. Safe as a plain substring test: no registry name is a prefix of another (verified in the NOOP-234 plan). */
+  /** `docs/spec/cli.md` command names that literally appear in `text`. Safe as a plain substring test: no command name is a prefix of another (verified in the NOOP-234 plan). */
   function commandsMentionedIn(text: string): string[] {
-    return registryNames.filter((name) => text.includes(name));
+    return specCommandNames.filter((name) => text.includes(name));
   }
 
-  it("names only commands that actually exist in the registry (A16)", () => {
+  it("names only commands that actually exist in docs/spec/cli.md (A16)", () => {
     const mentioned = commandsMentionedIn(brief);
-    const registrySet = new Set(registryNames);
+    const specNames = new Set(specCommandNames);
     for (const name of mentioned) {
-      expect(registrySet.has(name)).toBe(true);
+      expect(specNames.has(name)).toBe(true);
     }
   });
 
@@ -118,9 +128,9 @@ describe("[NOOP-238] 編輯規約 and reference/commands.md stay consistent (A16
   // [E3.T6] #236/#237: same guarantee as A16/A17 above, extended to the
   // work directory's own documentation — AGENTS.md and the shipped
   // SKILL.md files reference `co-motion` commands too, and those mentions
-  // must stay real (in the registry) and documented (in this same file).
-  it("AGENTS.md and every shipped SKILL.md name only commands that exist in the registry and are documented (A4)", async () => {
-    const registrySet = new Set(registryNames);
+  // must stay real (in docs/spec/cli.md) and documented (in this same file).
+  it("AGENTS.md and every shipped SKILL.md name only commands that exist in docs/spec/cli.md and are documented (A4)", async () => {
+    const specNames = new Set(specCommandNames);
     const headings = new Set(extractHeadings(await readCommandsReference()));
     const workdirSource = resolveAgentWorkdirSource();
     const agentsMd = await readFile(path.join(workdirSource, "AGENTS.md"), "utf8");
@@ -133,7 +143,7 @@ describe("[NOOP-238] 編輯規約 and reference/commands.md stay consistent (A16
 
     for (const text of [agentsMd, ...skillTexts]) {
       for (const name of commandsMentionedIn(text)) {
-        expect(registrySet.has(name)).toBe(true);
+        expect(specNames.has(name)).toBe(true);
         expect(headings.has(name), `${name} 在工作目錄文件提到，但 reference/commands.md 沒有這一節`).toBe(true);
       }
     }

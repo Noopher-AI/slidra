@@ -6,7 +6,7 @@ use crate::chart::edit::{CreateChartInput, SetChartAxisInput};
 use crate::errors::{CoMotionError, CoMotionResult};
 
 use super::collect_repeated_flag;
-use super::ct::{optional_flag, optional_number_flag, require_positional};
+use super::ct::{optional_flag, optional_number_flag, require_id_positional, require_positional};
 
 #[derive(Debug)]
 pub enum ChartCommand {
@@ -104,7 +104,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
 
     if level1 == Some("create") {
         let args = &rest[1..];
-        let id = require_positional(args, 0, "chart create", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart create", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart create", "slide-path")?;
         let chart_type = optional_flag(args, "--type")?;
         let series_count = optional_number_flag(args, "--series", "chart create")?;
@@ -137,7 +137,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     let args: &[String] = if rest.len() > 2 { &rest[2..] } else { &[] };
 
     if combined == "data set" {
-        let id = require_positional(args, 0, "chart data set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart data set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart data set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart data set", "element-id")?;
         let csv = optional_flag(args, "--csv")?;
@@ -195,7 +195,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "type set" {
-        let id = require_positional(args, 0, "chart type set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart type set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart type set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart type set", "element-id")?;
         let chart_type = require_positional(args, 3, "chart type set", "type")?;
@@ -208,7 +208,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "palette set" {
-        let id = require_positional(args, 0, "chart palette set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart palette set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart palette set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart palette set", "element-id")?;
         let palette = require_positional(args, 3, "chart palette set", "palette")?;
@@ -226,7 +226,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "axis set" {
-        let id = require_positional(args, 0, "chart axis set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart axis set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart axis set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart axis set", "element-id")?;
         let axes = require_positional(args, 3, "chart axis set", "single|dual")?;
@@ -243,7 +243,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "stack set" {
-        let id = require_positional(args, 0, "chart stack set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart stack set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart stack set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart stack set", "element-id")?;
         let on_off = require_positional(args, 3, "chart stack set", "on|off")?;
@@ -265,7 +265,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "legend set" {
-        let id = require_positional(args, 0, "chart legend set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart legend set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart legend set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart legend set", "element-id")?;
         let legend = require_positional(args, 3, "chart legend set", "legend")?;
@@ -278,7 +278,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<ChartCommand> {
     }
 
     if combined == "option set" {
-        let id = require_positional(args, 0, "chart option set", "presentation-id")?;
+        let id = require_id_positional(args, 0, "chart option set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "chart option set", "slide-path")?;
         let element_id = require_positional(args, 2, "chart option set", "element-id")?;
         let key = require_positional(args, 3, "chart option set", "key")?;

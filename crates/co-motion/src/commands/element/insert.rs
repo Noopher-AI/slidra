@@ -8,7 +8,9 @@
 //! arm to fall through to (the Rust type system enforces what TS's runtime
 //! default-case throw enforces dynamically).
 
-use crate::commands::argv::{optional_flag, optional_number_flag, require_positional};
+use crate::commands::argv::{
+    optional_flag, optional_number_flag, require_id_positional, require_positional,
+};
 use crate::element::edit::{self, InsertElementInput, InsertElementKind};
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id::generate_element_id;
@@ -32,7 +34,7 @@ fn parse_kind(raw: &str) -> CoMotionResult<InsertElementKind> {
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
     let kind = parse_kind(require_positional(args, 0, "element insert", "kind")?)?;
-    let id = require_positional(args, 1, "element insert", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 1, "element insert", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 2, "element insert", "slide-path")?.to_string();
 
     let input = InsertElementInput {

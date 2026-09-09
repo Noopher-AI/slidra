@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, chmod } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError } from "../../src/comotion/errors.js";
 import { agentSettingsPath, readAgentSettings, writeAgentSelection } from "../../src/agent/settings.js";
 
 // Pure filesystem behaviour (no subprocess): every row of NOOP-230 §4.1's

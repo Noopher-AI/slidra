@@ -5,7 +5,7 @@ use crate::result::{CommandResult, FailureKind};
 use crate::{argv, workspace};
 
 pub fn run(args: &[String]) -> CommandResult {
-    let id = match argv::require_positional(args, 0, "ls", "id") {
+    let id = match argv::require_id_positional(args, 0, "ls", "id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };

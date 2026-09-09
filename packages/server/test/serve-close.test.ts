@@ -1,13 +1,37 @@
 import { connect, type Socket } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 // Ticket #37: startServe()'s close() used to hang whenever any connection was
 // still active on the socket, because http.Server.close() closes *idle*
@@ -50,7 +74,6 @@ const CLOSE_DEADLINE_MS = 1000;
 let coMotionHome: string;
 let comotDir: string;
 let staticRoot: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -58,13 +81,14 @@ beforeEach(async () => {
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-close-files-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-close-static-"));
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -72,14 +96,15 @@ afterEach(async () => {
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", name]);
+  if (!created.ok) throw new Error(created.message);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  if (!opened.ok) throw new Error(opened.message);
   return opened.data!.id;
 }
 
 async function serve(presentationId: string): Promise<RunningServer> {
   const server = await startServe({
-    registry,
     presentationId,
     port: 0,
     agent: fakeAgent,

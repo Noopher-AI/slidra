@@ -1,7 +1,8 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { CoMotionError, resolveCoMotionHome } from "@co-motion/core";
+import { CoMotionError } from "../comotion/errors.js";
+import { resolveCoMotionHome } from "../comotion/home.js";
 import type { AgentKind } from "./adapters.js";
 
 /**

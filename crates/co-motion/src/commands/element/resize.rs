@@ -1,7 +1,8 @@
 //! `co-motion element resize` argv layer.
 
 use crate::commands::argv::{
-    has_flag, optional_flag, require_id_list, require_number_flag, require_positional,
+    has_flag, optional_flag, require_id_list, require_id_positional, require_number_flag,
+    require_positional,
 };
 use crate::element::edit::{self, ResizeAnchor};
 use crate::errors::{CoMotionError, CoMotionResult};
@@ -22,7 +23,7 @@ fn parse_anchor(raw: &str) -> CoMotionResult<ResizeAnchor> {
 }
 
 fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-    let id = require_positional(args, 0, "element resize", "presentation-id")?.to_string();
+    let id = require_id_positional(args, 0, "element resize", "presentation-id")?.to_string();
     let slide_path = require_positional(args, 1, "element resize", "slide-path")?.to_string();
     let element_ids = require_id_list(args, 2, "element resize")?;
     let width = require_number_flag(args, "--width", "element resize")?;

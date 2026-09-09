@@ -14,7 +14,7 @@ use crate::{argv, id};
 use std::path::PathBuf;
 
 pub fn run(args: &[String]) -> CommandResult {
-    let presentation_id = match argv::require_positional(args, 0, "convert", "presentation-id") {
+    let presentation_id = match argv::require_id_positional(args, 0, "convert", "presentation-id") {
         Ok(v) => v,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };

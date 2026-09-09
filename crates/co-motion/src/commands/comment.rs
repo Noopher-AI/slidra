@@ -13,7 +13,9 @@
 //! that module's own doc comment, which names this exact split).
 
 use crate::commands::CommandTokens;
-use crate::commands::argv::{optional_flag, require_positional, require_raw_positional};
+use crate::commands::argv::{
+    optional_flag, require_id_positional, require_positional, require_raw_positional,
+};
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id::generate_opaque_id;
 use crate::result::CommandResult;
@@ -117,7 +119,7 @@ mod add {
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "comment add", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "comment add", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "comment add", "slide-path")?.to_string();
         let target = require_positional(args, 2, "comment add", "target")?.to_string();
         // `text` may legitimately be an empty string at the argv layer
@@ -172,7 +174,7 @@ mod edit {
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "comment edit", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "comment edit", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "comment edit", "slide-path")?.to_string();
         let comment_id = require_positional(args, 2, "comment edit", "comment-id")?.to_string();
         let text = require_raw_positional(args, 3, "comment edit", "text")?.to_string();
@@ -201,7 +203,7 @@ mod delete {
     use crate::workspace::write;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "comment delete", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "comment delete", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "comment delete", "slide-path")?.to_string();
         let comment_id = require_positional(args, 2, "comment delete", "comment-id")?.to_string();
 
@@ -225,7 +227,7 @@ mod list {
     use super::*;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "comment list", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "comment list", "presentation-id")?.to_string();
         // `slide-path` is optional here — omitted means "every slide,
         // deck-wide" — so it is read raw (`args.get`), never through
         // `require_positional`/`require_raw_positional` (both of which

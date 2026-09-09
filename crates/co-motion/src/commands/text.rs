@@ -6,8 +6,8 @@
 
 use crate::commands::CommandTokens;
 use crate::commands::argv::{
-    has_flag, optional_flag, require_flag, require_positional, require_raw_positional,
-    require_trailing_force_flag,
+    has_flag, optional_flag, require_flag, require_id_positional, require_positional,
+    require_raw_positional, require_trailing_force_flag,
 };
 use crate::element::text::{self, TextStyleUpdate};
 use crate::errors::{CoMotionError, CoMotionResult};
@@ -38,7 +38,7 @@ mod set {
     use super::*;
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "text set", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "text set", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "text set", "slide-path")?.to_string();
         let element_id = require_positional(args, 2, "text set", "element-id")?.to_string();
         // `new-text` may legitimately be an empty string (clears the
@@ -92,7 +92,7 @@ mod style_set {
     }
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "text style set", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "text style set", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "text style set", "slide-path")?.to_string();
         let element_id = require_positional(args, 2, "text style set", "element-id")?.to_string();
         let range_raw = require_flag(args, "--range", "text style set")?;
@@ -161,7 +161,7 @@ mod list_set {
     }
 
     fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
-        let id = require_positional(args, 0, "text list set", "presentation-id")?.to_string();
+        let id = require_id_positional(args, 0, "text list set", "presentation-id")?.to_string();
         let slide_path = require_positional(args, 1, "text list set", "slide-path")?.to_string();
         let element_id = require_positional(args, 2, "text list set", "element-id")?.to_string();
         let paragraph = parse_paragraph(require_flag(args, "--paragraph", "text list set")?)?;

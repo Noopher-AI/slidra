@@ -1,5 +1,19 @@
-import { sanitizeAssetBaseName } from "@co-motion/core";
 import type { ExportFormat } from "./job.js";
+
+const ILLEGAL_FILESYSTEM_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
+
+/**
+ * Ported verbatim from `packages/core`'s `asset-import.ts` ([E4.T9]/F7 —
+ * this file's own private copy; the server no longer imports that
+ * package). Strips the extension off a source name and replaces characters
+ * an on-disk filename cannot contain with `_`, falling back to `"asset"`
+ * only when nothing usable remains.
+ */
+function sanitizeAssetBaseName(sourceName: string): string {
+  const withoutExtension = sourceName.replace(/\.[^./]+$/, "");
+  const sanitized = withoutExtension.replace(ILLEGAL_FILESYSTEM_CHARS, "_").trim();
+  return sanitized.length > 0 ? sanitized : "asset";
+}
 
 /**
  * `<name>.pdf` for `pdf`, `<name>-frames.pdf` for `pdf-frames` — §4.3's
