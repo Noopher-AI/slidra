@@ -622,13 +622,12 @@ pub(crate) fn record_snapshot(id: &str, virtual_paths: &[&str]) -> CoMotionResul
 /// no matter what happens next. Returns `false` when a group was already
 /// open — the caller has joined it and MUST NOT close it; its snapshots are
 /// appended to the owner's group by `commit_snapshot_entries`, and the
-/// owner closes it. Not called by any of this ticket's 29 commands (each is
-/// a standalone CLI process with no multi-command turn of its own — turn
-/// grouping is `packages/server`'s concern) — ported for the same
-/// completeness reason as `record_snapshot` above, and so a Rust command
-/// run against a presentation with a TS-server-opened group still commits
-/// into it correctly via `commit_snapshot_entries`'s `open_group` branch.
-#[cfg_attr(not(test), allow(dead_code))]
+/// owner closes it. Called by each of `slide::ops`'s (`slide/ops.rs`, [F3])
+/// six multi-write operations to bracket their own several
+/// `write_presentation_file` calls into one undo step; also correctly
+/// commits into a TS-server-opened group via `commit_snapshot_entries`'s
+/// `open_group` branch, since `packages/server`'s own turn grouping and
+/// this module's are the same `stack.json` `openGroup`.
 pub(crate) fn begin_history_group(id: &str) -> CoMotionResult<bool> {
     let home = workspace::resolve_home();
     workspace::resolve_work_dir(id)?;
@@ -647,8 +646,9 @@ pub(crate) fn begin_history_group(id: &str) -> CoMotionResult<bool> {
 /// Closes the group opened by `begin_history_group` and pushes it onto the
 /// undo stack as one step. An empty group (no command in it ever wrote
 /// anything) is discarded rather than pushed, so an undo never lands on a
-/// step that visibly does nothing.
-#[cfg_attr(not(test), allow(dead_code))]
+/// step that visibly does nothing. Called by each of `slide/ops.rs`'s six
+/// multi-write operations, always paired with the `begin_history_group`
+/// call that opened the group it closes — see that function's doc comment.
 pub(crate) fn end_history_group(id: &str) -> CoMotionResult<()> {
     let home = workspace::resolve_home();
     workspace::resolve_work_dir(id)?;
