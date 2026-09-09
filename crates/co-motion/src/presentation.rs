@@ -1,13 +1,10 @@
 //! `FORMAT_VERSION`, `SLIDE_FILE_NAME`, and `build_minimal_presentation`,
-//! ported from `packages/core/src/presentation.ts`.
+//! originally ported from `packages/core/src/presentation.ts` ([E4.T12]
+//! deletes that TypeScript source; Rust is now the sole implementation).
 //!
-//! `FORMAT_VERSION` is **4** here (the TS source, unchanged by this ticket,
-//! still reads `3` at the point this was ported — see plan §0's "對帳中最
-//! 重要的一件事" for why: Rust's `open` performs the 1→2→3→4 migration this
-//! ticket adds, and `new` produces `formatVersion: 4` directly, so the
-//! crate's own idea of "current" format version has to be 4 even though
-//! `packages/core/src/presentation.ts`'s `FORMAT_VERSION` constant is edited
-//! to `4` too, in this same change (see `## 1.3 TypeScript 端` of the plan).
+//! `FORMAT_VERSION` is **4**: Rust's `open` performs the 1→2→3→4 migration,
+//! and `new` produces `formatVersion: 4` directly, so the crate's own idea
+//! of "current" format version is 4.
 
 use crate::id::generate_opaque_id;
 

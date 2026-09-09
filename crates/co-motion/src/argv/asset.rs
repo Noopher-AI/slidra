@@ -1,10 +1,11 @@
 //! `asset import` argv parsing.
 //!
-//! There is no existing TS `argv.ts` `case "asset"` to port field-for-field
-//! from — that case is itself this ticket's one TypeScript change (see
-//! `docs/spec/cli.md`'s "並存期已知限制" note under `## \`asset import\``).
-//! This Rust argv module is written directly against that spec section's
-//! literal grammar:
+//! There was no existing TS `argv.ts` `case "asset"` to port field-for-field
+//! from — the grammar below was defined directly for this command (see
+//! `docs/spec/cli.md`'s `## \`asset import\`` section, now the sole
+//! authority on it since [E4.T12] deleted the TypeScript CLI). This Rust
+//! argv module is written directly against that spec section's literal
+//! grammar:
 //!
 //! ```text
 //! co-motion asset import <presentation-id> <source> [--as <value>]
