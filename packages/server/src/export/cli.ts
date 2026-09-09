@@ -1,5 +1,4 @@
 import path from "node:path";
-import { createDefaultRegistry } from "@co-motion/cli";
 import { loadProject } from "../read-routes.js";
 import { startExportServer } from "./server.js";
 import { renderExportPdf } from "./render.js";
@@ -11,9 +10,8 @@ import type { ExportFormat } from "./job.js";
  * [--out <path>] [--port <n>]` (NOOP-93 §4.3).
  *
  * Invoked from `packages/cli/bin/co-motion.js` via the same runtime-only
- * dynamic import `serve` already uses — `@co-motion/cli`'s own TypeScript
- * sources must never import `@co-motion/server` back (§3.6's own comment on
- * `runServeCli` explains the circular-project-reference reason in full).
+ * dynamic import `serve` already uses. [E4.T9]/F7: `@co-motion/server` no
+ * longer depends on `packages/cli`'s in-process registry at all.
  */
 export async function runExportCli(argv: string[]): Promise<number> {
   const parsed = parseExportArgv(argv);
@@ -23,11 +21,9 @@ export async function runExportCli(argv: string[]): Promise<number> {
   }
   const { presentationId, format, outPath, port } = parsed.value;
 
-  const registry = createDefaultRegistry();
-
   let project;
   try {
-    project = await loadProject(registry, presentationId);
+    project = await loadProject(presentationId);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
@@ -41,7 +37,7 @@ export async function runExportCli(argv: string[]): Promise<number> {
     ? path.resolve(outPath)
     : path.resolve(process.cwd(), exportFileName(project.name, format));
 
-  const server = await startExportServer({ registry, presentationId, port });
+  const server = await startExportServer({ presentationId, port });
   try {
     const result = await renderExportPdf({
       serverUrl: server.url,

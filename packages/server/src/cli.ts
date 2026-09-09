@@ -1,4 +1,3 @@
-import { createDefaultRegistry } from "@co-motion/cli";
 import { startServe } from "./serve.js";
 import { readAgentSettings } from "./agent/settings.js";
 import type { AgentKind } from "./agent/adapters.js";
@@ -8,12 +7,11 @@ import type { AgentSource } from "./agent/manager.js";
  * Entry point for `co-motion serve <presentation-id>`.
  *
  * This is invoked from `packages/cli/bin/co-motion.js` (plain JS, not part
- * of the compiled `@co-motion/cli` sources) via a runtime-only dynamic
- * import. `@co-motion/server` depends on `@co-motion/cli` for the command
- * registry, so `@co-motion/cli`'s own TypeScript sources must never import
- * `@co-motion/server` back — that would make the project-reference graph
- * circular. Routing through the untyped bin shim is what keeps the two
- * packages' build graph acyclic while still sharing one `co-motion` binary.
+ * of the compiled `packages/cli` sources) via a runtime-only dynamic
+ * import. [E4.T9]/F7: `@co-motion/server` no longer depends on
+ * `packages/cli` at all — every command it needs now spawns the Rust
+ * `co-motion` binary (`comotion/`) instead of dispatching against an
+ * in-process registry.
  *
  * NOOP-230: serve now always starts, whether or not an agent is selected —
  * "no agent" is a supported state (chat stays gated off with a 409 until
@@ -29,8 +27,6 @@ export async function runServeCli(argv: string[]): Promise<number> {
     console.error("命令 serve 缺少參數：presentation-id");
     return 1;
   }
-
-  const registry = createDefaultRegistry();
 
   // A broken settings.json must never prevent serve from starting (§4.1's
   // division of labor: settings.ts reports honestly, cli.ts is the one
@@ -48,7 +44,6 @@ export async function runServeCli(argv: string[]): Promise<number> {
   let server;
   try {
     server = await startServe({
-      registry,
       presentationId: parsed.presentationId,
       port: parsed.port,
       initialAgent: { kind, source },
