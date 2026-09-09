@@ -137,6 +137,20 @@ async function readSlide(id: string): Promise<string> {
   return result.data!.content;
 }
 
+/**
+ * Extracts the `<g id="elementId">...</g>` block for one element, so a
+ * "did this element change" check doesn't depend on any other element in
+ * the slide staying byte-identical (NOOP-325: the agent's own in-flight
+ * `text set` targets a different element and can legitimately land inside
+ * the same window, which a whole-document diff can't tell apart from one
+ * of the rejected commands actually running).
+ */
+function extractElementBlock(content: string, elementId: string): string {
+  const match = new RegExp(`<g id="${elementId}"[\\s\\S]*?</g>`).exec(content);
+  if (!match) throw new Error(`element ${elementId} not found in slide content`);
+  return match[0];
+}
+
 interface CommandExecutionFixture {
   id: string;
   elementId: string;
@@ -380,7 +394,9 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
+    const rejectedElementIds = [moveElementId, scaleElementId, rotateElementId, textboxElementId];
     const frozenSlide = await readSlide(id);
+    const frozenBlocks = rejectedElementIds.map((elId) => extractElementBlock(frozenSlide, elId));
     for (const { name, input } of payloads) {
       const response = await fetch(`${server.url}/api/command`, {
         method: "POST",
@@ -391,10 +407,15 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("agent 正在編輯中，請稍候");
     }
-    // The 409 refusal must be a real refusal, not a "runs anyway": nothing
-    // in the slide moved while every one of the four calls above was
-    // rejected.
-    expect(await readSlide(id)).toBe(frozenSlide);
+    // The 409 refusal must be a real refusal, not a "runs anyway": none of
+    // the four elements targeted by the rejected calls above moved. Scoped
+    // to just those elements rather than the whole slide, because the
+    // agent's own in-flight `text set` (a different element) can land
+    // during this same window without that being a freeze violation.
+    const rejectedSlide = await readSlide(id);
+    rejectedElementIds.forEach((elId, i) => {
+      expect(extractElementBlock(rejectedSlide, elId), `${elId} 應該維持凍結前的內容`).toBe(frozenBlocks[i]);
+    });
 
     await waitForFrozen(server, false);
 
