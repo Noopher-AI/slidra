@@ -1,0 +1,407 @@
+[
+  {
+    "command": "element insert",
+    "label": "rect",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>",
+    "args": {
+      "kind": "rect",
+      "x": 10,
+      "y": 20,
+      "width": 100,
+      "height": 50,
+      "fill": "#3366ff"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-new\" transform=\"translate(10 20)\"><rect x=\"0\" y=\"0\" width=\"100\" height=\"50\" fill=\"#3366ff\"/></g></svg>"
+  },
+  {
+    "command": "element delete",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ]
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>"
+  },
+  {
+    "command": "element move",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(5 5)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "dx": 10,
+      "dy": 20
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(15 25)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element rotate",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"rotate(10)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "degrees": 15
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"rotate(25)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element order",
+    "label": "front",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "direction": "front"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element lock",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ]
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g data-comot-lock=\"true\" id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element unlock",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" data-comot-lock=\"true\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ]
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element name set",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "name": "標題"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g data-comot-name=\"標題\" id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element group",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a",
+        "b"
+      ],
+      "newGroupId": "el-grp"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-grp\" data-comot-name=\"Group 1\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></g></svg>"
+  },
+  {
+    "command": "element ungroup",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"grp\"><g id=\"a\" transform=\"translate(2 3)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></g></svg>",
+    "args": {
+      "elementIds": [
+        "grp"
+      ]
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(2 3)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element scale",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(5 5)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"20\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "factor": 2
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(5 5)\"><rect x=\"0\" y=\"0\" width=\"20\" height=\"40\"/></g></svg>"
+  },
+  {
+    "command": "element resize",
+    "label": "nw-anchor",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(10 10)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "width": 20,
+      "height": 5,
+      "anchor": "nw"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(10 10)\"><rect x=\"0\" y=\"0\" width=\"20\" height=\"5\"/></g></svg>"
+  },
+  {
+    "command": "element style set",
+    "label": "fill",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "attr": "fill",
+      "value": "#ff0000"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect fill=\"#ff0000\" x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element align",
+    "label": "left",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(5 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"b\" transform=\"translate(30 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a",
+        "b"
+      ],
+      "direction": "left"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\" transform=\"translate(5 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"b\" transform=\"translate(5 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g></svg>"
+  },
+  {
+    "command": "element distribute",
+    "label": "horizontal",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"b\" transform=\"translate(15 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"c\" transform=\"translate(100 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a",
+        "b",
+        "c"
+      ],
+      "axis": "horizontal"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"b\" transform=\"translate(50 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g><g id=\"c\" transform=\"translate(100 0)\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"10\"/></g></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "plain-single-line",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\">old &amp; busted</text></svg>",
+    "args": {
+      "elementId": "a",
+      "newText": "new <shiny>"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\">new &lt;shiny&gt;</text></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "plain-multiline-existing-gap",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\"><tspan x=\"10\" y=\"20\">one</tspan><tspan x=\"10\" y=\"35\">two</tspan></text></svg>",
+    "args": {
+      "elementId": "a",
+      "newText": "第一行\n第二行\n第三行"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\"><tspan x=\"10\" y=\"20\">第一行</tspan><tspan x=\"10\" y=\"35\">第二行</tspan><tspan x=\"10\" y=\"50\">第三行</tspan></text></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "plain-multiline-growth-measures-font",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\" font-family=\"Noto Sans TC\" font-size=\"16\">one</text></svg>",
+    "args": {
+      "elementId": "a",
+      "newText": "第一行\n第二行"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\" font-family=\"Noto Sans TC\" font-size=\"16\"><tspan x=\"0\" y=\"0\">第一行</tspan><tspan x=\"0\" y=\"23.168\">第二行</tspan></text></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "textbox-rewrap",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">hello</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "newText": "hello world wrapped again"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">hello world wrapped again</tspan></text></g></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "textbox-full-replace-clears-list-state",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\"><text font-family=\"Noto Sans TC\" font-size=\"16\" data-comot-list=\"bullet\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">old</tspan></text><text data-comot-list-marker=\"true\" font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">•</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "newText": "new text"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">new text</tspan></text></g></svg>"
+  },
+  {
+    "command": "text set",
+    "label": "empty-string-clears",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\">hello</text></svg>",
+    "args": {
+      "elementId": "a",
+      "newText": ""
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text id=\"a\"></text></svg>"
+  },
+  {
+    "command": "text style set",
+    "label": "bold-range",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">hello world</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "rangeStart": 0,
+      "rangeEnd": 5,
+      "fontWeight": "bold"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\"><tspan font-weight=\"bold\">hello</tspan> world</tspan></text></g></svg>"
+  },
+  {
+    "command": "text list set",
+    "label": "bullet-paragraph-0",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\" data-comot-break=\"1\">one</tspan><tspan x=\"0\" y=\"20\">two</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "paragraph": 0,
+      "kind": "bullet"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\" data-comot-text-height=\"46.336\"><text data-comot-list=\"bullet none\" font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"24\" y=\"18.56\" data-comot-break=\"1\">one</tspan><tspan x=\"0\" y=\"41.728\">two</tspan></text><text data-comot-list-marker=\"true\" font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">•</tspan></text></g></svg>"
+  },
+  {
+    "command": "textbox add",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>",
+    "args": {
+      "x": 10,
+      "y": 20,
+      "width": 300,
+      "text": "hello",
+      "fontSize": 24,
+      "fontFamily": "Noto Sans TC",
+      "align": "left"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-tb\" data-comot-text-width=\"300\" data-comot-text-height=\"34.752\" transform=\"translate(10 20)\"><text font-family=\"Noto Sans TC\" font-size=\"24\" xml:space=\"preserve\"><tspan x=\"0\" y=\"27.84\">hello</tspan></text></g></svg>"
+  },
+  {
+    "command": "textbox width",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">hello world</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "width": 100
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"100\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">hello world</tspan></text></g></svg>"
+  },
+  {
+    "command": "textbox align",
+    "label": "center",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"500\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">hi</tspan></text></g></svg>",
+    "args": {
+      "elementId": "tb",
+      "align": "center"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g data-comot-text-align=\"center\" id=\"tb\" data-comot-text-width=\"500\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"242.944\" y=\"18.56\">hi</tspan></text></g></svg>"
+  },
+  {
+    "command": "element copy",
+    "label": "folds-ancestor-transform",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"outer\" transform=\"translate(100 100)\"><g id=\"a\" transform=\"translate(5 5)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ]
+    },
+    "expected": "<g id=\"a\" transform=\"translate(105 105)\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g>"
+  },
+  {
+    "command": "element cut",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ]
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"b\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element paste",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"existing\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "dx": 10,
+      "dy": 20
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"existing\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g transform=\"translate(10 20)\" id=\"el-generated-1\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "element duplicate",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "elementIds": [
+        "a"
+      ],
+      "dx": 5,
+      "dy": 5
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g><g transform=\"translate(5 5)\" id=\"el-dup-1\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "comment add",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"el-a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>",
+    "args": {
+      "comment": {
+        "id": "c-1",
+        "target": "el-a",
+        "author": "agent",
+        "created": "2026-01-01T00:00:00.000Z",
+        "text": "第一則留言 <esc> & test"
+      }
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"><comot:comment id=\"c-1\" target=\"el-a\" author=\"agent\" created=\"2026-01-01T00:00:00.000Z\">第一則留言 &lt;esc&gt; &amp; test</comot:comment></comot:comments></metadata><g id=\"el-a\"><rect x=\"0\" y=\"0\" width=\"1\" height=\"1\"/></g></svg>"
+  },
+  {
+    "command": "comment edit",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"><comot:comment id=\"c-1\" target=\"page\" author=\"agent\" created=\"2026-01-01T00:00:00.000Z\">old text</comot:comment></comot:comments></metadata></svg>",
+    "args": {
+      "commentId": "c-1",
+      "text": "revised text"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"><comot:comment id=\"c-1\" target=\"page\" author=\"agent\" created=\"2026-01-01T00:00:00.000Z\">revised text</comot:comment></comot:comments></metadata></svg>"
+  },
+  {
+    "command": "comment delete",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"><comot:comment id=\"c-1\" target=\"page\" author=\"agent\" created=\"2026-01-01T00:00:00.000Z\">only</comot:comment></comot:comments></metadata></svg>",
+    "args": {
+      "commentId": "c-1"
+    },
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"></comot:comments></metadata></svg>"
+  },
+  {
+    "command": "comment list",
+    "label": "basic",
+    "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:comments xmlns:comot=\"https://co-motion.dev/ns\"><comot:comment id=\"c-1\" target=\"page\" author=\"agent\" created=\"2026-01-01T00:00:00.000Z\">first</comot:comment><comot:comment id=\"c-2\" target=\"el-a\" author=\"reviewer\" created=\"2026-01-02T00:00:00.000Z\">second</comot:comment></comot:comments></metadata></svg>",
+    "args": {},
+    "expected": [
+      {
+        "id": "c-1",
+        "target": "page",
+        "author": "agent",
+        "created": "2026-01-01T00:00:00.000Z",
+        "text": "first"
+      },
+      {
+        "id": "c-2",
+        "target": "el-a",
+        "author": "reviewer",
+        "created": "2026-01-02T00:00:00.000Z",
+        "text": "second"
+      }
+    ]
+  }
+]

@@ -585,4 +585,290 @@ await genScan();
 await genBbox();
 await genFont();
 await genTextWrapExtraCases();
+
+// --- element_commands.json --------------------------------------------
+//
+// NOOP-309 phase P9 (plan section 6.2/6.5): one golden case per command in
+// the ticket's 29-command scope, run through the REAL functions in
+// `packages/core/dist/element-*.js`/`slide/comments.js` — never hand-computed
+// or captured from the Rust port's own output. `text set` gets six cases
+// (plan AC2's minimum): plain single-line replace, plain multi-line reusing
+// an existing tspan gap, plain multi-line growth measured off the real font
+// (no gap to reuse), a text-box rewrap, a text-box full-replace that must
+// clear stale list/marker state, and an empty-string clear.
+//
+// `element copy`/`cut`/`paste`/`duplicate` are exercised here as their own
+// PURE primitives (`extractElementsForCopy`, `deleteElements`,
+// `pasteElements` — the same three primitives `cut`/`duplicate`'s own CLI
+// wiring composes) rather than through a real clipboard FILE round trip:
+// the four-directional cross-engine interop that actually needs a real
+// clipboard file is `cli_golden.rs`'s job (CLI argv layer), not this one
+// (plan section 6.1's three-layer split).
+async function genElementCommands() {
+  const edit = await import(join(repoRoot, "packages/core/dist/element-edit.js"));
+  const group = await import(join(repoRoot, "packages/core/dist/element-group.js"));
+  const arrange = await import(join(repoRoot, "packages/core/dist/element-arrange.js"));
+  const text = await import(join(repoRoot, "packages/core/dist/element-text.js"));
+  const clipboard = await import(join(repoRoot, "packages/core/dist/element-clipboard.js"));
+  const comments = await import(join(repoRoot, "packages/core/dist/slide/comments.js"));
+  const { parseFont } = await import(join(repoRoot, "packages/core/dist/text-metrics.js"));
+  const { wrapText } = await import(join(repoRoot, "packages/core/dist/text/wrap.js"));
+  const { renderTextBoxContent } = await import(join(repoRoot, "packages/core/dist/text/render.js"));
+  const { formatSvgNumber } = await import(join(repoRoot, "packages/core/dist/svg-number.js"));
+  const { readFileSync } = await import("node:fs");
+
+  const fontBytes = readFileSync(join(repoRoot, "packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf"));
+  const font = parseFont(new Uint8Array(fontBytes));
+  const fontBook = new Map([["Noto Sans TC", font]]);
+
+  const SLIDE_PATH = "slides/001.svg";
+  const slide = (children) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">${children}</svg>`;
+
+  const cases = [];
+  const push = (command, label, fixture, args, expected) => cases.push({ command, label, fixture, args, expected });
+
+  // --- element: structural (P3) ---
+  push("element insert", "rect", slide(""), { kind: "rect", x: 10, y: 20, width: 100, height: 50, fill: "#3366ff" },
+    edit.insertElement(slide(""), SLIDE_PATH, "el-new", { kind: "rect", x: 10, y: 20, width: 100, height: 50, fill: "#3366ff" }));
+
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element delete", "basic", fixture, { elementIds: ["a"] }, edit.deleteElements(fixture, SLIDE_PATH, ["a"]));
+  }
+  {
+    const fixture = slide(`<g id="a" transform="translate(5 5)"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element move", "basic", fixture, { elementIds: ["a"], dx: 10, dy: 20 }, edit.moveElements(fixture, SLIDE_PATH, ["a"], 10, 20, {}));
+  }
+  {
+    const fixture = slide(`<g id="a" transform="rotate(10)"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element rotate", "basic", fixture, { elementIds: ["a"], degrees: 15 }, edit.rotateElements(fixture, SLIDE_PATH, ["a"], 15, {}));
+  }
+  {
+    const fixture = slide(
+      `<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>`,
+    );
+    push("element order", "front", fixture, { elementIds: ["a"], direction: "front" }, edit.reorderElements(fixture, SLIDE_PATH, ["a"], "front", {}));
+  }
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element lock", "basic", fixture, { elementIds: ["a"] }, edit.lockElements(fixture, SLIDE_PATH, ["a"]));
+  }
+  {
+    const fixture = slide(`<g id="a" data-comot-lock="true"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element unlock", "basic", fixture, { elementIds: ["a"] }, edit.unlockElements(fixture, SLIDE_PATH, ["a"]));
+  }
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element name set", "basic", fixture, { elementIds: ["a"], name: "標題" }, group.setElementName(fixture, SLIDE_PATH, ["a"], "標題"));
+  }
+  {
+    const fixture = slide(
+      `<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>`,
+    );
+    push("element group", "basic", fixture, { elementIds: ["a", "b"], newGroupId: "el-grp" }, group.groupElements(fixture, SLIDE_PATH, ["a", "b"], "el-grp").svg);
+  }
+  {
+    const fixture = slide(
+      `<g id="grp"><g id="a" transform="translate(2 3)"><rect x="0" y="0" width="1" height="1"/></g></g>`,
+    );
+    push("element ungroup", "basic", fixture, { elementIds: ["grp"] }, group.ungroupElements(fixture, SLIDE_PATH, ["grp"]).svg);
+  }
+
+  // --- element: measurement (P4) ---
+  {
+    const fixture = slide(`<g id="a" transform="translate(5 5)"><rect x="0" y="0" width="10" height="20"/></g>`);
+    push("element scale", "basic", fixture, { elementIds: ["a"], factor: 2 }, edit.scaleElements(fixture, SLIDE_PATH, ["a"], 2, fontBook, {}));
+  }
+  {
+    const fixture = slide(`<g id="a" transform="translate(10 10)"><rect x="0" y="0" width="10" height="10"/></g>`);
+    push("element resize", "nw-anchor", fixture, { elementIds: ["a"], width: 20, height: 5, anchor: "nw" }, edit.resizeElements(fixture, SLIDE_PATH, ["a"], 20, 5, "nw", fontBook, {}));
+  }
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    push("element style set", "fill", fixture, { elementIds: ["a"], attr: "fill", value: "#ff0000" }, edit.setElementStyle(fixture, SLIDE_PATH, ["a"], "fill", "#ff0000", fontBook, {}));
+  }
+
+  // --- element: arrange (P5) ---
+  {
+    const fixture = slide(
+      `<g id="a" transform="translate(5 0)"><rect x="0" y="0" width="10" height="10"/></g><g id="b" transform="translate(30 0)"><rect x="0" y="0" width="10" height="10"/></g>`,
+    );
+    push("element align", "left", fixture, { elementIds: ["a", "b"], direction: "left" }, arrange.alignElements(fixture, SLIDE_PATH, ["a", "b"], "left", fontBook));
+  }
+  {
+    const fixture = slide(
+      `<g id="a"><rect x="0" y="0" width="10" height="10"/></g><g id="b" transform="translate(15 0)"><rect x="0" y="0" width="10" height="10"/></g><g id="c" transform="translate(100 0)"><rect x="0" y="0" width="10" height="10"/></g>`,
+    );
+    push("element distribute", "horizontal", fixture, { elementIds: ["a", "b", "c"], axis: "horizontal" }, arrange.distributeElements(fixture, SLIDE_PATH, ["a", "b", "c"], "horizontal", fontBook));
+  }
+
+  // --- text (P6) ---
+  {
+    const fixture = slide(`<text id="a">old &amp; busted</text>`);
+    push("text set", "plain-single-line", fixture, { elementId: "a", newText: "new <shiny>" }, text.replaceElementText(fixture, "a", "new <shiny>", { fontBook }));
+  }
+  {
+    const fixture = slide(`<text id="a"><tspan x="10" y="20">one</tspan><tspan x="10" y="35">two</tspan></text>`);
+    push("text set", "plain-multiline-existing-gap", fixture, { elementId: "a", newText: "第一行\n第二行\n第三行" }, text.replaceElementText(fixture, "a", "第一行\n第二行\n第三行", { fontBook }));
+  }
+  {
+    const fixture = slide(`<text id="a" font-family="Noto Sans TC" font-size="16">one</text>`);
+    push("text set", "plain-multiline-growth-measures-font", fixture, { elementId: "a", newText: "第一行\n第二行" }, text.replaceElementText(fixture, "a", "第一行\n第二行", { fontBook }));
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="200"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello</tspan></text></g>`,
+    );
+    push("text set", "textbox-rewrap", fixture, { elementId: "tb", newText: "hello world wrapped again" }, text.replaceElementText(fixture, "tb", "hello world wrapped again", { fontBook }));
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="200"><text font-family="Noto Sans TC" font-size="16" data-comot-list="bullet" xml:space="preserve"><tspan x="0" y="0">old</tspan></text><text data-comot-list-marker="true" font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">•</tspan></text></g>`,
+    );
+    push("text set", "textbox-full-replace-clears-list-state", fixture, { elementId: "tb", newText: "new text" }, text.replaceElementText(fixture, "tb", "new text", { fontBook }));
+  }
+  {
+    const fixture = slide(`<text id="a">hello</text>`);
+    push("text set", "empty-string-clears", fixture, { elementId: "a", newText: "" }, text.replaceElementText(fixture, "a", "", { fontBook }));
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello world</tspan></text></g>`,
+    );
+    push(
+      "text style set",
+      "bold-range",
+      fixture,
+      { elementId: "tb", rangeStart: 0, rangeEnd: 5, fontWeight: "bold" },
+      text.setTextRunStyle(fixture, "tb", 0, 5, { fontWeight: "bold" }, fontBook, {}).updated,
+    );
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0" data-comot-break="1">one</tspan><tspan x="0" y="20">two</tspan></text></g>`,
+    );
+    push(
+      "text list set",
+      "bullet-paragraph-0",
+      fixture,
+      { elementId: "tb", paragraph: 0, kind: "bullet" },
+      text.setParagraphList(fixture, "tb", 0, "bullet", fontBook, {}).updated,
+    );
+  }
+  {
+    const fixture = slide("");
+    push(
+      "textbox add",
+      "basic",
+      fixture,
+      { x: 10, y: 20, width: 300, text: "hello", fontSize: 24, fontFamily: "Noto Sans TC", align: "left" },
+      appendTextBoxMarkup(
+        fixture,
+        "el-tb",
+        { x: 10, y: 20, width: 300, text: "hello", fontSize: 24, fontFamily: "Noto Sans TC" },
+        font,
+        { wrapText, renderTextBoxContent, formatSvgNumber, appendElementToSvg: text.appendElementToSvg },
+      ),
+    );
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello world</tspan></text></g>`,
+    );
+    push("textbox width", "basic", fixture, { elementId: "tb", width: 100 }, text.resizeTextBox(fixture, "tb", 100, fontBook, {}).updated);
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>`,
+    );
+    push("textbox align", "center", fixture, { elementId: "tb", align: "center" }, text.realignTextBox(fixture, "tb", "center", fontBook, {}).updated);
+  }
+
+  // --- element: clipboard (P7), as pure primitives — see function doc comment ---
+  {
+    const fixture = slide(`<g id="outer" transform="translate(100 100)"><g id="a" transform="translate(5 5)"><rect x="0" y="0" width="1" height="1"/></g></g>`);
+    const payload = clipboard.extractElementsForCopy(fixture, SLIDE_PATH, ["a"]);
+    push("element copy", "folds-ancestor-transform", fixture, { elementIds: ["a"] }, payload.elements[0]);
+  }
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>`);
+    // The workspace layer's own cutSlideElements wiring: extract (unused
+    // here beyond proving it doesn't throw) then delete — the SLIDE's own
+    // resulting content is what "cut" changes, which is what this golden
+    // case checks (the clipboard PAYLOAD shape is `element copy`'s own
+    // case above, extracted from the same primitive).
+    clipboard.extractElementsForCopy(fixture, SLIDE_PATH, ["a"]);
+    push("element cut", "basic", fixture, { elementIds: ["a"] }, edit.deleteElements(fixture, SLIDE_PATH, ["a"]));
+  }
+  {
+    const target = slide(`<g id="existing"><rect x="0" y="0" width="1" height="1"/></g>`);
+    const payload = { sourceSlidePath: SLIDE_PATH, elements: [`<g id="el-old"><rect x="0" y="0" width="1" height="1"/></g>`], effects: [] };
+    let n = 0;
+    const generateId = () => `el-generated-${++n}`;
+    const result = clipboard.pasteElements(target, SLIDE_PATH, payload, 10, 20, generateId);
+    push("element paste", "basic", target, { dx: 10, dy: 20 }, result.updated);
+  }
+  {
+    const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    const payload = clipboard.extractElementsForCopy(fixture, SLIDE_PATH, ["a"]);
+    let n = 0;
+    const generateId = () => `el-dup-${++n}`;
+    const result = clipboard.pasteElements(fixture, SLIDE_PATH, payload, 5, 5, generateId);
+    push("element duplicate", "basic", fixture, { elementIds: ["a"], dx: 5, dy: 5 }, result.updated);
+  }
+
+  // --- comment (P8) ---
+  {
+    const fixture = slide(`<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>`);
+    const comment = { id: "c-1", target: "el-a", author: "agent", created: "2026-01-01T00:00:00.000Z", text: "第一則留言 <esc> & test" };
+    push("comment add", "basic", fixture, { comment }, comments.addSlideComment(fixture, comment));
+  }
+  {
+    const fixture = slide(
+      `<metadata><comot:comments xmlns:comot="https://co-motion.dev/ns"><comot:comment id="c-1" target="page" author="agent" created="2026-01-01T00:00:00.000Z">old text</comot:comment></comot:comments></metadata>`,
+    );
+    push("comment edit", "basic", fixture, { commentId: "c-1", text: "revised text" }, comments.editSlideComment(fixture, "c-1", "revised text"));
+  }
+  {
+    const fixture = slide(
+      `<metadata><comot:comments xmlns:comot="https://co-motion.dev/ns"><comot:comment id="c-1" target="page" author="agent" created="2026-01-01T00:00:00.000Z">only</comot:comment></comot:comments></metadata>`,
+    );
+    push("comment delete", "basic", fixture, { commentId: "c-1" }, comments.deleteSlideComment(fixture, "c-1"));
+  }
+  {
+    const fixture = slide(
+      `<metadata><comot:comments xmlns:comot="https://co-motion.dev/ns"><comot:comment id="c-1" target="page" author="agent" created="2026-01-01T00:00:00.000Z">first</comot:comment><comot:comment id="c-2" target="el-a" author="reviewer" created="2026-01-02T00:00:00.000Z">second</comot:comment></comot:comments></metadata>`,
+    );
+    push("comment list", "basic", fixture, {}, comments.readSlideComments(fixture));
+  }
+
+  writeJson("element_commands.json", cases);
+
+  const commandsCovered = new Set(cases.map((c) => c.command));
+  if (commandsCovered.size !== 29) {
+    throw new Error(`gen-golden: element_commands.json must cover exactly 29 distinct commands, found ${commandsCovered.size}: ${[...commandsCovered].sort().join(", ")}`);
+  }
+}
+
+/** `textbox add`'s pure wrap-and-build-markup logic, extracted out of
+ * `workspace.ts`'s `addTextBox` (which this generator cannot call directly —
+ * it does real filesystem I/O) so this golden case still runs the REAL
+ * `wrapText`/`renderTextBoxContent`/`escapeXmlAttr`/`formatSvgNumber` from
+ * `packages/core/dist`, not a hand-rolled equivalent — only the markup
+ * TEMPLATE (attribute order/literal punctuation) below is transcribed by
+ * hand, matched 1:1 against `workspace.ts:749-760`'s own template at review
+ * time. */
+function appendTextBoxMarkup(svgContent, elementId, input, font, textModule) {
+  const wrapped = textModule.wrapText(input.text, { width: input.width, font, fontSizePx: input.fontSize, align: input.align ?? "left" });
+  const content = textModule.renderTextBoxContent(wrapped.lines, []);
+  const markup =
+    `<g id="${elementId}" data-comot-text-width="${textModule.formatSvgNumber(input.width)}" ` +
+    `data-comot-text-height="${textModule.formatSvgNumber(wrapped.height)}" ` +
+    `transform="translate(${textModule.formatSvgNumber(input.x)} ${textModule.formatSvgNumber(input.y)})">` +
+    `<text font-family="${input.fontFamily}" font-size="${textModule.formatSvgNumber(input.fontSize)}" xml:space="preserve">${content}</text></g>`;
+  return textModule.appendElementToSvg(svgContent, markup);
+}
+
+
 await genMediaFormat();
+await genElementCommands();

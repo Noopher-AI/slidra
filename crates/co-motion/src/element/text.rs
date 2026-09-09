@@ -214,11 +214,27 @@ fn list_marker_splices(
 
 /// Removes `attr` from `node` entirely (including the whitespace right
 /// before it), or `None` when it is already absent — `set_attr_splice`'s
-/// missing inverse.
-fn remove_attr_splice(node: &ScannedNode, attr: &str) -> Option<Splice> {
+/// missing inverse. Mirrors `element-text.ts`'s own `removeAttrSplice`
+/// (a separate copy from `splice.rs`'s `attribute_removal_splice`, per this
+/// module's "own copies, not shared" pattern).
+fn remove_attr_splice(svg_content: &str, node: &ScannedNode, attr: &str) -> Option<Splice> {
     let existing = attribute_of(node, attr)?;
+    let tag_name_end = node.start + 1 + node.tag.encode_utf16().count();
+    let mut start = existing.start;
+    while start > tag_name_end {
+        let byte_at = crate::text::utf16_offset_to_byte_offset(svg_content, start - 1);
+        let ch = svg_content[byte_at..]
+            .chars()
+            .next()
+            .expect("valid char boundary");
+        if ch.is_whitespace() {
+            start -= ch.len_utf16();
+        } else {
+            break;
+        }
+    }
     Some(Splice {
-        start: existing.start,
+        start,
         end: existing.end,
         text: String::new(),
     })
@@ -474,7 +490,7 @@ fn replace_container_text(
             },
         )?;
         let content = render_text_box_content(&wrapped.lines, &[]);
-        let list_attr_removal = remove_attr_splice(text_node, LIST_ATTRIBUTE);
+        let list_attr_removal = remove_attr_splice(svg_content, text_node, LIST_ATTRIBUTE);
         let marker_removal = list_marker_splices(text_node, marker_text_child(container), None);
         let mut splices = vec![
             Splice {
@@ -977,7 +993,7 @@ pub fn set_paragraph_list(
 
     let all_none = next_tokens.iter().all(|token| *token == ListKind::None);
     let list_attr_splice = if all_none {
-        remove_attr_splice(text_node, LIST_ATTRIBUTE)
+        remove_attr_splice(svg_content, text_node, LIST_ATTRIBUTE)
     } else {
         let joined = next_tokens
             .iter()
@@ -1295,6 +1311,27 @@ mod tests {
         assert!(updated.contains("data-comot-text-height="), "{updated}");
     }
 
+    /// Regression for a byte-exact bug caught by the golden-file test
+    /// (`unit_golden.rs`'s `element_commands_match_ts_reference_for_every_command`,
+    /// case `text set / textbox-full-replace-clears-list-state`):
+    /// `remove_attr_splice` removed only the attribute's own span, not the
+    /// whitespace before it, leaving a double space where a single space
+    /// (the one that used to separate `data-comot-list="bullet"` from its
+    /// neighbours) should remain — `element-text.ts`'s own `removeAttrSplice`
+    /// walks backward over whitespace back to the tag name.
+    #[test]
+    fn text_set_full_replace_removes_the_list_attribute_and_its_leading_space_byte_exact() {
+        let svg = slide(
+            r#"<g id="tb" data-comot-text-width="200"><text font-family="Noto Sans TC" font-size="16" data-comot-list="bullet" xml:space="preserve"><tspan x="0" y="0">old</tspan></text></g>"#,
+        );
+        let updated = replace_element_text(&svg, "tb", "new text", &font_book(), false).unwrap();
+        assert!(
+            updated.contains(r#"font-size="16" xml:space="preserve""#),
+            "expected exactly one space between font-size and xml:space after removing \
+             data-comot-list, got: {updated}"
+        );
+    }
+
     #[test]
     fn text_set_on_text_box_with_malformed_width_errors() {
         let svg = textbox_svg("not-a-number", &["hi"]);
@@ -1480,6 +1517,15 @@ mod tests {
             set_paragraph_list(&with_bullet, "tb", 0, ListKind::None, &font_book(), false).unwrap();
         assert!(!cleared.contains("data-comot-list="), "{cleared}");
         assert!(!cleared.contains("data-comot-list-marker"), "{cleared}");
+        // Regression (see `text_set_full_replace_removes_the_list_attribute_and_its_leading_space_byte_exact`
+        // above): clearing must remove the ONE space that used to separate
+        // `data-comot-list="bullet"` from its neighbours, not leave it
+        // behind as a second space.
+        assert!(
+            cleared.contains(r#"font-size="16" xml:space="preserve""#),
+            "expected exactly one space between font-size and xml:space after clearing \
+             data-comot-list, got: {cleared}"
+        );
     }
 
     // --- textbox add ---

@@ -1037,3 +1037,537 @@ fn media_format_matches_ts_reference_for_every_golden_case() {
         failures.join("\n")
     );
 }
+
+
+// --- element_commands.json --------------------------------------------
+//
+// NOOP-309 (Execute round 2, P9): one golden case per command in the
+// ticket's 29-command scope (`element *`, `text *`, `textbox *`,
+// `comment *`), run through the REAL functions in
+// `packages/core/dist/element-*.js`/`slide/comments.js`
+// (`scripts/gen-golden.mjs`'s `genElementCommands`). `element
+// copy`/`cut`/`paste`/`duplicate` are covered here as their own pure
+// primitives (`extractElementsForCopy`/`deleteElements`/`pasteElements`);
+// the 4-directional CLI-level clipboard interop (internal-file and
+// `--svg-file` round trips both directions) is `cli_golden.rs`'s job (plan
+// section 6.1, layer 1), not this file's.
+
+use co_motion::element::arrange::{self, AlignDirection, DistributeAxis};
+use co_motion::element::clipboard::{self, ClipboardPayload};
+use co_motion::element::edit::{
+    self, InsertElementInput, InsertElementKind, OrderDirection, ResizeAnchor,
+};
+use co_motion::element::group;
+use co_motion::element::text::{self, AddTextBoxInput, TextStyleUpdate};
+use co_motion::slide::comments::{self, SlideComment};
+use co_motion::text::list::ListKind;
+
+type JsonValue = serde_json::Value;
+
+/// Matches `scripts/gen-golden.mjs`'s own `SLIDE_PATH` constant — only used
+/// for error-message interpolation by `assert_slide_compliant`, never
+/// parsed, so any value both engines agree on is fine.
+const GOLDEN_SLIDE_PATH: &str = "slides/001.svg";
+
+#[derive(Deserialize)]
+struct ElementCommandCase {
+    command: String,
+    label: String,
+    fixture: String,
+    args: JsonValue,
+    expected: JsonValue,
+}
+
+fn golden_font_book() -> HashMap<String, Box<dyn FontMetrics>> {
+    let font = parse_font(DEFAULT_FONT_BYTES).expect("embedded default font must parse");
+    HashMap::from([(
+        "Noto Sans TC".to_string(),
+        Box::new(font) as Box<dyn FontMetrics>,
+    )])
+}
+
+fn arg_str<'a>(args: &'a JsonValue, key: &str) -> &'a str {
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("golden case missing string arg {key:?}"))
+}
+
+fn arg_opt_str<'a>(args: &'a JsonValue, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(|v| v.as_str())
+}
+
+fn arg_f64(args: &JsonValue, key: &str) -> f64 {
+    args.get(key)
+        .and_then(|v| v.as_f64())
+        .unwrap_or_else(|| panic!("golden case missing number arg {key:?}"))
+}
+
+fn arg_opt_f64(args: &JsonValue, key: &str) -> Option<f64> {
+    args.get(key).and_then(|v| v.as_f64())
+}
+
+fn arg_usize(args: &JsonValue, key: &str) -> usize {
+    args.get(key)
+        .and_then(|v| v.as_u64())
+        .unwrap_or_else(|| panic!("golden case missing integer arg {key:?}")) as usize
+}
+
+fn arg_str_vec(args: &JsonValue, key: &str) -> Vec<String> {
+    args.get(key)
+        .and_then(|v| v.as_array())
+        .unwrap_or_else(|| panic!("golden case missing array arg {key:?}"))
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .expect("array element must be a string")
+                .to_string()
+        })
+        .collect()
+}
+
+fn parse_order_direction(raw: &str) -> OrderDirection {
+    match raw {
+        "front" => OrderDirection::Front,
+        "back" => OrderDirection::Back,
+        "up" => OrderDirection::Up,
+        "down" => OrderDirection::Down,
+        other => panic!("unknown order direction in golden fixture: {other}"),
+    }
+}
+
+fn parse_align_direction(raw: &str) -> AlignDirection {
+    match raw {
+        "left" => AlignDirection::Left,
+        "hcenter" => AlignDirection::HCenter,
+        "right" => AlignDirection::Right,
+        "top" => AlignDirection::Top,
+        "vcenter" => AlignDirection::VCenter,
+        "bottom" => AlignDirection::Bottom,
+        other => panic!("unknown align direction in golden fixture: {other}"),
+    }
+}
+
+fn parse_distribute_axis(raw: &str) -> DistributeAxis {
+    match raw {
+        "horizontal" => DistributeAxis::Horizontal,
+        "vertical" => DistributeAxis::Vertical,
+        other => panic!("unknown distribute axis in golden fixture: {other}"),
+    }
+}
+
+fn parse_resize_anchor(raw: &str) -> ResizeAnchor {
+    match raw {
+        "nw" => ResizeAnchor::Nw,
+        "ne" => ResizeAnchor::Ne,
+        "sw" => ResizeAnchor::Sw,
+        "se" => ResizeAnchor::Se,
+        other => panic!("unknown resize anchor in golden fixture: {other}"),
+    }
+}
+
+fn parse_insert_kind(raw: &str) -> InsertElementKind {
+    match raw {
+        "rect" => InsertElementKind::Rect,
+        "ellipse" => InsertElementKind::Ellipse,
+        "line" => InsertElementKind::Line,
+        "image" => InsertElementKind::Image,
+        "path" => InsertElementKind::Path,
+        "video" => InsertElementKind::Video,
+        "audio" => InsertElementKind::Audio,
+        other => panic!("unknown insert kind in golden fixture: {other}"),
+    }
+}
+
+fn parse_text_align(raw: &str) -> TextAlign {
+    match raw {
+        "left" => TextAlign::Left,
+        "center" => TextAlign::Center,
+        "right" => TextAlign::Right,
+        other => panic!("unknown text align in golden fixture: {other}"),
+    }
+}
+
+fn parse_list_kind(raw: &str) -> ListKind {
+    match raw {
+        "bullet" => ListKind::Bullet,
+        "number" => ListKind::Number,
+        "none" => ListKind::None,
+        other => panic!("unknown list kind in golden fixture: {other}"),
+    }
+}
+
+fn comment_from_json(value: &JsonValue) -> SlideComment {
+    SlideComment {
+        id: value["id"].as_str().expect("comment.id").to_string(),
+        target: value["target"]
+            .as_str()
+            .expect("comment.target")
+            .to_string(),
+        author: value["author"]
+            .as_str()
+            .expect("comment.author")
+            .to_string(),
+        created: value["created"]
+            .as_str()
+            .expect("comment.created")
+            .to_string(),
+        text: value["text"].as_str().expect("comment.text").to_string(),
+    }
+}
+
+enum CaseOutcome {
+    Text(String),
+    Comments(Vec<SlideComment>),
+}
+
+fn run_element_command_case(case: &ElementCommandCase) -> CaseOutcome {
+    let args = &case.args;
+    let svg = case.fixture.as_str();
+    match case.command.as_str() {
+        "element insert" => {
+            let input = InsertElementInput {
+                x: arg_opt_f64(args, "x"),
+                y: arg_opt_f64(args, "y"),
+                width: arg_opt_f64(args, "width"),
+                height: arg_opt_f64(args, "height"),
+                x1: arg_opt_f64(args, "x1"),
+                y1: arg_opt_f64(args, "y1"),
+                x2: arg_opt_f64(args, "x2"),
+                y2: arg_opt_f64(args, "y2"),
+                d: arg_opt_str(args, "d").map(String::from),
+                fill: arg_opt_str(args, "fill").map(String::from),
+                stroke: arg_opt_str(args, "stroke").map(String::from),
+                stroke_width: arg_opt_f64(args, "strokeWidth"),
+                href: arg_opt_str(args, "href").map(String::from),
+                media: arg_opt_str(args, "media").map(String::from),
+                embed: arg_opt_str(args, "embed").map(String::from),
+            };
+            let kind = parse_insert_kind(arg_str(args, "kind"));
+            let result = edit::insert_element(svg, GOLDEN_SLIDE_PATH, "el-new", &input, kind)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element delete" | "element cut" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let result = edit::delete_elements(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element move" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let dx = arg_f64(args, "dx");
+            let dy = arg_f64(args, "dy");
+            let result = edit::move_elements(svg, GOLDEN_SLIDE_PATH, &ids, dx, dy, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element rotate" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let degrees = arg_f64(args, "degrees");
+            let result = edit::rotate_elements(svg, GOLDEN_SLIDE_PATH, &ids, degrees, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element order" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let direction = parse_order_direction(arg_str(args, "direction"));
+            let result = edit::reorder_elements(svg, GOLDEN_SLIDE_PATH, &ids, direction, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element lock" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let result = edit::lock_elements(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element unlock" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let result = edit::unlock_elements(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element name set" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let name = arg_str(args, "name");
+            let result = group::set_element_name(svg, GOLDEN_SLIDE_PATH, &ids, name)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element group" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let new_group_id = arg_str(args, "newGroupId");
+            let result = group::group_elements(svg, GOLDEN_SLIDE_PATH, &ids, new_group_id)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result.svg)
+        }
+        "element ungroup" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let result = group::ungroup_elements(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result.svg)
+        }
+        "element scale" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let factor = arg_f64(args, "factor");
+            let result = edit::scale_elements(svg, GOLDEN_SLIDE_PATH, &ids, factor, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element resize" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let width = arg_f64(args, "width");
+            let height = arg_f64(args, "height");
+            let anchor = parse_resize_anchor(arg_str(args, "anchor"));
+            let fonts = golden_font_book();
+            let result = edit::resize_elements(
+                svg,
+                GOLDEN_SLIDE_PATH,
+                &ids,
+                width,
+                height,
+                anchor,
+                &fonts,
+                false,
+            )
+            .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element style set" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let attr = arg_str(args, "attr");
+            let value = arg_str(args, "value");
+            let result = edit::set_element_style(svg, GOLDEN_SLIDE_PATH, &ids, attr, value, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element align" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let direction = parse_align_direction(arg_str(args, "direction"));
+            let fonts = golden_font_book();
+            let result = arrange::align_elements(svg, GOLDEN_SLIDE_PATH, &ids, direction, &fonts)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element distribute" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let axis = parse_distribute_axis(arg_str(args, "axis"));
+            let fonts = golden_font_book();
+            let result = arrange::distribute_elements(svg, GOLDEN_SLIDE_PATH, &ids, axis, &fonts)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "text set" => {
+            let element_id = arg_str(args, "elementId");
+            let new_text = arg_str(args, "newText");
+            let fonts = golden_font_book();
+            let result = text::replace_element_text(svg, element_id, new_text, &fonts, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "text style set" => {
+            let element_id = arg_str(args, "elementId");
+            let start = arg_usize(args, "rangeStart");
+            let end = arg_usize(args, "rangeEnd");
+            let update = TextStyleUpdate {
+                font_weight: arg_opt_str(args, "fontWeight").map(String::from),
+                font_style: arg_opt_str(args, "fontStyle").map(String::from),
+            };
+            let fonts = golden_font_book();
+            let (result, _) =
+                text::set_text_run_style(svg, element_id, start, end, &update, &fonts, false)
+                    .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "text list set" => {
+            let element_id = arg_str(args, "elementId");
+            let paragraph = arg_usize(args, "paragraph");
+            let kind = parse_list_kind(arg_str(args, "kind"));
+            let fonts = golden_font_book();
+            let (result, _) =
+                text::set_paragraph_list(svg, element_id, paragraph, kind, &fonts, false)
+                    .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "textbox add" => {
+            let x = arg_f64(args, "x");
+            let y = arg_f64(args, "y");
+            let width = arg_f64(args, "width");
+            let text_value = arg_str(args, "text");
+            let font_size = arg_f64(args, "fontSize");
+            let font_family = arg_str(args, "fontFamily");
+            let align = parse_text_align(arg_str(args, "align"));
+            let input = AddTextBoxInput {
+                x,
+                y,
+                width,
+                text: text_value,
+                font_size,
+                font_family,
+                font_weight: arg_opt_f64(args, "fontWeight"),
+                fill: arg_opt_str(args, "fill"),
+                align,
+            };
+            let fonts = golden_font_book();
+            let (result, _) = text::add_text_box(svg, "el-tb", &input, &fonts)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "textbox width" => {
+            let element_id = arg_str(args, "elementId");
+            let width = arg_f64(args, "width");
+            let fonts = golden_font_book();
+            let (result, _) = text::resize_text_box(svg, element_id, width, &fonts, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "textbox align" => {
+            let element_id = arg_str(args, "elementId");
+            let align = parse_text_align(arg_str(args, "align"));
+            let fonts = golden_font_book();
+            let (result, _) = text::realign_text_box(svg, element_id, align, &fonts, false)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "element copy" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let payload = clipboard::extract_elements_for_copy(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(
+                payload
+                    .elements
+                    .first()
+                    .expect("copy payload must contain at least one element")
+                    .clone(),
+            )
+        }
+        "element paste" => {
+            let dx = arg_f64(args, "dx");
+            let dy = arg_f64(args, "dy");
+            let payload = ClipboardPayload {
+                source_slide_path: GOLDEN_SLIDE_PATH.to_string(),
+                elements: vec![
+                    r##"<g id="el-old"><rect x="0" y="0" width="1" height="1"/></g>"##.to_string(),
+                ],
+                effects: Vec::new(),
+                view_box: None,
+            };
+            let mut n = 0u32;
+            let result =
+                clipboard::paste_elements(svg, GOLDEN_SLIDE_PATH, &payload, dx, dy, || {
+                    n += 1;
+                    format!("el-generated-{n}")
+                })
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result.updated)
+        }
+        "element duplicate" => {
+            let ids = arg_str_vec(args, "elementIds");
+            let dx = arg_f64(args, "dx");
+            let dy = arg_f64(args, "dy");
+            let payload = clipboard::extract_elements_for_copy(svg, GOLDEN_SLIDE_PATH, &ids)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            let mut n = 0u32;
+            let result =
+                clipboard::paste_elements(svg, GOLDEN_SLIDE_PATH, &payload, dx, dy, || {
+                    n += 1;
+                    format!("el-dup-{n}")
+                })
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result.updated)
+        }
+        "comment add" => {
+            let comment = comment_from_json(&args["comment"]);
+            let result = comments::add_slide_comment(svg, &comment)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "comment edit" => {
+            let comment_id = arg_str(args, "commentId");
+            let text_value = arg_str(args, "text");
+            let result = comments::edit_slide_comment(svg, comment_id, text_value)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "comment delete" => {
+            let comment_id = arg_str(args, "commentId");
+            let result = comments::delete_slide_comment(svg, comment_id)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Text(result)
+        }
+        "comment list" => {
+            let result = comments::read_slide_comments(svg)
+                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            CaseOutcome::Comments(result)
+        }
+        other => panic!(
+            "no dispatch wired up for golden command {other:?} (label {:?})",
+            case.label
+        ),
+    }
+}
+
+#[test]
+fn element_commands_match_ts_reference_for_every_command() {
+    let raw = fs::read_to_string(golden_path("element_commands.json")).expect(
+        "tests/golden/element_commands.json must exist — run `node scripts/gen-golden.mjs`",
+    );
+    let cases: Vec<ElementCommandCase> =
+        serde_json::from_str(&raw).expect("golden file must be valid JSON");
+
+    let commands_covered: std::collections::HashSet<&str> =
+        cases.iter().map(|c| c.command.as_str()).collect();
+    assert_eq!(
+        commands_covered.len(),
+        29,
+        "NOOP-309 requires golden coverage for exactly 29 commands, found {}: {:?}",
+        commands_covered.len(),
+        commands_covered
+    );
+
+    let mut failures = Vec::new();
+    for case in &cases {
+        match run_element_command_case(case) {
+            CaseOutcome::Text(actual) => {
+                let expected = case.expected.as_str().unwrap_or_else(|| {
+                    panic!("{}: golden `expected` must be a string", case.label)
+                });
+                if actual != expected {
+                    failures.push(format!(
+                        "{} / {}: mismatch\n  expected={:?}\n  actual={:?}",
+                        case.command, case.label, expected, actual
+                    ));
+                }
+            }
+            CaseOutcome::Comments(actual) => {
+                let expected = case.expected.as_array().unwrap_or_else(|| {
+                    panic!("{}: golden `expected` must be an array", case.label)
+                });
+                if actual.len() != expected.len() {
+                    failures.push(format!(
+                        "{} / {}: comment count mismatch: expected {} actual {}",
+                        case.command,
+                        case.label,
+                        expected.len(),
+                        actual.len()
+                    ));
+                    continue;
+                }
+                for (i, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+                    let expected_comment = comment_from_json(e);
+                    if *a != expected_comment {
+                        failures.push(format!(
+                            "{} / {} [{}]: mismatch\n  expected={:?}\n  actual={:?}",
+                            case.command, case.label, i, expected_comment, a
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "element-command golden mismatches against TS reference:\n{}",
+        failures.join("\n")
+    );
+}
