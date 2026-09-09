@@ -327,9 +327,16 @@ pub fn serialize_project_json(map: &serde_json::Map<String, Value>) -> String {
 /// routes through (mirrors `slide-ops.ts`'s `writeProject`). `raw` must
 /// already hold whatever field changes the caller wants (e.g. an updated
 /// `slides` array) — this function's only jobs are bumping `formatVersion`
-/// to the crate's current value and normalizing a present `templates` field
-/// to the object-entry shape (`read_template_entries`'s same rule, applied
-/// in place rather than requiring a full `ProjectJson`).
+/// to the crate's current value, normalizing a present `templates` field to
+/// the object-entry shape (`read_template_entries`'s same rule, applied in
+/// place rather than requiring a full `ProjectJson`), and defaulting a
+/// missing `fonts` key to `[]` (`docs/spec/comot-format.md`: `fonts` is
+/// required — as a key, not a non-empty value — from format v4 on; TS's own
+/// `writeProject` in `packages/core/src/slide-ops.ts` applies the same
+/// default). Only the key's PRESENCE is checked (`contains_key`, not
+/// whether the existing value is well-formed) — a malformed `fonts` value
+/// is a `validate_project_json` read-time concern, not something this write
+/// path repairs.
 pub fn write_project(id: &str, mut raw: serde_json::Map<String, Value>) -> CoMotionResult<()> {
     raw.insert(
         "formatVersion".to_string(),
@@ -340,6 +347,9 @@ pub fn write_project(id: &str, mut raw: serde_json::Map<String, Value>) -> CoMot
             "templates".to_string(),
             normalize_templates_value(&templates),
         );
+    }
+    if !raw.contains_key("fonts") {
+        raw.insert("fonts".to_string(), Value::Array(Vec::new()));
     }
     let content = serialize_project_json(&raw);
     crate::workspace::write::write_presentation_file(id, "project.json", &content)
@@ -496,6 +506,103 @@ mod tests {
                 {"file": "templates/001.svg", "name": "001"},
                 {"file": "templates/002.svg", "name": "Custom"}
             ])
+        );
+    }
+
+    struct WriteProjectFixture {
+        home: std::path::PathBuf,
+        work: std::path::PathBuf,
+        id: String,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl WriteProjectFixture {
+        fn new(label: &str) -> Self {
+            let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
+            let home = temp_dir(&format!("write-project-{label}-home"));
+            let work = temp_dir(&format!("write-project-{label}-work"));
+            let id = format!("test-write-project-{label}");
+            unsafe {
+                std::env::set_var("CO_MOTION_HOME", &home);
+            }
+            // A placeholder that write_project's history staging reads as
+            // the "before" snapshot — its content is irrelevant, only its
+            // presence is (`history::stage_snapshot_entries` reads the
+            // existing virtual file before write_project's own content
+            // replaces it).
+            write_project_json(&work, "{}");
+            crate::workspace::registry::register_for_test(&home, &id, &work);
+            WriteProjectFixture {
+                home,
+                work,
+                id,
+                _guard: guard,
+            }
+        }
+    }
+
+    impl Drop for WriteProjectFixture {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("CO_MOTION_HOME");
+            }
+            std::fs::remove_dir_all(&self.home).ok();
+            std::fs::remove_dir_all(&self.work).ok();
+        }
+    }
+
+    /// FAIL 2 (NOOP-334r2): `write_project` is Rust's only `project.json`
+    /// write point, and it did not default a missing `fonts` key the way
+    /// TS's `writeProject` (`packages/core/src/slide-ops.ts`) does —
+    /// `docs/spec/comot-format.md` requires the key from format v4 on.
+    /// Asserts the FULL serialized bytes, not just "contains fonts": the
+    /// key's position (after every existing key, matching TS's
+    /// `nextProject.fonts = []` appending onto an object with no such key)
+    /// is exactly what made two engines' `project.json` diverge byte-wise
+    /// (`e2e/page-management.test.ts`'s cross-engine equality check).
+    #[test]
+    fn write_project_defaults_a_missing_fonts_key_to_an_empty_array() {
+        let fixture = WriteProjectFixture::new("missing-fonts");
+        let mut raw = serde_json::Map::new();
+        raw.insert("formatVersion".to_string(), Value::from(1));
+        raw.insert("name".to_string(), Value::from("T"));
+        raw.insert(
+            "canvas".to_string(),
+            serde_json::json!({"width": 1, "height": 1}),
+        );
+        raw.insert("slides".to_string(), Value::Array(Vec::new()));
+
+        write_project(&fixture.id, raw).unwrap();
+
+        let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
+        assert_eq!(
+            content,
+            "{\n  \"formatVersion\": 4,\n  \"name\": \"T\",\n  \"canvas\": {\n    \"width\": 1,\n    \"height\": 1\n  },\n  \"slides\": [],\n  \"fonts\": []\n}\n"
+        );
+    }
+
+    /// The other half of the same contract: an already-present `fonts`
+    /// value — populated or not — must survive untouched, in its original
+    /// position, never synthesized over or moved (`comot-format.md`:
+    /// "3→4 遷移時…絕不合成任何字型項目").
+    #[test]
+    fn write_project_leaves_an_existing_fonts_value_untouched_in_place() {
+        let fixture = WriteProjectFixture::new("existing-fonts");
+        let mut raw = serde_json::Map::new();
+        raw.insert("formatVersion".to_string(), Value::from(1));
+        raw.insert("name".to_string(), Value::from("T"));
+        raw.insert(
+            "fonts".to_string(),
+            serde_json::json!([{"family": "Inter", "file": "fonts/inter.ttf"}]),
+        );
+        raw.insert("slides".to_string(), Value::Array(Vec::new()));
+
+        write_project(&fixture.id, raw).unwrap();
+
+        let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
+        assert_eq!(
+            content,
+            "{\n  \"formatVersion\": 4,\n  \"name\": \"T\",\n  \"fonts\": [\n    {\n      \"family\": \"Inter\",\n      \"file\": \"fonts/inter.ttf\"\n    }\n  ],\n  \"slides\": []\n}\n"
         );
     }
 }
