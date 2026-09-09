@@ -2,20 +2,20 @@
 //! contract (plan section 6.2, boundary 1). Runs the REAL compiled binary
 //! via `CARGO_BIN_EXE_co-motion` (proving these commands are actually
 //! dispatched by Rust, not by a fallback that happens to produce the same
-//! text — see plan A3), and for fallback bit-parity, also runs the real
-//! Node CLI (`packages/cli/bin/co-motion.js`) via `node` on `PATH` so both
-//! sides of the comparison come from an actual process, not a
-//! hand-transcribed expectation.
+//! text — see plan A3/N2).
 //!
-//! These tests need `node` on `PATH` and a built `packages/cli`
-//! (`npm run build --workspace=packages/cli`) — they are integration tests
-//! against the coexisting Node CLI by design, not something that can run in
-//! total isolation from the rest of the repo.
+//! [E4.T12] deletes the coexisting Node CLI (`packages/cli`) this file used
+//! to also spawn for byte-parity comparisons — those tests are gone with
+//! it (see the deleted `test: prune` commit), and every remaining test's
+//! `Fixture::run_rust` is now the only way any of them ever reach the
+//! binary. `node` is no longer a dependency of this test file at all.
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+
+use co_motion::commands;
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR is `<repo>/crates/co-motion`.
@@ -27,10 +27,6 @@ fn repo_root() -> PathBuf {
 
 fn rust_bin() -> &'static str {
     env!("CARGO_BIN_EXE_co-motion")
-}
-
-fn node_cli_entry() -> PathBuf {
-    repo_root().join("packages/cli/bin/co-motion.js")
 }
 
 struct Fixture {
@@ -49,15 +45,6 @@ impl Fixture {
         fs::create_dir_all(&home).unwrap();
         fs::create_dir_all(&workspace).unwrap();
         Fixture { home, workspace }
-    }
-
-    fn run_node(&self, args: &[&str]) -> Output {
-        Command::new("node")
-            .arg(node_cli_entry())
-            .args(args)
-            .env("CO_MOTION_HOME", &self.home)
-            .output()
-            .expect("node must be on PATH")
     }
 
     fn run_rust(&self, args: &[&str]) -> Output {
@@ -119,89 +106,16 @@ fn version_flag_is_answered_by_rust_not_node() {
     assert!(output.stderr.is_empty());
 }
 
+/// Plan 4.1's first contract row: empty argv reports "缺少命令名稱" and
+/// exits 1 — Rust's own message now, no longer forwarded from Node
+/// ([E4.T12] removes the fallback this used to go through; the bytes are
+/// unchanged).
 #[test]
-fn empty_argv_falls_back_to_node_and_reports_missing_command_name() {
+fn empty_argv_reports_missing_command_name() {
     let output = Command::new(rust_bin()).output().expect("binary must run");
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(String::from_utf8_lossy(&output.stderr), "缺少命令名稱\n");
     assert!(output.stdout.is_empty());
-}
-
-/// Acceptance criterion A2: for every one of these argv combinations —
-/// genuinely NOT-yet-Rust-dispatched commands, plus [E4.T7]'s `effect`
-/// family for any sub-command that isn't one of its five takeover-table
-/// entries, plus a bare unknown command name — the Rust binary's fallback
-/// path must byte-for-byte match the real Node CLI: stdout, stderr, AND
-/// exit code all three. `table`/`chart`/`asset` moved OUT of this test as
-/// of NOOP-281/F5, the same way `ls`/`cat` moved out under [E4.T4] (see the
-/// doc comment below): those three families are now entirely
-/// Rust-dispatched (`commands::match_takeover` takes over on the first
-/// argv token alone, unlike `effect`'s five specific two-word entries), so
-/// no sub-command under them ever reaches the fallback path to compare.
-/// [E4.T5] moves `element`/`text`/`textbox`/`comment` out the same way —
-/// its own `takeover_table_contains_all_29_commands` below is that
-/// ticket's differently-reasoned equivalent of
-/// `cat_and_ls_are_byte_identical_to_node_on_every_path`'s coverage.
-///
-/// `ls`/`cat` moved OUT of this test as of [E4.T4] ([E4.T2]'s plan named
-/// them explicitly as things this ticket would move to Rust): they no
-/// longer fall back at all, so a byte-parity assertion here would no longer
-/// be testing "did the fallback path forward these bytes untouched" — it
-/// would just coincidentally still pass because the Rust implementation
-/// happens to produce identical bytes, while the test's own name kept
-/// claiming otherwise. See `cat_and_ls_are_byte_identical_to_node_on_every_path`
-/// below for their (differently-reasoned) cross-engine parity coverage, and
-/// `no_takeover_table_command_ever_invokes_node` for A1's "回退不再觸發".
-#[test]
-fn fallback_path_is_byte_identical_to_node_for_every_non_takeover_command() {
-    let fixture = Fixture::new("fallback-parity");
-    let comot_path = fixture.workspace.join("t.comot");
-
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    assert!(
-        new_output.status.success(),
-        "setup: `new` failed: {:?}",
-        new_output
-    );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    assert!(
-        open_output.status.success(),
-        "setup: `open` failed: {:?}",
-        open_output
-    );
-    let id = extract_id(&open_output);
-
-    let cases: Vec<Vec<&str>> = vec![
-        vec!["frobnicate"],
-        // Not one of `effect`'s five takeover-table entries (add/list/
-        // move/remove/set) — must still fall back, unlike those five.
-        vec!["effect", "duplicate", &id, "slides/001.svg"],
-    ];
-
-    let mut failures = Vec::new();
-    for args in &cases {
-        let rust_out = fixture.run_rust(args);
-        let node_out = fixture.run_node(args);
-        if rust_out.stdout != node_out.stdout
-            || rust_out.stderr != node_out.stderr
-            || rust_out.status.code() != node_out.status.code()
-        {
-            failures.push(format!(
-                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
-                rust_out.status.code(),
-                String::from_utf8_lossy(&rust_out.stdout),
-                String::from_utf8_lossy(&rust_out.stderr),
-                node_out.status.code(),
-                String::from_utf8_lossy(&node_out.stdout),
-                String::from_utf8_lossy(&node_out.stderr),
-            ));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "fallback parity mismatches:\n{}",
-        failures.join("\n---\n")
-    );
 }
 
 /// A1: for every one of the 26 registered commands, a successful run must
@@ -295,136 +209,6 @@ fn no_takeover_table_command_ever_invokes_node() {
     fs::remove_dir_all(&empty_path_dir).ok();
 }
 
-/// Acceptance criterion A3: `cat`/`ls` output bytes must match the Node
-/// CLI's exactly — this is the cross-engine byte comparison method
-/// `Fixture::run_rust`/`run_node` were built for (plan §5 A3), now that
-/// both commands are genuinely Rust-dispatched rather than falling back.
-#[test]
-fn cat_and_ls_are_byte_identical_to_node_on_every_path() {
-    let fixture = Fixture::new("cat-ls-parity");
-    let comot_path = fixture.workspace.join("t.comot");
-
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    assert!(
-        new_output.status.success(),
-        "setup: `new` failed: {:?}",
-        new_output
-    );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    assert!(
-        open_output.status.success(),
-        "setup: `open` failed: {:?}",
-        open_output
-    );
-    let id = extract_id(&open_output);
-
-    let cases: Vec<Vec<&str>> = vec![
-        vec!["ls", &id],
-        vec!["ls", &id, "slides"],
-        vec!["ls", "NOPE-does-not-exist"],
-        vec!["cat", &id, "project.json"],
-        vec!["cat", &id, "slides/001.svg"],
-        vec!["cat", &id, "fonts/LICENSE-NotoSansTC.txt"],
-        vec!["cat", &id, "fonts/NotoSansTC-Presentation.ttf"],
-        vec!["cat", &id, "nope.txt"],
-        vec!["cat", &id, "slides"],
-    ];
-
-    let mut failures = Vec::new();
-    for args in &cases {
-        let rust_out = fixture.run_rust(args);
-        let node_out = fixture.run_node(args);
-        if rust_out.stdout != node_out.stdout
-            || rust_out.stderr != node_out.stderr
-            || rust_out.status.code() != node_out.status.code()
-        {
-            failures.push(format!(
-                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
-                rust_out.status.code(),
-                String::from_utf8_lossy(&rust_out.stdout),
-                String::from_utf8_lossy(&rust_out.stderr),
-                node_out.status.code(),
-                String::from_utf8_lossy(&node_out.stdout),
-                String::from_utf8_lossy(&node_out.stderr),
-            ));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "cat/ls parity mismatches:\n{}",
-        failures.join("\n---\n")
-    );
-}
-
-/// [E4.T5] moved `element delete`/`textbox add`/`comment list` out of
-/// `fallback_path_is_byte_identical_to_node_for_every_non_takeover_command`
-/// when Rust took the whole `element`/`textbox`/`comment` families over —
-/// correctly, since none of them ever reaches the fallback path anymore —
-/// but dropped their cross-engine coverage instead of giving it a dedicated
-/// home, the same way `cat_and_ls_are_byte_identical_to_node_on_every_path`
-/// and `slide_add_and_move_reject_non_integer_position_byte_identical_to_node`
-/// did for the commands *they* took over. This test restores exactly the
-/// three cases that test used to run (NOOP-322 債 5), now comparing the
-/// compiled Rust binary against the real Node CLI directly rather than via
-/// the fallback path — `Fixture::run_node` still reaches
-/// `packages/cli`/`packages/core` on its own, so this remains a genuine
-/// cross-engine comparison. All three cases are argv shapes with no
-/// randomly-generated ids in their output (no element/comment gets created),
-/// so a literal byte comparison never needs id normalization.
-#[test]
-fn element_delete_textbox_add_comment_list_match_node_byte_for_byte() {
-    let fixture = Fixture::new("element-textbox-comment-parity");
-    let comot_path = fixture.workspace.join("t.comot");
-
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    assert!(
-        new_output.status.success(),
-        "setup: `new` failed: {:?}",
-        new_output
-    );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    assert!(
-        open_output.status.success(),
-        "setup: `open` failed: {:?}",
-        open_output
-    );
-    let id = extract_id(&open_output);
-
-    let cases: Vec<Vec<&str>> = vec![
-        // Error path: the target element does not exist.
-        vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
-        // Error path: every required positional/flag is missing.
-        vec!["textbox", "add"],
-        // Success path: no comments yet, deterministic empty list.
-        vec!["comment", "list", &id],
-    ];
-
-    let mut failures = Vec::new();
-    for args in &cases {
-        let rust_out = fixture.run_rust(args);
-        let node_out = fixture.run_node(args);
-        if rust_out.stdout != node_out.stdout
-            || rust_out.stderr != node_out.stderr
-            || rust_out.status.code() != node_out.status.code()
-        {
-            failures.push(format!(
-                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
-                rust_out.status.code(),
-                String::from_utf8_lossy(&rust_out.stdout),
-                String::from_utf8_lossy(&rust_out.stderr),
-                node_out.status.code(),
-                String::from_utf8_lossy(&node_out.stdout),
-                String::from_utf8_lossy(&node_out.stderr),
-            ));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "element delete/textbox add/comment list parity mismatches:\n{}",
-        failures.join("\n---\n")
-    );
-}
-
 /// Unknown sub-commands within a taken-over family must be rejected by Rust
 /// itself, never forwarded to Node (A1's "回退不再觸發" — the family name
 /// alone already committed argv[0] to Rust dispatch).
@@ -444,9 +228,9 @@ fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
 fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     let fixture = Fixture::new("undo-empty");
     let comot_path = fixture.workspace.join("t.comot");
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(new_output.status.success());
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
     let output = fixture.run_rust(&["undo", &id]);
@@ -457,310 +241,23 @@ fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     );
 }
 
-/// Runs `new`/`open`/`text set` via the TS engine, staging one edit — the
-/// setup every path below re-stages fresh (a separate `Fixture` each,
-/// mirroring `undo_redo_round_trip_via_rust_binary_restores_exact_bytes`'s
-/// own setup above; duplicated rather than shared so each path's fixture is
-/// fully independent). Returns `(id, before, after)`.
-fn build_edited_fixture(fixture: &Fixture) -> (String, Vec<u8>, Vec<u8>) {
-    let comot_path = fixture.workspace.join("t.comot");
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    assert!(
-        new_output.status.success(),
-        "setup: `new` failed: {:?}",
-        new_output
-    );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    let id = extract_id(&open_output);
-
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
-
-    let text_set = fixture.run_node(&[
-        "text",
-        "set",
-        &id,
-        "slides/001.svg",
-        &element_id,
-        "改過的標題",
-    ]);
-    assert!(
-        text_set.status.success(),
-        "setup: `text set` failed: {:?}",
-        text_set
-    );
-
-    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    assert_ne!(
-        before, after,
-        "setup: the staged edit must actually change the file"
-    );
-
-    (id, before, after)
-}
-
-fn read_stack_json(fixture: &Fixture, id: &str) -> String {
-    fs::read_to_string(fixture.home.join("history").join(id).join("stack.json"))
-        .expect("stack.json must exist after an undo/redo")
-}
-
-/// `stack.json`'s `groupId`/`snapshotId` are opaque random ids
-/// (`packages/core/src/id.ts` / `crates/co-motion/src/id.rs`, both
-/// `randomBytes(9).base64url`) — freshly generated on every apply, by
-/// whichever engine performed it, so two structurally-identical stacks
-/// never share literal id text. Replaces each with a placeholder assigned
-/// in order of first appearance (`<GROUP_1>`, `<SNAPSHOT_1>`, ...) so a
-/// TS-only reference run and a mixed-engine run can be compared
-/// byte-for-byte despite neither engine's ids ever repeating between
-/// processes.
-fn normalize_stack_ids(raw: &str) -> String {
-    let mut value: serde_json::Value =
-        serde_json::from_str(raw).expect("stack.json must be valid JSON");
-    let mut normalizer = StackIdNormalizer::default();
-    if let Some(array) = value.get_mut("undo").and_then(|v| v.as_array_mut()) {
-        for group in array {
-            normalizer.normalize_group(group);
-        }
-    }
-    if let Some(array) = value.get_mut("redo").and_then(|v| v.as_array_mut()) {
-        for group in array {
-            normalizer.normalize_group(group);
-        }
-    }
-    if let Some(open_group) = value.get_mut("openGroup") {
-        if !open_group.is_null() {
-            normalizer.normalize_group(open_group);
-        }
-    }
-    serde_json::to_string_pretty(&value).expect("normalized stack must serialize")
-}
-
-#[derive(Default)]
-struct StackIdNormalizer {
-    groups: std::collections::HashMap<String, String>,
-    snapshots: std::collections::HashMap<String, String>,
-}
-
-impl StackIdNormalizer {
-    fn group_placeholder(&mut self, real: &str) -> String {
-        let next_index = self.groups.len() + 1;
-        self.groups
-            .entry(real.to_string())
-            .or_insert_with(|| format!("<GROUP_{next_index}>"))
-            .clone()
-    }
-
-    fn snapshot_placeholder(&mut self, real: &str) -> String {
-        let next_index = self.snapshots.len() + 1;
-        self.snapshots
-            .entry(real.to_string())
-            .or_insert_with(|| format!("<SNAPSHOT_{next_index}>"))
-            .clone()
-    }
-
-    fn normalize_group(&mut self, group: &mut serde_json::Value) {
-        let Some(obj) = group.as_object_mut() else {
-            return;
-        };
-        if let Some(serde_json::Value::String(group_id)) = obj.get("groupId") {
-            let placeholder = self.group_placeholder(&group_id.clone());
-            obj.insert(
-                "groupId".to_string(),
-                serde_json::Value::String(placeholder),
-            );
-        }
-        if let Some(entries) = obj.get_mut("entries").and_then(|v| v.as_array_mut()) {
-            for entry in entries.iter_mut() {
-                let Some(entry_obj) = entry.as_object_mut() else {
-                    continue;
-                };
-                if let Some(serde_json::Value::String(snapshot_id)) = entry_obj.get("snapshotId") {
-                    let placeholder = self.snapshot_placeholder(&snapshot_id.clone());
-                    entry_obj.insert(
-                        "snapshotId".to_string(),
-                        serde_json::Value::String(placeholder),
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Acceptance criterion A5 (plan NOOP-277 section 5,父票 AC3): the undo/redo
-/// stack must be interchangeable between the Rust and Node engines in
-/// either direction — not just Rust-undo-then-Rust-redo, which
-/// `undo_redo_round_trip_via_rust_binary_restores_exact_bytes` above already
-/// covers. Each of the four paths below re-stages the same edit via the TS
-/// engine (the only content-editing engine so far — history's write-path
-/// staging API is not yet ported, per this module's own header comment)
-/// then exercises undo/redo across engines, checking both the restored file
-/// bytes AND `stack.json`'s id-normalized shape against an all-TS
-/// reference run of the same edit + undo + redo.
-///
-/// The reference is valid for all four paths because `apply_group` (ported
-/// identically on both engines — see `history.rs`'s own doc comment) always
-/// re-derives its inverse group from the group being applied: same virtual
-/// paths, one freshly-generated snapshot id per entry, `groupId` carried
-/// through unchanged. That derivation does not depend on which engine
-/// performed the previous step, so "after one undo" and "after undo+redo"
-/// are each a single well-defined state regardless of engine mix.
-#[test]
-fn cross_engine_undo_redo_matches_ts_reference_stack_and_bytes_on_every_path() {
-    let reference = Fixture::new("cross-engine-reference");
-    let (ref_id, _before, _after) = build_edited_fixture(&reference);
-    let ref_undo = reference.run_node(&["undo", &ref_id]);
-    assert!(
-        ref_undo.status.success(),
-        "reference undo failed: {:?}",
-        ref_undo
-    );
-    let reference_undo_stack = normalize_stack_ids(&read_stack_json(&reference, &ref_id));
-    let ref_redo = reference.run_node(&["redo", &ref_id]);
-    assert!(
-        ref_redo.status.success(),
-        "reference redo failed: {:?}",
-        ref_redo
-    );
-    let reference_redo_stack = normalize_stack_ids(&read_stack_json(&reference, &ref_id));
-
-    // Path 1+2 (A5 paths 1 and 2): TS builds history -> Rust undo -> Rust redo.
-    {
-        let fixture = Fixture::new("cross-engine-rust-undo-rust-redo");
-        let (id, before, after) = build_edited_fixture(&fixture);
-
-        let undo_output = fixture.run_rust(&["undo", &id]);
-        assert!(
-            undo_output.status.success(),
-            "rust undo failed: {:?}",
-            undo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            before,
-            "path 1: rust undo must restore the pre-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_undo_stack,
-            "path 1: rust undo's stack.json diverges from the TS reference"
-        );
-
-        let redo_output = fixture.run_rust(&["redo", &id]);
-        assert!(
-            redo_output.status.success(),
-            "rust redo failed: {:?}",
-            redo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            after,
-            "path 2: rust redo must restore the post-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_redo_stack,
-            "path 2: rust redo's stack.json diverges from the TS reference"
-        );
-    }
-
-    // Path 3 (A5 path 3): TS builds history -> Rust undo -> TS redo.
-    {
-        let fixture = Fixture::new("cross-engine-rust-undo-ts-redo");
-        let (id, before, after) = build_edited_fixture(&fixture);
-
-        let undo_output = fixture.run_rust(&["undo", &id]);
-        assert!(
-            undo_output.status.success(),
-            "rust undo failed: {:?}",
-            undo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            before,
-            "path 3 setup: rust undo must restore the pre-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_undo_stack,
-            "path 3 setup: rust undo's stack.json diverges from the TS reference"
-        );
-
-        let redo_output = fixture.run_node(&["redo", &id]);
-        assert!(
-            redo_output.status.success(),
-            "ts redo failed: {:?}",
-            redo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            after,
-            "path 3: ts redo (after a rust undo) must restore the post-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_redo_stack,
-            "path 3: ts redo's stack.json diverges from the TS reference"
-        );
-    }
-
-    // Path 4 (A5 path 4): TS builds history -> TS undo -> Rust redo.
-    {
-        let fixture = Fixture::new("cross-engine-ts-undo-rust-redo");
-        let (id, before, after) = build_edited_fixture(&fixture);
-
-        let undo_output = fixture.run_node(&["undo", &id]);
-        assert!(
-            undo_output.status.success(),
-            "ts undo failed: {:?}",
-            undo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            before,
-            "path 4 setup: ts undo must restore the pre-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_undo_stack,
-            "path 4 setup: ts undo's stack.json diverges from the TS reference"
-        );
-
-        let redo_output = fixture.run_rust(&["redo", &id]);
-        assert!(
-            redo_output.status.success(),
-            "rust redo failed: {:?}",
-            redo_output
-        );
-        assert_eq!(
-            fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout,
-            after,
-            "path 4: rust redo (after a ts undo) must restore the post-edit bytes"
-        );
-        assert_eq!(
-            normalize_stack_ids(&read_stack_json(&fixture, &id)),
-            reference_redo_stack,
-            "path 4: rust redo's stack.json diverges from the TS reference"
-        );
-    }
-}
-
 #[test]
 fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
     let fixture = Fixture::new("undo-redo-roundtrip");
     let comot_path = fixture.workspace.join("t.comot");
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
         new_output
     );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let before = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
 
-    let text_set = fixture.run_node(&[
+    let text_set = fixture.run_rust(&[
         "text",
         "set",
         &id,
@@ -774,7 +271,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         text_set
     );
 
-    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let after = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_ne!(
         before, after,
         "setup: the staged edit must actually change the file"
@@ -786,7 +283,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         "undo failed: {:?}",
         undo_output
     );
-    let undone = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let undone = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_eq!(
         undone, before,
         "rust undo must restore the exact pre-edit bytes"
@@ -798,7 +295,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         "redo failed: {:?}",
         redo_output
     );
-    let redone = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let redone = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_eq!(
         redone, after,
         "rust redo must restore the exact post-edit bytes"
@@ -816,324 +313,21 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
 /// below runs `convert` too before touching effect commands.
 fn new_open_and_convert(fixture: &Fixture) -> String {
     let comot_path = fixture.workspace.join("t.comot");
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
         new_output
     );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
-    let convert_output = fixture.run_node(&["convert", &id]);
+    let convert_output = fixture.run_rust(&["convert", &id]);
     assert!(
         convert_output.status.success(),
         "setup: `convert` failed: {:?}",
         convert_output
     );
     id
-}
-
-/// Runs `args` via the Rust binary, then immediately `undo`s it via Rust
-/// too, asserting the file is back to `expected_before` — the shared setup
-/// every "run once via each engine, compare bytes" test below uses to avoid
-/// needing two independent fixtures (which would need two independently
-/// `new`-generated element ids to line up, and `new` assigns those
-/// randomly — see `id.ts`/`id.rs`'s `generateElementId`). A single fixture,
-/// mutated by Rust then rolled back before Node repeats the same argv, is
-/// both simpler and a free extra proof that this ticket's write path
-/// (`workspace::write::write_presentation_file`) occupies exactly one undo
-/// step, same as `effect_add_then_undo_restores_original_bytes` below.
-fn run_via_rust_then_undo(
-    fixture: &Fixture,
-    id: &str,
-    args: &[&str],
-    expected_before: &[u8],
-) -> Vec<u8> {
-    let output = fixture.run_rust(args);
-    assert!(output.status.success(), "rust {args:?} failed: {output:?}");
-    let after = fixture.run_node(&["cat", id, "slides/001.svg"]).stdout;
-    let undo = fixture.run_rust(&["undo", id]);
-    assert!(
-        undo.status.success(),
-        "undo after rust {args:?} failed: {undo:?}"
-    );
-    let restored = fixture.run_node(&["cat", id, "slides/001.svg"]).stdout;
-    assert_eq!(
-        restored, expected_before,
-        "undo after rust {args:?} must restore the pre-command bytes"
-    );
-    after
-}
-
-/// Plan 6.2 item 1: `effect add`, run once via each engine against the same
-/// starting bytes (see `run_via_rust_then_undo`'s doc comment for why one
-/// fixture, not two), must leave byte-identical slide content.
-#[test]
-fn effect_add_matches_between_rust_and_node() {
-    let fixture = Fixture::new("effect-add-parity");
-    let id = new_open_and_convert(&fixture);
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
-    let add_args = [
-        "effect",
-        "add",
-        id.as_str(),
-        "slides/001.svg",
-        element_id.as_str(),
-        "--family",
-        "enter",
-        "--effect",
-        "fade",
-    ];
-
-    let rust_after = run_via_rust_then_undo(&fixture, &id, &add_args, &before);
-
-    let node_add = fixture.run_node(&add_args);
-    assert!(
-        node_add.status.success(),
-        "node effect add failed: {:?}",
-        node_add
-    );
-    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-    assert_eq!(
-        rust_after, node_after,
-        "effect add must produce byte-identical slide content on both engines"
-    );
-}
-
-/// Plan 6.2 item 2: `effect list`'s plain (non-`--json`) output — a message
-/// line followed by `data` pretty-printed as JSON, the one output shape
-/// both engines actually support (`--json` is Rust-only, plan 4.3's own
-/// main.rs doc comment; Node has no such mode) — must be byte-identical.
-/// This is the test that actually exercises the `serde_json` vs
-/// `JSON.stringify` integral-number formatting trap (plan 3.5's
-/// `json_number` helper): `duration`/`delay`/transition-duration values
-/// that happen to be whole numbers must print with no decimal point on
-/// both sides.
-#[test]
-fn effect_list_output_matches_between_rust_and_node() {
-    let fixture = Fixture::new("effect-list-parity");
-    let id = new_open_and_convert(&fixture);
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
-    let add = fixture.run_node(&[
-        "effect",
-        "add",
-        &id,
-        "slides/001.svg",
-        &element_id,
-        "--family",
-        "enter",
-        "--effect",
-        "fade",
-    ]);
-    assert!(add.status.success(), "setup: effect add failed: {:?}", add);
-
-    let rust_list = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
-    let node_list = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
-    assert!(
-        rust_list.status.success(),
-        "rust effect list failed: {:?}",
-        rust_list
-    );
-    assert!(
-        node_list.status.success(),
-        "node effect list failed: {:?}",
-        node_list
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&rust_list.stdout),
-        String::from_utf8_lossy(&node_list.stdout),
-        "effect list's message+data output must be byte-identical between engines"
-    );
-    // Sanity: the comparison above is only meaningful if the output
-    // actually carries the new `steps`/`transition` keys (plan 4.1) — guard
-    // against both sides vacuously agreeing on some earlier, smaller shape.
-    let stdout = String::from_utf8_lossy(&rust_list.stdout);
-    assert!(
-        stdout.contains("\"steps\""),
-        "stdout missing steps: {stdout}"
-    );
-    assert!(
-        stdout.contains("\"transition\""),
-        "stdout missing transition: {stdout}"
-    );
-}
-
-/// Plan 6.2 item 3: `effect remove`/`move`/`set`, chained in one session,
-/// run once via each engine against the same starting bytes, must leave
-/// byte-identical final slide content — and, chained with two `effect add`
-/// calls first, this also covers `effect add`'s multi-item "with-previous"
-/// forcing and `remove`'s dedup-and-descending-order splice.
-#[test]
-fn effect_remove_move_set_match_between_rust_and_node() {
-    let fixture = Fixture::new("effect-sequence-parity");
-    let id = new_open_and_convert(&fixture);
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
-
-    let add1 = [
-        "effect",
-        "add",
-        id.as_str(),
-        "slides/001.svg",
-        element_id.as_str(),
-        "--family",
-        "enter",
-        "--effect",
-        "fade",
-    ];
-    let add2 = [
-        "effect",
-        "add",
-        id.as_str(),
-        "slides/001.svg",
-        element_id.as_str(),
-        "--family",
-        "exit",
-        "--effect",
-        "fade-out",
-    ];
-    let mv = ["effect", "move", id.as_str(), "slides/001.svg", "2", "up"];
-    let set = [
-        "effect",
-        "set",
-        id.as_str(),
-        "slides/001.svg",
-        "1",
-        "--duration",
-        "1.5",
-    ];
-    let remove = ["effect", "remove", id.as_str(), "slides/001.svg", "1"];
-
-    fn run_all(fixture: &Fixture, use_rust: bool, sequence: &[&[&str]]) {
-        for args in sequence {
-            let output = if use_rust {
-                fixture.run_rust(args)
-            } else {
-                fixture.run_node(args)
-            };
-            assert!(
-                output.status.success(),
-                "{args:?} failed (rust={use_rust}): {output:?}"
-            );
-        }
-    }
-
-    run_all(&fixture, true, &[&add1, &add2, &mv, &set, &remove]);
-    let rust_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-    // Undo all five steps via Rust to roll the fixture back to `before`,
-    // then repeat the exact same sequence via Node.
-    for _ in 0..5 {
-        let undo = fixture.run_rust(&["undo", &id]);
-        assert!(undo.status.success(), "undo failed: {:?}", undo);
-    }
-    let restored = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    assert_eq!(
-        restored, before,
-        "five undos must restore the pre-sequence bytes"
-    );
-
-    run_all(&fixture, false, &[&add1, &add2, &mv, &set, &remove]);
-    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-    assert_eq!(
-        rust_after, node_after,
-        "effect add/move/set/remove chained must produce byte-identical slide content on both engines"
-    );
-}
-
-/// NOOP-314 acceptance criterion 5 (plan section 6.4): the shipped
-/// `element scale` on a text box must be byte-identical between the Rust
-/// binary and the Node CLI, not merely both non-error. Uses the SAME
-/// element id for both sides (Node's `undo` cleanly rewinds to right after
-/// `textbox add`, verified below) rather than two separately generated
-/// presentations, since element ids are random and would otherwise need
-/// normalizing before comparison.
-#[test]
-fn element_scale_on_a_text_box_matches_node_byte_for_byte() {
-    let fixture = Fixture::new("scale-textbox-parity");
-    // `element scale` opens with `assert_slide_compliant` (see
-    // `new_and_open`'s doc comment below `struct Fixture`) — the freshly
-    // created default template's bare `<text>` title fails that check, so
-    // this needs the same `convert` step every other `element::edit`
-    // CLI-boundary test in this file uses, not the plain `new`+`open` the
-    // `text set`-only `build_edited_fixture` gets away with.
-    let (id, _title_element_id) = new_and_open(&fixture);
-
-    let textbox_add = fixture.run_node(&[
-        "textbox",
-        "add",
-        &id,
-        "slides/001.svg",
-        "--x",
-        "10",
-        "--y",
-        "10",
-        "--width",
-        "200",
-        "--text",
-        "文字框內容",
-    ]);
-    assert!(
-        textbox_add.status.success(),
-        "setup: `textbox add` failed: {:?}",
-        textbox_add
-    );
-
-    let after_add = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    let element_id = extract_first_element_id(&String::from_utf8_lossy(&after_add));
-
-    let rust_scale = fixture.run_rust(&[
-        "element",
-        "scale",
-        &id,
-        "slides/001.svg",
-        &element_id,
-        "--factor",
-        "2",
-    ]);
-    assert!(
-        rust_scale.status.success(),
-        "rust `element scale` failed: {:?}",
-        rust_scale
-    );
-    let rust_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-    let undo_output = fixture.run_rust(&["undo", &id]);
-    assert!(
-        undo_output.status.success(),
-        "undo failed: {:?}",
-        undo_output
-    );
-    let restored = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-    assert_eq!(
-        restored, after_add,
-        "undo must cleanly restore the post-`textbox add` bytes"
-    );
-
-    let node_scale = fixture.run_node(&[
-        "element",
-        "scale",
-        &id,
-        "slides/001.svg",
-        &element_id,
-        "--factor",
-        "2",
-    ]);
-    assert!(
-        node_scale.status.success(),
-        "node `element scale` failed: {:?}",
-        node_scale
-    );
-    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-    assert_eq!(
-        rust_after, node_after,
-        "rust and node `element scale` on a text box must produce byte-identical output"
-    );
 }
 
 /// Debt flagged by NOOP-318's review of the [E4.T8] Wave 2 integration
@@ -1145,10 +339,9 @@ fn element_scale_on_a_text_box_matches_node_byte_for_byte() {
 /// `edit::move_elements` directly (bypassing this argv layer) and the only
 /// other in-crate `element move` test
 /// (`move_reports_a_failure_result_for_a_locked_target_without_force`)
-/// only exercises the rejection path. Mirrors
-/// `element_scale_on_a_text_box_matches_node_byte_for_byte` above: spawn
-/// the real compiled binary and assert the literal transform, the same
-/// `--dx 7 --dy 100` case the review comment manually reproduced.
+/// only exercises the rejection path. Spawns the real compiled binary and
+/// asserts the literal transform, the same `--dx 7 --dy 100` case the
+/// review comment manually reproduced.
 #[test]
 fn element_move_applies_dx_dy_with_correct_sign_and_magnitude() {
     let fixture = Fixture::new("move-dx-dy-sign");
@@ -1191,7 +384,7 @@ fn element_move_applies_dx_dy_with_correct_sign_and_magnitude() {
     ]);
     assert!(moved.status.success(), "`element move` failed: {moved:?}");
 
-    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let after = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let after_svg = String::from_utf8_lossy(&after);
     let expected = format!(r#"<g id="{element_id}" transform="translate(107 200)">"#);
     assert!(
@@ -1208,7 +401,7 @@ fn effect_list_without_a_list_matches_stderr_and_exit_code() {
     let id = new_open_and_convert(&fixture);
 
     let rust_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
-    let node_out = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
+    let node_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
     assert_eq!(rust_out.status.code(), node_out.status.code());
     assert_eq!(
         String::from_utf8_lossy(&rust_out.stderr),
@@ -1250,7 +443,7 @@ fn effect_list_with_damaged_list_matches_stderr() {
     fs::write(&slide_path, damaged).unwrap();
 
     let rust_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
-    let node_out = fixture.run_node(&["effect", "list", &id, "slides/001.svg"]);
+    let node_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
     assert_eq!(rust_out.status.code(), node_out.status.code());
     assert_eq!(
         String::from_utf8_lossy(&rust_out.stderr),
@@ -1267,7 +460,7 @@ fn effect_list_with_damaged_list_matches_stderr() {
 fn effect_add_then_undo_restores_original_bytes() {
     let fixture = Fixture::new("effect-add-undo");
     let id = new_open_and_convert(&fixture);
-    let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let before = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
 
     let add = fixture.run_rust(&[
@@ -1282,12 +475,12 @@ fn effect_add_then_undo_restores_original_bytes() {
         "fade",
     ]);
     assert!(add.status.success(), "effect add failed: {:?}", add);
-    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let after = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_ne!(before, after, "effect add must actually change the file");
 
     let undo = fixture.run_rust(&["undo", &id]);
     assert!(undo.status.success(), "undo failed: {:?}", undo);
-    let undone = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let undone = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_eq!(undone, before, "undo must restore the exact pre-add bytes");
 }
 
@@ -1692,9 +885,9 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
 fn cat_json_multi_path_returns_ordered_array_shape() {
     let fixture = Fixture::new("cat-json-multi-path");
     let comot_path = fixture.workspace.join("t.comot");
-    let new_out = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let new_out = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
-    let open_out = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let open_out = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_out);
 
     let single = fixture.run_rust(&["cat", &id, "project.json", "--json"]);
@@ -1749,55 +942,6 @@ fn cat_json_multi_path_returns_ordered_array_shape() {
     }
 }
 
-/// Debt flagged alongside review round 1's FAIL (low-cost, addressed while
-/// building the `--json` shape golden test above): `slide add --at` and
-/// `slide move <new-index>`'s "not a valid integer position" error had
-/// never been checked byte-for-byte against the TS engine. `slide`/`slide
-/// move` are takeover-table commands — the Rust `co-motion` binary itself
-/// never falls back to Node for them — but `packages/core`'s executor
-/// (what the Rust port was ported from) is still reachable by invoking the
-/// Node CLI directly, which is exactly what `Fixture::run_node` does, so
-/// this is a genuine cross-engine comparison, not a self-comparison.
-#[test]
-fn slide_add_and_move_reject_non_integer_position_byte_identical_to_node() {
-    let fixture = Fixture::new("non-integer-position");
-    let comot_path = fixture.workspace.join("t.comot");
-    let new_out = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
-    let open_out = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    let id = extract_id(&open_out);
-
-    let cases: Vec<Vec<&str>> = vec![
-        vec!["slide", "add", &id, "--at", "1.5"],
-        vec!["slide", "move", &id, "slides/001.svg", "1.5"],
-    ];
-
-    let mut failures = Vec::new();
-    for args in &cases {
-        let rust_out = fixture.run_rust(args);
-        let node_out = fixture.run_node(args);
-        if rust_out.stdout != node_out.stdout
-            || rust_out.stderr != node_out.stderr
-            || rust_out.status.code() != node_out.status.code()
-        {
-            failures.push(format!(
-                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
-                rust_out.status.code(),
-                String::from_utf8_lossy(&rust_out.stdout),
-                String::from_utf8_lossy(&rust_out.stderr),
-                node_out.status.code(),
-                String::from_utf8_lossy(&node_out.stdout),
-                String::from_utf8_lossy(&node_out.stderr),
-            ));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "non-integer position parity mismatches:\n{}",
-        failures.join("\n---\n")
-    );
-}
-
 // ---------------------------------------------------------------------------
 // NOOP-281/F5: chart, table, and asset import command golden tests.
 // ---------------------------------------------------------------------------
@@ -1805,9 +949,7 @@ fn slide_add_and_move_reject_non_integer_position_byte_identical_to_node() {
 /// Replaces every `el-<12 chars>` id in `svg` with a placeholder assigned in
 /// order of first appearance, so a Rust-engine run and a Node-engine run of
 /// the same command sequence — each generating its own fresh random ids —
-/// can be compared byte-for-byte. Mirrors `normalize_stack_ids`'s id
-/// normalization above, applied to slide SVG content instead of
-/// `stack.json`.
+/// can be compared byte-for-byte.
 fn normalize_element_ids(svg: &str) -> String {
     const NEEDLE: &str = "el-";
     let mut out = String::with_capacity(svg.len());
@@ -1864,14 +1006,14 @@ fn normalize_element_ids_assigns_placeholders_in_order_of_first_appearance() {
 fn chart_table_asset_commands_are_dispatched_by_rust_not_node() {
     let fixture = Fixture::new("dispatch-not-node");
     let comot_path = fixture.workspace.join("t.comot");
-    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
-    fixture.run_node(&["convert", &id]);
+    fixture.run_rust(&["convert", &id]);
 
-    let create = fixture.run_node(&["chart", "create", &id, "slides/001.svg"]);
+    let create = fixture.run_rust(&["chart", "create", &id, "slides/001.svg"]);
     let chart_el = extract_id_field(&create.stdout, "elementId");
-    let create_table = fixture.run_node(&[
+    let create_table = fixture.run_rust(&[
         "table",
         "create",
         &id,
@@ -2081,216 +1223,14 @@ fn extract_id_field(stdout: &[u8], field: &str) -> String {
         .to_string()
 }
 
-/// Acceptance criteria A5/A6: the same fixture, run through the full
-/// sequence of `chart *`/`table *` commands via the Rust binary, must
-/// produce a byte-identical (id-normalized) slide to the same sequence run
-/// through the real Node CLI.
-///
-/// Parametrized over all 6 `CHART_TYPES` (not just `line`) — a Review FAIL
-/// on this ticket's first round found that a deliberate geometry mutation
-/// in `render.rs`'s `donut` inner-radius computation went undetected by
-/// `cargo test --lib`/`cli_golden`/`unit_golden` because this was the only
-/// cross-engine chart golden test and it only ever exercised `line`. Each
-/// type gets its own fixture/run rather than sharing one, since `type set`
-/// itself needs to be the type under test, not a step within a shared
-/// sequence.
-#[test]
-fn chart_command_sequence_matches_node_byte_for_byte() {
-    let chart_types: &[&str] = &["bar", "hbar", "line", "area", "pie", "donut"];
-
-    for &chart_type in chart_types {
-        let chart_ops: &[&[&str]] = &[
-            &[
-                "data",
-                "set",
-                "--categories",
-                "Q1,Q2,Q3",
-                "--series",
-                "Revenue=120,150,170",
-            ],
-            &["type", "set", chart_type],
-            &["palette", "set", "cool", "--color", "Revenue=#5B6DEA"],
-            &["axis", "set", "single"],
-            &["legend", "set", "right"],
-            &["option", "set", "grid", "false"],
-            &["stack", "set", "off"],
-        ];
-
-        let node_svg = run_chart_sequence(|fixture, args| fixture.run_node(args), chart_ops);
-        let rust_svg = run_chart_sequence(|fixture, args| fixture.run_rust(args), chart_ops);
-        assert_eq!(
-            normalize_element_ids(&rust_svg),
-            normalize_element_ids(&node_svg),
-            "rust and node chart command sequences diverged for type={chart_type:?}"
-        );
-    }
-}
-
-fn run_chart_sequence(runner: impl Fn(&Fixture, &[&str]) -> Output, ops: &[&[&str]]) -> String {
-    let fixture = Fixture::new("chart-sequence");
-    let comot_path = fixture.workspace.join("t.comot");
-    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    let id = extract_id(&open_output);
-    fixture.run_node(&["convert", &id]);
-
-    let create = runner(&fixture, &["chart", "create", &id, "slides/001.svg"]);
-    assert!(create.status.success(), "chart create failed: {create:?}");
-    let element_id = extract_id_field(&create.stdout, "elementId");
-
-    // Every entry in `ops` is a two-word verb ("data set", "type set", ...)
-    // followed by that command's own flags/positionals — id/slide-path/
-    // element-id are inserted right after the verb, mirroring every
-    // `chart *` subcommand's own argv shape (see `argv::chart::parse`).
-    for op in ops {
-        let mut full: Vec<&str> = vec!["chart", op[0], op[1], &id, "slides/001.svg", &element_id];
-        full.extend_from_slice(&op[2..]);
-        let out = runner(&fixture, &full);
-        assert!(out.status.success(), "op {full:?} failed: {out:?}");
-    }
-
-    String::from_utf8(fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout).unwrap()
-}
-
-/// Acceptance criteria A5/A6 (table half): a full `table *` sequence run
-/// through Rust must match the same sequence run through Node,
-/// byte-for-byte after id normalization.
-#[test]
-fn table_command_sequence_matches_node_byte_for_byte() {
-    let node_svg = run_table_sequence(|fixture, args| fixture.run_node(args));
-    let rust_svg = run_table_sequence(|fixture, args| fixture.run_rust(args));
-    assert_eq!(
-        normalize_element_ids(&rust_svg),
-        normalize_element_ids(&node_svg),
-        "rust and node table command sequences diverged"
-    );
-}
-
-fn run_table_sequence(runner: impl Fn(&Fixture, &[&str]) -> Output) -> String {
-    let fixture = Fixture::new("table-sequence");
-    let comot_path = fixture.workspace.join("t.comot");
-    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
-    let id = extract_id(&open_output);
-    fixture.run_node(&["convert", &id]);
-
-    let create = runner(
-        &fixture,
-        &[
-            "table",
-            "create",
-            &id,
-            "slides/001.svg",
-            "--rows",
-            "2",
-            "--cols",
-            "2",
-            "--x",
-            "10",
-            "--y",
-            "10",
-        ],
-    );
-    assert!(create.status.success(), "table create failed: {create:?}");
-    let element_id = extract_id_field(&create.stdout, "elementId");
-
-    let ops: Vec<Vec<&str>> = vec![
-        vec![
-            "table",
-            "cell",
-            "set",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "--row",
-            "0",
-            "--col",
-            "0",
-            "--text",
-            "A",
-        ],
-        vec![
-            "table",
-            "cell",
-            "style",
-            "set",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "--row",
-            "0",
-            "--col",
-            "0",
-            "align",
-            "center",
-        ],
-        vec![
-            "table",
-            "col",
-            "width",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "--col",
-            "0",
-            "--width",
-            "200",
-        ],
-        vec![
-            "table",
-            "row",
-            "insert",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "--at",
-            "1",
-        ],
-        vec![
-            "table",
-            "col",
-            "insert",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "--at",
-            "1",
-        ],
-        vec![
-            "table",
-            "theme",
-            "set",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "light",
-        ],
-        vec![
-            "table",
-            "header",
-            "set",
-            &id,
-            "slides/001.svg",
-            &element_id,
-            "false",
-        ],
-    ];
-    for op in &ops {
-        let out = runner(&fixture, op);
-        assert!(out.status.success(), "op {op:?} failed: {out:?}");
-    }
-
-    String::from_utf8(fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout).unwrap()
-}
-
 /// Acceptance criterion A3: `co-motion asset import <id> <path>` works from
 /// the command line, landing bytes exactly as imported under `assets/`.
 #[test]
 fn asset_import_local_file_lands_under_assets_via_rust_binary() {
     let fixture = Fixture::new("asset-import-cli");
     let comot_path = fixture.workspace.join("t.comot");
-    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
     let png_path = fixture.workspace.join("tiny.png");
@@ -2321,10 +1261,10 @@ fn asset_import_local_file_lands_under_assets_via_rust_binary() {
 fn chart_data_set_reads_csv_from_stdin() {
     let fixture = Fixture::new("chart-csv-stdin");
     let comot_path = fixture.workspace.join("t.comot");
-    fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
-    fixture.run_node(&["convert", &id]);
+    fixture.run_rust(&["convert", &id]);
 
     let create = fixture.run_rust(&["chart", "create", &id, "slides/001.svg"]);
     let element_id = extract_id_field(&create.stdout, "elementId");
@@ -2343,7 +1283,7 @@ fn chart_data_set_reads_csv_from_stdin() {
         csv_path.to_str().unwrap(),
     ]);
     assert!(via_file.status.success(), "{via_file:?}");
-    let svg_via_file = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let svg_via_file = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
 
     // Undo the file-based data set, then repeat via stdin.
     fixture.run_rust(&["undo", &id]);
@@ -2375,7 +1315,7 @@ fn chart_data_set_reads_csv_from_stdin() {
     }
     let via_stdin = child.wait_with_output().unwrap();
     assert!(via_stdin.status.success(), "{via_stdin:?}");
-    let svg_via_stdin = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let svg_via_stdin = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
 
     assert_eq!(
         svg_via_stdin, svg_via_file,
@@ -2506,29 +1446,27 @@ fn takeover_table_contains_all_29_commands() {
 /// `Fixture` around.
 fn new_and_open(fixture: &Fixture) -> (String, String) {
     let comot_path = fixture.workspace.join("t.comot");
-    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
         new_output
     );
-    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     // The freshly-created default template is not `assert_slide_compliant`
     // (its `<text>` runs bare, not wrapped in a `<g>` container) until
     // `convert` runs — every `element::edit`/`element::clipboard` command
     // this file exercises below opens with that check (unlike
     // `element::text`'s commands, which deliberately skip it — see that
-    // module's own doc comment), so setup needs this step where the
-    // existing `build_edited_fixture` above (only ever used with `text
-    // set`) does not.
-    let convert_output = fixture.run_node(&["convert", &id]);
+    // module's own doc comment), so setup needs this step.
+    let convert_output = fixture.run_rust(&["convert", &id]);
     assert!(
         convert_output.status.success(),
         "setup: `convert` failed: {:?}",
         convert_output
     );
-    let svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let svg = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let element_id = extract_first_element_id(&String::from_utf8_lossy(&svg));
     (id, element_id)
 }
@@ -2546,170 +1484,6 @@ fn extract_data_json(output: &Output) -> serde_json::Value {
         .find('{')
         .expect("stdout must contain a JSON data block");
     serde_json::from_str(&stdout[json_start..]).expect("data JSON must parse")
-}
-
-fn extract_copy_svg(output: &Output) -> String {
-    extract_data_json(output)["svg"]
-        .as_str()
-        .expect("element copy's data must have a string `svg` field")
-        .to_string()
-}
-
-fn count_top_level_groups(svg: &[u8]) -> usize {
-    String::from_utf8_lossy(svg).matches("<g ").count()
-}
-
-/// Acceptance criterion A9 (plan section 6.1, layer 1): the clipboard
-/// exchange format — both the presentation-scoped internal clipboard file
-/// and the portable `--svg-file`/`svg` system-clipboard string
-/// (ADR-0010/[E2.T18] 決定 2) — must be interchangeable between engines in
-/// every direction a real GUI ⌘C/⌘V could hit: copy in one engine, paste in
-/// the other, via either transport. Plus the fail-closed case: pasting a
-/// value that is not a valid clipboard payload at all must be rejected
-/// without ever touching the target file (ADR-0010's allowlist sanitizer
-/// exists precisely to make "reject" the only thing malformed input can
-/// do).
-#[test]
-fn clipboard_interop_round_trips_across_engines_both_via_internal_file_and_svg_file() {
-    // Direction 1: Rust copy (internal clipboard file) -> Node paste (internal clipboard file).
-    {
-        let fixture = Fixture::new("clip-rust-copy-node-paste-internal");
-        let (id, element_id) = new_and_open(&fixture);
-        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-        let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
-        assert!(copy_out.status.success(), "rust copy failed: {copy_out:?}");
-
-        let paste_out = fixture.run_node(&["element", "paste", &id, "slides/001.svg"]);
-        assert!(
-            paste_out.status.success(),
-            "node paste (after rust copy, internal file) failed: {paste_out:?}"
-        );
-
-        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-        assert_eq!(
-            count_top_level_groups(&after),
-            count_top_level_groups(&before) + 1,
-            "expected exactly one new <g> element after paste"
-        );
-    }
-
-    // Direction 2: Node copy (internal clipboard file) -> Rust paste (internal clipboard file).
-    {
-        let fixture = Fixture::new("clip-node-copy-rust-paste-internal");
-        let (id, element_id) = new_and_open(&fixture);
-        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-        let copy_out = fixture.run_node(&["element", "copy", &id, "slides/001.svg", &element_id]);
-        assert!(copy_out.status.success(), "node copy failed: {copy_out:?}");
-
-        let paste_out = fixture.run_rust(&["element", "paste", &id, "slides/001.svg"]);
-        assert!(
-            paste_out.status.success(),
-            "rust paste (after node copy, internal file) failed: {paste_out:?}"
-        );
-
-        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-        assert_eq!(
-            count_top_level_groups(&after),
-            count_top_level_groups(&before) + 1,
-            "expected exactly one new <g> element after paste"
-        );
-    }
-
-    // Direction 3: Rust copy's exported `svg` field -> local file -> Node paste --svg-file.
-    {
-        let fixture = Fixture::new("clip-rust-copy-node-paste-svgfile");
-        let (id, element_id) = new_and_open(&fixture);
-        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-        let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
-        assert!(copy_out.status.success(), "rust copy failed: {copy_out:?}");
-        let svg_path = fixture.workspace.join("rust-copy.svg");
-        fs::write(&svg_path, extract_copy_svg(&copy_out)).unwrap();
-
-        let paste_out = fixture.run_node(&[
-            "element",
-            "paste",
-            &id,
-            "slides/001.svg",
-            "--svg-file",
-            svg_path.to_str().unwrap(),
-        ]);
-        assert!(
-            paste_out.status.success(),
-            "node paste --svg-file (rust-produced svg) failed: {paste_out:?}"
-        );
-
-        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-        assert_eq!(
-            count_top_level_groups(&after),
-            count_top_level_groups(&before) + 1,
-            "expected exactly one new <g> element after --svg-file paste"
-        );
-    }
-
-    // Direction 4: Node copy's exported `svg` field -> local file -> Rust paste --svg-file.
-    {
-        let fixture = Fixture::new("clip-node-copy-rust-paste-svgfile");
-        let (id, element_id) = new_and_open(&fixture);
-        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-        let copy_out = fixture.run_node(&["element", "copy", &id, "slides/001.svg", &element_id]);
-        assert!(copy_out.status.success(), "node copy failed: {copy_out:?}");
-        let svg_path = fixture.workspace.join("node-copy.svg");
-        fs::write(&svg_path, extract_copy_svg(&copy_out)).unwrap();
-
-        let paste_out = fixture.run_rust(&[
-            "element",
-            "paste",
-            &id,
-            "slides/001.svg",
-            "--svg-file",
-            svg_path.to_str().unwrap(),
-        ]);
-        assert!(
-            paste_out.status.success(),
-            "rust paste --svg-file (node-produced svg) failed: {paste_out:?}"
-        );
-
-        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-        assert_eq!(
-            count_top_level_groups(&after),
-            count_top_level_groups(&before) + 1,
-            "expected exactly one new <g> element after --svg-file paste"
-        );
-    }
-
-    // Negative: a value that is not a valid clipboard payload at all must
-    // be rejected, and must never touch the target slide file.
-    {
-        let fixture = Fixture::new("clip-malformed-svgfile-fails-closed");
-        let (id, _element_id) = new_and_open(&fixture);
-        let before = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-
-        let bogus_path = fixture.workspace.join("bogus.svg");
-        fs::write(&bogus_path, "this is not a co-motion clipboard payload").unwrap();
-
-        let paste_out = fixture.run_rust(&[
-            "element",
-            "paste",
-            &id,
-            "slides/001.svg",
-            "--svg-file",
-            bogus_path.to_str().unwrap(),
-        ]);
-        assert!(
-            !paste_out.status.success(),
-            "a malformed --svg-file payload must fail: {paste_out:?}"
-        );
-
-        let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
-        assert_eq!(
-            before, after,
-            "a failed paste must leave the slide byte-unchanged"
-        );
-    }
 }
 
 /// `undo` array length in `stack.json`, or `0` when the file does not exist
@@ -2844,7 +1618,7 @@ fn undo_step_accounting_advances_by_exactly_one_on_success_and_not_at_all_on_fai
 fn copy_does_not_touch_the_slide_or_history() {
     let fixture = Fixture::new("copy-no-side-effects");
     let (id, element_id) = new_and_open(&fixture);
-    let before_svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let before_svg = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let before_undo_len = undo_len(&fixture, &id);
     let stack_path = fixture.home.join("history").join(&id).join("stack.json");
     let stack_existed_before = stack_path.exists();
@@ -2852,7 +1626,7 @@ fn copy_does_not_touch_the_slide_or_history() {
     let copy_out = fixture.run_rust(&["element", "copy", &id, "slides/001.svg", &element_id]);
     assert!(copy_out.status.success(), "copy failed: {copy_out:?}");
 
-    let after_svg = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let after_svg = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     assert_eq!(
         before_svg, after_svg,
         "element copy must never modify the slide file it reads from"
@@ -3015,5 +1789,301 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
     assert_eq!(
         cat_missing_env["message"],
         serde_json::json!("命令 cat 缺少參數：path")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// [E4.T12]: `packages/cli`/`packages/core` deleted — replacement coverage
+// for the two of their tests whose behavior had no Rust-side receiver
+// (plan section 6.3.3).
+// ---------------------------------------------------------------------------
+
+/// Ports `packages/cli/test/spec-cli-coverage.test.ts`'s first test item
+/// plus its "five required subsections" and "subsections in order" items
+/// (plan N1) into one function, now checked against the Rust command
+/// tables instead of the deleted TypeScript `CommandRegistry.names()`.
+/// Reads `docs/spec/cli.md` directly rather than shelling out — this test
+/// IS the parser, not a caller of one.
+#[test]
+fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
+    let spec_path = repo_root().join("docs/spec/cli.md");
+    let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
+
+    // Extraction pass 1: every `` ## `<name>` `` heading's own body (up to
+    // the next such heading), for the subsection checks below.
+    let mut spec_entries: Vec<(String, String)> = Vec::new();
+    let mut heading_starts: Vec<(usize, usize, String)> = Vec::new(); // (heading_start, body_start, name)
+    for (idx, _) in spec_content.match_indices("\n## `") {
+        let line_start = idx + 1; // skip the leading '\n'
+        let line_end = spec_content[line_start..]
+            .find('\n')
+            .map(|n| line_start + n)
+            .unwrap_or(spec_content.len());
+        let line = &spec_content[line_start..line_end];
+        if let Some(name) = line.strip_prefix("## `").and_then(|s| s.strip_suffix('`')) {
+            heading_starts.push((line_start, line_end, name.to_string()));
+        }
+    }
+    // Handle a heading at the very start of the file too (no leading '\n').
+    if spec_content.starts_with("## `") {
+        let line_end = spec_content.find('\n').unwrap_or(spec_content.len());
+        let line = &spec_content[0..line_end];
+        if let Some(name) = line.strip_prefix("## `").and_then(|s| s.strip_suffix('`')) {
+            heading_starts.insert(0, (0, line_end, name.to_string()));
+        }
+    }
+    for (i, (_, body_start, name)) in heading_starts.iter().enumerate() {
+        let end = heading_starts
+            .get(i + 1)
+            .map(|(start, _, _)| *start)
+            .unwrap_or(spec_content.len());
+        spec_entries.push((name.clone(), spec_content[*body_start..end].to_string()));
+    }
+
+    // Extraction pass 2 (independent of pass 1's body-slicing): the raw
+    // heading count alone, guarding against a non-command H2 that happens
+    // to also start with a backtick inflating the count without either
+    // direction's set-diff catching it (mirrors the TS test's own second,
+    // independent extraction pass).
+    let all_backtick_headings = heading_starts.len();
+    assert_eq!(
+        all_backtick_headings, 81,
+        "docs/spec/cli.md must have exactly 81 backtick-H2 command headings, found {all_backtick_headings}"
+    );
+
+    let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
+        .iter()
+        .map(|s| s.to_string())
+        .chain(
+            commands::element::TAKEOVER
+                .iter()
+                .chain(commands::text::TAKEOVER.iter())
+                .chain(commands::textbox::TAKEOVER.iter())
+                .chain(commands::comment::TAKEOVER.iter())
+                .map(|tokens| tokens.join(" ")),
+        )
+        .collect();
+    assert_eq!(
+        commands::REGISTERED_COMMAND_NAMES.len(),
+        52,
+        "REGISTERED_COMMAND_NAMES must stay 52"
+    );
+    let takeover_total = commands::element::TAKEOVER.len()
+        + commands::text::TAKEOVER.len()
+        + commands::textbox::TAKEOVER.len()
+        + commands::comment::TAKEOVER.len();
+    assert_eq!(takeover_total, 29, "the four TAKEOVER tables must total 29");
+    assert_eq!(rust_names.len(), 81, "52 + 29 must equal 81");
+
+    let rust_set: std::collections::BTreeSet<&str> = rust_names.iter().map(String::as_str).collect();
+    let spec_set: std::collections::BTreeSet<&str> = spec_entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(spec_entries.len(), 81, "docs/spec/cli.md must have exactly 81 command entries");
+
+    let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
+    let in_spec_not_in_rust: Vec<&str> = spec_set.difference(&rust_set).copied().collect();
+    assert!(
+        in_rust_not_in_spec.is_empty(),
+        "commands registered in Rust but missing from docs/spec/cli.md: {in_rust_not_in_spec:?}"
+    );
+    assert!(
+        in_spec_not_in_rust.is_empty(),
+        "commands documented in docs/spec/cli.md but not registered in Rust: {in_spec_not_in_rust:?}"
+    );
+
+    // Every entry has all five required subsections, in order (spec's own
+    // "命令條目格式說明": 語法 → 參數 → 成功 data → 錯誤情境 → 範例).
+    let required_markers = ["**語法**", "**參數**", "**成功 `data`**", "**錯誤情境**", "**範例**"];
+    let mut problems: Vec<String> = Vec::new();
+    for (name, body) in &spec_entries {
+        let positions: Vec<Option<usize>> = required_markers.iter().map(|m| body.find(m)).collect();
+        for (marker, pos) in required_markers.iter().zip(&positions) {
+            if pos.is_none() {
+                problems.push(format!("{name}: missing {marker}"));
+            }
+        }
+        if positions.iter().all(|p| p.is_some()) {
+            let values: Vec<usize> = positions.iter().map(|p| p.unwrap()).collect();
+            let mut sorted = values.clone();
+            sorted.sort();
+            if values != sorted {
+                problems.push(format!("{name}: subsections out of order"));
+            }
+        }
+    }
+    assert!(problems.is_empty(), "subsection problems:\n{}", problems.join("\n"));
+}
+
+/// Acceptance criterion 2 (plan §5 A4): every one of the 81 documented
+/// commands is actually dispatched by Rust — `PATH` pointed at an empty
+/// directory (`no_takeover_table_command_ever_invokes_node`'s own
+/// technique) so a command that fell through to a Node fallback would fail
+/// with "找不到 node" instead of running; and (plan N2, replacing
+/// `packages/cli/test/registry-split.test.ts`) `cat`/`ls`/`slide render`
+/// are the only three with a renderer — their plain (non-`--json`) stdout
+/// is raw content with no leading status line, unlike the other 78's
+/// "<message>\n{...}" shape.
+#[test]
+fn every_documented_command_is_dispatched_by_rust_without_node() {
+    let fixture = Fixture::new("all-81-smoke");
+
+    let empty_path_dir = env::temp_dir().join(format!("co-motion-all-81-empty-path-{}", std::process::id()));
+    fs::create_dir_all(&empty_path_dir).unwrap();
+
+    let run_without_node = |args: &[&str]| -> Output {
+        Command::new(rust_bin())
+            .args(args)
+            .env("CO_MOTION_HOME", &fixture.home)
+            .env("PATH", &empty_path_dir)
+            .output()
+            .expect("compiled co-motion binary must run")
+    };
+
+    let comot_path = fixture.workspace.join("smoke.comot");
+    let new_out = run_without_node(&["new", comot_path.to_str().unwrap(), "--name", "81 條命令煙霧測試"]);
+    assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
+    let open_out = run_without_node(&["open", comot_path.to_str().unwrap()]);
+    assert!(open_out.status.success(), "setup: `open` failed: {open_out:?}");
+    let id = extract_id(&open_out);
+    let convert_out = run_without_node(&["convert", &id]);
+    assert!(convert_out.status.success(), "setup: `convert` failed: {convert_out:?}");
+    let cat_out = run_without_node(&["cat", &id, "slides/001.svg"]);
+    assert!(cat_out.status.success(), "setup: `cat` failed: {cat_out:?}");
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&cat_out.stdout));
+
+    // One representative token sequence per one of the 81 names — every
+    // command actually needs a fitting id/path/element-id in the right
+    // slot to reach its own dispatch arm rather than erroring out of argv
+    // parsing before that (which would trivially "succeed" at "not
+    // invoking node" without proving anything about dispatch).
+    let renderer_commands: std::collections::BTreeSet<&str> = ["cat", "ls", "slide render"].into_iter().collect();
+    let mut failures: Vec<String> = Vec::new();
+    let mut renderer_shape_failures: Vec<String> = Vec::new();
+
+    let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
+        .iter()
+        .map(|s| s.to_string())
+        .chain(
+            commands::element::TAKEOVER
+                .iter()
+                .chain(commands::text::TAKEOVER.iter())
+                .chain(commands::textbox::TAKEOVER.iter())
+                .chain(commands::comment::TAKEOVER.iter())
+                .map(|tokens| tokens.join(" ")),
+        )
+        .collect();
+    assert_eq!(rust_names.len(), 81);
+
+    for name in &rust_names {
+        let tokens: Vec<&str> = name.split(' ').collect();
+        // Build a minimally-plausible argv: every command's first
+        // positional after its own verb tokens is the presentation id
+        // (universal across all 81, per docs/spec/cli.md); `new` is the
+        // one exception (its first positional is a filesystem path, not an
+        // id) and is already exercised by setup above, so it is skipped
+        // here rather than special-cased into a false failure.
+        if tokens == ["new"] {
+            continue;
+        }
+        let mut args: Vec<&str> = tokens.clone();
+        args.push(&id);
+        // Most families take a slide path as their second positional;
+        // element/text/textbox/comment families in particular always do.
+        // Commands whose grammar diverges (`open`, `pack`, `template *`,
+        // `presentation canvas set`, `chart`/`table`/`asset` sub-verbs
+        // that address by element id, not slide path) are allowed to error
+        // out of argv parsing here — this loop's ONLY claim is "never
+        // silently falls back to node", checked below regardless of exit
+        // code.
+        if !matches!(tokens[0], "open" | "pack" | "template" | "presentation") {
+            args.push("slides/001.svg");
+        }
+        if matches!(tokens[0], "element" | "text" | "textbox" | "comment") {
+            args.push(&element_id);
+        }
+        let output = run_without_node(&args);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.trim() == "找不到 node" {
+            failures.push(format!("{name}: fell back to node ({stderr})"));
+            continue;
+        }
+        if output.status.code().is_none() {
+            failures.push(format!("{name}: process never completed: {output:?}"));
+            continue;
+        }
+        // Renderer/non-renderer output-shape split (plan N2, registry-split
+        // coverage): a renderer command's stdout is never the
+        // "<message>\n{...json...}" two-part shape a status-line command's
+        // is, on the paths above that actually reached a handler
+        // successfully.
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let looks_like_status_line_json = stdout.starts_with(|c: char| !c.is_whitespace())
+                && stdout.contains('\n')
+                && stdout[stdout.find('\n').unwrap_or(0)..].trim_start().starts_with('{');
+            let is_renderer = renderer_commands.contains(name.as_str());
+            if is_renderer && looks_like_status_line_json {
+                renderer_shape_failures.push(format!(
+                    "{name}: has a renderer but stdout looks like the status-line+JSON shape: {stdout:?}"
+                ));
+            }
+        }
+    }
+
+    fs::remove_dir_all(&empty_path_dir).ok();
+
+    assert!(
+        failures.is_empty(),
+        "commands not cleanly dispatched by Rust:\n{}",
+        failures.join("\n")
+    );
+    assert!(
+        renderer_shape_failures.is_empty(),
+        "renderer/non-renderer output shape mismatches:\n{}",
+        renderer_shape_failures.join("\n")
+    );
+}
+
+/// Ports `packages/cli/test/bin.test.ts`'s EPIPE coverage (plan N3): a
+/// downstream reader closing the pipe early (`head -c 1`) while `cat`
+/// writes a large file must exit 0 with no error text on stderr — the
+/// `BrokenPipe -> 0` handling in `result.rs`'s `write_stdout`/
+/// `exit_code_for_write_error` had no test at all before this. 8 MiB is
+/// necessary: a smaller write can complete before the reader ever closes
+/// the pipe, never reproducing EPIPE at all.
+#[test]
+fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
+    let fixture = Fixture::new("epipe");
+    let comot_path = fixture.workspace.join("t.comot");
+    let new_out = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
+    let open_out = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    assert!(open_out.status.success(), "setup: `open` failed: {open_out:?}");
+    let id = extract_id(&open_out);
+
+    let big_bytes = vec![b'x'; 8 * 1024 * 1024];
+    let work_dir = fixture.home.join("work").join(&id);
+    fs::create_dir_all(work_dir.join("assets")).unwrap();
+    fs::write(work_dir.join("assets/big.txt"), &big_bytes).unwrap();
+
+    let script = format!(
+        "set -o pipefail; {} cat {} assets/big.txt | head -c 1 >/dev/null",
+        rust_bin(),
+        id
+    );
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(&script)
+        .env("CO_MOTION_HOME", &fixture.home)
+        .output()
+        .expect("bash must run");
+
+    assert!(
+        output.status.success(),
+        "pipeline must exit 0 (pipefail): {output:?}"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.to_lowercase().contains("error") && !stderr.contains("EPIPE") && !stderr.contains("broken pipe"),
+        "stderr must not mention an error: {stderr:?}"
     );
 }

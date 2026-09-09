@@ -1,7 +1,7 @@
 //! Crate root — wires together the modules ported from `packages/core`
 //! (NOOP-278). Nothing here previously declared any of these as part of the
 //! compiled crate (this file was a bare placeholder comment), so `errors`,
-//! `id`, `result`, and `fallback` were dead files until this change, along
+//! `id`, `result`, and `node_entry` were dead files until this change, along
 //! with the two new modules this ticket adds (`history`, `workspace`).
 //!
 //! `geometry`, `slide`, and `svgnum` are a separate slice of the same
@@ -19,13 +19,13 @@ pub mod container;
 pub mod effects;
 pub mod element;
 pub mod errors;
-pub mod fallback;
 pub mod fonts;
 pub mod geometry;
 pub mod history;
 pub mod http;
 pub mod id;
 pub mod media_format;
+pub mod node_entry;
 pub mod presentation;
 pub mod presentation_canvas;
 pub mod result;

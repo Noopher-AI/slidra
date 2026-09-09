@@ -1,12 +1,17 @@
-//! Falling back to the Node CLI for every command not in the takeover table
-//! (plan section 4.2), including `serve`/`export`, which always fall back.
+//! The Rust binary's only remaining reliance on Node: `docs/spec/cli.md`'s
+//! `## 不經 registry 的入口：serve 與 export` is normative — `serve` and
+//! `export` are not CLI commands with a `data` shape, they start a
+//! long-running HTTP server / drive a headless-browser export pipeline, and
+//! that logic lives in `@co-motion/server`, not in this crate. For those two
+//! names (and only those two), this binary sets `CO_MOTION_BIN` to its own
+//! absolute path, then execs Node against `packages/server`'s plain-JS entry
+//! point, with argv, stdin, stdout, stderr, and exit code all passed through
+//! byte-for-byte.
 //!
-//! `@co-motion/server` has no `bin` entry (confirmed against
-//! `packages/server/package.json`) — its only Node entry point is
-//! `packages/cli/bin/co-motion.js`, which dynamic-imports `@co-motion/server`
-//! for the `serve`/`export` branches. So "exec the Node `@co-motion/server`
-//! entry" concretely means "exec `node <repo>/packages/cli/bin/co-motion.js
-//! <argv>`" — there is no separate server binary to shell out to.
+//! This is NOT the coexistence-era fallback it replaces: every command
+//! outside `serve`/`export` that used to fall through to here now gets
+//! "未知的命令" from `main.rs` instead (plan section 2.1) — there is no
+//! takeover table left to miss.
 
 use std::env;
 use std::ffi::OsString;
@@ -14,18 +19,19 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const NODE_ENTRY_RELATIVE: &str = "packages/cli/bin/co-motion.js";
+const NODE_ENTRY_RELATIVE: &str = "packages/server/bin/co-motion-node.js";
 
-/// Execs `node <repo>/packages/cli/bin/co-motion.js <argv>`, inheriting
-/// stdio, and returns the process exit code this binary should itself exit
-/// with. `argv` is passed through untouched (including non-UTF-8 bytes —
-/// see main.rs's dispatch table, which never inspects argv when it is about
-/// to fall back).
-pub fn exec_node_fallback(argv: &[OsString]) -> i32 {
+/// Execs `node <repo>/packages/server/bin/co-motion-node.js <argv>`,
+/// inheriting stdio, and returns the process exit code this binary should
+/// itself exit with. `argv` is passed through untouched (including
+/// non-UTF-8 bytes) — `main.rs` only reaches this function for `serve`/
+/// `export`, which it identifies by matching `argv[0]` as UTF-8 without
+/// otherwise inspecting or validating the rest of argv.
+pub fn exec_node(argv: &[OsString]) -> i32 {
     let repo_root = match locate_repo_root() {
         Some(root) => root,
         None => {
-            eprintln!("找不到 co-motion 的 Node 入口");
+            eprintln!("找不到 co-motion 的 serve/export 入口");
             return 1;
         }
     };
@@ -65,10 +71,10 @@ pub fn exec_node_fallback(argv: &[OsString]) -> i32 {
 }
 
 /// Walks up from the running binary's location looking for a directory that
-/// contains BOTH `Cargo.toml` and `packages/cli/bin/co-motion.js`. Both
-/// conditions are required: checking only `Cargo.toml` can misfire inside
-/// `target/` (e.g. a vendored crate that happens to embed one), landing on
-/// the wrong ancestor before reaching the real repo root.
+/// contains BOTH `Cargo.toml` and `packages/server/bin/co-motion-node.js`.
+/// Both conditions are required: checking only `Cargo.toml` can misfire
+/// inside `target/` (e.g. a vendored crate that happens to embed one),
+/// landing on the wrong ancestor before reaching the real repo root.
 fn locate_repo_root() -> Option<PathBuf> {
     let current_exe = env::current_exe().ok()?;
     let start = current_exe.canonicalize().unwrap_or(current_exe);

@@ -83,9 +83,9 @@ pub type Renderer<'a> = &'a dyn Fn(&serde_json::Value) -> Vec<u8>;
 
 /// Renders `result` to stdout/stderr per the contract in plan section 4.3
 /// and returns the process exit code. `json_flag` is only meaningful for
-/// takeover-table commands (`--json`); the fallback path never calls this
-/// function with `json_flag: true` because it doesn't parse Rust-side flags
-/// at all (see fallback.rs).
+/// takeover-table commands (`--json`); `serve`/`export` never call this
+/// function with `json_flag: true` because `node_entry::exec_node` passes
+/// argv through untouched and never parses Rust-side flags at all.
 pub fn render(result: &CommandResult, renderer: Option<Renderer<'_>>, json_flag: bool) -> i32 {
     if json_flag {
         return render_json(result);
@@ -159,7 +159,7 @@ enum ExitOrContinue {
 /// success (exit 0), matching `bin/co-motion.js`'s
 /// `process.stdout.on("error", ...)` handler, which is installed only on
 /// the one-shot (non-`serve`) branch — this module is never used to render
-/// `serve`/`export` output (those always exec Node, see fallback.rs), so
+/// `serve`/`export` output (those always exec Node, see node_entry.rs), so
 /// mirroring only the one-shot handler here is correct, not a partial port.
 fn write_stdout_line(line: &str) -> ExitOrContinue {
     let stdout = io::stdout();

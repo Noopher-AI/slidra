@@ -24,11 +24,11 @@ const PRESENTATION_FONT_LICENSE_FILE: &str = "fonts/LICENSE-NotoSansTC.txt";
 /// `DEFAULT_FONT_BYTES` uses.
 const PRESENTATION_FONT_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf"
+    "/../../assets/fonts/NotoSansTC-Presentation.ttf"
 ));
 const PRESENTATION_FONT_LICENSE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/core/src/assets/fonts/LICENSE-NotoSansTC.txt"
+    "/../../assets/fonts/LICENSE-NotoSansTC.txt"
 ));
 
 fn escape_xml_text(text: &str) -> String {
