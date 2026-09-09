@@ -285,8 +285,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            0,
-            0,
+            0.0,
+            0.0,
             "A",
             &fonts_with_default(),
         )
@@ -295,8 +295,8 @@ mod tests {
             &with_text,
             "slides/001.svg",
             "t1",
-            0,
-            1,
+            0.0,
+            1.0,
             "B",
             &fonts_with_default(),
         )
@@ -341,8 +341,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            0,
-            0,
+            0.0,
+            0.0,
             "A",
             &fonts_with_default(),
         )

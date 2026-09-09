@@ -210,12 +210,22 @@ pub fn create_table_element(
 // table cell set
 // ---------------------------------------------------------------------------
 
+/// `row`/`col` are `f64`, not `usize`: TS's `setTableCellText` never checks
+/// `Number.isInteger` on these — it looks a cell up by plain `===`
+/// equality (`model.cells.findIndex((cell) => cell.row === row && cell.col
+/// === col)`), so a fractional or negative value simply matches no real
+/// cell (which always has an integer, non-negative `row`/`col`) and falls
+/// through to "找不到儲存格", exactly like an out-of-range integer would.
+/// Converting to `usize` before this lookup (via `as usize`, which
+/// saturates/truncates rather than erroring) would make `--row -1` alias
+/// row 0 and `--row 1.5` alias row 1 — silently matching a real cell TS
+/// would report as not found.
 pub fn set_table_cell_text(
     svg_content: &str,
     slide_path: &str,
     element_id: &str,
-    row: usize,
-    col: usize,
+    row: f64,
+    col: f64,
     text: &str,
     fonts: &HashMap<String, ParsedFont>,
 ) -> CoMotionResult<String> {
@@ -224,8 +234,14 @@ pub fn set_table_cell_text(
         let mut cells = model.cells;
         let index = cells
             .iter()
-            .position(|cell| cell.row == row && cell.col == col)
-            .ok_or_else(|| CoMotionError::invalid(format!("找不到儲存格 ({row},{col})")))?;
+            .position(|cell| cell.row as f64 == row && cell.col as f64 == col)
+            .ok_or_else(|| {
+                CoMotionError::invalid(format!(
+                    "找不到儲存格 ({},{})",
+                    super::model::js_number_string(row),
+                    super::model::js_number_string(col)
+                ))
+            })?;
         cells[index] = TableCell {
             text,
             ..cells[index].clone()
@@ -264,12 +280,18 @@ pub fn set_table_cell_texts(
 // table cell style set
 // ---------------------------------------------------------------------------
 
+/// `row`/`col`/`row_end`/`col_end` are `f64`, matching TS's un-integer-
+/// checked `number` fields — the range comparison below (`cell.row >=
+/// row_start && cell.row <= row_end`) naturally matches no cell at all for
+/// a fractional/out-of-range bound, exactly like TS's `>=`/`<=` on a
+/// `number` does, rather than an `as usize` truncation quietly aliasing a
+/// different row.
 #[derive(Debug, Clone)]
 pub struct SetCellStyleInput {
-    pub row: usize,
-    pub col: usize,
-    pub row_end: Option<usize>,
-    pub col_end: Option<usize>,
+    pub row: f64,
+    pub col: f64,
+    pub row_end: Option<f64>,
+    pub col_end: Option<f64>,
     pub attr: String,
     pub value: String,
 }
@@ -349,10 +371,10 @@ pub fn set_table_cell_style(
         let mut matched = false;
         let mut cells = Vec::with_capacity(model.cells.len());
         for cell in model.cells {
-            if cell.row >= row_start
-                && cell.row <= row_end
-                && cell.col >= col_start
-                && cell.col <= col_end
+            if cell.row as f64 >= row_start
+                && cell.row as f64 <= row_end
+                && cell.col as f64 >= col_start
+                && cell.col as f64 <= col_end
             {
                 matched = true;
                 cells.push(patch_cell_style(cell, &input.attr, &input.value)?);
@@ -405,10 +427,18 @@ fn split_cell(cell: &TableCell) -> Vec<TableCell> {
     parts
 }
 
+/// `row`/`col` are `f64`, matching TS's un-integer-checked `number` fields
+/// used only for the initial `===`-equality cell lookup (see
+/// `set_table_cell_text`'s doc comment for why this must not be an `as
+/// usize` conversion). Once that lookup succeeds, `target.row`/`target.col`
+/// (guaranteed float-equal to `row`/`col` by construction) stand in for
+/// every subsequent use — TS's own `input.row`/`input.col` are likewise
+/// only ever used post-lookup where they are already known to equal a
+/// real, integer `cell.row`/`cell.col`.
 #[derive(Debug, Clone, Default)]
 pub struct MergeTableCellsInput {
-    pub row: usize,
-    pub col: usize,
+    pub row: f64,
+    pub col: f64,
     pub row_span: Option<f64>,
     pub col_span: Option<f64>,
     pub unmerge: bool,
@@ -425,17 +455,21 @@ pub fn merge_table_cells(
         let target = model
             .cells
             .iter()
-            .find(|cell| cell.row == input.row && cell.col == input.col)
+            .find(|cell| cell.row as f64 == input.row && cell.col as f64 == input.col)
             .cloned()
             .ok_or_else(|| {
-                CoMotionError::invalid(format!("找不到儲存格 ({},{})", input.row, input.col))
+                CoMotionError::invalid(format!(
+                    "找不到儲存格 ({},{})",
+                    super::model::js_number_string(input.row),
+                    super::model::js_number_string(input.col)
+                ))
             })?;
+        let (row, col) = (target.row, target.col);
 
         if input.unmerge {
             if target.row_span == 1 && target.col_span == 1 {
                 return Err(CoMotionError::invalid(format!(
-                    "儲存格 ({},{}) 未合併，無法取消合併",
-                    input.row, input.col
+                    "儲存格 ({row},{col}) 未合併，無法取消合併"
                 )));
             }
             // Borrow (never `into_iter`) so `model`'s other fields stay
@@ -444,7 +478,7 @@ pub fn merge_table_cells(
             let mut cells: Vec<TableCell> = model
                 .cells
                 .iter()
-                .filter(|cell| !(cell.row == target.row && cell.col == target.col))
+                .filter(|cell| !(cell.row == row && cell.col == col))
                 .cloned()
                 .collect();
             cells.extend(split_cell(&target));
@@ -462,7 +496,7 @@ pub fn merge_table_cells(
         }
         let row_span = row_span_raw as usize;
         let col_span = col_span_raw as usize;
-        if input.row + row_span > model.rows.len() || input.col + col_span > model.cols.len() {
+        if row + row_span > model.rows.len() || col + col_span > model.cols.len() {
             return Err(CoMotionError::invalid("合併範圍超出表格"));
         }
 
@@ -473,7 +507,7 @@ pub fn merge_table_cells(
             let mut cells: Vec<TableCell> = model
                 .cells
                 .iter()
-                .filter(|cell| !(cell.row == target.row && cell.col == target.col))
+                .filter(|cell| !(cell.row == row && cell.col == col))
                 .cloned()
                 .collect();
             cells.extend(split_cell(&target));
@@ -483,14 +517,12 @@ pub fn merge_table_cells(
         let covered: Vec<TableCell> = model
             .cells
             .iter()
-            .filter(|cell| rect_overlaps(cell, input.row, input.col, row_span, col_span))
+            .filter(|cell| rect_overlaps(cell, row, col, row_span, col_span))
             .cloned()
             .collect();
         for cell in &covered {
-            let within_row =
-                cell.row >= input.row && cell.row + cell.row_span <= input.row + row_span;
-            let within_col =
-                cell.col >= input.col && cell.col + cell.col_span <= input.col + col_span;
+            let within_row = cell.row >= row && cell.row + cell.row_span <= row + row_span;
+            let within_col = cell.col >= col && cell.col + cell.col_span <= col + col_span;
             if !within_row || !within_col {
                 return Err(CoMotionError::invalid("合併範圍與既有合併重疊"));
             }
@@ -507,8 +539,8 @@ pub fn merge_table_cells(
             .cloned()
             .collect();
         remaining.push(TableCell {
-            row: input.row,
-            col: input.col,
+            row,
+            col,
             row_span,
             col_span,
             ..target
@@ -1281,8 +1313,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            0,
-            1,
+            0.0,
+            1.0,
             "hello",
             &fonts_with_default(),
         )
@@ -1303,8 +1335,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            5,
-            5,
+            5.0,
+            5.0,
             "x",
             &fonts_with_default(),
         )
@@ -1320,8 +1352,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             MergeTableCellsInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_span: Some(2.0),
                 col_span: Some(1.0),
                 unmerge: false,
@@ -1343,8 +1375,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             MergeTableCellsInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 unmerge: true,
                 ..Default::default()
             },
@@ -1364,8 +1396,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             MergeTableCellsInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_span: Some(2.0),
                 col_span: Some(1.0),
                 unmerge: false,
@@ -1380,8 +1412,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             MergeTableCellsInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_span: Some(1.0),
                 col_span: Some(2.0),
                 unmerge: false,
@@ -1489,8 +1521,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            1,
-            0,
+            1.0,
+            0.0,
             "{{name}}",
             &fonts_with_default(),
         )
@@ -1530,8 +1562,8 @@ mod tests {
             &svg,
             "slides/001.svg",
             "t1",
-            1,
-            0,
+            1.0,
+            0.0,
             "{{missing}}",
             &fonts_with_default(),
         )
@@ -1630,8 +1662,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             SetCellStyleInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_end: None,
                 col_end: None,
                 attr: "fill".to_string(),
@@ -1652,8 +1684,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             SetCellStyleInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_end: None,
                 col_end: None,
                 attr: "fill".to_string(),
@@ -1673,8 +1705,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             SetCellStyleInput {
-                row: 0,
-                col: 0,
+                row: 0.0,
+                col: 0.0,
                 row_end: None,
                 col_end: None,
                 attr: "text-fill".to_string(),
@@ -1694,8 +1726,8 @@ mod tests {
             "slides/001.svg",
             "t1",
             SetCellStyleInput {
-                row: 5,
-                col: 5,
+                row: 5.0,
+                col: 5.0,
                 row_end: None,
                 col_end: None,
                 attr: "align".to_string(),
