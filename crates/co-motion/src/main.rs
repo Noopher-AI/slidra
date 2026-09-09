@@ -6,10 +6,14 @@
 //! print its own (English) error text — any one of those firing on a
 //! fallback-bound argv would break byte-for-byte compatibility with the
 //! Node CLI (acceptance criterion A2). clap's role here is limited to
-//! parsing arguments *within* a takeover-table command's own handler (none
-//! of that parsing is needed yet — `undo`/`redo` take a single positional
-//! id — so clap isn't invoked at all in this ticket; it stays a declared
-//! dependency for F3+ commands to use).
+//! parsing arguments *within* a takeover-table command's own handler — none
+//! of that parsing goes through clap yet either: `undo`/`redo` take a
+//! single positional id, and `effect add/remove/move/set/list`'s argv
+//! parsing (`commands::effect`) is a direct, hand-written port of
+//! `packages/cli/src/argv.ts`'s own hand-written parsing, not a clap
+//! `Parser` derive — so clap still isn't invoked anywhere in this crate; it
+//! stays a declared dependency for a future command that actually wants
+//! it).
 
 use std::env;
 use std::ffi::OsString;
@@ -17,7 +21,7 @@ use std::io::Read;
 
 use co_motion::commands;
 use co_motion::fallback;
-use co_motion::result;
+use co_motion::result::{self, Renderer};
 
 fn main() {
     let argv: Vec<OsString> = env::args_os().skip(1).collect();
@@ -53,8 +57,18 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
             return fallback::exec_node_fallback(&argv);
         }
 
-        if commands::is_in_takeover_table(first_str) {
-            return dispatch_takeover(first_str, &argv[1..]);
+        // Probe the first one or two argv tokens against the takeover
+        // table (plan 2.4): a two-word command like `effect add` needs
+        // both tokens to be valid UTF-8 to match at all — a non-UTF-8
+        // second token simply can't equal any (ASCII) table entry, so it
+        // naturally falls through to the one-word probe, then to Node.
+        let second_str = argv.get(1).and_then(|arg| arg.to_str());
+        let probe: Vec<&str> = match second_str {
+            Some(second) => vec![first_str, second],
+            None => vec![first_str],
+        };
+        if let Some((command, consumed)) = commands::match_takeover(&probe) {
+            return dispatch_takeover(command, &argv[consumed..]);
         }
     }
 
@@ -62,44 +76,85 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
 }
 
 /// Runs a takeover-table command's handler and renders its `CommandResult`.
-/// `--json` is a Rust-only flag (plan 4.3): meaningful only here, stripped
-/// from the positional arguments the command handler sees, and never
-/// forwarded to Node (the fallback path above never parses or forwards
-/// `--json` specially — if it reaches Node at all, Node reports its own
-/// "unknown argument" error, which is correct: `--json` has no meaning
-/// outside the takeover table).
+/// `--json` is a Rust-only flag: meaningful only here, stripped from the
+/// positional arguments the command handler sees, and never forwarded to
+/// Node (the fallback path above never parses or forwards `--json`
+/// specially — if it reaches Node at all, Node reports its own "unknown
+/// argument" error, which is correct: `--json` has no meaning outside the
+/// takeover table).
+///
+/// D9: `--json` is recognised ONLY as the LAST token of `rest` — a
+/// deliberate change from this ticket's predecessor, which stripped it from
+/// any position. Several commands take free-text as their final positional
+/// (`slide notes set`'s `text`, `template rename`'s `new-name`) and those
+/// may legitimately equal the literal string `"--json"`; `--json` itself is
+/// a Rust-only flag with no TS-side byte-compatibility burden, so this
+/// narrower rule is safe to adopt outright.
 fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
-    let mut json_flag = false;
-    let mut positional: Vec<String> = Vec::new();
-    for arg in rest {
-        match arg.to_str() {
-            Some("--json") => json_flag = true,
-            Some(s) => positional.push(s.to_string()),
-            // A non-UTF-8 extra positional argument here would be ignored
-            // by undo/redo anyway (only args[0], the id, is read — see
-            // plan 4.1's "undo <id> extra" row) — lossy-converting it
-            // rather than erroring keeps that "ignored" behavior intact
-            // instead of turning a harmless extra argument into a crash.
-            None => positional.push(arg.to_string_lossy().into_owned()),
-        }
+    let mut positional: Vec<String> = rest
+        .iter()
+        .map(|arg| {
+            arg.to_str().map(str::to_string).unwrap_or_else(|| {
+                // A non-UTF-8 extra positional argument would be ignored by
+                // most handlers anyway — lossy-converting it rather than
+                // erroring keeps "ignored" behavior intact instead of
+                // turning a harmless extra argument into a crash.
+                arg.to_string_lossy().into_owned()
+            })
+        })
+        .collect();
+    let json_flag = positional.last().map(String::as_str) == Some("--json");
+    if json_flag {
+        positional.pop();
     }
 
-    let command_result = match command {
-        "undo" => commands::undo::run(&positional),
-        "redo" => commands::redo::run(&positional),
-        "chart" => {
-            let stdin_csv = maybe_read_stdin_csv(&positional);
-            commands::chart::run(&positional, stdin_csv)
-        }
-        "table" => commands::table::run(&positional),
-        "asset" => dispatch_asset(&positional),
-        _ => unreachable!("commands::is_in_takeover_table only admits the declared set"),
-    };
+    let (command_result, renderer): (co_motion::result::CommandResult, Option<Renderer<'_>>) =
+        match command {
+            "undo" => (commands::undo::run(&positional), None),
+            "redo" => (commands::redo::run(&positional), None),
+            "chart" => {
+                let stdin_csv = maybe_read_stdin_csv(&positional);
+                (commands::chart::run(&positional, stdin_csv), None)
+            }
+            "table" => (commands::table::run(&positional), None),
+            "asset" => (dispatch_asset(&positional), None),
+            "effect add" => (commands::effect::add(&positional), None),
+            "effect list" => (commands::effect::list(&positional), None),
+            "effect move" => (commands::effect::move_cmd(&positional), None),
+            "effect remove" => (commands::effect::remove(&positional), None),
+            "effect set" => (commands::effect::set(&positional), None),
+            "new" => (commands::new::run(&positional), None),
+            "open" => (commands::open::run(&positional), None),
+            "pack" => (commands::pack::run(&positional), None),
+            "convert" => (commands::convert::run(&positional), None),
+            "presentation" => (commands::presentation::run(&positional), None),
+            "template" => (commands::template::run(&positional), None),
+            "ls" => (
+                commands::ls::run(&positional),
+                Some(&commands::ls::render as Renderer<'_>),
+            ),
+            "cat" => (
+                commands::cat::run(&positional, json_flag),
+                Some(&commands::cat::render as Renderer<'_>),
+            ),
+            "slide" => {
+                let renderer: Option<Renderer<'_>> =
+                    if positional.first().map(String::as_str) == Some("render") {
+                        Some(&commands::slide::render as Renderer<'_>)
+                    } else {
+                        None
+                    };
+                (commands::slide::run(&positional, json_flag), renderer)
+            }
+            _ => unreachable!(
+                "commands::match_takeover only returns TAKEOVER_TABLE entries, all handled above"
+            ),
+        };
 
     // None of undo/redo/chart/table/asset has a renderer (plan 3.2/4.3, and
     // cli.md's own "Renderer 命令" list names only `cat`/`ls`/`slide
-    // render`) — `None` here is correct, not a placeholder.
-    result::render(&command_result, None, json_flag)
+    // render`) — every match arm above reflects that.
+    result::render(&command_result, renderer, json_flag)
 }
 
 /// `chart data set --csv -`'s stdin substitution: `cli.md` requires this to

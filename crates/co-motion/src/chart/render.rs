@@ -308,7 +308,7 @@ pub fn render_chart_svg(model: &ChartModel) -> String {
             };
             let d = if ri != 0.0 {
                 format!(
-                    "M{} A{} {} 0 {large} 1 {} L{} A{} {} 0 {large} 0 {}Z",
+                    "M{} A{} {} 0 {large} 1 {} L{} A{} {} 0 {large} 0 {} Z",
                     point(angle, r),
                     n(r),
                     n(r),
@@ -320,7 +320,7 @@ pub fn render_chart_svg(model: &ChartModel) -> String {
                 )
             } else {
                 format!(
-                    "M{} {} L{} A{} {} 0 {large} 1 {}Z",
+                    "M{} {} L{} A{} {} 0 {large} 1 {} Z",
                     n(cx),
                     n(cy),
                     point(angle, r),

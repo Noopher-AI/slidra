@@ -5,7 +5,8 @@
 use crate::chart::edit::{CreateChartInput, SetChartAxisInput};
 use crate::errors::{CoMotionError, CoMotionResult};
 
-use super::{collect_repeated_flag, optional_flag, optional_number_flag, require_positional};
+use super::collect_repeated_flag;
+use super::ct::{optional_flag, optional_number_flag, require_positional};
 
 #[derive(Debug)]
 pub enum ChartCommand {

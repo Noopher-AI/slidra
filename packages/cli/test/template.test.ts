@@ -398,7 +398,28 @@ describe("formatVersion 進位 (4.2)", () => {
     const after = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
 
     expect(after.data!.content).toBe(before.data!.content);
-    expect(JSON.parse(before.data!.content).formatVersion).toBe(FORMAT_VERSION);
+    // Not `FORMAT_VERSION` (4, [E4.T4]): TS's own open-time migration
+    // (`migrateLegacyTransition`) only ever reaches 3 — the 3→4 step is
+    // Rust-only (`crates/co-motion/src/workspace/migrate.rs`, run by the
+    // Rust `open` command, never by this TS `openWithProjectJson` helper).
+    // `FORMAT_VERSION` is the upper bound TS is willing to *read*
+    // (`assertSupportedFormatVersion`), not a claim about what TS's own
+    // migration produces.
+    expect(JSON.parse(before.data!.content).formatVersion).toBe(3);
     expect(JSON.parse(before.data!.content).templates).toEqual(["templates/001.svg"]);
+  });
+
+  it("(d) writeProject 對缺少 fonts 的 project.json 補上 fonts: []（[E4.T4] §1.3，v4 要求 fonts 必填）", async () => {
+    const id = await openWithProjectJson({
+      formatVersion: 1,
+      name: "沒有 fonts 欄位",
+      canvas: { width: 1280, height: 720 },
+      slides: ["slides/001.svg"],
+    });
+
+    await registry.dispatch("template add", { id, name: "封面" });
+
+    const after = await readProject(id);
+    expect(after.fonts).toEqual([]);
   });
 });

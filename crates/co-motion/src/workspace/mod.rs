@@ -1,13 +1,18 @@
-//! Workspace read AND write paths. Originally (NOOP-278) ported from only
-//! the READ half of `packages/core/src/workspace.ts` (home-dir resolution,
-//! the registry read, id-to-workDir lookup) plus `project-json.ts` and
-//! `virtual-fs.ts` in the `project`/`virtual_fs` submodules. NOOP-281/F5
-//! adds this file's first writes: `write_presentation_file`,
-//! `create_presentation_file`, `list_presentation_entries`, and
-//! `assert_slide_path_listed` — every one of this ticket's 26 commands
-//! writes through the first two. Still WRITES NOTHING to `projects.json`
-//! itself, and no container packing/unpacking/format-version migration —
-//! that remains a later ticket's.
+//! Workspace read AND write paths. Originally ([E4.T2]) ported from only the
+//! READ half of `packages/core/src/workspace.ts` (home-dir resolution, the
+//! registry read, id-to-workDir lookup) plus `project-json.ts` and
+//! `virtual-fs.ts` in the `project`/`virtual_fs` submodules — this crate's
+//! `registry` submodule now also writes `projects.json` ([E4.T4]:
+//! `new`/`open`/`pack` need to register/update a presentation), and
+//! `write.rs` holds the content-write doors (`assertSlidePathListed`,
+//! `write_presentation_file` and friends). Container packing/unpacking
+//! lives in `container.rs`; format-version migration lives in `migrate.rs`.
+//! NOOP-281/F5 adds `list_presentation_entries` (`asset import`'s
+//! conflict-free-filename scan) directly to this file, and a `fonts`
+//! submodule for a presentation's embedded font book — every other write
+//! this ticket's 26 commands need (`write_presentation_file`/
+//! `create_presentation_file`/`assert_slide_path_listed`) reuses `write.rs`'s
+//! existing doors rather than adding its own.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `CO_MOTION_HOME`, defaulting to
@@ -20,30 +25,26 @@
 //! - `registry::lookup(id) -> CoMotionResult<RegistryEntry>` — the lower-level
 //!   read `resolve_work_dir` is built on, in case a future caller needs more
 //!   of the registry entry than just `work_dir`.
-//! - `project` — `project.json` read/parse/validate (see `project.rs`).
+//! - `registry::write_registry`/`registry::work_dir_for`/
+//!   `registry::max_mtime_in_directory` — the write-side primitives `open`/
+//!   `pack` need (see `registry`'s own doc comment).
+//! - `project` — `project.json` read/parse/validate/write (see `project.rs`).
 //! - `virtual_fs` — virtual path resolution within a work dir (see
 //!   `virtual_fs.rs`).
 //! - `fonts` — a presentation's embedded font book (see `fonts.rs`).
-//! - `write_presentation_file(id, virtual_path, content) -> CoMotionResult<()>`
-//!   — the single door every content-editing command in this crate writes
-//!   through; see its own doc comment for the snapshot/commit/write
-//!   ordering.
-//! - `create_presentation_file(id, virtual_path, content: &[u8]) -> CoMotionResult<()>`
-//!   — the creation counterpart (`asset import`): errors if `virtual_path`
-//!   already exists, undo deletes it instead of restoring prior content.
+//! - `write` — `assert_slide_path_listed`/`write_presentation_file` and
+//!   friends (see `write.rs`).
 //! - `list_presentation_entries(id, virtual_path) -> CoMotionResult<Vec<String>>`
 //!   — `asset import`'s conflict-free-filename scan of `assets/`/`assets/data/`.
-//! - `assert_slide_path_listed(work_dir, virtual_path) -> CoMotionResult<project::ProjectJson>`
-//!   — confirms `virtual_path` is one of the presentation's declared slides
-//!   or templates before any edit-path read/write of it is attempted.
 
 pub mod fonts;
+pub mod migrate;
 pub mod project;
 pub mod virtual_fs;
+pub mod write;
 
-use crate::errors::{CoMotionError, CoMotionResult};
-use crate::history;
-use std::path::{Path, PathBuf};
+use crate::errors::CoMotionResult;
+use std::path::PathBuf;
 
 /// Resolves `CO_MOTION_HOME`, defaulting to `~/.comotion`. Read fresh on
 /// every call — not cached in a `OnceLock`/static — so a caller (or a test)
@@ -91,13 +92,16 @@ pub mod registry {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
-    /// One `projects.json` entry, read-only. Only `work_dir` is modeled:
-    /// the ticket's scope is "resolving a presentation id to its workDir",
-    /// not the full `RegistryEntry` shape (`sourcePath`/`savedAt`) that
-    /// `workspace.ts`'s save-state tracking uses — a later ticket's job.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    /// One `projects.json` entry. `source_path`/`saved_at` ([E4.T4]): the
+    /// `.comot` path `open`/`pack` last read from or wrote to, and the work
+    /// directory's own max-mtime reading at that moment — absent for a
+    /// pre-[E4.T4] registry entry (read side must tolerate missing fields,
+    /// see `is_registry_entry`).
+    #[derive(Debug, Clone, PartialEq)]
     pub struct RegistryEntry {
         pub work_dir: PathBuf,
+        pub source_path: Option<PathBuf>,
+        pub saved_at: Option<f64>,
     }
 
     fn registry_path(home: &Path) -> PathBuf {
@@ -111,7 +115,7 @@ pub mod registry {
     /// to empty (same stance the TS original documents: falling back to
     /// empty here would make every previously opened presentation
     /// unreachable).
-    fn read_registry(home: &Path) -> CoMotionResult<HashMap<String, RegistryEntry>> {
+    pub(crate) fn read_registry(home: &Path) -> CoMotionResult<HashMap<String, RegistryEntry>> {
         let raw = match std::fs::read_to_string(registry_path(home)) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -132,8 +136,8 @@ pub mod registry {
 
         let mut registry = HashMap::with_capacity(obj.len());
         for (id, value) in obj {
-            let work_dir = value
-                .as_object()
+            let entry_obj = value.as_object();
+            let work_dir = entry_obj
                 .and_then(|entry| entry.get("workDir"))
                 .and_then(Value::as_str);
             let work_dir = match work_dir {
@@ -142,14 +146,127 @@ pub mod registry {
                     return Err(CoMotionError::invalid(format!("簡報登記資料已損毀：{id}")));
                 }
             };
+            let source_path = entry_obj
+                .and_then(|entry| entry.get("sourcePath"))
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let saved_at = entry_obj
+                .and_then(|entry| entry.get("savedAt"))
+                .and_then(Value::as_f64);
             registry.insert(
                 id.clone(),
                 RegistryEntry {
                     work_dir: PathBuf::from(work_dir),
+                    source_path,
+                    saved_at,
                 },
             );
         }
         Ok(registry)
+    }
+
+    /// Atomically writes the registry: a private temp file first, then
+    /// `rename`d over the real `projects.json` — a crash or a full disk
+    /// mid-write can never leave `projects.json` truncated or half-written.
+    /// Entries are written in sorted-by-id order for a deterministic file
+    /// (the TS original's `Map` preserves insertion order instead, which
+    /// Rust's `HashMap` does not track — sorting is the closest equivalent
+    /// that keeps repeated writes of the same registry byte-identical).
+    pub fn write_registry(
+        home: &Path,
+        registry: &HashMap<String, RegistryEntry>,
+    ) -> CoMotionResult<()> {
+        std::fs::create_dir_all(home)
+            .map_err(|_| CoMotionError::invalid("無法寫入簡報登記資料"))?;
+        let mut ids: Vec<&String> = registry.keys().collect();
+        ids.sort();
+        let mut map = serde_json::Map::with_capacity(ids.len());
+        for id in ids {
+            let entry = &registry[id];
+            let mut obj = serde_json::Map::new();
+            obj.insert(
+                "workDir".to_string(),
+                Value::String(entry.work_dir.to_string_lossy().into_owned()),
+            );
+            if let Some(source_path) = &entry.source_path {
+                obj.insert(
+                    "sourcePath".to_string(),
+                    Value::String(source_path.to_string_lossy().into_owned()),
+                );
+            }
+            if let Some(saved_at) = entry.saved_at {
+                obj.insert(
+                    "savedAt".to_string(),
+                    serde_json::Number::from_f64(saved_at)
+                        .map(Value::Number)
+                        .unwrap_or(Value::Null),
+                );
+            }
+            map.insert(id.clone(), Value::Object(obj));
+        }
+        let mut json = serde_json::to_string_pretty(&map)
+            .map_err(|_| CoMotionError::invalid("無法寫入簡報登記資料"))?;
+        json.push('\n');
+
+        let final_path = registry_path(home);
+        let temp_path = home.join(format!(
+            ".projects.json.{}.tmp",
+            crate::id::random_hex_suffix()
+        ));
+        let write_result: std::io::Result<()> = (|| {
+            std::fs::write(&temp_path, &json)?;
+            std::fs::rename(&temp_path, &final_path)?;
+            Ok(())
+        })();
+        if write_result.is_err() {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(CoMotionError::invalid("無法寫入簡報登記資料"));
+        }
+        Ok(())
+    }
+
+    /// The real work directory a fresh presentation id should live at —
+    /// `<home>/work/<id>/`. Callers create it; this function only computes
+    /// the path.
+    pub fn work_dir_for(home: &Path, id: &str) -> PathBuf {
+        home.join("work").join(id)
+    }
+
+    /// The newest `mtime`, in milliseconds since the Unix epoch, of `dir`
+    /// itself or anything nested inside it — used to snapshot "the work
+    /// directory's content is known to match `sourcePath` byte-for-byte"
+    /// at `open`/`pack` time (`RegistryEntry.saved_at`).
+    pub fn max_mtime_in_directory(dir: &Path) -> CoMotionResult<f64> {
+        let metadata = std::fs::metadata(dir)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        let mut max = mtime_millis(&metadata)?;
+        let entries = std::fs::read_dir(dir)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        for entry in entries {
+            let entry = entry.map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+            let file_type = entry
+                .file_type()
+                .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+            let full_path = entry.path();
+            if file_type.is_dir() {
+                max = max.max(max_mtime_in_directory(&full_path)?);
+            } else if file_type.is_file() {
+                let file_metadata = std::fs::metadata(&full_path)
+                    .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+                max = max.max(mtime_millis(&file_metadata)?);
+            }
+        }
+        Ok(max)
+    }
+
+    fn mtime_millis(metadata: &std::fs::Metadata) -> CoMotionResult<f64> {
+        let modified = metadata
+            .modified()
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        let duration = modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| CoMotionError::invalid("無法讀取簡報內容時間戳記"))?;
+        Ok(duration.as_secs_f64() * 1000.0)
     }
 
     /// Resolves an opaque presentation id to its registry entry — the one
@@ -162,6 +279,24 @@ pub mod registry {
         registry
             .remove(id)
             .ok_or_else(|| CoMotionError::not_found(format!("找不到識別碼對應的簡報：{id}")))
+    }
+
+    /// Test-only convenience: registers `id -> work_dir` with no
+    /// `source_path`/`saved_at`, matching a pre-[E4.T4] registry entry —
+    /// used by sibling modules' `#[cfg(test)]` fixtures so each doesn't
+    /// hand-roll `projects.json` JSON text.
+    #[cfg(test)]
+    pub(crate) fn register_for_test(home: &Path, id: &str, work_dir: &Path) {
+        let mut registry = HashMap::new();
+        registry.insert(
+            id.to_string(),
+            RegistryEntry {
+                work_dir: work_dir.to_path_buf(),
+                source_path: None,
+                saved_at: None,
+            },
+        );
+        write_registry(home, &registry).expect("test fixture write must succeed");
     }
 
     /// Serializes access to the `CO_MOTION_HOME` env var across this
@@ -328,32 +463,6 @@ pub fn resolve_work_dir(id: &str) -> CoMotionResult<PathBuf> {
     Ok(registry::lookup(id)?.work_dir)
 }
 
-/// Confirms `virtual_path` is one of the presentation's declared slides
-/// (`project.json`'s `slides` array) or `templates` entries — ported from
-/// `workspace.ts`'s private `assertSlidePathListed`. Every edit-path
-/// command in this crate calls this (via `resolve_virtual_file_path` first,
-/// then this) before touching the slide file itself, so an edit aimed at
-/// e.g. `project.json` is rejected before any read/write of it is
-/// attempted. Returns the parsed `project.json` so a caller that also needs
-/// it (none in this ticket yet) does not have to read it twice.
-pub fn assert_slide_path_listed(
-    work_dir: &Path,
-    virtual_path: &str,
-) -> CoMotionResult<project::ProjectJson> {
-    let proj = project::read_project_json(work_dir)?;
-    let templates = project::read_template_entries(&proj);
-    let is_slide = proj.slides.iter().any(|slide| slide == virtual_path);
-    let is_template = templates
-        .iter()
-        .any(|template| template.file == virtual_path);
-    if !is_slide && !is_template {
-        return Err(CoMotionError::invalid(format!(
-            "不是投影片：{virtual_path}"
-        )));
-    }
-    Ok(proj)
-}
-
 /// Lists the entry names of the virtual directory at `virtual_path` inside
 /// the presentation identified by `id` — mirrors `workspace.ts`'s exported
 /// `listPresentationEntries`. Used by `asset_import::resolve_conflict_free_filename`'s
@@ -373,101 +482,11 @@ pub fn list_presentation_entries(id: &str, virtual_path: &str) -> CoMotionResult
     virtual_fs::list_virtual_entries(&work_dir, virtual_path)
 }
 
-/// The single door every content-writing command in this crate uses to
-/// overwrite an EXISTING virtual file's content — ported from `workspace.ts`'s
-/// `writePresentationFile`. Snapshots the file's current content into undo
-/// history (via `history::stage_snapshot_entries`) and commits that undo
-/// group durably (`history::commit_snapshot_entries`) *before* the content
-/// write itself, matching the TS original's NOOP-337 ordering: nothing
-/// makes the new content visible until the undo group that reverts it is
-/// already durable. If the content write itself then fails, the commit is
-/// unwound (`history::revert_committed_entries`) — a failed command must
-/// not occupy an undo slot, and must not leave an orphan snapshot file
-/// either.
-pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> CoMotionResult<()> {
-    let work_dir = resolve_work_dir(id)?;
-    let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
-    let entries = history::stage_snapshot_entries(id, &[virtual_path.to_string()])?;
-    let commit = history::commit_snapshot_entries(id, entries.clone())?;
-    match std::fs::write(&real_path, content.as_bytes()) {
-        Ok(()) => {
-            history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
-            Ok(())
-        }
-        Err(_) => {
-            history::revert_committed_entries(id, &entries, commit.previous_stack)?;
-            // real_path is a real filesystem path (ADR-0004) — never quote it.
-            Err(CoMotionError::invalid(format!(
-                "寫入投影片時發生錯誤：{virtual_path}"
-            )))
-        }
-    }
-}
-
-/// The creation counterpart to `write_presentation_file` (`asset import`) —
-/// ported from `workspace.ts`'s `createPresentationFile`. `virtual_path`
-/// must not already exist. Undo for a created file deletes it instead of
-/// restoring prior content (`history::stage_new_file_entry`), so it plugs
-/// into the same `undo`/`redo` commands as every other write with no
-/// bespoke asset-import undo logic.
-///
-/// Binary-safe: `content` is written and later restored as raw bytes, never
-/// decoded as text — unlike `write_presentation_file`, which is only ever
-/// used for this crate's own UTF-8 SVG/JSON content.
-///
-/// Unlike `write_presentation_file`, the commit happens AFTER the write
-/// succeeds, not before: there is no prior visible content whose
-/// undo-availability window matters here, only the new file itself, which
-/// does not exist until the write succeeds.
-pub fn create_presentation_file(
-    id: &str,
-    virtual_path: &str,
-    content: &[u8],
-) -> CoMotionResult<()> {
-    let work_dir = resolve_work_dir(id)?;
-    let already_exists = match virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path) {
-        Ok(_) => true,
-        Err(CoMotionError::NotFound(_)) => false,
-        Err(other) => return Err(other),
-    };
-    if already_exists {
-        return Err(CoMotionError::invalid(format!(
-            "檔案已存在：{virtual_path}"
-        )));
-    }
-
-    let entries = vec![history::stage_new_file_entry(virtual_path)];
-    let mut real_path = work_dir.clone();
-    for segment in virtual_path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-    {
-        real_path.push(segment);
-    }
-
-    let write_result: std::io::Result<()> = (|| {
-        if let Some(parent) = real_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&real_path, content)
-    })();
-
-    if write_result.is_err() {
-        history::discard_snapshot_entries(id, &entries)?;
-        // real_path is a real filesystem path (ADR-0004) — never quote it.
-        return Err(CoMotionError::invalid(format!(
-            "寫入檔案時發生錯誤：{virtual_path}"
-        )));
-    }
-
-    let commit = history::commit_snapshot_entries(id, entries)?;
-    history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod write_path_tests {
     use super::*;
+    use crate::errors::CoMotionError;
+    use std::path::Path;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -484,18 +503,6 @@ mod write_path_tests {
         let id_json = serde_json::to_string(test_id).unwrap();
         let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
         std::fs::write(home.join("projects.json"), json).unwrap();
-    }
-
-    fn write_project_json(work_dir: &Path, slides: &[&str]) {
-        let slides_json: Vec<String> = slides.iter().map(|s| format!("{s:?}")).collect();
-        std::fs::write(
-            work_dir.join("project.json"),
-            format!(
-                r#"{{"formatVersion":1,"name":"T","canvas":{{"width":1,"height":1}},"slides":[{}]}}"#,
-                slides_json.join(",")
-            ),
-        )
-        .unwrap();
     }
 
     struct Fixture {
@@ -529,76 +536,6 @@ mod write_path_tests {
             std::fs::remove_dir_all(&self.home).ok();
             std::fs::remove_dir_all(&self.work).ok();
         }
-    }
-
-    #[test]
-    fn write_presentation_file_snapshots_before_overwriting_and_undo_restores_it() {
-        let fixture = Fixture::new("write-roundtrip", "pid-write-1");
-        write_project_json(&fixture.work, &["slides/001.svg"]);
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        std::fs::write(fixture.work.join("slides/001.svg"), "<svg>ORIGINAL</svg>").unwrap();
-
-        write_presentation_file("pid-write-1", "slides/001.svg", "<svg>UPDATED</svg>").unwrap();
-        assert_eq!(
-            std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap(),
-            "<svg>UPDATED</svg>"
-        );
-
-        let undo_result = history::undo("pid-write-1").unwrap();
-        assert_eq!(
-            undo_result.restored_paths,
-            vec!["slides/001.svg".to_string()]
-        );
-        assert_eq!(
-            std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap(),
-            "<svg>ORIGINAL</svg>"
-        );
-
-        drop(fixture);
-    }
-
-    #[test]
-    fn write_presentation_file_rejects_a_path_not_listed_as_a_slide() {
-        let fixture = Fixture::new("write-unlisted", "pid-write-2");
-        write_project_json(&fixture.work, &["slides/001.svg"]);
-        std::fs::write(fixture.work.join("project.json"), r#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":["slides/001.svg"]}"#).unwrap();
-
-        let err = assert_slide_path_listed(&fixture.work, "project.json").unwrap_err();
-        assert_eq!(err.message(), "不是投影片：project.json");
-
-        drop(fixture);
-    }
-
-    #[test]
-    fn create_presentation_file_rejects_an_already_existing_path() {
-        let fixture = Fixture::new("create-exists", "pid-create-1");
-        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
-        std::fs::write(fixture.work.join("assets/photo.png"), b"existing").unwrap();
-
-        let err =
-            create_presentation_file("pid-create-1", "assets/photo.png", b"new bytes").unwrap_err();
-        assert_eq!(err.message(), "檔案已存在：assets/photo.png");
-
-        drop(fixture);
-    }
-
-    #[test]
-    fn create_presentation_file_then_undo_deletes_the_created_file() {
-        let fixture = Fixture::new("create-undo", "pid-create-2");
-        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
-
-        create_presentation_file("pid-create-2", "assets/new.png", b"\x89PNG\r\n\x1a\n").unwrap();
-        let created_path = fixture.work.join("assets/new.png");
-        assert_eq!(std::fs::read(&created_path).unwrap(), b"\x89PNG\r\n\x1a\n");
-
-        let undo_result = history::undo("pid-create-2").unwrap();
-        assert_eq!(
-            undo_result.restored_paths,
-            vec!["assets/new.png".to_string()]
-        );
-        assert!(!created_path.exists());
-
-        drop(fixture);
     }
 
     #[test]

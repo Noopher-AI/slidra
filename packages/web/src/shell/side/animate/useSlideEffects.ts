@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CanvasState } from "../../../canvas.js";
-import { parseEffects, type Effect } from "../../../effects.js";
+import { fetchSlideEffectPlan, invalidateSlideEffectPlans, type Effect } from "../../../effects.js";
 
 /** `target` id -> what the Object list needs to label its card that `parseEffects` itself does not carry: its `data-comot-name`, and — only when `target` is an actual group `<g>` with ≥2 `<g>` children (ADR-0012's own group-vs-leaf distinction) — how many members it has (D5's "Group N (n)" card). */
 export interface TargetInfo {
@@ -17,15 +17,17 @@ export interface SlideEffectsState {
 }
 
 /**
- * [E2.T7]: `AnimateObjectPanel`'s own data source. Deliberately independent
- * of `CanvasState`/`OverlayState` — `canvas.ts`'s minimal-touch scope for
- * this ticket (`hasAnimation`/`badges`/preview) does not extend to exposing
- * a general "current slide's parsed effect list" field, and the panel does
- * not need push-frequency updates the way overlay geometry does. It reads
- * the same `/api/files/<slidePath>` byte stream the player already reads,
- * through the same `parseEffects` (web's own DOMParser reader, delegating
- * validation to `@co-motion/core/effects` — D1), so "what the panel shows"
- * and "what will actually play" can never quietly disagree.
+ * [E2.T7]/[E4.T7]: `AnimateObjectPanel`'s own data source. Deliberately
+ * independent of `CanvasState`/`OverlayState` — `canvas.ts`'s minimal-touch
+ * scope (`hasAnimation`/`badges`/preview) does not extend to exposing a
+ * general "current slide's parsed effect list" field, and the panel does
+ * not need push-frequency updates the way overlay geometry does. Two
+ * independent fetches run in parallel (2.2: not worth a combined route
+ * for) — `fetchSlideEffectPlan` (the same cached `/api/effects/` route
+ * client the player uses, so "what the panel shows" and "what will
+ * actually play" can never quietly disagree) for the effect list, and a
+ * plain `/api/files/<slidePath>` markup fetch for `parseTargetInfo`'s
+ * id/name/group-size lookup, which the effects route does not carry.
  */
 export function useSlideEffects(state: CanvasState): SlideEffectsState {
   const slidePath = state.currentIndex >= 0 ? state.slides[state.currentIndex] : null;
@@ -41,33 +43,32 @@ export function useSlideEffects(state: CanvasState): SlideEffectsState {
     }
     let cancelled = false;
     setEffects(null);
-    void fetch(`/api/files/${slidePath}`)
+    // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse shows an
+    // empty list here too — same posture as OverlayState.hasAnimation/
+    // badges and the GUI behaviour table's "效果清單剖析失敗 -> 當成空清單，
+    // 不彈錯誤" row.
+    const effectsPromise = fetchSlideEffectPlan(slidePath)
+      .then((plan) => plan.effects)
+      .catch(() => []);
+    const targetInfoPromise = fetch(`/api/files/${slidePath}`)
       .then((response) => response.text())
-      .then((svg) => {
-        if (cancelled) return;
-        // [E2.T7]: a slide whose effect list fails to parse shows an empty
-        // list here too — same posture as OverlayState.hasAnimation/badges
-        // and the GUI behaviour table's "效果清單剖析失敗 -> 當成空清單，不
-        // 彈錯誤" row.
-        try {
-          setEffects(parseEffects(svg));
-        } catch {
-          setEffects([]);
-        }
-        setTargetInfo(parseTargetInfo(svg));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setEffects([]);
-        setTargetInfo(new Map());
-      });
+      .then(parseTargetInfo)
+      .catch(() => new Map<string, TargetInfo>());
+    void Promise.all([effectsPromise, targetInfoPromise]).then(([nextEffects, nextTargetInfo]) => {
+      if (cancelled) return;
+      setEffects(nextEffects);
+      setTargetInfo(nextTargetInfo);
+    });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshToken is a manual re-fetch trigger, not a value read inside the effect.
   }, [slidePath, refreshToken]);
 
-  const refresh = useCallback(() => setRefreshToken((token) => token + 1), []);
+  const refresh = useCallback(() => {
+    if (slidePath) invalidateSlideEffectPlans(slidePath);
+    setRefreshToken((token) => token + 1);
+  }, [slidePath]);
 
   return { effects, targetInfo, refresh };
 }

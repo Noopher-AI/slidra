@@ -3,11 +3,16 @@
  * plan out. All derivation logic lives here in the parent, where it is
  * unit-testable without a browser — the runtime that receives the plan is
  * deliberately dumb, it only applies what it is given (see
- * player-runtime.js). Reuses #26's parseEffects/deriveSteps rather than
- * re-parsing anything.
+ * player-runtime.js).
+ *
+ * [E4.T7]: `steps` is no longer derived here — `fetchSlideEffectPlan`
+ * fetches it (already grouped) from `GET /api/effects/<slidePath>`, the
+ * same computation `effect list` does for the CLI. `computePlayerPlan` is
+ * therefore async now; everything else in this module (hidden/media/embed
+ * derivation) is still a pure, synchronous function of `svgMarkup` alone.
  */
 import { EMBED_PROVIDERS, type EmbedProvider } from "@co-motion/core/embed";
-import { deriveSteps, parseEffects } from "./effects.js";
+import { fetchSlideEffectPlan } from "./effects.js";
 import type { Effect, Step } from "./effects.js";
 
 export interface MediaCue {
@@ -65,10 +70,9 @@ export interface PlayerPlan {
   preview?: { effectIndices: number[] | null };
 }
 
-/** Throws whatever parseEffects/deriveSteps throw — see effects.ts for the (Traditional Chinese) messages. */
-export function computePlayerPlan(svgMarkup: string): PlayerPlan {
-  const effects = parseEffects(svgMarkup);
-  const steps = deriveSteps(effects);
+/** Rejects with whatever `fetchSlideEffectPlan` rejects with — see effects.ts for the (Traditional Chinese) messages. */
+export async function computePlayerPlan(svgMarkup: string, slidePath: string): Promise<PlayerPlan> {
+  const { effects, steps } = await fetchSlideEffectPlan(slidePath);
   const hidden = enterTargets(effects);
   return {
     steps,
@@ -113,10 +117,10 @@ export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"
 
 /**
  * Builds `plan.media`, keyed by each `family="media"` effect's target. This
- * re-parses `svgMarkup` (parseEffects already parsed it once, but discards
- * its DOM) because the only new thing this ticket needs from the markup is
- * one attribute lookup per media target — not worth widening effects.ts's
- * return shape for.
+ * parses `svgMarkup` itself with a fresh `DOMParser` — `effects` came from
+ * the `/api/effects/` route (no DOM involved on this side at all) — because
+ * the only thing this needs from the markup is one attribute lookup per
+ * media target — not worth a dedicated route field for.
  */
 function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, MediaCue> {
   const mediaEffects = effects.filter((effect) => effect.family === "media" && effect.effect === "play");

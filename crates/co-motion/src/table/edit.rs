@@ -1354,6 +1354,47 @@ mod tests {
         assert_eq!(err.message(), "找不到儲存格 (5,5)");
     }
 
+    /// Regression for the `f64`/`usize` fix `set_table_cell_text`'s own doc
+    /// comment describes: `--row -1` must NOT truncate/saturate to row 0
+    /// (an `as usize` cast would do exactly that) — a negative row matches
+    /// no real cell (rows are always non-negative), so this must report
+    /// "找不到儲存格", never silently edit row 0.
+    #[test]
+    fn set_table_cell_text_negative_row_does_not_alias_row_zero() {
+        let svg = create_2x2(&slide_with_viewbox());
+        let err = set_table_cell_text(
+            &svg,
+            "slides/001.svg",
+            "t1",
+            -1.0,
+            0.0,
+            "x",
+            &fonts_with_default(),
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "找不到儲存格 (-1,0)");
+    }
+
+    /// Same regression, the fractional half: `--row 1.5` must NOT truncate
+    /// to row 1 (an `as usize` cast would do exactly that) — a fractional
+    /// row matches no real cell (rows are always integers), so this must
+    /// report "找不到儲存格", never silently edit row 1.
+    #[test]
+    fn set_table_cell_text_fractional_row_does_not_alias_row_one() {
+        let svg = create_2x2(&slide_with_viewbox());
+        let err = set_table_cell_text(
+            &svg,
+            "slides/001.svg",
+            "t1",
+            1.5,
+            0.0,
+            "x",
+            &fonts_with_default(),
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "找不到儲存格 (1.5,0)");
+    }
+
     #[test]
     fn merge_then_unmerge_round_trips_cell_count() {
         let svg = create_2x2(&slide_with_viewbox());

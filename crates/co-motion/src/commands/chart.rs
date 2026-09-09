@@ -37,7 +37,7 @@ fn result_of(
 fn read_slide(id: &str, slide_path: &str) -> Result<String, CoMotionError> {
     let work_dir = workspace::resolve_work_dir(id)?;
     virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
-    workspace::assert_slide_path_listed(&work_dir, slide_path)?;
+    workspace::write::assert_slide_path_listed(&work_dir, slide_path)?;
     virtual_fs::read_virtual_file(&work_dir, slide_path)
 }
 
@@ -63,7 +63,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
             let original = read_slide(&id, &slide_path)?;
             let element_id = crate::id::generate_element_id();
             let updated = edit::create_chart_element(&original, &slide_path, &element_id, &input)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -124,7 +124,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 &element_id,
                 edit::SetChartDataInput { categories, series },
             )?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -141,7 +141,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
         } => result_of((|| {
             let original = read_slide(&id, &slide_path)?;
             let updated = edit::set_chart_type(&original, &slide_path, &element_id, &chart_type)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -160,7 +160,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
             let original = read_slide(&id, &slide_path)?;
             let updated =
                 edit::set_chart_palette(&original, &slide_path, &element_id, &palette, &colors)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -177,7 +177,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
         } => result_of((|| {
             let original = read_slide(&id, &slide_path)?;
             let updated = edit::set_chart_axis(&original, &slide_path, &element_id, input)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -194,7 +194,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
         } => result_of((|| {
             let original = read_slide(&id, &slide_path)?;
             let updated = edit::set_chart_stack(&original, &slide_path, &element_id, stacked)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -211,7 +211,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
         } => result_of((|| {
             let original = read_slide(&id, &slide_path)?;
             let updated = edit::set_chart_legend(&original, &slide_path, &element_id, &legend)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),
@@ -230,7 +230,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
             let original = read_slide(&id, &slide_path)?;
             let updated =
                 edit::set_chart_option(&original, &slide_path, &element_id, &key, &value)?;
-            workspace::write_presentation_file(&id, &slide_path, &updated)?;
+            workspace::write::write_presentation_file(&id, &slide_path, &updated)?;
             Ok((
                 id.clone(),
                 slide_path.clone(),

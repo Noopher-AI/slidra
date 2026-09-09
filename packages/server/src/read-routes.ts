@@ -96,6 +96,71 @@ export async function handleFilesRoute(
 }
 
 /**
+ * The normalized "nothing here yet" shape `/api/effects/` returns for a
+ * declared slide that has never had a `<comot:effects>` written to it
+ * ([E4.T7] D3). Mirrors `effect list`'s own defaults
+ * (`packages/core/src/effects/index.ts`'s step derivation and
+ * `packages/core/src/slide/transition.ts`'s `DEFAULT_TRANSITION`) exactly,
+ * so a caller can treat "never edited" and "edited to be empty" the same
+ * way without special-casing either.
+ */
+export const EMPTY_EFFECT_PLAN = {
+  effects: [],
+  steps: [],
+  transition: {
+    enter: { effect: "none", duration: 0.6 },
+    exit: { effect: "none", duration: 0.5 },
+  },
+};
+
+/**
+ * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
+ * player and step-by-step export now fetch instead of computing themselves
+ * in the browser (`packages/web/src/player-plan.ts`'s former `deriveSteps`/
+ * `parseEffects`). Pure move onto the existing `effect list` command — no
+ * Rust binary is spawned here (that is F7's job; `startServe`'s e2e harness
+ * has no `CO_MOTION_BIN` set, so the in-process TS registry is the only
+ * thing that can answer this route today).
+ *
+ * Deliberately narrower than `effect list`'s own command-layer contract
+ * (D8): only a declared SLIDE is accepted here, not a template — the
+ * player only ever plays slides, so a template path is reported as 404
+ * ("not a slide") rather than silently returning a plan for it.
+ */
+export async function handleEffectsRoute(
+  registry: CommandRegistry,
+  presentationId: string,
+  virtualPath: string,
+  res: ServerResponse,
+): Promise<void> {
+  const project = await loadProject(registry, presentationId);
+  if (!project.slides.includes(virtualPath)) {
+    sendJson(res, 404, { error: `不是投影片：${virtualPath}` });
+    return;
+  }
+  const result = await registry.dispatch<{ effects: unknown; steps: unknown; transition: unknown }>("effect list", {
+    id: presentationId,
+    slidePath: virtualPath,
+  });
+  if (!result.ok) {
+    if (result.failureKind === "not-found") {
+      // A declared slide that has never had `<comot:effects>` written to
+      // it — the command reports "沒有效果清單" (not-found); the route
+      // normalizes that into a legal empty plan (D3) rather than
+      // forwarding a 404 for a path that IS a real slide.
+      sendJson(res, 200, EMPTY_EFFECT_PLAN);
+      return;
+    }
+    // A damaged effect list (`failureKind === "failed"`) is forwarded
+    // verbatim, unmodified, unprefixed — the command's own message is
+    // already a complete, printable explanation.
+    sendJson(res, 500, { error: result.message });
+    return;
+  }
+  sendJson(res, 200, result.data);
+}
+
+/**
  * `GET /api/raw/<virtual path>`. `virtualPath` is already percent-decoded
  * by the caller — decoding can throw on malformed percent-escapes, and
  * that failure mode is the caller's to report (a 400), not this route's.

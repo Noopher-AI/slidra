@@ -1,116 +1,114 @@
-//! Shared argv-parsing primitives for the `chart`/`table`/`asset` command
-//! families, ported from `packages/cli/src/argv.ts`'s private helpers
+//! Shared argv parsing helpers for the command handlers in `commands/`,
+//! ported from `packages/cli/src/argv.ts`'s small-function toolkit
 //! (`requirePositional`/`isFlagLike`/`requireFlag`/`optionalFlag`/
-//! `requireNumberFlag`/`optionalNumberFlag`/`hasFlag`/`collectRepeatedFlag`,
-//! lines 998-1152). Every command-family argv module (`argv::chart`,
-//! `argv::table`, `argv::asset`) is built on these instead of each
-//! reinventing flag scanning — matching the TS original's one-file-many-
-//! `case`-arms shape being backed by one shared set of helpers.
+//! `requireNumberFlag`/`hasFlag`). Every function at THIS module's root
+//! returns a plain `String` error message on failure — callers wrap it into
+//! a `CommandResult::failure` themselves (argv errors are reported the same
+//! way as any other command failure, `FailureKind::Failed`, never a
+//! separate exit path). This is [E4.T2]'s original single-file `argv.rs`,
+//! folded into this directory module (rather than kept as a sibling
+//! `argv.rs`, which Rust disallows alongside `argv/mod.rs`) so the
+//! `chart`/`table`/`asset` command families below can live at
+//! `argv::chart`/`argv::table`/`argv::asset`.
 //!
-//! Every function here takes the already-`--json`-stripped `rest` slice
-//! `main.rs`'s `dispatch_takeover` hands a takeover-table command (the same
-//! slice `commands::undo::run`/`commands::redo::run` already receive) — not
-//! a pre-split "positionals vs flags" structure, exactly mirroring how the
-//! TS `rest: string[]` is scanned by index and by `indexOf` in place.
+//! `chart`/`table`/`asset` need every one of these SAME primitives, but
+//! returning `CoMotionError` (not `String`), since their own `parse`
+//! functions build on `CoMotionResult` and propagate with `?` — NOOP-281/F5
+//! ported them independently as its own `case "chart":`/`case "table":`
+//! copy of `argv.ts`'s toolkit before this ticket's rebase discovered
+//! [E4.T2]'s copy already existed under this same module path. Rather than
+//! rewrite every already-merged `String`-returning call site above (11
+//! command families) OR every `CoMotionError`-propagating call site in
+//! `argv::chart`/`argv::table`/`argv::asset` (26 commands), both toolkits
+//! are kept side by side: this module's own root keeps [E4.T2]'s original
+//! `String` contract untouched, and `ct` below (private; visible to this
+//! module and its `chart`/`table`/`asset` children) holds NOOP-281/F5's
+//! `CoMotionError` contract. `collect_repeated_flag`/`parse_js_number` are
+//! NOOP-281/F5 additions with no `String`-returning equivalent above, so
+//! they stay at this module's root — `parse_js_number` in particular is
+//! called as `crate::argv::parse_js_number` from `chart`/`table`'s own
+//! model/edit/csv modules, not just from argv parsing.
 
 pub mod asset;
 pub mod chart;
 pub mod table;
 
-use crate::errors::CoMotionError;
-
-/// A flag-shaped token: starts with `--`. A value in a positional or
-/// flag-value slot that looks like this means the actual value was
-/// omitted — e.g. `chart create <id> <path> --palette --grid` must not
-/// silently take `--grid` as `--palette`'s value.
+/// A flag-shaped value (`--foo`) in a positional slot means the positional
+/// argument itself was omitted.
 pub fn is_flag_like(value: &str) -> bool {
     value.starts_with("--")
 }
 
-/// The positional argument at `index`, or a "缺少參數" error naming
-/// `arg_name`. A flag-shaped value in this slot is treated the same as a
-/// missing one (see `is_flag_like`'s doc).
+/// The positional argument at `index`, or an error naming `command`/`arg_name`
+/// when it is missing or flag-shaped.
 pub fn require_positional(
     args: &[String],
     index: usize,
     command: &str,
     arg_name: &str,
-) -> Result<String, CoMotionError> {
+) -> Result<String, String> {
     match args.get(index) {
-        Some(value) if !is_flag_like(value) => Ok(value.clone()),
-        _ => Err(CoMotionError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
-        ))),
+        Some(value) if !value.is_empty() && !is_flag_like(value) => Ok(value.clone()),
+        _ => Err(format!("命令 {command} 缺少參數：{arg_name}")),
     }
 }
 
-/// The value immediately following `flag` in `args`. Errors if `flag` is
-/// absent, or present with no value (or a flag-shaped "value").
-pub fn require_flag(args: &[String], flag: &str, command: &str) -> Result<String, CoMotionError> {
-    let index = args
-        .iter()
-        .position(|arg| arg == flag)
-        .ok_or_else(|| CoMotionError::invalid(format!("命令 {command} 缺少參數：{flag}")))?;
+/// The value following `flag` in `args`, or an error when the flag is
+/// absent or has no legal value.
+pub fn require_flag(args: &[String], flag: &str, command: &str) -> Result<String, String> {
+    let Some(index) = args.iter().position(|a| a == flag) else {
+        return Err(format!("命令 {command} 缺少參數：{flag}"));
+    };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(value.clone()),
-        _ => Err(CoMotionError::invalid(format!("{flag} 缺少值"))),
+        _ => Err(format!("{flag} 缺少值")),
     }
 }
 
-/// Same as `require_flag`, but `Ok(None)` when `flag` is simply absent
-/// (still an error if `flag` is present with no value).
-pub fn optional_flag(args: &[String], flag: &str) -> Result<Option<String>, CoMotionError> {
-    let Some(index) = args.iter().position(|arg| arg == flag) else {
+/// Same as `require_flag`, but returns `Ok(None)` when the flag is simply
+/// absent.
+pub fn optional_flag(args: &[String], flag: &str) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|a| a == flag) else {
         return Ok(None);
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(Some(value.clone())),
-        _ => Err(CoMotionError::invalid(format!("{flag} 缺少值"))),
+        _ => Err(format!("{flag} 缺少值")),
     }
 }
 
-/// `require_flag` followed by a `Number(raw)` + `Number.isFinite` check —
-/// see `parse_js_number`'s doc for the coercion this reproduces.
-pub fn require_number_flag(
-    args: &[String],
-    flag: &str,
-    command: &str,
-) -> Result<f64, CoMotionError> {
+pub fn require_number_flag(args: &[String], flag: &str, command: &str) -> Result<f64, String> {
     let raw = require_flag(args, flag, command)?;
-    parse_js_number(&raw)
-        .filter(|value| value.is_finite())
-        .ok_or_else(|| CoMotionError::invalid(format!("{flag} 不是合法數字：{raw}")))
+    raw.parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
+        .ok_or_else(|| format!("{flag} 不是合法數字：{raw}"))
 }
 
-/// `optional_flag` followed by the same `Number`/`isFinite` check as
-/// `require_number_flag`; `Ok(None)` when `flag` is absent.
-pub fn optional_number_flag(
-    args: &[String],
-    flag: &str,
-    // Unused, kept to mirror `optionalNumberFlag(args, flag, command)`'s TS
-    // signature 1:1 (that parameter is likewise unused in the TS body) so
-    // every argv helper here has the same call shape as `require_number_flag`.
-    _command: &str,
-) -> Result<Option<f64>, CoMotionError> {
+pub fn optional_number_flag(args: &[String], flag: &str) -> Result<Option<f64>, String> {
     let Some(raw) = optional_flag(args, flag)? else {
         return Ok(None);
     };
-    let value = parse_js_number(&raw)
-        .filter(|value| value.is_finite())
-        .ok_or_else(|| CoMotionError::invalid(format!("{flag} 不是合法數字：{raw}")))?;
-    Ok(Some(value))
+    raw.parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite())
+        .map(Some)
+        .ok_or_else(|| format!("{flag} 不是合法數字：{raw}"))
 }
 
-/// A bare boolean flag with no value. Presence anywhere in `args` is
-/// enough — order relative to other flags does not matter.
+/// A bare boolean flag with no value (`--force`, `--all`). Presence
+/// anywhere in `args` is enough.
 pub fn has_flag(args: &[String], flag: &str) -> bool {
-    args.iter().any(|arg| arg == flag)
+    args.iter().any(|a| a == flag)
 }
 
 /// Every value following a (possibly repeated) `flag` in `args` —
 /// `chart data set --series`/`chart palette set --color`/
 /// `chart axis set --right`.
-pub fn collect_repeated_flag(args: &[String], flag: &str) -> Result<Vec<String>, CoMotionError> {
+pub fn collect_repeated_flag(
+    args: &[String],
+    flag: &str,
+) -> Result<Vec<String>, crate::errors::CoMotionError> {
     let mut values = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -120,7 +118,11 @@ pub fn collect_repeated_flag(args: &[String], flag: &str) -> Result<Vec<String>,
                     values.push(value.clone());
                     i += 1;
                 }
-                _ => return Err(CoMotionError::invalid(format!("{flag} 缺少值"))),
+                _ => {
+                    return Err(crate::errors::CoMotionError::invalid(format!(
+                        "{flag} 缺少值"
+                    )));
+                }
             }
         }
         i += 1;
@@ -174,45 +176,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn require_positional_rejects_flag_shaped_value() {
+    fn require_positional_rejects_missing_and_flag_shaped() {
         let args = vec!["--foo".to_string()];
-        let err = require_positional(&args, 0, "cmd", "path").unwrap_err();
-        assert_eq!(err.message(), "命令 cmd 缺少參數：path");
+        assert!(require_positional(&args, 0, "cmd", "path").is_err());
+        assert_eq!(
+            require_positional(&args, 1, "cmd", "path").unwrap_err(),
+            "命令 cmd 缺少參數：path"
+        );
     }
 
     #[test]
-    fn require_flag_returns_the_following_value() {
-        let args = vec!["--type".to_string(), "bar".to_string()];
-        assert_eq!(require_flag(&args, "--type", "cmd").unwrap(), "bar");
+    fn require_positional_accepts_a_plain_value() {
+        let args = vec!["hello".to_string()];
+        assert_eq!(
+            require_positional(&args, 0, "cmd", "path").unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn require_flag_finds_value_after_flag() {
+        let args = vec!["--width".to_string(), "100".to_string()];
+        assert_eq!(require_flag(&args, "--width", "cmd").unwrap(), "100");
     }
 
     #[test]
     fn require_flag_missing_value_errors() {
-        let args = vec!["--type".to_string()];
-        let err = require_flag(&args, "--type", "cmd").unwrap_err();
-        assert_eq!(err.message(), "--type 缺少值");
+        let args = vec!["--width".to_string()];
+        assert_eq!(
+            require_flag(&args, "--width", "cmd").unwrap_err(),
+            "--width 缺少值"
+        );
     }
 
     #[test]
     fn optional_flag_absent_is_none() {
         let args: Vec<String> = vec![];
-        assert_eq!(optional_flag(&args, "--type").unwrap(), None);
+        assert_eq!(optional_flag(&args, "--x").unwrap(), None);
     }
 
     #[test]
-    fn collect_repeated_flag_collects_every_occurrence_in_order() {
-        let args = vec![
-            "--series".to_string(),
-            "a=1,2".to_string(),
-            "--x".to_string(),
-            "1".to_string(),
-            "--series".to_string(),
-            "b=3,4".to_string(),
-        ];
+    fn require_number_flag_rejects_non_numeric() {
+        let args = vec!["--width".to_string(), "abc".to_string()];
         assert_eq!(
-            collect_repeated_flag(&args, "--series").unwrap(),
-            vec!["a=1,2".to_string(), "b=3,4".to_string()]
+            require_number_flag(&args, "--width", "cmd").unwrap_err(),
+            "--width 不是合法數字：abc"
         );
+    }
+
+    #[test]
+    fn has_flag_detects_presence_anywhere() {
+        let args = vec!["a".to_string(), "--force".to_string(), "b".to_string()];
+        assert!(has_flag(&args, "--force"));
+        assert!(!has_flag(&args, "--other"));
     }
 
     #[test]
@@ -233,9 +249,165 @@ mod tests {
     }
 
     #[test]
-    fn require_number_flag_rejects_non_finite_result() {
-        let args = vec!["--w".to_string(), "not-a-number".to_string()];
-        let err = require_number_flag(&args, "--w", "cmd").unwrap_err();
-        assert_eq!(err.message(), "--w 不是合法數字：not-a-number");
+    fn collect_repeated_flag_collects_every_occurrence_in_order() {
+        let args = vec![
+            "--series".to_string(),
+            "a=1,2".to_string(),
+            "--x".to_string(),
+            "1".to_string(),
+            "--series".to_string(),
+            "b=3,4".to_string(),
+        ];
+        assert_eq!(
+            collect_repeated_flag(&args, "--series").unwrap(),
+            vec!["a=1,2".to_string(), "b=3,4".to_string()]
+        );
+    }
+}
+
+/// NOOP-281/F5's own copy of this module's toolkit, returning
+/// `CoMotionError` instead of `String` — see this module's own doc comment
+/// for why it lives here rather than replacing the root copy above.
+/// `pub(super)` (visible throughout `argv` and its `chart`/`table`/`asset`
+/// children, never outside `argv`) rather than `pub` — nothing outside this
+/// module's own command families should reach for a second, differently-
+/// erroring copy of `require_positional` when the root one above is
+/// already `pub`.
+mod ct {
+    use crate::errors::CoMotionError;
+
+    /// A flag-shaped token: starts with `--`. A value in a positional or
+    /// flag-value slot that looks like this means the actual value was
+    /// omitted — e.g. `chart create <id> <path> --palette --grid` must not
+    /// silently take `--grid` as `--palette`'s value.
+    pub(super) fn is_flag_like(value: &str) -> bool {
+        value.starts_with("--")
+    }
+
+    /// The positional argument at `index`, or a "缺少參數" error naming
+    /// `arg_name`. A flag-shaped value in this slot is treated the same as
+    /// a missing one (see `is_flag_like`'s doc).
+    pub(super) fn require_positional(
+        args: &[String],
+        index: usize,
+        command: &str,
+        arg_name: &str,
+    ) -> Result<String, CoMotionError> {
+        match args.get(index) {
+            Some(value) if !is_flag_like(value) => Ok(value.clone()),
+            _ => Err(CoMotionError::invalid(format!(
+                "命令 {command} 缺少參數：{arg_name}"
+            ))),
+        }
+    }
+
+    /// The value immediately following `flag` in `args`. Errors if `flag`
+    /// is absent, or present with no value (or a flag-shaped "value").
+    pub(super) fn require_flag(
+        args: &[String],
+        flag: &str,
+        command: &str,
+    ) -> Result<String, CoMotionError> {
+        let index = args
+            .iter()
+            .position(|arg| arg == flag)
+            .ok_or_else(|| CoMotionError::invalid(format!("命令 {command} 缺少參數：{flag}")))?;
+        match args.get(index + 1) {
+            Some(value) if !is_flag_like(value) => Ok(value.clone()),
+            _ => Err(CoMotionError::invalid(format!("{flag} 缺少值"))),
+        }
+    }
+
+    /// Same as `require_flag`, but `Ok(None)` when `flag` is simply absent
+    /// (still an error if `flag` is present with no value).
+    pub(super) fn optional_flag(
+        args: &[String],
+        flag: &str,
+    ) -> Result<Option<String>, CoMotionError> {
+        let Some(index) = args.iter().position(|arg| arg == flag) else {
+            return Ok(None);
+        };
+        match args.get(index + 1) {
+            Some(value) if !is_flag_like(value) => Ok(Some(value.clone())),
+            _ => Err(CoMotionError::invalid(format!("{flag} 缺少值"))),
+        }
+    }
+
+    /// `require_flag` followed by a `Number(raw)` + `Number.isFinite` check
+    /// — see `super::parse_js_number`'s doc for the coercion this
+    /// reproduces.
+    pub(super) fn require_number_flag(
+        args: &[String],
+        flag: &str,
+        command: &str,
+    ) -> Result<f64, CoMotionError> {
+        let raw = require_flag(args, flag, command)?;
+        super::parse_js_number(&raw)
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| CoMotionError::invalid(format!("{flag} 不是合法數字：{raw}")))
+    }
+
+    /// `optional_flag` followed by the same `Number`/`isFinite` check as
+    /// `require_number_flag`; `Ok(None)` when `flag` is absent.
+    pub(super) fn optional_number_flag(
+        args: &[String],
+        flag: &str,
+        // Unused, kept to mirror `optionalNumberFlag(args, flag, command)`'s
+        // TS signature 1:1 (that parameter is likewise unused in the TS
+        // body) so every argv helper here has the same call shape as
+        // `require_number_flag`.
+        _command: &str,
+    ) -> Result<Option<f64>, CoMotionError> {
+        let Some(raw) = optional_flag(args, flag)? else {
+            return Ok(None);
+        };
+        let value = super::parse_js_number(&raw)
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| CoMotionError::invalid(format!("{flag} 不是合法數字：{raw}")))?;
+        Ok(Some(value))
+    }
+
+    /// A bare boolean flag with no value. Presence anywhere in `args` is
+    /// enough — order relative to other flags does not matter.
+    pub(super) fn has_flag(args: &[String], flag: &str) -> bool {
+        args.iter().any(|arg| arg == flag)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn require_positional_rejects_flag_shaped_value() {
+            let args = vec!["--foo".to_string()];
+            let err = require_positional(&args, 0, "cmd", "path").unwrap_err();
+            assert_eq!(err.message(), "命令 cmd 缺少參數：path");
+        }
+
+        #[test]
+        fn require_flag_returns_the_following_value() {
+            let args = vec!["--type".to_string(), "bar".to_string()];
+            assert_eq!(require_flag(&args, "--type", "cmd").unwrap(), "bar");
+        }
+
+        #[test]
+        fn require_flag_missing_value_errors() {
+            let args = vec!["--type".to_string()];
+            let err = require_flag(&args, "--type", "cmd").unwrap_err();
+            assert_eq!(err.message(), "--type 缺少值");
+        }
+
+        #[test]
+        fn optional_flag_absent_is_none() {
+            let args: Vec<String> = vec![];
+            assert_eq!(optional_flag(&args, "--type").unwrap(), None);
+        }
+
+        #[test]
+        fn require_number_flag_rejects_non_finite_result() {
+            let args = vec!["--w".to_string(), "not-a-number".to_string()];
+            let err = require_number_flag(&args, "--w", "cmd").unwrap_err();
+            assert_eq!(err.message(), "--w 不是合法數字：not-a-number");
+        }
     }
 }

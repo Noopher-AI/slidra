@@ -55,7 +55,7 @@ import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
 import type { EmbedProvider } from "@co-motion/core/embed";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
-import { parseEffects } from "./effects.js";
+import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
 import type { Effect } from "./effects.js";
 import {
   decomposeMatrix,
@@ -3450,6 +3450,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
+    // [E4.T7]: an external change (an agent's command, another tab, `co-motion
+    // effect *` from the CLI) may have touched any slide's effect list —
+    // reload() has no way to know which, so invalidate every cached plan
+    // rather than one. render()/renderPlay() below re-fetch as needed.
+    invalidateSlideEffectPlans();
+
     // An edit in progress when an external change lands is committed, not
     // discarded — reload() also fires on this exact edit's own successful
     // `text set` landing back over /api/events, and any OTHER external
@@ -3559,15 +3565,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideModel = null;
     }
 
-    // [E2.T7]: a slide whose effect list fails to parse is treated as
-    // having no animations at all in view mode (GUI table — the player's
-    // own parse error is a play-mode-only concern), never thrown up
-    // through render().
+    // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse is treated
+    // as having no animations at all in view mode (GUI table — the
+    // player's own parse error is a play-mode-only concern), never thrown
+    // up through render().
     try {
-      currentSlideEffects = parseEffects(svgMarkup);
+      currentSlideEffects = (await fetchSlideEffectPlan(slidePath)).effects;
     } catch {
       currentSlideEffects = [];
     }
+    if (destroyed || thisGeneration !== generation) return;
 
     // [E2.T17]: the embed table is the parent's, not the iframe's — the
     // runtime is only told which ids to measure. Boxes are cleared here
@@ -3711,7 +3718,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     let planScript: string;
     let hideStyle: string;
     try {
-      const plan = computePlayerPlan(svgMarkup);
+      const plan = await computePlayerPlan(svgMarkup, slidePath);
+      if (destroyed || captured !== generation) return;
       const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
@@ -3733,6 +3741,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         notify();
       }
     } catch (planError) {
+      // A stale generation's own rejection (e.g. a superseded navigation's
+      // /api/effects/ fetch resolving after a newer renderPlay() already
+      // took over) must not clobber state a newer, still-live call owns.
+      if (destroyed || captured !== generation) return;
       // Surfaced, never silently swallowed (design doc). Play the static
       // slide with no runtime rather than leaving the frame blank — the
       // author still sees the slide, plus the reason nothing animates.

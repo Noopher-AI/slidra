@@ -108,9 +108,15 @@ function rawAttributesOf(node: ScannedNode): RawEffectAttributes {
  * requires the list to already exist (4.3): there being nothing to list,
  * remove, move, or set is reported as `CoMotionNotFoundError`, not a quiet
  * empty result.
+ *
+ * Deliberately does NOT call `assertSlideCompliant` ([E4.T7] D1): several
+ * e2e fixture decks (`play-deck`/`export-deck`/`media-deck`) are
+ * structurally non-compliant (bare-primitive slides) yet still have valid
+ * effect lists the player and step-by-step export must be able to read.
+ * `addEffects`/`removeEffects`/`moveEffect`/`setEffect` below still assert
+ * compliance — only this read path skips it.
  */
 export function readEffectList(svgContent: string, slidePath: string): Effect[] {
-  assertSlideCompliant(svgContent, slidePath);
   const roots = scanDocument(svgContent);
   const svgRoot = requireSvgRoot(roots);
   const list = requireEffectsList(svgRoot);

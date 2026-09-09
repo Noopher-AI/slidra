@@ -11,6 +11,7 @@
 //! (network/`packages/core` build tooling aren't guaranteed available
 //! wherever `cargo test` runs).
 
+use co_motion::container::{pack_directory, unpack_container};
 use co_motion::geometry::bbox::{
     ElementBoundsOptions, TextBoundsContext, element_bounds, format_bbox, path_bounds,
     primitive_bounds,
@@ -25,10 +26,12 @@ use co_motion::text::font::{DEFAULT_FONT_BYTES, FontMetrics, parse_font};
 use co_motion::text::metrics::measure_text_width;
 use co_motion::text::render::render_text_box_content;
 use co_motion::text::wrap::{Align, WrapOptions, wrap_text};
+use co_motion::workspace::migrate::migrate_to_v4;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn golden_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -643,6 +646,312 @@ fn text_wrap_extra_cases_match_ts_reference() {
         failures.join("\n")
     );
 }
+
+
+// ---------------------------------------------------------------------------
+// [E4.T4] A2: every repo `project.json` fixture, packed and opened through
+// Rust, ends up at `formatVersion` 4, and `pack` -> `open` round-trips the
+// resulting content exactly (plan §5 A2). Not a TS-golden comparison — a
+// self-contained Rust integration test over the crate's own `container`/
+// `workspace::migrate` public API, hence living here (boundary 2) rather
+// than in `cli_golden.rs` (a CLI process boundary these functions are
+// underneath).
+// ---------------------------------------------------------------------------
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("repo root must exist")
+}
+
+/// Every directory under `demo/`, `e2e/fixtures/*/`, `fixtures/skills/*/`
+/// that has its own `project.json` — 27 as of this ticket (§5 A2's own
+/// count, re-derived here rather than hard-coded so a fixture added later
+/// is picked up automatically).
+fn fixture_directories() -> Vec<PathBuf> {
+    let root = repo_root();
+    let mut dirs = Vec::new();
+    for top in ["demo", "e2e/fixtures", "fixtures/skills"] {
+        let top_path = root.join(top);
+        if top_path.join("project.json").is_file() {
+            dirs.push(top_path.clone());
+        }
+        let Ok(entries) = fs::read_dir(&top_path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && path.join("project.json").is_file() {
+                dirs.push(path);
+            }
+        }
+    }
+    dirs
+}
+
+/// Recursively collects every file under `dir` into a `relative path (POSIX
+/// separators) -> bytes` map — the "equivalence" this test and A2 both use:
+/// the zip container's own bytes are never compared (compression level is
+/// not part of the format), only the fully-unpacked content mapping.
+fn collect_tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn walk(root: &Path, current: &Path, into: &mut BTreeMap<String, Vec<u8>>) {
+        for entry in fs::read_dir(current).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, into);
+            } else if path.is_file() {
+                let relative = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                into.insert(relative, fs::read(&path).unwrap());
+            }
+        }
+    }
+    let mut map = BTreeMap::new();
+    walk(dir, dir, &mut map);
+    map
+}
+
+fn temp_dir(label: &str) -> PathBuf {
+    let dir = env::temp_dir().join(format!(
+        "co-motion-unit-golden-{label}-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn every_repo_fixture_migrates_to_formatversion_4_and_pack_open_round_trips() {
+    let dirs = fixture_directories();
+    assert_eq!(
+        dirs.len(),
+        27,
+        "expected exactly 27 project.json fixtures under demo/e2e/fixtures/fixtures/skills, found {}",
+        dirs.len()
+    );
+
+    let scratch = temp_dir("fixture-roundtrip");
+    let mut failures = Vec::new();
+
+    for (i, source_dir) in dirs.iter().enumerate() {
+        let first_comot = scratch.join(format!("{i}-first.comot"));
+        let first_work = scratch.join(format!("{i}-first-work"));
+        if let Err(err) = pack_directory(source_dir, &first_comot) {
+            failures.push(format!(
+                "{}: pack failed: {}",
+                source_dir.display(),
+                err.message()
+            ));
+            continue;
+        }
+        if let Err(err) = unpack_container(&first_comot, &first_work) {
+            failures.push(format!(
+                "{}: unpack failed: {}",
+                source_dir.display(),
+                err.message()
+            ));
+            continue;
+        }
+        if let Err(err) = migrate_to_v4(&first_work) {
+            failures.push(format!(
+                "{}: migrate failed: {}",
+                source_dir.display(),
+                err.message()
+            ));
+            continue;
+        }
+
+        let project: serde_json::Value = match fs::read_to_string(first_work.join("project.json")) {
+            Ok(text) => serde_json::from_str(&text).unwrap(),
+            Err(err) => {
+                failures.push(format!(
+                    "{}: could not read migrated project.json: {err}",
+                    source_dir.display()
+                ));
+                continue;
+            }
+        };
+        if project["formatVersion"] != serde_json::json!(4) {
+            failures.push(format!(
+                "{}: formatVersion is {:?}, not 4",
+                source_dir.display(),
+                project["formatVersion"]
+            ));
+        }
+        if !project.get("fonts").is_some_and(|v| v.is_array()) {
+            failures.push(format!(
+                "{}: fonts key missing or not an array after migration",
+                source_dir.display()
+            ));
+        }
+        if project.get("transition").is_some() {
+            failures.push(format!(
+                "{}: transition key still present after migration",
+                source_dir.display()
+            ));
+        }
+        if let Some(templates) = project.get("templates").and_then(|v| v.as_array()) {
+            if !templates.iter().all(|t| t.is_object()) {
+                failures.push(format!(
+                    "{}: templates contains a non-object entry after migration",
+                    source_dir.display()
+                ));
+            }
+        }
+
+        // pack -> open round-trip: second pack/unpack of the ALREADY-v4
+        // work dir must produce byte-identical content to the first.
+        let second_comot = scratch.join(format!("{i}-second.comot"));
+        let second_work = scratch.join(format!("{i}-second-work"));
+        if let Err(err) = pack_directory(&first_work, &second_comot) {
+            failures.push(format!(
+                "{}: second pack failed: {}",
+                source_dir.display(),
+                err.message()
+            ));
+            continue;
+        }
+        if let Err(err) = unpack_container(&second_comot, &second_work) {
+            failures.push(format!(
+                "{}: second unpack failed: {}",
+                source_dir.display(),
+                err.message()
+            ));
+            continue;
+        }
+        // The second unpack is already formatVersion 4 — migrate_to_v4 must
+        // be a byte-identical no-op (§4.2's own contract).
+        let before_second_migrate = fs::read_to_string(second_work.join("project.json")).unwrap();
+        migrate_to_v4(&second_work).unwrap();
+        let after_second_migrate = fs::read_to_string(second_work.join("project.json")).unwrap();
+        if before_second_migrate != after_second_migrate {
+            failures.push(format!(
+                "{}: migrate_to_v4 on an already-v4 work dir was not a byte-identical no-op",
+                source_dir.display()
+            ));
+        }
+
+        let first_tree = collect_tree(&first_work);
+        let second_tree = collect_tree(&second_work);
+        if first_tree != second_tree {
+            let only_in_first: Vec<&String> = first_tree
+                .keys()
+                .filter(|k| !second_tree.contains_key(*k))
+                .collect();
+            let only_in_second: Vec<&String> = second_tree
+                .keys()
+                .filter(|k| !first_tree.contains_key(*k))
+                .collect();
+            failures.push(format!(
+                "{}: pack->open round-trip diverged (only_in_first={only_in_first:?}, only_in_second={only_in_second:?})",
+                source_dir.display()
+            ));
+        }
+    }
+
+    fs::remove_dir_all(&scratch).ok();
+    assert!(
+        failures.is_empty(),
+        "A2 fixture migration/round-trip failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// A synthesized fixture (no repo fixture carries `transition`, per
+/// comot-format.md's own note): `transition: "fade"` with two slides, one
+/// already carrying `<comot:transition>`. The one without gets
+/// `enter="fade" enter-duration="0.4" exit="none" exit-duration="0.5"`; the
+/// one that already has one is left byte-for-byte untouched; the
+/// `project.json`'s `transition` key disappears either way.
+#[test]
+fn synthesized_legacy_fade_transition_migrates_only_the_slide_without_one() {
+    let work = temp_dir("synthesized-fade");
+    fs::create_dir_all(work.join("slides")).unwrap();
+    let untouched_slide = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:transition xmlns:comot=\"https://co-motion.dev/ns\" enter=\"zoom\" enter-duration=\"1\" exit=\"none\" exit-duration=\"0.5\"/></metadata></svg>\n";
+    fs::write(
+        work.join("slides/001.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n",
+    )
+    .unwrap();
+    fs::write(work.join("slides/002.svg"), untouched_slide).unwrap();
+    fs::write(
+        work.join("project.json"),
+        r#"{"formatVersion":2,"name":"Legacy Fade","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"],"transition":"fade"}"#,
+    )
+    .unwrap();
+
+    migrate_to_v4(&work).unwrap();
+
+    let migrated_slide_1 = fs::read_to_string(work.join("slides/001.svg")).unwrap();
+    assert!(
+        migrated_slide_1
+            .contains("enter=\"fade\" enter-duration=\"0.4\" exit=\"none\" exit-duration=\"0.5\"")
+    );
+    let slide_2_after = fs::read_to_string(work.join("slides/002.svg")).unwrap();
+    assert_eq!(
+        slide_2_after, untouched_slide,
+        "a slide that already had transition metadata must be byte-identical after migration"
+    );
+
+    let project: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(work.join("project.json")).unwrap()).unwrap();
+    assert_eq!(project["formatVersion"], 4);
+    assert!(project.get("transition").is_none());
+
+    fs::remove_dir_all(&work).ok();
+}
+
+/// The frozen `project.json` write format (plan §4.2's "凍結格式"):
+/// `serde_json`'s 2-space pretty printer, exactly one trailing newline,
+/// existing keys keep their original position when their value changes,
+/// and a newly-added key (`fonts`) lands at the end.
+#[test]
+fn migrated_project_json_uses_the_frozen_write_format() {
+    let work = temp_dir("frozen-format");
+    fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"mystery":true}"#).unwrap();
+
+    migrate_to_v4(&work).unwrap();
+
+    let text = fs::read_to_string(work.join("project.json")).unwrap();
+    assert!(
+        text.ends_with("}\n"),
+        "must end in exactly one trailing newline"
+    );
+    assert!(
+        !text.ends_with("}\n\n"),
+        "must not have a double trailing newline"
+    );
+    assert!(
+        text.contains("{\n  \"formatVersion\": 4,\n  \"name\": \"X\","),
+        "must use 2-space indentation with formatVersion in its original first position"
+    );
+    let keys: Vec<&str> = text
+        .lines()
+        .filter_map(|line| line.trim_start().split(':').next())
+        .filter(|k| k.starts_with('"'))
+        .collect();
+    assert_eq!(
+        keys,
+        vec![
+            "\"formatVersion\"",
+            "\"name\"",
+            "\"canvas\"",
+            "\"width\"",
+            "\"height\"",
+            "\"slides\"",
+            "\"mystery\"",
+            "\"fonts\""
+        ]
+    );
+
+    fs::remove_dir_all(&work).ok();
+}
+
 
 #[derive(Deserialize)]
 struct MediaFormatExpected {

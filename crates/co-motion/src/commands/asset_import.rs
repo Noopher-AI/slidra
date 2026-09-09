@@ -27,7 +27,8 @@ use crate::asset_import::{
 };
 use crate::errors::CoMotionError;
 use crate::result::{CommandResult, FailureKind};
-use crate::workspace::{create_presentation_file, list_presentation_entries};
+use crate::workspace::list_presentation_entries;
+use crate::workspace::write::create_presentation_file;
 
 struct AssetImportOutput {
     /// Virtual path of the imported file, e.g. "assets/photo-1.png" or

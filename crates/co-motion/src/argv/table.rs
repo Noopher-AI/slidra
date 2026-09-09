@@ -8,8 +8,9 @@ use crate::errors::{CoMotionError, CoMotionResult};
 use crate::table::clipboard::{CellAnchor, CellRange, parse_cell_anchor, parse_cell_range};
 use crate::table::edit::{CreateTableInput, MergeTableCellsInput, SetCellStyleInput};
 
-use super::{
-    has_flag, is_flag_like, optional_flag, optional_number_flag, require_flag, require_positional,
+use super::ct::{
+    has_flag, is_flag_like, optional_flag, optional_number_flag, require_flag, require_number_flag,
+    require_positional,
 };
 
 #[derive(Debug)]
@@ -131,10 +132,10 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let args = &rest[1..];
         let id = require_positional(args, 0, "table create", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table create", "slide-path")?;
-        let rows = super::require_number_flag(args, "--rows", "table create")?;
-        let cols = super::require_number_flag(args, "--cols", "table create")?;
-        let x = super::require_number_flag(args, "--x", "table create")?;
-        let y = super::require_number_flag(args, "--y", "table create")?;
+        let rows = require_number_flag(args, "--rows", "table create")?;
+        let cols = require_number_flag(args, "--cols", "table create")?;
+        let x = require_number_flag(args, "--x", "table create")?;
+        let y = require_number_flag(args, "--y", "table create")?;
         let col_width = optional_number_flag(args, "--col-width", "table create")?;
         let theme = optional_flag(args, "--theme")?;
         let header_raw = optional_flag(args, "--header")?;
@@ -220,8 +221,8 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table merge", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table merge", "slide-path")?;
         let element_id = require_positional(args, 2, "table merge", "element-id")?;
-        let row = super::require_number_flag(args, "--row", "table merge")?;
-        let col = super::require_number_flag(args, "--col", "table merge")?;
+        let row = require_number_flag(args, "--row", "table merge")?;
+        let col = require_number_flag(args, "--col", "table merge")?;
         let unmerge = has_flag(args, "--unmerge");
         let row_span = optional_number_flag(args, "--row-span", "table merge")?;
         let col_span = optional_number_flag(args, "--col-span", "table merge")?;
@@ -295,8 +296,8 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table cell set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell set", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell set", "element-id")?;
-        let row = super::require_number_flag(args, "--row", "table cell set")?;
-        let col = super::require_number_flag(args, "--col", "table cell set")?;
+        let row = require_number_flag(args, "--row", "table cell set")?;
+        let col = require_number_flag(args, "--col", "table cell set")?;
         let text = require_flag(args, "--text", "table cell set")?;
         return Ok(TableCommand::CellSet {
             id,
@@ -313,8 +314,8 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table cell style set", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table cell style set", "slide-path")?;
         let element_id = require_positional(args, 2, "table cell style set", "element-id")?;
-        let row = super::require_number_flag(args, "--row", "table cell style set")?;
-        let col = super::require_number_flag(args, "--col", "table cell style set")?;
+        let row = require_number_flag(args, "--row", "table cell style set")?;
+        let col = require_number_flag(args, "--col", "table cell style set")?;
         let row_end = optional_number_flag(args, "--row-end", "table cell style set")?;
         let col_end = optional_number_flag(args, "--col-end", "table cell style set")?;
         let value = args.last();
@@ -357,8 +358,8 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table col width", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col width", "slide-path")?;
         let element_id = require_positional(args, 2, "table col width", "element-id")?;
-        let col = super::require_number_flag(args, "--col", "table col width")?;
-        let width = super::require_number_flag(args, "--width", "table col width")?;
+        let col = require_number_flag(args, "--col", "table col width")?;
+        let width = require_number_flag(args, "--width", "table col width")?;
         let keep_total = has_flag(args, "--keep-total");
         return Ok(TableCommand::ColWidth {
             id,
@@ -375,7 +376,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table col insert", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col insert", "slide-path")?;
         let element_id = require_positional(args, 2, "table col insert", "element-id")?;
-        let at = super::require_number_flag(args, "--at", "table col insert")?;
+        let at = require_number_flag(args, "--at", "table col insert")?;
         return Ok(TableCommand::ColInsert {
             id,
             slide_path,
@@ -389,7 +390,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table col delete", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table col delete", "slide-path")?;
         let element_id = require_positional(args, 2, "table col delete", "element-id")?;
-        let at = super::require_number_flag(args, "--at", "table col delete")?;
+        let at = require_number_flag(args, "--at", "table col delete")?;
         return Ok(TableCommand::ColDelete {
             id,
             slide_path,
@@ -403,7 +404,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table row insert", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table row insert", "slide-path")?;
         let element_id = require_positional(args, 2, "table row insert", "element-id")?;
-        let at = super::require_number_flag(args, "--at", "table row insert")?;
+        let at = require_number_flag(args, "--at", "table row insert")?;
         return Ok(TableCommand::RowInsert {
             id,
             slide_path,
@@ -417,7 +418,7 @@ pub fn parse(rest: &[String]) -> CoMotionResult<TableCommand> {
         let id = require_positional(args, 0, "table row delete", "presentation-id")?;
         let slide_path = require_positional(args, 1, "table row delete", "slide-path")?;
         let element_id = require_positional(args, 2, "table row delete", "element-id")?;
-        let at = super::require_number_flag(args, "--at", "table row delete")?;
+        let at = require_number_flag(args, "--at", "table row delete")?;
         return Ok(TableCommand::RowDelete {
             id,
             slide_path,

@@ -131,13 +131,13 @@ async function main(): Promise<void> {
   await document.fonts.ready;
 
   // Every slide's markup and plan is read/derived before any iframe is
-  // created — a malformed effect list (parseEffects/deriveSteps throwing)
+  // created — a malformed effect list (the `/api/effects/` fetch rejecting)
   // fails the whole export here, before a single frame exists, matching
   // the CLI's "不產生半份 PDF" contract (§4.3's table).
   const frames: FrameSpec[] = [];
   for (const slidePath of presentation.slides) {
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
-    const plan = computePlayerPlan(svgMarkup);
+    const plan = await computePlayerPlan(svgMarkup, slidePath);
     for (const startStep of stepsFor(format, plan.steps.length)) {
       frames.push({ slidePath, startStep, svgMarkup, plan });
     }

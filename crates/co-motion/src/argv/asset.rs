@@ -24,7 +24,7 @@
 //! `main.rs`'s dispatch — out of this file's and this ticket's scope
 //! (orchestrator-owned).
 
-use super::{optional_flag, require_positional};
+use super::ct::{optional_flag, require_positional};
 use crate::errors::CoMotionError;
 
 #[derive(Debug, PartialEq)]

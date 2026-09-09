@@ -42,7 +42,7 @@ fn err_result(err: CoMotionError) -> CommandResult {
 fn read_slide(id: &str, slide_path: &str) -> Result<String, CoMotionError> {
     let work_dir = workspace::resolve_work_dir(id)?;
     virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
-    workspace::assert_slide_path_listed(&work_dir, slide_path)?;
+    workspace::write::assert_slide_path_listed(&work_dir, slide_path)?;
     virtual_fs::read_virtual_file(&work_dir, slide_path)
 }
 
@@ -77,7 +77,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &input,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -107,7 +107,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &text,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -133,7 +133,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 input,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -160,7 +160,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 input,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -191,7 +191,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &fonts,
                 keep_total
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -217,7 +217,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 at,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -243,7 +243,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 at,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -269,7 +269,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 at,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -295,7 +295,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 at,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -321,7 +321,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &theme,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -347,7 +347,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 header,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -379,7 +379,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &csv,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -419,7 +419,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &csv,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -452,7 +452,7 @@ pub fn run(args: &[String]) -> CommandResult {
                     &csv,
                     &fonts
                 ));
-                try_or_return!(workspace::write_presentation_file(
+                try_or_return!(workspace::write::write_presentation_file(
                     &id,
                     &slide_path,
                     &updated
@@ -483,7 +483,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &parsed,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &updated
@@ -528,7 +528,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &range,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &result.updated
@@ -564,7 +564,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &tsv,
                 &fonts
             ));
-            try_or_return!(workspace::write_presentation_file(
+            try_or_return!(workspace::write::write_presentation_file(
                 &id,
                 &slide_path,
                 &result.updated

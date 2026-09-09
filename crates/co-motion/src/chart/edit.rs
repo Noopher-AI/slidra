@@ -215,15 +215,20 @@ fn splice_chart_element(
         .find(|child| child.tag == "svg")
         .ok_or_else(|| CoMotionError::invalid(format!("元素 {element_id} 缺少內嵌 <svg>")))?;
 
+    // `chart_node`/`svg_node` offsets are UTF-16 code-unit offsets (see
+    // `slide/scan.rs`'s module doc) — `crate::splice::Splice`'s offsets are
+    // Rust byte offsets (see its module doc), so every offset here must be
+    // converted before building a `Splice`, exactly as `set_attr_splice`
+    // does for its own callers.
     let splices = [
         Splice {
-            start: chart_node.start,
-            end: chart_node.end,
+            start: crate::text::runs::utf16_offset_to_byte_offset(svg_content, chart_node.start),
+            end: crate::text::runs::utf16_offset_to_byte_offset(svg_content, chart_node.end),
             text: serialize_chart_data(&next),
         },
         Splice {
-            start: svg_node.start,
-            end: svg_node.end,
+            start: crate::text::runs::utf16_offset_to_byte_offset(svg_content, svg_node.start),
+            end: crate::text::runs::utf16_offset_to_byte_offset(svg_content, svg_node.end),
             text: render_chart_svg(&next),
         },
     ];
