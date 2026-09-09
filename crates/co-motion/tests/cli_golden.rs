@@ -1136,6 +1136,70 @@ fn element_scale_on_a_text_box_matches_node_byte_for_byte() {
     );
 }
 
+/// Debt flagged by NOOP-318's review of the [E4.T8] Wave 2 integration
+/// (NOOP-280/F4): `element move`'s argv -> `edit::move_elements` wiring
+/// (`move_cmd.rs`) had no CLI-boundary guard on `--dx`/`--dy`'s sign or
+/// magnitude — negating both left `cargo test --workspace` and the
+/// `e2e/direct-manipulation.test.ts`/`e2e/ai-collab.test.ts` suites fully
+/// green, because `unit_golden.rs`'s move coverage calls
+/// `edit::move_elements` directly (bypassing this argv layer) and the only
+/// other in-crate `element move` test
+/// (`move_reports_a_failure_result_for_a_locked_target_without_force`)
+/// only exercises the rejection path. Mirrors
+/// `element_scale_on_a_text_box_matches_node_byte_for_byte` above: spawn
+/// the real compiled binary and assert the literal transform, the same
+/// `--dx 7 --dy 100` case the review comment manually reproduced.
+#[test]
+fn element_move_applies_dx_dy_with_correct_sign_and_magnitude() {
+    let fixture = Fixture::new("move-dx-dy-sign");
+    let (id, _title_element_id) = new_and_open(&fixture);
+
+    let insert = fixture.run_rust(&[
+        "element",
+        "insert",
+        "rect",
+        &id,
+        "slides/001.svg",
+        "--x",
+        "100",
+        "--y",
+        "100",
+        "--width",
+        "50",
+        "--height",
+        "50",
+    ]);
+    assert!(
+        insert.status.success(),
+        "setup: `element insert` failed: {insert:?}"
+    );
+    let element_id = extract_data_json(&insert)["elementId"]
+        .as_str()
+        .expect("element insert must return elementId")
+        .to_string();
+
+    let moved = fixture.run_rust(&[
+        "element",
+        "move",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--dx",
+        "7",
+        "--dy",
+        "100",
+    ]);
+    assert!(moved.status.success(), "`element move` failed: {moved:?}");
+
+    let after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let after_svg = String::from_utf8_lossy(&after);
+    let expected = format!(r#"<g id="{element_id}" transform="translate(107 200)">"#);
+    assert!(
+        after_svg.contains(&expected),
+        "expected `--dx 7 --dy 100` to move translate(100 100) to translate(107 200); got: {after_svg}"
+    );
+}
+
 /// Plan 6.2 item 4: a slide with no effect list at all — `effect list`'s
 /// not-found stderr and exit code must match between engines.
 #[test]
