@@ -5,16 +5,18 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 /**
- * Throws before any server starts if `packages/cli/dist/bin.js` is missing —
- * these tests shell out to the built `co-motion` CLI (multi-command fake ACP
- * fixture), and a missing dist produces 30s `waitForLog` timeouts instead of
- * a readable failure (NOOP-233 Wave 1 integration).
+ * Throws before any server starts if the Rust `co-motion` binary is
+ * missing — these tests shell out to the built `co-motion` CLI (multi-
+ * command fake ACP fixture), and a missing binary produces 30s
+ * `waitForLog` timeouts instead of a readable failure (NOOP-233 Wave 1
+ * integration; [E4.T9]/F7 switched the dependency from the TypeScript CLI
+ * bundle to the Rust release binary).
  */
 export async function requireCliBuilt(): Promise<void> {
-  const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
+  const binPath = path.join(rootDir, "target/release/co-motion");
   try {
-    await access(cliDistBin);
+    await access(binPath);
   } catch {
-    throw new Error("packages/cli/dist 不存在，請先執行 npm run build");
+    throw new Error("target/release/co-motion 不存在，請先執行 npm run build");
   }
 }

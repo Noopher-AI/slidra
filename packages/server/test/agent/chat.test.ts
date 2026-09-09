@@ -1,14 +1,45 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { buildCommentContext } from "../../src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
+
+/** Reads a slide (or any text path) via `cat --json` and returns its decoded text — the same shape ACP's `fs/read_text_file` hands back. */
+async function readPresentationTextViaCli(id: string, virtualPath: string): Promise<string> {
+  const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, virtualPath]);
+  expect(result.ok).toBe(true);
+  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
+}
 
 // Seam B (issue #1): start the real server, drive it over HTTP, with a
 // scripted fake ACP agent — a real subprocess speaking ACP over stdio,
@@ -23,7 +54,6 @@ let coMotionHome: string;
 let comotDir: string;
 let logDir: string;
 let logPath: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -32,7 +62,7 @@ beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), "co-motion-chat-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
@@ -42,6 +72,7 @@ afterEach(async () => {
   // suite hangs on a live child process / open socket.
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -49,16 +80,18 @@ afterEach(async () => {
 
 async function openFreshPresentation(): Promise<string> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name: "測試簡報" });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  expect(created.ok).toBe(true);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
 /** Same as `openFreshPresentation`, but also returns the title element's id, read via `cat` (Seam A) — never guessed. */
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const id = await openFreshPresentation();
-  const slide = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-  const match = /<text id="(el-[^"]+)"/.exec(slide.data!.content);
+  const svgText = await readPresentationTextViaCli(id, "slides/001.svg");
+  const match = /<text id="(el-[^"]+)"/.exec(svgText);
   if (!match) throw new Error("test fixture: title element id not found");
   return { id, elementId: match[1] };
 }
@@ -73,7 +106,8 @@ async function openFixturePresentation(files: Record<string, Uint8Array | string
   const zipped = zipSync(encoded);
   const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -90,7 +124,7 @@ function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
 
 async function serve(agent: AgentAdapterConfig, presentationId?: string): Promise<RunningServer> {
   const id = presentationId ?? (await openFreshPresentation());
-  const server = await startServe({ registry, presentationId: id, port: 0, agent });
+  const server = await startServe({ presentationId: id, port: 0, agent });
   servers.push(server);
   return server;
 }
@@ -246,30 +280,23 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     // (unrelated pre-existing state) — so `comment add`'s own compliance
     // check needs a blank `slide add` slide instead, same posture
     // `packages/cli/test/comment.test.ts` takes.
-    const added = await registry.dispatch<{ slidePath: string }>("slide add", { id });
+    const added = await runCli<{ slidePath: string }>(["slide", "add", id]);
+    expect(added.ok).toBe(true);
     const slidePath = added.data!.slidePath;
-    const textbox = await registry.dispatch<{ elementId: string }>("textbox add", {
-      id,
-      slidePath,
-      x: 10,
-      y: 10,
-      width: 100,
-      text: "box",
-    });
+    const textbox = await runCli<{ elementId: string }>([
+      "textbox", "add", id, slidePath, "--x", "10", "--y", "10", "--width", "100", "--text", "box",
+    ]);
+    expect(textbox.ok).toBe(true);
     const elementId = textbox.data!.elementId;
 
-    const elementComment = await registry.dispatch<{ commentId: string }>("comment add", {
-      id,
-      slidePath,
-      target: elementId,
-      text: "把這個標題改短一點",
-    });
-    const pageComment = await registry.dispatch<{ commentId: string }>("comment add", {
-      id,
-      slidePath,
-      target: "page",
-      text: "整頁重寫成三個要點",
-    });
+    const elementComment = await runCli<{ commentId: string }>([
+      "comment", "add", id, slidePath, elementId, "把這個標題改短一點",
+    ]);
+    expect(elementComment.ok).toBe(true);
+    const pageComment = await runCli<{ commentId: string }>([
+      "comment", "add", id, slidePath, "page", "整頁重寫成三個要點",
+    ]);
+    expect(pageComment.ok).toBe(true);
 
     const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -813,7 +840,7 @@ function fixtureProjectJson(slides: string[]): string {
 describe("chat: fs/read_text_file serves virtual paths, never real ones", () => {
   it("returns a slide's full content, byte-for-byte as cat returns it", async () => {
     const id = await openFreshPresentation();
-    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const expected = await readPresentationTextViaCli(id, "slides/001.svg");
 
     const server = await serve(
       fakeAgent({
@@ -832,7 +859,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
 
     const log = await readFakeAgentLog();
     const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
-    expect(result?.readTextFileResult).toBe(expected.data!.content);
+    expect(result?.readTextFileResult).toBe(expected);
   });
 
   it("fails with an explicit ACP error carrying the existing wording, and no real path, for a path that does not resolve", async () => {
@@ -980,17 +1007,17 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     await done;
     await sse.close();
 
-    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const expected = await readPresentationTextViaCli(id, "slides/001.svg");
     const log = await readFakeAgentLog();
     const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
     // Before the fix this could not resolve at all — the whole absolute
     // string was handed to `readPresentationFile` verbatim.
-    expect(result?.readTextFileResult).toBe(expected.data!.content);
+    expect(result?.readTextFileResult).toBe(expected);
   });
 
   it("honours line and limit when the whole slide is read this way (the ordinary case, not an edge case)", async () => {
     const id = await openFreshPresentation();
-    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const expected = await readPresentationTextViaCli(id, "slides/001.svg");
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
@@ -1013,7 +1040,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
 
     const log = await readFakeAgentLog();
     const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
-    expect(result?.readTextFileResult).toBe(expected.data!.content);
+    expect(result?.readTextFileResult).toBe(expected);
   });
 
   it("refuses an absolute path outside the session cwd, explicitly, without ever touching the real filesystem or leaking a real path", async () => {
@@ -1061,17 +1088,17 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     await done;
     await sse.close();
 
-    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const expected = await readPresentationTextViaCli(id, "slides/001.svg");
     const log = await readFakeAgentLog();
     const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
-    expect(result?.readTextFileResult).toBe(expected.data!.content);
+    expect(result?.readTextFileResult).toBe(expected);
   });
 });
 
 describe("chat: fs/write_text_file always refuses, and the refusal names the command to use instead", () => {
   it("refuses, naming co-motion text set, and writes nothing", async () => {
     const id = await openFreshPresentation();
-    const before = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const before = await readPresentationTextViaCli(id, "slides/001.svg");
 
     const server = await serve(
       fakeAgent({
@@ -1096,8 +1123,8 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
     expect(errorEntry?.writeTextFileError?.message).toContain("co-motion text set");
     expect(log.some((entry) => "writeTextFileResult" in entry)).toBe(false);
 
-    const after = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-    expect(after.data!.content).toBe(before.data!.content);
+    const after = await readPresentationTextViaCli(id, "slides/001.svg");
+    expect(after).toBe(before);
   });
 });
 
@@ -1153,14 +1180,10 @@ describe("chat: the whole loop — read via the file method, request permission,
     // The permission grant only authorizes the command — actually running
     // it is the agent's own business (ADR-0006), which this fake agent does
     // not simulate a real shell for. Applying it here, through the exact
-    // registry the CLI dispatches through, is what the agent's own Bash
-    // tool would have done once permission came back "allow".
-    const mutation = await registry.dispatch("text set", {
-      id,
-      slidePath: "slides/001.svg",
-      elementId,
-      newText: "Q3 財報",
-    });
+    // `co-motion` binary the agent's permission command names, is what the
+    // agent's own Bash tool would have done once permission came back
+    // "allow".
+    const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 財報"]);
     expect(mutation.ok).toBe(true);
 
     // Turn 2: the change is confirmed only by reading again through the ACP
