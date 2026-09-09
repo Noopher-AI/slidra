@@ -492,9 +492,8 @@
 
     var el = document.getElementById(effect.target);
     if (!el) {
-      // The parent's parser (effects.ts, delegating to
-      // @co-motion/core/effects) already verified every target exists
-      // before this plan was ever built, so this should not happen.
+      // The parent's parser (effects.ts) already verified every target
+      // exists before this plan was ever built, so this should not happen.
       // Reported rather than silently skipped, in case it ever does — e.g.
       // a future bug in the parent's derivation.
       post({ event: "error", message: "找不到步驟中要顯示的元素：" + effect.target });

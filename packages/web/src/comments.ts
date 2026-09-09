@@ -1,6 +1,6 @@
-import { readSlideComments, type SlideComment } from "@co-motion/core/slide";
+import { readSlideComments, type SlideComment } from "./metadata-scan.js";
 
-/** [E2.T8]: a comment read back out with the slide it lives on — mirrors `@co-motion/core`'s `SlideCommentWithPath` without importing the CLI-facing package into the browser bundle. */
+/** [E2.T8]: a comment read back out with the slide it lives on — mirrors core's `SlideCommentWithPath` without importing the CLI-facing package into the browser bundle. */
 export interface SlideCommentWithPath extends SlideComment {
   slidePath: string;
 }

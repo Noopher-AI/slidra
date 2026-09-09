@@ -98,7 +98,7 @@ export function tabTarget(current: CellAddress, rowCount: number, colCount: numb
  * live-drag preview (plan §4.5 "拖曳期間只即時移動格線"), leaving every
  * other column's contribution unchanged.
  */
-/** Mirrors `packages/core/src/table/layout.ts`'s MIN_COL_WIDTH (the root core barrel is not browser-safe, and there is no `@co-motion/core/table` alias): the narrowest a boundary drag may squeeze either column to. */
+/** Mirrors `packages/core/src/table/layout.ts`'s MIN_COL_WIDTH (the web bundle no longer depends on core at all, F8/NOOP-289): the narrowest a boundary drag may squeeze either column to. */
 export const MIN_COL_WIDTH = 40;
 
 export function columnBoundaryPositions(

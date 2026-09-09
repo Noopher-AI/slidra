@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChartWindow, chartDataSetInputFromDraft } from "../src/shell/stage-overlays/ChartWindow.js";
 import type { ChartWindowState } from "../src/canvas.js";
-import type { ChartModel } from "@co-motion/core/chart";
+import type { ChartModel } from "../src/chart-model.js";
 
 /**
  * E2.T12 plan §6.2/§6.4: `chartDataSetInputFromDraft` (the "資料格 state →

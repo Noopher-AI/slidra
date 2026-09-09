@@ -75,13 +75,17 @@ function fireLoad(win: Window): void {
  * otherwise see, and irrelevant to what every test in this file asserts.
  * `"bounds"` (NOOP-90/T2 §4.6) is excluded the same way: `updateBoxes()`
  * fires it on every selection change alongside `select`/`clear`, and it has
- * its own dedicated assertions further down this file.
+ * its own dedicated assertions further down this file. `"element-bounds"`
+ * (F8, NOOP-289 決定 G1) joins the same exclusion for the same reason:
+ * `reportElementBounds()` fires once, unconditionally, at the very end of
+ * the runtime's own IIFE — before `boot()` even returns — so it is exactly
+ * as deterministically-first-and-irrelevant as `"runtime-ready"`.
  */
 function collectMessages(): { messages: unknown[]; stop: () => void } {
   const messages: unknown[] = [];
   const handler = (event: MessageEvent) => {
     const eventName = (event.data as { event?: unknown })?.event;
-    if (eventName === "viewport" || eventName === "runtime-ready" || eventName === "bounds") return;
+    if (eventName === "viewport" || eventName === "runtime-ready" || eventName === "bounds" || eventName === "element-bounds") return;
     messages.push(event.data);
   };
   window.addEventListener("message", handler);
@@ -133,22 +137,6 @@ async function beginTextEdit(win: Window, id: string, text: string): Promise<voi
   win.dispatchEvent(
     new MessageEventCtor("message", {
       data: { source: "comot-host", command: "begin-text-edit", id, text },
-      source: win.parent as unknown as MessageEventSource,
-    }),
-  );
-  await tick();
-}
-
-/**
- * Sends a `preview-textbox` host command the same way canvas.ts's
- * `textboxPreviewMessage`/`postToFrame` pair does (NOOP-65r3 §2c) — same
- * synthesized-`MessageEvent` reasoning as `beginTextEdit` above.
- */
-async function sendPreviewTextbox(win: Window, id: string, markup: unknown, width?: number): Promise<void> {
-  const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
-  win.dispatchEvent(
-    new MessageEventCtor("message", {
-      data: { source: "comot-host", command: "preview-textbox", id, markup, width },
       source: win.parent as unknown as MessageEventSource,
     }),
   );
@@ -865,42 +853,64 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
   });
 });
 
-// NOOP-65r3 §2d/C1/C5 — `applyPreviewTextbox` now takes a finished markup
-// STRING (core's own `renderTextBoxContent` output), not a `{ text, y }[]`
-// the runtime used to reconstruct into a hard-coded `x="0"` tspan with no
-// `data-comot-break`/nested runs (NOOP-65r2 FAIL 1). These two tests are
-// the first coverage this channel has ever had (`grep -rln
-// "preview-textbox|applyPreviewTextbox"` was empty before this ticket).
-describe("selection-runtime.js 的文字框 preview 通道（NOOP-65r3）", () => {
-  it("收到 markup 後，內容 <text> 的子節點含 data-comot-break、非零 x、巢狀 run tspan", async () => {
+// F8 (NOOP-289 決定 T1): the browser has no font-metrics engine any more —
+// entering/typing in a text box now repaints "one hard-break paragraph =
+// one <tspan>" entirely locally (renderTextBoxLines/applyTextEditContent),
+// zero measurement, no host round trip at all. These three tests replace
+// the old `preview-textbox`/`applyPreviewTextbox` channel's coverage
+// (NOOP-65r3, which this ticket deletes along with the channel itself).
+describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決定 T1）", () => {
+  function tspanCount(doc: Document, id: string): number {
+    return doc.getElementById(id)!.querySelectorAll("text > tspan").length;
+  }
+
+  it("begin-text-edit 後，<text> 的直接子 tspan 數等於 text.split(\"\\n\").length", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
 
-    await sendPreviewTextbox(
-      win,
-      "el-text",
-      '<tspan x="12.5" y="16" data-comot-break="1">粗<tspan font-weight="bold">體字</tspan></tspan><tspan x="12.5" y="34">下一段</tspan>',
-      220,
-    );
+    await beginTextEdit(win, "el-text", "第一行\n第二行\n第三行");
 
-    const html = contentTextOuterHtml(doc, "el-text");
-    expect(html).toContain('data-comot-break="1"');
-    expect(html).toContain('x="12.5"');
-    expect(html).toContain('<tspan font-weight="bold">體字</tspan>');
-    expect(html).toContain("下一段");
-    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("220");
+    expect(tspanCount(doc, "el-text")).toBe(3);
+    const tspans = doc.getElementById("el-text")!.querySelectorAll("text > tspan");
+    // data-comot-break marks a line FOLLOWED by "\n" (textLineRanges()'s
+    // own contract) — every line except the last one, not every line
+    // except the first (the visual y/dy split is the opposite: only the
+    // FIRST line gets an explicit y, the rest get a relative dy).
+    expect(tspans[0].textContent).toBe("第一行");
+    expect(tspans[0].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[1].textContent).toBe("第二行");
+    expect(tspans[1].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[2].textContent).toBe("第三行");
+    expect(tspans[2].getAttribute("data-comot-break")).toBeNull();
   });
 
-  it("markup 不是字串、或解析失敗時，DOM 完全不動", async () => {
+  it("text-edit-input 帶新的 \\n 後，tspan 數跟著變——不呼叫任何命令，純本地重畫", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
-    const before = contentTextOuterHtml(doc, "el-text");
+    await beginTextEdit(win, "el-text", "Hi");
+    expect(tspanCount(doc, "el-text")).toBe(1);
 
-    await sendPreviewTextbox(win, "el-text", 12345, 999); // wrong type
-    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
-    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
+    const ta = editTextarea(doc);
+    ta.value = "a\nb\nc";
+    ta.dispatchEvent(new (win as unknown as { Event: typeof Event }).Event("input", { bubbles: true }));
+    await tick();
 
-    await sendPreviewTextbox(win, "el-text", "<tspan>unterminated", 999); // fails to parse as SVG
-    expect(contentTextOuterHtml(doc, "el-text")).toBe(before);
-    expect(doc.getElementById("el-text")!.getAttribute("data-comot-text-width")).toBe("400");
+    expect(tspanCount(doc, "el-text")).toBe(3);
+  });
+
+  it("begin-text-edit 的 markup 欄位不再被接受——即使傳了也不當一回事，只看 text", async () => {
+    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
+
+    win.dispatchEvent(
+      new MessageEventCtor("message", {
+        data: { source: "comot-host", command: "begin-text-edit", id: "el-text", text: "真正的內容", markup: "<tspan>不該出現</tspan>", width: 999 },
+        source: win.parent as unknown as MessageEventSource,
+      }),
+    );
+    await tick();
+
+    const html = contentTextOuterHtml(doc, "el-text");
+    expect(html).toContain("真正的內容");
+    expect(html).not.toContain("不該出現");
   });
 });
 

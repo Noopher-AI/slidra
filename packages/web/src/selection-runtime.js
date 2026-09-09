@@ -7,11 +7,13 @@
 // Its job (NOOP-91 extends #56's original click-only version): report which
 // element was clicked (hit resolution), draw a selection box over it, and
 // report raw pointer coordinates for direct-manipulation gestures (drag,
-// marquee) — never doing geometry math itself. All of that math (preview
-// transforms, snapping, bounding boxes) lives in the parent (canvas.ts),
-// using `@co-motion/core`, because this script cannot import anything: it
-// is a `?raw` string with no module system. This runtime only ever reports
-// raw coordinates and paints whatever the parent already computed.
+// marquee). Preview transforms and snapping stay entirely in the parent
+// (canvas.ts) — this runtime paints whatever transform/guide string it is
+// handed. Bounding-box geometry (F8, NOOP-289 決定 G1) is the one exception:
+// since the browser has no bundled font-metrics engine any more, THIS
+// runtime is the one place that can measure real rendered geometry
+// (`getBBox()`/`getCTM()`) and reports it up rather than computing it in
+// the parent.
 (function () {
   "use strict";
 
@@ -210,7 +212,7 @@
       hideAllHandles();
       return;
     }
-    var rect = el.getBoundingClientRect();
+    var rect = selectionClientRect(el);
     var showScaleRotate = handleMode === "full";
     var corners = {
       nw: { x: rect.left, y: rect.top },
@@ -371,6 +373,7 @@
     });
     el.addEventListener("compositionend", function () {
       isComposing = false;
+      applyTextEditContent(editingId, textarea.value);
       reportTextEditInput();
       scheduleDecorationSync();
     });
@@ -400,6 +403,15 @@
     el.addEventListener("focus", scheduleDecorationSync);
     el.addEventListener("input", function () {
       if (!isComposing) sanitizeTextareaValue();
+      // F8 (NOOP-289 決定 T1): repainted entirely locally, on every
+      // keystroke (including mid-IME-composition — this only ever reads
+      // `textarea.value` and writes the SEPARATE `<text>` element, so
+      // unlike `sanitizeTextareaValue()` it cannot disturb an in-progress
+      // composition) — no round trip to the host, no layout/measurement of
+      // any kind. `reportTextEditInput()` still mirrors the string up so
+      // the host's `editingState.currentText` has something to diff and
+      // send on commit.
+      applyTextEditContent(editingId, textarea.value);
       reportTextEditInput();
       scheduleDecorationSync();
     });
@@ -478,7 +490,7 @@
     if (selectedIds.length !== 1) return;
     var el = document.getElementById(selectedIds[0]);
     if (!el) return;
-    var rect = el.getBoundingClientRect();
+    var rect = selectionClientRect(el);
     box.style.left = rect.left + "px";
     box.style.top = rect.top + "px";
     box.style.width = rect.width + "px";
@@ -751,6 +763,48 @@
    */
   function toClientPoint(ctm, point) {
     return new DOMPoint(point.x, point.y).matrixTransform(ctm);
+  }
+
+  /**
+   * `el`'s on-screen rect for the selection box/handles: the actual
+   * rendered `getBoundingClientRect()`, UNLESS a textbox-width drag is
+   * live-previewing a different width for this EXACT element
+   * (`previewTextWidth`, F8/NOOP-289 決定 (b)) — then the width component
+   * is recomputed from the element's own (unchanged) local bbox plus the
+   * previewed width, transformed through its own `getScreenCTM()`, so the
+   * box/handles track the drag even though the `<text>` itself was never
+   * touched. Falls back to `getBoundingClientRect()` when `getBBox`/
+   * `getScreenCTM` are unavailable (jsdom).
+   */
+  function selectionClientRect(el) {
+    if (
+      previewTextWidth &&
+      el.getAttribute("id") === previewTextWidth.id &&
+      typeof el.getBBox === "function" &&
+      typeof el.getScreenCTM === "function"
+    ) {
+      var bbox = el.getBBox();
+      var ctm = el.getScreenCTM();
+      if (bbox && ctm) {
+        var corners = [
+          toClientPoint(ctm, { x: bbox.x, y: bbox.y }),
+          toClientPoint(ctm, { x: bbox.x + previewTextWidth.width, y: bbox.y }),
+          toClientPoint(ctm, { x: bbox.x, y: bbox.y + bbox.height }),
+          toClientPoint(ctm, { x: bbox.x + previewTextWidth.width, y: bbox.y + bbox.height }),
+        ];
+        var xs = corners.map(function (p) {
+          return p.x;
+        });
+        var ys = corners.map(function (p) {
+          return p.y;
+        });
+        var left = Math.min.apply(null, xs);
+        var top = Math.min.apply(null, ys);
+        return { left: left, top: top, width: Math.max.apply(null, xs) - left, height: Math.max.apply(null, ys) - top };
+      }
+    }
+    var rect = el.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
   }
 
   /**
@@ -1127,7 +1181,7 @@
    * 13: "拖曳期間不重新換行"). `cols` not being an array of the SAME
    * length as the table's current column count leaves the DOM completely
    * untouched (same "bad input is a no-op, never a partial mutation"
-   * posture `applyPreviewTextbox` already has for its own malformed
+   * posture `applyPreviewTextboxWidth` already has for its own malformed
    * input).
    */
   function applyPreviewTableCols(id, cols) {
@@ -2104,15 +2158,6 @@
   }
 
   /**
-   * Textbox-width live preview (NOOP-91 follow-up §4.4): the host has
-   * already computed the re-wrapped lines with `@co-motion/core`'s own
-   * `wrapText` (the exact function `textbox width`'s server handler calls
-   * internally) — this only ever swaps the `<text>` element's `<tspan>`
-   * children for structured `{text, y}` data, never a raw HTML/XML string,
-   * so there is no injection surface even though `text` is untrusted-slide
-   * content round-tripped through the host.
-   */
-  /**
    * A container holding exactly one `<text>` and no other element — the
    * shape `text set` writes through unchanged (core's
    * `replaceContainerText`). Text boxes are the wrapping variant of this,
@@ -2129,74 +2174,80 @@
     return texts === 1;
   }
 
-  /** Live preview for a plain `<text>`: replaces the string only, leaving the element's own positioning attributes untouched. */
-  function applyPreviewText(id, text) {
-    var container = document.getElementById(id);
-    if (!container) return;
-    var textEl = contentTextElement(container);
-    if (!textEl) return;
-    textEl.textContent = typeof text === "string" ? text : "";
-    updateBoxes();
-  }
-
   /**
-   * Live preview for a text box: `markup` is a finished string of
-   * `<tspan>` markup — the exact output of core's own
-   * `renderTextBoxContent` (NOOP-65r3 §2). The runtime holds no knowledge
-   * of what attributes a line/run tspan carries; it only ever parses and
-   * transplants what the host already rendered, so a new field on the
-   * host side (like `data-comot-break`/`align`/nested run tspans) can
-   * never silently fail to reach here again (NOOP-65r2 FAIL 1).
-   *
-   * `markup` not being a usable string — wrong type, or it fails to parse
-   * as SVG — leaves the DOM untouched rather than clearing it: a
-   * malformed message must never blank out what's currently on screen,
-   * and throwing here would break the whole `message` listener for every
-   * other command in the same dispatch.
+   * F8 (NOOP-289 決定 T1): rebuilds a text box's `<text>` content into "one
+   * hard-break paragraph = one `<tspan>`" — zero measurement, zero wrap.
+   * `x` is read off the CURRENT first line (either an existing tspan, or —
+   * on the very first call for a given edit session — the `<text>`'s own
+   * `x`) so re-entering the same content is idempotent; every line after
+   * the first gets a plain relative `dy` (no attempt at the real line
+   * height core's font metrics used to compute) and `data-comot-break="1"`,
+   * the same marker `textLineRanges()` already reads to place a virtual
+   * `\n` in the caret's `textarea.value` index space. Alignment/runs are
+   * NOT reproduced — decision T1 accepts left-anchored, unstyled text
+   * during an edit session as the known UX regression this ticket trades
+   * for removing the browser's font-metrics engine entirely.
    */
-  function applyPreviewTextbox(id, markup, width) {
-    var container = document.getElementById(id);
-    if (!container) return;
-    var textEl = contentTextElement(container);
-    if (!textEl) return;
-    if (typeof markup !== "string") return;
-    var doc = new DOMParser().parseFromString(
-      '<svg xmlns="http://www.w3.org/2000/svg"><text xml:space="preserve">' + markup + "</text></svg>",
-      "image/svg+xml",
-    );
-    if (doc.getElementsByTagName("parsererror").length > 0) return;
-    var parsedText = doc.documentElement.firstChild;
+  function renderTextBoxLines(textEl, text) {
+    var firstChild = textEl.firstElementChild;
+    var x = firstChild && firstChild.tagName === "tspan" ? firstChild.getAttribute("x") : textEl.getAttribute("x");
+    var y = firstChild && firstChild.tagName === "tspan" ? firstChild.getAttribute("y") : textEl.getAttribute("y");
     while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
-    for (var n = parsedText.firstChild; n; n = n.nextSibling) textEl.appendChild(document.importNode(n, true));
-    if (typeof width === "number") container.setAttribute("data-comot-text-width", String(width));
-    updateBoxes();
+    var lines = (typeof text === "string" ? text : "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      if (x !== null) tspan.setAttribute("x", x);
+      if (i === 0) {
+        if (y !== null) tspan.setAttribute("y", y);
+      } else {
+        tspan.setAttribute("dy", "1.2em");
+      }
+      // `data-comot-break="1"` marks a line that is FOLLOWED by a "\n" in
+      // the original content string (textLineRanges()'s own contract,
+      // read/write-symmetric with core's original convention) — i.e.
+      // every line except the last one, not every line except the first.
+      // Putting it on the wrong tspan is exactly the off-by-one A16/A17
+      // guard against (see this file's own textLineRanges doc comment).
+      if (i < lines.length - 1) tspan.setAttribute("data-comot-break", "1");
+      tspan.textContent = lines[i];
+      textEl.appendChild(tspan);
+    }
   }
 
   /**
-   * E2.T12 plan §3.6 "本地預覽通道": swaps a chart container's embedded
-   * `<svg>` (the sibling of its `<comot:chart>` data element) for the
-   * host-rendered replacement — same "host renders, runtime only
-   * transplants" split `applyPreviewTextbox` uses, so this runtime never
-   * needs its own copy of the chart-drawing math. A container that no
-   * longer exists, or markup that fails to parse as `<svg>`, leaves the
-   * DOM untouched.
+   * The one place `<text>` content is repainted during an edit session
+   * (begin-text-edit's initial paint, every keystroke, and a failed
+   * commit's revert) — text-box vs plain-`<text>` is decided by
+   * `data-comot-text-width`'s presence on the CONTAINER, which this
+   * function already knows how to check, so none of its three call sites
+   * (all host-driven, or the runtime's own `input` handler) have to.
    */
-  function applyPreviewChart(id, markup) {
+  function applyTextEditContent(id, text) {
     var container = document.getElementById(id);
-    if (!container || typeof markup !== "string") return;
-    var doc = new DOMParser().parseFromString(markup, "image/svg+xml");
-    if (doc.getElementsByTagName("parsererror").length > 0) return;
-    var newSvg = doc.documentElement;
-    if (!newSvg || newSvg.nodeName !== "svg") return;
-    var oldSvg = null;
-    for (var child = container.firstElementChild; child; child = child.nextElementSibling) {
-      if (child.nodeName === "svg") {
-        oldSvg = child;
-        break;
-      }
-    }
-    if (!oldSvg) return;
-    container.replaceChild(document.importNode(newSvg, true), oldSvg);
+    if (!container) return;
+    var textEl = contentTextElement(container);
+    if (!textEl) return;
+    if (container.hasAttribute("data-comot-text-width")) renderTextBoxLines(textEl, text);
+    else textEl.textContent = typeof text === "string" ? text : "";
+    updateBoxes();
+  }
+
+  // F8 (NOOP-289 決定 (b)): while dragging a textbox-width handle, the box
+  // and handles track the PROPOSED width without the `<text>` content
+  // moving at all (there is no font engine left here to re-wrap it with) —
+  // {id, width} of the element currently being live-previewed, read by
+  // `selectionClientRect()` below. Left set after the drag ends (host
+  // always sends one final "preview-textbox-width" — either the committed
+  // width or a revert to `originalWidth`), which is harmless: at that
+  // point it agrees with the container's own real bbox again.
+  var previewTextWidth = null;
+
+  /** `preview-textbox-width` (F8, NOOP-289 決定 (b)): updates `data-comot-text-width` and the live-preview override the box/handles read — never touches `<text>`. */
+  function applyPreviewTextboxWidth(id, width) {
+    var container = document.getElementById(id);
+    if (!container || typeof width !== "number" || !(width > 0)) return;
+    container.setAttribute("data-comot-text-width", String(width));
+    previewTextWidth = { id: id, width: width };
     updateBoxes();
   }
 
@@ -2221,18 +2272,24 @@
     if (!data || data.source !== "comot-host") return;
     if (data.command === "preview") {
       applyPreview(data.items);
-    } else if (data.command === "preview-textbox") {
-      applyPreviewTextbox(data.id, data.markup, data.width);
-    } else if (data.command === "preview-text") {
-      applyPreviewText(data.id, data.text);
-    } else if (data.command === "preview-chart") {
-      applyPreviewChart(data.id, data.markup);
+    } else if (data.command === "preview-textbox-width") {
+      applyPreviewTextboxWidth(data.id, data.width);
+    } else if (data.command === "revert-text-edit") {
+      // Sent after a failed `text set` — the runtime has already exited
+      // its own edit session by then (enterRuntimeTextEdit's caller always
+      // calls exitRuntimeTextEdit() before the host's commit round trip
+      // even starts), so this just repaints `<text>` back to the file's
+      // real content, independent of editingId/textarea.
+      applyTextEditContent(data.id, data.text);
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
-      // No `markup` means a plain <text> (host side sends it only for a
-      // text box) — nothing to re-wrap, so the initial paint is a no-op.
       if (started) {
-        if (typeof data.markup === "string") applyPreviewTextbox(data.id, data.markup, data.width);
+        // 決定 T1: always repaint immediately — a text box's existing
+        // content may still carry rich runs/soft-wrap tspans from before
+        // this edit session; this flattens it to the "one tspan per hard
+        // break" shape before the first keystroke, matching every
+        // keystroke that follows (the `input` handler below).
+        applyTextEditContent(data.id, typeof data.text === "string" ? data.text : "");
         // Only now is the edit-time DOM in place to hit-test against.
         if (pendingEditPoint) {
           var clickIdx = indexAtPoint(pendingEditPoint.x, pendingEditPoint.y);
@@ -2276,6 +2333,87 @@
     }
   });
 
+  /**
+   * F8 (NOOP-289 決定 G1): every id-carrying element's bounding box — the
+   * browser has no bundled font-metrics engine any more to compute one
+   * from the parsed model, so this replaces core's `elementBounds` as the
+   * host's one source for marquee hit-testing and drag-to-move's snap
+   * candidates (`canvas.ts`'s `elementBoundsById`). Two numbers per id:
+   *
+   * `rect` is the full container-chain box in the SLIDE'S OWN viewBox
+   * coordinate system — the same space `elementBounds(element,
+   * {ancestors, fonts})` used to compute. `el.getCTM()` does NOT give this
+   * on its own (verified empirically, not assumed): for an element whose
+   * nearest viewport-establishing ancestor is the top-level `<svg>`,
+   * `getCTM()` resolves the WHOLE way out through that svg's own
+   * viewBox-to-viewport scaling to actual CSS pixels — i.e. the same thing
+   * `getScreenCTM()` gives when nothing above the svg carries a CSS
+   * transform (`root.getCTM()` on the outermost `<svg>` itself already
+   * shows the viewBox scale factor, not identity). The fix: compose the
+   * element's own `getScreenCTM()` with the ROOT `<svg>`'s
+   * `getScreenCTM()` INVERTED — `rootInverse ∘ elementScreenCTM` maps
+   * element-local space to client px and then undoes exactly the root's
+   * own client-px mapping, landing in the root's viewBox units regardless
+   * of any zoom/pan CSS transform sitting above the svg.
+   *
+   * `local` is `el.getBBox()` alone — the element's own bbox before its
+   * own transform, which is what the scale-gesture anchor corner needs
+   * (already in the same "user units" space, no conversion required).
+   *
+   * `getBBox`/`getScreenCTM` unavailable (jsdom) or throwing (a genuinely
+   * degenerate element, or no root `<svg>` at all) both just skip — same
+   * "leave it out" degradation `computeBounds`'s old try/catch already had.
+   */
+  function reportElementBounds() {
+    var items = [];
+    var svgRoot = document.querySelector("svg");
+    var rootInverse = null;
+    if (svgRoot && typeof svgRoot.getScreenCTM === "function") {
+      try {
+        var rootScreenCTM = svgRoot.getScreenCTM();
+        if (rootScreenCTM) rootInverse = rootScreenCTM.inverse();
+      } catch (err) {
+        rootInverse = null;
+      }
+    }
+    if (rootInverse) {
+      var els = document.querySelectorAll("[id]");
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (typeof el.getBBox !== "function" || typeof el.getScreenCTM !== "function") continue;
+        var bbox, screenCtm;
+        try {
+          bbox = el.getBBox();
+          screenCtm = el.getScreenCTM();
+        } catch (err2) {
+          continue;
+        }
+        if (!bbox || !screenCtm) continue;
+        var combined = rootInverse.multiply(screenCtm);
+        var corners = [
+          toClientPoint(combined, { x: bbox.x, y: bbox.y }),
+          toClientPoint(combined, { x: bbox.x + bbox.width, y: bbox.y }),
+          toClientPoint(combined, { x: bbox.x, y: bbox.y + bbox.height }),
+          toClientPoint(combined, { x: bbox.x + bbox.width, y: bbox.y + bbox.height }),
+        ];
+        var xs = corners.map(function (p) {
+          return p.x;
+        });
+        var ys = corners.map(function (p) {
+          return p.y;
+        });
+        var left = Math.min.apply(null, xs);
+        var top = Math.min.apply(null, ys);
+        items.push({
+          id: el.getAttribute("id"),
+          rect: { x: left, y: top, width: Math.max.apply(null, xs) - left, height: Math.max.apply(null, ys) - top },
+          local: { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height },
+        });
+      }
+    }
+    post({ event: "element-bounds", items: items });
+  }
+
   // Tells the parent this document's listeners (including the one right
   // above) are attached — a `postMessage` sent before that would be
   // silently dropped (same race `selectOnceLoaded` in canvas.ts already
@@ -2284,4 +2422,13 @@
   // rebuilt (e.g. navigating to another slide) instead of reverting to
   // off on every new document.
   post({ event: "runtime-ready" });
+  // Measured once at startup for shapes/already-loaded fonts, and again
+  // once every embedded web font has actually settled — text geometry can
+  // change once a late-loading font swaps in, and the first measurement
+  // would otherwise under/over-report a text element's box until the next
+  // unrelated report happened to run.
+  reportElementBounds();
+  if (typeof document.fonts !== "undefined" && document.fonts && typeof document.fonts.ready !== "undefined") {
+    document.fonts.ready.then(reportElementBounds, function () {});
+  }
 })();

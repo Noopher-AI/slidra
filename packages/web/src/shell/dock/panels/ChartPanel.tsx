@@ -9,7 +9,7 @@ import {
   CHART_TYPES,
   type ChartPalette,
   type ChartType,
-} from "@co-motion/core/chart";
+} from "../../../chart-model.js";
 
 export interface ChartPanelProps {
   onClose(): void;

@@ -46,21 +46,24 @@
  * NOOP-91 (direct manipulation) extends the same runtime with drag-to-move
  * and marquee select. The runtime (selection-runtime.js) only ever reports
  * raw client-px coordinates and paints whatever transform/guide/marquee
- * string this module hands it — every bit of geometry (matrix decompose,
- * bounding boxes, snapping) happens here, using `@co-motion/core`, because
- * the runtime is an unbundled `?raw` script that cannot import anything.
- * See docs on the postMessage protocol below (`SelectionMessage`).
+ * string this module hands it — matrix decompose and snapping happen here,
+ * using this package's own `geometry.ts` (F8, NOOP-289 — the web bundle no
+ * longer depends on core at all), because the runtime is an unbundled
+ * `?raw` script that cannot import anything. Bounding-box geometry is the
+ * one exception (決定 G1): the runtime measures real rendered geometry
+ * (`getBBox()`/`getCTM()`) itself and reports it up, since there is no
+ * bundled font-metrics engine here any more to compute one from the parsed
+ * model. See docs on the postMessage protocol below (`SelectionMessage`).
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
-import type { EmbedProvider } from "@co-motion/core/embed";
+import type { EmbedProvider } from "./embed.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
-import type { Effect } from "./effects.js";
+import type { Effect, PageTransitionEffect, SlideTransition } from "./effects.js";
 import {
   decomposeMatrix,
   formatTransform,
-  elementBounds,
   snapTranslation,
   composeMatrices,
   applyMatrixToPoint,
@@ -70,24 +73,18 @@ import {
   type TransformParts,
   type SnapCandidate,
   type SnapGuide,
-} from "@co-motion/core/geometry";
+} from "./geometry.js";
 import {
   parseSlide,
-  readSlideTransition,
   type PageStyle,
   type SlideElement,
   type SlideModel,
-  type PageTransitionEffect,
-  type SlideTransition,
-} from "@co-motion/core/slide";
-import { wrapText, renderTextBoxContent, listIndents, parseListTokens, type TextRun } from "@co-motion/core/text";
-import { parseFont, type FontMetrics } from "@co-motion/core/text-metrics";
-import { extractElementsForCopy, serializeClipboardSvg } from "@co-motion/core/clipboard";
+} from "./slide-dom.js";
 import { INITIAL_PASTE_OFFSET_STATE, clipboardWritten, nextPasteOffset, type PasteOffsetState } from "./paste-offset.js";
 import { classifyClipboardText } from "./clipboard/payload.js";
 import { pasteCommandFor, type CellRangeProvider, type ClipboardTarget } from "./clipboard/dispatch.js";
 import { tabTarget, cellsInRange, normalizeRange, isCellInRange, type CellRange } from "./table-overlay.js";
-import { readChartModel, renderChartSvg, type ChartModel } from "@co-motion/core/chart";
+import { readChartModel, type ChartModel } from "./chart-model.js";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -500,11 +497,9 @@ export interface CanvasController {
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
-  /** [E2.T18]: what ⌘C/the ContextBar Copy button would put on the system clipboard right now, computed synchronously and purely (no server round trip, no side effect) — `null` with no selection or before the first slide loads. */
-  clipboardTextForSelection: () => string | null;
-  /** ⌘C, or the ContextBar Copy button (計畫 §3.6/3.8): same computation as `clipboardTextForSelection`, plus resetting the paste-offset run (`paste-offset.ts`'s `clipboardWritten`). Never mutates the presentation. Returns the string the caller should write via `navigator.clipboard.writeText`, or `null` with no selection. */
-  copySelection: () => string | null;
-  /** ⌘X, or the ContextBar Cut button: same string as `copySelection`, plus an `element delete` for the cut elements — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection. */
+  /** ⌘C, or the ContextBar Copy button (F8, NOOP-289 決定 (d)): sends `element copy`, resets the paste-offset run (`paste-offset.ts`'s `clipboardWritten`) on success. Never mutates the presentation. Returns the `svg` the caller should write via `navigator.clipboard.writeText`, or `null` with no selection or on command failure. */
+  copySelection: () => Promise<string | null>;
+  /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
   cutSelection: () => Promise<string | null>;
   /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a co-motion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
   pasteFromText: (text: string) => Promise<void>;
@@ -532,17 +527,8 @@ export interface CanvasController {
    * `ChartWindowState`'s own doc comment.
    */
   subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => () => void;
-  /** [E2.T12 plan §3.6/§4.5]: closes the chart data window (Esc) without sending any command — an in-progress local edit is simply discarded, same as `preview-textbox`'s revert path never having written anything either. */
+  /** [F8, NOOP-289]: closes the chart data window (Esc). There is no local preview to discard any more (decision (c) — every control commits straight to a `chart *` command and waits for SSE), so this just clears `chartWindowTarget`. */
   closeChartWindow: () => void;
-  /**
-   * E2.T12 plan §3.6/§4.5: the ChartWindow's local-preview channel — swaps
-   * the chart's embedded `<svg>` in place via `renderChartSvg(model)`,
-   * writing nothing. `ChartWindow.tsx` calls this on every keystroke/toggle
-   * before committing the corresponding `chart *` command on blur/click, so
-   * the picture always matches what is about to be sent. No-op outside view
-   * mode or when `id` is not the currently open chart window's target.
-   */
-  previewChart: (id: string, model: ChartModel) => void;
   /**
    * ⌘Z/⇧⌘Z relayed from inside the iframe (#198's "stage-key" `z`). The
    * controller never POSTs /api/undo|redo itself — App.tsx registers its own
@@ -706,6 +692,12 @@ interface SelectionMessage {
     // an arbitrary id list (the current slide's animation badge targets),
     // independent of `selectedIds`.
     | "measured"
+    // F8 (NOOP-289 決定 G1): every id-carrying element's bounding box,
+    // self-reported at startup (and once web fonts settle) rather than in
+    // reply to a host command — the browser has no bundled font-metrics
+    // engine any more to compute this from the parsed model, so the
+    // runtime's own `getBBox()`/`getCTM()` is the only source left.
+    | "element-bounds"
     // [E2.T17]: where each third-party embed placeholder currently sits,
     // so the parent's embed overlay can stay aligned. Sent by BOTH
     // runtimes (player-runtime.js has its own copy) because the overlay
@@ -819,6 +811,19 @@ function isMeasuredItem(value: unknown): value is MeasuredItem {
   if (typeof value !== "object" || value === null) return false;
   const item = value as { id?: unknown; rect?: unknown };
   return typeof item.id === "string" && isNonNegativeRect(item.rect);
+}
+
+/** One `element-bounds` event item (F8, NOOP-289 決定 G1) — `rect`: full container-chain box in the slide's own coordinate system (`elementBounds`'s old output space); `local`: the element's own bbox before its own transform. */
+interface ElementBoundsItem {
+  id: string;
+  rect: Rect;
+  local: Rect;
+}
+
+function isElementBoundsItem(value: unknown): value is ElementBoundsItem {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as { id?: unknown; rect?: unknown; local?: unknown };
+  return typeof item.id === "string" && isNonNegativeRect(item.rect) && isNonNegativeRect(item.local);
 }
 
 /** One `table-cells` event item (E2.T14, plan §4.5). */
@@ -1004,33 +1009,18 @@ interface RotateGesture {
  * on-screen position during the drag.
  */
 /**
- * A text box's layout inputs beyond width/font, snapshotted once at the
- * moment editing/dragging starts and held fixed for its whole duration
- * (NOOP-65r3 決定 2). Both `TextboxWidthGesture` and `TextEditState` carry
- * one of these — it is what `textboxPreviewMessage` needs on top of the
- * text/width/font every preview call already had, to reproduce
- * `rewrapTextBoxContent`'s exact output instead of a host-side
- * approximation that drops alignment/runs/list indents.
+ * Textbox mid-edge width drag (F8, NOOP-289 決定 (b)): no font is fetched
+ * any more — the drag only ever touches `data-comot-text-width`, never the
+ * `<text>` content (the runtime's `selectionClientRect` computes the
+ * live-previewed box from the element's own unchanged bbox + this width,
+ * see selection-runtime.js), so there is nothing left to measure.
  */
-interface TextLayoutSnapshot {
-  align: "left" | "center" | "right";
-  /** The content `<text>`'s raw `data-comot-list` attribute value, `null` when absent. */
-  listAttr: string | null;
-  runs: readonly TextRun[];
-}
-
 interface TextboxWidthGesture {
   kind: "textbox-width";
   id: string;
   handle: "left" | "right";
   originalWidth: number;
   originalTransform: string | null;
-  fontFamily: string;
-  fontSize: number;
-  sourceText: string;
-  layout: TextLayoutSnapshot;
-  /** Resolved asynchronously after the gesture starts (a font fetch); updates never apply until this lands. */
-  font: FontMetrics | null;
   startUserX: number;
   lastWidth: number;
 }
@@ -1052,30 +1042,7 @@ interface TextEditState {
   slidePath: string;
   originalText: string;
   currentText: string;
-  /**
-   * The declared text-box width, or null for a plain `<text>` — one that
-   * carries no `data-comot-text-width` and therefore has no wrapping at
-   * all. `font`/`fontSize` are null on exactly the same elements: with
-   * nothing to wrap, nothing needs measuring. `text set` already handles
-   * both shapes (element-text.ts's `replaceContainerText`).
-   */
-  width: number | null;
-  font: FontMetrics | null;
-  fontSize: number | null;
-  /** `null` for a plain `<text>` (the `width === null` case above) — that path never wraps, so it never needs one. */
-  layout: TextLayoutSnapshot | null;
 }
-
-/**
- * The family a `<text>` is measured against when it declares no
- * `font-family` of its own — `font-family` is optional in SVG, so a
- * perfectly legal text box can omit it, and in-place editing still has to
- * wrap. Kept as a literal rather than imported from core's
- * `DEFAULT_FONT_FAMILY`: that lives in presentation.ts, which reads the
- * font bytes off disk with node:fs and so cannot be imported into the
- * browser bundle. The bytes themselves arrive over /api/default-font.
- */
-const DEFAULT_FONT_FAMILY = "Noto Sans TC";
 
 /** Snap threshold in screen px, converted to user units per-viewport at drag time (assumption noted in the PR body). */
 const SNAP_THRESHOLD_PX = 8;
@@ -1303,38 +1270,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
   let currentSlideModel: SlideModel | null = null;
-  // [E2.T18]: the current slide's raw SVG text, kept so ⌘C/⌘X can call
-  // `@co-motion/core/clipboard`'s `extractElementsForCopy` synchronously,
-  // in-browser, without a round trip to the server — the whole reason this
-  // ticket's plan aliases that module straight to source (見 vite/vitest
-  // 設定). `null` before the first render() (no slide loaded yet).
   // E2.T12: the current slide's raw SVG text, kept so `notifyChartWindow`
   // can re-derive the open chart's `ChartModel` (`readChartModel`) after
   // every render() without a second fetch — the chart data window is the
   // one caller that needs the actual bytes, not just the parsed
   // `SlideElement` shape `currentSlideModel` carries.
   let currentSlideMarkup: string | null = null;
-  // Fonts this presentation embeds, as reported by /api/presentation
-  // (project.json's own `fonts` field) — resolveBrowserFont() below reads
-  // this to find the right font FILE for a family it hasn't fetched yet.
-  let presentationFonts: { file: string; family: string }[] = [];
-  // Parsed FontMetrics, keyed by family, resolved lazily on first use by a
-  // textbox-width gesture and cached for the controller's lifetime — a
-  // presentation's embedded fonts never change without a full reload()
-  // (which does not clear this cache: the bytes on disk for a given
-  // family are still the same font).
-  const fontCache = new Map<string, Promise<FontMetrics>>();
-  // Every embedded font this presentation declares, resolved and parsed at
-  // the end of reload() (below) — the browser-side equivalent of the
-  // server's `resolvePresentationFonts`. Fed to every `elementBounds` call
-  // (marquee framing, snap candidates) so a `<text>` element's box is
-  // computable there too, not just in the textbox-width gesture that used
-  // to be the only consumer of a parsed font (§4.7/§4.8). A family that
-  // fails to fetch/parse is simply absent from this map — any `<text>`
-  // using it stays unselectable/un-snappable, the same degradation
-  // `computeBounds`'s own try/catch already applies to any other
-  // unmeasurable element, rather than failing the whole reload.
-  let resolvedFonts: ReadonlyMap<string, FontMetrics> = new Map();
+  // F8 (NOOP-289 決定 G1): every id-carrying element's bounding box, as the
+  // runtime last reported it (`element-bounds`, selection-runtime.js's
+  // `reportElementBounds`) — the browser has no bundled font-metrics engine
+  // any more to compute one from the parsed model, so this replaces core's
+  // `elementBounds` as the source every marquee/snap-candidate lookup below
+  // reads. `slide`: the full container-chain box in the slide's own
+  // coordinate system (`elementBounds`'s old output space). `local`: the
+  // element's own bbox in its OWN local coordinate system, before its own
+  // transform (what `elementBounds({ancestors: [invertMatrix(own matrix)]})`
+  // used to fake by cancelling the chain out — the scale-gesture anchor
+  // corner needs exactly this). Reset to empty on every render(); an id the
+  // runtime could not measure (jsdom in tests, or a genuinely gone element)
+  // is simply absent, degrading the same way `computeBounds`'s try/catch
+  // already did for an unmeasurable element.
+  let elementBoundsById = new Map<string, { slide: Rect; local: Rect }>();
   // The runtime's last-reported client-px <-> user-unit mapping. `null`
   // until the runtime's "viewport" message arrives (on the iframe's own
   // `load`), which is also the state a gesture message must be ignored in.
@@ -1564,8 +1520,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // 轉送」而不是父文件自己的 keydown——兩條路徑呼叫同一組 controller
       // 方法，不會漂移。
       else if (message.key === "c" && (modifiers.meta || modifiers.ctrl)) {
-        const svg = copySelection();
-        if (svg) void navigator.clipboard.writeText(svg);
+        void copySelection().then((svg) => {
+          if (svg) void navigator.clipboard.writeText(svg);
+        });
       } else if (message.key === "x" && (modifiers.meta || modifiers.ctrl)) {
         void cutSelection().then((svg) => {
           if (svg) void navigator.clipboard.writeText(svg);
@@ -1657,9 +1614,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "text-edit-input") {
       if (!editingState || message.id !== editingState.id) return;
-      const text = typeof message.text === "string" ? message.text : "";
-      editingState.currentText = text;
-      postTextEditPreview(editingState.id, text, editingState.width, editingState.font, editingState.fontSize, editingState.layout);
+      // 決定 T1: no repaint round trip any more — the runtime already
+      // repainted itself before sending this report (its own `input`
+      // handler). This side only mirrors the string for commitTextEdit.
+      editingState.currentText = typeof message.text === "string" ? message.text : "";
       return;
     }
     if (message.event === "text-edit-commit") {
@@ -1728,6 +1686,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         return rect ? [{ target: entry.target, n: entry.n, rect: toParentClientRect(rect) }] : [];
       });
       notifyOverlay();
+      return;
+    }
+    if (message.event === "element-bounds") {
+      const items = Array.isArray(message.items) ? message.items.filter(isElementBoundsItem) : [];
+      elementBoundsById = new Map(items.map((item) => [item.id, { slide: item.rect, local: item.local }]));
       return;
     }
     if (message.event === "table-cell-click") {
@@ -2091,18 +2054,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return selectionIds.map((id) => index.get(id)?.element ?? null);
   }
 
-  /** An element's bounds, or null when they cannot be computed (e.g. a `<text>` whose font failed to resolve). Never throws. */
-  function computeBounds(
-    id: string,
-    index: Map<string, { element: SlideElement; ancestors: Matrix[] }>,
-  ): Rect | null {
-    const entry = index.get(id);
-    if (!entry) return null;
-    try {
-      return elementBounds(entry.element, { ancestors: entry.ancestors, fonts: resolvedFonts });
-    } catch {
-      return null;
-    }
+  /** `id`'s full container-chain bounds, off the runtime's last `element-bounds` report — `null` when the runtime never measured it (not currently rendered, or a test environment with no real SVG geometry). */
+  function computeBounds(id: string): Rect | null {
+    return elementBoundsById.get(id)?.slide ?? null;
   }
 
   function offsetUnion(rects: readonly Rect[], dx: number, dy: number): Rect {
@@ -2266,65 +2220,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * Fetches and parses (once, then cached) the font bytes for `family` —
-   * the browser-side half of what `resolvePresentationFonts` does on the
-   * server (fonts.ts), reduced to a single family since a textbox-width
-   * gesture only ever needs the one its own `<text>` declares. Throws
-   * (via the rejected promise) when the presentation has no such font
-   * entry, or the font bytes fail to parse — the caller is responsible for
-   * surfacing that as `CanvasState.error` rather than freezing the drag.
-   */
-  function resolveBrowserFont(family: string): Promise<FontMetrics> {
-    const cached = fontCache.get(family);
-    if (cached) return cached;
-    const promise = (async () => {
-      const entry = presentationFonts.find((candidate) => candidate.family === family);
-      // The build's own bundled family is always resolvable, even for a
-      // presentation whose project.json lists no fonts at all — see
-      // DEFAULT_FONT_FAMILY's own comment and serve.ts's /api/default-font.
-      if (!entry && family !== DEFAULT_FONT_FAMILY) {
-        throw new Error(`簡報未內嵌字型：${family}`);
-      }
-      const source = entry ? `/api/raw/${entry.file}` : "/api/default-font";
-      const response = await fetch(source);
-      if (!response.ok) {
-        throw new Error(`字型載入失敗：${entry ? entry.file : DEFAULT_FONT_FAMILY}`);
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      return parseFont(bytes);
-    })();
-    fontCache.set(family, promise);
-    return promise;
-  }
-
-  /**
-   * Resolves every family this presentation declares into a
-   * `ReadonlyMap<string, FontMetrics>` (`elementBounds`'s `fonts` option),
-   * so a `<text>` element's box is computable outside a textbox-width
-   * gesture too — marquee framing and drag-to-move's snap candidates both
-   * need it (§4.7/§4.8). Goes through the same `resolveBrowserFont` cache
-   * textbox-width already uses, so a family fetched once here is never
-   * re-fetched when a gesture needs it later. A family whose fetch/parse
-   * fails is simply left out of the returned map rather than failing
-   * reload() outright — same "skip the one thing that cannot be computed"
-   * posture as `computeBounds`'s own try/catch.
-   */
-  async function resolveEmbeddedFonts(
-    fonts: readonly { file: string; family: string }[],
-  ): Promise<ReadonlyMap<string, FontMetrics>> {
-    const entries = await Promise.all(
-      fonts.map(async (entry): Promise<[string, FontMetrics] | null> => {
-        try {
-          return [entry.family, await resolveBrowserFont(entry.family)];
-        } catch {
-          return null;
-        }
-      }),
-    );
-    return new Map(entries.filter((entry): entry is [string, FontMetrics] => entry !== null));
-  }
-
-  /**
    * "full" (single selection: scale + rotate handles — a table scales
    * through its container transform, a chart re-renders at the new size;
    * see `element-edit.ts`'s `scaleSpecialContainer`) / "move-only" (0 or
@@ -2423,43 +2318,46 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     });
   }
 
-  /** Pure, synchronous — `extractElementsForCopy`/`serializeClipboardSvg` are Node-free (計畫 §3.8), so this never touches the network. */
-  function clipboardTextForSelection(): string | null {
-    if (mode !== "view" || selectionIds.length === 0 || !currentSlideMarkup || currentIndex === -1) return null;
-    try {
-      const payload = extractElementsForCopy(currentSlideMarkup, slides[currentIndex], [...selectionIds]);
-      return serializeClipboardSvg(payload);
-    } catch {
-      // A source slide the sanitizer/compliance check would reject cannot
-      // actually exist (every write path already asserts compliance) — this
-      // is defence, not an expected path, so it degrades to "nothing to
-      // copy" rather than surfacing a confusing error for a selection the
-      // author can plainly see.
-      return null;
-    }
+  /** `result.data.svg`, the shape `element copy`/`element cut` both return (`docs/spec/cli.md`) — `undefined`/wrong type degrades to `null` (nothing to write to the system clipboard) rather than throwing. */
+  function svgFromCommandData(data: unknown): string | null {
+    const svg = (data as { svg?: unknown } | undefined)?.svg;
+    return typeof svg === "string" ? svg : null;
   }
 
-  function copySelection(): string | null {
-    const svg = clipboardTextForSelection();
-    if (svg && currentIndex !== -1) pasteOffsetState = clipboardWritten(slides[currentIndex]);
+  /**
+   * ⌘C, or the ContextBar Copy button (F8, NOOP-289 決定 (d)): sends
+   * `element copy` and returns the `svg` it replies with — the exact bytes
+   * `navigator.clipboard.writeText` should receive (the caller does the
+   * actual write, mirroring `cutSelection`). Never mutates the
+   * presentation. A command failure surfaces through the existing
+   * `CanvasState.error` (`runCommand`) and leaves the system clipboard
+   * untouched — the caller only writes when this resolves non-null.
+   */
+  async function copySelection(): Promise<string | null> {
+    if (mode !== "view" || selectionIds.length === 0 || currentIndex === -1) return null;
+    const slidePath = slides[currentIndex];
+    const result = await runCommand("element copy", { slidePath, elementIds: [...selectionIds] });
+    const svg = result.ok ? svgFromCommandData(result.data) : null;
+    if (svg !== null) pasteOffsetState = clipboardWritten(slidePath);
     return svg;
   }
 
   /**
-   * Cutting is a mutation (`element delete`), unlike `copySelection` — the
-   * caller (a keydown handler, or the ContextBar's Cut button) awaits this
-   * before writing `navigator.clipboard`, since there is no synchronous
-   * ClipboardEvent to race against (計畫 §3.8/A0 記錄: headless Chromium
-   * 底下 keyboard-only ⌘X 不會觸發原生 `cut` 事件，改走非同步
-   * `navigator.clipboard` API，見 App.tsx 的 keydown handler)。
+   * ⌘X, or the ContextBar Cut button: `element cut` replaces the former
+   * "local serialize + `element delete`" pair (決定 (d)/C2) — the CLI does
+   * both in one write, returning the same `svg` shape `element copy` does.
+   * Awaited before the caller writes `navigator.clipboard`, since there is
+   * no synchronous ClipboardEvent to race against (計畫 §3.8/A0 記錄:
+   * headless Chromium 底下 keyboard-only ⌘X 不會觸發原生 `cut` 事件，改走
+   * 非同步 `navigator.clipboard` API，見 App.tsx 的 keydown handler)。
    */
   async function cutSelection(): Promise<string | null> {
-    const svg = clipboardTextForSelection();
-    if (!svg || currentIndex === -1) return null;
+    if (mode !== "view" || selectionIds.length === 0 || currentIndex === -1) return null;
     const slidePath = slides[currentIndex];
     const elementIds = [...selectionIds];
-    const result = await runCommand("element delete", { slidePath, elementIds });
-    if (!result.ok) return null;
+    const result = await runCommand("element cut", { slidePath, elementIds });
+    const svg = result.ok ? svgFromCommandData(result.data) : null;
+    if (svg === null) return null;
     pasteOffsetState = clipboardWritten(slidePath);
     clearSelectionState([]);
     return svg;
@@ -2554,7 +2452,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (!modifiers.alt) {
       const index = elementIndex();
-      const movingRects = gesture.ids.map((id) => computeBounds(id, index)).filter((r): r is Rect => r !== null);
+      const movingRects = gesture.ids.map((id) => computeBounds(id)).filter((r): r is Rect => r !== null);
       if (movingRects.length > 0) {
         const moving = offsetUnion(movingRects, dx, dy);
         // Excludes the dragged id(s) themselves (as before), PLUS every one
@@ -2575,7 +2473,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         const candidates: SnapCandidate[] = [];
         for (const id of index.keys()) {
           if (excluded.has(id)) continue;
-          const bounds = computeBounds(id, index);
+          const bounds = computeBounds(id);
           if (bounds) candidates.push({ id, bounds });
         }
         const thresholdUser = SNAP_THRESHOLD_PX * (viewport.viewBox.width / viewport.svgRect.width);
@@ -2729,14 +2627,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     let fullInverse: Matrix | null = null;
     let anchorLocal = { x: 0, y: 0 };
     if (!forceUniform) {
+      // `elementBoundsById`'s `local` entry is exactly the box `elementBounds({
+      // ancestors: [invertMatrix(own matrix)] })` used to fake by cancelling
+      // the chain out (F8, NOOP-289 決定 G1) — the runtime reports it
+      // directly (`getBBox()`) instead. Absent (unmeasurable — jsdom, or a
+      // genuinely gone element) or a degenerate own-matrix both fall back to
+      // uniform-only rather than refusing the gesture outright.
+      const local = elementBoundsById.get(id)?.local ?? null;
       try {
+        if (local === null) throw new Error("unmeasurable");
         fullInverse = invertMatrix(composeMatrices([...entry.ancestors, entry.element.matrix]));
-        localBox = elementBounds(entry.element, { ancestors: [invertMatrix(entry.element.matrix)], fonts: resolvedFonts });
+        localBox = local;
         anchorLocal = cornerPoint(OPPOSITE_CORNER[corner], localBox);
       } catch {
-        // Unmeasurable (e.g. an arc path) or a degenerate own-matrix — the
-        // non-uniform path is not computable; fall back to uniform-only
-        // rather than refusing the gesture outright.
         forceUniform = true;
         localBox = null;
         fullInverse = null;
@@ -3030,33 +2933,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
-  /**
-   * The one place host-side code turns (text, width, font, layout) into a
-   * `preview-textbox` payload. All four call sites below go through this —
-   * NOOP-65r2 FAIL 1 was three of them each hand-writing
-   * `{ text, y }` tspans with no `align`/`runs`/list indent, which the
-   * model didn't even carry back then (§2a fixes that side). The markup
-   * itself comes from core's own `renderTextBoxContent` — the same
-   * function `rewrapTextBoxContent` (element-text.ts) calls — so the
-   * runtime never needs to know how a line becomes a `<tspan>`; it only
-   * ever receives the finished string. See `applyPreviewTextbox` in
-   * selection-runtime.js for the receiving end.
-   */
-  function textboxPreviewMessage(
-    id: string,
-    text: string,
-    width: number,
-    font: FontMetrics,
-    fontSizePx: number,
-    layout: TextLayoutSnapshot,
-  ): Record<string, unknown> {
-    const paragraphCount = text.split("\n").length;
-    const indents = listIndents(parseListTokens(layout.listAttr, paragraphCount, id), fontSizePx);
-    const wrapped = wrapText(text, { width, font, fontSizePx, align: layout.align, indents });
-    return { command: "preview-textbox", id, width, markup: renderTextBoxContent(wrapped.lines, layout.runs) };
-  }
-
-  // --- Textbox-width handles (§4.4) ---
+  // --- Textbox-width handles (F8, NOOP-289 決定 (b): 拖曳中只更新框，<text> 不動) ---
 
   function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
@@ -3066,48 +2943,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const id = selectionIds[0];
     const entry = elementIndex().get(id);
     if (!entry || entry.element.textWidth === null) return;
-    const textPrimitive = entry.element.primitives.find((primitive) => primitive.tag === "text");
-    if (!textPrimitive) return;
-    const fontFamily = textPrimitive.attrs.get("font-family");
-    if (!fontFamily) return;
-    const fontSizeRaw = textPrimitive.attrs.get("font-size");
-    const fontSize = fontSizeRaw === undefined ? 16 : Number(fontSizeRaw);
-    if (!Number.isFinite(fontSize) || fontSize <= 0) return;
 
-    const gesture: TextboxWidthGesture = {
+    activeGesture = {
       kind: "textbox-width",
       id,
       handle,
       originalWidth: entry.element.textWidth,
       originalTransform: entry.element.transform,
-      fontFamily,
-      fontSize,
-      sourceText: textPrimitive.text,
-      layout: {
-        align: entry.element.textAlign,
-        listAttr: textPrimitive.attrs.get("data-comot-list") ?? null,
-        runs: textPrimitive.runs,
-      },
-      font: null,
       startUserX: toUserPoint(point).x,
       lastWidth: entry.element.textWidth,
     };
-    activeGesture = gesture;
-
-    void resolveBrowserFont(fontFamily)
-      .then((font) => {
-        // Only apply if this exact gesture is still the active one — a
-        // fast click-drag-release, or a newer gesture starting before the
-        // fetch settles, must not resurrect a stale one.
-        if (activeGesture === gesture) gesture.font = font;
-      })
-      .catch((err) => {
-        if (activeGesture === gesture) {
-          activeGesture = null;
-          error = err instanceof Error ? err.message : "字型載入失敗";
-          notify();
-        }
-      });
   }
 
   function computeTextboxWidth(gesture: TextboxWidthGesture, point: { x: number; y: number }): number {
@@ -3121,42 +2966,38 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return gesture.handle === "right" ? gesture.originalWidth + dx : gesture.originalWidth - dx;
   }
 
-  function revertTextboxPreview(gesture: TextboxWidthGesture, font: FontMetrics): void {
-    postToFrame(
-      textboxPreviewMessage(gesture.id, gesture.sourceText, gesture.originalWidth, font, gesture.fontSize, gesture.layout),
-    );
+  /** Tells the runtime to show `width` — it only ever updates `data-comot-text-width` and the selection box/handles (`selectionClientRect` in selection-runtime.js), never the `<text>` content itself. */
+  function previewTextboxWidth(id: string, width: number): void {
+    postToFrame({ command: "preview-textbox-width", id, width });
   }
 
   function updateTextboxWidthGesture(point: { x: number; y: number }): void {
     const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "textbox-width" || !gesture.font) return; // Font still loading — freeze until it lands.
+    if (!gesture || gesture.kind !== "textbox-width") return;
     const width = computeTextboxWidth(gesture, point);
     if (!(width > 0)) return; // Would go non-positive — freeze at the last valid preview.
     gesture.lastWidth = width;
-    postToFrame(
-      textboxPreviewMessage(gesture.id, gesture.sourceText, width, gesture.font, gesture.fontSize, gesture.layout),
-    );
+    previewTextboxWidth(gesture.id, width);
   }
 
   async function endTextboxWidthGesture(point: { x: number; y: number }, cancelled: boolean): Promise<void> {
     const gesture = activeGesture;
     activeGesture = null;
     if (!gesture || gesture.kind !== "textbox-width") return;
-    if (!gesture.font) return; // Never resolved a usable frame — nothing was ever previewed, nothing to revert or send.
 
     if (cancelled) {
-      revertTextboxPreview(gesture, gesture.font);
+      previewTextboxWidth(gesture.id, gesture.originalWidth);
       return;
     }
     const width = computeTextboxWidth(gesture, point);
     if (!(width > 0) || roundsToZero(width)) {
-      revertTextboxPreview(gesture, gesture.font);
+      previewTextboxWidth(gesture.id, gesture.originalWidth);
       error = "文字框寬度必須大於 0";
       notify();
       return;
     }
     if (roundsToZero(width - gesture.originalWidth)) {
-      revertTextboxPreview(gesture, gesture.font);
+      previewTextboxWidth(gesture.id, gesture.originalWidth);
       return;
     }
 
@@ -3168,7 +3009,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     });
     if (destroyed || thisGeneration !== generation) return;
     if (!result.ok) {
-      revertTextboxPreview(gesture, gesture.font);
+      previewTextboxWidth(gesture.id, gesture.originalWidth);
       error = result.message;
       notify();
       return;
@@ -3176,56 +3017,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
-  // --- Chart data window (E2.T12 plan §3.6/§4.5) ---
+  // --- Chart data window (F8, NOOP-289 決定 (c): no local preview any more) ---
 
-  /**
-   * `CanvasController.previewChart`: swaps the open chart's embedded `<svg>`
-   * for `renderChartSvg(model)`'s output — writes nothing, the exact same
-   * "local preview, commit on blur/click" split `preview-textbox` gives
-   * text edits. `id` must be the currently open window's own target (a
-   * stale call from an already-closed window, e.g. a slow keystroke handler
-   * firing after Esc, is silently dropped rather than repainting a chart
-   * that is no longer the one on screen).
-   */
-  function previewChart(id: string, model: ChartModel): void {
-    if (mode !== "view" || chartWindowTarget !== id) return;
-    postToFrame({ command: "preview-chart", id, markup: renderChartSvg(model) });
-  }
-
-  /** `CanvasController.closeChartWindow` (Esc, plan §4.5): reverts whatever the window's own local preview last painted back to the file's actual committed content — same posture `revertTextboxPreview` gives a cancelled gesture, since a local chart preview never wrote anything either. */
+  /** `CanvasController.closeChartWindow` (Esc): just closes the window — every control already commits straight to a `chart *` command, so there is nothing local left to revert. */
   function closeChartWindow(): void {
-    const target = chartWindowTarget;
     chartWindowTarget = null;
-    if (target !== null && currentSlideMarkup !== null) {
-      try {
-        postToFrame({ command: "preview-chart", id: target, markup: renderChartSvg(readChartModel(currentSlideMarkup, target)) });
-      } catch {
-        // `target` no longer resolves to a chart — nothing on screen to revert either.
-      }
-    }
     notifyChartWindow();
   }
 
-  // --- In-place text editing (NOOP-91/#70 US1, T5) ---
-
-  /** Re-wraps `text` with core's `wrapText` and pushes it to the runtime via the existing preview-textbox channel — shared by the live-typing preview and a failed commit's revert. */
-  function postTextEditPreview(
-    id: string,
-    text: string,
-    width: number | null,
-    font: FontMetrics | null,
-    fontSizePx: number | null,
-    layout: TextLayoutSnapshot | null,
-  ): void {
-    if (width === null || font === null || fontSizePx === null || layout === null) {
-      // A plain <text>: no wrapping, and no tspan rewrite either — the
-      // runtime replaces the text content in place, leaving the element's
-      // own x/y/text-anchor alone.
-      postToFrame({ command: "preview-text", id, text });
-      return;
-    }
-    postToFrame(textboxPreviewMessage(id, text, width, font, fontSizePx, layout));
-  }
+  // --- In-place text editing (NOOP-91/#70 US1, T5; F8/NOOP-289 決定 T1) ---
 
   /**
    * Opens `id` for editing — the shared entry point for `beginTextEdit`
@@ -3236,12 +3036,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * answer "is this locked" is the runtime's own DOM — see the
    * "begin-text-edit"/"text-edit-denied" round trip below and
    * selection-runtime.js's `enterRuntimeTextEdit`.
+   *
+   * 決定 T1: no font is fetched and no layout is computed here any more —
+   * `begin-text-edit` carries only `{ id, text }`. The runtime repaints the
+   * edited `<text>` itself, entirely locally, on every keystroke (one hard
+   * break per line, zero measurement); this side only ever mirrors the
+   * latest string (`text-edit-input`) so `commitTextEdit` has something to
+   * diff and send.
    */
   async function enterTextEdit(id: string): Promise<void> {
     if (mode !== "view") return;
     const entry = elementIndex().get(id);
     if (!entry) return;
-    const width = entry.element.textWidth;
     if (editingState && editingState.id === id) return; // Already editing this exact element — no-op.
     if (editingState) await commitTextEdit(); // Editing a different element — commit it first.
     if (destroyed || mode !== "view") return;
@@ -3250,65 +3056,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (!textPrimitive) return;
     const sourceText = textPrimitive.text;
 
-    if (width === null) {
-      // A plain <text>: `text set` writes the string straight through with
-      // no re-wrapping, so no font is fetched and no measurement happens.
-      editingState = {
-        id,
-        slidePath: slides[currentIndex],
-        originalText: sourceText,
-        currentText: sourceText,
-        width: null,
-        font: null,
-        fontSize: null,
-        layout: null,
-      };
-      beginEditingLease();
-      postToFrame({ command: "begin-text-edit", id, text: sourceText });
-      return;
-    }
-
-    // font-family is optional in SVG; a text box that omits it is measured
-    // against the build's own bundled family rather than refused.
-    const fontFamily = textPrimitive.attrs.get("font-family") || DEFAULT_FONT_FAMILY;
-    const fontSizeRaw = textPrimitive.attrs.get("font-size");
-    const fontSize = fontSizeRaw === undefined ? 16 : Number(fontSizeRaw);
-    if (!Number.isFinite(fontSize) || fontSize <= 0) {
-      error = `文字框的 font-size 不是合法的正數：${fontSizeRaw}`;
-      notify();
-      return;
-    }
-
-    const thisGeneration = generation;
-    let font: FontMetrics;
-    try {
-      font = await resolveBrowserFont(fontFamily);
-    } catch (err) {
-      if (destroyed || thisGeneration !== generation) return;
-      error = err instanceof Error ? err.message : "字型載入失敗";
-      notify();
-      return;
-    }
-    if (destroyed || thisGeneration !== generation || mode !== "view") return;
-
-    const layout: TextLayoutSnapshot = {
-      align: entry.element.textAlign,
-      listAttr: textPrimitive.attrs.get("data-comot-list") ?? null,
-      runs: textPrimitive.runs,
-    };
-    editingState = {
-      id,
-      slidePath: slides[currentIndex],
-      originalText: sourceText,
-      currentText: sourceText,
-      font,
-      fontSize,
-      width,
-      layout,
-    };
+    editingState = { id, slidePath: slides[currentIndex], originalText: sourceText, currentText: sourceText };
     beginEditingLease();
-    const preview = textboxPreviewMessage(id, sourceText, width, font, fontSize, layout);
-    postToFrame({ command: "begin-text-edit", id, text: sourceText, markup: preview.markup, width });
+    postToFrame({ command: "begin-text-edit", id, text: sourceText });
   }
 
   /**
@@ -3337,7 +3087,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     endEditingLease();
     if (destroyed || thisGeneration !== generation) return;
     if (!result.ok) {
-      postTextEditPreview(state.id, state.originalText, state.width, state.font, state.fontSize, state.layout);
+      // The runtime has already exited its own edit session by now (it
+      // calls exitRuntimeTextEdit() synchronously before ever sending
+      // text-edit-commit) — this just paints `<text>` back to what the
+      // file actually holds, using the same local \n-split render
+      // `begin-text-edit` itself uses, without reopening an edit session.
+      postToFrame({ command: "revert-text-edit", id: state.id, text: state.originalText });
       error = result.message;
       notify();
     }
@@ -3383,16 +3138,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const hitIds: string[] = [];
     const hitNames: (string | null)[] = [];
     for (const element of currentSlideModel.elements) {
-      try {
-        const bounds = elementBounds(element, { ancestors: [], fonts: resolvedFonts });
-        if (rectsIntersect(marqueeRect, bounds)) {
-          hitIds.push(element.id);
-          hitNames.push(element.name);
-        }
-      } catch {
-        // An element whose bounds still cannot be computed (e.g. a
-        // `<text>` whose declared font failed to resolve) is simply not
-        // selectable by marquee.
+      const bounds = computeBounds(element.id);
+      // An element the runtime never reported bounds for (jsdom in tests,
+      // or a genuinely gone element) is simply not selectable by marquee —
+      // same degradation `computeBounds`'s callers already apply elsewhere.
+      if (bounds && rectsIntersect(marqueeRect, bounds)) {
+        hitIds.push(element.id);
+        hitNames.push(element.name);
       }
     }
     selectionIds = hitIds;
@@ -3485,9 +3237,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
 
     slides = project.slides;
-    presentationFonts = project.fonts ?? [];
-    resolvedFonts = await resolveEmbeddedFonts(presentationFonts);
-    if (destroyed || thisGeneration !== generation) return;
     // Live reload calls reload() on every external edit. Staying on the
     // slide the author is looking at is the whole point — jumping back to
     // the first one because an agent changed a word elsewhere is a bug.
@@ -3540,6 +3289,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (currentIndex === -1) {
       currentSlideModel = null;
       currentSlideMarkup = null;
+      elementBoundsById = new Map();
       currentSlideEffects = [];
       badgeTargets = [];
       overlayBadges = [];
@@ -3560,10 +3310,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // compliance) simply gets no model: gestures degrade to "no snap
     // candidates, no marquee hits" rather than throwing.
     try {
-      currentSlideModel = parseSlide(svgMarkup, slidePath);
+      currentSlideModel = parseSlide(svgMarkup);
     } catch {
       currentSlideModel = null;
     }
+    // The runtime's previous "element-bounds" report belonged to the OLD
+    // srcdoc (about to be replaced below) — clear it so a stale bounds map
+    // never outlives the slide it measured. The fresh iframe self-reports
+    // its own bounds once its script runs (selection-runtime.js's
+    // `reportElementBounds`), same "runtime-ready" timing `overlayBadges`
+    // already relies on.
+    elementBoundsById = new Map();
 
     // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse is treated
     // as having no animations at all in view mode (GUI table — the
@@ -3724,13 +3481,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
-      // [E2.T11]: read alongside the plan, in the same try — a slide whose
-      // <comot:transition> is present but malformed (§4.2: an unknown
-      // effect value, an illegal duration, more than one node) surfaces
-      // through the exact same `error` banner + static-fallback path a
-      // broken effect list already does, rather than a second, differently
-      // shaped failure mode.
-      currentPageTransition = readSlideTransition(svgMarkup);
+      // [E2.T11]: a slide whose <comot:transition> is present but malformed
+      // (§4.2: an unknown effect value, an illegal duration, more than one
+      // node) surfaces through the exact same `error` banner + static-
+      // fallback path a broken effect list already does, rather than a
+      // second, differently shaped failure mode — `plan.transition` comes
+      // from the SAME `computePlayerPlan` call above, so a malformed
+      // transition fails this same `try` (F8, NOOP-289 決定 E1: riding
+      // along on `computePlayerPlan`'s own `fetchSlideEffectPlan` call
+      // rather than a second one, since even a cache-hit await is one more
+      // microtask on a path PlayChrome.tsx's 2.5s auto-hide timer races
+      // against).
+      currentPageTransition = plan.transition;
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
@@ -4297,7 +4059,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selectElements,
     deleteSelection,
     duplicateSelection,
-    clipboardTextForSelection,
     copySelection,
     cutSelection,
     pasteFromText,
@@ -4313,7 +4074,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       };
     },
     closeChartWindow,
-    previewChart,
     destroy: () => {
       destroyed = true;
       window.removeEventListener("resize", notifyEmbeds);

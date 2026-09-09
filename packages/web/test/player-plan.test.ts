@@ -140,6 +140,7 @@ describe("computePlayerPlan", () => {
       media: {},
       stageMedia: {},
       embedIds: [],
+      transition: DEFAULT_TRANSITION,
     });
   });
 
@@ -240,6 +241,7 @@ describe("computePlayerPlan", () => {
       media: {},
       stageMedia: {},
       embedIds: [],
+      transition: DEFAULT_TRANSITION,
     });
   });
 

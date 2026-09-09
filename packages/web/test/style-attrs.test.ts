@@ -1,7 +1,24 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseSlide, type SlideElement } from "@co-motion/core/slide";
-import { STYLE_ATTRIBUTE_WHITELIST } from "@co-motion/core";
+import { parseSlide, type SlideElement } from "../src/slide-dom.js";
 import { PANEL_STYLE_ATTRIBUTES, readElementStyle, summarizeSelection } from "../src/style-attrs.js";
+
+// F8 (NOOP-289): the web bundle no longer depends on core's command-layer
+// whitelist at all — this reads the normative source, `docs/spec/cli.md`'s
+// own `element style set` entry, with node:fs + regex instead (same
+// "the file's own text is the contract" posture `tokens.test.ts` already
+// applies elsewhere).
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const cliSpecPath = path.join(repoRoot, "docs", "spec", "cli.md");
+const cliSpec = readFileSync(cliSpecPath, "utf8");
+
+function styleAttributeWhitelist(): string[] {
+  const match = cliSpec.match(/`attr`：必填，位置參數，必須落在白名單內（ADR-0014）：([^。]+)。/);
+  if (!match) throw new Error("cli.md 找不到 element style set 的 attr 白名單描述");
+  return [...match[1].matchAll(/`([a-z-]+)`/g)].map((m) => m[1]);
+}
 
 const wrap = (body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n${body}\n</svg>\n`;
@@ -14,9 +31,10 @@ function elementOf(svgBody: string, id: string): SlideElement {
 }
 
 describe("PANEL_STYLE_ATTRIBUTES（NOOP-69 §5-F 反漂移：分段面板送出 element style set 的每個屬性名都在白名單內）", () => {
-  it("每個屬性都落在命令層的 STYLE_ATTRIBUTE_WHITELIST 之內", () => {
+  it("每個屬性都落在 docs/spec/cli.md 的 element style set 白名單之內", () => {
+    const whitelist = styleAttributeWhitelist();
     for (const attr of PANEL_STYLE_ATTRIBUTES) {
-      expect(STYLE_ATTRIBUTE_WHITELIST).toContain(attr);
+      expect(whitelist).toContain(attr);
     }
   });
 

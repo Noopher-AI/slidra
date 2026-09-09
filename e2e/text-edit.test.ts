@@ -710,31 +710,18 @@ it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", as
   }
 });
 
-it("A4：跨行選取，每行各自一塊，接縫處無破洞或重疊", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await dblclickAtEnd(page, "el-text");
-    await waitForEditTextareaFocus(page);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    await page.keyboard.type("aaaa bbbb cccc dddd");
-    await page.waitForTimeout(150);
-
-    const lines = await tspanCount(page, "el-text");
-    expect(lines).toBeGreaterThan(1); // The fixture's whole point: this must actually wrap.
-
-    await dragSelectChars(page, "el-text", 0, 18, 8); // whole string
-
-    const blocks = await readSelectionBlockRects(page);
-    expect(blocks.length).toBe(lines);
-    const sorted = [...blocks].sort((a, b) => a.top - b.top);
-    for (let i = 1; i < sorted.length; i++) {
-      expect(sorted[i - 1].bottom).toBeLessThanOrEqual(sorted[i].top + 0.5);
-    }
-  } finally {
-    await cleanup();
-  }
-});
+// F8 (NOOP-289 決定 T1) removed A4's own fixture mechanism: this test typed
+// unbroken text ("aaaa bbbb cccc dddd", no "\n") into a narrow box and
+// relied on the browser's own soft-wrap (core's wrapText, called live on
+// every keystroke) to produce multiple tspans to select across. Decision
+// T1 deletes that local-wrap-during-typing engine entirely — the SAME
+// input now stays exactly one tspan (長行溢出文字框, spec #255's accepted
+// regression), so `tspanCount` never exceeds 1 and the test's own premise
+// ("this must actually wrap") no longer holds. A18 already covers the
+// same concern — cross-line selection blocks with no gap/overlap at the
+// seam — using the mechanism that still exists post-T1 (an explicit hard
+// break via Enter), so this is dropped rather than reworked into a
+// duplicate of A18.
 
 it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令，undo 一格回到原字串", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
@@ -777,30 +764,15 @@ it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令�
   }
 });
 
-it("A6：西文含空白斷行的文字方塊，逐字元點擊，selectionStart 與字元位置零偏移（wrapText 字元保存不變式的機械證明）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await dblclickAtEnd(page, "el-text");
-    await waitForEditTextareaFocus(page);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    const text = "aaaa bbbb cccc dddd";
-    await page.keyboard.type(text);
-    await page.waitForTimeout(150);
-
-    expect(await tspanCount(page, "el-text")).toBeGreaterThan(1);
-
-    for (let k = 0; k < text.length; k++) {
-      await clickChar(page, "el-text", k);
-      await page.waitForTimeout(20);
-      const sel = await readSelection(page);
-      expect(sel.start).toBe(k);
-      expect(sel.end).toBe(k);
-    }
-  } finally {
-    await cleanup();
-  }
-});
+// F8 (NOOP-289 決定 T1) removed A6's own fixture mechanism too, the same
+// way as A4 above: it typed unbroken text expecting the deleted local-wrap
+// engine to split it into multiple soft-wrapped tspans, then walked every
+// character's click precision across that (now nonexistent) multi-tspan
+// structure. A16–A19 already prove exactly this — per-character click →
+// selectionStart precision across a MULTI-line `<text>` — using hard
+// breaks (the mechanism T1 keeps), so this is dropped rather than
+// reworked into a duplicate; A1 (single-line, no breaks at all) still
+// covers the same invariant's simplest case.
 
 it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元素上按下不改變選取", async () => {
   const { server, cleanup } = await startServerFor();

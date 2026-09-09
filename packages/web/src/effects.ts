@@ -7,11 +7,10 @@
  * derivation never issue duplicate requests for the same slide at once.
  *
  * D6: `SUPPORTED_EFFECTS`/`SUPPORTED_STARTS` and the five effect types are
- * re-declared here rather than imported from `@co-motion/core/effects` —
- * this is the terminal shape (F9 removes `packages/core` from the web
- * bundle entirely), not a temporary duplication. `docs/spec/cli.md`'s
- * `effect add` entry is the normative source for these value sets, not
- * this file.
+ * re-declared here rather than imported from core's effects module — this
+ * is the terminal shape (F8, NOOP-289, removes core from the web bundle
+ * entirely), not a temporary duplication. `docs/spec/cli.md`'s `effect
+ * add` entry is the normative source for these value sets, not this file.
  */
 
 export type EffectFamily = "enter" | "emphasis" | "exit" | "path" | "media";

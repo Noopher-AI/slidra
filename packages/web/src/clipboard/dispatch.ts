@@ -2,8 +2,8 @@ import type { ClipboardTextKind } from "./payload.js";
 
 /**
  * [E2.T18] 計畫「補充：與 [E2.T14] 的軟依賴介面」(b). A cell-range selection
- * on a table, addressed the same way `@co-motion/core`'s `parseCellRange`
- * addresses one (0-based, inclusive).
+ * on a table, addressed the same way core's `parseCellRange` addresses one
+ * (0-based, inclusive).
  */
 export interface CellRange {
   tableElementId: string;

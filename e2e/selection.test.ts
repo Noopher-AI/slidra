@@ -1111,10 +1111,18 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     const toast = page.locator(".dock-toast");
     await expect.poll(() => toast.textContent()).toBe("Grouped 2 elements · their animations were removed");
 
+    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
+    // 移到截圖之前（F8, NOOP-289 期間發現）：dock 按鈕的 enabled/disabled
+    // 狀態跟著「選取是否已還原」走，不是 toast 一出現就與 reload 進度脫鉤
+    // ——這裡等的正是同一個 reload，只是等的方式從「不管它」換成「等它
+    // 落地」，讓下面的截圖固定在 reload 之後那個狀態，不再跟 reload 賽跑
+    // （原本「不等 reload 完成」的假設在這個成員上不成立，被較快的 reload
+    // 時序放大成偶發 flaky）。
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
+    expect(await effectCount(registry, presentationId)).toBe(0);
+
     // 基準截圖：toast（clip 到 dock ∪ toast 的聯集，四邊取整——見
-    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。不等 reload 完成：
-    // toast 一出現就立刻截圖，reload 進度不影響這塊裁切區域的像素
-    // （fixture 的所有內容都在上半部）。
+    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。
     await settleForScreenshot(page);
     const dockBox = await page.locator(".dock").boundingBox();
     const toastBox = await toast.boundingBox();
@@ -1124,10 +1132,6 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     const right = Math.ceil(Math.max(dockBox.x + dockBox.width, toastBox.x + toastBox.width));
     const bottom = Math.ceil(Math.max(dockBox.y + dockBox.height, toastBox.y + toastBox.height));
     await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
-
-    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
-    expect(await effectCount(registry, presentationId)).toBe(0);
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
     const groupMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);

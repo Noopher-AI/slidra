@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { parseSlide, type SlideElement } from "@co-motion/core/slide";
+import { parseSlide, type SlideElement } from "../src/slide-dom.js";
 import type { CanvasState } from "../src/canvas.js";
 import { StyleObjectPanel } from "../src/shell/side/StyleObjectPanel.js";
 
