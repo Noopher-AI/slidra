@@ -356,6 +356,75 @@ fn cat_and_ls_are_byte_identical_to_node_on_every_path() {
     );
 }
 
+/// [E4.T5] moved `element delete`/`textbox add`/`comment list` out of
+/// `fallback_path_is_byte_identical_to_node_for_every_non_takeover_command`
+/// when Rust took the whole `element`/`textbox`/`comment` families over —
+/// correctly, since none of them ever reaches the fallback path anymore —
+/// but dropped their cross-engine coverage instead of giving it a dedicated
+/// home, the same way `cat_and_ls_are_byte_identical_to_node_on_every_path`
+/// and `slide_add_and_move_reject_non_integer_position_byte_identical_to_node`
+/// did for the commands *they* took over. This test restores exactly the
+/// three cases that test used to run (NOOP-322 債 5), now comparing the
+/// compiled Rust binary against the real Node CLI directly rather than via
+/// the fallback path — `Fixture::run_node` still reaches
+/// `packages/cli`/`packages/core` on its own, so this remains a genuine
+/// cross-engine comparison. All three cases are argv shapes with no
+/// randomly-generated ids in their output (no element/comment gets created),
+/// so a literal byte comparison never needs id normalization.
+#[test]
+fn element_delete_textbox_add_comment_list_match_node_byte_for_byte() {
+    let fixture = Fixture::new("element-textbox-comment-parity");
+    let comot_path = fixture.workspace.join("t.comot");
+
+    let new_output = fixture.run_node(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    assert!(
+        new_output.status.success(),
+        "setup: `new` failed: {:?}",
+        new_output
+    );
+    let open_output = fixture.run_node(&["open", comot_path.to_str().unwrap()]);
+    assert!(
+        open_output.status.success(),
+        "setup: `open` failed: {:?}",
+        open_output
+    );
+    let id = extract_id(&open_output);
+
+    let cases: Vec<Vec<&str>> = vec![
+        // Error path: the target element does not exist.
+        vec!["element", "delete", &id, "slides/001.svg", "el-nonexistent"],
+        // Error path: every required positional/flag is missing.
+        vec!["textbox", "add"],
+        // Success path: no comments yet, deterministic empty list.
+        vec!["comment", "list", &id],
+    ];
+
+    let mut failures = Vec::new();
+    for args in &cases {
+        let rust_out = fixture.run_rust(args);
+        let node_out = fixture.run_node(args);
+        if rust_out.stdout != node_out.stdout
+            || rust_out.stderr != node_out.stderr
+            || rust_out.status.code() != node_out.status.code()
+        {
+            failures.push(format!(
+                "args={args:?}\n  rust: code={:?} stdout={:?} stderr={:?}\n  node: code={:?} stdout={:?} stderr={:?}",
+                rust_out.status.code(),
+                String::from_utf8_lossy(&rust_out.stdout),
+                String::from_utf8_lossy(&rust_out.stderr),
+                node_out.status.code(),
+                String::from_utf8_lossy(&node_out.stdout),
+                String::from_utf8_lossy(&node_out.stderr),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "element delete/textbox add/comment list parity mismatches:\n{}",
+        failures.join("\n---\n")
+    );
+}
+
 /// Unknown sub-commands within a taken-over family must be rejected by Rust
 /// itself, never forwarded to Node (A1's "回退不再觸發" — the family name
 /// alone already committed argv[0] to Rust dispatch).
