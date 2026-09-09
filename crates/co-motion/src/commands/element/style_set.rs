@@ -8,6 +8,7 @@ use crate::commands::argv::{
 };
 use crate::element::edit;
 use crate::errors::CoMotionResult;
+use crate::fonts;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
@@ -24,12 +25,14 @@ fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
     let force = has_flag(args, "--force");
 
     let slide = write::require_slide(&id, &slide_path)?;
+    let fonts = fonts::resolve_presentation_fonts(&id)?;
     let updated = edit::set_element_style(
         &slide.content,
         &slide_path,
         &element_ids,
         &attr,
         &value,
+        &fonts,
         force,
     )?;
     write::write_presentation_file(&id, &slide_path, &updated)?;

@@ -687,6 +687,24 @@ async function genElementCommands() {
     const fixture = slide(`<g id="a"><rect x="0" y="0" width="1" height="1"/></g>`);
     push("element style set", "fill", fixture, { elementIds: ["a"], attr: "fill", value: "#ff0000" }, edit.setElementStyle(fixture, SLIDE_PATH, ["a"], "fill", "#ff0000", fontBook, {}));
   }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello world</tspan></text></g>`,
+    );
+    push("element scale", "textbox", fixture, { elementIds: ["tb"], factor: 2 }, edit.scaleElements(fixture, SLIDE_PATH, ["tb"], 2, fontBook, {}));
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="200" data-comot-text-height="50"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello world</tspan></text></g>`,
+    );
+    push("element resize", "textbox-uniform", fixture, { elementIds: ["tb"], width: 400, height: 100, anchor: "nw" }, edit.resizeElements(fixture, SLIDE_PATH, ["tb"], 400, 100, "nw", fontBook, {}));
+  }
+  {
+    const fixture = slide(
+      `<g id="tb" data-comot-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hello world</tspan></text></g>`,
+    );
+    push("element style set", "textbox-font-size", fixture, { elementIds: ["tb"], attr: "font-size", value: "24" }, edit.setElementStyle(fixture, SLIDE_PATH, ["tb"], "font-size", "24", fontBook, {}));
+  }
 
   // --- element: arrange (P5) ---
   {

@@ -571,8 +571,7 @@ pub fn replace_element_text(
 // ---------------------------------------------------------------------------
 // rewrap_text_box_content — shared by textbox width / textbox align /
 // text style set / text list set, AND by element::edit's scale/resize/style
-// set once they stop deferring the text-box case (see that module's doc
-// comments naming this function as their eventual replacement).
+// set for their text-box branches.
 // ---------------------------------------------------------------------------
 
 pub(crate) struct RewrappedContent {

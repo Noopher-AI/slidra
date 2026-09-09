@@ -121,7 +121,9 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str) -> Self {
-            let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = workspace::registry::ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let home = temp_dir(&format!("{label}-home"));
             let work = temp_dir(&format!("{label}-work"));
             let id = format!("pid-{label}");

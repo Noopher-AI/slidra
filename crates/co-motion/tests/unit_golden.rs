@@ -1310,7 +1310,8 @@ fn run_element_command_case(case: &ElementCommandCase) -> CaseOutcome {
         "element scale" => {
             let ids = arg_str_vec(args, "elementIds");
             let factor = arg_f64(args, "factor");
-            let result = edit::scale_elements(svg, GOLDEN_SLIDE_PATH, &ids, factor, false)
+            let fonts = golden_font_book();
+            let result = edit::scale_elements(svg, GOLDEN_SLIDE_PATH, &ids, factor, &fonts, false)
                 .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
             CaseOutcome::Text(result)
         }
@@ -1337,8 +1338,10 @@ fn run_element_command_case(case: &ElementCommandCase) -> CaseOutcome {
             let ids = arg_str_vec(args, "elementIds");
             let attr = arg_str(args, "attr");
             let value = arg_str(args, "value");
-            let result = edit::set_element_style(svg, GOLDEN_SLIDE_PATH, &ids, attr, value, false)
-                .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
+            let fonts = golden_font_book();
+            let result =
+                edit::set_element_style(svg, GOLDEN_SLIDE_PATH, &ids, attr, value, &fonts, false)
+                    .unwrap_or_else(|err| panic!("{}: {:?}", case.label, err.message()));
             CaseOutcome::Text(result)
         }
         "element align" => {

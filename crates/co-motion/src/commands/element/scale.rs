@@ -3,6 +3,7 @@
 use crate::commands::argv::{has_flag, require_id_list, require_number_flag, require_positional};
 use crate::element::edit;
 use crate::errors::CoMotionResult;
+use crate::fonts;
 use crate::result::CommandResult;
 use crate::workspace::write;
 
@@ -14,7 +15,15 @@ fn try_run(args: &[String]) -> CoMotionResult<CommandResult> {
     let force = has_flag(args, "--force");
 
     let slide = write::require_slide(&id, &slide_path)?;
-    let updated = edit::scale_elements(&slide.content, &slide_path, &element_ids, factor, force)?;
+    let fonts = fonts::resolve_presentation_fonts(&id)?;
+    let updated = edit::scale_elements(
+        &slide.content,
+        &slide_path,
+        &element_ids,
+        factor,
+        &fonts,
+        force,
+    )?;
     write::write_presentation_file(&id, &slide_path, &updated)?;
 
     Ok(CommandResult::success(

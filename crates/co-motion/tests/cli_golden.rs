@@ -977,6 +977,97 @@ fn effect_remove_move_set_match_between_rust_and_node() {
     );
 }
 
+/// NOOP-314 acceptance criterion 5 (plan section 6.4): the shipped
+/// `element scale` on a text box must be byte-identical between the Rust
+/// binary and the Node CLI, not merely both non-error. Uses the SAME
+/// element id for both sides (Node's `undo` cleanly rewinds to right after
+/// `textbox add`, verified below) rather than two separately generated
+/// presentations, since element ids are random and would otherwise need
+/// normalizing before comparison.
+#[test]
+fn element_scale_on_a_text_box_matches_node_byte_for_byte() {
+    let fixture = Fixture::new("scale-textbox-parity");
+    // `element scale` opens with `assert_slide_compliant` (see
+    // `new_and_open`'s doc comment below `struct Fixture`) — the freshly
+    // created default template's bare `<text>` title fails that check, so
+    // this needs the same `convert` step every other `element::edit`
+    // CLI-boundary test in this file uses, not the plain `new`+`open` the
+    // `text set`-only `build_edited_fixture` gets away with.
+    let (id, _title_element_id) = new_and_open(&fixture);
+
+    let textbox_add = fixture.run_node(&[
+        "textbox",
+        "add",
+        &id,
+        "slides/001.svg",
+        "--x",
+        "10",
+        "--y",
+        "10",
+        "--width",
+        "200",
+        "--text",
+        "文字框內容",
+    ]);
+    assert!(
+        textbox_add.status.success(),
+        "setup: `textbox add` failed: {:?}",
+        textbox_add
+    );
+
+    let after_add = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&after_add));
+
+    let rust_scale = fixture.run_rust(&[
+        "element",
+        "scale",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--factor",
+        "2",
+    ]);
+    assert!(
+        rust_scale.status.success(),
+        "rust `element scale` failed: {:?}",
+        rust_scale
+    );
+    let rust_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    let undo_output = fixture.run_rust(&["undo", &id]);
+    assert!(
+        undo_output.status.success(),
+        "undo failed: {:?}",
+        undo_output
+    );
+    let restored = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_eq!(
+        restored, after_add,
+        "undo must cleanly restore the post-`textbox add` bytes"
+    );
+
+    let node_scale = fixture.run_node(&[
+        "element",
+        "scale",
+        &id,
+        "slides/001.svg",
+        &element_id,
+        "--factor",
+        "2",
+    ]);
+    assert!(
+        node_scale.status.success(),
+        "node `element scale` failed: {:?}",
+        node_scale
+    );
+    let node_after = fixture.run_node(&["cat", &id, "slides/001.svg"]).stdout;
+
+    assert_eq!(
+        rust_after, node_after,
+        "rust and node `element scale` on a text box must produce byte-identical output"
+    );
+}
+
 /// Plan 6.2 item 4: a slide with no effect list at all — `effect list`'s
 /// not-found stderr and exit code must match between engines.
 #[test]

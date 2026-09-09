@@ -23,6 +23,7 @@ use crate::element::assert_not_locked;
 use crate::element::splice::{
     Splice, apply_splices, attribute_removal_splice, build_transform_splice, set_attr_splice,
 };
+use crate::element::text::{read_text_font_info, rewrap_text_box_content};
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::geometry::bbox::{Bbox, ElementBoundsOptions, element_bounds};
 use crate::geometry::transform::{Point, TransformParts, invert_matrix};
@@ -1120,25 +1121,66 @@ fn scale_special_container(
     }
 }
 
-/// Scales a leaf container's own primitive(s). A text box (`data-comot-text-width`
-/// present) is deferred with an explicit `Failed` rather than attempted: the
-/// TS original re-wraps it (`rewrapTextBoxContent`), which lives in
-/// `element-text.ts` — P6 of this ticket's plan, not yet ported. Registering
-/// `element scale` in the takeover table with a silent wrong answer for text
-/// boxes would be worse than this explicit gap (plan section 6.5: "不要把
-/// 沒有黃金檔案例、沒跑過的命令登記進接管表" — the same principle applied to
-/// one code path within an otherwise-working command rather than to a whole
-/// command).
+/// Scales a leaf container's own primitive(s). A text box
+/// (`data-comot-text-width` present) re-wraps its content at the scaled
+/// width/font-size (`rewrapTextBoxContent`, mirroring
+/// `scaleLeafPrimitives`'s text-box branch, `element-edit.ts:688-733`): the
+/// new `font-size` is spliced onto the `<text>` FIRST, the document is
+/// re-scanned so the rewrap sees the post-splice node, and only then is
+/// `rewrap_text_box_content` called — reusing a stale offset here would
+/// produce output that runs but is wrong.
 fn scale_leaf_primitives(
     svg: &str,
     container: &ScannedNode,
     factor: f64,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     element_id: &str,
 ) -> CoMotionResult<String> {
-    if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_some() {
-        return Err(CoMotionError::invalid(format!(
-            "元素 {element_id} 是文字框，縮放尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
-        )));
+    if let Some(text_width_attr) = attribute_of(container, TEXT_WIDTH_ATTRIBUTE) {
+        let text_node = meaningful_children(container)
+            .into_iter()
+            .find(|primitive| primitive.tag == "text")
+            .ok_or_else(|| CoMotionError::invalid(format!("元素不是合法的文字框：{element_id}")))?;
+        let current_width: f64 = text_width_attr.value.parse().unwrap_or(f64::NAN);
+        let (font_family, font_size) = read_text_font_info(text_node, element_id)?;
+        let new_width = assert_positive_after_rounding(
+            current_width * factor,
+            format!("元素 {element_id} 的文字框寬度縮放後不是大於 0 的數字"),
+        )?;
+        let new_font_size = assert_positive_after_rounding(
+            font_size * factor,
+            format!("元素 {element_id} 的 font-size 縮放後不是大於 0 的數字"),
+        )?;
+        let with_font_size = apply_splices(
+            svg,
+            &[set_attr_splice(
+                text_node,
+                "font-size",
+                &format_svg_number(new_font_size),
+            )],
+        );
+        let refreshed_roots = scan_document(&with_font_size)?;
+        let refreshed_svg_root = require_svg_root(&refreshed_roots)?;
+        let (refreshed_container, _parent) = require_container(refreshed_svg_root, element_id)?;
+        let refreshed_text_node = meaningful_children(refreshed_container)
+            .into_iter()
+            .find(|primitive| primitive.tag == "text")
+            .expect("the <text> node just spliced must still be findable after re-scanning");
+        let refreshed_width_attr = attribute_of(refreshed_container, TEXT_WIDTH_ATTRIBUTE)
+            .expect("presence already checked above via text_width_attr");
+        let result = rewrap_text_box_content(
+            &with_font_size,
+            refreshed_container,
+            refreshed_text_node,
+            refreshed_width_attr.start,
+            refreshed_width_attr.end,
+            new_width,
+            &font_family,
+            new_font_size,
+            fonts,
+            element_id,
+        )?;
+        return Ok(result.updated);
     }
     let mut splices = Vec::new();
     for primitive in meaningful_children(container) {
@@ -1159,7 +1201,13 @@ fn scale_leaf_primitives(
 /// Re-locates each node by id from a fresh `scan_document` before touching
 /// it (a worklist of ids, not a single offset-collecting walk) so a splice
 /// earlier in the subtree never invalidates a sibling's or child's offsets.
-fn scale_one_container(svg: &str, id: &str, factor: f64, force: bool) -> CoMotionResult<String> {
+fn scale_one_container(
+    svg: &str,
+    id: &str,
+    factor: f64,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
+    force: bool,
+) -> CoMotionResult<String> {
     assert_subtree_not_locked(svg, id, force)?;
 
     let mut current = svg.to_string();
@@ -1198,7 +1246,9 @@ fn scale_one_container(svg: &str, id: &str, factor: f64, force: bool) -> CoMotio
                 force,
             )? {
                 Some(updated) => updated,
-                None => scale_leaf_primitives(&current, refreshed_node, factor, &current_id)?,
+                None => {
+                    scale_leaf_primitives(&current, refreshed_node, factor, fonts, &current_id)?
+                }
             };
         }
     }
@@ -1212,6 +1262,7 @@ pub fn scale_elements(
     slide_path: &str,
     element_ids: &[String],
     factor: f64,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     force: bool,
 ) -> CoMotionResult<String> {
     assert_slide_compliant(svg_content, slide_path)?;
@@ -1221,7 +1272,7 @@ pub fn scale_elements(
     }
     let mut current = svg_content.to_string();
     for id in element_ids {
-        current = scale_one_container(&current, id, factor, force)?;
+        current = scale_one_container(&current, id, factor, fonts, force)?;
     }
     Ok(current)
 }
@@ -1333,19 +1384,26 @@ fn build_primitive_resize_splices(
     }
 }
 
-/// Resize counterpart to `scale_leaf_primitives` — a text box is deferred
-/// the same way (see that function's doc comment).
+/// Resize counterpart to `scale_leaf_primitives` — a text box only has a
+/// single scalar `font-size`, so a non-uniform `(sx, sy)` is rejected
+/// outright; an equal `(sx, sy)` delegates to `scale_leaf_primitives`
+/// (mirroring `resizeLeafPrimitives`'s text-box branch,
+/// `element-edit.ts:956-977`).
 fn resize_leaf_primitives(
     svg: &str,
     container: &ScannedNode,
     sx: f64,
     sy: f64,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     element_id: &str,
 ) -> CoMotionResult<String> {
     if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_some() {
-        return Err(CoMotionError::invalid(format!(
-            "元素 {element_id} 是文字框，調整尺寸尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
-        )));
+        if sx != sy {
+            return Err(CoMotionError::invalid(format!(
+                "元素 {element_id} 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+            )));
+        }
+        return scale_leaf_primitives(svg, container, sx, fonts, element_id);
     }
     let mut splices = Vec::new();
     for primitive in meaningful_children(container) {
@@ -1365,6 +1423,7 @@ fn resize_one_container(
     id: &str,
     sx: f64,
     sy: f64,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     force: bool,
 ) -> CoMotionResult<String> {
     assert_subtree_not_locked(svg, id, force)?;
@@ -1402,7 +1461,9 @@ fn resize_one_container(
                 force,
             )? {
                 Some(updated) => updated,
-                None => resize_leaf_primitives(&current, refreshed_node, sx, sy, &current_id)?,
+                None => {
+                    resize_leaf_primitives(&current, refreshed_node, sx, sy, fonts, &current_id)?
+                }
             };
         }
     }
@@ -1487,7 +1548,7 @@ fn resize_one_target(
         y: matrix.b * delta_local.x + matrix.d * delta_local.y,
     };
 
-    let mut current = resize_one_container(svg, id, sx, sy, force)?;
+    let mut current = resize_one_container(svg, id, sx, sy, fonts, force)?;
     current = apply_transform_delta(&current, id, true, |mut parts| {
         parts.translate_x += delta_parent.x;
         parts.translate_y += delta_parent.y;
@@ -1594,6 +1655,7 @@ fn set_style_on_container(
     id: &str,
     attr: &str,
     value: &str,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     force: bool,
 ) -> CoMotionResult<String> {
     let roots = scan_document(svg)?;
@@ -1615,16 +1677,52 @@ fn set_style_on_container(
             "文字框不支援 text-anchor（換行引擎假設 start）：{id}"
         )));
     }
-    // A text box's font-size/font-family change needs a re-wrap
-    // (`rewrapTextBoxContent`, P6, not yet ported) — every other whitelisted
+    // A text box's font-size/font-family change re-wraps its content
+    // (`rewrapTextBoxContent`, mirroring `setStyleOnContainer`'s text-box
+    // branch, `element-edit.ts:1216-1252`) — every other whitelisted
     // attribute (fill/stroke/opacity/...) is a plain splice onto the
-    // `<text>` primitive with no layout consequence, so only these two are
-    // deferred (see `scale_leaf_primitives`'s doc comment for the same
-    // "explicit gap, not a silent wrong answer" reasoning).
+    // `<text>` primitive with no layout consequence, so only these two need
+    // the rewrap path.
     if is_text_box && (attr == "font-size" || attr == "font-family") {
-        return Err(CoMotionError::invalid(format!(
-            "元素 {id} 是文字框，調整 {attr} 尚未支援（等文字命令族〔P6〕完成後補上，見 NOOP-309）"
-        )));
+        let text_node = meaningful_children(node)
+            .into_iter()
+            .find(|primitive| primitive.tag == "text")
+            .ok_or_else(|| CoMotionError::invalid(format!("元素不是合法的文字框：{id}")))?;
+        let current_info = read_text_font_info(text_node, id)?;
+        let with_attr = apply_splices(svg, &[set_attr_splice(text_node, attr, value)]);
+        let refreshed_roots = scan_document(&with_attr)?;
+        let refreshed_svg_root = require_svg_root(&refreshed_roots)?;
+        let (refreshed_container, _parent) = require_container(refreshed_svg_root, id)?;
+        let refreshed_text_node = meaningful_children(refreshed_container)
+            .into_iter()
+            .find(|primitive| primitive.tag == "text")
+            .expect("the <text> node just spliced must still be findable after re-scanning");
+        let refreshed_width_attr = attribute_of(refreshed_container, TEXT_WIDTH_ATTRIBUTE)
+            .expect("is_text_box already checked presence");
+        let width: f64 = refreshed_width_attr.value.parse().unwrap_or(f64::NAN);
+        let font_family = if attr == "font-family" {
+            value.to_string()
+        } else {
+            current_info.0
+        };
+        let font_size = if attr == "font-size" {
+            value.parse::<f64>().unwrap_or(f64::NAN)
+        } else {
+            current_info.1
+        };
+        let result = rewrap_text_box_content(
+            &with_attr,
+            refreshed_container,
+            refreshed_text_node,
+            refreshed_width_attr.start,
+            refreshed_width_attr.end,
+            width,
+            &font_family,
+            font_size,
+            fonts,
+            id,
+        )?;
+        return Ok(result.updated);
     }
 
     let splices: Vec<Splice> = meaningful_children(node)
@@ -1643,6 +1741,7 @@ pub fn set_element_style(
     element_ids: &[String],
     attr: &str,
     value: &str,
+    fonts: &HashMap<String, Box<dyn FontMetrics>>,
     force: bool,
 ) -> CoMotionResult<String> {
     assert_slide_compliant(svg_content, slide_path)?;
@@ -1650,7 +1749,7 @@ pub fn set_element_style(
     validate_style_attribute(attr, value)?;
     let mut current = svg_content.to_string();
     for id in element_ids {
-        current = set_style_on_container(&current, id, attr, value, force)?;
+        current = set_style_on_container(&current, id, attr, value, fonts, force)?;
     }
     Ok(current)
 }
@@ -2180,6 +2279,43 @@ mod tests {
     }
 
     #[test]
+    fn order_up_after_a_leading_cjk_title_swaps_the_correct_siblings() {
+        // `Up`/`Down` go through `move_one_step` -> `swap_adjacent_containers`,
+        // a different path than `Front`/`Back`'s `move_to_edge` above — the
+        // leading CJK `<title>` means byte offsets and UTF-16 offsets
+        // diverge, so this exercises `utf16_offset_to_byte_offset` on that
+        // path too (both directions, so the same-file mutation of either
+        // `Up` or `Down` alone would still be caught).
+        let svg = slide_with_cjk_title(
+            r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g><g id="b"><rect x="0" y="0" width="1" height="1"/></g>"#,
+        );
+        let after_up = reorder_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            OrderDirection::Up,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            after_up,
+            slide_with_cjk_title(
+                r#"<g id="b"><rect x="0" y="0" width="1" height="1"/></g><g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#
+            )
+        );
+
+        let after_down = reorder_elements(
+            &after_up,
+            "slides/001.svg",
+            &["a".to_string()],
+            OrderDirection::Down,
+            false,
+        )
+        .unwrap();
+        assert_eq!(after_down, svg);
+    }
+
+    #[test]
     fn validate_id_list_rejects_empty_and_duplicate() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let empty_err = lock_elements(&svg, "slides/001.svg", &[]).unwrap_err();
@@ -2196,8 +2332,15 @@ mod tests {
         let svg = slide(
             r#"<g id="a" transform="translate(5 5)"><rect x="0" y="0" width="10" height="20"/></g>"#,
         );
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
         assert!(
             updated.contains(r#"transform="translate(5 5)""#),
             "target's own transform must not change: {updated}"
@@ -2210,8 +2353,15 @@ mod tests {
         let svg = slide(
             r#"<g id="grp"><g id="child" transform="translate(10 10)"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
         );
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 3.0, false).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["grp".to_string()],
+            3.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
         assert!(
             !updated.contains(r#"id="grp" transform"#),
             "the group's own transform must not change: {updated}"
@@ -2224,20 +2374,41 @@ mod tests {
         let svg = slide(
             r#"<g id="grp"><g id="child" data-comot-lock="true"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
         );
-        let err =
-            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 2.0, false).unwrap_err();
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["grp".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
         assert!(err.message().contains("鎖定的版面骨架"));
         // Force bypasses it and the child's lock attribute is left untouched.
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["grp".to_string()], 2.0, true).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["grp".to_string()],
+            2.0,
+            &empty_font_book(),
+            true,
+        )
+        .unwrap();
         assert!(updated.contains(r#"data-comot-lock="true""#));
     }
 
     #[test]
     fn scale_non_positive_factor_errors() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
-        let err =
-            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 0.0, false).unwrap_err();
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            0.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
         assert_eq!(err.message(), "factor 必須是大於 0 的數字");
     }
 
@@ -2246,8 +2417,15 @@ mod tests {
         let svg = slide(
             r#"<g id="t" data-comot-type="table" data-comot-cols="1" data-comot-rows="1"><g data-comot-cell="0,0"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
         );
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["t".to_string()], 2.0, false).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["t".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
         // `format_transform` always writes both axes, never collapses an
         // equal (sx, sy) to a single-argument `scale(n)`.
         assert!(updated.contains(r#"transform="scale(2 2)""#), "{updated}");
@@ -2256,36 +2434,104 @@ mod tests {
     #[test]
     fn scale_chart_container_is_an_explicit_failed_naming_noop_281() {
         let svg = slide(r#"<g id="c" data-comot-type="chart"><comot:chart/><svg/></g>"#);
-        let err =
-            scale_elements(&svg, "slides/001.svg", &["c".to_string()], 2.0, false).unwrap_err();
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["c".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
         assert!(err.message().contains("圖表"));
         assert!(err.message().contains("NOOP-281"));
     }
 
     #[test]
-    fn scale_text_box_defers_with_an_explicit_failed_naming_p6() {
+    fn scale_text_box_rewraps_content_and_scales_font_size_and_width() {
         let svg = slide(&format!(
-            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-size="16">hi</text></g>"#
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"#
         ));
-        let err =
-            scale_elements(&svg, "slides/001.svg", &["tb".to_string()], 2.0, false).unwrap_err();
-        assert!(err.message().contains("文字框"));
-        assert!(err.message().contains("P6"));
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            2.0,
+            &font_book_with_default(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            updated.contains(&format!(r#"{TEXT_WIDTH_ATTRIBUTE}="200""#)),
+            "{updated}"
+        );
+        assert!(updated.contains(r#"font-size="32""#), "{updated}");
+    }
+
+    #[test]
+    fn scale_text_box_rejects_a_width_that_rounds_to_zero() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="0.001"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"#
+        ));
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            0.001,
+            &font_book_with_default(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(err.message(), "元素 tb 的文字框寬度縮放後不是大於 0 的數字");
+    }
+
+    #[test]
+    fn scale_text_box_rejects_a_font_size_that_rounds_to_zero() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="0.001" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"#
+        ));
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            0.001,
+            &font_book_with_default(),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.message(),
+            "元素 tb 的 font-size 縮放後不是大於 0 的數字"
+        );
     }
 
     #[test]
     fn scale_bare_text_primitive_font_size_scales_as_a_plain_number() {
         let svg = slide(r#"<g id="a"><text font-size="16">hi</text></g>"#);
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 1.5, false).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            1.5,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
         assert!(updated.contains(r#"font-size="24""#));
     }
 
     #[test]
     fn scale_path_with_an_elliptical_arc_errors() {
         let svg = slide(r#"<g id="a"><path d="M0 0 A5 5 0 0 1 10 10"/></g>"#);
-        let err =
-            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap_err();
+        let err = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
         assert_eq!(err.message(), "path 含有橢圓弧，尚不支援縮放");
     }
 
@@ -2295,8 +2541,15 @@ mod tests {
         // ".5" with the repeated point omitted — this is the regex-parity
         // case `scan_number_token` has to get right without a `regex` crate.
         let svg = slide(r#"<g id="a"><path d="M-1.5.5L2e1 3"/></g>"#);
-        let updated =
-            scale_elements(&svg, "slides/001.svg", &["a".to_string()], 2.0, false).unwrap();
+        let updated = scale_elements(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            2.0,
+            &empty_font_book(),
+            false,
+        )
+        .unwrap();
         // -1.5*2=-3, .5*2=1, 2e1(=20)*2=40, 3*2=6 — "-3" and "1" concatenate
         // with no separator because the SOURCE had none between "-1.5" and
         // ".5" either (a `String.replace` with a global regex preserves
@@ -2436,11 +2689,11 @@ mod tests {
     }
 
     #[test]
-    fn resize_text_box_defers_with_an_explicit_failed_naming_p6() {
+    fn resize_text_box_uniformly_delegates_to_scale() {
         let svg = slide(&format!(
-            r##"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="16">hi</text></g>"##
+            r##"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100" data-comot-text-height="25"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"##
         ));
-        let err = resize_elements(
+        let updated = resize_elements(
             &svg,
             "slides/001.svg",
             &["tb".to_string()],
@@ -2450,9 +2703,34 @@ mod tests {
             &font_book_with_default(),
             false,
         )
+        .unwrap();
+        assert!(
+            updated.contains(&format!(r#"{TEXT_WIDTH_ATTRIBUTE}="200""#)),
+            "{updated}"
+        );
+        assert!(updated.contains(r#"font-size="32""#), "{updated}");
+    }
+
+    #[test]
+    fn resize_text_box_non_uniformly_reports_the_font_size_message() {
+        let svg = slide(&format!(
+            r##"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100" data-comot-text-height="25"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"##
+        ));
+        let err = resize_elements(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            200.0,
+            30.0,
+            ResizeAnchor::Nw,
+            &font_book_with_default(),
+            false,
+        )
         .unwrap_err();
-        assert!(err.message().contains("文字框"), "{}", err.message());
-        assert!(err.message().contains("P6"), "{}", err.message());
+        assert_eq!(
+            err.message(),
+            "元素 tb 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+        );
     }
 
     // --- element style set (ADR-0014, P4) ---
@@ -2466,6 +2744,7 @@ mod tests {
             &["a".to_string()],
             "fill",
             "#ff0000",
+            &empty_font_book(),
             false,
         )
         .unwrap();
@@ -2476,9 +2755,16 @@ mod tests {
     fn style_set_rejects_forbidden_position_and_size_attributes() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         for attr in ["transform", "x", "y", "width", "height"] {
-            let err =
-                set_element_style(&svg, "slides/001.svg", &["a".to_string()], attr, "1", false)
-                    .unwrap_err();
+            let err = set_element_style(
+                &svg,
+                "slides/001.svg",
+                &["a".to_string()],
+                attr,
+                "1",
+                &empty_font_book(),
+                false,
+            )
+            .unwrap_err();
             assert!(
                 err.message().contains("move/scale"),
                 "attr={attr}: {}",
@@ -2496,6 +2782,7 @@ mod tests {
             &["a".to_string()],
             "data-comot-lock",
             "true",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2505,8 +2792,16 @@ mod tests {
     #[test]
     fn style_set_rejects_an_attribute_outside_the_whitelist() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
-        let err = set_element_style(&svg, "slides/001.svg", &["a".to_string()], "rx", "5", false)
-            .unwrap_err();
+        let err = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["a".to_string()],
+            "rx",
+            "5",
+            &empty_font_book(),
+            false,
+        )
+        .unwrap_err();
         assert_eq!(err.message(), "樣式屬性 rx 不在樣式白名單內");
     }
 
@@ -2519,6 +2814,7 @@ mod tests {
             &["a".to_string()],
             "opacity",
             "1.5",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2529,6 +2825,7 @@ mod tests {
             &["a".to_string()],
             "font-size",
             "0",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2539,6 +2836,7 @@ mod tests {
             &["a".to_string()],
             "stroke-width",
             "-1",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2549,6 +2847,7 @@ mod tests {
             &["a".to_string()],
             "text-anchor",
             "center",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2561,6 +2860,7 @@ mod tests {
                 &["a".to_string()],
                 "opacity",
                 "0",
+                &empty_font_book(),
                 false
             )
             .is_ok()
@@ -2572,6 +2872,7 @@ mod tests {
                 &["a".to_string()],
                 "opacity",
                 "1",
+                &empty_font_book(),
                 false
             )
             .is_ok()
@@ -2588,6 +2889,7 @@ mod tests {
             &["grp".to_string()],
             "fill",
             "red",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2605,6 +2907,7 @@ mod tests {
             &["t".to_string()],
             "fill",
             "red",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2617,6 +2920,7 @@ mod tests {
             &["c".to_string()],
             "fill",
             "red",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2634,19 +2938,21 @@ mod tests {
             &["tb".to_string()],
             "text-anchor",
             "middle",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
         assert!(err.message().contains("文字框不支援 text-anchor"));
 
-        // fill has no layout consequence, so it works without needing P6's
-        // rewrap machinery.
+        // fill has no layout consequence, so it works without needing the
+        // font-size/font-family rewrap machinery below.
         let updated = set_element_style(
             &svg,
             "slides/001.svg",
             &["tb".to_string()],
             "fill",
             "#000",
+            &empty_font_book(),
             false,
         )
         .unwrap();
@@ -2654,27 +2960,67 @@ mod tests {
     }
 
     #[test]
-    fn style_set_defers_font_size_and_font_family_on_a_text_box() {
+    fn style_set_font_size_on_a_text_box_rewraps_and_keeps_the_width() {
         let svg = slide(&format!(
-            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-size="16">hi</text></g>"#
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"#
         ));
-        for attr in ["font-size", "font-family"] {
-            let value = if attr == "font-size" { "20" } else { "Arial" };
-            let err = set_element_style(
-                &svg,
-                "slides/001.svg",
-                &["tb".to_string()],
-                attr,
-                value,
-                false,
-            )
-            .unwrap_err();
-            assert!(
-                err.message().contains("P6"),
-                "attr={attr}: {}",
-                err.message()
-            );
-        }
+        let updated = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            "font-size",
+            "20",
+            &font_book_with_default(),
+            false,
+        )
+        .unwrap();
+        assert!(updated.contains(r#"font-size="20""#), "{updated}");
+        assert!(
+            updated.contains(&format!(r#"{TEXT_WIDTH_ATTRIBUTE}="100""#)),
+            "width must stay unchanged: {updated}"
+        );
+        // A plain attribute splice (no rewrap) would never write this —
+        // only `rewrap_text_box_content` does, via `set_trailing_attr_splice`.
+        assert!(
+            updated.contains(crate::slide::format::TEXT_HEIGHT_ATTRIBUTE),
+            "must have gone through the rewrap path: {updated}"
+        );
+    }
+
+    #[test]
+    fn style_set_font_family_on_a_text_box_rewraps_with_the_new_family() {
+        let svg = slide(&format!(
+            r#"<g id="tb" {TEXT_WIDTH_ATTRIBUTE}="100"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">hi</tspan></text></g>"#
+        ));
+        let mut fonts = font_book_with_default();
+        fonts.insert(
+            "Custom Family".to_string(),
+            Box::new(crate::text::parse_font(crate::text::DEFAULT_FONT_BYTES).unwrap()),
+        );
+        let updated = set_element_style(
+            &svg,
+            "slides/001.svg",
+            &["tb".to_string()],
+            "font-family",
+            "Custom Family",
+            &fonts,
+            false,
+        )
+        .unwrap();
+        assert!(
+            updated.contains(r#"font-family="Custom Family""#),
+            "{updated}"
+        );
+        assert!(
+            updated.contains(&format!(r#"{TEXT_WIDTH_ATTRIBUTE}="100""#)),
+            "width must stay unchanged: {updated}"
+        );
+        // A plain attribute splice (no rewrap) would never write this —
+        // only `rewrap_text_box_content` does, via `set_trailing_attr_splice`.
+        assert!(
+            updated.contains(crate::slide::format::TEXT_HEIGHT_ATTRIBUTE),
+            "must have gone through the rewrap path: {updated}"
+        );
     }
 
     #[test]
@@ -2688,6 +3034,7 @@ mod tests {
             &["a".to_string()],
             "fill",
             "red",
+            &empty_font_book(),
             false,
         )
         .unwrap_err();
@@ -2698,6 +3045,7 @@ mod tests {
             &["a".to_string()],
             "fill",
             "red",
+            &empty_font_book(),
             true,
         )
         .unwrap();
