@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, watchPresentation } from "@co-motion/core";
-import type { PresentationWatcher } from "@co-motion/core";
+import { CoMotionError } from "./comotion/errors.js";
+import { watchPresentation } from "./watch.js";
+import type { PresentationWatcher } from "./watch.js";
 import { openEventStream } from "./sse.js";
 import type { EventStream } from "./sse.js";
 
