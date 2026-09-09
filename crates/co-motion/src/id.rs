@@ -26,6 +26,9 @@ pub fn generate_opaque_id() -> String {
 
 /// Ports `generateElementId` (`packages/core/src/id.ts`): the same opaque
 /// id, prefixed with `el-` so it is recognizable as an element reference.
+/// Every command that mints a new element/group id (`insert`, `duplicate`,
+/// `paste`, `group`) calls this rather than hand-formatting the prefix
+/// itself.
 pub fn generate_element_id() -> String {
     format!("el-{}", generate_opaque_id())
 }

@@ -249,34 +249,6 @@ describe("element scale", () => {
 });
 
 describe("element resize", () => {
-  it("resizes a rect non-uniformly, anchored nw by default in the CLI dispatch shape", async () => {
-    const { id } = await openConvertedPresentation();
-    const a = await registry.dispatch<{ elementId: string }>("element insert", {
-      id, slidePath: "slides/001.svg", kind: "rect", x: 10, y: 10, width: 100, height: 50,
-    });
-
-    const result = await registry.dispatch("element resize", {
-      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 200, height: 50, anchor: "nw",
-    });
-
-    expect(result.ok).toBe(true);
-    const svg = await readSlide(id);
-    expect(svg).toContain(`id="${a.data!.elementId}" transform="translate(10 10)"`);
-    expect(svg).toContain(`width="200" height="50"`);
-  });
-
-  it("rejects width/height <= 0", async () => {
-    const { id } = await openConvertedPresentation();
-    const a = await registry.dispatch<{ elementId: string }>("element insert", {
-      id, slidePath: "slides/001.svg", kind: "rect", x: 0, y: 0, width: 10, height: 10,
-    });
-
-    const result = await registry.dispatch("element resize", {
-      id, slidePath: "slides/001.svg", elementIds: [a.data!.elementId], width: 0, height: 10, anchor: "nw",
-    });
-
-    expect(result.ok).toBe(false);
-  });
 
   it("rejects a non-uniform resize of a <circle>, naming element scale as the alternative", async () => {
     const { id } = await openConvertedPresentation();

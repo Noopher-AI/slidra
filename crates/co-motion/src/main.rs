@@ -56,26 +56,87 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
             // for their argument errors (plan 4.1).
             return fallback::exec_node_fallback(&argv);
         }
+    }
 
-        // Probe the first one or two argv tokens against the takeover
-        // table (plan 2.4): a two-word command like `effect add` needs
-        // both tokens to be valid UTF-8 to match at all — a non-UTF-8
-        // second token simply can't equal any (ASCII) table entry, so it
-        // naturally falls through to the one-word probe, then to Node.
+    // [E4.T5]'s family mechanism spans multiple tokens (`element move`,
+    // `text style set`, ...), not just `argv[0]` — plan section 1.4. A
+    // non-UTF-8 token can never equal any (ASCII) takeover-table entry, so
+    // it is mapped to `""` here — a value no registered command token ever
+    // is — rather than erroring or lossily converting: it simply fails to
+    // match at that position and the whole argv falls through to the legacy
+    // probe, then Node, untouched (plan 4.1's "非 UTF-8 位元組" row). This
+    // view is used ONLY for matching; both dispatch calls below pass the
+    // ORIGINAL `argv`.
+    let str_tokens: Vec<&str> = argv.iter().map(|arg| arg.to_str().unwrap_or("")).collect();
+    if let Some(matched) = commands::resolve_takeover(&str_tokens) {
+        return dispatch_family_takeover(matched, &argv[matched.len()..]);
+    }
+
+    // Legacy (pre-[E4.T5]) mechanism: probe the first one or two argv
+    // tokens against `TAKEOVER_TABLE` (plan 2.4) — a two-word command like
+    // `effect add` needs both tokens to be valid UTF-8 to match at all; a
+    // non-UTF-8 second token simply can't equal any (ASCII) table entry, so
+    // it naturally falls through to the one-word probe, then to Node. Only
+    // reached once the family mechanism above has already declined to
+    // match — the two tables' first-token sets are disjoint (see
+    // `commands` module doc), so there is no ordering ambiguity.
+    if let Some(first_str) = first.to_str() {
         let second_str = argv.get(1).and_then(|arg| arg.to_str());
         let probe: Vec<&str> = match second_str {
             Some(second) => vec![first_str, second],
             None => vec![first_str],
         };
         if let Some((command, consumed)) = commands::match_takeover(&probe) {
-            return dispatch_takeover(command, &argv[consumed..]);
+            return dispatch_legacy_takeover(command, &argv[consumed..]);
         }
     }
 
     fallback::exec_node_fallback(&argv)
 }
 
-/// Runs a takeover-table command's handler and renders its `CommandResult`.
+/// Runs an [E4.T5]-mechanism takeover-table command's handler and renders
+/// its `CommandResult`. `rest` is `argv` with the matched command-name
+/// tokens already stripped off, so `undo`'s single-token name leaves the
+/// same `rest` it always did and e.g. `element move`'s two-token name
+/// leaves exactly the arguments that followed both words.
+///
+/// `--json` is a Rust-only flag (plan 4.3): meaningful only here, stripped
+/// from the positional arguments the command handler sees, and never
+/// forwarded to Node (the fallback path above never parses or forwards
+/// `--json` specially — if it reaches Node at all, Node reports its own
+/// "unknown argument" error, which is correct: `--json` has no meaning
+/// outside the takeover table). Because matching happens against the
+/// UN-stripped argv (see `dispatch` above), `--json` appearing BEFORE the
+/// command name's tokens have all matched (including between them) simply
+/// prevents a match in the first place and falls back to Node instead —
+/// exactly the "--json 出現在命令名之前" contract row.
+fn dispatch_family_takeover(tokens: commands::CommandTokens, rest: &[OsString]) -> i32 {
+    let mut json_flag = false;
+    let mut positional: Vec<String> = Vec::new();
+    for arg in rest {
+        match arg.to_str() {
+            Some("--json") => json_flag = true,
+            Some(s) => positional.push(s.to_string()),
+            // A non-UTF-8 extra positional argument here would be ignored
+            // by undo/redo anyway (only args[0], the id, is read — see
+            // plan 4.1's "undo <id> extra" row) — lossy-converting it
+            // rather than erroring keeps that "ignored" behavior intact
+            // instead of turning a harmless extra argument into a crash.
+            None => positional.push(arg.to_string_lossy().into_owned()),
+        }
+    }
+
+    let command_result = commands::dispatch(tokens, &positional);
+
+    // No command registered by this ticket (or `undo`/`redo`) has a
+    // renderer — `None` here is correct, not a placeholder (plan 3.2 /
+    // result.rs's doc: only `cat`-shaped commands get a raw-bytes
+    // renderer, and this ticket registers none of those).
+    result::render(&command_result, None, json_flag)
+}
+
+/// Runs a legacy-mechanism (pre-[E4.T5]) takeover-table command's handler
+/// and renders its `CommandResult`.
 /// `--json` is a Rust-only flag: meaningful only here, stripped from the
 /// positional arguments the command handler sees, and never forwarded to
 /// Node (the fallback path above never parses or forwards `--json`
@@ -84,13 +145,14 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
 /// takeover table).
 ///
 /// D9: `--json` is recognised ONLY as the LAST token of `rest` — a
-/// deliberate change from this ticket's predecessor, which stripped it from
-/// any position. Several commands take free-text as their final positional
-/// (`slide notes set`'s `text`, `template rename`'s `new-name`) and those
-/// may legitimately equal the literal string `"--json"`; `--json` itself is
-/// a Rust-only flag with no TS-side byte-compatibility burden, so this
-/// narrower rule is safe to adopt outright.
-fn dispatch_takeover(command: &str, rest: &[OsString]) -> i32 {
+/// deliberate change from this mechanism's predecessor, which stripped it
+/// from any position. Several commands take free-text as their final
+/// positional (`slide notes set`'s `text`, `template rename`'s
+/// `new-name`) and those may legitimately equal the literal string
+/// `"--json"`; `--json` itself is a Rust-only flag with no TS-side
+/// byte-compatibility burden, so this narrower rule is safe to adopt
+/// outright.
+fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
     let mut positional: Vec<String> = rest
         .iter()
         .map(|arg| {

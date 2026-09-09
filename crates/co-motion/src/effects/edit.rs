@@ -590,9 +590,71 @@ pub fn set_effect(
     Ok(apply_splices(svg_content, &splices))
 }
 
+/// `removeEffectsTargeting`, the "dangling-target cleanup" `element/group.rs`
+/// (grouping clears each new member's own effects; ungrouping clears the
+/// dissolved group's own effect) and `element/edit.rs` (`element delete`
+/// clears effects targeting the deleted subtree) both need ([E4.T5] plan
+/// section 3.1/3.2, "與同 wave 的重疊" table) — not called by anything in
+/// this file's own `effect *` command family.
+///
+/// Removes every effect item whose `target` is in `target_ids`. A slide with
+/// no effect list at all is a legal no-op (returns the content unchanged,
+/// `removed_count: 0`) rather than an error — group/ungroup/delete on a
+/// slide with no animations anywhere is the common case, not an error.
+///
+/// Returns `(updated_svg, removed_count)`, mirroring
+/// `removeEffectsTargeting`'s `{ updated, removedCount }`.
+///
+/// Node spans here (`ScannedNode::start`/`.end`) are UTF-16 offsets, not
+/// byte offsets (`slide::scan`'s module doc) — removal goes through
+/// `element::splice::apply_splices` (aliased below to avoid colliding with
+/// this file's own, unrelated private `Splice`/`apply_splices`), the one
+/// place allowed to convert between the two, rather than slicing
+/// `svg_content` directly: a `<comot:effect>` sitting after CJK text
+/// elsewhere on the slide must still be removed at the right bytes.
+pub fn remove_effects_targeting(
+    svg_content: &str,
+    slide_path: &str,
+    target_ids: &std::collections::HashSet<String>,
+) -> CoMotionResult<(String, usize)> {
+    use crate::element::splice::{Splice as ElementSplice, apply_splices as apply_element_splices};
+
+    assert_slide_compliant(svg_content, slide_path)?;
+    if target_ids.is_empty() {
+        return Ok((svg_content.to_string(), 0));
+    }
+
+    let roots = scan_document(svg_content)?;
+    let svg_root = require_svg_root(&roots)?;
+    let located = locate_effects_list(svg_root)?;
+    let Some(list) = located.list else {
+        return Ok((svg_content.to_string(), 0));
+    };
+
+    let removal_splices: Vec<ElementSplice> = list
+        .children
+        .iter()
+        .filter(|node| node.tag == "comot:effect")
+        .filter_map(|node| {
+            let target = attribute_value(node, "target")?;
+            target_ids.contains(&target).then_some(ElementSplice {
+                start: node.start,
+                end: node.end,
+                text: String::new(),
+            })
+        })
+        .collect();
+    let removed_count = removal_splices.len();
+    Ok((
+        apply_element_splices(svg_content, &removal_splices),
+        removed_count,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     const COMPLIANT: &str =
         r#"<svg viewBox="0 0 100 100"><g id="el1"><rect width="1" height="1"/></g></svg>"#;
@@ -833,5 +895,67 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.message(), "只有 family=\"path\" 的效果項可以設定 d");
+    }
+
+    #[test]
+    fn remove_effects_targeting_no_metadata_at_all_is_a_no_op() {
+        let mut targets = HashSet::new();
+        targets.insert("el1".to_string());
+        let (updated, removed) =
+            remove_effects_targeting(COMPLIANT, "slides/001.svg", &targets).unwrap();
+        assert_eq!(updated, COMPLIANT);
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn remove_effects_targeting_empty_target_set_is_a_no_op_even_with_a_matching_effect() {
+        let svg = with_effects(
+            r#"<comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/>"#,
+        );
+        let (updated, removed) =
+            remove_effects_targeting(&svg, "slides/001.svg", &HashSet::new()).unwrap();
+        assert_eq!(updated, svg);
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn remove_effects_targeting_removes_only_the_matching_target() {
+        let svg = with_effects(
+            r#"<comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/><comot:effect target="el2" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/>"#,
+        );
+        let mut targets = HashSet::new();
+        targets.insert("el1".to_string());
+        let (updated, removed) =
+            remove_effects_targeting(&svg, "slides/001.svg", &targets).unwrap();
+        assert_eq!(removed, 1);
+        assert!(!updated.contains(r#"target="el1""#));
+        assert!(updated.contains(r#"target="el2""#));
+    }
+
+    /// The load-bearing regression this crate's UTF-16-vs-byte-offset
+    /// contract exists for: a `<comot:effect>` sitting after CJK text
+    /// elsewhere in the document must still be removed at the right bytes.
+    /// Each CJK character is 1 UTF-16 unit but 3 UTF-8 bytes, so treating
+    /// `node.start`/`.end` as byte offsets would remove the wrong span here.
+    #[test]
+    fn remove_effects_targeting_removes_the_right_span_when_cjk_text_precedes_the_list() {
+        let svg = r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"><comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
+        let mut targets = HashSet::new();
+        targets.insert("el1".to_string());
+        let (updated, removed) = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap();
+        assert_eq!(removed, 1);
+        assert_eq!(
+            updated,
+            r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
+        );
+    }
+
+    #[test]
+    fn remove_effects_targeting_duplicate_effects_list_is_a_loud_error() {
+        let svg = r#"<svg viewBox="0 0 100 100"><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
+        let mut targets = HashSet::new();
+        targets.insert("el1".to_string());
+        let err = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap_err();
+        assert!(err.message().contains("2 組效果清單"));
     }
 }
