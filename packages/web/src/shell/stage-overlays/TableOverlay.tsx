@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import type { TableModel } from "@co-motion/core";
+import type { TableModel } from "../../slide-dom.js";
 import type { CanvasController, TableRuntimeEvent } from "../../canvas.js";
 import {
   MIN_COL_WIDTH,

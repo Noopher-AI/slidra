@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import type { SaveState } from "@co-motion/core";
 import { fromAgentResponse, type AgentUiStatus } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
-import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
+import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent, type SaveState } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
@@ -727,11 +726,10 @@ export function App() {
       // 並存不衝突：剪貼簿內容是圖片時 `readText()` 拿到空字串，
       // `pasteFromText` 視為空剪貼簿靜默略過。
       if (withModifier && event.key === "c") {
-        const svg = controller.copySelection();
-        if (svg) {
-          event.preventDefault();
-          void navigator.clipboard.writeText(svg);
-        }
+        event.preventDefault();
+        void controller.copySelection().then((svg) => {
+          if (svg) void navigator.clipboard.writeText(svg);
+        });
         return;
       }
       if (withModifier && event.key === "x") {

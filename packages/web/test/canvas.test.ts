@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
 import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.js";
@@ -468,8 +465,8 @@ const DEFAULT_TRANSITION_FIXTURE = {
   enter: { effect: "none", duration: 0.6 },
   exit: { effect: "none", duration: 0.5 },
 };
-/** Builds a `GET /api/effects/` response `Response`, 1-based `index` and grouped into steps like the real route. */
-function effectsRouteResponse(effects: EffectRouteFixture[]): Response {
+/** Builds a `GET /api/effects/` response `Response`, 1-based `index` and grouped into steps like the real route. `transition` defaults to "this slide never had one" — only the [E2.T11] 頁面進出場轉場 describe block below needs to vary it per slide (F8, NOOP-289 決定 E1: `canvas.ts` now reads a slide's transition off THIS route too, not by parsing the fetched markup itself). */
+function effectsRouteResponse(effects: EffectRouteFixture[], transition = DEFAULT_TRANSITION_FIXTURE): Response {
   const wireEffects = effects.map((effect, i) => ({ duration: 0.6, delay: 0, ...effect, index: i + 1 }));
   const steps: Array<{ effects: typeof wireEffects }> = [];
   for (const effect of wireEffects) {
@@ -479,7 +476,7 @@ function effectsRouteResponse(effects: EffectRouteFixture[]): Response {
       steps[steps.length - 1]!.effects.push(effect);
     }
   }
-  return new Response(JSON.stringify({ effects: wireEffects, steps, transition: DEFAULT_TRANSITION_FIXTURE }), {
+  return new Response(JSON.stringify({ effects: wireEffects, steps, transition }), {
     status: 200,
   });
 }
@@ -1287,6 +1284,18 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
   }
 
   /** Each entry is one slide's raw markup (with or without its own `<comot:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
+  /** Extracts the same `enter`/`enter-duration`/`exit`/`exit-duration` attributes `slideWithTransition()` writes into a slide's `<comot:transition>` — mirrors what the real `GET /api/effects/` route derives server-side (F8, NOOP-289 決定 E1: `canvas.ts` no longer parses this out of the fetched markup itself, so the mock route below has to, the same way the real one does). No `<comot:transition>` at all → the route's own "never had one" default. */
+  function transitionFromMarkup(markup: string): typeof DEFAULT_TRANSITION_FIXTURE {
+    const tagMatch = /<comot:transition\b[^>]*>/.exec(markup);
+    if (!tagMatch) return DEFAULT_TRANSITION_FIXTURE;
+    const attrs = tagMatch[0];
+    const attr = (name: string, fallback: string): string => new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1] ?? fallback;
+    return {
+      enter: { effect: attr("enter", "none"), duration: Number(attr("enter-duration", "0.6")) },
+      exit: { effect: attr("exit", "none"), duration: Number(attr("exit-duration", "0.5")) },
+    };
+  }
+
   function stubTransitionDeck(markup: Record<string, string>): void {
     vi.stubGlobal(
       "fetch",
@@ -1302,7 +1311,8 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
         // None of this describe block's fixtures carry a `<comot:effects>`
         // list (only `<comot:transition>`) — every slide legitimately has
         // no effects, matching the route's own "never had one" plan (D3).
-        if (/\/api\/effects\/(.+)$/.exec(url)) return effectsRouteResponse([]);
+        const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
+        if (effectsMatch) return effectsRouteResponse([], transitionFromMarkup(markup[effectsMatch[1]] ?? ""));
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2085,12 +2095,12 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
   // the SAME `textbox-width` gesture the left/right edge handles already
   // use, not the generic scale/resize path — core's `element scale`
   // semantics are untouched (§2 第 8 條), this is purely a front-end handle
-  // remapping. Proven the same way the neighboring viewport-race test
-  // does: `resolveBrowserFont()` only ever runs from the textbox-width
-  // path, and `/api/default-font` is deliberately left unstubbed so its
-  // rejection sets `state.error` — the plain scale/resize path never
-  // touches fonts at all, so `state.error` staying `null` would mean the
-  // redirect did not happen.
+  // remapping. F8 (NOOP-289 決定 (b)) removed the font fetch this test used
+  // to prove the redirect with (`resolveBrowserFont()` only ever ran from
+  // the textbox-width path) — the positive proof is now that a
+  // `"textbox width"` command lands, since only that gesture kind ever
+  // sends one; the negative side (never `element scale`/`resize`) is
+  // unchanged.
   it("gesture-start (scale, corner=se) 在文字框上會走 textbox-width 路徑而非 element scale／resize", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(slideMarkupWithTextbox, commandCalls);
@@ -2114,14 +2124,155 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     send({ source: "comot-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(state?.error).not.toBeNull();
+    expect(state?.error).toBeNull();
 
     send({ source: "comot-selection", event: "gesture-move", point: { x: 220, y: 150 } });
     send({ source: "comot-selection", event: "gesture-end", point: { x: 220, y: 150 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    expect(commandCalls.filter((call) => call.name === "textbox width")).toHaveLength(1);
     expect(commandCalls.filter((call) => call.name === "element scale")).toEqual([]);
     expect(commandCalls.filter((call) => call.name === "element resize")).toEqual([]);
+  });
+});
+
+// F8 (NOOP-289 決定 (d)/C2): copy/cut go straight through the CLI's own
+// `element copy`/`element cut` now — the browser no longer serializes a
+// selection itself. `element cut` replaces the former "local serialize +
+// element delete" pair.
+describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 決定 (d)/C2）", () => {
+  const slideMarkupWithEl = '<svg viewBox="0 0 1280 720"><g id="el-a"><rect width="10" height="10"/></g></svg>';
+
+  function stubFetch(
+    commandCalls: { name: string; input: Record<string, unknown> }[],
+    commandResult: { ok: boolean; data?: unknown; message?: string },
+  ): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(project), { status: 200 });
+        if (url.endsWith("/api/files/slides/001.svg")) return new Response(slideMarkupWithEl, { status: 200 });
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          const body = commandResult.ok
+            ? { ok: true, message: commandResult.message ?? "", data: commandResult.data }
+            : { ok: false, error: commandResult.message ?? "失敗" };
+          return new Response(JSON.stringify(body), { status: commandResult.ok ? 200 : 500 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  async function selectElA(): Promise<void> {
+    const frameWindow = controller!.frameElement.contentWindow as unknown as Window;
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        source: frameWindow,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it("⌘C 送出 element copy，把 data.svg 回傳給呼叫者，不動選取", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(commandCalls, { ok: true, data: { svg: "<svg>copied</svg>" } });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await selectElA();
+
+    const svg = await controller.copySelection();
+
+    expect(svg).toBe("<svg>copied</svg>");
+    expect(commandCalls).toEqual([{ name: "element copy", input: { slidePath: "slides/001.svg", elementIds: ["el-a"] } }]);
+  });
+
+  it("⌘X 送出 element cut（不是 element delete），回傳 data.svg，清空選取", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(commandCalls, { ok: true, data: { svg: "<svg>cut</svg>" } });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await selectElA();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+
+    const svg = await controller.cutSelection();
+
+    expect(svg).toBe("<svg>cut</svg>");
+    expect(commandCalls).toEqual([{ name: "element cut", input: { slidePath: "slides/001.svg", elementIds: ["el-a"] } }]);
+    expect(commandCalls.some((call) => call.name === "element delete")).toBe(false);
+    expect(state?.selection.ids).toEqual([]);
+  });
+
+  it("命令失敗時，copySelection／cutSelection 都回傳 null（呼叫者才不會寫入系統剪貼簿）", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(commandCalls, { ok: false, message: "命令失敗" });
+    controller = mountCanvas(container);
+    await controller.reload();
+    await selectElA();
+
+    expect(await controller.copySelection()).toBeNull();
+    await selectElA();
+    expect(await controller.cutSelection()).toBeNull();
+  });
+});
+
+// F8 (NOOP-289 決定 (b)): a textbox-width drag no longer re-wraps the
+// `<text>` locally — this proves the host side of that: zero commands
+// during the drag, exactly one `"textbox width"` on release.
+describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F8, NOOP-289 決定 (b)）", () => {
+  const slideMarkupWithTextbox =
+    '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="200" transform="translate(100 100)">' +
+    '<text font-family="Noto Sans TC" font-size="16">hello</text></g></svg>';
+
+  function stubFetch(commandCalls: { name: string; input: Record<string, unknown> }[]): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(project), { status: 200 });
+        if (url.endsWith("/api/files/slides/001.svg")) return new Response(slideMarkupWithTextbox, { status: 200 });
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  it("拖曳中多次 gesture-move 都不送命令，放開才送恰好一條 textbox width", async () => {
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    stubFetch(commandCalls);
+    controller = mountCanvas(container);
+    await controller.reload();
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-start", kind: "textbox-width", handle: "right", point: { x: 100, y: 150 } });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 120, y: 150 } });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 140, y: 150 } });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 160, y: 150 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commandCalls).toEqual([]);
+
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 160, y: 150 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commandCalls).toHaveLength(1);
+    expect(commandCalls[0].name).toBe("textbox width");
   });
 });
 
@@ -2311,107 +2462,6 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     expect(() => relayStageKey("z", false)).not.toThrow();
 
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
-  });
-});
-
-// NOOP-65r3 §2c/C3/C4 — the preview channel's `textboxPreviewMessage`:
-// `begin-text-edit`'s `markup` must be core's OWN `renderTextBoxContent`
-// output (align/runs/hard-break included), not a host-side reconstruction
-// that only carries `{ text, y }` (NOOP-65r2 FAIL 1). Observed by spying
-// on `frameWindow.postMessage` — the host → runtime direction, mirroring
-// the runtime → host spy pattern already used above via
-// `window.dispatchEvent(new MessageEvent("message", …))`.
-describe("mountCanvas 的文字框編輯 preview 通道（NOOP-65r3）", () => {
-  const bundledFontBytes = readFileSync(
-    path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../../core/src/assets/fonts/NotoSansTC-Presentation.ttf",
-    ),
-  );
-
-  function stubFetchWithFont(slideMarkup: string): void {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL) => {
-        const url = String(input);
-        if (url.endsWith("/api/presentation")) {
-          return new Response(JSON.stringify(project), { status: 200 });
-        }
-        if (url.endsWith("/api/files/slides/001.svg")) {
-          return new Response(slideMarkup, { status: 200 });
-        }
-        if (url.endsWith("/api/default-font")) {
-          return new Response(bundledFontBytes, { status: 200 });
-        }
-        throw new Error(`unexpected fetch: ${url}`);
-      }),
-    );
-  }
-
-  /** Last `postMessage` call whose payload is a `begin-text-edit` command. */
-  function lastBeginTextEdit(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown> {
-    const call = spy.mock.calls.findLast(
-      (call) => (call[0] as Record<string, unknown>)?.command === "begin-text-edit",
-    );
-    if (!call) throw new Error("沒有送出 begin-text-edit 訊息");
-    return call[0] as Record<string, unknown>;
-  }
-
-  it("硬換行的 data-comot-break 在進入編輯的 markup 裡保留（C1）", async () => {
-    stubFetchWithFont(
-      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000">' +
-        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
-        '<tspan x="0" y="16" data-comot-break="1">Hi</tspan><tspan x="0" y="34">Bye</tspan>' +
-        "</text></g></svg>",
-    );
-    controller = mountCanvas(container);
-    await controller.reload();
-    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
-    const spy = vi.spyOn(frameWindow, "postMessage");
-
-    await controller.beginTextEdit("el-a");
-
-    const markup = lastBeginTextEdit(spy).markup as string;
-    expect(markup).toContain('data-comot-break="1"');
-    expect(markup.indexOf('data-comot-break="1"')).toBeLessThan(markup.indexOf("Bye"));
-  });
-
-  it("data-comot-text-align=\"center\" 的框進入編輯，markup 外層 tspan 的 x 不是 0（C3）", async () => {
-    stubFetchWithFont(
-      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000" data-comot-text-align="center">' +
-        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
-        '<tspan x="0" y="16">Hi</tspan>' +
-        "</text></g></svg>",
-    );
-    controller = mountCanvas(container);
-    await controller.reload();
-    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
-    const spy = vi.spyOn(frameWindow, "postMessage");
-
-    await controller.beginTextEdit("el-a");
-
-    const markup = lastBeginTextEdit(spy).markup as string;
-    const xMatch = /<tspan x="([^"]+)"/.exec(markup);
-    expect(xMatch).not.toBeNull();
-    expect(xMatch![1]).not.toBe("0");
-  });
-
-  it("巢狀 <tspan font-weight=\"bold\"> 的框進入編輯，markup 保留該巢狀 tspan（C4）", async () => {
-    stubFetchWithFont(
-      '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="2000">' +
-        '<text font-family="Noto Sans TC" font-size="16" xml:space="preserve">' +
-        '<tspan x="0" y="16">粗<tspan font-weight="bold">體字</tspan></tspan>' +
-        "</text></g></svg>",
-    );
-    controller = mountCanvas(container);
-    await controller.reload();
-    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
-    const spy = vi.spyOn(frameWindow, "postMessage");
-
-    await controller.beginTextEdit("el-a");
-
-    const markup = lastBeginTextEdit(spy).markup as string;
-    expect(markup).toContain('<tspan font-weight="bold">體字</tspan>');
   });
 });
 

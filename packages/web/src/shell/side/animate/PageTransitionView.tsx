@@ -1,4 +1,4 @@
-import type { PageTransitionEffect, SlideTransition } from "@co-motion/core/slide";
+import type { PageTransitionEffect, SlideTransition } from "../../../effects.js";
 
 /** The value set both `enter` and `exit` share (§4.1) — only the GUI label differs by direction (`ENTER_LABELS`/`EXIT_LABELS` below). */
 const EFFECTS: readonly PageTransitionEffect[] = ["none", "fade", "slide", "zoom"];

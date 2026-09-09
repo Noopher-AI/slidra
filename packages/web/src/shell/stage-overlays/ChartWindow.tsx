@@ -7,14 +7,12 @@ import {
   CHART_MIN_SERIES,
   CHART_PALETTES,
   CHART_TYPES,
-  validateChartModel,
   type ChartAxesMode,
   type ChartLegend,
   type ChartModel,
   type ChartPalette,
-  type ChartSeries,
   type ChartType,
-} from "@co-motion/core/chart";
+} from "../../chart-model.js";
 
 export interface ChartWindowProps {
   /** `null` = closed (the caller does not mount this component at all in that case — see OverlayLayer.tsx). */
@@ -132,50 +130,6 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [controller]);
-
-  function buildModel(nextCategories: readonly string[], nextSeries: readonly EditableSeries[]): ChartModel | null {
-    const data = chartDataSetInputFromDraft(nextCategories, nextSeries);
-    if (!data) return null;
-    const series: ChartSeries[] = data.series.map((s) => {
-      const existing = model.series.find((orig) => orig.name === s.name);
-      return {
-        name: s.name,
-        values: s.values,
-        axis: axes === "dual" && rightNames.has(s.name) ? "right" : "left",
-        color: existing?.color ?? null,
-      };
-    });
-    const candidate: ChartModel = {
-      type,
-      stacked,
-      axes,
-      palette,
-      legend,
-      grid,
-      labels,
-      xTitle,
-      yTitle,
-      width: model.width,
-      height: model.height,
-      series,
-      categories: [...nextCategories],
-    };
-    try {
-      validateChartModel(candidate);
-      return candidate;
-    } catch {
-      return null; // Mid-edit combination (e.g. dual axis toggled but no series marked right yet) — hold the last good preview rather than clearing the chart.
-    }
-  }
-
-  // Local preview (plan §4.5: "本地預覽期間不寫任何檔案") — every controlled
-  // field re-renders the embedded <svg> through the exact same
-  // `renderChartSvg` the server uses, via `CanvasController.previewChart`.
-  useEffect(() => {
-    const candidate = buildModel(categories, seriesDraft);
-    if (candidate) controller?.previewChart(state.id, candidate);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, stacked, axes, rightNames, palette, legend, grid, labels, xTitle, yTitle, categories, seriesDraft]);
 
   /** Sends `name`, reverting the given local field(s) back to the last-known-committed value on failure (plan §4.5: "把本地預覽還原成伺服器上的狀態") — a failed write never touches the file, so `model` (this render's closed-over `state.model`) IS that last-known-committed value. */
   async function commit(name: string, input: Record<string, unknown>, revert: () => void): Promise<void> {

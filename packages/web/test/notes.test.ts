@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { setSlideNotes } from "@co-motion/core";
 import { readSlideNotes } from "../src/notes.js";
 
 const BLANK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
@@ -63,28 +62,32 @@ describe("readSlideNotes", () => {
     expect(result.ok).toBe(false);
   });
 
-  describe("往返：core 的 setSlideNotes 寫，readSlideNotes 讀，還原成原字串", () => {
-    const cases: Record<string, string> = {
-      一般文字: "第一版備忘稿",
-      空字串: "",
-      跳脫字元: "1 < 2 && true",
-      換行: "第一行\n第二行",
-      只有空白: "   ",
-      "含 & 在中間": "A & B < C > D",
-    };
+  // F8 (NOOP-289): 原本這裡是用 core 的 setSlideNotes 現場寫入再讀回的往返測試
+  // ——期望值由 core 現場產生，core 即將從 web 移除。改成與上面幾條同樣的字面
+  // markup fixture，覆蓋同一組輸入（空字串／只有空白／& 在中間）；「一般文
+  // 字」「跳脫字元」「換行」三個樣本已經是上面既有測試逐字覆蓋的輸入，不重
+  //複列。
+  it("notes 是空字串：讀回空字串", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns"></comot:notes></metadata>' +
+      "</svg>";
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "" });
+  });
 
-    for (const [label, text] of Object.entries(cases)) {
-      it(label, () => {
-        const written = setSlideNotes(BLANK_SVG, text);
-        const result = readSlideNotes(written);
-        expect(result).toEqual({ ok: true, text });
-      });
-    }
+  it("notes 只有空白：原樣保留", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">   </comot:notes></metadata>' +
+      "</svg>";
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "   " });
+  });
 
-    it("先寫一次再覆寫一次，往返仍成立", () => {
-      const once = setSlideNotes(BLANK_SVG, "版本一");
-      const twice = setSlideNotes(once, "版本二，含 <tag> 與 & 符號");
-      expect(readSlideNotes(twice)).toEqual({ ok: true, text: "版本二，含 <tag> 與 & 符號" });
-    });
+  it("notes 含 & 在中間：還原成原字元", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">A &amp; B &lt; C &gt; D</comot:notes></metadata>' +
+      "</svg>";
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "A & B < C > D" });
   });
 });
