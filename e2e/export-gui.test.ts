@@ -38,7 +38,7 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/export");
-const binPath = path.join(rootDir, "packages/cli/bin/co-motion.js");
+const coMotionBinPath = path.join(rootDir, "target/release/co-motion");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -102,7 +102,7 @@ interface CliResult {
 
 function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<CliResult> {
   return new Promise((resolve, reject) => {
-    execFile("node", [binPath, ...args], { env, maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
+    execFile(coMotionBinPath, args, { env, maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
       if (error && typeof error.code !== "number") {
         reject(error);
         return;

@@ -5,10 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import type { CommandRegistry } from "@co-motion/cli";
-import { attributeValue, scanDocument } from "../packages/core/src/slide/scan.js";
-import { readTableModel } from "../packages/core/src/table/model.js";
+import { JSDOM } from "jsdom";
+import type { CommandRegistry } from "./helpers/cli.js";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
+
+/** Parses a slide's raw SVG text into a queryable DOM — this file's own minimal stand-in for the deleted TypeScript engine's `scanDocument`/`readTableModel` (plan boundary 2.0-9: this file's assertions only, not a new shared utility). */
+function parseSlideSvg(svg: string): Document {
+  return new JSDOM(svg, { contentType: "image/svg+xml" }).window.document;
+}
 
 /**
  * [E2.T18] 剪貼簿：⌘C／⌘X／⌘V 對元素（含多選、群組）與儲存格範圍，跨頁貼上，
@@ -25,7 +29,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const deckDir = path.join(e2eDir, "fixtures/clipboard-deck");
-const cliBinPath = path.join(rootDir, "packages/cli/bin/co-motion.js");
+const cliBinPath = path.join(rootDir, "target/release/co-motion");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -97,8 +101,8 @@ interface CliResult {
 function runCli(args: string[]): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     execFile(
-      "node",
-      [cliBinPath, ...args],
+      cliBinPath,
+      args,
       { env: process.env, maxBuffer: 16 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error && typeof (error as NodeJS.ErrnoException).code !== "number") {
@@ -226,21 +230,18 @@ it("A3：群組貼上 — 兩個子容器 id 都是新的，且子元素相對�
     }, { timeout: 10_000 })
     .toBe(2);
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  const svgRoot = scanDocument(after).find((node) => node.tag === "svg")!;
-  const groups = svgRoot.children.filter(
-    (node) => node.tag === "g" && attributeValue(node, "data-comot-name") === "群組",
-  );
-  const pastedGroup = groups.find((node) => attributeValue(node, "id") !== "el-group")!;
+  const doc = parseSlideSvg(after);
+  const groups = [...doc.querySelectorAll('g[data-comot-name="群組"]')];
+  const pastedGroup = groups.find((el) => el.id !== "el-group");
   expect(pastedGroup).toBeDefined();
-  expect(attributeValue(pastedGroup, "id")).not.toBe("el-group");
-  const children = pastedGroup.children.filter((node) => node.tag === "g");
+  const children = [...pastedGroup!.children].filter((el) => el.tagName === "g");
   expect(children).toHaveLength(2);
-  const childIds = children.map((child) => attributeValue(child, "id"));
+  const childIds = children.map((el) => el.id);
   expect(childIds).not.toContain("el-group-a");
   expect(childIds).not.toContain("el-group-b");
   // Original children sit at translate(0 0) and translate(80 0) — an 80px
   // horizontal gap. The pasted group's own two children must preserve it.
-  const xOffsets = children.map((child) => Number(/translate\((-?[\d.]+) /.exec(attributeValue(child, "transform") ?? "")?.[1] ?? "0"));
+  const xOffsets = children.map((el) => Number(/translate\((-?[\d.]+) /.exec(el.getAttribute("transform") ?? "")?.[1] ?? "0"));
   expect(Math.abs(xOffsets[1] - xOffsets[0])).toBeCloseTo(80, 5);
 });
 
@@ -264,7 +265,10 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   expect(parseCliData<{ cells: number }>(pasteResult.stdout).cells).toBe(3);
 
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  const row2 = readTableModel(after, "tbl-1").cells.filter((cell) => cell.row === 2).map((cell) => cell.text);
+  const doc = parseSlideSvg(after);
+  const row2 = ["2,0", "2,1", "2,2"].map(
+    (address) => doc.querySelector(`[data-comot-cell="${address}"] text`)?.textContent ?? "",
+  );
   expect(row2).toEqual(["A1", "B1", "C1"]);
 
   // ADR-0001: confirm the static render, not just the file bytes.
