@@ -397,13 +397,22 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const rejectedElementIds = [moveElementId, scaleElementId, rotateElementId, textboxElementId];
     const frozenSlide = await readSlide(id);
     const frozenBlocks = rejectedElementIds.map((elId) => extractElementBlock(frozenSlide, elId));
-    for (const { name, input } of payloads) {
-      const response = await fetch(`${server.url}/api/command`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, input }),
-      });
-      expect(response.status, `${name} 應該在凍結期間被擋下`).toBe(409);
+    // Fired concurrently, not one-by-one: the agent's own command now runs
+    // in milliseconds (the Rust CLI binary, not Node), so the freeze window
+    // this loop needs to land inside of is short enough that four
+    // sequential round trips could straddle the unfreeze — one becoming a
+    // false negative regardless of whether the 409 gate itself is correct.
+    const rejectionResponses = await Promise.all(
+      payloads.map(({ name, input }) =>
+        fetch(`${server.url}/api/command`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, input }),
+        }),
+      ),
+    );
+    for (const [i, response] of rejectionResponses.entries()) {
+      expect(response.status, `${payloads[i].name} 應該在凍結期間被擋下`).toBe(409);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("agent 正在編輯中，請稍候");
     }
