@@ -1,6 +1,6 @@
 # co-motion CLI 規格
 
-這份文件是 `co-motion` 命令列工具的唯一規範性文件，也是未來 Rust 重寫版的驗收依據。與現行 TypeScript 實作不一致時，以本文為準——這是刻意的，不是筆誤：本規格對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，內容與現行 TypeScript 不同，Rust 版依本規格實作，TypeScript 版不會回頭修改。除了這三處，其餘內容描述的是現行且會延續到 Rust 版的行為。
+這份文件是 `co-motion` 命令列工具的唯一規範性文件。TypeScript 引擎（`packages/core`／`packages/cli`）已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據。並存期曾對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，這三處已由 Rust 依本規格實作。
 
 `docs/adr/` 記錄的是決策史，本文件記錄的是命令集目前與未來的規範性事實；兩者衝突時以本文件為準。
 
@@ -62,7 +62,7 @@ interface CommandResult<Data = unknown> {
 
 ## --json（全域旗標）
 
-`--json` 是新規格定案的全域旗標，**現行 TypeScript 尚未實作**（現行 `bin.ts` 沒有 `--json` 分支）；由 Rust 版落地。
+`--json` 是新規格定案的全域旗標，由 Rust 入口實作。
 
 - 位置：只能出現在命令名之後（例如 `co-motion cat <id> <path> --json`），不影響任何命令自己的位置參數與旗標解析順序。
 - 輸出：單行 compact（無縮排）JSON 加一個換行，欄位順序固定為 `ok, data, message, failureKind`。
@@ -80,7 +80,7 @@ interface CommandResult<Data = unknown> {
 ## 環境變數
 
 - **`CO_MOTION_HOME`**：`.comot` 之外的工作區根目錄，預設 `~/.comotion`。每次呼叫都重新讀取這個環境變數，不快取——同一個行程存活期間改變這個環境變數，下一次呼叫就會生效。佈局細節見 `docs/spec/comot-format.md`。
-- **`CO_MOTION_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `co-motion` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `co-motion`**（架構原則「一個二進位、一個真理」：並存期絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `co-motion`）。
+- **`CO_MOTION_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `co-motion` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `co-motion`**（架構原則「一個二進位、一個真理」：絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `co-motion`）。
 - **`CO_MOTION_ID_SEED`**：設定時，id 產生器（`<presentation-id>`／`<element-id>`）改為確定性輸出，僅供測試使用；id 的字面格式（`el-` 前綴 + 12 字元 base64url）不因此改變。**確定性序列的實際演算法不是本規格的契約**，由實作 crate 自行決定——只要求「設定這個環境變數時輸出變成確定性，且格式不變」這一條外顯行為。
 
 ## Undo 語意
@@ -92,23 +92,13 @@ interface CommandResult<Data = unknown> {
 
 ## 不經 registry 的入口：`serve` 與 `export`
 
-`serve`／`export` 這兩個子命令**不算在 81 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（現行 `packages/cli/bin/co-motion.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
+`serve`／`export` 這兩個子命令**不算在 81 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
 
 Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `CO_MOTION_BIN`，再 `exec` Node 執行 `@co-motion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
 
-## 並存期回退
-
-在 Rust 版逐步接管命令的過渡期間：**任何不在 Rust 接管表內的命令，一律由 Rust 入口 `exec` Node 版 CLI**，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳，不做任何改寫。
-
-**可觀察保證**：回退對呼叫者不可觀察——不論一條命令實際是 Rust 原生執行還是回退到 Node，呼叫端看到的輸出、exit code、行為必須完全相同（相容性等級 2 的凍結範圍正是為了讓這件事成立）。
-
-**接管表的內容不寫在本文件**：哪些命令已經被 Rust 接管，是 `crates/co-motion/src/main.rs` 裡的一個常數，每個開發階段（wave）都會變動；把這份清單寫進規格，會變成每一張 Rust 命令票合併時都要回頭改規格文件，徒增維護負擔且容易漏改。本文件只定義回退機制的語意與保證，不定義「現在幾條命令由誰執行」這個會隨時間變動的事實。
-
-**已知限制**：`asset import` 在 F5（`asset import` 被 Rust 接管）之前，回退到 Node 版 CLI 必然失敗——Node 端的 `parseArgv` 目前沒有接上 `asset` 這個 case（見下方 `` `asset import` `` 條目）。這是已知且接受的並存期狀態，不是回退機制本身的缺陷。
-
 ## 命令條目格式說明
 
-下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與覆蓋率測試（`packages/cli/test/spec-cli-coverage.test.ts`）解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 83，與 `CommandRegistry.names()` 的 81 對不上。
+下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_81_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 83，與 Rust 註冊的 81 條命令對不上。
 
 每個命令條目固定五個小節，順序不變：
 
@@ -240,7 +230,7 @@ co-motion cat <presentation-id> <path>
 { "content": "<檔案的完整原始內容>" }
 ```
 
-`content` 是文字內容（讀出時視為 UTF-8）；終端輸出規則見「Renderer 命令」一節——預設情況下 `data.content` 會原封不動直接印到 stdout，不加換行、不印 `message`、不印 JSON 包裝。只有搭配尚未由現行 TypeScript 實作的全域旗標 `--json` 時，才會改成印出整個 `CommandResult` 的 JSON，此時 `data.content` 編碼成 base64（見通則「`--json`」一節）。
+`content` 是文字內容（讀出時視為 UTF-8）；終端輸出規則見「Renderer 命令」一節——預設情況下 `data.content` 會原封不動直接印到 stdout，不加換行、不印 `message`、不印 JSON 包裝。只有搭配全域旗標 `--json` 時，才會改成印出整個 `CommandResult` 的 JSON，此時 `data.content` 編碼成 base64（見通則「`--json`」一節）。
 
 **錯誤情境**
 
@@ -2507,9 +2497,9 @@ co-motion chart data set <presentation-id> <slide-path> <element-id> (--categori
 | 經由 `serve` 直接呼叫、且 `csv` 的值恰為未代換的 `"-"` | `failed` |
 | CSV／`--categories`＋`--series` 內容不合法（欄數不齊、數值欄含非數字、類別清單為空、任一系列沒有任何值、系列名稱為空字串） | `failed` |
 
-> **與現行 TypeScript 的差異**：命令列（`argv.ts`）目前已經會在解析階段擋下「0 種或 2 種以上」；但透過 `setSlideChartData`（`co-motion serve` 走的同一個 handler）直接呼叫、且同時給了多種來源時，現行程式碼會依 `csv` → `csvAsset` → `categories/series` 的優先序**靜默選用第一個給定的來源**，不會報錯——這與 CLI 層「恰好一種」的防線不一致。本規格要求 Rust 版把「恰好一種」的驗證放進 handler 本身（`serve` 與 CLI 都經過的同一層），而不是只在 argv 解析時擋一次，讓兩條呼叫路徑的行為一致。
+> **本規格的定案**：「恰好一種」的驗證放進 handler 本身（`serve` 與 CLI 都經過的同一層），而不是只在 argv 解析時擋一次，讓兩條呼叫路徑的行為一致。
 >
-> **`element-id` 不存在／不是圖表元素目前的 `failureKind` 是 `failed`，不是 `not-found`**（`packages/core/src/chart/model.ts` 的 `requireChartContainer` 對兩種情況都丟出一般 `CoMotionError`，不是 `CoMotionNotFoundError`）。這點與其他圖表命令（`chart type set` 等）、`table` 系列命令、`element` 系列命令一致，但與同一份文件其他地方「找不到某個 id 就是 `not-found`」的直覺不同，特別標注避免誤植。
+> **`element-id` 不存在／不是圖表元素的 `failureKind` 是 `failed`，不是 `not-found`**。這點與其他圖表命令（`chart type set` 等）、`table` 系列命令、`element` 系列命令一致，但與同一份文件其他地方「找不到某個 id 就是 `not-found`」的直覺不同，特別標注避免誤植。
 
 **範例**
 
@@ -2547,7 +2537,7 @@ co-motion chart type set <presentation-id> <slide-path> <element-id> <type>
 | `presentation-id` 不存在 | `not-found` |
 | `slide-path` 不存在 | `not-found` |
 | `slide-path` 存在但不是 `slides`/`templates` 清單裡的項目 | `failed` |
-| `element-id` 在這張投影片找不到 | `failed`（**不是** `not-found`——`requireChartContainer` 對「找不到元素」丟的是純 `CoMotionError`，不是 `CoMotionNotFoundError`，因此每一個 chart 子命令的「元素不存在」一律分類為 `failed`） |
+| `element-id` 在這張投影片找不到 | `failed`（**不是** `not-found`——每一個 chart 子命令的「元素不存在」一律分類為 `failed`） |
 | `element-id` 存在，但不是圖表元素（沒有 `data-comot-type="chart"`） | `failed` |
 | `type` 不屬於固定集合 | `failed` |
 | 新 `type` 與現有 `stacked=true` 不相容（新 type 不在 `bar/hbar/area` 之列） | `failed` |
@@ -2841,9 +2831,7 @@ co-motion asset import <presentation-id> <source> [--as csv]
 | `--as` 給的值不是 `csv` | `failed` |
 | 檔頭位元組不符合任何支援的媒體格式（且未給 `--as csv`） | `failed` |
 
-> **本機來源檔案不存在 → `not-found` 是本規格對現行 TypeScript 的刻意修正**（現行程式碼在這個情境丟出一般 `CoMotionError`，也就是 `failed`）：理由是與 `chart data set --csv` 讀本機檔案時 ENOENT 對應到 `CoMotionNotFoundError`（`not-found`）的慣例保持一致。這條修正之所以不算破壞相容性等級 2，是因為 `asset import` 目前**完全無法從命令列呼叫**（見下方「並存期已知限制」），這條錯誤路徑沒有任何既有使用者會被這次修正影響到。**Rust 版依本規格實作 `not-found`；TypeScript 版維持現狀不改，因為它本來就到不了這條命令。**
-
-**並存期已知限制**：現行 `packages/cli/src/argv.ts` 的 `parseArgv` 只有 18 個頂層 `case`，`asset` 不在其中——`co-motion asset import ...` 目前透過命令列呼叫必然得到「未知的命令：asset」。Rust 接管表把 `asset import` 排進 F5 之前，回退到 Node 版 CLI 時會沿著同一條路徑失敗（Node 端 argv 沒有接上 `asset` case）。**`asset import` 在 F5 之前不可用，這是已知且接受的並存期狀態**，不是回退機制的缺陷；`parseArgv` 需要新增 `case "asset"`，`rest[0] === "import"` 時解析出 `{ id, source, as }`，`rest[0]` 為其他值時報「未知的子命令：asset <x>」——這是 F5 的實作範圍，本票不動 TypeScript 原始碼。
+> **本機來源檔案不存在 → `not-found`**：理由是與 `chart data set --csv` 讀本機檔案時 ENOENT 對應到 `CoMotionNotFoundError`（`not-found`）的慣例保持一致。
 
 **範例**
 
