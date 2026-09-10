@@ -367,6 +367,13 @@
     el.style.border = "none";
     el.style.opacity = "0";
     el.style.pointerEvents = "none";
+    // The slide document sets user-select:none (wrapSelectionDocument) so a
+    // marquee drag cannot start a native text selection. This element is the
+    // one place that still needs the default: it is the keyboard/IME sink for
+    // text editing, and setSelectionRange()/composition work on a control
+    // whose text is selectable.
+    el.style.userSelect = "text";
+    el.style.webkitUserSelect = "text";
     shadow.appendChild(el);
     el.addEventListener("compositionstart", function () {
       isComposing = true;
