@@ -83,22 +83,37 @@ def _iframe_target_id():
 
 
 def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
-    """Poll until the slide iframe exists, has a resolvable target, and has
-    rendered the selection-overlay host. Re-resolved on every call — the
-    target id changes across page navigations / slide changes, so it is
-    never cached in a module variable."""
+    """Poll until the slide iframe exists, has a resolvable target, has
+    rendered the selection-overlay host, AND has parsed the slide markup
+    (a root <svg>). Re-resolved on every call — the target id changes
+    across page navigations / slide changes, so it is never cached in a
+    module variable.
+
+    The selection host alone is not enough: it is appendChild'd by the
+    runtime before bodyMarkup is parsed (NOOP-349 round 3), so a caller
+    that only waited for the host could still race a marquee drag against
+    an iframe with no <svg> yet. document.readyState is deliberately not
+    checked here (round-3 plan §4.D) — it can sit at "interactive" for a
+    long time on slow media/fonts, which would just move the timeout
+    somewhere else without telling the caller anything about selection
+    correctness.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         tid = _iframe_target_id()
         if tid:
             try:
-                ready = _js("document.querySelector('[data-comot-selection-host]') != null", target_id=tid)
+                ready = _js(
+                    "document.querySelector('[data-comot-selection-host]') != null "
+                    "&& document.querySelector('svg') != null",
+                    target_id=tid,
+                )
             except Exception:
                 ready = False
             if ready:
                 return tid
         time.sleep(0.3)
-    raise RuntimeError(f"投影片 iframe 在 {timeout:.0f} 秒內沒有就緒（slide-frame / frameId / selection host 其中一項沒出現）")
+    raise RuntimeError(f"投影片 iframe 在 {timeout:.0f} 秒內沒有就緒（slide-frame / frameId / selection host / svg markup 其中一項沒出現）")
 
 
 def _iframe_offset():
@@ -241,13 +256,42 @@ def selection():
     return {"chip": chip, "box": box, "handles": handles}
 
 
+_DRAG_SETTLE_TIMEOUT = 2.0
+_DRAG_SETTLE_POLL = 0.1
+_DRAG_SETTLE_STABLE_GAP = 0.1
+
+
+def _wait_status_bar_settled(timeout=_DRAG_SETTLE_TIMEOUT):
+    """Poll status_bar() until two reads at least _DRAG_SETTLE_STABLE_GAP
+    apart return the same text, up to `timeout`. Never raises — PASS/FAIL is
+    always decided by the case script's own assertions, not by this helper
+    (round-3 plan §4.C); a caller that times out here just gets whatever the
+    bar currently says, same as before this helper existed."""
+    deadline = time.time() + timeout
+    last = status_bar()
+    last_read_at = time.time()
+    while time.time() < deadline:
+        time.sleep(_DRAG_SETTLE_POLL)
+        cur = status_bar()
+        now = time.time()
+        if cur == last and (now - last_read_at) >= _DRAG_SETTLE_STABLE_GAP:
+            return cur
+        last, last_read_at = cur, now
+    return last
+
+
 def drag(from_xy, to_xy, steps=10):
     """CDP Input.dispatchMouseEvent pressed -> `steps` moved -> released, in
     parent-document coordinates. buttons=1 on every pressed/moved event is
     required — without it the page sees pointermove events with e.buttons==0
     and the drag gesture pipeline never engages. Raises ValueError when the
     total displacement is under 8px (below the app's 3px drag threshold,
-    i.e. this would not register as a drag anyway)."""
+    i.e. this would not register as a drag anyway).
+
+    Before returning, waits (up to 2s) for the status bar text to stabilize
+    (NOOP-349 round 3) — mouseReleased used to return immediately, racing
+    every caller's next status_bar()/selection() read against the
+    gesture-end -> host state update -> React re-render chain."""
     fx, fy = from_xy
     tx, ty = to_xy
     if math.hypot(tx - fx, ty - fy) < 8:
@@ -259,6 +303,7 @@ def drag(from_xy, to_xy, steps=10):
         _cdp("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y, button="left", buttons=1)
         time.sleep(0.016)
     _cdp("Input.dispatchMouseEvent", type="mouseReleased", x=tx, y=ty, button="left", buttons=0, clickCount=1)
+    _wait_status_bar_settled()
 
 
 def dblclick(x, y):
