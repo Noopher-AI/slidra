@@ -23,18 +23,16 @@ const LABEL_OFFSET = 22;
  * 這裡只畫父文件那一半：標籤，加上 [E2.T8] 的留言 pin（標籤同一列，右側）。
  */
 export function SelectionOverlay({ union, label, pin }: SelectionOverlayProps) {
-  if (!union || !label) return <div className="selection-overlay" />;
+  if (!union || !label) return null;
   const text = label.path.length > 0 ? [...label.path, label.text].join(" › ") : label.text;
   return (
-    <div className="selection-overlay">
-      <div className="selection-label-row" style={{ left: union.x, top: union.y - LABEL_OFFSET }}>
-        <div className="selection-label">{text}</div>
-        {pin && (
-          <button type="button" className="comment-pin" data-comment-id={pin.commentId} onClick={pin.onClick}>
-            {pin.number}
-          </button>
-        )}
-      </div>
+    <div className="selection-label-row" style={{ left: union.x, top: union.y - LABEL_OFFSET }}>
+      <div className="selection-label">{text}</div>
+      {pin && (
+        <button type="button" className="comment-pin" data-comment-id={pin.commentId} onClick={pin.onClick}>
+          {pin.number}
+        </button>
+      )}
     </div>
   );
 }

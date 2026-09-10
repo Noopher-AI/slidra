@@ -512,6 +512,61 @@ it("A14：舞台徽章與清單同步——清單按 ↑ 之後，徽章的數�
   }
 });
 
+// [E5.T3] 兩層化：F-16（動畫徽章誤開 pointer-events:auto，擋住元素左上的縮
+// 放把手）的結構性修復。放在這個檔案而非新開 e2e 檔或 shell-layout.test.ts
+// 的無選取 demo：那裡 `.stage-geometry` 底下只有兩個空容器，掃描結果恆真
+// 且無意義（NOOP-63 那種空斷言）；這裡已經有「選取有動畫的元素 + 開
+// Animate 分頁」的完整 setup，徽章真的在舞台上，斷言才有力。
+it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素左上把手（F-16）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    await registry.dispatch("effect add", {
+      id: presentationId, slidePath: "slides/001.svg", elementIds: ["el-a"], family: "enter", effect: "fade",
+    });
+
+    const page = await openApp(server);
+    await (await canvasFrame(page)).locator("#el-a").click();
+    await page.locator('[role="tab"][data-tab="animate"]').click();
+    await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
+
+    // AC4：幾何層底下沒有任何元素的 computed pointer-events 是 auto，且掃
+    // 描真的看到東西（防空斷言）——徽章必須真的在幾何層裡。
+    const scan = await page.evaluate(() => {
+      const nodes = Array.from(document.querySelectorAll<HTMLElement>(".stage-geometry, .stage-geometry *"));
+      return nodes.map((el) => ({ cls: el.className, pe: getComputedStyle(el).pointerEvents }));
+    });
+    expect(scan.length).toBeGreaterThanOrEqual(4);
+    expect(scan.some((n) => String(n.cls).includes("animation-badge"))).toBe(true);
+    expect(scan.filter((n) => n.pe === "auto")).toEqual([]);
+
+    // AC5（F-16 本體）：徽章正中心＝元素左上把手中心（`transform:
+    // translate(-50%,-50%)`）；那一點必須穿透到 iframe，不再被幾何層或
+    // widget 層接住。
+    const badgeBox = await page.locator(".animation-badge").boundingBox();
+    expect(badgeBox).not.toBeNull();
+    const hit = await page.evaluate(
+      ([cx, cy]) => {
+        const el = document.elementFromPoint(cx, cy) as HTMLElement | null;
+        return (
+          el && {
+            tag: el.tagName,
+            cls: el.className,
+            inGeometry: !!el.closest(".stage-geometry"),
+            inWidgets: !!el.closest(".stage-widgets"),
+          }
+        );
+      },
+      [badgeBox!.x + badgeBox!.width / 2, badgeBox!.y + badgeBox!.height / 2] as [number, number],
+    );
+    expect(hit).not.toBeNull();
+    expect(hit!.inGeometry).toBe(false); // 突變點：徽章重新開回 auto 就會紅
+    expect(hit!.inWidgets).toBe(false);
+    expect(hit!.tag).toBe("IFRAME");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動畫時渲染且切到 Animate › Object；全站只有一個入口", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {

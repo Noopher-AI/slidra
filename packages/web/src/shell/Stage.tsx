@@ -12,7 +12,6 @@ import {
 import type { CanvasController, CanvasState } from "../canvas.js";
 import { Dock } from "./dock/Dock.js";
 import { OverlayLayer, type CommentOverlayProps } from "./stage-overlays/OverlayLayer.js";
-import { EmbedLayer } from "./stage-overlays/EmbedLayer.js";
 import type { SideId } from "./side/SidePanel.js";
 import {
   initialHandState,
@@ -67,7 +66,7 @@ function isTextInputTarget(target: EventTarget | null): boolean {
 /** Dock／舞台疊層自己的按鈕與浮層——落在這些容器裡的 mousedown 不該被當成「點空白」而觸發平移。 */
 function isOnStageChrome(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  return !!el?.closest(".dock, .stage-overlays");
+  return !!el?.closest(".dock, .stage-geometry, .stage-widgets");
 }
 
 /**
@@ -340,20 +339,19 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
           onDragLeave={dropOverlay.onDragLeave}
         />
       </div>
-      {/* [E2.T17]: deliberately OUTSIDE the `shellVisible` gate below — an
-          embedded player has to keep playing in play mode and fullscreen,
-          where OverlayLayer is unmounted. */}
-      <EmbedLayer controller={controller} />
-      {shellVisible && (
-        <OverlayLayer
-          controller={controller}
-          wellRef={wellRef}
-          onEditAnimation={onEditAnimation}
-          onEditStyle={onEditStyle}
-          showBadges={side === "animate" && state.mode === "view"}
-          comment={comment}
-        />
-      )}
+      {/* [E5.T3]: `OverlayLayer` is now unconditionally mounted — its own
+          `.stage-widgets` container has to stay in play mode too (EmbedLayer
+          keeps playing there and in fullscreen), so `shellVisible` is a prop
+          it gates internally rather than a mount/unmount here. */}
+      <OverlayLayer
+        controller={controller}
+        wellRef={wellRef}
+        onEditAnimation={onEditAnimation}
+        onEditStyle={onEditStyle}
+        showBadges={side === "animate" && state.mode === "view"}
+        comment={comment}
+        shellVisible={shellVisible}
+      />
       {shellVisible && (
         <Dock
           zoomPan={zoomPan}
