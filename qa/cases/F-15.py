@@ -71,7 +71,11 @@ def main() -> int:
     after_a = slide_svg(3)  # noqa: F821
     bar_a = status_bar()  # noqa: F821
     check("A-1 檔案位元組未變（拖曳空白不寫檔）", after_a == before, after_a == before)
-    check("A-2 狀態列選取區為空（矩形未命中任何元素）", not bar_a, bar_a)
+    # status_bar() 回傳整個 footer 的 textContent，含快捷鍵提示與頁碼（見
+    # qa/agent_helpers.py 的 docstring）——這兩者與選取狀態無關、永遠存在，
+    # 所以「選取區為空」不能斷言整條 bar 是空字串（那永遠是 False，不論有沒
+    # 有選到東西），要跟 B-2 用同一種手法：斷言選取 chip 的文字不在 bar 裡。
+    check("A-2 狀態列選取區為空（矩形未命中任何元素）", "Selected:" not in bar_a, bar_a)
     check("A-3 無 console error", console_errors() == [], console_errors())  # noqa: F821
     shot("F-15-A")  # noqa: F821
 
