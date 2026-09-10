@@ -124,6 +124,12 @@ def _dispatch_mouse(**params):
     doesn't mean the event wasn't delivered, so retrying could double-fire
     the gesture. On timeout, best-effort release the mouse button so it
     doesn't stay stuck down for the next caller, then raise."""
+    # A press that starts a gesture must never be dispatched into the window
+    # where the slide iframe has been rebuilt but its listeners are not
+    # attached yet — the event is dropped silently there. See
+    # _require_runtime_ready.
+    if params.get("type") == "mousePressed":
+        _require_runtime_ready()
     timeout = _ipc_timeout()
     try:
         return _cdp("Input.dispatchMouseEvent", _response_timeout=timeout, **params)
@@ -224,6 +230,125 @@ def _iframe_target_id():
     return None
 
 
+# The slide runs in a sandboxed srcdoc iframe that the app REBUILDS on every
+# slide change. selection-runtime.js appends its selection host and parses the
+# slide markup BEFORE it calls addEventListener, and only then posts
+# "runtime-ready" — its own comment notes that a postMessage sent before that
+# point "would be silently dropped". The same hole exists in the other
+# direction, and it is the one that bites here: a CDP Input event dispatched
+# into that gap lands on a document with no pointer listeners and is discarded
+# without a trace. No error, no console entry, no gesture-start/move/end — the
+# gesture simply never happened, and the assertion that follows measures the
+# state from before it.
+#
+# NOOP-349: this is what made F-15's B-2 fail for five review rounds. It was
+# read as "the marquee hit the wrong number of elements" and chased through
+# browser-use/CDP timeouts, /dev/shm sizing and Target.activateTarget, none of
+# which were involved. Instrumenting the parent's message channel showed the
+# failing runs carried no gesture events at all, only the previous iframe's
+# blur. Waiting for the real signal took B-2 from 2/6 to 6/6, and F-15 as a
+# whole from "never clean" to 3/3.
+#
+# The probe below tracks that signal from the parent document:
+#   seq      how many "runtime-ready" messages have arrived since install
+#   pending  True between "the iframe's srcdoc was replaced" and "the new
+#            document said it is ready" — i.e. exactly the window in which
+#            dispatching input is silently lost
+# `pending` starts False so an already-settled iframe is not made to wait for
+# a signal that has already come and gone; `mark_pending` lets a caller that
+# just triggered a rebuild itself (open_deck's new tab) declare the window
+# open before the mutation observer could possibly see it.
+_READY_PROBE_JS = """
+(function (markPending) {
+  // Bumped whenever the shape of the state object changes. A probe left over
+  // from an older agent_helpers.py survives in the page across browser-use
+  // invocations (the tab is deliberately reused), and without this check the
+  // stale object would be kept and every field added since would read back as
+  // undefined.
+  var VERSION = 2;
+  var s = window.__cmQaReady;
+  if (!s || s.v !== VERSION) {
+    s = { v: VERSION, seq: 0, pending: false };
+    window.__cmQaReady = s;
+    window.addEventListener("message", function (e) {
+      var d = e.data;
+      if (d && typeof d === "object" && d.event === "runtime-ready") {
+        s.seq += 1;
+        s.pending = false;
+      }
+    }, true);
+    var watch = function (f) {
+      if (!f || f.__cmQaWatched) return;
+      f.__cmQaWatched = true;
+      new MutationObserver(function () { s.pending = true; })
+        .observe(f, { attributes: true, attributeFilter: ["srcdoc"] });
+    };
+    watch(document.querySelector("iframe.slide-frame"));
+    // The iframe element itself is replaced on some transitions, not just its
+    // srcdoc — re-attach the observer whenever a new one appears.
+    new MutationObserver(function () { watch(document.querySelector("iframe.slide-frame")); })
+      .observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (markPending) s.pending = true;
+  return { seq: s.seq, pending: !!s.pending };
+})(MARK_PENDING)
+"""
+
+
+def _ready_probe(mark_pending=False):
+    """(seq, pending) from the parent-document runtime-ready probe, installing
+    it on first use and after any parent reload (which wipes it)."""
+    r = _js_ro(_READY_PROBE_JS.replace("MARK_PENDING", "true" if mark_pending else "false"))
+    if not isinstance(r, dict) or "seq" not in r or "pending" not in r:
+        raise RuntimeError(f"runtime-ready probe 回傳了非預期的形狀：{r!r}")
+    return int(r["seq"]), bool(r["pending"])
+
+
+def _ready_seq(mark_pending=False):
+    return _ready_probe(mark_pending)[0]
+
+
+def _wait_runtime_ready(after_seq, timeout=_FRAME_READY_TIMEOUT):
+    """Block until the iframe rebuilt by the caller has posted its OWN
+    "runtime-ready" — i.e. the counter has moved past `after_seq`, which the
+    caller must have read BEFORE triggering the rebuild. Counting rather than
+    checking a flag is what makes this specific to the new document instead of
+    being satisfied by the previous one's stale signal."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _ready_seq() > after_seq:
+            return
+        time.sleep(0.05)
+    raise RuntimeError(
+        f"投影片 iframe 在 {timeout:.0f} 秒內沒有送出 runtime-ready"
+        "（監聽器可能還沒掛上；此時派送的輸入事件會被靜默丟棄）"
+    )
+
+
+def _require_runtime_ready(timeout=_FRAME_READY_TIMEOUT):
+    """Refuse to let a gesture start while a slide iframe rebuild is in flight.
+
+    Called from _dispatch_mouse on "mousePressed" only — that is the single
+    choke point every synthetic gesture passes through (_click, drag, dblclick
+    and anything added later), so a new primitive cannot reintroduce the bug
+    by forgetting to wait. Move/release events are deliberately not guarded:
+    they belong to a gesture whose press already passed this check, and an
+    extra round trip per move would slow every drag for nothing.
+    """
+    deadline = time.time() + timeout
+    while True:
+        _, pending = _ready_probe()
+        if not pending:
+            return
+        if time.time() >= deadline:
+            raise RuntimeError(
+                f"投影片 iframe 重建後 {timeout:.0f} 秒內沒有送出 runtime-ready，"
+                "拒絕派送輸入事件（此時送出的事件會被靜默丟棄，"
+                "手勢不會發生，之後的斷言會量到手勢前的狀態）"
+            )
+        time.sleep(0.05)
+
+
 def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
     """Poll until the slide iframe exists, has a resolvable target, has
     rendered the selection-overlay host, AND has parsed the slide markup
@@ -239,6 +364,14 @@ def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
     long time on slow media/fonts, which would just move the timeout
     somewhere else without telling the caller anything about selection
     correctness.
+
+    NOT sufficient before dispatching input. Both conditions above are true
+    while selection-runtime.js is still between "markup parsed" and
+    "addEventListener" — a real window, not a theoretical one — and a mouse
+    event dispatched into it is dropped without a trace. Readiness for input
+    is _require_runtime_ready() (enforced automatically for every gesture by
+    _dispatch_mouse); this function answers only "is there a slide to look
+    at", which is what selection()/_find_target_box() need.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -304,7 +437,8 @@ def open_deck():
         same = (cur.get("url") or "").rstrip("/") == url
     except Exception:
         same = False
-    if not same:
+    navigated = not same
+    if navigated:
         _new_tab(url)
     _activate_current_tab()
     _wait_for_load()
@@ -313,6 +447,14 @@ def open_deck():
     # that reliably lands on exactly 1440x900, and it persists across
     # browser-use calls since it's a CDP-level override, not a CLI flag.
     _cdp_ro("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
+    # Installs the "runtime-ready" probe on the parent document. After a fresh
+    # navigation the probe is necessarily younger than the iframe it has to
+    # watch, so it cannot have observed that build starting — mark the window
+    # open explicitly and wait it out, rather than letting the first gesture
+    # of the session race a half-built runtime.
+    _ready_probe(mark_pending=navigated)
+    if navigated:
+        _require_runtime_ready()
     _wait_frame_ready()
     return {
         "url": url,
@@ -331,7 +473,18 @@ def goto_slide(n):
     )
     if box is None:
         raise RuntimeError(f"goto_slide: 找不到縮圖 Slide {n}")
+    # Navigating rebuilds the srcdoc iframe, so the document that answers the
+    # DOM checks in _wait_frame_ready() may be one whose pointer listeners are
+    # not attached yet: the runtime appends the selection host and parses the
+    # markup BEFORE addEventListener, and only then posts "runtime-ready".
+    # Waiting on the DOM alone let a drag() issued right after goto_slide()
+    # dispatch its mouse events into that gap, where they are dropped without
+    # a trace — no gesture-start, no gesture-move, no gesture-end, and a
+    # marquee that silently selects nothing (NOOP-349: F-15's B-2, 2/6 before
+    # this wait, 6/6 after).
+    seq_before = _ready_seq()
     _click(box["x"], box["y"])
+    _wait_runtime_ready(seq_before)
     _wait_frame_ready()  # navigating rebuilds the srcdoc iframe -> new target id
     text = _js_ro("(document.querySelector('.slide-nav-position')||{}).textContent || ''") or ""
     m = _SLIDE_NAV_RE.search(text)
