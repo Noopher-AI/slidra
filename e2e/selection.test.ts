@@ -624,34 +624,6 @@ it("基準截圖：標準檢視含選取框", async () => {
   }
 });
 
-// --- #72: 選取改為認容器 ---------------------------------------------------
-
-// The demo's background rect used to be unselectable (it had no id). After
-// conversion it is a real element, and clicking it selects its container.
-// This is the correct new behaviour, not a regression: #85's locking is
-// what will later make "I don't want to select the background" possible.
-// The status bar falls back to showing the 識別碼, because conversion does
-// not invent a 顯示名稱 for an element whose author never gave it one.
-it("點 demo 第 1 頁的背景會選到背景容器，狀態列顯示它的識別碼", async () => {
-  const { server, cleanup } = await startServerFor(demoDir);
-  try {
-    const page = await openApp(server);
-    const slideFrame = page.frameLocator("iframe.slide-frame");
-    const selName = page.locator(".status-selection-chip");
-
-    const svgRoot = slideFrame.locator("svg").first();
-    const box = await svgRoot.boundingBox();
-    if (!box) throw new Error("量不到 svg 的邊界框");
-    await page.mouse.click(box.x + 4, box.y + 4);
-
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toMatch(/^Selected: el-.+$/);
-    // Not one of the two named elements — it really is the background.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).not.toBe("Selected: 標題");
-  } finally {
-    await cleanup();
-  }
-});
-
 // ADR-0012: a group is a container of containers, so clicking a child
 // inside a group selects the whole group — PowerPoint's semantics. This is
 // what "選取改為認容器" actually buys, and it is invisible on `demo/`

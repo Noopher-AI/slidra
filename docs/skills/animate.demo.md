@@ -18,6 +18,6 @@
 
 ## 不該發生的事
 
-- 不對 `el-VDJP6MD9hs3N`（滿版背景 `<rect>`，沒有 `data-comot-name`）加效果。
+- 不對沒有 `data-comot-name` 的元素加效果。
 - 不使用雙引號或反斜線。
 - 不在沒有先讀 `effect list` 的情況下對已有效果的頁（例如 `slides/003.svg`）直接疊加效果。

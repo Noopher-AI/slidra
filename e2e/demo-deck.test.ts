@@ -1,14 +1,20 @@
-import { access, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Locator } from "playwright";
+import { PNG } from "pngjs";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
+import { loadPdf } from "./helpers/pdf.js";
 import { workDirFor } from "../packages/server/src/comotion/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Issue #23's own acceptance criterion, verbatim: "驗收標準不是測試全綠，
@@ -561,3 +567,82 @@ it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", a
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+/** Reads the RGB of the pixel at an element's own rendered center, from its own `.screenshot()` (never the surrounding page — that would also catch #120's `<body>` fallback, out of scope here per canvas.ts's own comment). */
+function centerRgb(png: PNG): { r: number; g: number; b: number } {
+  const x = Math.floor(png.width / 2);
+  const y = Math.floor(png.height / 2);
+  const index = (png.width * y + x) << 2;
+  return { r: png.data[index], g: png.data[index + 1], b: png.data[index + 2] };
+}
+
+/**
+ * AC 2/4/6 (父票驗收條件 A2), Plan §6.3: demo 四頁的根 `<svg>` 的
+ * `background-color` 取代了原本的滿版 `<rect>`（上一個 commit）。這個測試
+ * 是四條實際渲染路徑（編輯舞台、左欄縮圖、播放、匯出）的行為契約——每條路
+ * 徑都得在自己的包裝文件裡把這個宣告畫成看得見的底色，不是只讓
+ * `slide style set` 寫得出這個屬性。
+ *
+ * 每個量測點都用該元素自己的 `.screenshot()`（不是整頁截圖）：canvas.ts
+ * 三個包裝的 `<body>` 背景是白色（#120 的退回色），容器盒比 svg 盒高時底
+ * 下會露出白邊（F-01，歸另一票）。只截 svg 自己的框就不會撞進那片白邊，
+ * 這個測試因此驗證得到的是「svg 盒本身畫的是設定色」，不是「整個 iframe
+ * 沒有白像素」。
+ */
+it("demo 四頁的頁面底色由根 <svg> 的 background-color 決定：編輯舞台／左欄縮圖／播放／匯出四條路徑量到的都是 #101418，不是白色", async () => {
+  for (const slidePath of ["slides/001.svg", "slides/002.svg", "slides/003.svg", "slides/004.svg"]) {
+    const markup = await readFile(path.join(demoDir, slidePath), "utf-8");
+    expect(markup).not.toContain('width="1280" height="720"');
+    expect(markup).toContain('style="background-color:#101418"');
+  }
+
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  try {
+    await page.goto(server.url);
+
+    const stageSvg = page.frameLocator("iframe.slide-frame").locator("svg").first();
+    await expect
+      .poll(() => stageSvg.evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => null), {
+        timeout: 30_000,
+      })
+      .toBe("rgb(16, 20, 24)");
+    expect(centerRgb(PNG.sync.read(await stageSvg.screenshot()))).toEqual({ r: 16, g: 20, b: 24 });
+
+    const thumbSvg = page.frameLocator('.overview-item[data-index="0"] iframe.overview-frame').locator("svg").first();
+    await expect
+      .poll(() => thumbSvg.evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => null), {
+        timeout: 30_000,
+      })
+      .toBe("rgb(16, 20, 24)");
+    expect(centerRgb(PNG.sync.read(await thumbSvg.screenshot()))).toEqual({ r: 16, g: 20, b: 24 });
+
+    await page.locator(".play-button").click();
+    await waitForPlayerFocus(page);
+    const playSvg = page.frameLocator("iframe.slide-frame").locator("svg").first();
+    await expect
+      .poll(() => playSvg.evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => null), {
+        timeout: 30_000,
+      })
+      .toBe("rgb(16, 20, 24)");
+    expect(centerRgb(PNG.sync.read(await playSvg.screenshot()))).toEqual({ r: 16, g: 20, b: 24 });
+  } finally {
+    await page.close();
+  }
+
+  const outPath = path.join(comotDir, "background-check.pdf");
+  await execFileAsync(coMotionBin, ["export", presentationId, "--format", "pdf", "--out", outPath], {
+    env: { ...process.env, CO_MOTION_HOME: coMotionHome, CO_MOTION_BIN: coMotionBin },
+  });
+  const pdfBytes = await readFile(outPath);
+  const info = await loadPdf(browser, pdfBytes);
+  try {
+    const { r, g, b } = centerRgb(PNG.sync.read(await info.rasterizePage(0)));
+    // 匯出經過一次 PDF 光柵化，容許 ±2/色階的浮點誤差（與 e2e/export-cli.test.ts
+    // 既有的光柵化比對同一套容忍度）。
+    expect(Math.abs(r - 16)).toBeLessThanOrEqual(2);
+    expect(Math.abs(g - 20)).toBeLessThanOrEqual(2);
+    expect(Math.abs(b - 24)).toBeLessThanOrEqual(2);
+  } finally {
+    await info.close();
+  }
+}, 60_000);
