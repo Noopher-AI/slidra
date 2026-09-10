@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Locator } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -36,8 +36,8 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/play-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -51,7 +51,6 @@ let presentationId: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
 
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
@@ -59,6 +58,8 @@ beforeAll(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-fullscreen-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-fullscreen-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   registry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "play-deck.comot");
@@ -78,13 +79,14 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ registry, presentationId, port: 0, agent });
+  server = await startServe({ presentationId, port: 0, agent });
 });
 
 afterAll(async () => {
   await browser?.close();
   await server?.close();
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
   if (comotDir) await rm(comotDir, { recursive: true, force: true });
 });

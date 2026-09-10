@@ -1,5 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError } from "../comotion/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type ChatStreamSend } from "./session.js";
 import type { EditingLock } from "../editing-lock.js";

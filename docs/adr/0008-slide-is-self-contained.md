@@ -1,5 +1,9 @@
 # 一張投影片自成一體
 
+> 一張投影片自成一體是**決策**，不因規格化而改變；投影片 `<metadata>` 內 `comot:*` 元素（`<comot:effects>`／
+> `<comot:notes>`／`<comot:comments>`／`<comot:transition>`）的完整屬性表、命名空間、與圖表／表格容器各自的例外
+> 結構，細節見 [`docs/spec/comot-format.md`](../spec/comot-format.md)。
+
 一張投影片需要的一切——圖形、元素識別碼、顯示名稱、效果清單——都寫在那張 SVG 裡。`project.json` 只保留跨投影片才有意義的東西：`formatVersion`、`name`、`canvas`、`slides` 順序陣列。
 
 驅動這個決定的是**對調兩頁**這個動作。若效果清單放在 `project.json`，或步驟編號跨投影片連號，調換順序就得同時改動第三個檔案、或重編一整段編號。投影片自成一體時，對調兩頁只是動 `slides` 陣列裡的兩個字串，投影片本身一個位元組都不必變。

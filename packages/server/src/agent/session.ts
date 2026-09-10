@@ -2,15 +2,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import {
-  CoMotionError,
-  CoMotionNotFoundError,
-  readPresentationFile,
-  beginHistoryGroup,
-  endHistoryGroup,
-  listAllComments,
-  type SlideCommentWithPath,
-} from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
+import { readPresentationText } from "../comotion/reads.js";
+import { beginHistoryGroup, endHistoryGroup } from "../comotion/history-group.js";
+import { runJsonCommand } from "../comotion/command.js";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
@@ -31,6 +26,28 @@ const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，�
 
 const WRITE_REFUSED_MESSAGE =
   "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
+
+/** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape, mirroring `packages/core`'s former `SlideCommentWithPath` ([E4.T9]/F7). */
+interface SlideCommentWithPath {
+  id: string;
+  target: string;
+  author: string;
+  created: string;
+  text: string;
+  slidePath: string;
+}
+
+/** `comment list <id> --json` (no slide-path) — every comment across the whole presentation, plan §3.7. */
+async function listAllComments(presentationId: string): Promise<SlideCommentWithPath[]> {
+  const result = await runJsonCommand<{ comments: SlideCommentWithPath[] }>(["comment", "list", presentationId]);
+  if (!result.ok) {
+    throw new CoMotionError(result.message);
+  }
+  if (!Array.isArray(result.data?.comments)) {
+    throw new CoMotionError("comment list 回傳的資料格式錯誤");
+  }
+  return result.data.comments;
+}
 
 /**
  * [E2.T8]: builds the `/api/chat` prompt's comment-context prefix, or
@@ -724,7 +741,7 @@ export class AgentChatSession extends EventEmitter {
     try {
       content =
         target.kind === "presentation"
-          ? await readPresentationFile(this.presentationId, target.virtualPath)
+          ? await readPresentationText(this.presentationId, target.virtualPath)
           : await readAgentWorkdirFile(this.workdirReal, target.relativePath);
     } catch (error) {
       // Preserve the existing Traditional-Chinese wording verbatim — these

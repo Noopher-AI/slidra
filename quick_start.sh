@@ -4,7 +4,7 @@
 #
 # 它做的事：
 #   1. 同步相依套件（含各 workspace 的新增相依）
-#   2. 建置 core / cli / server（tsc -b）與 web（vite build）
+#   2. 建置 server（tsc -b）與 web（vite build），以及 Rust 二進位
 #   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
 #   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
 #   5. 執行 co-motion serve，開瀏覽器看畫面
@@ -71,7 +71,7 @@ npm install
 # serve 只吃 packages/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
 # 所以前端每次改動都必須重新 build 才看得到。
 if [ "$SKIP_BUILD" -eq 0 ]; then
-  step "建置 core / cli / server / web"
+  step "建置 server / web / Rust CLI"
   npm run build
 fi
 
@@ -81,13 +81,11 @@ if [ ! -f "$ROOT/packages/web/dist/index.html" ]; then
 fi
 
 # 3. 前置檢查 -----------------------------------------------------------------
-if [ ! -f "$ROOT/packages/cli/dist/bin.js" ]; then
-  echo "packages/cli/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
-  exit 1
-fi
-
+# NOOP-278：node_modules/.bin/co-motion 是 npm run build 最後一步
+# （scripts/link-cli.mjs）指到 Rust 產物（target/release/co-motion）的連結，
+# 現在只由 scripts/link-cli.mjs 建立。
 if [ ! -x "$CLI" ]; then
-  echo "找不到可執行的 node_modules/.bin/co-motion。npm workspaces 應該要建出這個連結，請執行 npm install 後重試。" >&2
+  echo "找不到可執行的 node_modules/.bin/co-motion（應指向 cargo build 產出的 target/release/co-motion）。請執行 npm run build 後重試。" >&2
   exit 1
 fi
 
@@ -135,11 +133,10 @@ else
 
   if [ ! -f "$DEMO_COMOT" ]; then
     step "打包示範簡報（demo/ → .comot）"
-    # packDirectory 只在 core 有，還沒有對應的 CLI 命令，所以直接呼叫它。
-    node --input-type=module -e '
-      import { packDirectory } from "@co-motion/core";
-      await packDirectory(process.argv[1], process.argv[2]);
-    ' "$DEMO_SOURCE" "$DEMO_COMOT"
+    # 把一個目錄打包成 .comot 沒有對應的 CLI 命令（見 docs/spec/cli.md 的
+    # `pack` 條目——那是打包一份已開啟的簡報，不是任意目錄），所以直接呼叫
+    # scripts/pack-directory.mjs。
+    node "$ROOT/scripts/pack-directory.mjs" "$DEMO_SOURCE" "$DEMO_COMOT"
   fi
 
   if [ ! -s "$DEMO_ID_FILE" ]; then
@@ -175,8 +172,9 @@ if [ "$RESOLVED" != "$CLI" ]; then
   echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 $CLI。" >&2
   exit 1
 fi
-# co-motion 沒有 --help；用不帶參數呼叫來確認它真的被 node 執行了（會印出
-# 「缺少命令名稱」並以非 0 結束），而不是被 shell 當成 command not found。
+# co-motion 沒有 --help；用不帶參數呼叫來確認它真的執行了（Rust 二進位自己印出
+# 「缺少命令名稱」並以非 0 結束，不再回退給 Node），而不是被 shell 當成
+# command not found。
 INVOKE_OUTPUT="$(co-motion 2>&1 || true)"
 if printf '%s' "$INVOKE_OUTPUT" | grep -qi "command not found"; then
   echo "co-motion 執行失敗，agent 會拿到 command not found。" >&2

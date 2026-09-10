@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CellAlign } from "@co-motion/core";
+import type { CellAlign } from "../../../slide-dom.js";
 import type { CanvasController, CanvasState } from "../../../canvas.js";
 import type { CellRange } from "../../../table-overlay.js";
 

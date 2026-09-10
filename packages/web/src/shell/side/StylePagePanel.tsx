@@ -1,4 +1,4 @@
-import type { PageStyle } from "@co-motion/core/slide";
+import type { PageStyle } from "../../slide-dom.js";
 import type { CanvasController } from "../../canvas.js";
 import type { StyleReadResult } from "../../style-attrs.js";
 import { StyleField } from "./style/StyleField.js";

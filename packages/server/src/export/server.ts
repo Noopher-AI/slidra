@@ -3,8 +3,7 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandRegistry } from "@co-motion/cli";
-import { handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
+import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
 
 /**
  * The CLI's own minimal HTTP server for `co-motion export` (NOOP-93 §3.6).
@@ -20,17 +19,18 @@ import { handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../re
  * serves `export.html` (the same `packages/web/dist` build, now built with
  * two Vite entries) and the same three read-only routes.
  *
- * Exactly four things this server answers: static files (`export.html` and
- * its chunks), `GET /api/presentation`, `GET /api/files/<path>`, and
- * `GET /api/raw/<path>` — the three read-only routes shared with
- * `serve.ts` via `read-routes.ts` (never duplicated — see that module's own
- * comment for why drift there is dangerous), reached through this file's
- * own tiny routing/static-serving plumbing, which is NOT shared with
- * `serve.ts` (a deliberate choice, not an oversight — this server carries
- * none of `serve.ts`'s write routes, chat session, or editing lock).
+ * Exactly five things this server answers: static files (`export.html` and
+ * its chunks), `GET /api/presentation`, `GET /api/files/<path>`,
+ * `GET /api/effects/<path>` ([E4.T7] — the step-by-step export entry point
+ * needs the same plan the player does), and `GET /api/raw/<path>` — the
+ * four read-only routes shared with `serve.ts` via `read-routes.ts` (never
+ * duplicated — see that module's own comment for why drift there is
+ * dangerous), reached through this file's own tiny routing/static-serving
+ * plumbing, which is NOT shared with `serve.ts` (a deliberate choice, not
+ * an oversight — this server carries none of `serve.ts`'s write routes,
+ * chat session, or editing lock).
  */
 export interface ExportServerOptions {
-  registry: CommandRegistry;
   presentationId: string;
   /** Defaults to an OS-assigned ephemeral port — this is a private, short-lived server for one export run, never a long-lived service with a fixed address to remember. */
   port?: number;
@@ -48,12 +48,12 @@ export interface RunningExportServer {
 const DEFAULT_HOST = "127.0.0.1";
 
 export async function startExportServer(options: ExportServerOptions): Promise<RunningExportServer> {
-  const { registry, presentationId } = options;
+  const { presentationId } = options;
   const host = options.host ?? DEFAULT_HOST;
   const staticDir = options.staticDir ?? resolveWebDist();
 
   const server = http.createServer((req, res) => {
-    void handleRequest(registry, presentationId, staticDir, req, res);
+    void handleRequest(presentationId, staticDir, req, res);
   });
 
   await listen(server, options.port ?? 0, host);
@@ -85,7 +85,6 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 }
 
 async function handleRequest(
-  registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
   req: IncomingMessage,
@@ -108,12 +107,17 @@ async function handleRequest(
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (url.pathname === "/api/presentation") {
-      await handlePresentationRoute(registry, presentationId, res);
+      await handlePresentationRoute(presentationId, res);
       return;
     }
     if (url.pathname.startsWith("/api/files/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(registry, presentationId, virtualPath, res);
+      await handleFilesRoute(presentationId, virtualPath, res);
+      return;
+    }
+    if (url.pathname.startsWith("/api/effects/")) {
+      const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
+      await handleEffectsRoute(presentationId, virtualPath, res);
       return;
     }
     if (url.pathname.startsWith("/api/raw/")) {

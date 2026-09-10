@@ -1,4 +1,4 @@
-import { scanDocument, type ScannedNode } from "@co-motion/core/slide";
+import { scanDocument, type ScannedNode } from "./metadata-scan.js";
 
 /**
  * Reads a slide's speaker notes back out of its raw SVG markup.
@@ -6,7 +6,7 @@ import { scanDocument, type ScannedNode } from "@co-motion/core/slide";
  * Deliberately does NOT use `DOMParser` (unlike `effects.ts`'s
  * `parseEffects`): `DOMParser().parseFromString(..., "image/svg+xml")`
  * treats an unbound XML namespace prefix as a fatal parse error, and notes
- * written before this ticket's `xmlns:comot` fix (`@co-motion/core`'s
+ * written before this ticket's `xmlns:comot` fix (core's
  * `setSlideNotes`) are still sitting on disk without one. `scanDocument` is
  * a byte-offset scanner with no notion of namespace binding, so it reads
  * both old and new files the same way.
@@ -18,7 +18,7 @@ const METADATA_TAG = "metadata";
 export type SlideNotesRead = { ok: true; text: string } | { ok: false; error: string };
 
 /**
- * `escapeXmlText`'s exact inverse (`@co-motion/core`'s `element-text.ts`),
+ * `escapeXmlText`'s exact inverse (core's `element-text.ts`),
  * duplicated here rather than imported: order matters (`&amp;` decoded
  * last) and this is the only place on the web side that needs it.
  */

@@ -5,8 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
@@ -63,8 +63,8 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const hostileDeckDir = path.join(e2eDir, "fixtures/hostile-selection-deck");
@@ -78,7 +78,6 @@ let openPages: Page[] = [];
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 });
@@ -106,6 +105,8 @@ async function startServerFor(
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-selection-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-selection-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -125,7 +126,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -134,6 +135,7 @@ async function startServerFor(
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -1107,10 +1109,18 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     const toast = page.locator(".dock-toast");
     await expect.poll(() => toast.textContent()).toBe("Grouped 2 elements · their animations were removed");
 
+    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
+    // 移到截圖之前（F8, NOOP-289 期間發現）：dock 按鈕的 enabled/disabled
+    // 狀態跟著「選取是否已還原」走，不是 toast 一出現就與 reload 進度脫鉤
+    // ——這裡等的正是同一個 reload，只是等的方式從「不管它」換成「等它
+    // 落地」，讓下面的截圖固定在 reload 之後那個狀態，不再跟 reload 賽跑
+    // （原本「不等 reload 完成」的假設在這個成員上不成立，被較快的 reload
+    // 時序放大成偶發 flaky）。
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
+    expect(await effectCount(registry, presentationId)).toBe(0);
+
     // 基準截圖：toast（clip 到 dock ∪ toast 的聯集，四邊取整——見
-    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。不等 reload 完成：
-    // toast 一出現就立刻截圖，reload 進度不影響這塊裁切區域的像素
-    // （fixture 的所有內容都在上半部）。
+    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。
     await settleForScreenshot(page);
     const dockBox = await page.locator(".dock").boundingBox();
     const toastBox = await toast.boundingBox();
@@ -1120,10 +1130,6 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     const right = Math.ceil(Math.max(dockBox.x + dockBox.width, toastBox.x + toastBox.width));
     const bottom = Math.ceil(Math.max(dockBox.y + dockBox.height, toastBox.y + toastBox.height));
     await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
-
-    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
-    expect(await effectCount(registry, presentationId)).toBe(0);
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
     const groupMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);

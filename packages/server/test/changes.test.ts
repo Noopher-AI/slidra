@@ -1,14 +1,39 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
-import { resolveWorkDir } from "@co-motion/core";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { createChangeBroadcaster } from "../src/changes.js";
+import { workDirFor } from "../src/comotion/home.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 /**
  * Minimal stand-in for `http.ServerResponse`, used only for the
@@ -29,13 +54,12 @@ class FakeResponse extends EventEmitter {
 // Seam B: start the real server, drive /api/events over HTTP with a real
 // fetch(), never open a browser. Always bind port 0 and read the assigned
 // port back — a hardcoded port collides with ticket #6's concurrently
-// running suite. Presentation state is only ever read through
-// registry.dispatch("cat", ...), the same read path `co-motion cat` uses —
-// never a direct poke at the work directory's real path.
+// running suite. Presentation state is only ever read through the real
+// `co-motion cat` binary — never a direct poke at the work directory's
+// real path.
 
 let coMotionHome: string;
 let comotDir: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
 
@@ -43,7 +67,7 @@ beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-changes-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-changes-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
   streams = [];
 });
@@ -55,23 +79,28 @@ afterEach(async () => {
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ registry, presentationId, port: 0 });
+  const server = await startServe({ presentationId, port: 0 });
   servers.push(server);
   return server;
 }
 
 async function openFreshPresentation(name = "測試簡報"): Promise<{ id: string; elementId: string }> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", name]);
+  expect(created.ok).toBe(true);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   const id = opened.data!.id;
-  const slide = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-  const match = slide.data!.content.match(/<text id="([^"]+)"/);
+  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
+  expect(slide.ok).toBe(true);
+  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
+  const match = svgText.match(/<text id="([^"]+)"/);
   if (!match) {
     throw new Error("test fixture is missing the expected <text id=…> element");
   }
@@ -118,7 +147,7 @@ async function connectEvents(server: RunningServer) {
 }
 
 async function setText(id: string, elementId: string, newText: string) {
-  const result = await registry.dispatch("text set", { id, slidePath: "slides/001.svg", elementId, newText });
+  const result = await runCli(["text", "set", id, "slides/001.svg", elementId, newText]);
   expect(result.ok).toBe(true);
 }
 
@@ -204,42 +233,49 @@ describe("GET /api/events", () => {
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
-    // A registry stub whose id is not registered in the real CO_MOTION_HOME
-    // registry watchPresentation looks up (see the equivalent stub-registry
-    // test in serve.test.ts): loadProject succeeds through the stub, but
-    // watching the underlying work directory cannot, since it never
-    // existed. The failure must surface as an explicit HTTP error, not a
-    // silently-opened stream.
-    const stubRegistry = new CommandRegistry();
-    stubRegistry.register("cat", {
-      handler: async (input: unknown) => {
-        const { path: virtualPath } = input as { path: string };
-        if (virtualPath === "project.json") {
-          return {
-            ok: true,
-            data: {
-              content: JSON.stringify({
-                formatVersion: 1,
-                name: "Stub",
-                canvas: { width: 1, height: 1 },
-                slides: ["slides/fake.svg"],
-              }),
-            },
-            message: "",
-          };
-        }
-        return { ok: false, message: `找不到檔案：${virtualPath}` };
-      },
-      render: null,
-    });
-    const server = await startServe({ registry: stubRegistry, presentationId: "unregistered-stub-id", port: 0 });
-    servers.push(server);
+    // [E4.T9]/F7: a fake CO_MOTION_BIN that answers `cat <id> project.json`
+    // for ANY id, real or not (the equivalent stub-registry test in
+    // serve.test.ts uses the same technique) — loadProject succeeds
+    // through it, but `watchPresentation`'s `workDirFor` reads the REAL
+    // `CO_MOTION_HOME/projects.json` directly (comotion/home.ts, not the
+    // CLI), which has no entry for this id at all. The failure must
+    // surface as an explicit HTTP error, not a silently-opened stream.
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-changes-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
+    await writeFile(
+      fakeBinPath,
+      [
+        "#!/usr/bin/env node",
+        'const args = process.argv.slice(2).filter((a) => a !== "--json");',
+        "const [cmd, ...rest] = args;",
+        "function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
+        "let result;",
+        'if (cmd === "cat" && rest[1] === "project.json") {',
+        "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
+        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "已讀取：project.json" };',
+        "} else {",
+        '  result = { ok: false, message: "找不到檔案：" + rest.join(" "), failureKind: "not-found" };',
+        "}",
+        "process.stdout.write(JSON.stringify(result) + \"\\n\");",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
 
-    const response = await fetch(`${server.url}/api/events`);
-    const body = await response.json();
+    process.env.CO_MOTION_BIN = fakeBinPath;
+    try {
+      const server = await startServe({ presentationId: "unregistered-stub-id", port: 0 });
+      servers.push(server);
 
-    expect(response.status).toBe(500);
-    expect(body.error).toMatch(/找不到識別碼對應的簡報/);
+      const response = await fetch(`${server.url}/api/events`);
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toMatch(/找不到識別碼對應的簡報/);
+    } finally {
+      process.env.CO_MOTION_BIN = coMotionBinPath;
+      await rm(fakeBinDir, { recursive: true, force: true });
+    }
   });
 
   it("registers stream cleanup at connection time, so a disconnect is pruned immediately rather than waiting on the next file change", async () => {
@@ -277,7 +313,7 @@ describe("GET /api/events", () => {
     // /api/events request — removing it here reproduces exactly that gap.
     const { id } = await openFreshPresentation();
     const server = await serve(id);
-    const workDir = await resolveWorkDir(id);
+    const workDir = await workDirFor(id);
     await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 
     const response = await fetch(`${server.url}/api/events`);

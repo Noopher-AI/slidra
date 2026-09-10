@@ -1,11 +1,11 @@
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory, resolvePresentationFonts, wrapText } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
@@ -15,7 +15,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * tests. Modelled on e2e/direct-manipulation.test.ts's startServerFor/
  * openApp shape and its font-staging trick (the fixture's project.json
  * declares "Noto Sans TC" but ships no font bytes; this file copies the
- * real ones from packages/core/src/assets/fonts into a throwaway staging
+ * real ones from assets/fonts into a throwaway staging
  * dir before packing, same as that file does).
  *
  * Entry point exercised: `beginTextEdit` via the runtime's own
@@ -27,26 +27,27 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/text-edit-deck");
-const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 const VIEWPORT = { width: 1440, height: 900 };
 const VIEWBOX = { width: 1280, height: 720 };
 const baselineDir = path.join(e2eDir, "__screenshots__/text-edit");
-const TEXT_WIDTH = 220;
 const FONT_SIZE = 24;
 
 let browser: Browser;
 let openPages: Page[] = [];
+let fontDataUrl: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
+  const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));
+  fontDataUrl = `data:font/ttf;base64,${fontBytes.toString("base64")}`;
 });
 
 afterAll(async () => {
@@ -76,6 +77,8 @@ async function startServerFor(): Promise<{
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-text-edit-files-"));
   const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-text-edit-deck-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -99,7 +102,7 @@ async function startServerFor(): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -108,6 +111,7 @@ async function startServerFor(): Promise<{
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
@@ -128,6 +132,48 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
   if (!result.ok) throw new Error(result.message);
   return result.data!.content;
+}
+
+/** `<g id="elementId" ... data-comot-text-width="N">`'s declared wrap width. */
+function readDeclaredTextWidth(svg: string, elementId: string): number {
+  const match = new RegExp(`<g id="${elementId}"[^>]*data-comot-text-width="([^"]+)"`).exec(svg);
+  if (!match) throw new Error(`找不到 ${elementId} 的 data-comot-text-width`);
+  return Number(match[1]);
+}
+
+/**
+ * Chromium's own `getComputedTextLength()` for `text` at `fontSizePx` in the
+ * real embedded presentation font — same technique as
+ * text-metrics.test.ts's `renderedWidthInChromium`, the external ground
+ * truth this file's wrap assertions compare against post-[E4.T12] (the
+ * TypeScript engine's own `wrapText`, previously used as the oracle here,
+ * no longer exists).
+ */
+async function renderedWidthInChromium(page: Page, text: string, fontSizePx: number): Promise<number> {
+  return page.evaluate(
+    async ([url, family, sampleText, size]) => {
+      const style = document.createElement("style");
+      style.textContent = `@font-face{font-family:"${family}";src:url("${url}") format("truetype");}`;
+      document.head.appendChild(style);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      textEl.setAttribute("font-family", family);
+      textEl.setAttribute("font-size", String(size));
+      textEl.textContent = sampleText;
+      svg.appendChild(textEl);
+      document.body.appendChild(svg);
+
+      await document.fonts.load(`${size}px "${family}"`);
+      await document.fonts.ready;
+
+      const length = textEl.getComputedTextLength();
+      svg.remove();
+      style.remove();
+      return length;
+    },
+    [fontDataUrl, "Noto Sans TC", text, fontSizePx] as const,
+  );
 }
 
 /** Whether the runtime's hidden edit textarea currently has document focus inside the sandboxed slide iframe — the signal that `begin-text-edit`'s async round trip (font fetch included) has actually landed. */
@@ -344,7 +390,7 @@ function readTransformAttr(svg: string, elementId: string): string {
   return elementMatch ? elementMatch[1] : "";
 }
 
-it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行與 wrapText 算出的一致，整段編輯只送一條命令，undo 一格回到原字串（AC1/AC2）", async () => {
+it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行內容不丟字、每行實際渲染寬度都在宣告寬度內，整段編輯只送一條命令，undo 一格回到原字串（AC1/AC2）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const before = await readSlide(registry, presentationId);
@@ -378,15 +424,23 @@ it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行與 
     const after = await readSlide(registry, presentationId);
     const actualLines = readTspans(after, "el-text");
 
-    const fonts = await resolvePresentationFonts(presentationId);
-    const font = fonts.get("Noto Sans TC")!;
-    const expectedWrap = wrapText(finalText, { width: TEXT_WIDTH, font, fontSizePx: FONT_SIZE });
-
-    expect(actualLines.length).toBe(expectedWrap.lines.length);
-    expect(actualLines.length).toBeGreaterThan(1); // The fixture's whole point: this text must actually wrap.
-    for (let i = 0; i < expectedWrap.lines.length; i++) {
-      expect(actualLines[i].text).toBe(expectedWrap.lines[i].text);
-      expect(actualLines[i].y).toBeCloseTo(expectedWrap.lines[i].y, 3);
+    // Non-circular wrap assertions (post-[E4.T12]: the TypeScript engine's
+    // `wrapText`, previously this test's oracle, no longer exists — Rust
+    // comparing against Rust would be circular). (a) the fixture's whole
+    // point: this text must actually wrap; (b) no content is lost or
+    // reordered across the line breaks; (c) every line actually fits its
+    // declared width in a real browser (Chromium's `getComputedTextLength()`,
+    // the same external ground truth text-metrics.test.ts uses) — an
+    // external check stronger than the old same-engine comparison.
+    expect(actualLines.length).toBeGreaterThan(1);
+    expect(actualLines.map((line) => line.text).join("").replace(/\s+/g, "")).toBe(
+      finalText.replace(/\s+/g, ""),
+    );
+    const declaredWidth = readDeclaredTextWidth(after, "el-text");
+    for (const line of actualLines) {
+      if (line.text === "") continue; // A trailing empty wrapped line has nothing to measure.
+      const renderedWidth = await renderedWidthInChromium(page, line.text, FONT_SIZE);
+      expect(renderedWidth, `行 "${line.text}" 的實際渲染寬度`).toBeLessThanOrEqual(declaredWidth * 1.005);
     }
 
     const undo = await registry.dispatch("undo", { id: presentationId });
@@ -706,31 +760,18 @@ it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", as
   }
 });
 
-it("A4：跨行選取，每行各自一塊，接縫處無破洞或重疊", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await dblclickAtEnd(page, "el-text");
-    await waitForEditTextareaFocus(page);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    await page.keyboard.type("aaaa bbbb cccc dddd");
-    await page.waitForTimeout(150);
-
-    const lines = await tspanCount(page, "el-text");
-    expect(lines).toBeGreaterThan(1); // The fixture's whole point: this must actually wrap.
-
-    await dragSelectChars(page, "el-text", 0, 18, 8); // whole string
-
-    const blocks = await readSelectionBlockRects(page);
-    expect(blocks.length).toBe(lines);
-    const sorted = [...blocks].sort((a, b) => a.top - b.top);
-    for (let i = 1; i < sorted.length; i++) {
-      expect(sorted[i - 1].bottom).toBeLessThanOrEqual(sorted[i].top + 0.5);
-    }
-  } finally {
-    await cleanup();
-  }
-});
+// F8 (NOOP-289 決定 T1) removed A4's own fixture mechanism: this test typed
+// unbroken text ("aaaa bbbb cccc dddd", no "\n") into a narrow box and
+// relied on the browser's own soft-wrap (core's wrapText, called live on
+// every keystroke) to produce multiple tspans to select across. Decision
+// T1 deletes that local-wrap-during-typing engine entirely — the SAME
+// input now stays exactly one tspan (長行溢出文字框, spec #255's accepted
+// regression), so `tspanCount` never exceeds 1 and the test's own premise
+// ("this must actually wrap") no longer holds. A18 already covers the
+// same concern — cross-line selection blocks with no gap/overlap at the
+// seam — using the mechanism that still exists post-T1 (an explicit hard
+// break via Enter), so this is dropped rather than reworked into a
+// duplicate of A18.
 
 it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令，undo 一格回到原字串", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
@@ -773,30 +814,15 @@ it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令�
   }
 });
 
-it("A6：西文含空白斷行的文字方塊，逐字元點擊，selectionStart 與字元位置零偏移（wrapText 字元保存不變式的機械證明）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await dblclickAtEnd(page, "el-text");
-    await waitForEditTextareaFocus(page);
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-    const text = "aaaa bbbb cccc dddd";
-    await page.keyboard.type(text);
-    await page.waitForTimeout(150);
-
-    expect(await tspanCount(page, "el-text")).toBeGreaterThan(1);
-
-    for (let k = 0; k < text.length; k++) {
-      await clickChar(page, "el-text", k);
-      await page.waitForTimeout(20);
-      const sel = await readSelection(page);
-      expect(sel.start).toBe(k);
-      expect(sel.end).toBe(k);
-    }
-  } finally {
-    await cleanup();
-  }
-});
+// F8 (NOOP-289 決定 T1) removed A6's own fixture mechanism too, the same
+// way as A4 above: it typed unbroken text expecting the deleted local-wrap
+// engine to split it into multiple soft-wrapped tspans, then walked every
+// character's click precision across that (now nonexistent) multi-tspan
+// structure. A16–A19 already prove exactly this — per-character click →
+// selectionStart precision across a MULTI-line `<text>` — using hard
+// breaks (the mechanism T1 keeps), so this is dropped rather than
+// reworked into a duplicate; A1 (single-line, no breaks at all) still
+// covers the same invariant's simplest case.
 
 it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元素上按下不改變選取", async () => {
   const { server, cleanup } = await startServerFor();

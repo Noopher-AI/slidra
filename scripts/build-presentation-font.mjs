@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Builds packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf — the
-// single font every new presentation embeds (ticket #71). Deliberately a
+// Builds assets/fonts/NotoSansTC-Presentation.ttf — the single font every
+// new presentation embeds (ticket #71). Deliberately a
 // separate script from build-font-subset.mjs (which builds the *UI's* own
 // woff2, ticket #49): different charset, different output format, different
 // rerun trigger. Sharing the fetch logic between them would couple two
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import subsetFont from "subset-font";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outputDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const outputDir = path.join(rootDir, "assets/fonts");
 const outputPath = path.join(outputDir, "NotoSansTC-Presentation.ttf");
 
 // Fixed subset range (ticket #71's plan, decision #5): printable ASCII,

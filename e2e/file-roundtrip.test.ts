@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { openPresentation, packDirectory, resolveWorkDir } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
+import { workDirFor } from "../packages/server/src/comotion/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
@@ -22,6 +23,7 @@ import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const deckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const fakeAgentFixture = path.join(rootDir, "packages/server/test/agent/fixtures/fake-acp-agent.mjs");
 const fakeAgent: AgentAdapterConfig = {
@@ -46,13 +48,16 @@ async function startHarness(): Promise<Harness> {
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-files-"));
   const staticDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-static-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const comotPath = path.join(comotDir, "a.comot");
   await packDirectory(deckDir, comotPath);
-  const { id: presentationId } = await openPresentation(comotPath);
-
   const registry = createDefaultRegistry();
-  const server = await startServe({ registry, presentationId, port: 0, agent: fakeAgent, staticDir });
+  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const presentationId = opened.data!.id;
+
+  const server = await startServe({ presentationId, port: 0, agent: fakeAgent, staticDir });
 
   return { server, registry, presentationId, comotPath, coMotionHome, comotDir, staticDir };
 }
@@ -60,6 +65,7 @@ async function startHarness(): Promise<Harness> {
 async function stopHarness(harness: Harness): Promise<void> {
   await harness.server.close();
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(harness.coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -120,7 +126,7 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: "a.comot" });
 
     // The work directory this server is still running against.
-    const firstWorkDir = await resolveWorkDir(harness.presentationId);
+    const firstWorkDir = await workDirFor(harness.presentationId);
     const firstFiles = await listFilesRecursive(firstWorkDir);
 
     // Re-open the just-saved `a.comot` into a completely separate
@@ -128,9 +134,12 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     secondHome = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-home2-"));
     const previousHome = process.env.CO_MOTION_HOME;
     process.env.CO_MOTION_HOME = secondHome;
+    // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+    process.env.CO_MOTION_BIN = coMotionBin;
     try {
-      const { id: secondId } = await openPresentation(comotPath);
-      const secondWorkDir = await resolveWorkDir(secondId);
+      const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: comotPath });
+      const secondId = secondOpened.data!.id;
+      const secondWorkDir = await workDirFor(secondId);
       const secondFiles = await listFilesRecursive(secondWorkDir);
       expect(secondFiles).toEqual(firstFiles);
 
@@ -148,6 +157,8 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
       expect(editedSlide).toContain("roundtrip 已編輯");
     } finally {
       process.env.CO_MOTION_HOME = previousHome;
+      // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+      process.env.CO_MOTION_BIN = coMotionBin;
     }
   });
 
@@ -209,7 +220,7 @@ describe("POST /api/open (#210 條件 1)", () => {
       expect(undoBody.error).toContain("沒有可復原的操作");
 
       // The presentation id served did not change (§7 decision 5).
-      expect(await resolveWorkDir(presentationId)).toBeTruthy();
+      expect(await workDirFor(presentationId)).toBeTruthy();
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
@@ -263,7 +274,7 @@ describe("POST /api/open (#210 條件 1)", () => {
   it("400s on a corrupt upload without touching the work directory's existing content", async () => {
     harness = await startHarness();
     const { server, presentationId } = harness;
-    const before = await readFile(path.join(await resolveWorkDir(presentationId), "project.json"), "utf-8");
+    const before = await readFile(path.join(await workDirFor(presentationId), "project.json"), "utf-8");
 
     const response = await fetch(`${server.url}/api/open`, {
       method: "POST",
@@ -272,7 +283,7 @@ describe("POST /api/open (#210 條件 1)", () => {
     });
     expect(response.status).toBe(400);
 
-    const after = await readFile(path.join(await resolveWorkDir(presentationId), "project.json"), "utf-8");
+    const after = await readFile(path.join(await workDirFor(presentationId), "project.json"), "utf-8");
     expect(after).toBe(before);
   });
 

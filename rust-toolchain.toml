@@ -1,0 +1,7 @@
+# Pinned by NOOP-278 (GitHub #257). Confirmed against a real toolchain in
+# Run 2 (`cargo --version` / `rustc --version` both report 1.85.0 in the
+# rebuilt sandbox image) — this is the actual installed version, not a
+# placeholder.
+[toolchain]
+channel = "1.85.0"
+components = ["rustfmt", "clippy"]

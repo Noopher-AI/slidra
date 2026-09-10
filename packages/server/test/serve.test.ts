@@ -1,13 +1,40 @@
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
+
+/** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+/** Runs the real `co-motion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 // The real build output `resolveWebDist()` defaults to. `npm run test:e2e`
 // runs a browser against exactly these bytes, so this suite must never
@@ -89,7 +116,6 @@ let comotDir: string;
 // and every other static test creates it itself.
 let webDist: string;
 let staticRoot: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -98,7 +124,7 @@ beforeEach(async () => {
   staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-static-"));
   webDist = path.join(staticRoot, "dist");
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
@@ -107,6 +133,7 @@ afterEach(async () => {
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -114,8 +141,10 @@ afterEach(async () => {
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", name]);
+  expect(created.ok).toBe(true);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -142,7 +171,8 @@ async function openPresentationWithRampAsset(): Promise<string> {
   });
   const comotPath = path.join(comotDir, "with-ramp-asset.comot");
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -150,7 +180,6 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
   // staticDir is passed unconditionally, before ...overrides: no test in
   // this file can reach the real packages/web/dist by forgetting to opt out.
   const server = await startServe({
-    registry,
     presentationId,
     port: 0,
     agent: fakeAgent,
@@ -179,7 +208,7 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
   });
   const malformedPath = path.join(comotDir, "malformed.comot");
   await writeFile(malformedPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: malformedPath });
+  const opened = await runCli<{ id: string }>(["open", malformedPath]);
   expect(opened.ok).toBe(false);
   return opened.message;
 }
@@ -276,7 +305,7 @@ describe("startServe", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  it("serves the presentation's metadata reached only through registry.dispatch", async () => {
+  it("serves the presentation's metadata reached only through the co-motion binary", async () => {
     const id = await openFreshPresentation("我的簡報");
 
     const server = await serve(id);
@@ -288,9 +317,11 @@ describe("startServe", () => {
     expect(body.slides).toEqual(["slides/001.svg"]);
   });
 
-  it("serves a slide's SVG content that matches what `cat` returns through the same dispatch", async () => {
+  it("serves a slide's SVG content that matches what `cat` returns through the same command", async () => {
     const id = await openFreshPresentation();
-    const expected = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
+    const expected = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
+    expect(expected.ok).toBe(true);
+    const expectedContent = Buffer.from(expected.data![0]!.content, "base64").toString("utf-8");
 
     const server = await serve(id);
     const response = await fetch(`${server.url}/api/files/slides/001.svg`);
@@ -298,65 +329,55 @@ describe("startServe", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("image/svg+xml");
-    expect(body).toBe(expected.data!.content);
+    expect(body).toBe(expectedContent);
   });
 
-  it("reaches presentation content only through registry.dispatch, never the filesystem directly", async () => {
-    // A registry with stub handlers and no real presentation on disk at all
-    // (CO_MOTION_HOME is empty). If the server can still return this stub's
-    // content, that structurally proves it never reads files itself.
-    const calls: string[] = [];
-    const stubRegistry = new CommandRegistry();
-    stubRegistry.register("cat", {
-      handler: async (input: unknown) => {
-        const { path: virtualPath } = input as { path: string };
-        calls.push(virtualPath);
-        if (virtualPath === "project.json") {
-          return {
-            ok: true,
-            data: {
-              content: JSON.stringify({
-                formatVersion: 1,
-                name: "Stub",
-                canvas: { width: 1, height: 1 },
-                slides: ["slides/fake.svg"],
-              }),
-            },
-            message: "",
-          };
-        }
-        if (virtualPath === "slides/fake.svg") {
-          return { ok: true, data: { content: "<svg>STUB</svg>" }, message: "" };
-        }
-        return { ok: false, message: `找不到檔案：${virtualPath}` };
-      },
-      render: null,
-    });
-    // /api/files/ dispatches "slide render" for a path listed in the
-    // project's slides (NOOP-90/T4) instead of "cat" — this stub mirrors
-    // the same fake content so the route's dispatch-only contract still
-    // holds for a registry that never touches the filesystem.
-    stubRegistry.register("slide render", {
-      handler: async (input: unknown) => {
-        const { path: virtualPath } = input as { path: string };
-        calls.push(virtualPath);
-        if (virtualPath === "slides/fake.svg") {
-          return { ok: true, data: { content: "<svg>STUB</svg>" }, message: "" };
-        }
-        return { ok: false, message: `找不到檔案：${virtualPath}` };
-      },
-      render: null,
-    });
+  // Validation standard 8 (plan §5): the structural proof that `serve` no
+  // longer reads any presentation file itself now points `CO_MOTION_BIN` at
+  // a fake, hand-written `.mjs` binary — never touching a real filesystem —
+  // instead of the old stub `CommandRegistry`. This is a strictly stronger
+  // injection point: it proves the server goes through `runCoMotion`'s own
+  // subprocess boundary, not merely through *some* pluggable interface.
+  it("serves fabricated content from a stub CO_MOTION_BIN, never touching the real filesystem", async () => {
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
+    await writeFile(
+      fakeBinPath,
+      [
+        "#!/usr/bin/env node",
+        'const args = process.argv.slice(2).filter((a) => a !== "--json");',
+        "const [cmd, ...rest] = args;",
+        "function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
+        "let result;",
+        'if (cmd === "cat" && rest[1] === "project.json") {',
+        "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
+        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "已讀取：project.json" };',
+        '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
+        '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "已讀取：slides/fake.svg" };',
+        "} else {",
+        '  result = { ok: false, message: "找不到檔案：" + rest.join(" "), failureKind: "not-found" };',
+        "}",
+        "process.stdout.write(JSON.stringify(result) + \"\\n\");",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
 
-    const server = await serve("unregistered-stub-id", { registry: stubRegistry });
+    process.env.CO_MOTION_BIN = fakeBinPath;
+    try {
+      // CO_MOTION_HOME is this test's own fresh, empty temp directory —
+      // "unregistered-stub-id" names nothing on the real filesystem at all.
+      const server = await serve("unregistered-stub-id");
 
-    const meta = await (await fetch(`${server.url}/api/presentation`)).json();
-    expect(meta.slides).toEqual(["slides/fake.svg"]);
+      const meta = await (await fetch(`${server.url}/api/presentation`)).json();
+      expect(meta.slides).toEqual(["slides/fake.svg"]);
 
-    const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
-    expect(slide).toBe("<svg>STUB</svg>");
-
-    expect(calls).toEqual(expect.arrayContaining(["project.json", "slides/fake.svg"]));
+      const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
+      expect(slide).toBe("<svg>STUB</svg>");
+    } finally {
+      process.env.CO_MOTION_BIN = coMotionBinPath;
+      await rm(fakeBinDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects with an explicit error and does not start when the presentation id is unknown", async () => {
@@ -382,7 +403,8 @@ describe("startServe", () => {
     });
     const emptyPath = path.join(comotDir, "empty.comot");
     await writeFile(emptyPath, zipped);
-    const opened = await registry.dispatch<{ id: string }>("open", { path: emptyPath });
+    const opened = await runCli<{ id: string }>(["open", emptyPath]);
+    expect(opened.ok).toBe(true);
     const id = opened.data!.id;
 
     await expect(serve(id)).rejects.toThrow();
@@ -464,6 +486,94 @@ describe("startServe", () => {
     expect(response.status).toBe(500);
     expect(body.error).toBe("簡報登記資料已損毀");
     expect(body.error).not.toContain(coMotionHome);
+  });
+
+  // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
+  // step-by-step export now fetch instead of computing it themselves in
+  // the browser. Reuses `openFreshPresentation` + `convert` (a compliant,
+  // `<g>`-wrapped slide is required for `effect add`, same fixture shape
+  // `packages/cli/test/effect.test.ts` uses) rather than a hand-built
+  // container, since these tests exercise the route end-to-end against the
+  // real Rust binary, not a mocked one.
+  describe("GET /api/effects/", () => {
+    async function openConvertedPresentation(): Promise<string> {
+      const id = await openFreshPresentation();
+      const converted = await runCli(["convert", id]);
+      expect(converted.ok).toBe(true);
+      return id;
+    }
+
+    it("responds 200 with effects/steps/transition for a slide with an effect list", async () => {
+      const id = await openConvertedPresentation();
+      const svg = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
+      expect(svg.ok).toBe(true);
+      const svgText = Buffer.from(svg.data![0]!.content, "base64").toString("utf-8");
+      const elementId = /id="(el-[^"]+)"/.exec(svgText)![1]!;
+      const added = await runCli([
+        "effect", "add", id, "slides/001.svg", elementId, "--family", "enter", "--effect", "fade",
+      ]);
+      expect(added.ok).toBe(true);
+
+      const server = await serve(id);
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.effects).toEqual([
+        expect.objectContaining({ target: elementId, family: "enter", effect: "fade", index: 1 }),
+      ]);
+      expect(body.steps).toEqual([{ effects: body.effects }]);
+      expect(body.transition).toEqual({
+        enter: { effect: "none", duration: 0.6 },
+        exit: { effect: "none", duration: 0.5 },
+      });
+    });
+
+    it("responds 200 with an empty plan for a declared slide that never had an effect list", async () => {
+      const id = await openConvertedPresentation();
+      const server = await serve(id);
+
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual({
+        effects: [],
+        steps: [],
+        transition: { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } },
+      });
+    });
+
+    it("responds 404 for a virtual path that is not a declared slide", async () => {
+      const id = await openConvertedPresentation();
+      const server = await serve(id);
+
+      const response = await fetch(`${server.url}/api/effects/project.json`);
+      const body = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(body.error).toBe("不是投影片：project.json");
+    });
+
+    it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
+      const id = await openConvertedPresentation();
+      const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+      const original = await readFile(realSlidePath, "utf-8");
+      const damaged = original.replace(
+        "</svg>",
+        '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
+          '<comot:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
+          "</comot:effects></metadata></svg>",
+      );
+      await writeFile(realSlidePath, damaged);
+
+      const server = await serve(id);
+      const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
+      const body = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(body.error).toContain("尚未實作");
+    });
   });
 
   it("rejects with an explicit Traditional Chinese error at open time when project.json lacks slides", async () => {

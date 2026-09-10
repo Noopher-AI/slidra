@@ -77,11 +77,12 @@ React 外殼（頂列／左側縮圖軌／舞台底部 Dock／右側 Chat·Style
     ↓
 co-motion serve          ← CLI 的常駐模式
     ↓
-   CLI                   ← 唯一的操作語彙 ← 外部 agent 也走這裡
+   CLI（Rust 二進位）     ← 唯一的操作語彙 ← 外部 agent 也走這裡
     ↓
  簡報內容
 ```
 
+- `co-motion` 是單一 Rust 執行檔；`serve`／`export` 由它 exec Node 執行 `@co-motion/server`，其餘所有命令都由 Rust 自己處理，不再有並存期的 Node 回退。
 - 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。編輯期間解壓在工作目錄，儲存時重新打包（ADR-0003）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
@@ -89,7 +90,14 @@ co-motion serve          ← CLI 的常駐模式
 - 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
-決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
+命令與格式的規範性定義見 [`docs/spec/`](docs/spec/)，決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
+
+## 命令與格式以 `docs/spec/` 為準
+
+- [`docs/spec/cli.md`](docs/spec/cli.md)：81 條命令的唯一規範性文件——參數、成功時的 `data` JSON 形狀、錯誤情境與 `failureKind`、exit code、renderer 規則。
+- [`docs/spec/comot-format.md`](docs/spec/comot-format.md)：`.comot` 容器與 `~/.comotion/` 工作區的唯一規範性文件——zip 佈局、`project.json` 欄位、SVG `<metadata>` 內的 `comot:*` 元素、`formatVersion` 與遷移規則。
+
+`docs/adr/` 留作**決策史**，記錄當初為什麼那樣選；規格與實作對不上時，以 `docs/spec/` 為準。`packages/server/agent-workdir/reference/commands.md` 是給 agent 的用法摘要，是 `docs/spec/cli.md` 的子集，由 `scripts/check-reference-subset.mjs` 檢查。
 
 ## 命令集合
 
@@ -117,8 +125,6 @@ co-motion serve          ← CLI 的常駐模式
 
 介面仍要低壓力、一般人也能直接上手，但不為零技術背景的使用者做妥協。CoMotion 不處理註冊、雲端儲存或計費——agent 的授權由使用者既有的 CLI 工具負責。
 
-第三件事（範本、鎖定、白名單、可稽核的修改紀錄）指向的是**團隊**：一份規範要跨很多人、很多份簡報、很多次 agent 執行還站得住。個人使用者用得到的是同一組機制的一小部分，不必為此付出額外設定。
-
 ## 驗證
 
 人工驗收一律從 `npm run verify:setup` 開始。它會安裝、建置、檢查前置、準備簡報、掛好 PATH，然後啟動 serve。不加旗標得到 e2e 的四頁 demo（驗既有行為），`--blank` 得到空白簡報（驗從零開始的路徑）。細節見 [`docs/verify-setup.md`](docs/verify-setup.md)。
@@ -141,9 +147,9 @@ co-motion serve          ← CLI 的常駐模式
 ## 第三方素材授權
 
 - **Noto Sans TC**（`packages/web/src/assets/fonts/NotoSansTC-subset.woff2`、`NotoSansTC-subset-500.woff2`、`NotoSansTC-subset-700.woff2`）：Google 的開源中文字型，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC`），這裡收錄的是子集版本——只保留 UI 實際用到的字元，400/500/700 三個字重各自子集化，由 `scripts/build-font-subset.mjs` 產生（子集使用 [`subset-font`](https://github.com/papandreou/subset-font)，wasm 版 harfbuzz，不需要 Python 工具鏈）。
-- **Noto Sans TC — 簡報字型**（`packages/core/src/assets/fonts/NotoSansTC-Presentation.ttf`，授權全文隨每份 `.comot` 一起打包在 `fonts/LICENSE-NotoSansTC.txt`）：與上一條同樣是 Google 的開源中文字型，授權同為 [SIL Open Font License 1.1](https://openfontlicense.org/)，但這是獨立的一份子集——每份新簡報建立時都會把這顆字型連同授權文字一起內嵌進 `.comot`，讓簡報在沒有安裝該字型的環境（包含沒有瀏覽器的 Node 端文字量測）也能算出、畫出一致的結果。子集範圍固定為 ASCII、Latin-1 補充、標點、CJK 符號／全形／半形與整個 CJK 統一表意文字區塊，格式是 sfnt（`.ttf`，不是 woff2），由 `scripts/build-presentation-font.mjs` 產生。
+- **Noto Sans TC — 簡報字型**（`assets/fonts/NotoSansTC-Presentation.ttf`，授權全文隨每份 `.comot` 一起打包在 `fonts/LICENSE-NotoSansTC.txt`）：與上一條同樣是 Google 的開源中文字型，授權同為 [SIL Open Font License 1.1](https://openfontlicense.org/)，但這是獨立的一份子集——每份新簡報建立時都會把這顆字型連同授權文字一起內嵌進 `.comot`，讓簡報在沒有安裝該字型的環境（包含沒有瀏覽器的 Node 端文字量測）也能算出、畫出一致的結果。子集範圍固定為 ASCII、Latin-1 補充、標點、CJK 符號／全形／半形與整個 CJK 統一表意文字區塊，格式是 sfnt（`.ttf`，不是 woff2），由 `scripts/build-presentation-font.mjs` 產生。
 
-- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文 `packages/core/src/font/OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/co-motion/fonts/`（可用 `CO_MOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
+- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文見其 [SIL Open Font License 1.1](https://openfontlicense.org/) 發佈頁——字型檔本身不進版控，repo 內沒有隨附的 `OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/co-motion/fonts/`（可用 `CO_MOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
 
 ## 接下來
 

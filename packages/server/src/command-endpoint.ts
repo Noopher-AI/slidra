@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { CommandRegistry } from "@co-motion/cli";
+import { encodeCommandArgv } from "./comotion/argv.js";
+import { runJsonCommand } from "./comotion/command.js";
 
 /**
  * `POST /api/command` (NOOP-91 §4.9) — the front end's only write path.
@@ -191,12 +192,7 @@ function readLimitedBody(req: IncomingMessage, limit: number): Promise<string> {
  * #14): only a `failureKind` that positively proves absence is a 404.
  * A missing kind is "not proven absent", i.e. 500.
  */
-export async function handleCommandPost(
-  registry: CommandRegistry,
-  presentationId: string,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
+export async function handleCommandPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
   let raw: string;
   try {
     raw = await readLimitedBody(req, MAX_COMMAND_BODY_BYTES);
@@ -239,12 +235,17 @@ export async function handleCommandPost(
   // merged, never trusted. This spread order is the enforcement.
   const resolvedInput = { ...(input as Record<string, unknown>), id: presentationId };
 
-  let result: Awaited<ReturnType<CommandRegistry["dispatch"]>>;
+  let result: Awaited<ReturnType<typeof runJsonCommand>>;
   try {
-    result = await registry.dispatch(name, resolvedInput);
+    const { argv, cleanup } = await encodeCommandArgv(name, resolvedInput);
+    try {
+      result = await runJsonCommand(argv);
+    } finally {
+      await cleanup();
+    }
   } catch (error) {
-    // A thrown error out of dispatch is a bug or an unclassified failure,
-    // never a user-facing "not found".
+    // A thrown error out of encoding/spawning is a bug or an unclassified
+    // failure, never a user-facing "not found".
     sendJson(res, 500, { error: error instanceof Error ? error.message : "命令執行失敗" });
     return;
   }

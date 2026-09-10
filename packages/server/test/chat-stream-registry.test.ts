@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { CoMotionError } from "@co-motion/core";
+import { CoMotionError } from "../src/comotion/errors.js";
 import { createChatStreamRegistry } from "../src/serve.js";
 import type { AgentChatSession } from "../src/agent/session.js";
 

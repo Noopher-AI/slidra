@@ -1,13 +1,37 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 /**
  * `POST /api/asset` (T3/NOOP-142). Seam B: the real server over real HTTP.
@@ -39,7 +63,6 @@ const PNG_BYTES = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 let coMotionHome: string;
 let comotDir: string;
 let staticRoot: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -47,13 +70,14 @@ beforeEach(async () => {
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-asset-files-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-asset-static-"));
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -74,13 +98,19 @@ async function openDeck(fileName: string): Promise<string> {
   });
   const comotPath = path.join(comotDir, fileName);
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
+}
+
+async function listAssets(presentationId: string): Promise<string[]> {
+  const result = await runCli<{ entries: string[] }>(["ls", presentationId, "assets"]);
+  expect(result.ok).toBe(true);
+  return result.data!.entries;
 }
 
 async function serve(presentationId: string): Promise<RunningServer> {
   const server = await startServe({
-    registry,
     presentationId,
     port: 0,
     agent: fakeAgent,
@@ -120,8 +150,7 @@ it("合法 PNG 上傳落地到 assets/ 並回 200 與匯入資料", async () => 
   expect(json.ok).toBe(true);
   expect(json.data).toEqual({ path: "assets/photo.png", mimeType: "image/png", kind: "image" });
 
-  const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-  expect(listed.data!.entries).toEqual(["photo.png"]);
+  expect(await listAssets(id)).toEqual(["photo.png"]);
 });
 
 it("副檔名偽裝成 .png 的純文字內容回 400，assets/ 不變", async () => {
@@ -132,8 +161,7 @@ it("副檔名偽裝成 .png 的純文字內容回 400，assets/ 不變", async (
 
   expect(status).toBe(400);
   expect(json.error).toContain("不支援的媒體格式");
-  const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-  expect(listed.data!.entries).toEqual([]);
+  expect(await listAssets(id)).toEqual([]);
 });
 
 it("缺少檔名標頭回 400", async () => {
@@ -153,8 +181,7 @@ it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
   const { status } = await postAsset(server, oversized, "huge.png");
 
   expect(status).toBe(400);
-  const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-  expect(listed.data!.entries).toEqual([]);
+  expect(await listAssets(id)).toEqual([]);
 });
 
 describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
@@ -204,8 +231,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(status).toBe(200);
     expect(json.ok).toBe(true);
     expect(json.data).toEqual({ path: "assets/photo.png", mimeType: "image/png", kind: "image" });
-    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-    expect(listed.data!.entries).toEqual(["photo.png"]);
+    expect(await listAssets(id)).toEqual(["photo.png"]);
   });
 
   it("拒絕非 http(s) 的 scheme（file:／相對路徑），不落地任何檔案", async () => {
@@ -216,8 +242,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
 
     expect(status).toBe(400);
     expect(json.error).toContain("http(s)");
-    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-    expect(listed.data!.entries).toEqual([]);
+    expect(await listAssets(id)).toEqual([]);
   });
 
   it("同時提供檔名與 URL 兩個標頭時回 400，不猜哪個優先", async () => {
@@ -243,7 +268,6 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     const { status } = await postAssetUrl(server, `${sourceBaseUrl}/does-not-exist.png`);
 
     expect(status).toBe(400);
-    const listed = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-    expect(listed.data!.entries).toEqual([]);
+    expect(await listAssets(id)).toEqual([]);
   });
 });

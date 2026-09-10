@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot, settledBox, type Box } from "./helpers/screenshot.js";
@@ -29,11 +29,11 @@ import { waitForAgentConnected } from "./helpers/launch.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
-const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const baselineDir = path.join(e2eDir, "__screenshots__/ai-collab");
 
@@ -61,7 +61,6 @@ let openPages: Page[] = [];
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 });
@@ -115,6 +114,8 @@ async function startServerFor(
     }
   }
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -138,9 +139,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({
-    registry,
-    presentationId,
+  const server = await startServe({ presentationId,
     port: 0,
     agent,
     skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },
@@ -154,6 +153,7 @@ async function startServerFor(
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });

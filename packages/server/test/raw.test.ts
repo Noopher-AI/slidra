@@ -1,13 +1,38 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 // Ticket #11: agents read text through `cat` (strict UTF-8, rejects
 // binary); browsers need the byte-preserving `/api/raw/` route instead.
@@ -37,7 +62,6 @@ const PATTERN_BYTES = Buffer.from(Array.from({ length: 256 }, (_, index) => inde
 
 let coMotionHome: string;
 let comotDir: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 let rawServers: Server[];
 
@@ -45,7 +69,7 @@ beforeEach(async () => {
   coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-raw-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-raw-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
   rawServers = [];
 });
@@ -56,12 +80,13 @@ afterEach(async () => {
     rawServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ registry, presentationId, port: 0 });
+  const server = await startServe({ presentationId, port: 0 });
   servers.push(server);
   return server;
 }
@@ -93,7 +118,8 @@ async function openPresentationWithAssets(): Promise<string> {
   });
   const comotPath = path.join(comotDir, "with-assets.comot");
   await writeFile(comotPath, zipped);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -301,14 +327,22 @@ describe("GET /api/raw/<virtual path>", () => {
   });
 });
 
-describe("`co-motion cat` on a binary file — unchanged by ticket #11", () => {
+describe("text reads (`GET /api/files/`) on a binary file — unchanged by ticket #11", () => {
   it("still refuses a binary asset with the existing error message", async () => {
+    // [E4.T9]/F7: this used to dispatch "cat" against the in-process
+    // registry directly — server no longer does that at all, so the same
+    // assertion now goes through the one HTTP boundary that still performs
+    // this exact strict-UTF-8 rejection (`comotion/reads.ts`'s
+    // `readPresentationText`, reached here because "assets/photo.png" is
+    // not a declared slide).
     const id = await openPresentationWithAssets();
+    const server = await serve(id);
 
-    const result = await registry.dispatch<{ content: string }>("cat", { id, path: "assets/photo.png" });
+    const response = await fetch(`${server.url}/api/files/assets/photo.png`);
+    const body = await response.json();
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toBe("assets/photo.png 是二進位資產，無法以文字讀取");
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("assets/photo.png 是二進位資產，無法以文字讀取");
   });
 });
 

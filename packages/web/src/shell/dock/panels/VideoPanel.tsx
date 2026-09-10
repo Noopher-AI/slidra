@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type DragEvent } from "react";
 import type { CanvasController } from "../../../canvas.js";
-import { embedUrlFor } from "@co-motion/core/embed";
+import { embedUrlFor } from "../../../embed.js";
 import { embedInsertInput, mediaInsertInput, shouldAutoPlayOnClick, type MediaAssetKind, type MediaInsertInput } from "./media-insert.js";
 
 export interface VideoPanelProps {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUDIO_EXTENSIONS,
   computePlayerPlan,
@@ -9,6 +9,8 @@ import {
   stageMediaFor,
   VIDEO_EXTENSIONS,
 } from "../src/player-plan.js";
+import { invalidateSlideEffectPlans } from "../src/effects.js";
+import type { Effect } from "../src/effects.js";
 // Cross-package: the server's own MIME table must agree with this player's
 // extension allow-list, or an extension the player accepts silently falls
 // back to application/octet-stream on the wire (see the describe block
@@ -16,11 +18,19 @@ import {
 // same convention this project already uses for other .ts-as-.js imports.
 import { rawContentTypeFor } from "../../server/src/raw.js";
 
-// Seam C's parent half (C3): markup in, plan out. All derivation reuses
-// #26's parseEffects/deriveSteps — this module only shapes their output
-// into the plan the runtime consumes, and never re-parses anything itself.
+// Seam C's parent half (C3): markup in, plan out. `computePlayerPlan` no
+// longer derives `steps`/`effects` from the markup itself ([E4.T7]): that
+// computation now lives server-side (`effect list`'s `data`, plan 4.1),
+// fetched here through `fetchSlideEffectPlan`'s `/api/effects/` route
+// client. Every test below stubs that route with `mockEffectsRoute` rather
+// than relying on the `<comot:effect>` markup embedded in its fixture SVGs
+// (kept in the fixtures for readability only — computePlayerPlan itself
+// never reads it anymore). The rest of this module's derivation
+// (hidden/media/stageMedia/embedIds) is still a pure, synchronous function
+// of `svgMarkup` alone, unaffected by this ticket.
 
 const NS = 'xmlns:comot="https://co-motion.dev/ns"';
+const SLIDE_PATH = "slides/001.svg";
 
 function slide(effectLines: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg">
@@ -35,16 +45,82 @@ function slide(effectLines: string): string {
 </svg>`;
 }
 
+interface EffectFixture {
+  target: string;
+  family: Effect["family"];
+  effect: Effect["effect"];
+  start: Effect["start"];
+  duration?: number;
+  delay?: number;
+  d?: string;
+}
+
+const DEFAULT_TRANSITION = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
+
+/**
+ * Groups an ordered, 1-based-indexed effect list into steps exactly like
+ * `effect list`'s server-side step derivation — a small, stable
+ * reimplementation kept ONLY for building this file's stub route
+ * responses. `computePlayerPlan` itself no longer derives steps at all
+ * (that is the whole point of this ticket); this helper exists so a test
+ * only has to state its effect list once, not the list AND its grouping
+ * separately.
+ */
+function groupIntoSteps<T extends { start: Effect["start"] }>(effects: T[]): Array<{ effects: T[] }> {
+  const steps: Array<{ effects: T[] }> = [];
+  for (const effect of effects) {
+    if (effect.start === "on-click") {
+      steps.push({ effects: [effect] });
+    } else {
+      steps[steps.length - 1]!.effects.push(effect);
+    }
+  }
+  return steps;
+}
+
+let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+afterEach(() => {
+  fetchSpy?.mockRestore();
+  fetchSpy = undefined;
+  invalidateSlideEffectPlans();
+});
+
+/** Stubs `GET /api/effects/*` (the only route `computePlayerPlan`'s tests ever hit) with a fixed, legal effect list, wire-shaped with 1-based `index` and grouped into steps the same way the real route does. */
+function mockEffectsRoute(effects: EffectFixture[]): void {
+  const wireEffects = effects.map((effect, i) => ({ duration: 0.6, delay: 0, ...effect, index: i + 1 }));
+  const wireSteps = groupIntoSteps(wireEffects);
+  fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ effects: wireEffects, steps: wireSteps, transition: DEFAULT_TRANSITION }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  );
+}
+
+/** Stubs `GET /api/effects/*` with a damaged-list (or otherwise non-2xx) response. */
+function mockEffectsRouteError(message: string, status = 500): void {
+  fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ error: message }), { status, headers: { "content-type": "application/json" } }),
+  );
+}
+
 describe("computePlayerPlan", () => {
-  it("推導出步驟，並把每個 enter 目標列進 hidden", () => {
+  it("推導出步驟，並把每個 enter 目標列進 hidden", async () => {
     const svg = slide(
       [
         '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>',
         '<comot:effect target="el-b" family="enter" effect="appear" start="on-click"/>',
       ].join("\n"),
     );
+    mockEffectsRoute([
+      { target: "el-a", family: "enter", effect: "fade", start: "on-click" },
+      { target: "el-b", family: "enter", effect: "appear", start: "on-click" },
+    ]);
 
-    const plan = computePlayerPlan(svg);
+    const plan = await computePlayerPlan(svg, SLIDE_PATH);
 
     expect(plan).toEqual({
       steps: [
@@ -64,10 +140,11 @@ describe("computePlayerPlan", () => {
       media: {},
       stageMedia: {},
       embedIds: [],
+      transition: DEFAULT_TRANSITION,
     });
   });
 
-  it("同一目標出現兩次時，hidden 只列一次", () => {
+  it("同一目標出現兩次時，hidden 只列一次", async () => {
     // Not a realistic effect list, but the dedupe rule must hold regardless.
     const svg = slide(
       [
@@ -75,39 +152,48 @@ describe("computePlayerPlan", () => {
         '<comot:effect target="el-a" family="enter" effect="appear" start="on-click"/>',
       ].join("\n"),
     );
+    mockEffectsRoute([
+      { target: "el-a", family: "enter", effect: "fade", start: "on-click" },
+      { target: "el-a", family: "enter", effect: "appear", start: "on-click" },
+    ]);
 
-    expect(computePlayerPlan(svg).hidden).toEqual(["el-a"]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).hidden).toEqual(["el-a"]);
   });
 
   // [E2.T7]/D12: hidden means "not on screen when the slide opens" — only
   // true when a target's FIRST effect entry in the file is `enter`. An
   // element that exits before it ever gets an entrance effect was already
   // visible; pre-hiding it would be wrong.
-  it("D12：一個目標的第一筆效果若不是 enter，就不列進 hidden，即使稍後有 enter", () => {
+  it("D12：一個目標的第一筆效果若不是 enter，就不列進 hidden，即使稍後有 enter", async () => {
     const svg = slide(
       [
         '<comot:effect target="el-a" family="exit" effect="fade-out" start="on-click"/>',
         '<comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>',
       ].join("\n"),
     );
-    expect(computePlayerPlan(svg).hidden).toEqual([]);
+    mockEffectsRoute([
+      { target: "el-a", family: "exit", effect: "fade-out", start: "on-click" },
+      { target: "el-a", family: "enter", effect: "fade", start: "on-click" },
+    ]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).hidden).toEqual([]);
   });
 
-  it("stageEmbedsFor 收錄第三方嵌入，而 stageMedia 明確跳過它們", () => {
+  it("stageEmbedsFor 收錄第三方嵌入，而 stageMedia 明確跳過它們", async () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg">' +
       '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
       '<g id="el-file" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
       "</svg>";
+    mockEffectsRoute([]);
 
     expect(stageEmbedsFor(svg)).toEqual({
       "el-embed": { provider: "youtube", url: "https://www.youtube-nocookie.com/embed/MtKyexX-GQc" },
     });
     expect(Object.keys(stageMediaFor(svg))).toEqual(["el-file"]);
-    expect(computePlayerPlan(svg).embedIds).toEqual(["el-embed"]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).embedIds).toEqual(["el-embed"]);
   });
 
-  it("media 效果指向嵌入時：不進 media cue、不因為沒有副檔名而拋錯，仍然是一個步驟", () => {
+  it("media 效果指向嵌入時：不進 media cue、不因為沒有副檔名而拋錯，仍然是一個步驟", async () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg">' +
       '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
@@ -115,8 +201,9 @@ describe("computePlayerPlan", () => {
       "</comot:effects></metadata>" +
       '<g id="el-embed" data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc" data-comot-type="video" data-comot-embed="youtube"/>' +
       "</svg>";
+    mockEffectsRoute([{ target: "el-embed", family: "media", effect: "play", start: "on-click" }]);
 
-    const plan = computePlayerPlan(svg);
+    const plan = await computePlayerPlan(svg, SLIDE_PATH);
     expect(plan.media).toEqual({});
     expect(plan.embedIds).toEqual(["el-embed"]);
     expect(plan.steps).toHaveLength(1);
@@ -130,34 +217,64 @@ describe("computePlayerPlan", () => {
     expect(stageEmbedsFor(svg)).toEqual({});
   });
 
-  it("stageMedia 收錄每個 data-comot-media 元素，包含沒有任何效果指向它的那些", () => {
-    const plan = computePlayerPlan(
+  it("stageMedia 收錄每個 data-comot-media 元素，包含沒有任何效果指向它的那些", async () => {
+    mockEffectsRoute([]);
+    const plan = await computePlayerPlan(
       '<svg xmlns="http://www.w3.org/2000/svg">' +
         '<g id="el-no-effect" data-comot-media="../assets/clip.webm" data-comot-type="video"/>' +
         "</svg>",
+      SLIDE_PATH,
     );
 
     expect(plan.media).toEqual({});
     expect(plan.stageMedia).toEqual({ "el-no-effect": { src: "../assets/clip.webm", kind: "video" } });
   });
 
-  it("沒有效果清單的投影片得到零步、空的 hidden", () => {
-    expect(computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>')).toEqual({
+  it("沒有效果清單的投影片得到零步、空的 hidden", async () => {
+    mockEffectsRoute([]);
+    expect(
+      await computePlayerPlan('<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-bg"/></svg>', SLIDE_PATH),
+    ).toEqual({
       steps: [],
       hidden: [],
       hideSelectors: {},
       media: {},
       stageMedia: {},
       embedIds: [],
+      transition: DEFAULT_TRANSITION,
     });
   });
 
-  it("剖析失敗時把 effects.ts 原本的錯誤訊息原樣拋出", () => {
+  it("剖析失敗時把路由回應的錯誤訊息原樣拋出", async () => {
     // "build" is [E2.T7]'s stand-in fixture value for "a family this round
     // still does not implement" (exit is now real, D4) — same role the old
     // fixture's "exit" used to play.
     const svg = slide('<comot:effect target="el-a" family="build" effect="fade" start="on-click"/>');
-    expect(() => computePlayerPlan(svg)).toThrow(/family.*build/);
+    mockEffectsRouteError("第 1 項（target 為 el-a） 的 family 值「build」尚未實作。");
+    await expect(computePlayerPlan(svg, SLIDE_PATH)).rejects.toThrow(/family.*build/);
+  });
+});
+
+describe("computePlayerPlan：cache", () => {
+  it("同一個 slidePath 連呼叫兩次，fake fetch 只被呼叫一次", async () => {
+    const svg = slide("");
+    mockEffectsRoute([]);
+
+    await computePlayerPlan(svg, SLIDE_PATH);
+    await computePlayerPlan(svg, SLIDE_PATH);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidateSlideEffectPlans() 之後再呼叫，fake fetch 被呼叫第二次", async () => {
+    const svg = slide("");
+    mockEffectsRoute([]);
+
+    await computePlayerPlan(svg, SLIDE_PATH);
+    invalidateSlideEffectPlans();
+    await computePlayerPlan(svg, SLIDE_PATH);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -221,34 +338,42 @@ describe("computePlayerPlan：media", () => {
 </svg>`;
   }
 
-  it("影片副檔名 .mp4 得到 kind: video，src 是 data-comot-media 原始值", () => {
+  const mediaEffectFixture: EffectFixture = { target: "el-video", family: "media", effect: "play", start: "on-click" };
+
+  it("影片副檔名 .mp4 得到 kind: video，src 是 data-comot-media 原始值", async () => {
     const svg = slideWithMedia(' data-comot-media="assets/intro.mp4"');
-    expect(computePlayerPlan(svg).media).toEqual({
+    mockEffectsRoute([mediaEffectFixture]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).media).toEqual({
       "el-video": { src: "assets/intro.mp4", kind: "video" },
     });
   });
 
-  it("音訊副檔名 .oga 得到 kind: audio", () => {
+  it("音訊副檔名 .oga 得到 kind: audio", async () => {
     const svg = slideWithMedia(' data-comot-media="assets/narration.oga"');
-    expect(computePlayerPlan(svg).media).toEqual({
+    mockEffectsRoute([mediaEffectFixture]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).media).toEqual({
       "el-video": { src: "assets/narration.oga", kind: "audio" },
     });
   });
 
-  it("media 效果的目標沒有 data-comot-media 時拋錯，訊息點名該目標", () => {
+  it("media 效果的目標沒有 data-comot-media 時拋錯，訊息點名該目標", async () => {
     const svg = slideWithMedia("");
-    expect(() => computePlayerPlan(svg)).toThrow(/el-video/);
+    mockEffectsRoute([mediaEffectFixture]);
+    await expect(computePlayerPlan(svg, SLIDE_PATH)).rejects.toThrow(/el-video/);
   });
 
-  it(".ogg 不在允許清單中，拋錯並指出該用 .oga 或 .ogv", () => {
+  it(".ogg 不在允許清單中，拋錯並指出該用 .oga 或 .ogv", async () => {
     const svg = slideWithMedia(' data-comot-media="assets/clip.ogg"');
-    expect(() => computePlayerPlan(svg)).toThrow(/\.oga/);
-    expect(() => computePlayerPlan(svg)).toThrow(/\.ogv/);
+    mockEffectsRoute([mediaEffectFixture]);
+    await expect(computePlayerPlan(svg, SLIDE_PATH)).rejects.toThrow(/\.oga/);
+    mockEffectsRoute([mediaEffectFixture]);
+    await expect(computePlayerPlan(svg, SLIDE_PATH)).rejects.toThrow(/\.ogv/);
   });
 
-  it("沒有 media 效果的投影片得到空的 media 物件", () => {
+  it("沒有 media 效果的投影片得到空的 media 物件", async () => {
     const svg = slide("");
-    expect(computePlayerPlan(svg).media).toEqual({});
+    mockEffectsRoute([]);
+    expect((await computePlayerPlan(svg, SLIDE_PATH)).media).toEqual({});
   });
 
   // Codex review gate round 1, P2: SVG element ids are author-controlled,
@@ -269,7 +394,7 @@ describe("computePlayerPlan：media", () => {
   // which is kept as-is.
   it.each(["__proto__", "constructor"])(
     'target id 恰好是 "%s" 時，仍正確產生對應的 media cue（不是被原型污染吃掉的空物件）',
-    (id) => {
+    async (id) => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
     <comot:effects ${NS}>
@@ -278,8 +403,9 @@ describe("computePlayerPlan：media", () => {
   </metadata>
   <rect id="${id}" data-comot-media="assets/clip.mp4"/>
 </svg>`;
+      mockEffectsRoute([{ target: id, family: "media", effect: "play", start: "on-click" }]);
 
-      const plan = computePlayerPlan(svg);
+      const plan = await computePlayerPlan(svg, SLIDE_PATH);
 
       expect(Object.prototype.hasOwnProperty.call(plan.media, id)).toBe(true);
       expect(plan.media[id]).toEqual({ src: "assets/clip.mp4", kind: "video" });
@@ -307,9 +433,9 @@ describe("允許清單與 server 的 MIME 表必須一致（ticket #30 review ro
 
 describe("renderPlanScript", () => {
   it("把 plan 序列化成指定給 window.__COMOT_PLAN__ 的一行 script，透過 JSON.parse 重建，不是物件字面量", () => {
-    // Not a bare object-literal assignment: see the "完整走過注入鏈路"
-    // block below for why. This expected string is a known-good literal
-    // (double JSON.stringify of the same plan, computed independently of
+    // Not a bare object-literal assignment: see the "完整走過注入鏈路" block
+    // below for why. This expected string is a known-good literal (double
+    // JSON.stringify of the same plan, computed independently of
     // renderPlanScript's own implementation), not a value recomputed the
     // way the code computes it.
     const plan = { steps: [], hidden: ["el-a"] };
@@ -358,7 +484,7 @@ describe("renderPlanScript：完整走過注入鏈路的重建（不只是 compu
     return fakeWindow.__COMOT_PLAN__ as { steps: unknown; hidden: unknown; media: Record<string, unknown> };
   }
 
-  it('target id 恰好是 "__proto__" 時，注入鏈路重建後的 plan.media 仍是真正的 own property', () => {
+  it('target id 恰好是 "__proto__" 時，注入鏈路重建後的 plan.media 仍是真正的 own property', async () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
     <comot:effects ${NS}>
@@ -367,7 +493,8 @@ describe("renderPlanScript：完整走過注入鏈路的重建（不只是 compu
   </metadata>
   <rect id="__proto__" data-comot-media="assets/clip.mp4"/>
 </svg>`;
-    const plan = computePlayerPlan(svg);
+    mockEffectsRoute([{ target: "__proto__", family: "media", effect: "play", start: "on-click" }]);
+    const plan = await computePlayerPlan(svg, SLIDE_PATH);
     const script = renderPlanScript(plan);
 
     const reconstructed = evalInjectedScript(script);

@@ -68,5 +68,30 @@ RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
     && dpkg -l | grep -q '^ii  libavif16' \
     && dpkg -l | grep -q '^ii  libjpeg8'
 
+# `rustc` links every binary (including pure-Rust crates with proc-macro
+# build scripts, e.g. `quote`/`proc-macro2`) via a C linker — it does not
+# ship its own. The Playwright/Node base image has no C toolchain at all
+# (NOOP-278 Run 2: `cargo build --release` failed with `linker `cc` not
+# found` the moment dependencies started compiling). `build-essential` is
+# the standard Debian/Ubuntu meta-package for this (gcc + libc dev headers +
+# make); nothing here is Rust-specific, it is a system-level linker, so it
+# belongs in the image rather than a Cargo dependency.
+RUN apt-get update \
+    && apt-get install -y build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && dpkg -l | grep -q '^ii  gcc '
+
 USER dev
 ENV HOME=/home/dev
+
+# Rust toolchain for the co-motion CLI skeleton (NOOP-278 / GitHub #257).
+# `--default-toolchain none` deliberately leaves rustup without a pinned
+# version here: `rust-toolchain.toml` (repo root) is the single source of
+# truth for the channel, and it is only visible to `rustup` once the repo is
+# mounted in postCreateCommand — not at image-build time, when the build
+# context is just `.devcontainer/`. Installing the toolchain itself (`rustup
+# show`, which auto-installs the pinned channel on first use) therefore also
+# happens in postCreateCommand, not here.
+ENV CARGO_HOME=/home/dev/.cargo RUSTUP_HOME=/home/dev/.rustup
+ENV PATH=/home/dev/.cargo/bin:$PATH
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal

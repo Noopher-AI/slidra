@@ -1,4 +1,4 @@
-import type { PageTransitionEffect } from "@co-motion/core/slide";
+import type { PageTransitionEffect } from "../../effects.js";
 import type { CanvasController, CanvasState } from "../../canvas.js";
 import { useSlideTransition } from "./animate/useSlideTransition.js";
 import { PageTransitionView } from "./animate/PageTransitionView.js";

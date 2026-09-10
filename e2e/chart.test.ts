@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
@@ -24,8 +24,8 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const deckDir = path.join(e2eDir, "fixtures/chart-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/chart");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -38,7 +38,6 @@ let openPages: Page[] = [];
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 });
@@ -71,6 +70,8 @@ async function startServerFor(): Promise<TestServer> {
   const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-home-"));
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-files-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -90,7 +91,7 @@ async function startServerFor(): Promise<TestServer> {
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -99,6 +100,7 @@ async function startServerFor(): Promise<TestServer> {
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
@@ -333,43 +335,14 @@ it("AC-5/AC-6: 雙軸開關與堆疊開關各自送出 chart axis set／chart st
   }
 });
 
-it("AC-7: CSV 匯入：固定 fixture 經 --csv-asset 與 --csv 兩條路都得到同一份 comot:chart", async () => {
-  const { server, registry, presentationId, cleanup } = await startServerFor();
-  const tmpDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-csv-"));
-  try {
-    const elementViaAsset = await createChartViaCli(registry, presentationId);
-    const assetResult = await registry.dispatch("chart data set", {
-      id: presentationId,
-      slidePath: "slides/001.svg",
-      elementId: elementViaAsset,
-      csvAsset: "assets/data/quarterly.csv",
-    });
-    expect(assetResult.ok).toBe(true);
-
-    const localCsvPath = path.join(tmpDir, "quarterly.csv");
-    await writeFile(localCsvPath, "Quarter,Revenue,Cost\nQ1,120,80\nQ2,150,90\nQ3,170,95\n", "utf-8");
-    const elementViaFile = await createChartViaCli(registry, presentationId);
-    const fileResult = await registry.dispatch("chart data set", {
-      id: presentationId,
-      slidePath: "slides/001.svg",
-      elementId: elementViaFile,
-      csv: localCsvPath,
-    });
-    expect(fileResult.ok).toBe(true);
-
-    const svg = await readSlide(registry, presentationId);
-    expect(extractChartData(svg, elementViaAsset)).toContain('<comot:categories values="Q1,Q2,Q3"/>');
-    expect(extractChartData(svg, elementViaAsset)).toContain('name="Revenue" values="120,150,170"');
-    // The two elements' data differs only in which series/category NAMES round-tripped through which
-    // import path — both must have parsed to the exact same numbers.
-    const dataViaAsset = extractChartData(svg, elementViaAsset);
-    const dataViaFile = extractChartData(svg, elementViaFile);
-    expect(dataViaFile).toBe(dataViaAsset);
-  } finally {
-    await cleanup();
-    await rm(tmpDir, { recursive: true, force: true });
-  }
-});
+// AC-7 (CSV 匯入：--csv-asset 與 --csv 兩條路都得到同一份 comot:chart) was
+// removed here (NOOP-299/F5 test-budget prune): it never opened a browser
+// (only `registry.dispatch` calls, same as `packages/cli/test/chart.test.ts`),
+// so it belonged at the cheaper CLI-layer, not in `e2e/`. Its one assertion
+// beyond what that file's existing `--csv`/`--csv-asset` tests already cover
+// — that the two input paths produce byte-identical `<comot:chart>` data —
+// now lives at `packages/cli/test/chart.test.ts`'s "--csv 與 --csv-asset
+// 對等內容產出的 <comot:chart> 資料位元組相同".
 
 it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:chart 位元組相同", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();

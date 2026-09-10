@@ -3,17 +3,10 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandRegistry } from "@co-motion/cli";
-import {
-  CoMotionError,
-  CoMotionInvalidRequestError,
-  readDefaultFontBytes,
-  undoLastGroup,
-  redoLastGroup,
-  readSaveState,
-  savePresentation,
-  resolveCoMotionHome,
-} from "@co-motion/core";
+import { CoMotionError, CoMotionInvalidRequestError } from "./comotion/errors.js";
+import { runJsonCommand } from "./comotion/command.js";
+import { readProjectsRegistry, resolveCoMotionHome } from "./comotion/home.js";
+import { readSaveState } from "./comotion/save-state.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
@@ -28,21 +21,25 @@ import { handleAssetPost } from "./asset-upload.js";
 import { handleOpenPost } from "./open-endpoint.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
-import { handleFilesRoute, handlePresentationRoute, handleRawRoute, loadProject } from "./read-routes.js";
+import {
+  handleEffectsRoute,
+  handleFilesRoute,
+  handlePresentationRoute,
+  handleRawRoute,
+  loadProject,
+} from "./read-routes.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 
 /**
  * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
- * every read of presentation content goes through `registry.dispatch`, the
- * exact call one-shot `co-motion cat`/`ls` use. This module never opens a
- * file directly and never calls `registry.getRenderer` — renderers are
- * terminal formatting, none of serve's business.
+ * every read of presentation content spawns the real `co-motion` binary
+ * ([E4.T9]/F7 — `comotion/`), the exact same program one-shot
+ * `co-motion cat`/`ls` runs. This module never opens a presentation file
+ * directly.
  */
 export interface ServeOptions {
-  /** The same registry `createDefaultRegistry()` builds for the one-shot CLI. */
-  registry: CommandRegistry;
   /** Opaque id of an already-opened presentation (see `co-motion open`). */
   presentationId: string;
   /**
@@ -123,11 +120,11 @@ const DEFAULT_HOST = "127.0.0.1";
  * bad startup fails loudly without a half-started server left behind.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
-  const { registry, presentationId } = options;
+  const { presentationId } = options;
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
-  const project = await loadProject(registry, presentationId);
+  const project = await loadProject(presentationId);
   if (project.slides.length === 0) {
     throw new CoMotionError("簡報沒有投影片");
   }
@@ -250,7 +247,6 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
 
   const server = http.createServer((req, res) => {
     void handleRequest(
-      registry,
       presentationId,
       staticDir,
       manager,
@@ -316,7 +312,6 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 }
 
 async function handleRequest(
-  registry: CommandRegistry,
   presentationId: string,
   staticDir: string,
   manager: AgentManager,
@@ -391,14 +386,14 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleCommandPost(registry, presentationId, req, res);
+        await handleCommandPost(presentationId, req, res);
         return;
       }
       if (url.pathname === "/api/asset") {
         // T3/NOOP-142: the same "agent holds the floor" 409 gate as
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
-        // lock just because it does not go through registry.dispatch.
+        // lock just because it does not spawn the co-motion binary.
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
@@ -431,15 +426,15 @@ async function handleRequest(
         // of the single-editor lock's "who may write right now" story
         // (unlike /api/open, /api/save, /api/command, and /api/asset
         // above). Do not "helpfully" add this gate later.
-        await handleExportPost(exportJobManager, registry, presentationId, serverAddress, changeBroadcaster, req, res);
+        await handleExportPost(exportJobManager, presentationId, serverAddress, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/undo") {
-        await handleUndoRedoPost(editingLock, presentationId, undoLastGroup, res);
+        await handleUndoRedoPost(editingLock, presentationId, runUndo, res);
         return;
       }
       if (url.pathname === "/api/redo") {
-        await handleUndoRedoPost(editingLock, presentationId, redoLastGroup, res);
+        await handleUndoRedoPost(editingLock, presentationId, runRedo, res);
         return;
       }
       if (url.pathname === "/api/editing/begin") {
@@ -503,20 +498,26 @@ async function handleRequest(
       // browser needs its metrics to wrap a text box whose <text> declares
       // no font-family of its own — a legal SVG the presentation's own
       // `fonts` list says nothing about, so /api/raw/ cannot serve it.
-      const bytes = readDefaultFontBytes();
+      const bytes = await readFile(resolveDefaultFontPath());
       res.writeHead(200, { "content-type": "font/ttf", "content-length": String(bytes.byteLength) });
       res.end(bytes);
       return;
     }
 
     if (url.pathname === "/api/presentation") {
-      await handlePresentationRoute(registry, presentationId, res);
+      await handlePresentationRoute(presentationId, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/files/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(registry, presentationId, virtualPath, res);
+      await handleFilesRoute(presentationId, virtualPath, res);
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/effects/")) {
+      const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
+      await handleEffectsRoute(presentationId, virtualPath, res);
       return;
     }
 
@@ -534,17 +535,14 @@ async function handleRequest(
     }
 
     if (url.pathname.startsWith("/api/raw/")) {
-      // Deliberately NOT `registry.dispatch`, unlike every other read in
-      // this file. `dispatch` runs a registered CLI command, and every
-      // registered command is reachable by the agent (ADR-0004's
-      // permission hook allows `co-motion *`). A byte-preserving read
-      // registered as a command would hand the agent the exact capability
-      // ticket #2 closed off — dozens of MB of raw video/image bytes
-      // dumped into its context. Browsers, not agents, need this route, so
-      // it calls the core byte-read directly. It still goes through the
-      // same virtual-path tree lookup as every other read
-      // (readPresentationFileBytes -> readVirtualFileBytes), so
-      // containment stays structural even though dispatch is bypassed.
+      // Deliberately NOT `POST /api/command`'s whitelist, unlike every
+      // other read in this file. Every whitelisted command is reachable by
+      // the agent (ADR-0004's permission hook allows `co-motion *`). A
+      // byte-preserving read registered as a command would hand the agent
+      // the exact capability ticket #2 closed off — dozens of MB of raw
+      // video/image bytes dumped into its context. Browsers, not agents,
+      // need this route, so it calls `cat` directly (`readPresentationBytes`)
+      // rather than through any agent-reachable command.
       let virtualPath: string;
       try {
         virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
@@ -680,13 +678,12 @@ async function handleSavePost(
  * concurrency check and the start happen inside that one synchronous call,
  * so nothing can race between "is one already running" and "start one".
  * `run` (the closure passed in here) is where this route's own knowledge —
- * the registry, the presentation id, this server's own address for
+ * the presentation id, this server's own address for
  * `render.ts`'s Playwright to navigate to — meets `render.ts`'s generic
  * "drive one headless page, produce a PDF" job.
  */
 async function handleExportPost(
   exportJobManager: ExportJobManager,
-  registry: CommandRegistry,
   presentationId: string,
   serverAddress: { host: string; port: number },
   changeBroadcaster: ChangeBroadcaster,
@@ -712,7 +709,7 @@ async function handleExportPost(
       format,
       (event) => changeBroadcaster.broadcast("export", event),
       async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
-        const project = await loadProject(registry, presentationId);
+        const project = await loadProject(presentationId);
         const fileName = exportFileName(project.name, jobFormat);
         const outputPath = path.join(resolveCoMotionHome(), "exports", id, fileName);
         const result = await renderExportPdf({
@@ -761,12 +758,54 @@ async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: st
 }
 
 /**
+ * `undo <id> --json` / `redo <id> --json` (plan §3.7): neither is part of
+ * `COMMAND_WHITELIST` (they are not reachable through `POST /api/command`),
+ * so this is a direct `runJsonCommand` call rather than going through
+ * `comotion/argv.ts`'s encoder table.
+ */
+async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: string): Promise<{ restoredPaths: string[] }> {
+  const result = await runJsonCommand<{ restoredPaths: string[] }>([name, presentationId]);
+  if (!result.ok) {
+    throw new CoMotionError(result.message);
+  }
+  if (!Array.isArray(result.data?.restoredPaths)) {
+    throw new CoMotionError(`${name} 回傳的資料格式錯誤`);
+  }
+  return { restoredPaths: result.data.restoredPaths };
+}
+
+const runUndo = (id: string): Promise<{ restoredPaths: string[] }> => runCommandRestoringPaths("undo", id);
+const runRedo = (id: string): Promise<{ restoredPaths: string[] }> => runCommandRestoringPaths("redo", id);
+
+/**
+ * `POST /api/save`'s actual pack (plan §3.7): reads `sourcePath` off
+ * `projects.json` — there is no CLI command that already knows it — and
+ * runs `pack <id> <sourcePath> --json`, which itself advances `savedAt`
+ * when the output path equals `sourcePath` (`comotion/save-state.ts`'s
+ * next read picks that up).
+ */
+async function savePresentation(presentationId: string): Promise<{ fileName: string }> {
+  const registry = await readProjectsRegistry();
+  const entry = registry.get(presentationId);
+  if (!entry) {
+    throw new CoMotionError(`找不到識別碼對應的簡報：${presentationId}`);
+  }
+  if (entry.sourcePath === undefined) {
+    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 co-motion pack 指定路徑");
+  }
+  const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
+  if (!result.ok) {
+    throw new CoMotionError(result.message);
+  }
+  return { fileName: path.basename(entry.sourcePath) };
+}
+
+/**
  * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
  * editing requests in the single-editor-lock sense (plan §4.1): refused
  * with 409 while the agent holds the floor, run unconditionally otherwise
- * — `undoLastGroup`/`redoLastGroup` themselves throw the "沒有可復原/重做的
- * 操作" `CoMotionError` on an empty stack, relayed here as 400 with the
- * core message verbatim rather than a silent 200.
+ * — a thrown `CoMotionError` on an empty stack is relayed here as 400 with
+ * the command's own message verbatim rather than a silent 200.
  */
 async function handleUndoRedoPost(
   editingLock: EditingLock,
@@ -898,6 +937,20 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 function resolveWebDist(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return path.join(here, "../../web/dist");
+}
+
+/**
+ * The one font every build ships (`DEFAULT_FONT_FAMILY`), read directly off
+ * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
+ * longer imports that package). Repo-root `assets/fonts/` is the same
+ * physical file the Rust binary's own `include_bytes!` embeds
+ * (`crates/co-motion/src/presentation.rs`) — both moved together off
+ * `packages/core/src/assets/fonts/` when that package was deleted
+ * ([E4.T12]).
+ */
+function resolveDefaultFontPath(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.join(here, "../../../assets/fonts/NotoSansTC-Presentation.ttf");
 }
 
 async function serveStatic(staticDir: string, pathname: string, res: ServerResponse): Promise<void> {

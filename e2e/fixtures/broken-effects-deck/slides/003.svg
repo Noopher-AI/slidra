@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <!-- 損壞之處：family="build" 不在 @co-motion/core/effects 的
-           SUPPORTED_EFFECTS 裡（[E2.T7] 的固定值集是 enter/emphasis/exit/
+      <!-- 損壞之處：family="build" 不在 CoMotion 支援的效果家族清單裡
+           （[E2.T7] 的固定值集是 enter/emphasis/exit/
            path/media，D4）。"build" 是這輪「一個永遠不會被實作的家族名稱」
            的守門測試值——emphasis 本輪已經是真正實作的家族，不能再拿來當
            反例（[E2.T7] 測試盤點）。 -->

@@ -1,0 +1,478 @@
+[
+  {
+    "label": "png",
+    "bytes": [
+      137,
+      80,
+      78,
+      71,
+      13,
+      10,
+      26,
+      10,
+      0,
+      0
+    ],
+    "expected": {
+      "extension": ".png",
+      "mimeType": "image/png",
+      "kind": "image",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "jpeg",
+    "bytes": [
+      255,
+      216,
+      255,
+      224,
+      0,
+      0
+    ],
+    "expected": {
+      "extension": ".jpg",
+      "mimeType": "image/jpeg",
+      "kind": "image",
+      "aliasExtensions": [
+        ".jpeg"
+      ]
+    }
+  },
+  {
+    "label": "gif",
+    "bytes": [
+      71,
+      73,
+      70,
+      56,
+      57,
+      97,
+      46,
+      46,
+      46,
+      46
+    ],
+    "expected": {
+      "extension": ".gif",
+      "mimeType": "image/gif",
+      "kind": "image",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "webp",
+    "bytes": [
+      82,
+      73,
+      70,
+      70,
+      0,
+      0,
+      0,
+      0,
+      87,
+      69,
+      66,
+      80
+    ],
+    "expected": {
+      "extension": ".webp",
+      "mimeType": "image/webp",
+      "kind": "image",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "wav",
+    "bytes": [
+      82,
+      73,
+      70,
+      70,
+      0,
+      0,
+      0,
+      0,
+      87,
+      65,
+      86,
+      69
+    ],
+    "expected": {
+      "extension": ".wav",
+      "mimeType": "audio/wav",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "riff-unknown-format-tag",
+    "bytes": [
+      82,
+      73,
+      70,
+      70,
+      0,
+      0,
+      0,
+      0,
+      65,
+      86,
+      73,
+      32
+    ],
+    "expected": null
+  },
+  {
+    "label": "mp4-generic-brand",
+    "bytes": [
+      0,
+      0,
+      0,
+      24,
+      102,
+      116,
+      121,
+      112,
+      105,
+      115,
+      111,
+      109
+    ],
+    "expected": {
+      "extension": ".mp4",
+      "mimeType": "video/mp4",
+      "kind": "video",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "mov-qt-brand",
+    "bytes": [
+      0,
+      0,
+      0,
+      20,
+      102,
+      116,
+      121,
+      112,
+      113,
+      116,
+      32,
+      32
+    ],
+    "expected": {
+      "extension": ".mov",
+      "mimeType": "video/quicktime",
+      "kind": "video",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "m4v",
+    "bytes": [
+      0,
+      0,
+      0,
+      24,
+      102,
+      116,
+      121,
+      112,
+      77,
+      52,
+      86,
+      32
+    ],
+    "expected": {
+      "extension": ".m4v",
+      "mimeType": "video/mp4",
+      "kind": "video",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "m4a",
+    "bytes": [
+      0,
+      0,
+      0,
+      24,
+      102,
+      116,
+      121,
+      112,
+      77,
+      52,
+      65,
+      32
+    ],
+    "expected": {
+      "extension": ".m4a",
+      "mimeType": "audio/mp4",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "webm",
+    "bytes": [
+      26,
+      69,
+      223,
+      163,
+      0,
+      0
+    ],
+    "expected": {
+      "extension": ".webm",
+      "mimeType": "video/webm",
+      "kind": "video",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "ogv-theora",
+    "bytes": [
+      79,
+      103,
+      103,
+      83,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      128,
+      116,
+      104,
+      101,
+      111,
+      114,
+      97
+    ],
+    "expected": {
+      "extension": ".ogv",
+      "mimeType": "video/ogg",
+      "kind": "video",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "opus",
+    "bytes": [
+      79,
+      103,
+      103,
+      83,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      79,
+      112,
+      117,
+      115,
+      72,
+      101,
+      97,
+      100
+    ],
+    "expected": {
+      "extension": ".opus",
+      "mimeType": "audio/ogg",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "oga-vorbis",
+    "bytes": [
+      79,
+      103,
+      103,
+      83,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      118,
+      111,
+      114,
+      98,
+      105,
+      115
+    ],
+    "expected": {
+      "extension": ".oga",
+      "mimeType": "audio/ogg",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "ogg-unrecognised-codec-is-none",
+    "bytes": [
+      79,
+      103,
+      103,
+      83,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "expected": null
+  },
+  {
+    "label": "mp3-id3",
+    "bytes": [
+      73,
+      68,
+      51,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "expected": {
+      "extension": ".mp3",
+      "mimeType": "audio/mpeg",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "mp3-frame-sync-layer-iii",
+    "bytes": [
+      255,
+      251,
+      144,
+      0
+    ],
+    "expected": {
+      "extension": ".mp3",
+      "mimeType": "audio/mpeg",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "aac-adts-frame-sync",
+    "bytes": [
+      255,
+      241,
+      80,
+      128
+    ],
+    "expected": {
+      "extension": ".aac",
+      "mimeType": "audio/aac",
+      "kind": "audio",
+      "aliasExtensions": []
+    }
+  },
+  {
+    "label": "unknown-bytes-is-none",
+    "bytes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "expected": null
+  }
+]

@@ -1,14 +1,38 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultRegistry, CommandRegistry } from "@co-motion/cli";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { requireCliBuilt } from "./require-cli-built.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 // T5 (NOOP-93/#110): the agent-turn/undo-group/freeze contract, driven over
 // HTTP with a real subprocess fake ACP agent — same Seam B discipline as
@@ -24,7 +48,6 @@ let coMotionHome: string;
 let comotDir: string;
 let logDir: string;
 let logPath: string;
-let registry: CommandRegistry;
 let servers: RunningServer[];
 
 beforeEach(async () => {
@@ -33,13 +56,14 @@ beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), "co-motion-freeze-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
   process.env.CO_MOTION_HOME = coMotionHome;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -47,11 +71,15 @@ afterEach(async () => {
 
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name: "測試簡報" });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  expect(created.ok).toBe(true);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   const id = opened.data!.id;
-  const slide = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-  const match = /<text id="(el-[^"]+)"/.exec(slide.data!.content);
+  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
+  expect(slide.ok).toBe(true);
+  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
+  const match = /<text id="(el-[^"]+)"/.exec(svgText);
   if (!match) throw new Error("test fixture: title element id not found");
   return { id, elementId: match[1] };
 }
@@ -67,7 +95,7 @@ function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
 }
 
 async function serve(agent: AgentAdapterConfig, presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
   servers.push(server);
   return server;
 }
@@ -133,8 +161,29 @@ async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs =
 }
 
 async function readSlide(id: string): Promise<string> {
-  const result = await registry.dispatch<{ content: string }>("cat", { id, path: "slides/001.svg" });
-  return result.data!.content;
+  const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
+  expect(result.ok).toBe(true);
+  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
+}
+
+async function listAssets(id: string): Promise<string[]> {
+  const result = await runCli<{ entries: string[] }>(["ls", id, "assets"]);
+  expect(result.ok).toBe(true);
+  return result.data!.entries;
+}
+
+/**
+ * Extracts the `<g id="elementId">...</g>` block for one element, so a
+ * "did this element change" check doesn't depend on any other element in
+ * the slide staying byte-identical (NOOP-325: the agent's own in-flight
+ * `text set` targets a different element and can legitimately land inside
+ * the same window, which a whole-document diff can't tell apart from one
+ * of the rejected commands actually running).
+ */
+function extractElementBlock(content: string, elementId: string): string {
+  const match = new RegExp(`<g id="${elementId}"[\\s\\S]*?</g>`).exec(content);
+  if (!match) throw new Error(`element ${elementId} not found in slide content`);
+  return match[0];
 }
 
 interface CommandExecutionFixture {
@@ -160,43 +209,25 @@ interface CommandExecutionFixture {
 async function openFreshPresentationForCommandExecution(): Promise<CommandExecutionFixture> {
   const { id, elementId } = await openFreshPresentationWithElement();
   const slidePath = "slides/001.svg";
-  await registry.dispatch("convert", { id });
+  const converted = await runCli(["convert", id]);
+  expect(converted.ok).toBe(true);
 
-  const move = await registry.dispatch<{ elementId: string }>("element insert", {
-    id,
-    slidePath,
-    kind: "rect",
-    x: 100,
-    y: 200,
-    width: 50,
-    height: 50,
-  });
-  const scale = await registry.dispatch<{ elementId: string }>("element insert", {
-    id,
-    slidePath,
-    kind: "rect",
-    x: 300,
-    y: 300,
-    width: 50,
-    height: 50,
-  });
-  const rotate = await registry.dispatch<{ elementId: string }>("element insert", {
-    id,
-    slidePath,
-    kind: "rect",
-    x: 50,
-    y: 60,
-    width: 20,
-    height: 20,
-  });
-  const textbox = await registry.dispatch<{ elementId: string }>("textbox add", {
-    id,
-    slidePath,
-    x: 10,
-    y: 10,
-    width: 200,
-    text: "hello",
-  });
+  const move = await runCli<{ elementId: string }>([
+    "element", "insert", "rect", id, slidePath, "--x", "100", "--y", "200", "--width", "50", "--height", "50",
+  ]);
+  const scale = await runCli<{ elementId: string }>([
+    "element", "insert", "rect", id, slidePath, "--x", "300", "--y", "300", "--width", "50", "--height", "50",
+  ]);
+  const rotate = await runCli<{ elementId: string }>([
+    "element", "insert", "rect", id, slidePath, "--x", "50", "--y", "60", "--width", "20", "--height", "20",
+  ]);
+  const textbox = await runCli<{ elementId: string }>([
+    "textbox", "add", id, slidePath, "--x", "10", "--y", "10", "--width", "200", "--text", "hello",
+  ]);
+  expect(move.ok).toBe(true);
+  expect(scale.ok).toBe(true);
+  expect(rotate.ok).toBe(true);
+  expect(textbox.ok).toBe(true);
 
   return {
     id,
@@ -380,21 +411,37 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
+    const rejectedElementIds = [moveElementId, scaleElementId, rotateElementId, textboxElementId];
     const frozenSlide = await readSlide(id);
-    for (const { name, input } of payloads) {
-      const response = await fetch(`${server.url}/api/command`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, input }),
-      });
-      expect(response.status, `${name} 應該在凍結期間被擋下`).toBe(409);
+    const frozenBlocks = rejectedElementIds.map((elId) => extractElementBlock(frozenSlide, elId));
+    // Fired concurrently, not one-by-one: the agent's own command now runs
+    // in milliseconds (the Rust CLI binary, not Node), so the freeze window
+    // this loop needs to land inside of is short enough that four
+    // sequential round trips could straddle the unfreeze — one becoming a
+    // false negative regardless of whether the 409 gate itself is correct.
+    const rejectionResponses = await Promise.all(
+      payloads.map(({ name, input }) =>
+        fetch(`${server.url}/api/command`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, input }),
+        }),
+      ),
+    );
+    for (const [i, response] of rejectionResponses.entries()) {
+      expect(response.status, `${payloads[i].name} 應該在凍結期間被擋下`).toBe(409);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("agent 正在編輯中，請稍候");
     }
-    // The 409 refusal must be a real refusal, not a "runs anyway": nothing
-    // in the slide moved while every one of the four calls above was
-    // rejected.
-    expect(await readSlide(id)).toBe(frozenSlide);
+    // The 409 refusal must be a real refusal, not a "runs anyway": none of
+    // the four elements targeted by the rejected calls above moved. Scoped
+    // to just those elements rather than the whole slide, because the
+    // agent's own in-flight `text set` (a different element) can land
+    // during this same window without that being a freeze violation.
+    const rejectedSlide = await readSlide(id);
+    rejectedElementIds.forEach((elId, i) => {
+      expect(extractElementBlock(rejectedSlide, elId), `${elId} 應該維持凍結前的內容`).toBe(frozenBlocks[i]);
+    });
 
     await waitForFrozen(server, false);
 
@@ -437,8 +484,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(frozenResponse.status).toBe(409);
     const frozenBody = (await frozenResponse.json()) as { error: string };
     expect(frozenBody.error).toBe("agent 正在編輯中，請稍候");
-    const listedWhileFrozen = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-    expect(listedWhileFrozen.data!.entries).toEqual([]);
+    expect(await listAssets(id)).toEqual([]);
 
     await waitForFrozen(server, false);
 
@@ -448,8 +494,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
       body: pngBytes,
     });
     expect(unfrozenResponse.status).toBe(200);
-    const listedAfterUnfreeze = await registry.dispatch<{ entries: string[] }>("ls", { id, path: "assets" });
-    expect(listedAfterUnfreeze.data!.entries).toEqual(["photo.png"]);
+    expect(await listAssets(id)).toEqual(["photo.png"]);
   });
 
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {

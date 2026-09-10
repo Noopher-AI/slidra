@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import type { AgentAdapterConfig } from "./session.js";
 
 /**
@@ -92,5 +93,25 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   const args = kind === "codex"
     ? [resolved, "-c", 'approval_policy="on-request"', "-c", 'sandbox_mode="read-only"']
     : [resolved];
-  return { kind: spec.kind, label: spec.label, command: process.execPath, args };
+  const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args };
+
+  // NOOP-278: when the co-motion Rust binary execs this Node process as its
+  // fallback (crates/co-motion/src/fallback.rs), it sets CO_MOTION_BIN to
+  // its own absolute path but does not itself put its directory on PATH.
+  // An agent shelling out to a bare `co-motion ...` (as the editing
+  // protocol instructs) would otherwise find nothing, since this project
+  // never installs a CLI globally — the Rust binary is one link in a chain
+  // that also falls back to this very Node process, so its directory needs
+  // to be reachable again for that chain to close. When CO_MOTION_BIN is
+  // unset (today's only real invocation path — no Rust binary yet in the
+  // chain), `config.env` stays unset and this function's return value is
+  // byte-for-byte identical to before this change: the existing e2e
+  // fixtures that put `node_modules/.bin` on PATH themselves depend on
+  // that being untouched.
+  const coMotionBin = process.env.CO_MOTION_BIN;
+  if (coMotionBin) {
+    config.env = { PATH: `${dirname(coMotionBin)}:${process.env.PATH ?? ""}` };
+  }
+
+  return config;
 }

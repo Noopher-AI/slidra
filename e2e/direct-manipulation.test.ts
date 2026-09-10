@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
-import { packDirectory, resolvePresentationFonts, wrapText } from "@co-motion/core";
+import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
@@ -44,7 +44,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * The fixture's `project.json` declares one embedded font
  * ("Noto Sans TC", for `el-text`'s textbox-width tests) but does not carry
  * the font FILE itself — a 5.4 MB binary has no business living twice in
- * this repo when `packages/core/src/assets/fonts` already ships it for
+ * this repo when `assets/fonts` already ships it for
  * every other font-dependent test. `startServerFor` below copies the
  * fixture into a throwaway temp directory and injects the real font bytes
  * into it before packing, so the checked-in fixture stays tiny.
@@ -52,15 +52,15 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
+const coMotionBin = path.join(rootDir, "target/release/co-motion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-const cliDistBin = path.join(rootDir, "packages/cli/dist/bin.js");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 // Dedicated single-element fixture for the "rect at a non-zero local origin"
 // resize-anchor regression (NOOP-91 round-2 FAIL #1) — `direct-manipulation-deck`'s
 // own el-a sits at local (0, 0), which is exactly the case that hid the bug.
 const offsetDeckDir = path.join(e2eDir, "fixtures/direct-manipulation-offset-deck");
-const presentationFontDir = path.join(rootDir, "packages/core/src/assets/fonts");
+const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const baselineDir = path.join(e2eDir, "__screenshots__/direct-manipulation");
 
@@ -69,13 +69,50 @@ const VIEWBOX = { width: 1280, height: 720 };
 
 let browser: Browser;
 let openPages: Page[] = [];
+let fontDataUrl: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireBuilt(cliDistBin, "packages/cli/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
+  const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));
+  fontDataUrl = `data:font/ttf;base64,${fontBytes.toString("base64")}`;
 });
+
+/**
+ * Chromium's own `getComputedTextLength()` for `text` at `fontSizePx` in the
+ * real embedded presentation font — same technique as
+ * text-metrics.test.ts's `renderedWidthInChromium`, the external ground
+ * truth this file's wrap assertion compares against post-[E4.T12] (the
+ * TypeScript engine's own `wrapText`, previously used as the oracle here,
+ * no longer exists).
+ */
+async function renderedWidthInChromium(page: Page, text: string, fontSizePx: number): Promise<number> {
+  return page.evaluate(
+    async ([url, family, sampleText, size]) => {
+      const style = document.createElement("style");
+      style.textContent = `@font-face{font-family:"${family}";src:url("${url}") format("truetype");}`;
+      document.head.appendChild(style);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      textEl.setAttribute("font-family", family);
+      textEl.setAttribute("font-size", String(size));
+      textEl.textContent = sampleText;
+      svg.appendChild(textEl);
+      document.body.appendChild(svg);
+
+      await document.fonts.load(`${size}px "${family}"`);
+      await document.fonts.ready;
+
+      const length = textEl.getComputedTextLength();
+      svg.remove();
+      style.remove();
+      return length;
+    },
+    [fontDataUrl, "Noto Sans TC", text, fontSizePx] as const,
+  );
+}
 
 afterAll(async () => {
   await browser?.close();
@@ -104,6 +141,8 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
   const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-dm-files-"));
   const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-dm-deck-"));
   process.env.CO_MOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
+  process.env.CO_MOTION_BIN = coMotionBin;
 
   // Copy the checked-in fixture into a throwaway staging dir, then inject
   // the real embedded-font bytes (see this file's header comment) — the
@@ -133,7 +172,7 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
     },
   };
 
-  const server = await startServe({ registry, presentationId, port: 0, agent });
+  const server = await startServe({ presentationId, port: 0, agent });
 
   return {
     server,
@@ -142,6 +181,7 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
     cleanup: async () => {
       await server.close();
       delete process.env.CO_MOTION_HOME;
+      delete process.env.CO_MOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
@@ -1105,7 +1145,7 @@ it("雙擊進入縮放群組後拖曳子元素的旋轉把手：原點套用祖�
   }
 });
 
-it("拖曳文字框左把手放手：data-comot-text-width 變成新寬度、tspan 行數與 wrapText 算出的一致、font-size 不變", async () => {
+it("拖曳文字框左把手放手：data-comot-text-width 變成新寬度、tspan 行數不多於放手前、每行實際渲染寬度都在新寬度內、font-size 不變", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -1134,18 +1174,23 @@ it("拖曳文字框左把手放手：data-comot-text-width 變成新寬度、tsp
     expect(fontSizeMatch).not.toBeNull();
     expect(Number(fontSizeMatch![1])).toBe(24);
 
-    // The tspan line count must match what `textbox width`'s own wrapText
-    // call would produce for this exact width — computed here through the
-    // same core function, against the actual final width the drag landed
-    // on (not a hand-picked value), so nothing about the live preview vs.
-    // the post-release re-render can have silently diverged.
-    const sourceMatch = /<tspan[^>]*>([^<]*)<\/tspan>/.exec(before);
-    expect(sourceMatch).not.toBeNull();
-    const fonts = await resolvePresentationFonts(presentationId);
-    const font = fonts.get("Noto Sans TC")!;
-    const expectedWrap = wrapText(sourceMatch![1], { width: newWidth, font, fontSizePx: 24 });
-    const actualTspanCount = (after.match(/<tspan /g) ?? []).length;
-    expect(actualTspanCount).toBe(expectedWrap.lines.length);
+    // Non-circular wrap assertions (post-[E4.T12]: the TypeScript engine's
+    // `wrapText`, previously this test's oracle, no longer exists). The
+    // drag only ever widens the box (see the comment above `nowPage`), so
+    // it can only need as many or fewer lines than before, never more; and
+    // every resulting line must actually fit the new declared width in a
+    // real browser (Chromium's `getComputedTextLength()`, the same
+    // external ground truth text-metrics.test.ts uses) — an external check
+    // stronger than the old same-engine comparison.
+    const tspanCountBefore = (before.match(/<tspan /g) ?? []).length;
+    const tspanCountAfter = (after.match(/<tspan /g) ?? []).length;
+    expect(tspanCountAfter).toBeLessThanOrEqual(tspanCountBefore);
+    const afterLines = [...after.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((m) => m[1]);
+    for (const line of afterLines) {
+      if (line === "") continue; // A trailing empty wrapped line has nothing to measure.
+      const renderedWidth = await renderedWidthInChromium(page, line, 24);
+      expect(renderedWidth, `行 "${line}" 的實際渲染寬度`).toBeLessThanOrEqual(newWidth * 1.005);
+    }
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);

@@ -1,59 +1,156 @@
-import { EFFECTS_NS, deriveSteps, validateEffectItem, type Effect, type RawEffectAttributes } from "@co-motion/core/effects";
-
-export type { Effect, EffectFamily, EffectName, EffectStart, Step } from "@co-motion/core/effects";
-export { deriveSteps };
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
 /**
- * Reads the effect list out of a slide's <metadata>. Order matches the order
- * the entries appear in the file. A slide with no effects is legal and
- * yields an empty list; anything malformed or not yet implemented throws.
+ * Browser-side effect model + route client + cache ([E4.T7]). Replaces the
+ * former DOMParser-based `parseEffects`/`deriveSteps` (that computation now
+ * lives server-side — `effect list`'s `data`, plan 4.1) with a thin fetch
+ * client over `GET /api/effects/<slidePath>`, plus an in-memory cache keyed
+ * by slide path so the canvas, the animate panel, and player-plan's step
+ * derivation never issue duplicate requests for the same slide at once.
  *
- * [E2.T7]/D1: this keeps its own `DOMParser` reader rather than moving into
- * `@co-motion/core/effects` — namespace-URI matching ("以命名空間 URI 比對，
- * 不管前綴叫什麼", `packages/web/test/effects.test.ts`) needs a real DOM,
- * which the core package's `scanDocument` (no `node:` imports, but also no
- * DOM) cannot give it. Every "is this attribute value legal" judgement is
- * still core's alone — `validateEffectItem` — so the two readers can never
- * quietly drift apart on what counts as a legal effect item.
+ * D6: `SUPPORTED_EFFECTS`/`SUPPORTED_STARTS` and the five effect types are
+ * re-declared here rather than imported from core's effects module — this
+ * is the terminal shape (F8, NOOP-289, removes core from the web bundle
+ * entirely), not a temporary duplication. `docs/spec/cli.md`'s `effect
+ * add` entry is the normative source for these value sets, not this file.
  */
-export function parseEffects(svgMarkup: string): Effect[] {
-  const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
-  // image/svg+xml parsing is not forgiving like HTML: a failure shows up as a
-  // <parsererror> element rather than an exception, so look for it.
-  if (doc.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("投影片不是合法的 XML，無法讀取效果清單。");
-  }
 
-  // ADR-0009 puts the list inside <metadata>, so only look there — a
-  // comot:effects sitting anywhere else is not the slide's effect list.
-  // Match by namespace URI throughout: the "comot:" prefix is a convention,
-  // not a guarantee.
-  const lists = Array.from(doc.getElementsByTagNameNS(SVG_NS, "metadata")).flatMap((metadata) =>
-    Array.from(metadata.getElementsByTagNameNS(EFFECTS_NS, "effects")),
-  );
-  if (lists.length === 0) {
-    return [];
-  }
-  if (lists.length > 1) {
-    throw new Error(`這張投影片的 metadata 裡有 ${lists.length} 組效果清單，但一張投影片只能有一份效果清單，簡報已損毀。`);
-  }
+export type EffectFamily = "enter" | "emphasis" | "exit" | "path" | "media";
 
-  const nodes = Array.from(lists[0].getElementsByTagNameNS(EFFECTS_NS, "effect"));
-  return nodes.map((node, index) => readEffect(node, index, doc));
+export type EffectName =
+  | "appear"
+  | "fade"
+  | "fly-up"
+  | "fly-left"
+  | "zoom"
+  | "pulse"
+  | "spin"
+  | "grow"
+  | "disappear"
+  | "fade-out"
+  | "zoom-out"
+  | "path"
+  | "play"
+  | "pause";
+
+export type EffectStart = "on-click" | "with-previous" | "after-previous";
+
+export const SUPPORTED_EFFECTS: Readonly<Record<EffectFamily, readonly EffectName[]>> = {
+  enter: ["appear", "fade", "fly-up", "fly-left", "zoom"],
+  emphasis: ["pulse", "spin", "grow"],
+  exit: ["disappear", "fade-out", "zoom-out"],
+  path: ["path"],
+  media: ["play", "pause"],
+};
+
+export const SUPPORTED_STARTS: readonly EffectStart[] = ["on-click", "with-previous", "after-previous"];
+
+export interface Effect {
+  /** Points at the id of an element (or group `<g>`) in the slide. */
+  target: string;
+  family: EffectFamily;
+  effect: EffectName;
+  start: EffectStart;
+  duration: number;
+  delay: number;
+  /** SVG path syntax, slide coordinates. Only meaningful for family "path". */
+  d?: string;
+  /**
+   * This item's 0-based position in the slide's effect list — web's own
+   * convention (D4), independent of the `effect move`/`set`/`remove`
+   * commands' 1-based addressing. The route client below is the one place
+   * that translates between the two; every other web module only ever
+   * sees 0-based.
+   */
+  index: number;
 }
 
-function readEffect(node: Element, index: number, doc: Document): Effect {
-  const raw: RawEffectAttributes = {
-    target: node.getAttribute("target"),
-    family: node.getAttribute("family"),
-    effect: node.getAttribute("effect"),
-    start: node.getAttribute("start"),
-    duration: node.getAttribute("duration"),
-    delay: node.getAttribute("delay"),
-    d: node.getAttribute("d"),
+export interface Step {
+  effects: Effect[];
+}
+
+export type PageTransitionEffect = "none" | "fade" | "slide" | "zoom";
+
+export interface SlideTransitionEdge {
+  effect: PageTransitionEffect;
+  duration: number;
+}
+
+export interface SlideTransition {
+  enter: SlideTransitionEdge;
+  exit: SlideTransitionEdge;
+}
+
+export interface SlideEffectPlan {
+  effects: Effect[];
+  steps: Step[];
+  /** Fetched but not yet consumed by any web module — F8 (NOOP-289) is the first reader. */
+  transition: SlideTransition;
+}
+
+/** The `GET /api/effects/<path>` wire shape, 1-based `index` (server/CLI addressing) throughout. */
+interface WireEffect {
+  target: string;
+  family: EffectFamily;
+  effect: EffectName;
+  start: EffectStart;
+  duration: number;
+  delay: number;
+  d?: string;
+  index: number;
+}
+interface WirePlan {
+  effects: WireEffect[];
+  steps: Array<{ effects: WireEffect[] }>;
+  transition: SlideTransition;
+}
+
+function toZeroBased(effect: WireEffect): Effect {
+  return { ...effect, index: effect.index - 1 };
+}
+
+/** Caches the in-flight/settled `Promise`, not the resolved value — so two callers racing for the same slide share one fetch (plan 4.4). */
+const cache = new Map<string, Promise<SlideEffectPlan>>();
+
+async function fetchFresh(slidePath: string): Promise<SlideEffectPlan> {
+  const response = await fetch(`/api/effects/${slidePath}`);
+  const body = (await response.json()) as Partial<WirePlan> & { error?: string };
+  if (!response.ok) {
+    throw new Error(body.error ?? `載入效果清單失敗：${slidePath}`);
+  }
+  const wire = body as WirePlan;
+  return {
+    effects: wire.effects.map(toZeroBased),
+    steps: wire.steps.map((step) => ({ effects: step.effects.map(toZeroBased) })),
+    transition: wire.transition,
   };
-  const targetExists = Boolean(raw.target && doc.getElementById(raw.target));
-  return validateEffectItem(raw, index, targetExists);
+}
+
+/**
+ * Fetches (and caches) `slidePath`'s effect plan. Concurrent calls for the
+ * same path before the first resolves share the one in-flight fetch. A
+ * failed fetch (non-2xx, or the network request itself rejecting) is never
+ * cached — the next call retries from scratch.
+ */
+export function fetchSlideEffectPlan(slidePath: string): Promise<SlideEffectPlan> {
+  const cached = cache.get(slidePath);
+  if (cached) return cached;
+  const promise = fetchFresh(slidePath).catch((error: unknown) => {
+    cache.delete(slidePath);
+    throw error;
+  });
+  cache.set(slidePath, promise);
+  return promise;
+}
+
+/**
+ * Invalidates one slide's cached plan (`slidePath` given) or every cached
+ * plan (no argument) — call after any `effect *`/`element group`/`element
+ * ungroup` command settles, so the next `fetchSlideEffectPlan` call re-fetches
+ * instead of serving a stale plan.
+ */
+export function invalidateSlideEffectPlans(slidePath?: string): void {
+  if (slidePath === undefined) {
+    cache.clear();
+    return;
+  }
+  cache.delete(slidePath);
 }

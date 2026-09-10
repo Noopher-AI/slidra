@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present && (command -v cargo >/dev/null 2>&1 || (echo '需要 Rust 工具鏈：先跑 sandbox-setup（或依 rust-toolchain.toml 執行 rustup show）再重試' >&2; exit 1)) && cargo build --release && node scripts/link-cli.mjs",
     "test": "npm run build && vitest run",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "typecheck": "tsc -b && tsc -p packages/web --noEmit",
@@ -16,6 +16,7 @@
     "@axe-core/playwright": "^4.13.0",
     "@types/node": "^22.10.5",
     "@types/pngjs": "^6.0.5",
+    "fflate": "^0.8.3",
     "jsdom": "^29.1.1",
     "pdfjs-dist": "^4.10.38",
     "pixelmatch": "^7.2.0",

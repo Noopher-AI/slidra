@@ -1,10 +1,35 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultRegistry, type CommandRegistry } from "@co-motion/cli";
 import { runServeCli } from "../../src/cli.js";
 import { agentSettingsPath } from "../../src/agent/settings.js";
+
+const execFileAsync = promisify(execFile);
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+  failureKind?: string;
+}
+
+async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
+  try {
+    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    return JSON.parse(stdout.trim()) as CliEnvelope<T>;
+  } catch (error) {
+    const err = error as { stdout?: string };
+    if (typeof err.stdout === "string" && err.stdout.trim().length > 0) {
+      return JSON.parse(err.stdout.trim()) as CliEnvelope<T>;
+    }
+    throw error;
+  }
+}
 
 // NOOP-230: serve must always start, whether or not an agent is selected —
 // "no agent" (or "selected but not logged in") is a supported state, never
@@ -32,7 +57,6 @@ let home: string;
 let comotDir: string;
 let fakeCliDir: string;
 let originalPath: string | undefined;
-let registry: CommandRegistry;
 
 /** Writes fake `claude`/`codex` scripts, both reporting "not logged in", into a fresh temp dir. */
 async function writeFakeCli(): Promise<string> {
@@ -50,7 +74,7 @@ beforeEach(async () => {
   home = await mkdtemp(path.join(tmpdir(), "co-motion-cli-home-"));
   comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cli-files-"));
   process.env.CO_MOTION_HOME = home;
-  registry = createDefaultRegistry();
+  process.env.CO_MOTION_BIN = coMotionBinPath;
 
   fakeCliDir = await writeFakeCli();
   originalPath = process.env.PATH;
@@ -59,6 +83,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.CO_MOTION_HOME;
+  delete process.env.CO_MOTION_BIN;
   process.env.PATH = originalPath;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -67,8 +92,10 @@ afterEach(async () => {
 
 async function openFreshPresentation(): Promise<string> {
   const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name: "測試簡報" });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  expect(created.ok).toBe(true);
+  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 

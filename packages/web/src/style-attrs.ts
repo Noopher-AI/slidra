@@ -4,16 +4,15 @@
  * summarize them across a multi-selection. No DOM, no fetch — kept testable
  * in isolation and reusable from `StylePanel.tsx`.
  *
- * This list is this front end's OWN constant, not imported from
- * `@co-motion/core`'s `STYLE_ATTRIBUTE_WHITELIST` (the command layer's real
- * whitelist, `packages/core/src/element-edit.ts`): the web bundle only
- * imports `@co-motion/core`'s subpaths (`/slide`, `/text`, `/text-metrics`,
- * `/geometry`), never the package root, because the root pulls in
- * `workspace.ts` (`node:fs`) which cannot go into a browser bundle. Drift
- * between this list and the real whitelist is caught by
- * `test/style-attrs.test.ts`, which imports the root from Node.
+ * This list is this front end's OWN constant, not imported from core's
+ * `STYLE_ATTRIBUTE_WHITELIST` (the command layer's real whitelist,
+ * `packages/core/src/element-edit.ts`): the web bundle no longer depends on
+ * core at all (F8, NOOP-289) — `SlideElement` now comes from this
+ * package's own `slide-dom.ts`. Drift between this list and the real
+ * whitelist is caught by `test/style-attrs.test.ts`, which reads
+ * `docs/spec/cli.md`'s `element style set` entry directly.
  */
-import type { SlideElement } from "@co-motion/core/slide";
+import type { SlideElement } from "./slide-dom.js";
 
 export type PanelStyleAttribute =
   | "fill"

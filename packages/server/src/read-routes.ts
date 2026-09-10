@@ -1,6 +1,8 @@
 import type { ServerResponse } from "node:http";
-import type { CommandRegistry } from "@co-motion/cli";
-import { CoMotionError, assertSupportedFormatVersion, validateProjectJson, type ProjectJson } from "@co-motion/core";
+import { CoMotionError, CoMotionNotFoundError } from "./comotion/errors.js";
+import { listEntries as listCommandEntries, loadProject as loadProjectFromCli, readPresentationText, renderSlide } from "./comotion/reads.js";
+import { runJsonCommand } from "./comotion/command.js";
+import type { ProjectJson } from "./comotion/project-json.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
@@ -12,31 +14,15 @@ import { handleRawRequest } from "./raw.js";
  * kind of thing that silently stops doing `{{ slide_number }}` substitution
  * if it ever forks into two copies.
  *
- * Every function here keeps `serve.ts`'s original behaviour byte-for-byte —
- * this file is a pure move, not a rewrite.
+ * [E4.T9]/F7: every read here now spawns the Rust `co-motion` binary
+ * (`comotion/reads.ts`) instead of dispatching against an in-process
+ * `CommandRegistry` — the HTTP-facing behaviour is unchanged.
  */
 
-export async function loadProject(registry: CommandRegistry, id: string): Promise<ProjectJson> {
-  const result = await registry.dispatch<{ content: string }>("cat", { id, path: "project.json" });
-  if (!result.ok) {
-    // Reuse the registry's own message (e.g. "找不到識別碼對應的簡報：<id>")
-    // instead of inventing a second wording for the same failure.
-    throw new CoMotionError(result.message);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(result.data!.content);
-  } catch {
-    throw new CoMotionError("簡報的 project.json 無法解析");
-  }
-  // Structural validation is @co-motion/core's, not the caller's own copy
-  // (ticket #12) — the same check `open` already ran when the container
-  // was first unpacked. Running it again here catches a work directory
-  // whose project.json was mutated after `open` (e.g. by a future write
-  // command) rather than trusting a shape that was only ever true once.
-  const project = validateProjectJson(parsed);
-  assertSupportedFormatVersion(project);
-  return project;
+export { listCommandEntries as listEntries };
+
+export async function loadProject(id: string): Promise<ProjectJson> {
+  return loadProjectFromCli(id);
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -51,22 +37,13 @@ function contentTypeFor(virtualPath: string): string {
 }
 
 /** `GET /api/presentation`. */
-export async function handlePresentationRoute(
-  registry: CommandRegistry,
-  presentationId: string,
-  res: ServerResponse,
-): Promise<void> {
-  const project = await loadProject(registry, presentationId);
+export async function handlePresentationRoute(presentationId: string, res: ServerResponse): Promise<void> {
+  const project = await loadProject(presentationId);
   sendJson(res, 200, project);
 }
 
 /** `GET /api/files/<virtual path>`. `virtualPath` is already percent-decoded by the caller. */
-export async function handleFilesRoute(
-  registry: CommandRegistry,
-  presentationId: string,
-  virtualPath: string,
-  res: ServerResponse,
-): Promise<void> {
+export async function handleFilesRoute(presentationId: string, virtualPath: string, res: ServerResponse): Promise<void> {
   // The virtual path space is the only path space (ADR-0004): whatever the
   // caller asks for goes straight into `cat`'s virtual-path lookup, which
   // structurally cannot resolve outside the presentation. There is no
@@ -76,23 +53,85 @@ export async function handleFilesRoute(
   // A slide path is rendered for display — `{{ slide_number }}` and its
   // siblings substituted (NOOP-90/T4) — while every other path
   // (project.json, assets/*) keeps reading through `cat` unchanged.
-  const project = await loadProject(registry, presentationId);
-  const commandName = project.slides.includes(virtualPath) ? "slide render" : "cat";
-  const result = await registry.dispatch<{ content: string }>(commandName, {
-    id: presentationId,
-    path: virtualPath,
-  });
-  if (!result.ok) {
+  const project = await loadProject(presentationId);
+  try {
+    const content = project.slides.includes(virtualPath)
+      ? await renderSlide(presentationId, virtualPath)
+      : await readPresentationText(presentationId, virtualPath);
+    res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });
+    res.end(content);
+  } catch (error) {
     // Same narrow classification `/api/raw/` uses (ticket #11): only a
     // failure that positively proves absence is a 404. Everything else is
     // a 500, because "not classified as not-found" is not evidence the
     // file is missing.
-    const status = result.failureKind === "not-found" ? 404 : 500;
-    sendJson(res, status, { error: result.message });
+    if (error instanceof CoMotionNotFoundError) {
+      sendJson(res, 404, { error: error.message });
+      return;
+    }
+    if (error instanceof CoMotionError) {
+      sendJson(res, 500, { error: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
+/**
+ * The normalized "nothing here yet" shape `/api/effects/` returns for a
+ * declared slide that has never had a `<comot:effects>` written to it
+ * ([E4.T7] D3). Mirrors `effect list`'s own defaults
+ * (`packages/core/src/effects/index.ts`'s step derivation and
+ * `packages/core/src/slide/transition.ts`'s `DEFAULT_TRANSITION`) exactly,
+ * so a caller can treat "never edited" and "edited to be empty" the same
+ * way without special-casing either.
+ */
+export const EMPTY_EFFECT_PLAN = {
+  effects: [],
+  steps: [],
+  transition: {
+    enter: { effect: "none", duration: 0.6 },
+    exit: { effect: "none", duration: 0.5 },
+  },
+};
+
+/**
+ * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
+ * player and step-by-step export now fetch instead of computing themselves
+ * in the browser (`packages/web/src/player-plan.ts`'s former `deriveSteps`/
+ * `parseEffects`). Spawns the Rust `co-motion effect list` command
+ * ([E4.T9]/F7) rather than dispatching against an in-process registry.
+ *
+ * Deliberately narrower than `effect list`'s own command-layer contract
+ * (D8): only a declared SLIDE is accepted here, not a template — the
+ * player only ever plays slides, so a template path is reported as 404
+ * ("not a slide") rather than silently returning a plan for it.
+ */
+export async function handleEffectsRoute(presentationId: string, virtualPath: string, res: ServerResponse): Promise<void> {
+  const project = await loadProject(presentationId);
+  if (!project.slides.includes(virtualPath)) {
+    sendJson(res, 404, { error: `不是投影片：${virtualPath}` });
     return;
   }
-  res.writeHead(200, { "Content-Type": contentTypeFor(virtualPath) });
-  res.end(result.data!.content);
+  const result = await runJsonCommand<{ effects: unknown; steps: unknown; transition: unknown }>([
+    "effect", "list", presentationId, virtualPath,
+  ]);
+  if (!result.ok) {
+    if (result.failureKind === "not-found") {
+      // A declared slide that has never had `<comot:effects>` written to
+      // it — the command reports "沒有效果清單" (not-found); the route
+      // normalizes that into a legal empty plan (D3) rather than
+      // forwarding a 404 for a path that IS a real slide.
+      sendJson(res, 200, EMPTY_EFFECT_PLAN);
+      return;
+    }
+    // A damaged effect list (`failureKind === "failed"`) is forwarded
+    // verbatim, unmodified, unprefixed — the command's own message is
+    // already a complete, printable explanation.
+    sendJson(res, 500, { error: result.message });
+    return;
+  }
+  sendJson(res, 200, result.data);
 }
 
 /**
