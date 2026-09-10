@@ -262,6 +262,95 @@ interface DragOptions {
   alt?: boolean;
   /** Called with the page still mid-drag (button down, before mouseup) — for reading the live preview. */
   onMidDrag?: () => Promise<void>;
+  /**
+   * Wait for `#el-a`'s client box to stop moving instead of a fixed
+   * `waitForTimeout(150)` after mouseup (NOOP-349 round 3, [Fix.4]). The
+   * fixed sleep raced the srcdoc live-reload the persisted write triggers:
+   * short enough that a following drag could land mid-reload, or a
+   * following `frame.evaluate` could hit the iframe's document being torn
+   * down ("Execution context was destroyed"). Off by default — every other
+   * `dragBy` caller keeps the exact timing it already had.
+   */
+  settle?: boolean;
+}
+
+/**
+ * Waits for the live-reload cycle a committed gesture triggers (canvas.ts's
+ * `reload()`: fetch -> full `srcdoc` rebuild, discarding and recreating the
+ * whole iframe document) to actually happen and finish, then for `#el-a`'s
+ * bounding box (in the main-canvas iframe) to stop moving, up to 5s total.
+ * Throws on timeout — unlike `qa/agent_helpers.py`'s
+ * `_wait_status_bar_settled` (which never raises, because a QA case script
+ * owns its own PASS/FAIL), a timeout here means the fixture doesn't have
+ * `#el-a` or the reload never landed, which is itself a bug the caller
+ * should see as a hard failure, not silently ignore.
+ *
+ * Geometry alone is not a sufficient settle signal, and neither is waiting
+ * to observe `#el-a` go missing: right after mouseup, the live-drag preview
+ * already shows the (about to be persisted) final position, so two
+ * consecutive non-null reads can already be equal before the persisted
+ * write — and the reload it triggers — have even started; and a real
+ * `srcdoc` reload in this app does not reliably paint a blank frame in
+ * between (verified directly: requiring an observed null read before
+ * accepting "settled" just timed out every time — `#el-a` never once read
+ * as missing across a real edit's reload). This tags the CURRENT `#el-a`
+ * DOM node with a one-shot marker attribute first — an attribute set via
+ * `evaluate()` can never survive a real `srcdoc` rebuild, since that
+ * discards the whole document and reparses fresh markup — so a read is
+ * only trusted once it comes from an element that does NOT carry this
+ * call's marker, i.e. provably a new, post-reload node.
+ */
+async function waitForSlideSettled(page: Page): Promise<void> {
+  const marker = `e2e-settle-${Math.random().toString(36).slice(2)}`;
+
+  const tagCurrentElA = async (): Promise<boolean> => {
+    try {
+      const frame = await canvasFrame(page);
+      return await frame.evaluate((m) => {
+        const el = document.getElementById("el-a");
+        if (!el) return false;
+        el.setAttribute("data-e2e-settle-marker", m);
+        return true;
+      }, marker);
+    } catch {
+      return false;
+    }
+  };
+
+  // A live-reload mid-flight tears down the iframe's execution context —
+  // `frame.evaluate` throwing here is an expected "not settled yet" sample,
+  // not swallowed silently: it only ever prevents two reads from matching,
+  // so a caller stuck in a genuinely broken reload still hits the 5s
+  // timeout below and gets a real error, same as any other unsettled read.
+  const readBox = async () => {
+    try {
+      const frame = await canvasFrame(page);
+      return await frame.evaluate((m) => {
+        const el = document.getElementById("el-a");
+        if (!el) return null;
+        // Still the pre-reload node this call marked — its geometry is the
+        // live-drag preview, not the persisted, post-reload result.
+        if (el.getAttribute("data-e2e-settle-marker") === m) return null;
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }, marker);
+    } catch {
+      return null;
+    }
+  };
+
+  const deadline = Date.now() + 5_000;
+  if (!(await tagCurrentElA())) {
+    throw new Error("waitForSlideSettled: 找不到 #el-a 可標記，無從觀察這次 reload");
+  }
+  let last: Awaited<ReturnType<typeof readBox>> = null;
+  for (;;) {
+    await page.waitForTimeout(50);
+    const cur = await readBox();
+    if (cur !== null && last !== null && JSON.stringify(cur) === JSON.stringify(last)) return;
+    last = cur;
+    if (Date.now() > deadline) throw new Error("waitForSlideSettled: #el-a 在 5 秒內沒有出現 reload 後的穩定狀態");
+  }
 }
 
 async function dragBy(
@@ -282,8 +371,12 @@ async function dragBy(
   if (options.onMidDrag) await options.onMidDrag();
   await page.mouse.up();
   if (options.alt) await page.keyboard.up("Alt");
-  // POST /api/command round trip + the file write it causes.
-  await page.waitForTimeout(150);
+  if (options.settle) {
+    await waitForSlideSettled(page);
+  } else {
+    // POST /api/command round trip + the file write it causes.
+    await page.waitForTimeout(150);
+  }
 }
 
 /** `translate(x y)` -> `{x, y}`. Throws if the element carries no such transform. */
@@ -462,14 +555,20 @@ it("驗收條件第四條 (b)：連續 20 次獨立拖曳，恰好產生 20 筆�
     const REPEATS = 20;
     for (let i = 0; i < REPEATS; i++) {
       const dx = i % 2 === 0 ? 10 : -10;
-      await dragBy(page, { x: 180, y: 150 }, { x: dx, y: 0 }, { alt: true });
+      await dragBy(page, { x: 180, y: 150 }, { x: dx, y: 0 }, { alt: true, settle: true });
+      // Confirms each individual drag's history write landed before the
+      // next drag starts — a fixed waitForTimeout(150) could let a drag
+      // land while the previous one's srcdoc reload was still in flight,
+      // which is what made this test observe only 19 of 20 entries
+      // (NOOP-349 round 3, [Fix.4]).
+      await expect.poll(() => undoCount(presentationId)).toBe(beforeUndoCount + i + 1);
     }
 
     expect(await undoCount(presentationId)).toBe(beforeUndoCount + REPEATS);
   } finally {
     await cleanup();
   }
-}, 30_000);
+}, 60_000);
 
 it("拖曳中情境列隱藏；放手並重載後選取狀態與情境列都保留（review 要求）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
@@ -887,10 +986,13 @@ it("非等比縮放一個原點非 (0,0) 的 rect：預覽 nw 角與放手後 nw
     await page.waitForTimeout(80);
     const nwDuringDrag = await readNwCornerClient();
     await page.mouse.up();
-    // POST /api/command round trip + the write's own /api/events live-reload
-    // push (canvas.ts's reload()) — same wait every other handle-drag test
-    // in this file gives the persisted result to land.
-    await page.waitForTimeout(150);
+    // Wait for the POST /api/command round trip + the write's own
+    // /api/events live-reload push (canvas.ts's reload()) to actually land,
+    // instead of guessing a fixed delay (NOOP-349 round 3, [Fix.5]) — a
+    // fixed waitForTimeout(150) here could read el-a's client rect while
+    // the srcdoc swap was still in flight, throwing "Execution context was
+    // destroyed" instead of the intended before/after comparison.
+    await waitForSlideSettled(page);
     const nwAfterRelease = await readNwCornerClient();
 
     // The nw corner is the anchor: it must not visibly jump between the
