@@ -30,6 +30,16 @@ adapter。Codex adapter 使用唯讀沙箱與逐次請求授權；編輯規約�
 CoMotion 的 `allow_once` 白名單檢查後執行，才能寫入簡報與復原快照。
 不需要把使用者的 Codex 全域設定改成完整存取。
 
+## `--qa`：沙箱 QA 層
+
+`--qa` 在既有流程（安裝／建置／前置檢查／簡報）之後，背景起一份 `co-motion serve`
+與一個 headless Chromium（帶 `--remote-debugging-port`），供 `browser-use` 操作，然後
+腳本自己結束（不像不帶 `--qa` 時那樣 `exec` 進 `serve` 常駐）。它寫出
+`.quickstart/qa/qa.env`（`BU_CDP_URL`、`BH_AGENT_WORKSPACE=qa/`、伺服器網址與簡報識別碼
+等），`source` 之後 `browser-use` 就能透過 `qa/agent_helpers.py` 的原語操作這份 demo
+簡報；細節與原語清單見 `qa/README.md`。跑完用 `./quick_start.sh --qa-stop` 收尾，會把
+背景的 serve 與 Chromium 一併收掉。不帶 `--qa` 時的行為完全不受影響。
+
 ## `--fresh` 什麼時候非用不可
 
 改了 `demo/` 之後。腳本不會自動重打包既有的示範簡報——重打包會換一組簡報識別碼，
