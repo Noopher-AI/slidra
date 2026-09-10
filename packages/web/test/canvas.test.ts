@@ -2136,6 +2136,88 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
   });
 });
 
+// NOOP-349 round 3: endMarqueeGesture's hit test (canvas.ts) only ever reads
+// elementBoundsById, filled exclusively by the "element-bounds" postMessage
+// event — this is the host side of the round's fix (selection-runtime.js
+// now sends "element-bounds" synchronously before "gesture-start" for a
+// marquee, [Fix.2]). canvas.ts itself is deliberately unchanged; this test
+// pins the existing degrade-to-empty-selection behavior it already had
+// (`computeBounds` returning null) so nobody "fixes" it into a fallback
+// hit-test path later — the postMessage-protocol boundary is the one and
+// only source of truth (round-3 plan §4.B).
+describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是空選取 (NOOP-349 round 3)", () => {
+  const slideMarkupWithEl =
+    '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
+
+  function stubFetch(slideMarkup: string): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(project), { status: 200 });
+        if (url.endsWith("/api/files/slides/001.svg")) return new Response(slideMarkup, { status: 200 });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+  }
+
+  async function runMarquee(
+    send: (data: unknown) => void,
+    sendElementBounds: boolean,
+  ): Promise<void> {
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    if (sendElementBounds) {
+      send({
+        source: "comot-selection",
+        event: "element-bounds",
+        items: [{ id: "el-a", rect: { x: 100, y: 100, width: 160, height: 100 }, local: { x: 0, y: 0, width: 160, height: 100 } }],
+      });
+    }
+    // Marquee rect (50,50)-(300,250) fully covers el-a's (100,100,160,100).
+    send({ source: "comot-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 300, y: 250 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it("收到 element-bounds 後結束 marquee：涵蓋範圍內的元素被選取", async () => {
+    stubFetch(slideMarkupWithEl);
+    controller = mountCanvas(container);
+    await controller.reload();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    await runMarquee(send, true);
+
+    expect(state?.selection.ids).toEqual(["el-a"]);
+  });
+
+  it("從未收到 element-bounds 就結束 marquee：即使矩形涵蓋元素也選不到任何東西（不丟例外）", async () => {
+    stubFetch(slideMarkupWithEl);
+    controller = mountCanvas(container);
+    await controller.reload();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    await runMarquee(send, false);
+
+    expect(state?.selection.ids).toEqual([]);
+  });
+});
+
 // F8 (NOOP-289 決定 (d)/C2): copy/cut go straight through the CLI's own
 // `element copy`/`element cut` now — the browser no longer serializes a
 // selection itself. `element cut` replaces the former "local serialize +
