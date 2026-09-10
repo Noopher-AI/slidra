@@ -944,7 +944,26 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("編輯期間不中繼任何白名單鍵", async () => {
+  it("F-02: ArrowLeft／ArrowRight 沒有修飾鍵也會被中繼（換頁用）", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowLeft", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowRight", cancelable: true }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "ArrowLeft", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "ArrowRight", code: "", meta: false, ctrl: false, shift: false, alt: false },
+    ]);
+  });
+
+  it("編輯期間不中繼任何白名單鍵（含 F-02 新增的 ArrowLeft／ArrowRight——就地編輯中方向鍵是游標移動，不換頁）", async () => {
     const { win } = boot('<svg><g id="el-text"><text font-size="20">Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
 
@@ -954,6 +973,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
 
     const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
     win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Delete", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowLeft", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowRight", cancelable: true }));
     await tick();
 
     window.removeEventListener("message", handler);

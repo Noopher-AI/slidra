@@ -1515,6 +1515,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       )
         void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
+      // F-02: ←/→ paging, relayed here for the same reason every other key
+      // in this branch is — App.tsx's own document-level keydown listener
+      // for ArrowLeft/ArrowRight never sees a keypress that landed inside
+      // this iframe. selection-runtime.js's `isRelayedStageKey` already
+      // withholds this while a text edit or gesture is in progress, so no
+      // extra guard is needed here (unlike App.tsx's listener, which guards
+      // against caret movement in a chat/text field itself instead — that
+      // guard has no equivalent inside this iframe because a real DOM
+      // textarea there also owns `editingId`, the same thing the relay
+      // already checks).
+      else if (message.key === "ArrowLeft") void previous();
+      else if (message.key === "ArrowRight") void next();
       // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
       // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key
       // 轉送」而不是父文件自己的 keydown——兩條路徑呼叫同一組 controller

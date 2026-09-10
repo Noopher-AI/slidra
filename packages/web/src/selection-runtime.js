@@ -2090,11 +2090,11 @@
   // keypress that landed in here). Whitelisted to exactly the keys the
   // parent has shortcuts for: this ticket's four, plus ⌘Z/⇧⌘Z (issue 198;
   // written without the hash so the no-hex-colour source check stays
-  // honest) — once a click on the stage has moved focus in here, App.tsx's
-  // document-level undo/redo listener would otherwise go deaf. Everything
-  // else (⌘S, arrow
-  // keys, Tab, …) is untouched and falls through to whatever this iframe's
-  // own default handling already does. Never relayed while editing text or
+  // honest), plus ←/→ (F-02: same "焦點在 iframe 內" gap as the rest of this
+  // list — App.tsx's own document-level ArrowLeft/ArrowRight paging listener
+  // never sees a keypress that landed in here either). Everything else (⌘S,
+  // Tab, …) is untouched and falls through to whatever this iframe's own
+  // default handling already does. Never relayed while editing text or
   // mid-gesture — same posture as the existing Space relay above — nor in
   // play mode, which the parent itself already gates before acting on
   // `stage-key`.
@@ -2107,6 +2107,11 @@
     // cancel / group-path pop / clear-selection), since those and "close
     // the chart window if one happens to be open" are independent.
     if (event.key === "Escape") return true;
+    // F-02: page navigation, no modifier — same unmodified-key posture as
+    // Delete/Backspace/Escape above, and (like them) gated below on
+    // `editingId === null && !gesture` so caret movement inside an
+    // in-progress text edit and an in-flight gesture are untouched.
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") return true;
     var withModifier = event.metaKey || event.ctrlKey;
     if (!withModifier) return false;
     // [E2.T18]: c/x/v added alongside a/d/]/[/z/Z — headless Chromium

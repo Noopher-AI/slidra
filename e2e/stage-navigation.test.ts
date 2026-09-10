@@ -358,6 +358,38 @@ it("中鍵拖曳：留白區平移畫布、不改變選取（06-KEYBOARD_AND_GES
   }
 });
 
+it("F-05：點投影片外圈的留白區清除選取；同一塊留白區拖曳（平移）不清除（06-KEYBOARD_AND_GESTURES.md「點空白取消」，父票 NOOP-385/NOOP-351/#283）", async () => {
+  const { started, page } = await start("stage-nav-gutter-click-deselect");
+  try {
+    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    const selectionChip = page.locator(".status-selection-chip");
+    await expect.poll(() => selectionChip.textContent()).not.toBe("");
+    const contextBar = page.locator(".context-bar");
+    await expect.poll(() => contextBar.isVisible()).toBe(true);
+
+    // 先驗證「拖曳」不算「點」：留白區拖曳照舊只平移，不清除選取（既有的
+    // 「中鍵拖曳」場景驗證的是中鍵，這裡驗證左鍵拖曳同樣不清除）。
+    const beforeTransform = await stageTransform(page);
+    let point = await gutterPoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.mouse.move(point.x + 40, point.y + 30, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
+    expect(await selectionChip.textContent()).not.toBe("");
+
+    // 留白區「點」（無位移）：選取框、把手、情境列全部清空。
+    point = await gutterPoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect.poll(() => selectionChip.textContent()).toBe("");
+    await expect.poll(() => contextBar.count()).toBe(0);
+  } finally {
+    await started.cleanup();
+  }
+});
+
 it("⌘0／⌘+／⌘−：回到 Fit、放大一級、縮小一級，且百分比文字同步", async () => {
   const { started, page } = await start("stage-nav-zoom-keys");
   try {
