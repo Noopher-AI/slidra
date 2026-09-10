@@ -367,6 +367,13 @@
     el.style.border = "none";
     el.style.opacity = "0";
     el.style.pointerEvents = "none";
+    // The slide document sets user-select:none (wrapSelectionDocument) so a
+    // marquee drag cannot start a native text selection. This element is the
+    // one place that still needs the default: it is the keyboard/IME sink for
+    // text editing, and setSelectionRange()/composition work on a control
+    // whose text is selectable.
+    el.style.userSelect = "text";
+    el.style.webkitUserSelect = "text";
     shadow.appendChild(el);
     el.addEventListener("compositionstart", function () {
       isComposing = true;
@@ -1640,6 +1647,15 @@
   // been parsed — same reason reportViewport() itself waits for `load`.
   window.addEventListener("load", buildMediaOverlays);
   window.addEventListener("load", reportEmbedBoxes);
+  // [NOOP-349 round 3] wrapSelectionDocument() places this runtime's <script>
+  // before bodyMarkup, so the IIFE-end call to reportElementBounds() below
+  // always runs before the root <svg> exists and reports an empty map. The
+  // only other trigger was document.fonts.ready, which can take seconds (or
+  // never fire for shape-only slides) — until then, a marquee drawn right
+  // after a slide change hits an empty elementBoundsById on the host and
+  // silently selects nothing. This "load" listener closes that window with a
+  // real report as soon as the markup is parsed.
+  window.addEventListener("load", reportElementBounds);
 
   var DRAG_THRESHOLD_PX = 3;
   /** The in-progress pointer gesture, or null between gestures. */
@@ -1921,6 +1937,17 @@
         // processes gesture-start, instead of racing "load" (NOOP-328: that
         // race let the host's toUserPoint fall back to (0,0), producing a
         // drag landing 180px off target).
+        if (gesture.kind === "marquee") {
+          // [NOOP-349 round 3] Same race as NOOP-328, for the other message
+          // a marquee needs: elementBoundsById. A marquee that starts before
+          // "load" (or before document.fonts.ready) races an empty bounds
+          // map on the host, which makes endMarqueeGesture's hit test find
+          // nothing and silently select zero elements. Only marquee needs
+          // bounds to determine its hits; move/scale/rotate/textbox-width
+          // only use bounds as snap candidates, so they don't pay for this
+          // extra report on every gesture start.
+          reportElementBounds();
+        }
         reportViewport();
         post({ event: "gesture-start", kind: gesture.kind, handle: gesture.handle, point: gesture.startClient });
       }

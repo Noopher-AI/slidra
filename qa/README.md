@@ -88,6 +88,39 @@ browser-use < qa/cases/<id>.py   # 預期 FAIL（缺陷仍在）
 只有 PR 分支 PASS 而 base FAIL，才算這張票真的修到了東西——PR 分支和 base 都 PASS，
 代表案例腳本沒斷言到缺陷本身；兩邊都 FAIL，代表修復沒生效。
 
+## 3.5 兩個會讓 PASS/FAIL 完全失去意義的陷阱
+
+這兩個都不會讓任何一條斷言變紅——它們讓斷言去量錯的東西，然後回報一個看起來
+很正常的結果。NOOP-349 的 F-15 兩者都踩過，代價是五輪 review。
+
+**（一）輸入事件被靜默丟棄。** 投影片跑在一個 sandboxed srcdoc iframe 裡，每次換頁
+都會整個重建。`selection-runtime.js` 是先掛好 selection host、解析完 markup，**之後**
+才 `addEventListener`，最後才送出 `runtime-ready`。在這個空檔裡派送的 CDP 輸入事件
+會落在一個沒有任何 pointer 監聽器的 document 上，被丟掉——沒有錯誤、沒有 console
+訊息、沒有 gesture-start/move/end。手勢等於沒有發生，接著的斷言量到的是手勢前的
+狀態。`agent_helpers.py` 現在由 `_dispatch_mouse()` 在每個 mousePressed 上強制擋住
+（`_require_runtime_ready()`），新增原語不必自己記得等；但**自己另外拼 CDP 指令時
+要記得這件事**。判斷 iframe 可以接受輸入的訊號是 `runtime-ready`，不是 DOM 裡有沒有
+`<svg>`。
+
+**（二）髒掉的簡報。** 只要有任何一個手勢真的搬動過元素，服務中的簡報就跟 `demo/`
+不一樣了，而且**會一直不一樣**——`quick_start.sh` 不會自動重新打包，`open_deck()` 也
+只比對網址、不會重載。之後每一支案例腳本都在對著一份位置錯掉的投影片下判斷：
+F-15 的 B-2（「矩形涵蓋三行文字但不含標題」）在標題被搬進框選範圍之後，會非常
+穩定地回報 4 個元素，看起來就像產品的命中判定壞了。
+
+跑完會寫檔的案例之後，或任何時候懷疑結果不合理，先確認簡報是原始狀態：
+
+```bash
+co-motion cat "$CO_MOTION_QA_PRESENTATION_ID" slides/003.svg | diff - demo/slides/003.svg
+```
+
+不一致就重開一份再跑：
+
+```bash
+ID=$(co-motion open .quickstart/demo.comot | grep -o '"id"[^,}]*' | sed 's/.*"\([^"]*\)"$/\1/')
+```
+
 ## 4. 偶發缺陷的豁免寫法
 
 案例腳本只要求 **PR 分支 PASS**，base FAIL 不代表案例腳本要斷言「絕對不會發生」——
@@ -111,9 +144,9 @@ browser-use < qa/cases/<id>.py   # 預期 FAIL（缺陷仍在）
 ## 6. `browser-use` 版本與升版注意事項
 
 本輪（含 helper 的實作與驗證）針對 **`browser-use 0.1.13`** 撰寫並實測。
-`qa/agent_helpers.py` 只用 `browser_harness.helpers` 的公開名稱（`cdp`、`js`、
-`click_at_xy`、`current_tab`、`new_tab`、`wait_for_load`、`drain_events`、
-`http_get`、`capture_screenshot`）；這些是相對穩定的核心原語，但升版後第一件事仍是
+`qa/agent_helpers.py` 只用 `browser_harness.helpers` 的公開名稱（`cdp`、
+`current_tab`、`new_tab`、`wait_for_load`、`drain_events`、`http_get`、
+`capture_screenshot`）；這些是相對穩定的核心原語，但升版後第一件事仍是
 跑一次：
 
 ```bash
@@ -137,5 +170,9 @@ PASS 就代表這些簽名沒有破壞性改動。
   這條斷言會先失敗，訊息會提示「請不要加 `--blank`」。
 - **`qa/cases/*.py` 不進 CI、不當合併門檻**（#279 決定 5）——這些腳本設計給 Review
   階段的 agent 手動跑，不是自動化測試套件的一部分。
+- **`--qa` 的 Chromium 啟動旗標含 `--disable-dev-shm-usage` 等容器旗標**（NOOP-349
+  round 5）：容器內 `/dev/shm` 常只有 64MB，不加這個旗標會讓 renderer 在高頻互動下
+  變慢甚至卡死，症狀是 CDP 呼叫逾時或點擊送出但畫面沒反應。唯讀 CDP／JS 呼叫另外可
+  用 `CO_MOTION_QA_IPC_TIMEOUT`（秒，預設 20）調整逾時，非數字或非正數會直接報錯。
 - `browser-use --doctor` 一定會印一行 `[FAIL] Browser Use cloud auth — optional`；
   這是正常的，`--doctor` 本身仍以離開碼 `0` 結束，不代表 QA 環境沒起來。

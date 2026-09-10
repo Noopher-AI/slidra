@@ -24,7 +24,8 @@
 #   ./quick_start.sh --agent claude       # 指定 agent（偵測到多個時建議加）
 #   ./quick_start.sh --fresh              # 丟掉舊簡報，重新建立
 #   ./quick_start.sh --skip-build         # 跳過建置（只改前端原始碼時不要用）
-#   ./quick_start.sh --no-open            # 不要自動開瀏覽器
+#   ./quick_start.sh --open               # 順便開瀏覽器（預設不開）
+#   ./quick_start.sh --no-open            # 保留給既有指令；已是預設行為
 #   ./quick_start.sh --qa --no-open       # 沙箱 QA 層：背景起 serve + headless
 #                                         #   Chromium，寫出 browser-use 用的 env 檔
 #   ./quick_start.sh --qa-stop            # 收掉 --qa 留下的背景 serve 與 Chromium
@@ -38,7 +39,10 @@ PORT=5173
 AGENT=""
 FRESH=0
 SKIP_BUILD=0
-OPEN_BROWSER=1
+# 預設不開瀏覽器：這個腳本常常是重跑的（改一行、重跑驗證、再改一行），每次都
+# 彈一個新分頁出來，最後累積一堆指向同一個網址、其中大多數還是過期簡報識別碼的
+# 分頁。要開就自己加 --open。
+OPEN_BROWSER=0
 BLANK=0
 QA=0
 QA_STOP=0
@@ -49,6 +53,8 @@ while [ $# -gt 0 ]; do
     --agent) AGENT="${2:?--agent 缺少值}"; shift 2 ;;
     --fresh) FRESH=1; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --open) OPEN_BROWSER=1; shift ;;
+    # 已是預設，保留旗標本身以免既有指令與文件（qa/README.md）壞掉。
     --no-open) OPEN_BROWSER=0; shift ;;
     --blank) BLANK=1; shift ;;
     --qa) QA=1; shift ;;
@@ -201,10 +207,24 @@ if [ "$BLANK" -eq 1 ]; then
     exit 1
   fi
 else
-  # demo/ 比打包出來的 .comot 新，代表素材改過了。這裡不自動重打包——重打包就得
-  # 重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令都作廢。
+  # demo/ 比打包出來的 .comot 新，代表素材改過了。人工驗收路徑不自動重打包——
+  # 重打包就得重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令
+  # 都作廢。
+  #
+  # NOOP-349：--qa 沒有這個顧慮（每次都重寫 QA 環境變數檔裡的
+  # CO_MOTION_QA_PRESENTATION_ID，沒有人手上握著舊網址），而過期的 deck 在
+  # QA 路徑上是災難：agent 會對著舊素材跑案例腳本，拿到的 PASS/FAIL 全部
+  # 對應到錯的簡報內容，而唯一的線索只有下面這行 stderr 提醒。#294 就是這樣
+  # 連續五輪對著一份含滿版背景 rect 的舊 demo 跑 F-15，把「拖曳空白」永遠
+  # 判成 move 手勢的環境問題，誤診成 browser-use／CDP 的不穩定。所以 --qa
+  # 直接重打包，不留讓人踩過去的餘地。
   if [ -f "$DEMO_COMOT" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_COMOT" -type f -print -quit)" ]; then
-    echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+    if [ "$QA" -eq 1 ]; then
+      step "demo/ 比示範簡報新，重新打包（--qa）"
+      rm -f "$DEMO_COMOT" "$DEMO_ID_FILE"
+    else
+      echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+    fi
   fi
 
   if [ ! -f "$DEMO_COMOT" ]; then
@@ -245,7 +265,7 @@ export PATH="$ROOT/node_modules/.bin:$PATH"
 step "驗證 PATH"
 RESOLVED="$(command -v co-motion || true)"
 if [ "$RESOLVED" != "$CLI" ]; then
-  echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 $CLI。" >&2
+  echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 ${CLI}。" >&2
   exit 1
 fi
 # co-motion 沒有 --help；用不帶參數呼叫來確認它真的執行了（Rust 二進位自己印出
@@ -396,7 +416,7 @@ echo "serve 已就緒：$URL"
 step "解析 Chromium 路徑"
 CHROMIUM="$(node -e "console.log(require('playwright').chromium.executablePath())")"
 if [ ! -x "$CHROMIUM" ]; then
-  echo "Chromium 執行檔不存在或不可執行：$CHROMIUM。請執行 npx playwright install chromium 後重試。" >&2
+  echo "Chromium 執行檔不存在或不可執行：${CHROMIUM}。請執行 npx playwright install chromium 後重試。" >&2
   exit 1
 fi
 echo "Chromium：$CHROMIUM"
@@ -420,11 +440,15 @@ setsid bash -c '
   "--remote-debugging-port=$QA_CDP_PORT" \
   --window-size=1440,900 \
   "--user-data-dir=$CHROMIUM_PROFILE_DIR" \
+  --disable-dev-shm-usage \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
   about:blank > "$CHROMIUM_LOG" 2>&1 &
 disown
 
 if ! qa_wait_http "http://127.0.0.1:$QA_CDP_PORT/json/version" 30; then
-  echo "Chromium 在 30 秒內沒有開放 CDP port $QA_CDP_PORT。chromium.log 最後 20 行：" >&2
+  echo "Chromium 在 30 秒內沒有開放 CDP port ${QA_CDP_PORT}。chromium.log 最後 20 行：" >&2
   tail -n 20 "$CHROMIUM_LOG" >&2 || true
   exit 1
 fi
@@ -456,7 +480,7 @@ PY
 DOCTOR_OPEN_RC=$?
 set -e
 if [ "$DOCTOR_OPEN_RC" -ne 0 ]; then
-  echo "開啟 CoMotion 失敗（離開碼 $DOCTOR_OPEN_RC）：" >&2
+  echo "開啟 CoMotion 失敗（離開碼 ${DOCTOR_OPEN_RC}）：" >&2
   echo "$DOCTOR_OPEN_OUTPUT" >&2
   echo "QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
   exit "$DOCTOR_OPEN_RC"
@@ -470,7 +494,7 @@ DOCTOR_RC=$?
 set -e
 
 if [ "$DOCTOR_RC" -ne 0 ]; then
-  echo "browser-use --doctor 回報異常（離開碼 $DOCTOR_RC）。QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
+  echo "browser-use --doctor 回報異常（離開碼 ${DOCTOR_RC}）。QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
   exit "$DOCTOR_RC"
 fi
 

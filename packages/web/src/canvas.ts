@@ -4220,7 +4220,22 @@ export function wrapSelectionDocument(
   // used to lean on `.stage`'s white background for slides that paint no
   // background of their own — stage.css no longer has one (it caused a 1px
   // seam), so the document must be opaque white by itself.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  //
+  // `user-select:none` (NOOP-349): a slide is a canvas of objects to
+  // manipulate, and the browser's own text selection has no role in it —
+  // text is edited through the runtime's hidden textarea (ensureTextarea in
+  // selection-runtime.js), never by selecting glyphs in the SVG. Left at the
+  // default `auto`, dragging a marquee ALSO ran a native text selection, and
+  // native selection walks DOCUMENT ORDER rather than the dragged rectangle:
+  // marqueeing the three body lines highlighted the title as well, because
+  // the title's text node sits before them in the document even though the
+  // rectangle never touched it. The app's own selection was right (3
+  // elements); the extra highlight was the browser's. Note this reproduces
+  // only under a real pointer — CDP-synthesised drags never start a native
+  // selection, so no qa/cases script or e2e test can catch a regression here.
+  // Applied to this wrapper only: play mode is a separate document where
+  // letting a viewer select text is a different decision.
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**

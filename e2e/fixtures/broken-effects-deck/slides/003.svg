@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
       <!-- 損壞之處：family="build" 不在 CoMotion 支援的效果家族清單裡
@@ -9,7 +9,6 @@
       <comot:effect target="el-emphasis-target" family="build" effect="pulse" start="on-click"/>
     </comot:effects>
   </metadata>
-  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
   <text id="el-broken-title-3" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 3 頁：未實作的 family</text>
   <text id="el-emphasis-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>
 </svg>

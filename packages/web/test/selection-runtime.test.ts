@@ -587,6 +587,114 @@ describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-s
   });
 });
 
+// NOOP-349 round 3, [Fix.2]: wrapSelectionDocument() (canvas.ts) places this
+// runtime's <script> before bodyMarkup, so the IIFE-end reportElementBounds()
+// call always fires before the root <svg> exists and reports an empty map —
+// the only later trigger was document.fonts.ready, which can take seconds
+// (or never fire for shape-only slides). A marquee that starts in that
+// window used to race an empty elementBoundsById on the host, silently
+// selecting nothing (F-15 B-2). Same fix shape as NOOP-328's viewport report:
+// send element-bounds synchronously, immediately before gesture-start, so
+// postMessage's own send-order-is-delivery-order guarantee closes the race.
+describe("selection-runtime.js 的 marquee 手勢起點：element-bounds 必須早於 gesture-start 送出", () => {
+  it("拖曳超過門檻觸發 marquee 手勢時，緊接在 gesture-start 之前送出的是 element-bounds、再前一則是 viewport", async () => {
+    const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+    // Let boot()'s own IIFE-end post({event:"runtime-ready"})/reportElementBounds()
+    // AND jsdom's own native iframe "load" (which [Fix.1] now also wires to
+    // reportElementBounds()) get delivered to nobody before the listener
+    // below attaches — verified empirically that jsdom's real "load" fires
+    // and finishes delivering its messages within 2 macrotask ticks of
+    // boot() here (never later; a 3rd/4th tick added nothing). Skipping
+    // this drain lets a leftover element-bounds from EITHER source
+    // coincidentally land in the "last three" slice checked below and mask
+    // a real regression — verified directly: removing [Fix.2]'s
+    // marquee-branch reportElementBounds() call did NOT fail this test
+    // without draining both sources first.
+    await tick();
+    await tick();
+
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    // pointerdown on the <svg> root itself (not the rect) is a miss —
+    // findSelectable() stops the walk at the outermost <svg> before ever
+    // assigning `outermost` — so this starts a marquee, not a move gesture.
+    const svg = doc.querySelector("svg") as SVGSVGElement;
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    svg.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, composed: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 20, clientY: 20 }));
+    // postMessage delivery is async even within the same window (jsdom
+    // queues it as a task) — give it a tick before reading `messages`.
+    await tick();
+
+    window.removeEventListener("message", handler);
+
+    // Only the last three messages matter, for the same send-order reason
+    // the sibling viewport/gesture-start test above only checks its last
+    // two: the marquee branch's reportElementBounds() + reportViewport() +
+    // post({event:"gesture-start"}) happen back-to-back, synchronously,
+    // inside the same pointermove handler invocation, with nothing else
+    // able to post a message in between.
+    const lastThree = messages.slice(-3).map((message) => message.event);
+    expect(lastThree).toEqual(["element-bounds", "viewport", "gesture-start"]);
+  });
+
+  it("非 marquee（move）手勢起點不會額外送出 element-bounds — 只有 viewport 緊接在 gesture-start 之前", async () => {
+    const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const rect = doc.querySelector("#el-a") as SVGRectElement;
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    rect.dispatchEvent(
+      new PointerEventCtor("pointerdown", { bubbles: true, composed: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }),
+    );
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 20, clientY: 20 }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+
+    const lastTwo = messages.slice(-2).map((message) => message.event);
+    expect(lastTwo).toEqual(["viewport", "gesture-start"]);
+  });
+});
+
+// NOOP-349 round 3, [Fix.1]: the IIFE-end reportElementBounds() call always
+// races an unparsed <svg> (see the describe block above), and
+// document.fonts.ready can take seconds or never resolve for a shape-only
+// slide — this "load" listener is the fast, reliable path: as soon as the
+// iframe's document has finished parsing, the host gets a real bounds
+// report without waiting on fonts at all.
+describe("selection-runtime.js 的 element-bounds：load 事件觸發補報 (NOOP-349 round 3, [Fix.1])", () => {
+  it("iframe 的 load 事件觸發後，額外送出一次 element-bounds", async () => {
+    const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+    await tick();
+    const countBeforeLoad = messages.filter((m) => m.event === "element-bounds").length;
+
+    fireLoad(win);
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const countAfterLoad = messages.filter((m) => m.event === "element-bounds").length;
+
+    // At least one MORE element-bounds report arrived once "load" fired —
+    // stated as a delta rather than an absolute count because boot()'s own
+    // IIFE-end call, and jsdom's own (unpredictable-timing) native iframe
+    // load, can already have contributed some before this test's explicit
+    // fireLoad() call.
+    expect(countAfterLoad).toBeGreaterThan(countBeforeLoad);
+  });
+});
+
 /** Sends the host's `"selection"` command the same authenticated-source way `beginTextEdit` above sends `"begin-text-edit"`. */
 async function sendSelectionCommand(win: Window, ids: string[]): Promise<void> {
   const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
