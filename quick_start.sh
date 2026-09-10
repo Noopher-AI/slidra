@@ -25,6 +25,9 @@
 #   ./quick_start.sh --fresh              # 丟掉舊簡報，重新建立
 #   ./quick_start.sh --skip-build         # 跳過建置（只改前端原始碼時不要用）
 #   ./quick_start.sh --no-open            # 不要自動開瀏覽器
+#   ./quick_start.sh --qa --no-open       # 沙箱 QA 層：背景起 serve + headless
+#                                         #   Chromium，寫出 browser-use 用的 env 檔
+#   ./quick_start.sh --qa-stop            # 收掉 --qa 留下的背景 serve 與 Chromium
 
 set -euo pipefail
 
@@ -37,6 +40,8 @@ FRESH=0
 SKIP_BUILD=0
 OPEN_BROWSER=1
 BLANK=0
+QA=0
+QA_STOP=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,7 +51,9 @@ while [ $# -gt 0 ]; do
     --skip-build) SKIP_BUILD=1; shift ;;
     --no-open) OPEN_BROWSER=0; shift ;;
     --blank) BLANK=1; shift ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    --qa) QA=1; shift ;;
+    --qa-stop) QA_STOP=1; shift ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "未知的參數：$1" >&2; exit 1 ;;
   esac
 done
@@ -60,6 +67,75 @@ BLANK_COMOT="$DEMO_DIR/blank.comot"
 BLANK_ID_FILE="$DEMO_DIR/blank-presentation-id"
 
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
+
+# --qa / --qa-stop 共用狀態 ---------------------------------------------------
+# 沙箱 QA 層：--qa 在既有流程（1~4 步）之後另外背景起一份 serve + headless
+# Chromium，供 browser-use 操作；--qa-stop 收掉它們。這兩個旗標不影響 1~4 步
+# 的任何行為。
+QA_DIR="$ROOT/.quickstart/qa"
+QA_SERVE_PGID_FILE="$QA_DIR/serve.pgid"
+QA_CHROMIUM_PGID_FILE="$QA_DIR/chromium.pgid"
+QA_ENV_FILE="$QA_DIR/qa.env"
+QA_SERVE_LOG="$QA_DIR/serve.log"
+QA_CDP_PORT="${CO_MOTION_QA_CDP_PORT:-9222}"
+
+# 收掉一個 pgid 檔記錄的行程群組：TERM，等最多 5 秒，還活著就 KILL。
+# co-motion serve 是 spawn 出一個獨立的 node 子行程（不是 exec），所以
+# 只殺 wrapper 收不掉 server；--qa 用 setsid 起、記整個行程群組的 PGID，
+# 這裡對整組送信號才收得乾淨。
+qa_kill_pgid_file() {
+  local pgid_file="$1"
+  [ -f "$pgid_file" ] || return 1
+  local pgid
+  pgid="$(cat "$pgid_file")"
+  if [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null; then
+    kill -TERM -- "-$pgid" 2>/dev/null || true
+    local waited=0
+    while [ "$waited" -lt 5 ] && kill -0 -- "-$pgid" 2>/dev/null; do
+      sleep 1
+      waited=$((waited + 1))
+    done
+    kill -0 -- "-$pgid" 2>/dev/null && kill -KILL -- "-$pgid" 2>/dev/null || true
+  fi
+  rm -f "$pgid_file"
+  return 0
+}
+
+# 收尾指令不該因為「已經收乾淨」而失敗，所以永遠以 0 結束。
+qa_stop() {
+  local found=0
+  qa_kill_pgid_file "$QA_SERVE_PGID_FILE" && found=1
+  qa_kill_pgid_file "$QA_CHROMIUM_PGID_FILE" && found=1
+  rm -f "$QA_ENV_FILE"
+  if [ "$found" -eq 0 ]; then
+    echo "沒有在跑的 QA 環境。"
+  else
+    echo "QA 環境已收掉。"
+  fi
+}
+
+if [ "$QA_STOP" -eq 1 ] && [ "$QA" -eq 0 ]; then
+  qa_stop
+  exit 0
+fi
+
+if [ "$QA" -eq 1 ]; then
+  # 在花時間 build 之前先確認 browser-use 在 PATH 上——它由工作區的 sandbox
+  # tools mount（/opt/sandbox）提供，不是 npm 相依、不是本專案 Dockerfile
+  # 的責任，缺了也不該讓人等完整個 build 才看到這行錯誤。
+  if ! command -v browser-use >/dev/null 2>&1; then
+    echo "找不到 browser-use：它應由工作區的 sandbox tools mount（/opt/sandbox）提供，不是本專案的 npm 相依，也不是 .devcontainer/Dockerfile 的責任。請確認執行環境掛載了 /opt/sandbox。" >&2
+    exit 1
+  fi
+  if [ "$QA_STOP" -eq 1 ]; then
+    # 與 --qa 同時給：視為「先停再起」。
+    qa_stop
+  elif [ -f "$QA_SERVE_PGID_FILE" ] || [ -f "$QA_CHROMIUM_PGID_FILE" ]; then
+    echo "偵測到既有的 QA 環境，先收掉再重新啟動。" >&2
+    qa_stop
+  fi
+  mkdir -p "$QA_DIR"
+fi
 
 # 1. 相依套件 ---------------------------------------------------------------
 # 切換分支可能只改 workspace 的 package.json 或 lockfile；node_modules
@@ -184,7 +260,9 @@ echo "co-motion 已可用：$RESOLVED"
 
 URL="http://127.0.0.1:$PORT"
 
-if [ "$BLANK" -eq 1 ]; then
+if [ "$QA" -eq 1 ]; then
+  : # --qa 不印人工驗收清單（下面走的是背景啟動路徑，見腳本尾端）。
+elif [ "$BLANK" -eq 1 ]; then
   cat <<INFO
 
 簡報識別碼：$PRESENTATION_ID
@@ -273,10 +351,136 @@ cat <<INFO
 INFO
 fi
 
-if [ "$OPEN_BROWSER" -eq 1 ] && command -v open >/dev/null 2>&1; then
+if [ "$QA" -eq 0 ] && [ "$OPEN_BROWSER" -eq 1 ] && command -v open >/dev/null 2>&1; then
   # serve 綁定成功後才開瀏覽器，避免開到一個還沒起來的頁面。
   ( sleep 2; open "$URL" ) &
 fi
 
-step "啟動 co-motion serve"
-exec "$CLI" "${SERVE_ARGS[@]}"
+# 5. 啟動 ---------------------------------------------------------------------
+if [ "$QA" -eq 0 ]; then
+  step "啟動 co-motion serve"
+  exec "$CLI" "${SERVE_ARGS[@]}"
+fi
+
+# --qa：背景起 serve，輪詢直到有回應，再起 headless Chromium，最後寫 env 檔並
+# 跑 browser-use --doctor 冒煙測試。與不帶 --qa 的路徑不同，這裡必須讓腳本
+# 自己結束（父票驗收條件 1：「一個指令跑完」），所以不能用 exec。
+step "啟動 co-motion serve（QA，背景）"
+
+qa_wait_http() {
+  local url="$1" timeout_s="$2" waited=0
+  while [ "$waited" -lt "$timeout_s" ]; do
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+    [ "$code" = "200" ] && return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+setsid bash -c '
+  echo $$ > "$1"
+  shift
+  exec "$@"
+' _ "$QA_SERVE_PGID_FILE" "$CLI" "${SERVE_ARGS[@]}" > "$QA_SERVE_LOG" 2>&1 &
+disown
+
+if ! qa_wait_http "$URL/" 60; then
+  echo "co-motion serve 在 60 秒內沒有回應 $URL/。serve.log 最後 20 行：" >&2
+  tail -n 20 "$QA_SERVE_LOG" >&2 || true
+  exit 1
+fi
+echo "serve 已就緒：$URL"
+
+step "解析 Chromium 路徑"
+CHROMIUM="$(node -e "console.log(require('playwright').chromium.executablePath())")"
+if [ ! -x "$CHROMIUM" ]; then
+  echo "Chromium 執行檔不存在或不可執行：$CHROMIUM。請執行 npx playwright install chromium 後重試。" >&2
+  exit 1
+fi
+echo "Chromium：$CHROMIUM"
+
+step "啟動 headless Chromium（QA，背景）"
+if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$QA_CDP_PORT/json/version" 2>/dev/null | grep -q '^200$'; then
+  echo "CDP port $QA_CDP_PORT 已被佔用。改用 CO_MOTION_QA_CDP_PORT 環境變數指定別的 port。" >&2
+  exit 1
+fi
+
+CHROMIUM_PROFILE_DIR="$QA_DIR/profile"
+mkdir -p "$CHROMIUM_PROFILE_DIR"
+CHROMIUM_LOG="$QA_DIR/chromium.log"
+
+setsid bash -c '
+  echo $$ > "$1"
+  shift
+  exec "$@"
+' _ "$QA_CHROMIUM_PGID_FILE" "$CHROMIUM" \
+  --headless=new --no-sandbox \
+  "--remote-debugging-port=$QA_CDP_PORT" \
+  --window-size=1440,900 \
+  "--user-data-dir=$CHROMIUM_PROFILE_DIR" \
+  about:blank > "$CHROMIUM_LOG" 2>&1 &
+disown
+
+if ! qa_wait_http "http://127.0.0.1:$QA_CDP_PORT/json/version" 30; then
+  echo "Chromium 在 30 秒內沒有開放 CDP port $QA_CDP_PORT。chromium.log 最後 20 行：" >&2
+  tail -n 20 "$CHROMIUM_LOG" >&2 || true
+  exit 1
+fi
+echo "Chromium CDP 已就緒：127.0.0.1:$QA_CDP_PORT"
+
+step "寫出 QA env 檔"
+cat > "$QA_ENV_FILE" <<ENV
+export BU_CDP_URL="http://127.0.0.1:$QA_CDP_PORT"
+export BH_AGENT_WORKSPACE="$ROOT/qa"
+export CO_MOTION_QA_URL="$URL"
+export CO_MOTION_QA_PRESENTATION_ID="$PRESENTATION_ID"
+export BH_RUNTIME_DIR="/tmp/co-motion-qa-$(id -u)"
+export BH_TMP_DIR="$QA_DIR/tmp"
+export CO_MOTION_QA_CDP_PORT="$QA_CDP_PORT"
+ENV
+mkdir -p "$QA_DIR/tmp"
+echo "已寫出：$QA_ENV_FILE"
+
+step "開啟 CoMotion（透過 qa/agent_helpers.py 的 open_deck()）"
+# `browser-use --doctor` 是唯讀診斷，本身不會啟動 daemon（daemon 只在跑一般腳本時
+# 由 ensure_daemon() 啟動，見 browser_harness/run.py）。父票驗收條件要求 doctor
+# 印出「active page 是 CoMotion」，所以這裡先跑一段會導覽到 CO_MOTION_QA_URL 的腳本
+# ——同時完成「啟動 daemon」與「開到 CoMotion」兩件事，再進 doctor 檢查。
+set +e
+DOCTOR_OPEN_OUTPUT="$( set -a; source "$QA_ENV_FILE"; set +a; browser-use <<'PY' 2>&1
+print(open_deck())
+PY
+)"
+DOCTOR_OPEN_RC=$?
+set -e
+if [ "$DOCTOR_OPEN_RC" -ne 0 ]; then
+  echo "開啟 CoMotion 失敗（離開碼 $DOCTOR_OPEN_RC）：" >&2
+  echo "$DOCTOR_OPEN_OUTPUT" >&2
+  echo "QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
+  exit "$DOCTOR_OPEN_RC"
+fi
+echo "$DOCTOR_OPEN_OUTPUT"
+
+step "browser-use --doctor"
+set +e
+( set -a; source "$QA_ENV_FILE"; set +a; browser-use --doctor )
+DOCTOR_RC=$?
+set -e
+
+if [ "$DOCTOR_RC" -ne 0 ]; then
+  echo "browser-use --doctor 回報異常（離開碼 $DOCTOR_RC）。QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
+  exit "$DOCTOR_RC"
+fi
+
+cat <<QAINFO
+
+QA 環境已就緒。
+  source $QA_ENV_FILE
+  browser-use < qa/cases/smoke.py
+
+收尾：
+  ./quick_start.sh --qa-stop
+
+QAINFO
