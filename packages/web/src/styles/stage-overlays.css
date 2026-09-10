@@ -1,19 +1,51 @@
-/* 舞台疊層 (NOOP-90/T2)：根容器與子層維持 `pointer-events: none`，蓋滿
-   舞台、不吃滑鼠事件——個別可互動元件（情境列按鈕、右鍵選單、留言框、
-   comment pin）自己在下面開回 `pointer-events: auto`。`CommentLayer`
-   ([E2.T8]) 不再是空容器，渲染 `.comment-composer` 時自帶定位，不需要
-   額外的滿版容器層。 */
-.stage-overlays {
+/* 舞台覆蓋層兩層 ([E5.T3] 兩層化)：
+   - `.stage-geometry`（z1）：只顯示、不接受操作的東西——吸附輔助線、動畫編
+     號徽章。整層與其所有子孫節點一律 `pointer-events: none !important`，
+     子元件沒有辦法把自己開回可點——這是把 F-16（顯示用徽章誤開 auto、擋
+     住 iframe 裡的縮放把手）在結構上變成寫不出來的地方，不是每個元件的
+     個別決定。
+   - `.stage-widgets`（z2）：所有要按的東西——名稱／群組標籤與留言 pin、情
+     境列、留言框、表格編輯框／欄寬把手／右鍵選單、Chart 資料視窗、第三
+     方播放器 iframe。容器本身 `pointer-events: none`，由
+     `.stage-widgets > *` 統一開回；個別元件不需要、也不應該再自己宣告。
+   widget 層的規則：widget 不得蓋住投影片內容，或自己處理 hover（情境列
+   走後者，抓取模式下讓路，見下方 `[data-grab]` 規則）。顯示用例外是封閉
+   清單、不得再加第四個：`.selection-label-row`（標籤與留言 pin 是同一個
+   flex row 的兩個子項，拆開換不到任何好處）、`.embed-layer`（容器本身不
+   吃事件，個別 iframe 依模式各自決定）、`.table-range-box`（純顯示的選取
+   範圍框）——三者都用 `.stage-widgets > .X` 明確覆蓋回 `none`。第三方播
+   放器 iframe 因為 sandbox（ADR-0011）被迫留在父文件，是這一層裡明示的
+   例外。`CommentLayer`（[E2.T8]）不是空容器，渲染 `.comment-composer` 時
+   自帶定位，不需要額外的滿版容器層。 */
+.stage-geometry {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 1;
   pointer-events: none;
 }
-.selection-overlay,
-.context-bar-layer,
+.stage-geometry,
+.stage-geometry * {
+  pointer-events: none !important;
+}
+
 .guide-layer {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+.stage-widgets {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.stage-widgets > * {
+  pointer-events: auto;
+}
+.stage-widgets > .selection-label-row,
+.stage-widgets > .embed-layer,
+.stage-widgets > .table-range-box {
   pointer-events: none;
 }
 
@@ -79,7 +111,6 @@
    玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
 .context-bar {
   position: absolute;
-  z-index: 3;
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -156,6 +187,8 @@
    定位由 CommentComposer.tsx 的 useLayoutEffect 算好後直接寫 style.left/top。 */
 .comment-composer {
   position: absolute;
+  /* widget 層內部排序（驗收條件第 1 條「widget 層內部除外」的那一項）：留
+     言框要蓋在情境列與嵌入播放器之上。 */
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -229,7 +262,6 @@
 .embed-layer {
   position: absolute;
   inset: 0;
-  z-index: 3;
   pointer-events: none;
 }
 .embed-frame {
