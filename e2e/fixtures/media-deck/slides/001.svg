@@ -1,11 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<svg style="background-color:#eef" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
       <comot:effect target="el-video-placeholder" family="media" effect="play" start="on-click"/>
       <comot:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
     </comot:effects>
   </metadata>
-  <rect id="el-bg" x="0" y="0" width="1280" height="720" fill="#eef"/>
   <text id="el-title" x="640" y="100" text-anchor="middle" font-size="56">媒體播放測試</text>
 
   <!-- 影片佔位元素：播放前顯示這個矩形色塊，這個位置不是一個洞 (ADR-0005). -->

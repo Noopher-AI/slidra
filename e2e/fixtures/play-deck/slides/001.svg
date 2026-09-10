@@ -1,11 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<svg style="background-color:#eef" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
       <comot:effect target="el-fade-in" family="enter" effect="fade" start="on-click"/>
       <comot:effect target="el-appear-in" family="enter" effect="appear" start="on-click"/>
     </comot:effects>
   </metadata>
-  <rect id="el-bg" x="0" y="0" width="1280" height="720" fill="#eef"/>
   <text id="el-title" x="640" y="120" text-anchor="middle" font-size="64">播放第一頁</text>
   <text id="el-fade-in" x="640" y="360" text-anchor="middle" font-size="56">淡入文字</text>
   <text id="el-appear-in" x="640" y="500" text-anchor="middle" font-size="56">瞬間文字</text>
