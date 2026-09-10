@@ -160,6 +160,14 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
     allowed: ["#000000"],
     reason: "表格儲存格 text-fill 讀不到值時的資料預設值，與 core 的 readTableModel 同一個預設，不是產品 UI",
   },
+  // [E5.T8]/NOOP-353 拍板決定 7：沒有 accent 時插入元素的 fill/stroke 對比色，
+  // 是決定本身指定的兩個具體值＋「沒有頁面背景就當白」的預設，不是可換掉的
+  // 設計 token——這三個字面值就是規格,不是抓漏對象。
+  {
+    file: "contrast-fill.ts",
+    allowed: ["#1f1a1a", "#f4f6f8", "#ffffff"],
+    reason: "拍板決定 7（父票 NOOP-353／#279）指定的對比色常值與「無背景時當白」預設，不是產品 UI 樣式 token",
+  },
 ];
 
 /** ms-only (not bare seconds) — deliberately narrower than the CSS scan's duration pattern. Runtime scripts injected into the presentation iframe (player-runtime.js, selection-runtime.js) write CSS transition strings like `"opacity 0.4s"`; those are rendered output, not product-UI source, so this pattern does not reach into `s`-only durations at all (NOOP-9 Plan §4.2's contract table names `\d+ms` explicitly). */
