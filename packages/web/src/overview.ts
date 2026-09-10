@@ -13,6 +13,7 @@
  * copy injects, see wrapSlideDocument below).
  */
 import type { CanvasController } from "./canvas.js";
+import { fetchSlideEffectPlan } from "./effects.js";
 
 /**
  * [E2.T3]: the two behaviours that need a React tree to render into
@@ -169,6 +170,19 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   // means a race on slide 3 never has to reason about slide 7's fetches.
   const generations: number[] = [];
 
+  // [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B）。One badge per slide,
+  // populated independently of the lazy thumbnail load above — "does this
+  // page have animations" is plan-time information the reader wants before
+  // ever scrolling a thumbnail into view, so loadEffectCount() below is
+  // called for every index, not gated by the IntersectionObserver. Same
+  // per-index generation-guard shape as `generations`: canvas.ts's reload()
+  // calls invalidateSlideEffectPlans() (synchronously, before its own first
+  // await) right before this module's refresh() re-fetches, but two
+  // overlapping refresh() calls on the same index must still not let an
+  // older, slower fetch overwrite a newer one's result.
+  const effectBadges: HTMLSpanElement[] = [];
+  const effectGenerations: number[] = [];
+
   // A small view distance (a few slides' worth of scroll either side), the
   // same shape as reveal.js's own viewDistance: enough to keep scrolling
   // ahead of the reader without materialising the whole deck at once.
@@ -228,6 +242,35 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     }
   }
 
+  function setEffectBadgeCount(badge: HTMLSpanElement, count: number): void {
+    // `count === 0` clears textContent to "" rather than hiding via a
+    // class — style.css's `.overview-effect-badge:empty` rule does the
+    // hiding, so there is exactly one source of truth for "does this badge
+    // show" (the DOM content itself, inspectable from a screenshot or a
+    // QA case's textContent read) instead of content and a visibility
+    // class drifting apart.
+    badge.textContent = count > 0 ? `✦ ${count}` : "";
+  }
+
+  /**
+   * Fetches `slidePath`'s effect plan and paints its length into
+   * `effectBadges[index]`. A failed fetch clears the badge instead of
+   * leaving a stale count — this is decoration, not the thumbnail's own
+   * error state (which fetchAndFillThumbnail already surfaces visibly).
+   */
+  function loadEffectCount(index: number, slidePath: string): void {
+    const thisGeneration = (effectGenerations[index] ?? 0) + 1;
+    effectGenerations[index] = thisGeneration;
+    void fetchSlideEffectPlan(slidePath).then(
+      (plan) => {
+        if (effectGenerations[index] === thisGeneration) setEffectBadgeCount(effectBadges[index], plan.effects.length);
+      },
+      () => {
+        if (effectGenerations[index] === thisGeneration) setEffectBadgeCount(effectBadges[index], 0);
+      },
+    );
+  }
+
   function sameSlides(a: string[], b: string[]): boolean {
     return a.length === b.length && a.every((path, index) => path === b[index]);
   }
@@ -278,6 +321,8 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     frames.length = 0;
     requested.length = 0;
     generations.length = 0;
+    effectBadges.length = 0;
+    effectGenerations.length = 0;
     slides = nextSlides;
 
     slides.forEach((_slidePath, index) => {
@@ -315,6 +360,13 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       commentButton.innerHTML =
         '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 4h14v9H9l-4 3v-3H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
 
+      // [E5.T11]: ✦ n 動畫數徽章。Starts empty — loadEffectCount() below
+      // fills it in once the fetch resolves, after the whole list has been
+      // built (so `effectBadges[index]` is already populated by then).
+      const effectBadge = document.createElement("span");
+      effectBadge.className = "overview-effect-badge";
+      effectBadge.setAttribute("aria-hidden", "true");
+
       li.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         hooks.onContextMenu?.(index, event.clientX, event.clientY);
@@ -342,14 +394,20 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
 
       li.appendChild(number);
       li.appendChild(button);
+      li.appendChild(effectBadge);
       li.appendChild(commentButton);
       list.appendChild(li);
 
       items.push(li);
       frames.push(undefined);
       requested.push(false);
+      effectBadges.push(effectBadge);
       observer.observe(li);
     });
+
+    // Effect counts are independent of the lazy thumbnail path above — every
+    // slide gets one, not just the ones near the viewport.
+    slides.forEach((slidePath, index) => loadEffectCount(index, slidePath));
   }
 
   function updateHighlight(currentIndex: number): void {
@@ -385,6 +443,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       requested.forEach((isRequested, index) => {
         if (isRequested) void fetchAndFillThumbnail(index);
       });
+      slides.forEach((slidePath, index) => loadEffectCount(index, slidePath));
     },
     setSlidesWithComments(indices) {
       slidesWithComments = new Set(indices);
