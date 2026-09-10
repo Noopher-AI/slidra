@@ -363,3 +363,70 @@
   background: var(--ink-200);
   color: var(--surface-white);
 }
+
+/* 縮圖右鍵選單「Save as template」對話框——mask/dialog/actions 骨架與
+   `.outline-modal-*` 同形（settings-dialog-* 已有先例：同形重命名，不共用
+   class），只有輸入改成單行 `<input>` 而非 textarea。 */
+.save-template-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: var(--s-overlay);
+}
+.save-template-modal {
+  width: var(--panel-w);
+  max-width: 90vw;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border-radius: var(--radius-xl-dialog);
+  box-shadow: var(--shadow-dialog);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.save-template-modal-title {
+  margin: 0;
+  font-size: var(--text-lg-dialog);
+  font-weight: 700;
+  color: var(--ink-900);
+}
+.save-template-modal-input {
+  height: var(--control-h);
+  padding: 0 var(--space-5);
+  box-sizing: border-box;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--ink-700);
+}
+.save-template-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.save-template-modal-cancel,
+.save-template-modal-submit {
+  height: var(--control-h);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.save-template-modal-cancel {
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  color: var(--ink-700);
+}
+.save-template-modal-submit {
+  background: var(--brand-red);
+  border: 0;
+  color: var(--surface-white);
+}
+.save-template-modal-submit:disabled {
+  background: var(--ink-200);
+  color: var(--surface-white);
+}

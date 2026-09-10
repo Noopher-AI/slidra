@@ -11,6 +11,7 @@ export interface ThumbContextMenuProps {
   onNewBelow: () => void;
   onOutline: () => void;
   onDuplicate: () => void;
+  onSaveAsTemplate: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
@@ -30,6 +31,7 @@ export function ThumbContextMenu({
   onNewBelow,
   onOutline,
   onDuplicate,
+  onSaveAsTemplate,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -50,6 +52,9 @@ export function ThumbContextMenu({
       </button>
       <button type="button" role="menuitem" className="rail-menu-item" onClick={onDuplicate}>
         Duplicate slide <span className="thumb-context-menu-key">⌘D</span>
+      </button>
+      <button type="button" role="menuitem" className="rail-menu-item" onClick={onSaveAsTemplate}>
+        Save as template
       </button>
       <button
         type="button"
