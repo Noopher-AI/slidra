@@ -77,61 +77,59 @@ export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimat
     bar.style.left = `${Math.round(left)}px`;
   }, [unionX, bounds.width, dragging]);
 
-  if (!union || dragging) return <div className="context-bar-layer" />;
+  if (!union || dragging) return null;
   const below = union.y + union.height + GAP;
   const fitsBelow = below + BAR_HEIGHT <= bounds.height - DOCK_RESERVE;
   const top = Math.min(fitsBelow ? below : Math.max(MARGIN, union.y - GAP - BAR_HEIGHT), bounds.height - DOCK_RESERVE - BAR_HEIGHT);
   return (
-    <div className="context-bar-layer">
-      <div ref={barRef} className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
-        <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI" onClick={onComment}>
-          <Icon name="comment" size="control" />
-          Comment to AI
+    <div ref={barRef} className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
+      <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI" onClick={onComment}>
+        <Icon name="comment" size="control" />
+        Comment to AI
+      </button>
+      <span className="context-bar-divider" />
+      <button type="button" className="context-bar-item" title="Edit style" onClick={onEditStyle}>
+        <Icon name="edit" size="control" />
+        Edit style
+      </button>
+      {hasAnimation && (
+        <button type="button" className="context-bar-item" title="Edit animation" onClick={onEditAnimation}>
+          <Icon name="spark" size="control" />
+          Edit animation
         </button>
-        <span className="context-bar-divider" />
-        <button type="button" className="context-bar-item" title="Edit style" onClick={onEditStyle}>
-          <Icon name="edit" size="control" />
-          Edit style
+      )}
+      <span className="context-bar-divider" />
+      {ORDER_ITEMS.map((item) => (
+        <button
+          key={item.direction}
+          type="button"
+          className="context-bar-item context-bar-item-icon"
+          title={item.label}
+          aria-label={item.label}
+          onClick={() => onOrder(item.direction)}
+        >
+          <Icon name={item.icon} size="control" />
         </button>
-        {hasAnimation && (
-          <button type="button" className="context-bar-item" title="Edit animation" onClick={onEditAnimation}>
-            <Icon name="spark" size="control" />
-            Edit animation
-          </button>
-        )}
-        <span className="context-bar-divider" />
-        {ORDER_ITEMS.map((item) => (
-          <button
-            key={item.direction}
-            type="button"
-            className="context-bar-item context-bar-item-icon"
-            title={item.label}
-            aria-label={item.label}
-            onClick={() => onOrder(item.direction)}
-          >
-            <Icon name={item.icon} size="control" />
-          </button>
-        ))}
-        <span className="context-bar-divider" />
-        <button type="button" className="context-bar-item context-bar-item-icon" title="Copy" aria-label="Copy" onClick={onCopy}>
-          <Icon name="copy" size="control" />
-        </button>
-        <button type="button" className="context-bar-item context-bar-item-icon" title="Cut" aria-label="Cut" onClick={onCut}>
-          <Icon name="cut" size="control" />
-        </button>
-        <button type="button" className="context-bar-item context-bar-item-icon" title="Paste" aria-label="Paste" onClick={onPaste}>
-          <Icon name="paste" size="control" />
-        </button>
-        <span className="context-bar-divider" />
-        <button type="button" className="context-bar-item" title="Duplicate" onClick={onDuplicate}>
-          <Icon name="dup" size="control" />
-          Duplicate
-        </button>
-        <button type="button" className="context-bar-item context-bar-item-danger" title="Delete" onClick={onDelete}>
-          <Icon name="trash" size="control" />
-          Delete
-        </button>
-      </div>
+      ))}
+      <span className="context-bar-divider" />
+      <button type="button" className="context-bar-item context-bar-item-icon" title="Copy" aria-label="Copy" onClick={onCopy}>
+        <Icon name="copy" size="control" />
+      </button>
+      <button type="button" className="context-bar-item context-bar-item-icon" title="Cut" aria-label="Cut" onClick={onCut}>
+        <Icon name="cut" size="control" />
+      </button>
+      <button type="button" className="context-bar-item context-bar-item-icon" title="Paste" aria-label="Paste" onClick={onPaste}>
+        <Icon name="paste" size="control" />
+      </button>
+      <span className="context-bar-divider" />
+      <button type="button" className="context-bar-item" title="Duplicate" onClick={onDuplicate}>
+        <Icon name="dup" size="control" />
+        Duplicate
+      </button>
+      <button type="button" className="context-bar-item context-bar-item-danger" title="Delete" onClick={onDelete}>
+        <Icon name="trash" size="control" />
+        Delete
+      </button>
     </div>
   );
 }

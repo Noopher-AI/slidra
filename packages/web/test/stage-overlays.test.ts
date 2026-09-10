@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -36,7 +39,7 @@ describe("OverlayLayer の toLocalPoint／toLocalRect（parent-client px -> well
 });
 
 describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取 › 單選」）", () => {
-  it("沒有選取（union/label 皆 null）：渲染空容器，不含 .selection-label", () => {
+  it("沒有選取（union/label 皆 null）：不渲染，不含 .selection-label", () => {
     const markup = renderToStaticMarkup(createElement(SelectionOverlay, { union: null, label: null }));
     expect(markup).not.toContain("selection-label");
   });
@@ -75,7 +78,7 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
 });
 
 describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則翻到上方）」）", () => {
-  it("沒有選取（union 為 null）：渲染空容器，不含 .context-bar", () => {
+  it("沒有選取（union 為 null）：不渲染，不含 .context-bar", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: null,
@@ -134,7 +137,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:521px");
   });
 
-  it("拖曳中（dragging）：不渲染情境列，只留空容器", () => {
+  it("拖曳中（dragging）：不渲染情境列", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -335,5 +338,40 @@ describe("TableCellMenu（E2.T14, plan §4.5）", () => {
     );
     expect(markup).toContain("Merge cells");
     expect(markup).toContain(">Unmerge<");
+  });
+});
+
+/**
+ * [E5.T3] 兩層化：`z-index` 收斂與 `!important` 穿透規則都是對*原始碼文字*
+ * 的約束（瀏覽器 computed style 驗不出「檔案裡有幾個 z 值」「有沒有寫
+ * `!important`」），跟 `design-contract.test.ts` 同一套 `node:fs` + regex 做
+ * 法，不掛 jsdom 樣式表。
+ */
+describe("stage-overlays.css：兩層化的 z-index 與 pointer-events 文字契約", () => {
+  const cssPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "src",
+    "styles",
+    "stage-overlays.css",
+  );
+  const css = readFileSync(cssPath, "utf-8");
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+
+  it("AC2：z-index 宣告恰好三筆，分別屬於 .stage-geometry(1)／.stage-widgets(2)／.comment-composer(5)", () => {
+    const declarations = [...withoutComments.matchAll(/([.\w-]+)\s*\{[^}]*z-index:\s*(\d+)/g)].map((m) => ({
+      selector: m[1],
+      value: m[2],
+    }));
+    expect(declarations).toEqual([
+      { selector: ".stage-geometry", value: "1" },
+      { selector: ".stage-widgets", value: "2" },
+      { selector: ".comment-composer", value: "5" },
+    ]);
+  });
+
+  it("AC3：幾何層強制穿透規則逐字存在——`.stage-geometry, .stage-geometry * { pointer-events: none !important }`", () => {
+    const normalized = withoutComments.replace(/\s+/g, "");
+    expect(normalized).toContain(".stage-geometry,.stage-geometry*{pointer-events:none!important;}");
   });
 });
