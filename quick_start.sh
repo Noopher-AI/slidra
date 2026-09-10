@@ -420,6 +420,10 @@ setsid bash -c '
   "--remote-debugging-port=$QA_CDP_PORT" \
   --window-size=1440,900 \
   "--user-data-dir=$CHROMIUM_PROFILE_DIR" \
+  --disable-dev-shm-usage \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
   about:blank > "$CHROMIUM_LOG" 2>&1 &
 disown
 

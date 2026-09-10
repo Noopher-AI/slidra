@@ -111,9 +111,9 @@ browser-use < qa/cases/<id>.py   # 預期 FAIL（缺陷仍在）
 ## 6. `browser-use` 版本與升版注意事項
 
 本輪（含 helper 的實作與驗證）針對 **`browser-use 0.1.13`** 撰寫並實測。
-`qa/agent_helpers.py` 只用 `browser_harness.helpers` 的公開名稱（`cdp`、`js`、
-`click_at_xy`、`current_tab`、`new_tab`、`wait_for_load`、`drain_events`、
-`http_get`、`capture_screenshot`）；這些是相對穩定的核心原語，但升版後第一件事仍是
+`qa/agent_helpers.py` 只用 `browser_harness.helpers` 的公開名稱（`cdp`、
+`current_tab`、`new_tab`、`wait_for_load`、`drain_events`、`http_get`、
+`capture_screenshot`）；這些是相對穩定的核心原語，但升版後第一件事仍是
 跑一次：
 
 ```bash
@@ -137,5 +137,9 @@ PASS 就代表這些簽名沒有破壞性改動。
   這條斷言會先失敗，訊息會提示「請不要加 `--blank`」。
 - **`qa/cases/*.py` 不進 CI、不當合併門檻**（#279 決定 5）——這些腳本設計給 Review
   階段的 agent 手動跑，不是自動化測試套件的一部分。
+- **`--qa` 的 Chromium 啟動旗標含 `--disable-dev-shm-usage` 等容器旗標**（NOOP-349
+  round 5）：容器內 `/dev/shm` 常只有 64MB，不加這個旗標會讓 renderer 在高頻互動下
+  變慢甚至卡死，症狀是 CDP 呼叫逾時或點擊送出但畫面沒反應。唯讀 CDP／JS 呼叫另外可
+  用 `CO_MOTION_QA_IPC_TIMEOUT`（秒，預設 20）調整逾時，非數字或非正數會直接報錯。
 - `browser-use --doctor` 一定會印一行 `[FAIL] Browser Use cloud auth — optional`；
   這是正常的，`--doctor` 本身仍以離開碼 `0` 結束，不代表 QA 環境沒起來。
