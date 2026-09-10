@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <comot:effects xmlns:comot="https://co-motion.dev/ns">
       <comot:effect target="el-media-caption" family="enter" effect="fade" start="on-click"/>
@@ -6,9 +6,6 @@
       <comot:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
     </comot:effects>
   </metadata>
-  <g id="el-KWFVZnfLI32N">
-    <rect x="0" y="0" width="1280" height="720" fill="#101418"/>
-  </g>
   <g id="el-media-title" data-comot-name="標題">
     <text x="640" y="90" text-anchor="middle" font-size="56" fill="#f4f6f8">第 4 頁：影音</text>
   </g>
