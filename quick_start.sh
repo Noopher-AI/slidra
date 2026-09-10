@@ -24,7 +24,8 @@
 #   ./quick_start.sh --agent claude       # 指定 agent（偵測到多個時建議加）
 #   ./quick_start.sh --fresh              # 丟掉舊簡報，重新建立
 #   ./quick_start.sh --skip-build         # 跳過建置（只改前端原始碼時不要用）
-#   ./quick_start.sh --no-open            # 不要自動開瀏覽器
+#   ./quick_start.sh --open               # 順便開瀏覽器（預設不開）
+#   ./quick_start.sh --no-open            # 保留給既有指令；已是預設行為
 #   ./quick_start.sh --qa --no-open       # 沙箱 QA 層：背景起 serve + headless
 #                                         #   Chromium，寫出 browser-use 用的 env 檔
 #   ./quick_start.sh --qa-stop            # 收掉 --qa 留下的背景 serve 與 Chromium
@@ -38,7 +39,10 @@ PORT=5173
 AGENT=""
 FRESH=0
 SKIP_BUILD=0
-OPEN_BROWSER=1
+# 預設不開瀏覽器：這個腳本常常是重跑的（改一行、重跑驗證、再改一行），每次都
+# 彈一個新分頁出來，最後累積一堆指向同一個網址、其中大多數還是過期簡報識別碼的
+# 分頁。要開就自己加 --open。
+OPEN_BROWSER=0
 BLANK=0
 QA=0
 QA_STOP=0
@@ -49,6 +53,8 @@ while [ $# -gt 0 ]; do
     --agent) AGENT="${2:?--agent 缺少值}"; shift 2 ;;
     --fresh) FRESH=1; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --open) OPEN_BROWSER=1; shift ;;
+    # 已是預設，保留旗標本身以免既有指令與文件（qa/README.md）壞掉。
     --no-open) OPEN_BROWSER=0; shift ;;
     --blank) BLANK=1; shift ;;
     --qa) QA=1; shift ;;
