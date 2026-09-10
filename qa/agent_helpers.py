@@ -50,6 +50,14 @@ _DEFAULT_IPC_TIMEOUT = 20.0
 _IPC_RETRY_ATTEMPTS = 3
 _IPC_RETRY_INTERVAL = 0.5
 _CHIP_UPDATE_TIMEOUT = 2.0
+# How long to wait for a slide change to actually start rebuilding the iframe
+# before concluding that it never will. Measured, not guessed: over 12 clicks
+# on a slide thumbnail, every rebuild that happened began 0.029s-0.076s after
+# the click, and the rest never began at all (clicking the thumbnail of the
+# slide already on screen is a no-op). So this only has to clear ~0.08s with
+# margin, and the no-op case — which pays the full wait — should not be made
+# to pay more than that.
+_REBUILD_START_GRACE = 0.3
 
 
 def _ipc_timeout():
@@ -201,16 +209,50 @@ def _activate_current_tab():
     _cdp_ro("Target.activateTarget", targetId=tid)
 
 
-def _iframe_frame_id():
-    doc = _cdp_ro("DOM.getDocument", depth=0)
-    root_id = doc.get("root", {}).get("nodeId")
-    if not root_id:
-        return None
-    node_id = _cdp_ro("DOM.querySelector", nodeId=root_id, selector="iframe.slide-frame").get("nodeId")
-    if not node_id:
-        return None
-    described = _cdp_ro("DOM.describeNode", nodeId=node_id, depth=0)
-    return described.get("node", {}).get("frameId")
+# CDP node ids are handles into a per-connection cache that the browser
+# invalidates whenever the DOM they point at changes. Resolving the slide
+# iframe takes three separate round trips (getDocument -> querySelector ->
+# describeNode) and the app rebuilds that iframe on every slide change, so the
+# sequence races: a rebuild landing between calls makes the browser answer
+# "Could not find node with given id" (-32000), or hand back a node id that
+# describes the iframe that is already gone.
+#
+# NOOP-349: this is the second way this harness measured the wrong thing. A
+# stale frame id resolves to the PREVIOUS document, so _find_target_box()
+# computes its coordinates there and the click lands wherever that element
+# used to be — the chip never appears and select() reports "點擊可能沒有效果"
+# after its timeout. Widening that timeout does nothing, because nothing is
+# ever going to arrive. Re-fetching the document (which is what refreshes the
+# node cache) and trying again is the actual fix.
+_STALE_NODE_MESSAGE = "Could not find node"
+
+
+def _iframe_frame_id(attempts=3):
+    last_exc = None
+    for attempt in range(1, attempts + 1):
+        try:
+            doc = _cdp_ro("DOM.getDocument", depth=0)
+            root_id = doc.get("root", {}).get("nodeId")
+            if not root_id:
+                return None
+            node_id = _cdp_ro("DOM.querySelector", nodeId=root_id, selector="iframe.slide-frame").get("nodeId")
+            if not node_id:
+                return None
+            described = _cdp_ro("DOM.describeNode", nodeId=node_id, depth=0)
+            return described.get("node", {}).get("frameId")
+        except RuntimeError as exc:
+            if _STALE_NODE_MESSAGE not in str(exc):
+                raise
+            # The DOM moved under us. The next getDocument() above re-seeds the
+            # node cache, so simply going round again resolves against the
+            # document that actually exists now.
+            last_exc = exc
+            if attempt < attempts:
+                time.sleep(0.1)
+    raise RuntimeError(
+        f"解析投影片 iframe 的 frameId 連續 {attempts} 次都撞到失效的 CDP node id"
+        "（DOM 一直在變動，可能是投影片正在重建）"
+    ) from last_exc
 
 
 def _iframe_target_id():
@@ -250,10 +292,14 @@ def _iframe_target_id():
 # whole from "never clean" to 3/3.
 #
 # The probe below tracks that signal from the parent document:
-#   seq      how many "runtime-ready" messages have arrived since install
 #   pending  True between "the iframe's srcdoc was replaced" and "the new
 #            document said it is ready" — i.e. exactly the window in which
-#            dispatching input is silently lost
+#            dispatching input is silently lost. This, not "a runtime-ready
+#            arrived", is the condition to wait on: clicking the thumbnail of
+#            the slide already on screen does not always rebuild the iframe,
+#            so "wait for the next runtime-ready" hangs on the no-op case.
+#   seq      how many "runtime-ready" messages have arrived since install.
+#            Diagnostic only — nothing waits on it.
 # `pending` starts False so an already-settled iframe is not made to wait for
 # a signal that has already come and gone; `mark_pending` lets a caller that
 # just triggered a rebuild itself (open_deck's new tab) declare the window
@@ -304,25 +350,21 @@ def _ready_probe(mark_pending=False):
     return int(r["seq"]), bool(r["pending"])
 
 
-def _ready_seq(mark_pending=False):
-    return _ready_probe(mark_pending)[0]
+def _wait_rebuild_started(grace=_REBUILD_START_GRACE):
+    """Give a just-triggered slide change `grace` seconds to actually begin.
 
-
-def _wait_runtime_ready(after_seq, timeout=_FRAME_READY_TIMEOUT):
-    """Block until the iframe rebuilt by the caller has posted its OWN
-    "runtime-ready" — i.e. the counter has moved past `after_seq`, which the
-    caller must have read BEFORE triggering the rebuild. Counting rather than
-    checking a flag is what makes this specific to the new document instead of
-    being satisfied by the previous one's stale signal."""
-    deadline = time.time() + timeout
+    Returns as soon as the rebuild is observed, so the common case costs one
+    poll interval rather than the whole grace period. Returning without having
+    seen one is a legitimate outcome, not an error: clicking the thumbnail of
+    the current slide is a no-op, and so is any caller that did not navigate.
+    """
+    deadline = time.time() + grace
     while time.time() < deadline:
-        if _ready_seq() > after_seq:
-            return
+        _, pending = _ready_probe()
+        if pending:
+            return True
         time.sleep(0.05)
-    raise RuntimeError(
-        f"投影片 iframe 在 {timeout:.0f} 秒內沒有送出 runtime-ready"
-        "（監聽器可能還沒掛上；此時派送的輸入事件會被靜默丟棄）"
-    )
+    return False
 
 
 def _require_runtime_ready(timeout=_FRAME_READY_TIMEOUT):
@@ -482,9 +524,21 @@ def goto_slide(n):
     # a trace — no gesture-start, no gesture-move, no gesture-end, and a
     # marquee that silently selects nothing (NOOP-349: F-15's B-2, 2/6 before
     # this wait, 6/6 after).
-    seq_before = _ready_seq()
     _click(box["x"], box["y"])
-    _wait_runtime_ready(seq_before)
+    # Two waits, in this order, and both are needed.
+    #
+    # canvas.ts's render() `await fetchText()`s the slide markup BEFORE it
+    # assigns frame.srcdoc, so the rebuild starts tens of milliseconds after
+    # the click — later than the first poll below can possibly observe. Polling
+    # only for "no rebuild in flight" would therefore sail straight through on
+    # the pre-rebuild state and hand the caller an iframe that is about to be
+    # thrown away, which is how a drag() right after goto_slide() ends up
+    # dispatching into a document with no listeners.
+    _wait_rebuild_started()
+    # Then wait it out. Not "wait for a fresh runtime-ready": clicking the
+    # thumbnail of the slide already on screen does not always replace the
+    # srcdoc, and requiring a new one would hang forever on that no-op case.
+    _require_runtime_ready()
     _wait_frame_ready()  # navigating rebuilds the srcdoc iframe -> new target id
     text = _js_ro("(document.querySelector('.slide-nav-position')||{}).textContent || ''") or ""
     m = _SLIDE_NAV_RE.search(text)
