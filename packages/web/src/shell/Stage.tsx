@@ -69,6 +69,9 @@ function isOnStageChrome(target: EventTarget | null): boolean {
   return !!el?.closest(".dock, .stage-geometry, .stage-widgets");
 }
 
+/** mousedown→mouseup 之間的位移超過這個門檻（px）才算「拖曳」而非「點」，供 F-05 的舞台外圈清除選取判斷用。 */
+const STAGE_CLICK_THRESHOLD_PX = 3;
+
 /**
  * 舞台 (New v3 skeleton)：深色 well → 縮放/平移 transform frame → 既有的
  * `.canvas` div（身分不變）→ 疊層堆疊（空容器，見 stage-overlays/）。縮放/
@@ -260,9 +263,16 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     const startPan = zoomPan.pan;
     dragRef.current = { startX, startY, startPan };
     setDragging(true);
+    // F-05：舞台外圈（`.canvas-area` 但落在 `.stage` 之外的深灰底）點一下要
+    // 清除選取（06-KEYBOARD_AND_GESTURES.md「點空白取消」）；拖曳（平移畫
+    // 布）收尾的 mouseup 不算「點」，靠 `moved` 分辨——超過門檻視為拖曳。
+    let moved = false;
     function onMove(moveEvent: globalThis.MouseEvent): void {
       const drag = dragRef.current;
       if (!drag) return;
+      if (Math.abs(moveEvent.clientX - startX) > STAGE_CLICK_THRESHOLD_PX || Math.abs(moveEvent.clientY - startY) > STAGE_CLICK_THRESHOLD_PX) {
+        moved = true;
+      }
       setZoomPan((current) => ({
         zoom: current.zoom,
         pan: { x: drag.startPan.x + (moveEvent.clientX - drag.startX), y: drag.startPan.y + (moveEvent.clientY - drag.startY) },
@@ -273,6 +283,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
       setDragging(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      if (!moved && !onStage) controller?.clearSelection();
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);

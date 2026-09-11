@@ -2547,6 +2547,47 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
   });
 });
 
+describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02, NOOP-385/NOOP-351/#283）", () => {
+  function relayArrow(key: "ArrowLeft" | "ArrowRight"): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "stage-key", key, meta: false, ctrl: false, shift: false, alt: false },
+        source: controller!.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+  }
+
+  it("ArrowRight 中繼後往下一頁，ArrowLeft 往上一頁——選取了投影片元素、焦點落在 iframe 內時仍要能換頁", async () => {
+    stubDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    relayArrow("ArrowRight");
+    await vi.waitFor(() => expect(srcdoc()).toContain('data-testid="s2"'));
+
+    relayArrow("ArrowLeft");
+    await vi.waitFor(() => expect(srcdoc()).toContain('data-testid="s1"'));
+  });
+
+  it("在最後一頁 ArrowRight、在第一頁 ArrowLeft：不拋錯，也不呼叫多餘的 fetch", async () => {
+    stubDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+
+    expect(() => relayArrow("ArrowLeft")).not.toThrow();
+    await Promise.resolve();
+    expect(srcdoc()).toContain('data-testid="s1"');
+
+    await controller.showSlide(2);
+    const callsAtLastSlide = fetchMock.mock.calls.length;
+    expect(() => relayArrow("ArrowRight")).not.toThrow();
+    await Promise.resolve();
+    expect(srcdoc()).toContain('data-testid="s3"');
+    expect(fetchMock.mock.calls.length).toBe(callsAtLastSlide);
+  });
+});
+
 // E2.T14r2 §4.1: handleTableRangeKey/setTableRange/subscribeTableRange — the
 // single decision function both the iframe relay and App.tsx's capture
 // listener call, tested here at its own public boundary
