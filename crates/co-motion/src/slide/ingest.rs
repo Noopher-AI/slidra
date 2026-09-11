@@ -25,6 +25,29 @@ use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_docume
 use crate::svgnum::format_svg_number;
 use crate::text::list::{ListKind, parse_list_tokens};
 use crate::text::runs::utf16_slice;
+
+/// The composition roles an element may declare (#303 §B), borrowed from
+/// ppt-master's shape-role grammar. They say what an element *is for*, which
+/// is what `validate` can check once coordinates are the page's own
+/// business: `field` — the region a relationship operates in; `node` — a
+/// semantic unit; `spine` — the page's reading scaffold; `edge` — a
+/// necessary connection; `label` — text attached to an owner; `garnish` —
+/// decoration added *after* the relationship works, carrying no meaning.
+///
+/// `background` is in the list because the CLI writes it on the background
+/// image container; authors never set it by hand.
+pub const ELEMENT_ROLES: &[&str] = &[
+    "field",
+    "node",
+    "spine",
+    "edge",
+    "label",
+    "garnish",
+    "background",
+];
+
+/// The attribute both authored SVG and the normalised page use.
+pub const ROLE_ATTRIBUTE: &str = "data-comot-role";
 use crate::text::{DEFAULT_FONT_FAMILY, FontMetrics, unescape_xml_text};
 use std::collections::HashMap;
 
@@ -185,6 +208,19 @@ fn declaration_markup(
         &what,
     )?;
     let name = attribute_value(node, "data-comot-name");
+    // A declaration's role has to be carried onto the wrapper the builder
+    // emits: the declaration `<text>` itself is replaced, so anything left
+    // on it is lost (#303 §B).
+    let role = match attribute_value(node, ROLE_ATTRIBUTE) {
+        None => None,
+        Some(role) if ELEMENT_ROLES.contains(&role.as_str()) => Some(role),
+        Some(other) => {
+            return Err(CoMotionError::invalid(format!(
+                "文字框宣告 {what} 的 {ROLE_ATTRIBUTE} 不是合法角色：{other}（可用：{}）",
+                ELEMENT_ROLES.join("、")
+            )));
+        }
+    };
     let input = AddTextBoxInput {
         x,
         y,
@@ -197,7 +233,23 @@ fn declaration_markup(
         align,
     };
     let (markup, _) = build_text_box_markup(&id, name.as_deref(), &input, &tokens, fonts)?;
-    Ok(markup)
+    Ok(splice_role_attribute(markup, role.as_deref()))
+}
+
+/// Inserts `data-comot-role` into the wrapper `<g …>` the text-box builder
+/// produced, right after its `id`. Returns the markup untouched when the
+/// declaration carried no role.
+fn splice_role_attribute(markup: String, role: Option<&str>) -> String {
+    let Some(role) = role else { return markup };
+    let Some(id_end) = markup.find("\" ").or_else(|| markup.find("\">")) else {
+        return markup;
+    };
+    let insert_at = id_end + 1;
+    let mut out = String::with_capacity(markup.len() + role.len() + 20);
+    out.push_str(&markup[..insert_at]);
+    out.push_str(&format!(" {ROLE_ATTRIBUTE}=\"{role}\""));
+    out.push_str(&markup[insert_at..]);
+    out
 }
 
 /// Runs the whole ingest pipeline on an agent-authored page.

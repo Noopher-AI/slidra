@@ -37,6 +37,7 @@ description: 跑 co-motion validate 驗證指定頁或整份投影片的文字�
 | `focus.` | 一頁只有一個標題角色 | 合併或拆頁 |
 | `geometry.` | 文字框的右緣、下緣溢出；同欄文字框重疊（裝飾用的圓、線、path 可以出血，不驗） | 縮短文字或減少條數 |
 | `style.` | 字級、文字色、色塊色是否在 design-spec 的表上（大數字與粗體標籤可用 accent、結語頁文字可用 background；色塊可 `none` 或 `url(#…)` 漸層） | 改回表上的值 |
+| `role.` | 有宣告 `data-comot-role` 的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊 | 改角色或補標籤；裝飾要承載意義就不該是 `garnish` |
 | `structure.background-image` | 計畫 `background` 是 `on` 時，每頁都要有 `data-comot-role="background"` 的圖片元素 | 補 `slide background set --asset <該頁型配方>`，或把計畫的 `background` 改成 `off` |
 | `structure.` | 背景已設、備忘稿非空、頁型範本已登記；`structure.scrim`：有背景圖的頁，某個文字框沒有落在 scrim 面板（fill 是 background／secondary_bg、opacity ≥ 0.6、在它之前的 rect）上，頁尾與 ≥ claim 的大字除外 | 補上；scrim 缺的話在那個文字框底下加一塊 `slide-design.md` 第 4b 節的 scrim rect，或把該頁背景圖 `--none` 拿掉 |
 | `roster.` | 頁數與頁型跟 `plan/outline.md` 對得上 | 以計畫為準補頁或改頁型 |

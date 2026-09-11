@@ -110,6 +110,8 @@ pub struct TextBox {
     /// place small text may take the accent colour.
     pub bold: bool,
     pub paragraphs: Vec<Paragraph>,
+    /// Declared composition role (#303 §B), when the author set one.
+    pub role: Option<String>,
     /// Position among the page's top-level containers (document order).
     pub order: usize,
 }
@@ -145,6 +147,8 @@ pub struct Shape {
     pub stroke: Option<String>,
     /// Effective opacity (element × primitive); 1 when neither sets it.
     pub opacity: f64,
+    /// Declared composition role (#303 §B), when the author set one.
+    pub role: Option<String>,
     /// Position among the page's top-level containers (document order).
     pub order: usize,
 }
@@ -289,6 +293,7 @@ fn collect_elements(
             facts.has_background = true;
             continue;
         }
+        let role = attribute_value(element, "data-comot-role");
         let matrix = multiply_matrices(
             &inherited,
             &parse_transform(attribute_value(element, "transform").as_deref())?,
@@ -329,6 +334,7 @@ fn collect_elements(
                 fill,
                 bold,
                 paragraphs,
+                role,
                 order: element_order,
             });
             continue;
@@ -381,6 +387,7 @@ fn collect_elements(
             stroke: attribute_value(primitive, "stroke")
                 .or_else(|| attribute_value(element, "stroke")),
             opacity,
+            role,
             order: element_order,
         });
     }
@@ -583,6 +590,86 @@ pub fn check_slide(
             "空",
             "非空",
             format!("第 {n} 頁沒有備忘稿"),
+        );
+    }
+
+    // --- role (#303 §B, plan-free): the composition-role grammar. Roles
+    // are optional — a page that declares none is checked exactly as
+    // before — but a page that declares them must be internally coherent.
+    // These check what an element is FOR, which is what stays checkable
+    // once coordinates are the page's own business.
+    let role_of = |role: &str| -> usize {
+        facts
+            .text_boxes
+            .iter()
+            .filter(|t| t.role.as_deref() == Some(role))
+            .count()
+            + facts
+                .shapes
+                .iter()
+                .filter(|sh| sh.role.as_deref() == Some(role))
+                .count()
+    };
+
+    for tb in &facts.text_boxes {
+        if tb.role.as_deref() == Some("garnish") {
+            push(
+                errors,
+                slide,
+                Some(&tb.id),
+                "role.garnish-meaning",
+                "garnish 是文字框",
+                "garnish 不承載文字",
+                format!(
+                    "第 {n} 頁 {} 標成 garnish 卻是文字框——裝飾不承載意義，改標 label／node 或拿掉文字",
+                    tb.id
+                ),
+            );
+        }
+    }
+
+    let spines = role_of("spine");
+    if spines > 1 {
+        push(
+            errors,
+            slide,
+            None,
+            "role.spine-count",
+            format!("{spines} 條"),
+            "≤ 1 條",
+            format!("第 {n} 頁有 {spines} 條 spine——一頁只有一條閱讀主軸"),
+        );
+    }
+
+    let nodes = role_of("node");
+    let edges = role_of("edge");
+    if edges > 0 && nodes < 2 {
+        push(
+            errors,
+            slide,
+            None,
+            "role.edge-endpoints",
+            format!("{nodes} 個 node"),
+            "≥ 2 個 node",
+            format!("第 {n} 頁有 edge 卻只有 {nodes} 個 node——連接線要有兩端"),
+        );
+    }
+
+    let node_shapes = facts
+        .shapes
+        .iter()
+        .filter(|sh| sh.role.as_deref() == Some("node"))
+        .count();
+    let labels = role_of("label");
+    if node_shapes > 0 && labels < node_shapes {
+        push(
+            errors,
+            slide,
+            None,
+            "role.node-label",
+            format!("{labels} 個 label／{node_shapes} 個 node 色塊"),
+            "label 不少於 node 色塊",
+            format!("第 {n} 頁有 {node_shapes} 個 node 色塊但只有 {labels} 個 label——沒有標籤的節點不是語意單位"),
         );
     }
 
@@ -1408,6 +1495,44 @@ mod tests {
         );
         let r = rules(&run_one(&svg, "bullets", "dense"));
         assert!(r.contains(&"text.page-total"), "{r:?}");
+    }
+
+    #[test]
+    fn composition_roles_are_optional_but_must_be_coherent() {
+        // #303 §B: a page that declares no role is checked exactly as
+        // before; one that declares them must hold together.
+        let plain = textbox("el-title", 80.0, 72.0, 1120.0, 40.0, "#F4F6F8", &[("標題", false)]);
+        let none = rules(&run_one(&slide(Some("#101418"), "n", &plain), "bullets", "dense"));
+        assert!(!none.iter().any(|r| r.starts_with("role.")), "{none:?}");
+
+        // Decoration cannot carry copy.
+        let garnish = plain.replace(
+            "id=\"el-title\"",
+            "id=\"el-title\" data-comot-role=\"garnish\"",
+        );
+        let r = rules(&run_one(&slide(Some("#101418"), "n", &garnish), "bullets", "dense"));
+        assert!(r.contains(&"role.garnish-meaning"), "{r:?}");
+
+        // One reading spine per page.
+        let spine = |id: &str| {
+            format!(
+                "<g id=\"{id}\" data-comot-role=\"spine\"><rect x=\"80\" y=\"200\" width=\"8\" height=\"300\" fill=\"#4F8DFF\"/></g>"
+            )
+        };
+        let two = format!("{plain}{}{}", spine("el-s1"), spine("el-s2"));
+        let r = rules(&run_one(&slide(Some("#101418"), "n", &two), "bullets", "dense"));
+        assert!(r.contains(&"role.spine-count"), "{r:?}");
+
+        // An edge needs two ends, and a node carrier needs a label.
+        let node = "<g id=\"el-n1\" data-comot-role=\"node\"><rect x=\"80\" y=\"200\" width=\"200\" height=\"80\" fill=\"#1B2129\"/></g>";
+        let edge = "<g id=\"el-e1\" data-comot-role=\"edge\"><rect x=\"300\" y=\"236\" width=\"120\" height=\"2\" fill=\"#9AA7B4\"/></g>";
+        let r = rules(&run_one(
+            &slide(Some("#101418"), "n", &format!("{plain}{node}{edge}")),
+            "bullets",
+            "dense",
+        ));
+        assert!(r.contains(&"role.edge-endpoints"), "{r:?}");
+        assert!(r.contains(&"role.node-label"), "{r:?}");
     }
 
     #[test]

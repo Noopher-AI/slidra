@@ -84,6 +84,24 @@
 - 文字顏色只用 text 與 muted，例外：大數字與粗體標籤（卡片編號、章節編號、結語小標、VS）用 accent；結語頁全部文字用 background。內文與副標用強調色會過不了對比度，`validate` 會擋。
 - 色塊與線條的顏色只用 primary／accent／secondary_accent／secondary_bg／background；半透明靠 `opacity`，不要調色。
 
+## 3b. 元素角色：每個元素是為了什麼而存在
+
+座標可以為內容調整，但**每個元素扮演的角色不能含糊**。在元素上宣告 `data-comot-role`，`validate` 就能在不管座標的前提下檢查這一頁的結構是否成立。
+
+| 角色 | 意思 | 典型元素 |
+|---|---|---|
+| `field` | 關係發生的區域 | 卡片底、欄位面板、色帶 |
+| `node` | 一個語意單位 | 每張卡片、對照的每一欄、流程的每一站 |
+| `spine` | 這一頁的閱讀主軸 | 章節頁的骨架色條、時間軸的主線 |
+| `edge` | 必要的連接 | 因果箭頭、依賴線 |
+| `label` | 附著在某個 owner 上的文字 | 卡片裡的要點字、節點名稱 |
+| `garnish` | 關係成立**之後**才加的裝飾 | 底線、小方塊、強調短棒 |
+
+- **角色是選用的**：沒宣告角色的頁面驗法完全不變。宣告了就要自洽。
+- `background` 是 CLI 自己寫在背景圖容器上的，作者不要手寫。
+- `validate` 會擋的四件事：`garnish` 不可以是文字框（裝飾不承載意義）；一頁最多一條 `spine`；有 `edge` 就至少要有兩個 `node`；`label` 的數量不得少於當作色塊的 `node`（沒有標籤的節點不是語意單位）。
+- 文字框宣告上的 `data-comot-role` 會被帶到正規化後的元素上；寫了不在表上的角色會直接被 `slide add --svg` 拒絕。
+
 ## 4. 六種頁型（完整 SVG）
 
 **這一節的範例是起點，不是規格。** 欄寬比例、卡片高度、要不要把三張卡片合併成一塊面板、標題擺左上還是壓在色塊上——都可以為了這一頁的內容調整。不變的只有三件事：不越過 `design-spec.layout` 的安全區、字級與顏色取自字級表與配色、間距取自 `layout.gutter` 與 `layout.spacing` 的級距。為了貼合範例而把話講不清楚是本末倒置；無緣無故偏離它也沒有意義。
@@ -448,6 +466,7 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 | `structure.background`、`structure.notes`、`structure.template` | 背景已設、備忘稿非空、出現過的頁型都登記了範本 |
 | `structure.scrim` | 有背景圖的頁，每個文字框（頁尾與 ≥ claim 的大字除外）都落在一塊 scrim 面板上（第 4b 節） |
 | `structure.background-image` | 計畫 `background` 是 `on` 時，每一頁都有背景圖（漏下 `slide background set` 會被這條抓到） |
+| `role.*` | 有宣告角色的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊（第 3b 節） |
 | `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的特徵字級） |
 | `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 |
 | `motion.transition`、`motion.enter` | `animation` 不是 `none` 時每頁有轉場；`full` 每頁至少一個進場效果、`minimal` 封面／要點／對照頁至少一個 |
