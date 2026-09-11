@@ -18,8 +18,8 @@
 | 色系 | 效果 | 角色對應 |
 |---|---|---|
 | `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `<primary>` → `accent` |
-| `tinted` | 底色上場：大面積改用 `secondary_bg` 這個中性色，只留最前面的一層有彩度。 | `<primary>` → `secondary_bg` |
+| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
+| `tinted` | 底色上場：大面積改用 `secondary_bg` 這個中性色，只留最前面的一層有彩度。 | `var(--primary)` → `secondary_bg` |
 
 一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
 

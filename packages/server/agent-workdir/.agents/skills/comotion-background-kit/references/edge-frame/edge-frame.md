@@ -16,8 +16,8 @@
 | 色系 | 效果 | 角色對應 |
 |---|---|---|
 | `base` | 原樣，下面 SVG 直接用 | — |
-| `warm` | 全部收斂到暖色：主色與第三色都改用 accent。整張圖只剩一個色相的深淺，最熱。 | `<primary>` → `accent` |
-| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `<primary>` → `muted`、`<accent>` → `primary` |
+| `warm` | 全部收斂到暖色：主色與第三色都改用 accent。整張圖只剩一個色相的深淺，最熱。 | `var(--primary)` → `accent` |
+| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `var(--primary)` → `muted`、`var(--accent)` → `primary` |
 
 一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
 

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<pattern id="wf" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="0.9" fill="<primary>" opacity="0.28"/></pattern>
+<pattern id="wf" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="0.9" fill="var(--primary)" opacity="0.28"/></pattern>
 </defs>
-<rect width="1280" height="720" fill="<background>"/>
-<ellipse cx="1119" cy="371" rx="218" ry="160" fill="<accent>" opacity="0.10"/><ellipse cx="1121" cy="61" rx="243" ry="177" fill="<primary>" opacity="0.10"/><ellipse cx="973" cy="147" rx="271" ry="221" fill="<primary>" opacity="0.10"/><ellipse cx="561" cy="656" rx="139" ry="100" fill="<accent>" opacity="0.10"/><ellipse cx="381" cy="163" rx="239" ry="187" fill="<primary>" opacity="0.10"/><ellipse cx="751" cy="199" rx="223" ry="151" fill="<primary>" opacity="0.10"/><ellipse cx="661" cy="307" rx="209" ry="135" fill="<accent>" opacity="0.10"/><ellipse cx="415" cy="363" rx="178" ry="146" fill="<primary>" opacity="0.10"/><ellipse cx="1198" cy="524" rx="186" ry="129" fill="<primary>" opacity="0.10"/><rect width="1280" height="720" fill="url(#wf)"/>
+<rect width="1280" height="720" fill="var(--background)"/>
+<ellipse cx="1119" cy="371" rx="218" ry="160" fill="var(--accent)" opacity="0.10"/><ellipse cx="1121" cy="61" rx="243" ry="177" fill="var(--primary)" opacity="0.10"/><ellipse cx="973" cy="147" rx="271" ry="221" fill="var(--primary)" opacity="0.10"/><ellipse cx="561" cy="656" rx="139" ry="100" fill="var(--accent)" opacity="0.10"/><ellipse cx="381" cy="163" rx="239" ry="187" fill="var(--primary)" opacity="0.10"/><ellipse cx="751" cy="199" rx="223" ry="151" fill="var(--primary)" opacity="0.10"/><ellipse cx="661" cy="307" rx="209" ry="135" fill="var(--accent)" opacity="0.10"/><ellipse cx="415" cy="363" rx="178" ry="146" fill="var(--primary)" opacity="0.10"/><ellipse cx="1198" cy="524" rx="186" ry="129" fill="var(--primary)" opacity="0.10"/><rect width="1280" height="720" fill="url(#wf)"/>
 </svg>

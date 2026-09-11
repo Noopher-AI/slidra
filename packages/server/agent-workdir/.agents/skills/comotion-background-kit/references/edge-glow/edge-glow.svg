@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="eg1" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="<accent>" stop-opacity="0.9"/><stop offset="0.05" stop-color="<accent>" stop-opacity="0.3"/><stop offset="0.16" stop-color="<accent>" stop-opacity="0.05"/><stop offset="1" stop-color="<accent>" stop-opacity="0"/></linearGradient><linearGradient id="eg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="<primary>" stop-opacity="0.45"/><stop offset="0.07" stop-color="<primary>" stop-opacity="0.12"/><stop offset="0.2" stop-color="<primary>" stop-opacity="0"/></linearGradient>
+<linearGradient id="eg1" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="var(--accent)" stop-opacity="0.9"/><stop offset="0.05" stop-color="var(--accent)" stop-opacity="0.3"/><stop offset="0.16" stop-color="var(--accent)" stop-opacity="0.05"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient><linearGradient id="eg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.45"/><stop offset="0.07" stop-color="var(--primary)" stop-opacity="0.12"/><stop offset="0.2" stop-color="var(--primary)" stop-opacity="0"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="<background>"/>
+<rect width="1280" height="720" fill="var(--background)"/>
 <rect width="1280" height="720" fill="url(#eg2)"/><rect width="1280" height="720" fill="url(#eg1)"/>
 </svg>

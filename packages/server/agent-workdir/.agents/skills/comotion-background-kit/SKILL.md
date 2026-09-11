@@ -9,6 +9,8 @@ description: 從 47 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 
 **目錄是起點，不是白名單。** 可以改配方的參數、混兩種、或自己畫一個——只要遵守下面三條底線。
 
+配方檔裡的顏色寫成 `fill="var(--primary)"` 這種 CSS 變數語法，不是裸的 `<primary>`——後者的 `<` 在 SVG 屬性值裡不合法 XML，這些檔案現在是獨立的 `.svg`，直接用瀏覽器打開也要能通過 XML 解析（即使顏色還沒代換）。建資產前一樣要把它換成實際色碼，寫法只是從『字串代換』換成『CSS 變數代換』，規則不變。
+
 ## 觸發語
 
 作者的訊息以 `/comotion-background-kit` 開頭，後面接**想要的氣氛**（選填），可再接要套哪幾頁：
@@ -27,12 +29,12 @@ description: 從 47 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 
 ## 步驟
 
-1. **讀風格**：`co-motion cat <presentation-id> plan/design-spec.md`。配方裡的 `<role>` 全部換成這份簡報的色碼——背景必須跟風格同一組顏色，否則會像貼上去的。
+1. **讀風格**：`co-motion cat <presentation-id> plan/design-spec.md`。配方裡的 `var(--role)` 全部換成這份簡報的色碼——背景必須跟風格同一組顏色，否則會像貼上去的。
 2. **讀索引**挑配方；作者沒給描述時，依風格檔的「建議背景」與每頁的 `rhythm` 決定。
 3. **讀中選的那一個檔**：`references/<名字>/<名字>.md`。**一次只讀一個。**
 4. **確認畫布**：不是 1280×720 時所有座標乘以 `k = width ÷ 1280`，`viewBox` 寫成實際畫布尺寸。
 5. **挑色系**：每個配方檔的「另外兩種色系」列出 `base` 之外的兩種角色對應。同一張圖換一組角色去填就是另一個色系，顏色仍然全部來自這份簡報的配色。挑法：內容頁用 `base`，定錨頁（封面、章節、結語）想跟內容頁區隔時用另一種。**一份簡報最多兩種色系**，三種以上會像拼貼。
-6. **建資產**：把 `<role>` 換成**對應後**的角色色碼（SVG 本身不改），`co-motion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>[-<色系>].svg`。**同一種配方＋同一種色系整份只建一次**，記下回傳的 `data.path` 重複使用。
+6. **建資產**：把 `var(--role)` 換成**對應後**的角色色碼（SVG 本身不改），`co-motion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>[-<色系>].svg`。**同一種配方＋同一種色系整份只建一次**，記下回傳的 `data.path` 重複使用。
 7. **套用**：逐頁 `co-motion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（見各配方檔）。
 8. **檢查**：`co-motion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照指南第 4b 節補 scrim，不要調降 opacity 了事。
 

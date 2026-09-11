@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect width="1280" height="720" fill="<background>"/>
-<g stroke="<accent>" stroke-width="3" fill="none" opacity="0.7">
+<rect width="1280" height="720" fill="var(--background)"/>
+<g stroke="var(--accent)" stroke-width="3" fill="none" opacity="0.7">
 <path d="M48 120V48h72"/>
 <path d="M1160 48h72v72"/>
 <path d="M1232 600v72h-72"/>

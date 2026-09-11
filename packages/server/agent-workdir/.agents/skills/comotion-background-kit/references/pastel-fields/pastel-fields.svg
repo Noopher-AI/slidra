@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="pfa" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="<accent>" stop-opacity="0.34"/><stop offset="1" stop-color="<accent>" stop-opacity="0.1"/></linearGradient><linearGradient id="pfb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="<primary>" stop-opacity="0.22"/><stop offset="1" stop-color="<primary>" stop-opacity="0.05"/></linearGradient><linearGradient id="pfc" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="<secondary_bg>" stop-opacity="1"/><stop offset="1" stop-color="<secondary_bg>" stop-opacity="0.3"/></linearGradient>
+<linearGradient id="pfa" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity="0.34"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0.1"/></linearGradient><linearGradient id="pfb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.22"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0.05"/></linearGradient><linearGradient id="pfc" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--secondary_bg)" stop-opacity="1"/><stop offset="1" stop-color="var(--secondary_bg)" stop-opacity="0.3"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="<background>"/>
+<rect width="1280" height="720" fill="var(--background)"/>
 <path d="M760 0H1280V720H980Z" fill="url(#pfc)"/><path d="M900 0H1280V430L1010 720H700Z" fill="url(#pfa)"/><path d="M1120 0H1280V280Z" fill="url(#pfb)"/>
 </svg>
