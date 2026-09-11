@@ -495,6 +495,39 @@ def open_deck():
         _new_tab(url)
     _activate_current_tab()
     _wait_for_load()
+    # `quick_start.sh --qa` launches Chromium with
+    # `--user-data-dir=$QA_DIR/profile`, a fixed on-disk profile that
+    # `--qa-stop` never deletes — only the serve/Chromium processes are
+    # killed, so the profile's disk HTTP cache survives a restart. Worse,
+    # `same`/`navigated` above can come back `True` (skipping any
+    # navigation at all) for a tab the DAEMON still remembers as pointing
+    # at this URL even though the Chromium PROCESS it belonged to is
+    # gone — `navigated` is the daemon's belief about tab identity, not a
+    # fact about which OS process (and therefore which cache/JS heap) is
+    # behind it, so it cannot be trusted to gate a cache-bypass here.
+    # Either way, a plain Page.navigate can end up serving a stale
+    # index.html that still references the PREVIOUS `dist/` build's
+    # content-hashed `main-*.js`/`canvas-*.js` — same URL, old code
+    # silently keeps running. This is invisible from every signal
+    # open_deck() already checks (HTTP 200, DOM ready, runtime-ready all
+    # still fire — just for the old bundle) and only shows up as a QA case
+    # passing (or failing) against the wrong commit's behaviour. Measured
+    # on this pod switching branch -> base for F-02/F-05 (NOOP-403): both
+    # cases falsely PASSED on base because the tab was still running the
+    # branch's cached bundle, with `navigated` False the whole time.
+    #
+    # Ask the live JS heap instead of the daemon: a real process restart
+    # cannot leave `window.__cmQaBundleVerified` behind (a fresh V8 heap
+    # has no globals), so checking for it — not `navigated` — is what
+    # decides whether THIS page has already been proven fresh in its own
+    # lifetime. A same-process warm reuse (many browser-use calls against
+    # one already-verified tab within one `--qa` session, the common case)
+    # finds the marker and skips straight to the ready-waits below.
+    if not _js_ro("!!window.__cmQaBundleVerified"):
+        _cdp_ro("Network.setCacheDisabled", cacheDisabled=True)
+        _cdp_ro("Page.reload", ignoreCache=True)
+        _wait_for_load()
+        _js_ro("window.__cmQaBundleVerified = true")
     # --window-size gives Chromium a window, not a viewport (verified: it
     # undershoots by however tall the OS chrome is). This is the only way
     # that reliably lands on exactly 1440x900, and it persists across
