@@ -31,9 +31,10 @@ description: 從 38 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 2. **讀索引**挑配方；作者沒給描述時，依風格檔的「建議背景」與每頁的 `rhythm` 決定。
 3. **讀中選的那一個檔**：`references/<編號>-<名字>.md`。**一次只讀一個。**
 4. **確認畫布**：不是 1280×720 時所有座標乘以 `k = width ÷ 1280`，`viewBox` 寫成實際畫布尺寸。
-5. **建資產**：`co-motion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>.svg`。**同一種配方整份只建一次**，記下回傳的 `data.path` 重複使用。
-6. **套用**：逐頁 `co-motion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（見各配方檔）。
-7. **檢查**：`co-motion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照指南第 4b 節補 scrim，不要調降 opacity 了事。
+5. **挑色系**：每個配方檔的「另外兩種色系」列出 `base` 之外的兩種角色對應。同一張圖換一組角色去填就是另一個色系，顏色仍然全部來自這份簡報的配色。挑法：內容頁用 `base`，定錨頁（封面、章節、結語）想跟內容頁區隔時用另一種。**一份簡報最多兩種色系**，三種以上會像拼貼。
+6. **建資產**：把 `<role>` 換成**對應後**的角色色碼（SVG 本身不改），`co-motion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>[-<色系>].svg`。**同一種配方＋同一種色系整份只建一次**，記下回傳的 `data.path` 重複使用。
+7. **套用**：逐頁 `co-motion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（見各配方檔）。
+8. **檢查**：`co-motion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照指南第 4b 節補 scrim，不要調降 opacity 了事。
 
 ## 38 種配方
 
@@ -82,6 +83,8 @@ description: 從 38 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 
 有方向的三個是特例：`19 dashed-path`、`38 perspective-floor` 有明確方向，只給 `order` 關係；用在並列的內容上，背景會說錯話。
 
+**每個配方都有三種色系可用**（`base` 加上檔案裡列的兩種）。色系是**角色對應表**而不是色碼——同一張圖換一組角色去填，顏色仍然來自簡報自己的配色，所以不會跟風格打架。`12 arc-rings` 在 `base` 是藍的、`accent-led` 是金的、`verdant` 是綠的，但它們用的都是這份簡報本來就有的顏色。
+
 **大面積的柔和色塊只用 `primary` 與 `accent`**（需要第三個層次時用 `secondary_bg` 這個中性色）。`secondary_accent` 只給線條或小面積——它在許多配色裡是另一個色系（例如暖色風格 02 的 `secondary_accent` 是深綠），大面積柔和地混進暖底會變成一塊髒的灰綠。三個配方（31、33、18）第一版就是這樣，在淺色風格下才看得出來。
 
 **每一個都在深色與淺色兩組配色下都看過。** 只用深色檢查會漏掉兩種錯：淺色下消失的（27、35 第一版），以及只有在暖色底上才顯現的濁色。
@@ -103,5 +106,6 @@ description: 從 38 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 - **不把 `secondary_accent` 當大面積柔和色塊**：它在許多配色裡是另一個色系，大面積會讓畫面變濁。線條與小面積可以。
 - **左半與中央（x 80～760、y 72～648）保持暗與安靜**：亮部只在右緣與右下。這是文字區能讀得清楚的前提。
 - 不把整個 `references/` 讀進來——只讀中選的那一個。
-- 同一種配方不重複建資產；一份簡報最多兩種配方（定錨頁一種、內容頁一種）。
+- 同一種配方＋色系不重複建資產；一份簡報最多兩種配方、最多兩種色系。
+- 不自己發明色系：色系是角色對應表，顏色一律來自簡報的七個配色角色。直接寫死色碼會讓背景跟風格打架。
 - 不對背景圖加任何動畫效果。
