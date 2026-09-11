@@ -37,12 +37,42 @@ description: 從 30 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 
 ## 30 種配方
 
-| 編號 | 名字 | 氣氛 | 適合的 `rhythm` | 建議風格 |
+| 編號 | 名字 | 氣氛 | 適合的 `rhythm`／關係 | 建議風格 |
 |---|---|---|---|---|
-| 01 | `soft-blobs` | 柔焦色團，像光暈透過紙 | `anchor` | 02 |
+| 01 | `soft-blobs` | 柔焦色團，像光透過紙 | `anchor` | 02 |
 | 02 | `dot-grid` | 細點陣，像方格筆記本 | `dense` | 01、03 |
-| 03 | `diagonal-beams` | 斜向光束，有方向與速度 | `anchor`、`breathing` | 01 |
-| 04–30 | *（第 3 期補齊）* | | | |
+| 03 | `diagonal-beams` | 斜向光束，有方向與速度 | `anchor`、`breathing`、`order` | 01 |
+| 04 | `gradient-wash` | 單向漸層，最安靜的一種 | 全部 | 全部 |
+| 05 | `corner-arc` | 右下一道大圓弧，像被放大的印記 | `anchor`、`breathing` | 01、06、13、20、23 |
+| 06 | `paper-fiber` | 極細斜向短線，紙的纖維 | 全部 | 02、05、14、16、24 |
+| 07 | `edge-frame` | 距邊的細框，像畫框或證書 | `anchor` | 14、18、20、21、24 |
+| 08 | `halftone-fade` | 逐漸變稀的網點，印刷的半色調 | `anchor`、`dense` | 09、22、24 |
+| 09 | `topo-lines` | 層疊的等高線，地形圖 | `anchor`、`breathing` | 10、12、23、24 |
+| 10 | `side-band` | 側緣一條滿高色帶，切出主次 | `anchor`、`dense` | 01、13、18、21 |
+| 11 | `grid-blueprint` | 方格網加粗主格線，製圖紙 | `dense` | 13、04、25 |
+| 12 | `arc-rings` | 右上同心細環，雷達的擴散 | `anchor`、`breathing` | 01、04、10、15、23 |
+| 13 | `noise-speckle` | 極細隨機斑點，底片顆粒 | 全部 | 02、05、09、22、24 |
+| 14 | `split-diagonal` | 對角線切成深淺兩半 | `anchor`、`contrast` | 07、09、11、15、22 |
+| 15 | `soft-vignette` | 四周略暗，注意力被帶到中間 | `breathing` | 07、15、19、20 |
+| 16 | `stacked-strata` | 由下往上變淡的橫帶，地層剖面 | `anchor`、`breathing` | 10、12、18、24 |
+| 17 | `ray-burst` | 右下射出的放射線，陽光 | `anchor`、`breathing` | 07、11、15、19 |
+| 18 | `frosted-panel` | 右半霧面玻璃，自帶 scrim | `anchor`、`dense` | 01、15、20、23 |
+| 19 | `dashed-path` | 虛線路徑，有起點與終點 | `order` | 05、10、12、23 |
+| 20 | `column-rules` | 等距垂直細線，報紙的欄線 | `dense` | 09、14、21、22 |
+| 21 | `corner-brackets` | 四角的直角括號，取景框 | 全部 | 04、07、13、22、25 |
+| 22 | `wave-band` | 下緣起伏的波形帶，水面 | `anchor`、`breathing` | 10、12、23、08 |
+| 23 | `concentric-square` | 同心方框，靶心 | `breathing` | 07、14、18、20 |
+| 24 | `isometric-grid` | 30 度等角格線，立體圖紙 | `dense` | 13、04、25 |
+| 25 | `spotlight-top` | 頂端打下的光束，舞台感 | `anchor`、`breathing` | 07、15、19、20 |
+| 26 | `margin-notes` | 左緣窄欄，書頁的注記欄 | `dense` | 14、09、21、24 |
+| 27 | `scatter-dots` | 右半散布的圓點，粒子 | `anchor`、`breathing` | 01、04、15、23 |
+| 28 | `step-blocks` | 右下階梯方塊，成長與進度 | `order`、`breathing` | 11、12、18、25 |
+| 29 | `cross-ticks` | 均勻的小十字，定位標記 | 全部 | 04、06、13、25 |
+| 30 | `duotone-split` | 左右二分加漸層接縫，天生為對照 | `contrast` | 09、11、14、17 |
+
+挑的時候先看**適合的節奏**那一欄：`anchor` 的頁面字少留白多，經得起有個性的背景；`dense` 的頁面已經有卡片與面板，背景只能是質地。標「全部」的四個（04、06、13、21、29）最不會出錯。
+
+標了**關係**的三個是特例：`19 dashed-path` 與 `28 step-blocks` 有方向，只給 `order`；`30 duotone-split` 天生二分，只給 `contrast`。把它們用在並列的內容上，背景會說錯話。
 
 ## 使用的命令
 
