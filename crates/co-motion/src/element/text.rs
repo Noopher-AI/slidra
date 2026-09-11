@@ -431,9 +431,15 @@ fn render_plain_text_content(
     let mut out = String::new();
     for (index, line) in lines.iter().enumerate() {
         use std::fmt::Write as _;
+        // F-04b (NOOP-399): every line but the last carries
+        // `data-comot-break="1"` — the same marker `read_text_box_runs`
+        // (table/model.rs) and slide-dom.ts's `readTextContent` already
+        // read to reconstruct a `\n` — so a plain `<text>`'s hard breaks
+        // survive a re-read (double-click) the same way a text box's do.
+        let break_attr = if index + 1 < lines.len() { " data-comot-break=\"1\"" } else { "" };
         write!(
             out,
-            "<tspan x=\"{}\" y=\"{}\">{}</tspan>",
+            "<tspan x=\"{}\" y=\"{}\"{break_attr}>{}</tspan>",
             format_svg_number(x),
             format_svg_number(first_y + index as f64 * step),
             escape_xml_text(line)
@@ -1189,8 +1195,8 @@ mod tests {
             updated,
             slide(concat!(
                 r#"<text id="a">"#,
-                r#"<tspan x="10" y="20">第一行</tspan>"#,
-                r#"<tspan x="10" y="35">第二行</tspan>"#,
+                r#"<tspan x="10" y="20" data-comot-break="1">第一行</tspan>"#,
+                r#"<tspan x="10" y="35" data-comot-break="1">第二行</tspan>"#,
                 r#"<tspan x="10" y="50">第三行</tspan>"#,
                 "</text>"
             ))
@@ -1207,7 +1213,7 @@ mod tests {
         // distinct, increasing `y` tspans rather than pin an exact pixel
         // value to the embedded font's metrics.
         assert!(
-            updated.contains(r#"<tspan x="0" y="0">第一行</tspan>"#),
+            updated.contains(r#"<tspan x="0" y="0" data-comot-break="1">第一行</tspan>"#),
             "{updated}"
         );
         assert!(updated.contains("第二行"), "{updated}");

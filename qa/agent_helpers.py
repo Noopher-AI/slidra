@@ -758,6 +758,17 @@ def drag(from_xy, to_xy, steps=10):
     _wait_status_bar_settled()
 
 
+def click_at(x, y):
+    """A single pressed/released click at (x, y) in parent-document
+    coordinates — the one-click counterpart to `dblclick`, for scenarios
+    that need a plain click first (e.g. selecting a table before its very
+    first double-click — see F-09/N-03, NOOP-399: `TableOverlay`'s own
+    mount effect must flush before a cold double-click on a never-selected
+    table reliably opens the cell editor, the same race e2e/table.test.ts's
+    E8 documents)."""
+    _click(x, y)
+
+
 def dblclick(x, y):
     """Two pressed/released pairs at (x, y) in parent-document coordinates,
     clickCount 1 then 2."""
@@ -765,6 +776,45 @@ def dblclick(x, y):
     _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", buttons=0, clickCount=1)
     _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", buttons=1, clickCount=2)
     _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", buttons=0, clickCount=2)
+
+
+# Keyboard primitives (NOOP-399): F-04/F-09/N-03 are the first cases in this
+# module that need to type — nothing before them exercised anything past
+# mouse gestures. Only the three control keys those cases actually use;
+# extend this table rather than hand-rolling a one-off dispatch elsewhere.
+_KEY_SPECS = {
+    "Tab": {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9, "nativeVirtualKeyCode": 9},
+    "Enter": {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "nativeVirtualKeyCode": 13},
+    "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27},
+}
+
+
+def press(key):
+    """Dispatches one keydown+keyup for a control key (`"Tab"`, `"Enter"`,
+    `"Escape"` — see `_KEY_SPECS`). Uses CDP `Input.dispatchKeyEvent` with
+    `type="rawKeyDown"` then `"keyUp"` — the same pair Puppeteer/Playwright
+    send for a non-printable key — so Chromium applies its own native
+    editing behaviour (e.g. Enter inserting "\\n" into a focused
+    `<textarea>` when nothing prevents it) exactly as real hardware input
+    would, rather than this module reimplementing it. Delivered to
+    whatever element currently has focus, inside the slide iframe or the
+    parent document alike — CDP input dispatch is target-wide, same as
+    `_dispatch_mouse`."""
+    spec = _KEY_SPECS.get(key)
+    if spec is None:
+        raise ValueError(f"press: 不認得的鍵 {key!r}；已知：{sorted(_KEY_SPECS)}")
+    timeout = _ipc_timeout()
+    _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="rawKeyDown", **spec)
+    _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="keyUp", **spec)
+
+
+def type_text(text):
+    """Types `text` into whatever currently has focus, via CDP
+    `Input.insertText` — bypasses per-character key codes entirely (this
+    module's QA cases only ever type literal ASCII/CJK strings, never IME
+    composition — that path is e2e/text-edit.test.ts's concern, not this
+    one). Same target-wide delivery as `press`/`_dispatch_mouse`."""
+    _cdp("Input.insertText", _response_timeout=_ipc_timeout(), text=text)
 
 
 def slide_svg(n):
@@ -804,6 +854,73 @@ def active_element():
             return inner
     info["in_iframe"] = True
     return info
+
+
+def click_ui(selector):
+    """Clicks the centre of the first PARENT-document element matching
+    `selector` (plain CSS) — for dock buttons and floating panels that live
+    outside the slide iframe entirely (e.g. the Table insert panel; F-09/
+    N-03 need a table on a demo slide that starts with none). Raises if
+    nothing matches."""
+    box = _js_ro(
+        f"(()=>{{const e=document.querySelector({json.dumps(selector)});if(!e)return null;"
+        "const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
+    )
+    if box is None:
+        raise RuntimeError(f"click_ui: 找不到符合 {selector!r} 的元素")
+    _click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+
+def cell_box(row, col):
+    """Parent-document client rect of table cell (row, col) — the
+    `[data-comot-cell="row,col"]` group inside the slide iframe — or
+    `None` when nothing is currently rendered there (a merge-covered
+    position, or a hidden `repeat` template row)."""
+    tid = _wait_frame_ready()
+    box = _js_ro(
+        f"(()=>{{const e=document.querySelector('[data-comot-cell=\"{int(row)},{int(col)}\"]');"
+        "if(!e)return null;const r=e.getBoundingClientRect();"
+        "return {x:r.x,y:r.y,width:r.width,height:r.height};})()",
+        target_id=tid,
+    )
+    if box is None:
+        return None
+    off = _iframe_offset()
+    return {"x": box["x"] + off["x"], "y": box["y"] + off["y"], "width": box["width"], "height": box["height"]}
+
+
+def iframe_count(selector):
+    """`document.querySelectorAll(selector).length` inside the slide
+    iframe — for polling a LIVE on-screen count mid-edit (e.g.
+    `"#el-title text > tspan"`, F-04/NOOP-399), since `slide_svg()` only
+    ever reads the committed file on disk, never what is on screen before
+    Esc commits it."""
+    tid = _wait_frame_ready()
+    return _js_ro(f"document.querySelectorAll({json.dumps(selector)}).length", target_id=tid) or 0
+
+
+def iframe_selection_text():
+    """The slide iframe's own `window.getSelection()`, stringified — empty
+    when nothing is natively text-selected inside it. N-03 (NOOP-399): the
+    slide document's `<body>` carries `user-select:none` (NOOP-349), so
+    even a native double-click should never produce one."""
+    tid = _wait_frame_ready()
+    return _js_ro("String(window.getSelection())", target_id=tid) or ""
+
+
+def edit_textarea_user_select():
+    """`getComputedStyle(...).userSelect` of the runtime's hidden edit
+    textarea, or `None` when no edit session is open. N-03 (NOOP-399): the
+    slide document's own `user-select:none` deliberately excepts this one
+    element — it is the keyboard/IME sink for text editing and must stay
+    selectable."""
+    tid = _wait_frame_ready()
+    return _js_ro(
+        "(()=>{const h=document.querySelector('[data-comot-selection-host]');"
+        "if(!h||!h.shadowRoot)return null;const t=h.shadowRoot.querySelector('textarea');"
+        "return t?getComputedStyle(t).userSelect:null;})()",
+        target_id=tid,
+    )
 
 
 def status_bar():

@@ -73,6 +73,22 @@ describe("mountCanvas", () => {
     expect(iframe.srcdoc).toContain(slideMarkup);
   });
 
+  // N-03 (NOOP-399): the view-mode document (wrapSelectionDocument) already
+  // carries `user-select:none` on its own `<body>` (NOOP-349/#294) so a
+  // native double-click can never spread a text selection across the whole
+  // slide — this regression previously had zero test coverage at all
+  // (`grep -rn "user-select" packages/web/test/ e2e/` found nothing), so a
+  // future edit to this wrapper could silently drop it.
+  it("view-mode srcdoc 的 <body> 帶 user-select:none（N-03，防止雙擊擴散成原生選字）", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const iframe = container.querySelector("iframe") as HTMLIFrameElement;
+    const bodyMatch = /<body[^>]*style="([^"]*)"/.exec(iframe.srcdoc);
+    expect(bodyMatch).not.toBeNull();
+    expect(bodyMatch![1]).toContain("user-select:none");
+  });
+
   // Finding P2: destroy() must remove the iframe it created, not just flip
   // a flag. React StrictMode runs every effect as setup -> cleanup ->
   // setup, so a destroy() that leaves the iframe behind produces two
