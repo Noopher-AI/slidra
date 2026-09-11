@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080">
+<rect x="0" y="0" width="1080" height="1080" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="90" y="300" font-size="140" fill="#DDDDDD" font-weight="700">“</text><text x="140" y="400" font-size="60" fill="#2E2E2E">被引用的那一句話，</text><text x="140" y="500" font-size="60" fill="#2E2E2E">可以到第二行。</text><rect x="140" y="570" width="110" height="6" fill="#909090"/><text x="140" y="660" font-size="36" fill="#555555">受訪者・身分</text><line x1="90" y1="940" x2="990" y2="940" stroke="#D0D0D0" stroke-width="2"/><text x="90" y="1010" font-size="30" fill="#A0A0A0">帳號或出處</text>
+</svg>

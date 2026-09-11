@@ -30,7 +30,7 @@ description: 從 55 種版面裡挑一種來排這一頁——每種都附線框
 1. **讀關係**：`co-motion cat <presentation-id> plan/outline.md`，取這一頁的 `relationship`。沒有計畫時依內容自己判斷（`reference/slide-design.md` 第 6.1 節）。
 2. **讀風格**：`co-motion cat <presentation-id> plan/design-spec.md`，取配色、字級表與 `layout` 錨點。**版面的座標一律由錨點推導**，不要用檔案裡的示意數字。
 3. **看上一頁用了什麼**：相鄰兩頁關係相同時必須換一個版面（`validate` 的 `rhythm.repeated-shape` 會擋）。
-4. **讀索引**挑一個，**只讀中選的那一個檔**：`references/<編號>-<名字>.md`。
+4. **讀索引**挑一個，**只讀中選的那一個檔**：`references/<名字>/<名字>.md`。
 5. **對槽位**：把內容塞進槽位表，超過字數預算就改短或減少單位，**不要縮字級**。
 6. **寫頁面**：依骨架寫整頁 SVG（`slide add --svg` 或 `slide set --svg`），每個語意單位標 `data-comot-role`。
 7. **寫回 blueprint**：`shape` 填這個版面的名字，`nodes`／`steps` 填實際值。

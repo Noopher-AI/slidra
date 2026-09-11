@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<defs>
+<radialGradient id="m1" cx="0.24" cy="0.16" r="0.72"><stop offset="0" stop-color="<primary>" stop-opacity="0.6"/><stop offset="1" stop-color="<primary>" stop-opacity="0"/></radialGradient><radialGradient id="m2" cx="0.84" cy="0.3" r="0.66"><stop offset="0" stop-color="<accent>" stop-opacity="0.46"/><stop offset="1" stop-color="<accent>" stop-opacity="0"/></radialGradient><radialGradient id="m3" cx="0.6" cy="0.92" r="0.78"><stop offset="0" stop-color="<primary>" stop-opacity="0.34"/><stop offset="1" stop-color="<primary>" stop-opacity="0"/></radialGradient><radialGradient id="m4" cx="0.04" cy="0.82" r="0.58"><stop offset="0" stop-color="<secondary_bg>" stop-opacity="0.95"/><stop offset="1" stop-color="<secondary_bg>" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="1280" height="720" fill="<background>"/>
+<rect width="1280" height="720" fill="url(#m4)"/><rect width="1280" height="720" fill="url(#m3)"/><rect width="1280" height="720" fill="url(#m2)"/><rect width="1280" height="720" fill="url(#m1)"/>
+</svg>

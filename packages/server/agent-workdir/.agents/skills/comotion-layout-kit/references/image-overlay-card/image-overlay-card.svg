@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="1280" height="720" fill="#D4D4D4"/><text x="140" y="110" font-size="22" fill="#A0A0A0">滿版圖片</text><rect x="660" y="120" width="540" height="480" fill="#FFFFFF" stroke="#BFBFBF"/><text x="700" y="204" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><text x="700" y="290" font-size="24" fill="#777777">・內文第一行</text><text x="700" y="346" font-size="24" fill="#777777">・內文第二行</text><text x="700" y="402" font-size="24" fill="#777777">・內文第三行</text>
+</svg>

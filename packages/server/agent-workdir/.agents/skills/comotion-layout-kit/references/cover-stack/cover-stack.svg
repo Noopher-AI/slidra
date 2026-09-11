@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="140" y="230" width="72" height="6" fill="#909090"/><text x="140" y="320" font-size="72" fill="#2E2E2E" font-weight="700">大標第一行</text><text x="140" y="404" font-size="72" fill="#2E2E2E" font-weight="700">大標第二行</text><text x="140" y="500" font-size="28" fill="#555555">副標（label）</text><text x="140" y="610" font-size="18" fill="#A0A0A0">日期・講者</text>
+</svg>
