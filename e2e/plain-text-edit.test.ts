@@ -210,3 +210,84 @@ it("一般 <text>（沒有 data-comot-text-width）：雙擊可進入編輯，�
     await cleanup();
   }
 });
+
+/** The runtime's hidden edit textarea's current `.value`, inside the sandboxed slide iframe. */
+async function readTextareaValue(page: Page): Promise<string> {
+  return page
+    .frameLocator("iframe.slide-frame")
+    .locator("body")
+    .evaluate(() => {
+      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
+    });
+}
+
+// F-04 (NOOP-399): a plain <text> (no data-comot-text-width) used to stay a
+// single DOM line while editing — Enter's hard break was invisible until
+// Esc committed and the SVG-side re-layout split it into tspans. This
+// proves the break is visible mid-edit (not just after commit), and that
+// it survives the commit as two tspans, the second carrying no
+// data-comot-break (only a line FOLLOWED by "\n" gets the marker).
+it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 tspan，第一個帶 data-comot-break", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await dblclickAtEnd(page, "el-plain");
+    await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
+
+    await page.keyboard.type("QA");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("X");
+
+    // Esc 前：畫面上 <text> 的直接子 tspan 已經是 2 個——換行當場看得到，
+    // 不必等提交後 SVG 端重新排版。
+    await expect
+      .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-plain text > tspan").count(), {
+        timeout: 10_000,
+      })
+      .toBe(2);
+
+    await page.keyboard.press("Escape");
+
+    await expect
+      .poll(async () => readTextMarkup(await readSlide(registry, presentationId), "el-plain").includes("data-comot-break"), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    const markupAfterCommit = readTextMarkup(await readSlide(registry, presentationId), "el-plain");
+    const tspans = [...markupAfterCommit.matchAll(/<tspan([^>]*)>([^<]*)<\/tspan>/g)];
+    expect(tspans.length).toBe(2);
+    expect(tspans[0][2]).toBe("一般文字QA");
+    expect(tspans[0][1]).toContain('data-comot-break="1"');
+    expect(tspans[1][2]).toBe("X");
+    expect(tspans[1][1]).not.toContain("data-comot-break");
+  } finally {
+    await cleanup();
+  }
+});
+
+// F-04b (NOOP-399): the read-back side of the same fix — a plain <text>
+// that ALREADY has a hard break saved (`el-broken`, two tspans, the first
+// carrying data-comot-break="1") must reconstruct the exact "\n" on the
+// next edit. Before F-04b, `render_plain_text_content` never wrote
+// data-comot-break at all, so slide-dom.ts's readTextContent (which only
+// ever recognises that marker) saw two lines with nothing joining them and
+// dropped the break the moment the box was re-opened. Fixture-seeded
+// rather than chained onto F-04's own commit, to avoid racing the
+// commit's own live-reload (`reload()` reassigns `iframe.srcdoc`, tearing
+// down and rebuilding the runtime's shadow host/textarea — re-entering
+// edit before that swap lands intermittently finds no `<textarea>` at all,
+// verified directly).
+it("F-04b：已存在的硬換行（data-comot-break）雙擊後，textarea 初值含 \\n", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    await dblclickAtEnd(page, "el-broken");
+    await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
+
+    expect(await readTextareaValue(page)).toBe("第一行\n第二行");
+    await page.keyboard.press("Escape");
+  } finally {
+    await cleanup();
+  }
+});

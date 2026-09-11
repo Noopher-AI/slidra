@@ -1020,6 +1020,38 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(html).toContain("真正的內容");
     expect(html).not.toContain("不該出現");
   });
+
+  // F-04 (NOOP-399): a plain `<text>` (no data-comot-text-width — e.g. a
+  // slide title) used to be repainted with a bare `textContent =`, which
+  // SVG never breaks on "\n" — Enter's hard break was invisible until Esc
+  // committed and the SVG-side re-layout (render_plain_text_content) split
+  // it into tspans for real. Both branches now share renderTextBoxLines.
+  it("plain <text>（無 data-comot-text-width）帶 \\n 時也重畫成多個 tspan，第一行標 data-comot-break", async () => {
+    const { doc, win } = boot('<svg><g id="el-plain"><text x="640" y="330" text-anchor="middle">Hi</text></g></svg>');
+
+    await beginTextEdit(win, "el-plain", "a\nb");
+
+    const tspans = doc.getElementById("el-plain")!.querySelectorAll("text > tspan");
+    expect(tspans.length).toBe(2);
+    expect(tspans[0].textContent).toBe("a");
+    expect(tspans[0].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[0].getAttribute("x")).toBe("640");
+    expect(tspans[0].getAttribute("y")).toBe("330");
+    expect(tspans[1].textContent).toBe("b");
+    expect(tspans[1].getAttribute("data-comot-break")).toBeNull();
+  });
+
+  it("plain <text> 仍是單行時只有 1 個 tspan，x/y 沿用 <text> 自己的——視覺位置不得位移", async () => {
+    const { doc, win } = boot('<svg><g id="el-plain"><text x="640" y="330" text-anchor="middle">Hi</text></g></svg>');
+
+    await beginTextEdit(win, "el-plain", "Hi");
+
+    const tspans = doc.getElementById("el-plain")!.querySelectorAll("text > tspan");
+    expect(tspans.length).toBe(1);
+    expect(tspans[0].getAttribute("x")).toBe("640");
+    expect(tspans[0].getAttribute("y")).toBe("330");
+    expect(tspans[0].textContent).toBe("Hi");
+  });
 });
 
 // E2.T14: table cell click/dblclick/contextmenu, the table-cells /

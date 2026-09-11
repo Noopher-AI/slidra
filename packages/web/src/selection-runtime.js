@@ -2244,18 +2244,21 @@
   /**
    * The one place `<text>` content is repainted during an edit session
    * (begin-text-edit's initial paint, every keystroke, and a failed
-   * commit's revert) — text-box vs plain-`<text>` is decided by
-   * `data-comot-text-width`'s presence on the CONTAINER, which this
-   * function already knows how to check, so none of its three call sites
-   * (all host-driven, or the runtime's own `input` handler) have to.
+   * commit's revert) — both a text box and a plain `<text>` go through
+   * `renderTextBoxLines` (F-04, NOOP-399): a plain `<text>` never wraps on
+   * its own, so a `\n` the browser's textarea already inserted on Enter
+   * (NOOP-65 決定 A) needs the same one-`<tspan>`-per-line treatment a text
+   * box gets, or the edit session shows it collapsed onto one line while
+   * the file underneath already has two. None of this function's three
+   * call sites (all host-driven, or the runtime's own `input` handler)
+   * need to know the difference any more.
    */
   function applyTextEditContent(id, text) {
     var container = document.getElementById(id);
     if (!container) return;
     var textEl = contentTextElement(container);
     if (!textEl) return;
-    if (container.hasAttribute("data-comot-text-width")) renderTextBoxLines(textEl, text);
-    else textEl.textContent = typeof text === "string" ? text : "";
+    renderTextBoxLines(textEl, text);
     updateBoxes();
   }
 

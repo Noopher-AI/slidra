@@ -5,4 +5,7 @@
   <g id="el-plain" data-comot-name="一般文字">
     <text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">一般文字</text>
   </g>
+  <g id="el-broken" data-comot-name="已有硬換行的一般文字">
+    <text x="640" y="620" text-anchor="middle" font-size="28" fill="#c9d3dc"><tspan x="640" y="620" data-comot-break="1">第一行</tspan><tspan x="640" y="648">第二行</tspan></text>
+  </g>
 </svg>
