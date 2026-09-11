@@ -1595,6 +1595,46 @@ mod tests {
     }
 
     #[test]
+    fn two_adjacent_pages_may_not_solve_the_same_relationship_the_same_way() {
+        // #303 §A': the anti-pattern ppt-master names outright — reusing one
+        // carrier for a second page with no page job. Same relationship,
+        // same composition, same unit count is the same page twice.
+        let outline_json = |second_shape: &str, second_nodes: usize| {
+            format!(
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"pages\": [                  {{ \"n\": 1, \"relationship\": \"membership\", \"rhythm\": \"dense\", \"title\": \"a\", \"blueprint\": {{ \"shape\": \"card-wall\", \"nodes\": 3, \"steps\": 4 }} }},                  {{ \"n\": 2, \"relationship\": \"membership\", \"rhythm\": \"dense\", \"title\": \"b\", \"blueprint\": {{ \"shape\": \"{second_shape}\", \"nodes\": {second_nodes}, \"steps\": 4 }} }} ] }}\n```\n"
+            )
+        };
+        let run = |second_shape: &str, second_nodes: usize| {
+            let outline = plan::parse_outline(&outline_json(second_shape, second_nodes)).unwrap();
+            let ctx = Context {
+                canvas_width: 1280.0,
+                canvas_height: 720.0,
+                outline: Some(&outline),
+                spec: None,
+                template_names: &[],
+            };
+            let body = textbox("el-t", 80.0, 72.0, 600.0, 40.0, "#F4F6F8", &[("t", false)]);
+            let slides: Vec<(String, SlideFacts)> = (1..=2)
+                .map(|i| {
+                    (
+                        format!("slides/00{i}.svg"),
+                        read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap(),
+                    )
+                })
+                .collect();
+            let mut errors = Vec::new();
+            check_deck(&ctx, &slides, &mut errors);
+            rules(&errors)
+        };
+
+        assert!(run("card-wall", 3).contains(&"rhythm.repeated-shape"));
+        // A different composition for the same relationship is fine…
+        assert!(!run("shared-field", 3).contains(&"rhythm.repeated-shape"));
+        // …and so is the same composition carrying a different unit count.
+        assert!(!run("card-wall", 5).contains(&"rhythm.repeated-shape"));
+    }
+
+    #[test]
     fn a_blueprint_is_reconciled_against_the_page_that_was_drawn() {
         // #303 §D: 構圖思考 writes down node count and click steps; the page
         // has to match what was decided, or one of the two is wrong.

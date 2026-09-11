@@ -38,19 +38,19 @@ page-5.note=數字改成 11.8 分鐘
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪些頁型放」決定這份簡報要用到哪幾種配方（通常封面／結語一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
 4. **一頁怎麼做**（六個階段，照順序；前一階段沒做完不要跳下一階段）
 
-   1. **構圖思考**：先想清楚這一頁要講幾件事、彼此什麼關係，決定頁型（指南第 6 節）與**講述步驟的切法**。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。想完**把結論寫下來**，不要只放在心裡——在 `plan/outline.md` 這一頁的物件加上 `blueprint`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（`status` 維持 `confirmed`）：
+   1. **構圖思考**：計畫已經定好這一頁的 `relationship`（內容之間是什麼關係）。你要決定的是**用哪一種幾何承載它**（指南第 6.2 節的解法表，或自己組一個）、有幾個語意單位、以及**講述步驟的切法**。先看第 6.1 節那一列「幾何要承載的東西」——`order` 要看得出方向、`contrast` 要有共用基準線、`membership` 不該有方向。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。想完**把結論寫下來**，不要只放在心裡——在 `plan/outline.md` 這一頁的物件加上 `blueprint`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（`status` 維持 `confirmed`）：
 
       ```json
-      { "n": 2, "type": "bullets", "rhythm": "dense", "title": "…",
-        "blueprint": { "relationship": "membership", "nodes": 3, "steps": 4 } }
+      { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "…",
+        "blueprint": { "shape": "shared-field", "nodes": 3, "steps": 4 } }
       ```
 
-      - `relationship`：這一頁的內容之間是什麼關係，決定幾何要承載什麼——`order`（順序、排名、流程）、`link`（依賴、影響、轉換）、`parent`（統轄、分解）、`membership`（歸屬、並列、分組）、`contrast`（對比、選項、前後）、`overlap`（交集、共用）、`none`（單一主張，封面與大數字頁常是這個）。
+      - `shape`：你選的構圖叫什麼（第 6.2 節的名字，例如 `card-wall`／`shared-field`／`spine-path`；自己組的就給一個描述性的名字）。**相鄰兩頁不要用同一個 shape 解同一種關係**，`validate` 的 `rhythm.repeated-shape` 會抓。
       - `nodes`：這一頁有幾個語意單位（之後要標成 `data-comot-role="node"` 的那些）。
       - `steps`：這一頁分幾次點擊講完，也就是 `on-click` 的數量。
       - **不要只因為節點數就採用等分格線或鏡射對稱**：三個並列的想法才用三欄，三段有先後的想法要看得出方向。
    2. **背景製作**：計畫 `background` 是 `on` 時，確認步驟 3 已經建好這個頁型要用的配方資產（一種配方只建一次，之後每頁重用）；`off` 就跳過。背景只負責氣氛，**不承載意義**。
-   3. **前景製作**：取該頁型在指南第 4 節的 SVG 範例當**起點**，`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。**範例是起點不是規格**：欄寬比例、卡片高度、要不要合併成一塊面板、標題擺哪裡，都可以為了這一頁的內容調整——只要（一）不越過 `design-spec.layout` 的安全區，（二）字級與顏色仍取自字級表與配色，（三）間距取自 `layout.gutter` 與 `layout.spacing` 的級距。**不要為了貼合範例而犧牲內容**，也不要無緣無故偏離它。`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**依指南第 3b 節替元素標上角色**（`data-comot-role`：`field`／`node`／`spine`／`edge`／`label`／`garnish`）——這是之後 group 與動畫的依據，也是 `validate` 檢查結構的依據：卡片底是 `field`、整張卡片是 `node`、卡片裡的字是 `label`、底線與小方塊是 `garnish`。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
+   3. **前景製作**：用了第 6.3 節的已知解就取第 4 節該頁型的 SVG 範例當**起點**；自己組的構圖就用第 3b 節的角色把幾何拼出來（`field` 圈出關係發生的區域、`node` 是每個語意單位、`spine` 是閱讀主軸、`edge` 是必要的連接、`label` 掛在 owner 上），`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。**範例是起點不是規格**：欄寬比例、卡片高度、要不要合併成一塊面板、標題擺哪裡，都可以為了這一頁的內容調整——只要（一）不越過 `design-spec.layout` 的安全區，（二）字級與顏色仍取自字級表與配色，（三）間距取自 `layout.gutter` 與 `layout.spacing` 的級距。**不要為了貼合範例而犧牲內容**，也不要無緣無故偏離它。`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**依指南第 3b 節替元素標上角色**（`data-comot-role`：`field`／`node`／`spine`／`edge`／`label`／`garnish`）——這是之後 group 與動畫的依據，也是 `validate` 檢查結構的依據：卡片底是 `field`、整張卡片是 `node`、卡片裡的字是 `label`、底線與小方塊是 `garnish`。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
       - `co-motion slide style set <presentation-id> slides/00N.svg --background <該頁型指定的角色色碼>`（封面／要點／對照／大數字用 background，章節頁 secondary_bg，結語頁 primary）。章節頁另下 `element style set el-watermark opacity 0.18`。
       - `background` 是 `on`：`co-motion slide background set <presentation-id> slides/00N.svg --asset <該頁型配方的 data.path> --opacity <第 4b 節的建議值>`；是 `off` 就不下（重做某頁而它已有背景、計畫卻是 `off` 時，`--none` 拿掉）。
    4. **group（把一段話變成一個東西）**：依步驟 1 切好的講述步驟與步驟 3 標好的角色，把**同一段裡的元素**（通常就是一個 `node` 連同它的 `field`、`label` 與 `garnish`）組成一個群組：`co-motion element group <presentation-id> slides/00N.svg <元素 id,逗號分隔>`，記下回傳的 `data.elementId`（群組自己的 id）。典型的分法——要點頁每張卡片一組（卡片底＋編號＋要點字）、對照頁左欄一組右欄一組（面板＋頂線＋欄標＋內文）、封面標題與副標一組、大數字頁數字與說明一組。標題自成一段時不必特地開群組。

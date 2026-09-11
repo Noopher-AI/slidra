@@ -25,7 +25,9 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
    - 輸入完全空白、或只是一句閒聊：不要猜，回一句話問作者要用哪份大綱。
 2. **讀規範**：用你原生的檔案讀取能力讀工作目錄裡的 `reference/modes.md` 與 `reference/slide-design.md`（第 2、3、6、7 節）。
 3. **挑敘事模式**：看內文小節的論證走向（不是看封面），依 `modes.md` 挑一種，並記下一句理由——這句理由之後要放進題目的 `note`。作者的大綱明顯是話題式標題或明說了模式時，以作者為準。
-4. **逐節挑頁型與節奏**：第一層主題當封面（`cover`，`anchor`）；其餘每個小節依 `slide-design.md` 第 6 節的對照表決定頁型（並列要點→`bullets`、A vs B→`compare`、一個數字或一句主張→`number`、只有小節名→`section`）；最後一節是結論或下一步才做 `closing`。節奏：封面、章節、結語是 `anchor`；`number` 頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；**不為了頁數或節奏捏假頁**。
+4. **逐節定關係與節奏**：每一頁**必填 `relationship`**——這一節的內容之間是什麼關係（`slide-design.md` 第 6.1 節）：並列歸屬→`membership`、順序步驟時間→`order`、A vs B／前後→`contrast`、統轄分解→`parent`、依賴因果→`link`、交集→`overlap`、單一主張或一個數字→`none`。**先判關係，不要先想版面**；判錯關係會讓有方向的內容被講成並列的內容。
+   `type` 是**選填**的，只在這一節剛好適用第 6.3 節的已知解時才填（封面／章節頁／要點頁／對照頁／大數字頁／結語頁）；不確定或內容需要自己的構圖時就留空，交給 build 決定。節奏：封面、章節、結語是 `anchor`；一個數字的頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；**不為了頁數或節奏捏假頁**。
+   **相鄰兩頁的 `relationship` 相同時要特別小心**：它們很可能會被建成一模一樣的版面（`validate` 的 `rhythm.repeated-shape` 會抓）。先想想這兩節是不是該合併，或其中一節其實是別的關係。
 5. **寫逐頁計畫**：每一頁列出主張（一句話，以 15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（以 18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句（作者要點的完整版，**不得虛構任何數據、名稱、日期**）。
 6. **出題**：3～7 題，第一題固定問敘事模式，最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`＝有背景圖、`off`＝不加；`note` 說明會用哪種配方）；中間每一題對應一個你拿不準的頁型判斷（例如「第 5 頁的 12 分鐘要不要做成大數字頁」）或配色。每題都要有 `recommended`（你的建議，必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
 7. **寫入 `plan/outline.md`**：`co-motion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方，含 `animation` 預設 `full`、`background` 預設 `on`）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號 `'`（打不進命令列）。
@@ -41,8 +43,8 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
   "animation": "full",
   "background": "on",
   "pages": [
-    { "n": 1, "type": "cover", "rhythm": "anchor", "title": "從大綱到上台只要 12 分鐘" },
-    { "n": 2, "type": "bullets", "rhythm": "dense", "title": "簡報是最常重做的文件" }
+    { "n": 1, "relationship": "none", "type": "cover", "rhythm": "anchor", "title": "從大綱到上台只要 12 分鐘" },
+    { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "簡報是最常重做的文件" }
   ],
   "questions": [
     {
