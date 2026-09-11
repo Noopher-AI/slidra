@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="p1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.28"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0.1"/></linearGradient>
+<linearGradient id="p1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.28"/><stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.1"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
-<path d="M0 560L220 400L380 500L560 330L760 470L940 360L1120 470L1280 400V720H0Z" fill="url(#p1)"/><path d="M0 640L200 520L400 600L600 470L820 580L1020 500L1280 590V720H0Z" fill="var(--secondary_bg)" opacity="0.9"/><path d="M0 690L260 620L520 680L780 610L1040 670L1280 630V720H0Z" fill="var(--primary)" opacity="0.18"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<path d="M0 560L220 400L380 500L560 330L760 470L940 360L1120 470L1280 400V720H0Z" fill="url(#p1)"/><path d="M0 640L200 520L400 600L600 470L820 580L1020 500L1280 590V720H0Z" fill="var(--secondary_bg, #1B2129)" opacity="0.9"/><path d="M0 690L260 620L520 680L780 610L1040 670L1280 630V720H0Z" fill="var(--primary, #4F8DFF)" opacity="0.18"/>
 </svg>

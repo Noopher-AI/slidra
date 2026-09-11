@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="bg-wash" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="var(--background)" stop-opacity="1"/><stop offset="0.4" stop-color="var(--secondary_bg)" stop-opacity="1"/><stop offset="0.72" stop-color="var(--primary)" stop-opacity="0.28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0.16"/></linearGradient>
+<linearGradient id="bg-wash" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="var(--background, #101418)" stop-opacity="1"/><stop offset="0.4" stop-color="var(--secondary_bg, #1B2129)" stop-opacity="1"/><stop offset="0.72" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.28"/><stop offset="1" stop-color="var(--accent, #F5B942)" stop-opacity="0.16"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
 <rect width="1280" height="720" fill="url(#bg-wash)"/>
 </svg>

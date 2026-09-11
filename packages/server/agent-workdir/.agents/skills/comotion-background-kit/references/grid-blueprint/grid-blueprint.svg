@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
 <pattern id="bg-grid-fine" width="40" height="40" patternUnits="userSpaceOnUse">
-<path d="M40 0H0V40" fill="none" stroke="var(--primary)" stroke-width="0.5" opacity="0.35"/>
+<path d="M40 0H0V40" fill="none" stroke="var(--primary, #4F8DFF)" stroke-width="0.5" opacity="0.35"/>
 </pattern>
 <pattern id="bg-grid-bold" width="200" height="200" patternUnits="userSpaceOnUse">
-<path d="M200 0H0V200" fill="none" stroke="var(--primary)" stroke-width="1" opacity="0.5"/>
+<path d="M200 0H0V200" fill="none" stroke="var(--primary, #4F8DFF)" stroke-width="1" opacity="0.5"/>
 </pattern>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
 <rect width="1280" height="720" fill="url(#bg-grid-fine)"/>
 <rect width="1280" height="720" fill="url(#bg-grid-bold)"/>
 </svg>

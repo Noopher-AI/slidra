@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="sp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.4"/><stop offset="0.55" stop-color="var(--primary)" stop-opacity="0.1"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0"/></linearGradient><radialGradient id="spg" cx="0.5" cy="0" r="0.8"><stop offset="0" stop-color="var(--accent)" stop-opacity="0.2"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></radialGradient>
+<linearGradient id="sp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.4"/><stop offset="0.55" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.1"/><stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0"/></linearGradient><radialGradient id="spg" cx="0.5" cy="0" r="0.8"><stop offset="0" stop-color="var(--accent, #F5B942)" stop-opacity="0.2"/><stop offset="1" stop-color="var(--accent, #F5B942)" stop-opacity="0"/></radialGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
 <path d="M380 0H900L1180 720H100Z" fill="url(#sp)"/><rect width="1280" height="720" fill="url(#spg)"/>
 </svg>

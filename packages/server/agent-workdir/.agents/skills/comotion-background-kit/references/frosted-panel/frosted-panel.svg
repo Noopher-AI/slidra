@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="fr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.38"/><stop offset="0.55" stop-color="var(--accent)" stop-opacity="0.26"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0.2"/></linearGradient><linearGradient id="fg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--background)" stop-opacity="0.18"/><stop offset="0.12" stop-color="var(--background)" stop-opacity="0.84"/><stop offset="1" stop-color="var(--background)" stop-opacity="0.9"/></linearGradient>
+<linearGradient id="fr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.38"/><stop offset="0.55" stop-color="var(--accent, #F5B942)" stop-opacity="0.26"/><stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.2"/></linearGradient><linearGradient id="fg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--background, #101418)" stop-opacity="0.18"/><stop offset="0.12" stop-color="var(--background, #101418)" stop-opacity="0.84"/><stop offset="1" stop-color="var(--background, #101418)" stop-opacity="0.9"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
-<rect width="1280" height="720" fill="url(#fr)"/><rect x="560" y="0" width="720" height="720" fill="url(#fg)"/><rect x="560" y="0" width="1.5" height="720" fill="var(--text)" opacity="0.22"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<rect width="1280" height="720" fill="url(#fr)"/><rect x="560" y="0" width="720" height="720" fill="url(#fg)"/><rect x="560" y="0" width="1.5" height="720" fill="var(--text, #F4F6F8)" opacity="0.22"/>
 </svg>

@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
 <radialGradient id="bg-vignette" cx="0.5" cy="0.5" r="0.75">
-<stop offset="0" stop-color="var(--secondary_bg)" stop-opacity="0.5"/>
-<stop offset="0.6" stop-color="var(--background)" stop-opacity="0"/>
-<stop offset="1" stop-color="var(--primary)" stop-opacity="0.18"/>
+<stop offset="0" stop-color="var(--secondary_bg, #1B2129)" stop-opacity="0.5"/>
+<stop offset="0.6" stop-color="var(--background, #101418)" stop-opacity="0"/>
+<stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.18"/>
 </radialGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
 <rect width="1280" height="720" fill="url(#bg-vignette)"/>
 </svg>

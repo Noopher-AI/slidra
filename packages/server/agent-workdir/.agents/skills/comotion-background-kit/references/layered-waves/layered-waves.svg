@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="w1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.32"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0.08"/></linearGradient><linearGradient id="w2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity="0.2"/><stop offset="1" stop-color="var(--primary)" stop-opacity="0.05"/></linearGradient>
+<linearGradient id="w1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.32"/><stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.08"/></linearGradient><linearGradient id="w2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.2"/><stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.05"/></linearGradient>
 </defs>
-<rect width="1280" height="720" fill="var(--background)"/>
-<path d="M0 300C200 250 380 360 560 330S920 230 1280 300V720H0Z" fill="url(#w1)"/><path d="M0 430C220 380 400 490 620 450S1020 370 1280 430V720H0Z" fill="url(#w2)"/><path d="M0 560C240 520 420 610 660 575S1060 510 1280 560V720H0Z" fill="var(--secondary_bg)" opacity="0.9"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<path d="M0 300C200 250 380 360 560 330S920 230 1280 300V720H0Z" fill="url(#w1)"/><path d="M0 430C220 380 400 490 620 450S1020 370 1280 430V720H0Z" fill="url(#w2)"/><path d="M0 560C240 520 420 610 660 575S1060 510 1280 560V720H0Z" fill="var(--secondary_bg, #1B2129)" opacity="0.9"/>
 </svg>

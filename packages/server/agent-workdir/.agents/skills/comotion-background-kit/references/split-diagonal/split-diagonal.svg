@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect width="1280" height="720" fill="var(--background)"/>
-<path d="M1280 0V720H0Z" fill="var(--secondary_bg)"/>
-<line x1="0" y1="720" x2="1280" y2="0" stroke="var(--accent)" stroke-width="2" opacity="0.6"/>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<path d="M1280 0V720H0Z" fill="var(--secondary_bg, #1B2129)"/>
+<line x1="0" y1="720" x2="1280" y2="0" stroke="var(--accent, #F5B942)" stroke-width="2" opacity="0.6"/>
 </svg>
