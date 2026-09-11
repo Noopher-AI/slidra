@@ -162,13 +162,16 @@ def _dispatch_mouse(**params):
         ) from exc
 
 
-def _click(x, y, clicks=1):
+def _click(x, y, clicks=1, modifiers=0):
     """pressed -> released at (x, y), via _dispatch_mouse — reimplements
     browser_harness.helpers.click_at_xy()'s gesture because that core
     primitive (imported nowhere in this module anymore) hardcodes a 5s
-    response timeout with no override, same gap as js()."""
-    _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", clickCount=clicks)
-    _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", clickCount=clicks)
+    response timeout with no override, same gap as js().
+
+    `modifiers` is CDP's bitmask (Alt=1, Ctrl=2, Meta/Cmd=4, Shift=8) — used
+    by select(..., additive=True)/click_at(..., shift=True) for ⇧-click."""
+    _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", clickCount=clicks, modifiers=modifiers)
+    _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", clickCount=clicks, modifiers=modifiers)
 
 
 def _qa_dir():
@@ -552,9 +555,11 @@ def slide_count():
     return int(_js_ro("document.querySelectorAll('.overview-item').length"))
 
 
-def select(name_or_id):
+def select(name_or_id, additive=False):
     """Click the element matched by `data-comot-name` (or `#id` for an
-    `el-`-prefixed id) inside the slide iframe. Returns selection()."""
+    `el-`-prefixed id) inside the slide iframe. `additive=True` holds Shift
+    (CDP modifiers=8) so the click adds to/toggles the current selection
+    instead of replacing it. Returns selection()."""
     tid = _wait_frame_ready()
     box = _find_target_box(tid, name_or_id)
     if box is None:
@@ -566,7 +571,7 @@ def select(name_or_id):
     off = _iframe_offset()
     cx = box["x"] + box["width"] / 2 + off["x"]
     cy = box["y"] + box["height"] / 2 + off["y"]
-    _click(cx, cy)
+    _click(cx, cy, modifiers=8 if additive else 0)
     chip = _wait_chip_update()
     if not chip:
         # Round-5 plan contract: don't let an empty chip flow into
@@ -613,6 +618,50 @@ def selection():
         box = {"x": box["x"] + off["x"], "y": box["y"] + off["y"], "w": box["w"], "h": box["h"]}
     handles = {name: (xy[0] + off["x"], xy[1] + off["y"]) for name, xy in (result.get("handles") or {}).items()}
     return {"chip": chip, "box": box, "handles": handles}
+
+
+# [E5.T7]/F-17 決定 8: the selection context bar is ghost (pointer-events:
+# none, half-opaque) until the pointer hovers it continuously for
+# HOVER_SOLIDIFY_MS (packages/web/src/shell/stage-overlays/OverlayLayer.tsx)
+# — long enough that this constant, and the sleep below, are pinned to it by
+# name rather than guessed at independently.
+_CONTEXT_BAR_HOVER_SETTLE = 0.4
+
+
+def hover(x, y):
+    """Moves the (virtual) mouse to (x, y) in parent-document coordinates
+    with no button held, then waits long enough for the context bar's
+    hover-solidify delay to elapse — after this call, `context_bar()["solid"]`
+    is true if (x, y) was over the bar's rect."""
+    _dispatch_mouse(type="mouseMoved", x=x, y=y, button="none", buttons=0)
+    time.sleep(_CONTEXT_BAR_HOVER_SETTLE)
+
+
+def click_at(x, y, shift=False):
+    """Click at arbitrary parent-document coordinates — pressed -> released,
+    not tied to a named element the way select()/_find_target_box() are.
+    `shift=True` holds Shift (CDP modifiers=8), for an additive click that
+    is not on a `data-comot-name`'d element (e.g. a context bar button)."""
+    _click(x, y, modifiers=8 if shift else 0)
+
+
+def context_bar():
+    """The selection context bar's parent-document state: {"present",
+    "solid", "rect", "buttons"}. `rect` is None and `buttons` is {} when the
+    bar is not in the DOM (`present` False, same "no selection, no bar"
+    shape as selection()'s empty case). `buttons` maps each button's own
+    `title` to its center point, parent-document coordinates."""
+    result = _js_ro(
+        "(()=>{const bar=document.querySelector('.context-bar');"
+        "if(!bar)return {present:false,solid:false,rect:null,buttons:{}};"
+        "const r=bar.getBoundingClientRect();"
+        "const buttons={};bar.querySelectorAll('button[title]').forEach(b=>{"
+        "const br=b.getBoundingClientRect();"
+        "buttons[b.getAttribute('title')]=[br.x+br.width/2,br.y+br.height/2];});"
+        "return {present:true,solid:bar.classList.contains('is-solid'),"
+        "rect:{x:r.x,y:r.y,width:r.width,height:r.height},buttons:buttons};})()"
+    )
+    return result or {"present": False, "solid": False, "rect": None, "buttons": {}}
 
 
 _DRAG_SETTLE_TIMEOUT = 2.0
