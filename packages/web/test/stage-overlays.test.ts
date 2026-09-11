@@ -3,8 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { toLocalPoint, toLocalRect } from "../src/shell/stage-overlays/OverlayLayer.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHoverSolidifier, pointInsideRect, toLocalPoint, toLocalRect } from "../src/shell/stage-overlays/OverlayLayer.js";
 import { SelectionOverlay } from "../src/shell/stage-overlays/SelectionOverlay.js";
 import { ContextBar } from "../src/shell/stage-overlays/ContextBar.js";
 import { TableCellMenu } from "../src/shell/stage-overlays/TableCellMenu.js";
@@ -35,6 +35,87 @@ describe("OverlayLayer の toLocalPoint／toLocalRect（parent-client px -> well
       width: 40,
       height: 30,
     });
+  });
+});
+
+describe("pointInsideRect（[E5.T7]/F-17：情境列的 hover 命中測試）", () => {
+  it("內部、邊界（含）、邊界外一像素", () => {
+    const rect = { x: 100, y: 100, width: 50, height: 20 };
+    expect(pointInsideRect({ x: 120, y: 110 }, rect)).toBe(true);
+    // getBoundingClientRect 的慣例：邊界本身算「在裡面」。
+    expect(pointInsideRect({ x: 100, y: 100 }, rect)).toBe(true);
+    expect(pointInsideRect({ x: 150, y: 120 }, rect)).toBe(true);
+    expect(pointInsideRect({ x: 99, y: 110 }, rect)).toBe(false);
+    expect(pointInsideRect({ x: 151, y: 110 }, rect)).toBe(false);
+  });
+});
+
+describe("createHoverSolidifier（[E5.T7]/F-17 決定 8：ghost/solid 雙延遲防閃爍）", () => {
+  const SOLIDIFY_MS = 120;
+  const GHOST_MS = 250;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("進入 rect：未滿 solidifyMs 就離開（快速掃過）不轉 solid；停留滿 solidifyMs 才轉 solid", () => {
+    const onChange = vi.fn();
+    const solidifier = createHoverSolidifier(onChange, SOLIDIFY_MS, GHOST_MS);
+
+    // Quick scan: enters, leaves before the delay elapses.
+    solidifier.update(true);
+    vi.advanceTimersByTime(SOLIDIFY_MS - 10);
+    solidifier.update(false);
+    vi.advanceTimersByTime(SOLIDIFY_MS + GHOST_MS);
+    expect(onChange).not.toHaveBeenCalled();
+
+    // Real stay: enters and holds for the full delay.
+    solidifier.update(true);
+    vi.advanceTimersByTime(SOLIDIFY_MS - 1);
+    expect(onChange).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("離開 rect：未滿 ghostMs 就回來（邊界抖動）維持 solid、不閃；停留滿 ghostMs 才轉回 ghost；reset() 立即清空並清掉待處理計時器", () => {
+    const onChange = vi.fn();
+    const solidifier = createHoverSolidifier(onChange, SOLIDIFY_MS, GHOST_MS);
+    solidifier.update(true);
+    vi.advanceTimersByTime(SOLIDIFY_MS);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(true);
+    onChange.mockClear();
+
+    // Border jitter: leaves, comes back before GHOST_MS elapses.
+    solidifier.update(false);
+    vi.advanceTimersByTime(GHOST_MS - 10);
+    solidifier.update(true);
+    vi.advanceTimersByTime(GHOST_MS);
+    expect(onChange).not.toHaveBeenCalled();
+
+    // Leaves for real, this time for the full GHOST_MS.
+    solidifier.update(false);
+    vi.advanceTimersByTime(GHOST_MS);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(false);
+    onChange.mockClear();
+
+    // reset(): back to solid, then reset() must both fire ghost immediately
+    // AND cancel whatever pending timer it interrupted.
+    solidifier.update(true);
+    vi.advanceTimersByTime(SOLIDIFY_MS);
+    onChange.mockClear();
+    solidifier.reset();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(false);
+    onChange.mockClear();
+    vi.advanceTimersByTime(GHOST_MS + SOLIDIFY_MS);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -353,5 +434,14 @@ describe("stage-overlays.css：兩層化的 z-index 與 pointer-events 文字契
   it("AC3：幾何層強制穿透規則逐字存在——`.stage-geometry, .stage-geometry * { pointer-events: none !important }`", () => {
     const normalized = withoutComments.replace(/\s+/g, "");
     expect(normalized).toContain(".stage-geometry,.stage-geometry*{pointer-events:none!important;}");
+  });
+
+  // [E5.T7]/F-17 決定 8：情境列預設穿透（ghost），`.is-solid` 才開回可點——
+  // specificity 0,3,0 蓋過 `.stage-widgets > .context-bar` 的 0,2,0，兩者都
+  // 逐字存在才是「情境列自己處理 hover」真正生效，不是只改了外觀。
+  it("F-17：情境列預設 pointer-events:none，`.is-solid` 才開回 auto", () => {
+    const normalized = withoutComments.replace(/\s+/g, "");
+    expect(normalized).toContain(".stage-widgets>.context-bar{pointer-events:none;}");
+    expect(normalized).toContain(".stage-widgets>.context-bar.is-solid{pointer-events:auto;}");
   });
 });

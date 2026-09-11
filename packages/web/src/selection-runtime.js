@@ -1676,6 +1676,27 @@
     });
   }
 
+  // [E5.T7]/F-17: separate rAF/pending state from scheduleGestureMove's own
+  // above — a hover report and an in-progress gesture's move report are
+  // mutually exclusive (see the pointermove listener below), but keeping
+  // independent scheduling state means neither one's coalescing can ever
+  // drop or delay the other's.
+  var hoverRafScheduled = false;
+  var pendingHover = null;
+
+  function scheduleHoverMove(point) {
+    pendingHover = point;
+    if (hoverRafScheduled) return;
+    hoverRafScheduled = true;
+    requestAnimationFrame(function () {
+      hoverRafScheduled = false;
+      if (!pendingHover) return;
+      var point = pendingHover;
+      pendingHover = null;
+      post({ event: "stage-hover", point: point });
+    });
+  }
+
   function endGesture(point, cancelled) {
     if (!gesture) return;
     var started = gesture.started;
@@ -1881,6 +1902,16 @@
   window.addEventListener(
     "pointermove",
     function (event) {
+      // [E5.T7]/F-17: the context bar's own hover-solidify state (parent
+      // document, OverlayLayer) needs to know where the pointer is while it
+      // is over the slide — but only when nothing else here is already
+      // consuming it (a text-select drag, a stage-pan, or an element
+      // gesture all report their own point for their own purpose), and only
+      // when something is selected (no selection means no context bar to
+      // solidify).
+      if (!textSelectDrag && stagePanPointerId === null && !gesture && selectedIds.length > 0) {
+        scheduleHoverMove({ x: event.clientX, y: event.clientY });
+      }
       if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
         var dragIdx = indexAtPoint(event.clientX, event.clientY);
         if (dragIdx === null) return;

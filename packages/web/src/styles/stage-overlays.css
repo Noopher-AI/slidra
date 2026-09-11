@@ -119,25 +119,42 @@
   /* --control-h-compact (28px) buttons + --space-1 padding each side = 36px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
   height: calc(var(--control-h-compact) + 2 * var(--space-1));
   max-width: calc(100% - var(--space-8));
-  pointer-events: auto;
   background: var(--glass-bg-soft);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   animation: context-bar-in var(--dur-fast) var(--ease-out);
+  /* [E5.T7]/F-17 決定 8：未 hover 時半透明——底下被壓住的內容仍可點得到、
+     加選得到（`pointer-events` 由下面 `.stage-widgets > .context-bar` 這條
+     更高 specificity 的規則決定，這裡只管外觀）。 */
+  opacity: 0.55;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
-/* 抓取模式（✋／按住 Space）：情境列讓路，讓從它上面開始的拖曳穿透到投影片去平移。 */
+/* [E5.T7]/F-17：情境列自己處理 hover（OverlayLayer 的 createHoverSolidifier），
+   預設 `pointer-events: none`（0,2,0，蓋過 `.stage-widgets > *` 的 auto），
+   停留滿 HOVER_SOLIDIFY_MS 後加上 `.is-solid`（0,3,0）才開回 auto。 */
+.stage-widgets > .context-bar {
+  pointer-events: none;
+}
+.stage-widgets > .context-bar.is-solid {
+  pointer-events: auto;
+}
+.context-bar.is-solid {
+  opacity: 1;
+}
+/* 抓取模式（✋／按住 Space）：情境列讓路，讓從它上面開始的拖曳穿透到投影片去平
+   移——即使當下已經 solid 也一樣。這條要排在 `.is-solid` 規則之後：兩者
+   specificity 相同 (0,3,0)，後到先的規則勝出，抓取模式才能在兩者都成立時
+   仍然贏。 */
 .canvas-area[data-grab="true"] .context-bar {
   pointer-events: none;
 }
 @keyframes context-bar-in {
   from {
-    opacity: 0;
     transform: translateY(var(--space-1));
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }

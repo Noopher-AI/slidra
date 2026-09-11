@@ -392,6 +392,17 @@ export interface CanvasController {
    */
   subscribeStageInput: (listener: (event: StageInputEvent) => void) => () => void;
   /**
+   * [E5.T7]/F-17: the runtime's on-slide pointer position, reported only
+   * while nothing else is consuming the pointer and something is selected
+   * (see `SelectionMessage`'s "stage-hover" doc comment) — already
+   * converted to this parent document's client px. `OverlayLayer` combines
+   * this with its own `window.mousemove` (for the area outside the iframe)
+   * to drive the context bar's ghost/solid toggle. A transient event
+   * channel, same shape as `subscribeStageInput` — nothing is replayed to a
+   * listener that subscribes after a move already fired.
+   */
+  subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => () => void;
+  /**
    * Tells `selection-runtime.js` whether 抓取模式 (the ✋ toggle or a
    * temporary Space-hold) is active — while true, the runtime hands every
    * pointer to the pan relay above instead of starting a selection/drag
@@ -675,6 +686,14 @@ interface SelectionMessage {
     | "stage-pan-move"
     | "stage-pan-end"
     | "stage-space"
+    // [E5.T7]/F-17: the runtime's own pointermove, reported whenever nothing
+    // else (a gesture, a stage-pan, a text-select drag) is already consuming
+    // the pointer and at least one element is selected — the parent uses
+    // this (plus its own `window.mousemove` for the area outside the
+    // iframe) to decide whether the context bar's hover-solidify state
+    // should switch. `point` is iframe-local client px, converted the same
+    // way as the stage-pan/-wheel points above.
+    | "stage-hover"
     // NOOP-90/T2 §4.6: precise per-selected-element bounding boxes plus
     // each one's ancestor chain, replacing the old host-computed "guides"
     // approach (ADR-0011 amend) — the runtime measures with
@@ -1180,6 +1199,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // the previous document's `stageHandMode` variable held).
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
+  /** [E5.T7]/F-17: `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `stageInputListeners`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
+  const stageHoverListeners = new Set<(point: { x: number; y: number }) => void>();
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
   // bounds/ancestors, kept in the runtime's OWN
   // iframe client px — the conversion to this parent document's client px
@@ -1662,6 +1683,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       emitStageInput({ type: message.down ? "space-down" : "space-up" });
       return;
     }
+    if (message.event === "stage-hover") {
+      if (!isValidPoint(message.point)) return;
+      emitStageHover(toParentClientPoint(message.point));
+      return;
+    }
     if (message.event === "runtime-ready") {
       // A fresh srcdoc (slide change) starts its own copy of
       // selection-runtime.js with `stageHandMode = false` — re-push this
@@ -1978,6 +2004,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function emitStageInput(event: StageInputEvent): void {
     for (const listener of stageInputListeners) listener(event);
+  }
+
+  function emitStageHover(point: { x: number; y: number }): void {
+    for (const listener of stageHoverListeners) listener(point);
   }
 
   /** Shared by handleSelectionMessage's "clear" case and the public clearSelection() (NOOP-83 §4.5) — same four steps either way. */
@@ -3986,6 +4016,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       stageInputListeners.add(listener);
       return () => {
         stageInputListeners.delete(listener);
+      };
+    },
+    subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => {
+      stageHoverListeners.add(listener);
+      return () => {
+        stageHoverListeners.delete(listener);
       };
     },
     setStageHandMode: (hand: boolean) => {
