@@ -67,6 +67,58 @@ def _poll(predicate_js: str, timeout: float = 5.0) -> bool:
     return False
 
 
+def _recover_stuck_runtime_ready(timeout: float = 5.0) -> bool:
+    """既有 QA 基礎設施（`qa/agent_helpers.py` 的 `open_deck()`）的既存缺
+    陷，與本案例／本票的對比色改動無關：`_ready_probe(mark_pending=navigated)`
+    在 `_wait_for_load()` 之後才裝上 parent 端的 `message` 監聽器，若該次導
+    覽的投影片 iframe 建置早於監聽器裝上就送出（一次性、不重送的）
+    `runtime-ready`，這個 postMessage 就永遠遺失，`window.__cmQaReady.pending`
+    卡死在 `true`——之後任何走 `_dispatch_mouse`（`_click`/`drag`/`dblclick`，
+    因此 `goto_slide` 與本案例的 `_click_selector`/`_click_shape_item` 都算）
+    的手勢都會在 `_require_runtime_ready()` 逾時，即使產品本身（iframe 已
+    完整載入、`console_errors()` 乾淨）完全正常。在 00bc607／2f7e85d 兩端各
+    自可重現，本輪 PR 交付留言附了重現輸出。
+
+    局部緩解（只加在本案例腳本，不改 `qa/agent_helpers.py`）：用不受這道門
+    檻管制的核心原語 `click_at_xy`（`browser_harness.helpers` 本身，不是
+    CoMotion 的 `_click`）直接點當前這一頁自己的第一張縮圖，逼出一次「監聽
+    器已就位之後」的真實 srcdoc 重建，讓卡住的 pending 被清掉——實測即使只
+    有一張投影片（`--blank`）也一樣有效：重複點同一張縮圖仍會換手一次
+    srcdoc。回傳是否已經（或本來就沒有）卡住。"""
+    info = js("(()=>((window.__cmQaReady||{}).pending))()")  # noqa: F821
+    if not info:
+        return True
+    box = js(  # noqa: F821
+        "(()=>{const el=document.querySelector('.overview-thumb');"
+        "if(!el)return null;const r=el.getBoundingClientRect();"
+        "return {x:r.x+r.width/2,y:r.y+r.height/2};})()"
+    )
+    if not box:
+        return False
+    click_at_xy(box["x"], box["y"])  # noqa: F821
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not js("(()=>((window.__cmQaReady||{}).pending))()"):  # noqa: F821
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _call_recovering_runtime_ready(fn, *args):
+    """`fn` 是任何最終會走到 `_dispatch_mouse`（因而受 `_require_runtime_
+    ready()` 門檻管制）的既有原語呼叫——包在這裡讓它在撞到
+    `_recover_stuck_runtime_ready` 描述的既存 QA 缺陷時重試一次，而不是讓
+    整個案例腳本直接以例外中止。"""
+    try:
+        return fn(*args)
+    except RuntimeError as exc:
+        if "runtime-ready" not in str(exc):
+            raise
+        if not _recover_stuck_runtime_ready():
+            raise
+        return fn(*args)
+
+
 def _parse_hex(value: str) -> tuple[int, int, int]:
     """只接受 `#rgb`/`#rrggbb`——`contrast-fill.ts` 輸出、`page style set
     --accent` 的既有慣例都是這個格式。其他格式視為斷言本身要回報的異常，
@@ -109,8 +161,8 @@ def _find_text_open_tag(svg: str, marker: str) -> str | None:
 
 
 def main() -> int:
-    open_deck()  # noqa: F821
-    goto_slide(1)  # noqa: F821
+    _call_recovering_runtime_ready(open_deck)  # noqa: F821
+    _call_recovering_runtime_ready(goto_slide, 1)  # noqa: F821
     before = slide_svg(1)  # noqa: F821
     shot("F-08-before")  # noqa: F821
 
