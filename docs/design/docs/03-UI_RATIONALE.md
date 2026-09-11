@@ -39,6 +39,8 @@
 
 widget 層的規則：widget 不得蓋住投影片內容，或自己處理 hover（情境列走後者）。明示例外：第三方播放器 iframe 被 sandbox（ADR-0011）逼到父文件，只能待在 widget 層；另有三個顯示用元素因為與可互動的兄弟節點由同一個元件渲染而留在 widget 層，但一律維持 `pointer-events: none`（名稱標籤列、播放器容器、儲存格範圍框）。
 
+情境列自己處理 hover 的具體行為（F-17）：未 hover 時半透明（`opacity: .55`）且 `pointer-events: none`——指標可以直接穿透它點到、加選底下被壓住的內容；指標停留在情境列範圍內達 `HOVER_SOLIDIFY_MS`（120ms）才轉為實體（`opacity: 1`、`pointer-events: auto`，按鈕才吃得到點擊），離開範圍達 `HOVER_GHOST_MS`（250ms）才轉回半透明——兩段各自的延遲讓「快速掃過」與「邊界抖動」都不會誤觸或誤閃。指標位置由舞台（iframe 內走新的 `stage-hover` 訊息、iframe 外走父文件的 `mousemove`）追蹤後與情境列當下的矩形比對得出。
+
 舞台覆蓋層只有兩個 z 值（幾何 1、widget 2），widget 之間的前後順序由 widget 層內部決定。
 
 ## D. 底部玻璃工具列

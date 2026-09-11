@@ -1676,6 +1676,27 @@
     });
   }
 
+  // [E5.T7]/F-17: separate rAF/pending state from scheduleGestureMove's own
+  // above — a hover report and an in-progress gesture's move report are
+  // mutually exclusive (see the pointermove listener below), but keeping
+  // independent scheduling state means neither one's coalescing can ever
+  // drop or delay the other's.
+  var hoverRafScheduled = false;
+  var pendingHover = null;
+
+  function scheduleHoverMove(point) {
+    pendingHover = point;
+    if (hoverRafScheduled) return;
+    hoverRafScheduled = true;
+    requestAnimationFrame(function () {
+      hoverRafScheduled = false;
+      if (!pendingHover) return;
+      var point = pendingHover;
+      pendingHover = null;
+      post({ event: "stage-hover", point: point });
+    });
+  }
+
   function endGesture(point, cancelled) {
     if (!gesture) return;
     var started = gesture.started;
@@ -1881,6 +1902,16 @@
   window.addEventListener(
     "pointermove",
     function (event) {
+      // [E5.T7]/F-17: the context bar's own hover-solidify state (parent
+      // document, OverlayLayer) needs to know where the pointer is while it
+      // is over the slide — but only when nothing else here is already
+      // consuming it (a text-select drag, a stage-pan, or an element
+      // gesture all report their own point for their own purpose), and only
+      // when something is selected (no selection means no context bar to
+      // solidify).
+      if (!textSelectDrag && stagePanPointerId === null && !gesture && selectedIds.length > 0) {
+        scheduleHoverMove({ x: event.clientX, y: event.clientY });
+      }
       if (textSelectDrag && event.pointerId === textSelectDrag.pointerId) {
         var dragIdx = indexAtPoint(event.clientX, event.clientY);
         if (dragIdx === null) return;
@@ -2090,11 +2121,11 @@
   // keypress that landed in here). Whitelisted to exactly the keys the
   // parent has shortcuts for: this ticket's four, plus ⌘Z/⇧⌘Z (issue 198;
   // written without the hash so the no-hex-colour source check stays
-  // honest) — once a click on the stage has moved focus in here, App.tsx's
-  // document-level undo/redo listener would otherwise go deaf. Everything
-  // else (⌘S, arrow
-  // keys, Tab, …) is untouched and falls through to whatever this iframe's
-  // own default handling already does. Never relayed while editing text or
+  // honest), plus ←/→ (F-02: same "焦點在 iframe 內" gap as the rest of this
+  // list — App.tsx's own document-level ArrowLeft/ArrowRight paging listener
+  // never sees a keypress that landed in here either). Everything else (⌘S,
+  // Tab, …) is untouched and falls through to whatever this iframe's own
+  // default handling already does. Never relayed while editing text or
   // mid-gesture — same posture as the existing Space relay above — nor in
   // play mode, which the parent itself already gates before acting on
   // `stage-key`.
@@ -2107,6 +2138,11 @@
     // cancel / group-path pop / clear-selection), since those and "close
     // the chart window if one happens to be open" are independent.
     if (event.key === "Escape") return true;
+    // F-02: page navigation, no modifier — same unmodified-key posture as
+    // Delete/Backspace/Escape above, and (like them) gated below on
+    // `editingId === null && !gesture` so caret movement inside an
+    // in-progress text edit and an in-flight gesture are untouched.
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") return true;
     var withModifier = event.metaKey || event.ctrlKey;
     if (!withModifier) return false;
     // [E2.T18]: c/x/v added alongside a/d/]/[/z/Z — headless Chromium

@@ -707,6 +707,56 @@ async function sendSelectionCommand(win: Window, ids: string[]): Promise<void> {
   await tick();
 }
 
+/** Flushes the iframe window's own `requestAnimationFrame` queue (`win`, not the outer test window) — `scheduleHoverMove`/`scheduleGestureMove` schedule against whichever window they run in. */
+async function flushRaf(win: Window): Promise<void> {
+  await new Promise((resolve) => (win as unknown as { requestAnimationFrame: typeof requestAnimationFrame }).requestAnimationFrame(resolve));
+}
+
+describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列 hover 穿透）", () => {
+  it("有選取、且沒有 gesture／stage-pan／text-select-drag 時，pointermove 經 rAF 節流後送出 stage-hover", async () => {
+    const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+    await sendSelectionCommand(win, ["el-a"]);
+    const { messages, stop } = collectMessages();
+
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 50, clientY: 60 }));
+    await flushRaf(win);
+    await tick();
+
+    stop();
+    expect(messages).toEqual([{ source: "comot-selection", event: "stage-hover", point: { x: 50, y: 60 } }]);
+  });
+
+  it("沒有選取時，pointermove 不送出 stage-hover", async () => {
+    const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+    const { messages, stop } = collectMessages();
+
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 50, clientY: 60 }));
+    await flushRaf(win);
+    await tick();
+
+    stop();
+    expect(messages.filter((m) => (m as { event?: string }).event === "stage-hover")).toEqual([]);
+  });
+
+  it("手勢進行中（pointerdown 已在同一個指標上起手）：pointermove 不送出 stage-hover", async () => {
+    const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
+    await sendSelectionCommand(win, ["el-a"]);
+    const { messages, stop } = collectMessages();
+
+    const rect = doc.querySelector("#el-a") as SVGRectElement;
+    pointerdownAt(doc, rect, 10, 10);
+    const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
+    win.dispatchEvent(new PointerEventCtor("pointermove", { bubbles: true, pointerId: 1, clientX: 50, clientY: 60 }));
+    await flushRaf(win);
+    await tick();
+
+    stop();
+    expect(messages.filter((m) => (m as { event?: string }).event === "stage-hover")).toEqual([]);
+  });
+});
+
 describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
   it("回報每個選取元素的祖先鏈，最外層在前；union 是所有選取元素的聯集", async () => {
     const { win } = boot(
@@ -944,7 +994,26 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("編輯期間不中繼任何白名單鍵", async () => {
+  it("F-02: ArrowLeft／ArrowRight 沒有修飾鍵也會被中繼（換頁用）", async () => {
+    const { win } = boot('<svg><rect id="el-a"/></svg>');
+    const messages: { event?: string }[] = [];
+    const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
+    window.addEventListener("message", handler);
+
+    const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowLeft", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowRight", cancelable: true }));
+    await tick();
+
+    window.removeEventListener("message", handler);
+    const relayed = messages.filter((m) => m.event === "stage-key");
+    expect(relayed).toEqual([
+      { source: "comot-selection", event: "stage-key", key: "ArrowLeft", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "comot-selection", event: "stage-key", key: "ArrowRight", code: "", meta: false, ctrl: false, shift: false, alt: false },
+    ]);
+  });
+
+  it("編輯期間不中繼任何白名單鍵（含 F-02 新增的 ArrowLeft／ArrowRight——就地編輯中方向鍵是游標移動，不換頁）", async () => {
     const { win } = boot('<svg><g id="el-text"><text font-size="20">Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
 
@@ -954,6 +1023,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
 
     const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
     win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Delete", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowLeft", cancelable: true }));
+    win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "ArrowRight", cancelable: true }));
     await tick();
 
     window.removeEventListener("message", handler);

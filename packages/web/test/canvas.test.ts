@@ -2517,6 +2517,39 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
   });
 });
 
+describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client px（[E5.T7]/F-17）", () => {
+  function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
+    const frameWindow = controllerFrame.contentWindow as unknown as Window;
+    window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+  }
+
+  it("有效 point：轉成父文件 client px 後推給 listener", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const points: { x: number; y: number }[] = [];
+    controller.subscribeStageHover((point) => points.push(point));
+
+    // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion
+    // (same fixture shape subscribeOverlay's own tests above rely on).
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 12, y: 34 } });
+
+    expect(points).toEqual([{ x: 12, y: 34 }]);
+  });
+
+  it("非法 point（缺欄位／非有限數）：靜默丟棄，不呼叫 listener", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const points: { x: number; y: number }[] = [];
+    controller.subscribeStageHover((point) => points.push(point));
+
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: Number.NaN, y: 1 } });
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 1 } });
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover" });
+
+    expect(points).toEqual([]);
+  });
+});
+
 describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHandler 註冊的處理器（#198）", () => {
   function relayStageKey(key: string, shift: boolean): void {
     window.dispatchEvent(
@@ -2560,6 +2593,47 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     expect(() => relayStageKey("z", false)).not.toThrow();
 
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
+  });
+});
+
+describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02, NOOP-385/NOOP-351/#283）", () => {
+  function relayArrow(key: "ArrowLeft" | "ArrowRight"): void {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "comot-selection", event: "stage-key", key, meta: false, ctrl: false, shift: false, alt: false },
+        source: controller!.frameElement.contentWindow as unknown as Window,
+      }),
+    );
+  }
+
+  it("ArrowRight 中繼後往下一頁，ArrowLeft 往上一頁——選取了投影片元素、焦點落在 iframe 內時仍要能換頁", async () => {
+    stubDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    relayArrow("ArrowRight");
+    await vi.waitFor(() => expect(srcdoc()).toContain('data-testid="s2"'));
+
+    relayArrow("ArrowLeft");
+    await vi.waitFor(() => expect(srcdoc()).toContain('data-testid="s1"'));
+  });
+
+  it("在最後一頁 ArrowRight、在第一頁 ArrowLeft：不拋錯，也不呼叫多餘的 fetch", async () => {
+    stubDeck();
+    controller = mountCanvas(container);
+    await controller.reload();
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+
+    expect(() => relayArrow("ArrowLeft")).not.toThrow();
+    await Promise.resolve();
+    expect(srcdoc()).toContain('data-testid="s1"');
+
+    await controller.showSlide(2);
+    const callsAtLastSlide = fetchMock.mock.calls.length;
+    expect(() => relayArrow("ArrowRight")).not.toThrow();
+    await Promise.resolve();
+    expect(srcdoc()).toContain('data-testid="s3"');
+    expect(fetchMock.mock.calls.length).toBe(callsAtLastSlide);
   });
 });
 

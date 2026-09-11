@@ -42,6 +42,13 @@ afterAll(async () => {
   await browser?.close();
 });
 
+/** [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
+async function hoverContextBar(page: Page): Promise<void> {
+  const box = (await page.locator(".context-bar").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
+}
+
 afterEach(async () => {
   for (const page of openPages) await page.close().catch(() => {});
   openPages = [];
@@ -200,6 +207,7 @@ it("基準截圖：Style › Object，選取文字框", async () => {
     const page = await openApp(browser, started.server, { viewport: STYLE_VIEWPORT });
     openPages.push(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-text").click();
+    await hoverContextBar(page);
     await page.locator('button[title="Edit style"]').click();
     await expect.poll(() => page.locator('[data-section="text"]').count()).toBe(1);
     await settleForScreenshot(page);
@@ -215,6 +223,7 @@ it("基準截圖：Style › Object，選取形狀", async () => {
     const page = await openApp(browser, started.server, { viewport: STYLE_VIEWPORT });
     openPages.push(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
+    await hoverContextBar(page);
     await page.locator('button[title="Edit style"]').click();
     await expect.poll(() => page.locator('[data-section="shape"]').count()).toBe(1);
     await settleForScreenshot(page);
@@ -230,6 +239,7 @@ it("基準截圖：Style › Object，捲到底讓 Table／Chart 骨架段完整
     const page = await openApp(browser, started.server, { viewport: STYLE_VIEWPORT });
     openPages.push(page);
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click();
+    await hoverContextBar(page);
     await page.locator('button[title="Edit style"]').click();
     await expect.poll(() => page.locator('[data-section="chart"]').count()).toBe(1);
     await page.locator(".style-object-panel").evaluate((el) => {

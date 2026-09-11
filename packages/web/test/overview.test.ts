@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountOverview } from "../src/overview.js";
+import { invalidateSlideEffectPlans } from "../src/effects.js";
 import type { CanvasController, CanvasState } from "../src/canvas.js";
 
 // A fake CanvasController: overview.ts only needs subscribe() and
@@ -96,18 +97,51 @@ function presentationResponse(): Response {
   );
 }
 
+// [E5.T11]: a `GET /api/effects/<slidePath>` response (effects.ts's
+// `fetchFresh` wire shape) carrying `effectCount` items — content beyond
+// the count is irrelevant to overview.ts, which only ever reads
+// `plan.effects.length`.
+function effectsResponse(effectCount: number): Response {
+  const effects = Array.from({ length: effectCount }, (_, i) => ({
+    target: `el-${i}`,
+    family: "enter",
+    effect: "appear",
+    start: "on-click",
+    duration: 0.6,
+    delay: 0,
+    index: i + 1,
+  }));
+  return new Response(
+    JSON.stringify({
+      effects,
+      steps: [],
+      transition: { enter: { effect: "none", duration: 0 }, exit: { effect: "none", duration: 0 } },
+    }),
+    { status: 200 },
+  );
+}
+
 let container: HTMLElement;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   FakeIntersectionObserver.instances = [];
+  // effects.ts's fetch cache is a module-level singleton, shared across
+  // every test in this file (and whatever ran before it) — without this,
+  // a test earlier in the file order could leave a resolved promise
+  // cached under a slide path a later test reuses (e.g. "slides/001.svg"),
+  // and that later test would silently observe the earlier test's cached
+  // count instead of ever calling its own fetch stub.
+  invalidateSlideEffectPlans();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL) => {
-      if (String(input) === "/api/presentation") return presentationResponse();
-      throw new Error(`unexpected fetch in this test: ${String(input)}`);
+      const url = String(input);
+      if (url === "/api/presentation") return presentationResponse();
+      if (url.startsWith("/api/effects/")) return effectsResponse(0);
+      throw new Error(`unexpected fetch in this test: ${url}`);
     }),
   );
 });
@@ -225,6 +259,116 @@ describe("mountOverview", () => {
     expect(container.querySelectorAll("iframe.overview-frame")).toHaveLength(0);
   });
 
+  it("renders ✦ n effect-count badges per slide, independent of thumbnail lazy-loading (03-UI_RATIONALE.md §B)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
+        if (url === "/api/effects/slides/001.svg") return effectsResponse(0);
+        if (url === "/api/effects/slides/003.svg") return effectsResponse(3);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { controller } = fakeCanvas({
+      slides: ["slides/001.svg", "slides/003.svg"],
+      currentIndex: 0,
+    });
+    mountOverview(container, controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const items = container.querySelectorAll("li.overview-item");
+    expect(items[0].querySelector(".overview-effect-badge")!.textContent).toBe("");
+    expect(items[1].querySelector(".overview-effect-badge")!.textContent).toBe("✦ 3");
+
+    // Neither <li> was ever observed intersecting — the badge must not
+    // depend on thumbnail materialisation the way the iframe does.
+    expect(items[0].querySelector("iframe")).toBeNull();
+    expect(items[1].querySelector("iframe")).toBeNull();
+  });
+
+  it("refresh() re-reads each slide's effect count once the plan cache has been invalidated (the same sequencing canvas.ts's reload() already guarantees before App.tsx calls refresh())", async () => {
+    let slide1EffectCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
+        if (url === "/api/effects/slides/001.svg") return effectsResponse(slide1EffectCount);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    const overview = mountOverview(container, controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const badge = container.querySelector(".overview-effect-badge")!;
+    expect(badge.textContent).toBe("");
+
+    // An agent's `effect add` lands on disk; canvas.ts's reload() (fired by
+    // the same presentation-changed event, before it calls this module's
+    // refresh()) already invalidates effects.ts's cache, so the next
+    // fetchSlideEffectPlan() call here is never served the stale plan.
+    slide1EffectCount = 1;
+    invalidateSlideEffectPlans();
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(badge.textContent).toBe("✦ 1");
+  });
+
+  it("a newer refresh()'s effect count always wins over an older one still in flight, regardless of resolve order", async () => {
+    let resolveOlderRefreshFetch!: (response: Response) => void;
+    const olderRefreshFetchPromise = new Promise<Response>((resolve) => {
+      resolveOlderRefreshFetch = resolve;
+    });
+    let refreshFetchCount = 0;
+    let holdRefreshFetches = false;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
+        if (url !== "/api/effects/slides/001.svg") throw new Error(`unexpected fetch: ${url}`);
+        if (!holdRefreshFetches) return effectsResponse(0);
+        refreshFetchCount += 1;
+        return refreshFetchCount === 1 ? olderRefreshFetchPromise : effectsResponse(2);
+      }),
+    );
+
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    const overview = mountOverview(container, controller);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const badge = container.querySelector(".overview-effect-badge")!;
+    expect(badge.textContent).toBe("");
+
+    // Each refresh() below is preceded by its own cache invalidation — the
+    // same thing canvas.ts's reload() does before every live-reload
+    // refresh() in production — so each one starts its own independent
+    // fetch instead of sharing (or blocking on) the other's cached promise.
+    holdRefreshFetches = true;
+    invalidateSlideEffectPlans();
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    invalidateSlideEffectPlans();
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(badge.textContent).toBe("✦ 2");
+
+    // Only now does the older, slower refresh's fetch resolve. Its result
+    // must be discarded — it must not overwrite what the newer refresh
+    // already painted.
+    resolveOlderRefreshFetch(effectsResponse(9));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(badge.textContent).toBe("✦ 2");
+  });
+
   it("marks only the current slide's <li> and <button>, and moves the mark when the index changes", () => {
     const { controller, setState } = fakeCanvas({
       slides: ["slides/001.svg", "slides/002.svg"],
@@ -267,6 +411,7 @@ describe("mountOverview", () => {
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url === "/api/presentation") return presentationResponse();
+        if (url.startsWith("/api/effects/")) return effectsResponse(0);
         fetchCalls.push(url);
         if (url === "/api/files/slides/001.svg") {
           return new Response('<svg data-testid="s1"></svg>', { status: 200 });
@@ -332,8 +477,10 @@ describe("mountOverview", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
-        if (String(input) === "/api/presentation") return presentationResponse();
-        fetchCalls.push(String(input));
+        const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
+        if (url.startsWith("/api/effects/")) return effectsResponse(0);
+        fetchCalls.push(url);
         return new Response('<svg data-testid="s1"></svg>', { status: 200 });
       }),
     );

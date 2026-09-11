@@ -584,6 +584,13 @@ it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動�
     await slideFrame.locator("#el-a").click();
     await expect.poll(() => page.locator('[title="Edit animation"]').count()).toBe(1);
 
+    // [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`)
+    // until the pointer hovers it long enough to solidify — a plain
+    // `.click()` never reaches the button, it always resolves to the
+    // iframe underneath instead.
+    const editAnimationBox = (await page.locator('[title="Edit animation"]').boundingBox())!;
+    await page.mouse.move(editAnimationBox.x + editAnimationBox.width / 2, editAnimationBox.y + editAnimationBox.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
     await page.locator('[title="Edit animation"]').click();
     await expect.poll(() => page.locator('[role="tab"][data-tab="animate"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
