@@ -547,6 +547,21 @@ pub fn check_slide(
                 format!("第 {n} 頁沒有設定轉場（計畫 animation={animation}）"),
             );
         }
+        // #303: the plan says every page carries a background image, so a
+        // page without one is a build that silently skipped `slide
+        // background set` — the one step with no other way to notice it
+        // (the page still renders, just not as planned).
+        if outline.background == "on" && !facts.has_background {
+            push(
+                errors,
+                slide,
+                None,
+                "structure.background-image",
+                "沒有背景圖",
+                "有 data-comot-role=background 的圖片元素",
+                format!("第 {n} 頁沒有背景圖（計畫 background=on）"),
+            );
+        }
         let needs_enter = match animation {
             "full" => true,
             "minimal" => matches!(page_type, Some("cover" | "bullets" | "compare")),
@@ -1089,7 +1104,10 @@ mod tests {
 
     fn outline(pages: &str) -> OutlinePlan {
         plan::parse_outline(&format!(
-            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"pages\": [ {pages} ] }}\n```\n"
+            // `background` defaults to "on"; the fixtures below carry no
+            // background image because they are testing other rules, so
+            // they opt out explicitly. The rule itself has its own test.
+            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {pages} ] }}\n```\n"
         ))
         .unwrap()
     }
@@ -1327,6 +1345,40 @@ mod tests {
         );
         let r = rules(&run_one(&svg, "bullets", "dense"));
         assert!(r.contains(&"text.page-total"), "{r:?}");
+    }
+
+    #[test]
+    fn a_plan_with_background_on_requires_every_page_to_carry_one() {
+        // #303: `slide background set` is the one build step nothing else
+        // notices when it is skipped — the page still renders, just not as
+        // the plan says. Without this rule the build reports 0 errors.
+        let bg = "<g id=\"el-background\" data-comot-role=\"background\" data-comot-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
+        let claim = textbox("el-claim", 80.0, 248.0, 1000.0, 48.0, "#F4F6F8", &[("主張", false)]);
+        let spec = spec();
+        let names = vec![template_name_for("number").to_string()];
+        let run = |svg: &str, background: &str| {
+            let outline = plan::parse_outline(&format!(
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"{background}\", \"pages\": [ {{ \"n\": 1, \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }} ] }}\n```\n"
+            ))
+            .unwrap();
+            let ctx = Context {
+                canvas_width: 1280.0,
+                canvas_height: 720.0,
+                outline: Some(&outline),
+                spec: Some(&spec),
+                template_names: &names,
+            };
+            let facts = read_slide_facts(&slide(Some("#0B1220"), "n", svg)).unwrap();
+            let mut errors = Vec::new();
+            check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
+            errors
+        };
+
+        let missing = run(&claim, "on");
+        assert!(rules(&missing).contains(&"structure.background-image"), "{missing:?}");
+        assert!(!rules(&run(&format!("{bg}{claim}"), "on")).contains(&"structure.background-image"));
+        // `background: off` means the page is meant to have none.
+        assert!(!rules(&run(&claim, "off")).contains(&"structure.background-image"));
     }
 
     #[test]

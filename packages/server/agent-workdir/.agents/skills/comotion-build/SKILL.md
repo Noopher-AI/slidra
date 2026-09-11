@@ -33,6 +33,7 @@ page-5.note=數字改成 11.8 分鐘
 2. **處理確認**：
    - 訊息帶【計畫確認】：把每題答案套進計畫的 JSON 段（`mode` 題改 `mode`；`animation` 題改 `animation`；`background` 題改 `background`；`page-N` 題改該頁的 `type`，並依 `slide-design.md` 對應調整 `rhythm`；`palette` 題改 `design-spec.md` 的 `palette`；`.note` 與「補充」的內容改進該頁正文的關鍵詞或備忘稿），`questions` 清空，`status` 改成 `confirmed`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（配色有改就也 `plan set design-spec`）。
    - 沒有【計畫確認】且 `status` 不是 `confirmed`：**停下來**回「計畫還沒確認，請先在確認視窗拍板」，不碰任何投影片。
+   - **帶【計畫確認】、但計畫已經是 `confirmed` 而且 `co-motion ls <presentation-id> slides` 已有投影片**：這是同一次確認被送了兩次（視窗與聊天框各一次，實際發生過）。**不要重建**——回一句「這份計畫已經建置過了（目前 N 頁）。要重做請說「重做第 X 頁」或「全部重做」」，然後停下。硬要重建會把作者手上的頁面覆蓋掉，而且兩次確認的答案可能不一樣。
 3. **讀規格與現況**：`co-motion cat <presentation-id> plan/design-spec.md`（配色、密度、字級表、`visual`；計畫的 `background` 決定要不要背景圖）、`co-motion cat <presentation-id> project.json`（畫布；`k = width ÷ 1280`，指南的所有座標、半徑、字級乘以 k，`viewBox` 寫成畫布尺寸）、`co-motion template list <presentation-id>`、`co-motion ls <presentation-id> slides`。讀工作目錄的 `reference/slide-design.md`（第 0、1、4、4b、5 節是你的工作範圍）。
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪些頁型放」決定這份簡報要用到哪幾種配方（通常封面／結語一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
 4. **一頁怎麼做**（每一頁都照這個順序）：
@@ -63,7 +64,7 @@ page-5.note=數字改成 11.8 分鐘
 
 ## 回報格式
 
-先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」（或做到第幾頁停下的原因）。逐頁一行：`第 N 頁（slides/00N.svg）：<頁型>：<標題>——新增 / 覆寫`。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁的關係不在頁型表上而退回了要點頁。
+先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」（或做到第幾頁停下的原因）。逐頁一行：`第 N 頁（slides/00N.svg）：<頁型>：<標題>——新增 / 覆寫，<on-click 步驟數> 步`。**`on-click` 步驟數要跟指南第 5 節該頁型的講述步驟對得上**（封面／章節／大數字／結語各 1 步，要點頁 1＋卡片數，對照頁 3 步），對不上就是動畫加錯了，回報前先修好。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁的關係不在頁型表上而退回了要點頁。
 
 ## 不可做的事
 
