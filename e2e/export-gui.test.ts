@@ -320,6 +320,41 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
       await expect
         .poll(async () => page.locator(".export-menu-item").first().isEnabled(), { timeout: 5_000 })
         .toBe(true);
+
+      // F-18 (NOOP-355 #287): the real fixture's error is one short line —
+      // not long enough to reproduce the off-viewport bug the way a real
+      // 9-line backend message does. Swap the already-rendered node's own
+      // text directly (React never re-renders over this — it owns the
+      // text, not this test) for a synthetic ~300-char message with
+      // embedded newlines, then measure geometry. Pre-fix (`nowrap` +
+      // `right:0` shrink-to-fit) this pushes the box's left edge and most
+      // of its content off the left side of the viewport; post-fix it
+      // wraps and stays fully on-screen.
+      const geometry = await page.locator(".export-status-error").evaluate((el) => {
+        const longMessage = "壞掉的效果清單：" + "元素｢el-speaker｣缺少 data-comot-media 屬性，這是一段刻意加長、含有換行的合成錯誤訊息，用來驗證錯誤區塊在極端長度下仍完整落在畫面內。\n第二行：".repeat(4);
+        const textNode = Array.from(el.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+        if (textNode) textNode.textContent = longMessage;
+        else el.textContent = longMessage;
+        const rect = el.getBoundingClientRect();
+        // el.getClientRects() on `.export-status-error` itself (a flex,
+        // block-level box) is always exactly 1 rect regardless of how the
+        // text inside wraps — a block box's fragments don't multiply with
+        // its content's line count. To actually observe "did this wrap
+        // onto more than one line", the rects have to come from a Range
+        // over the text node, which — like an inline run — gets one
+        // ClientRect per line box (verified against a standalone flex/
+        // pre-wrap repro before writing this: element bocard was always 1,
+        // Range over its text node was 6 for the same wrapped content).
+        const range = document.createRange();
+        if (textNode) range.selectNodeContents(textNode);
+        const lineCount = textNode ? range.getClientRects().length : 0;
+        return { left: rect.left, right: rect.right, lineCount };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      const viewportWidth = page.viewportSize()?.width;
+      if (viewportWidth === undefined || viewportWidth === null) throw new Error("找不到 viewport 寬度");
+      expect(geometry.right).toBeLessThanOrEqual(viewportWidth);
+      expect(geometry.lineCount).toBeGreaterThan(1);
     } finally {
       await started.cleanup();
     }

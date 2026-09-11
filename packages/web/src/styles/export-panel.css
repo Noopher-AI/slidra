@@ -98,14 +98,25 @@
   box-shadow: var(--shadow-menu);
   font-size: var(--text-sm);
   color: var(--ink-700);
-  white-space: nowrap;
+  /* F-18 (NOOP-355 #287): `nowrap` shrink-to-fit + right:0 anchoring meant
+     a long backend error (job.ts's error.message, verbatim, up to 9 lines
+     collapsed onto one) grew the box off the left edge of the viewport —
+     only the tail was ever visible. Wrapping keeps growth vertical, capped
+     and scrollable, so the box always stays inside the viewport regardless
+     of message length; overflow-wrap catches a single unbroken run (no
+     spaces) that would otherwise still overflow the max-width. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: min(calc(var(--panel-w) * 1.5), 90vw);
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .export-status-done,
 .export-status-error {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
-  white-space: nowrap;
+  white-space: pre-wrap;
 }
 .export-status-done a {
   color: var(--brand-red);

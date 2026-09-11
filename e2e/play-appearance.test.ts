@@ -436,6 +436,27 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
       [viewport.width / 2, viewport.height - 1] as const,
     );
     expect(bottomCenterColor).toBe("rgb(0, 0, 0)");
+
+    // F-01 (NOOP-355 #287): already in play mode here (enterPlay() above),
+    // so this reuses the existing session instead of a second startup —
+    // `.stage` (overflow:hidden) must not have overflow content to clip in
+    // the first place, and neither should the srcdoc iframe's own document.
+    const stageScroll = await page.locator(".stage").evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    }));
+    expect(stageScroll.scrollWidth).toBeLessThanOrEqual(stageScroll.clientWidth);
+    expect(stageScroll.scrollHeight).toBeLessThanOrEqual(stageScroll.clientHeight);
+    const srcdocScroll = await page.frameLocator("iframe.slide-frame").locator("html").evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    }));
+    expect(srcdocScroll.scrollWidth).toBeLessThanOrEqual(srcdocScroll.clientWidth);
+    expect(srcdocScroll.scrollHeight).toBeLessThanOrEqual(srcdocScroll.clientHeight);
   } finally {
     await page.close();
     await cleanup();

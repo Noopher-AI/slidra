@@ -654,6 +654,19 @@ it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞�
 
     await page.locator('[role="tab"][data-tab="animate"]').click();
     await expect.poll(() => objectCards(page).count()).toBe(1);
+
+    // F-14 (NOOP-355 #287): the card's fields grid must fit inside the
+    // panel — before the fix, a <select>'s min-content forced the grid
+    // track wider than the panel (`.animate-card-fields` scrollWidth >
+    // clientWidth) and pushed the Start/Delay column's right edge past the
+    // 1440px-wide panel entirely.
+    const fields = objectCards(page).locator(".animate-card-fields").first();
+    const fieldsScroll = await fields.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
+    expect(fieldsScroll.scrollWidth).toBeLessThanOrEqual(fieldsScroll.clientWidth);
+    const startField = objectCards(page).locator(".animate-card-field", { hasText: "Start" }).locator("select").first();
+    const startRight = await startField.evaluate((el) => el.getBoundingClientRect().right);
+    expect(startRight).toBeLessThanOrEqual(VIEWPORT.width);
+
     await compareScreenshot(page, { name: "animate-object-list", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
 
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
