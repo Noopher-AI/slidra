@@ -4273,6 +4273,23 @@ const PRESENTATION_FONT_FACE_STYLE =
   '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
 
 /**
+ * (F-01, NOOP-355 #287) An inline `<svg>` is a replacement element with a
+ * baseline gap below it, same as `<img>`: at the default `display:inline`
+ * it sits a few pixels short of the document's full height, which is
+ * exactly the sliver that shows up as a scrollbar on the srcdoc document.
+ * `overview.ts`'s thumbnail wrapper already fixed this the same way
+ * (`svg{display:block}`); this is that same shape, extended with
+ * `overflow:hidden` so nothing inside the slide markup itself (e.g. a
+ * stroke that bleeds a fraction of a pixel past the viewBox) can push a
+ * scrollbar onto these three documents either. Colour is deliberately
+ * absent here — `background`/`color` on body stays in each wrapper's own
+ * inline `style=""` attribute, unmodified (design-contract.test.ts only
+ * allows `#fff` as a literal in this file; play-grid-css-tokens.test.ts's
+ * C1 forbids `.slide-frame` itself from ever getting a `background`).
+ */
+const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{display:block;width:100%;height:100%}</style>";
+
+/**
  * Wraps the fetched slide markup for `srcdoc`. When `baseHref` is given, a
  * `<base>` element is injected so the browser's own relative-URL resolution
  * — not a regex rewrite of untrusted markup (ADR-0003) — turns a slide
@@ -4298,7 +4315,7 @@ const PRESENTATION_FONT_FACE_STYLE =
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4379,7 +4396,7 @@ export function wrapSelectionDocument(
   // selection, so no qa/cases script or e2e test can catch a regression here.
   // Applied to this wrapper only: play mode is a separate document where
   // letting a viewer select text is a different decision.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4418,7 +4435,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

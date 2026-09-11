@@ -317,6 +317,14 @@
   gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--ink-500);
+  /* F-14 (NOOP-355 #287): a grid item's default min-width is `auto`, not
+     `0` — it never shrinks below its content's min-content size. A
+     <select>/<input>'s min-content is its own intrinsic width (well past
+     this track's share of the panel), so the two-column grid was forced
+     wider than the panel and scrolled. `1fr 1fr`/gap stay untouched (#279
+     決定 9 already settled the 2×2 shape); this only lets the column
+     shrink to fit it. */
+  min-width: 0;
 }
 .animate-card-field select,
 .animate-card-field input {
@@ -328,6 +336,11 @@
   font-size: var(--text-sm);
   color: var(--ink-900);
   background: var(--surface-white);
+  /* Same min-width:auto flex-item default as .animate-card-field above,
+     one level down: the field is a flex column, so its own children
+     (select/input) also need this to actually shrink to the field's now-
+     available width instead of keeping their own min-content floor. */
+  min-width: 0;
 }
 
 /* ── Animate › Page（[E2.T11]/#207 §4.7）────────────────────────────

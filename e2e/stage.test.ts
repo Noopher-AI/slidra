@@ -169,11 +169,17 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
 
 /** Measures the rendered `.stage` box and the `.canvas-area` (well) it sits in. */
 async function measureStage(page: Page): Promise<{
-  stage: { x: number; y: number; width: number; height: number };
+  stage: { x: number; y: number; width: number; height: number; scrollWidth: number; scrollHeight: number; clientWidth: number; clientHeight: number };
   well: { x: number; y: number; width: number; height: number; scrollWidth: number; scrollHeight: number; clientWidth: number; clientHeight: number };
 }> {
   const stageBox = await page.locator(".stage").boundingBox();
   if (!stageBox) throw new Error("找不到 .stage");
+  const stageScroll = await page.locator(".stage").evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    scrollHeight: el.scrollHeight,
+    clientWidth: el.clientWidth,
+    clientHeight: el.clientHeight,
+  }));
   const wellBox = await page.locator(".canvas-area").boundingBox();
   if (!wellBox) throw new Error("找不到 .canvas-area");
   const wellScroll = await page.locator(".canvas-area").evaluate((el) => ({
@@ -183,9 +189,37 @@ async function measureStage(page: Page): Promise<{
     clientHeight: el.clientHeight,
   }));
   return {
-    stage: stageBox,
+    stage: { ...stageBox, ...stageScroll },
     well: { ...wellBox, ...wellScroll },
   };
+}
+
+/** Enters play mode and waits for its own iframe (torn down/rebuilt on
+ * entry) to be ready — same wait as play-appearance.test.ts's enterPlay(). */
+async function enterPlay(page: Page): Promise<void> {
+  await page.locator(".play-button").click();
+  await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
+  await expect
+    .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
+    .toBe("true");
+}
+
+/** F-01 (NOOP-355 #287): the srcdoc document's own `<html>` — measured
+ * separately from `.stage`/`.canvas-area` (both host-document elements)
+ * because the scrollbar the bug report describes is painted *inside* the
+ * iframe, on its own documentElement, not on either host box. */
+async function measureSrcdocDocument(page: Page): Promise<{
+  scrollWidth: number;
+  scrollHeight: number;
+  clientWidth: number;
+  clientHeight: number;
+}> {
+  return page.frameLocator("iframe.slide-frame").locator("html").evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    scrollHeight: el.scrollHeight,
+    clientWidth: el.clientWidth,
+    clientHeight: el.clientHeight,
+  }));
 }
 
 it("舞台的實測寬高比等於 project.json 的 canvas.width/height", async () => {
@@ -220,6 +254,27 @@ it("投影片永遠完整可見：舞台不超出留白區，留白區不出現�
   expect(stage.y).toBeGreaterThanOrEqual(well.y - 0.5);
   expect(stage.x + stage.width).toBeLessThanOrEqual(well.x + well.width + 0.5);
   expect(stage.y + stage.height).toBeLessThanOrEqual(well.y + well.height + 0.5);
+
+  // F-01 (NOOP-355 #287): `.stage` itself must not need to clip an
+  // overflow — `well`/`stage` above only measured the *host* document's
+  // boxes, which said nothing about whether `.stage` (overflow:hidden) or
+  // the srcdoc iframe's own document had scroll content to hide in the
+  // first place. Edit mode first, then play mode (same iframe class, same
+  // .stage/.canvas-area host elements — play.css only re-themes them,
+  // shell.css's DOM stays the same).
+  expect(stage.scrollWidth).toBeLessThanOrEqual(stage.clientWidth);
+  expect(stage.scrollHeight).toBeLessThanOrEqual(stage.clientHeight);
+  const editSrcdoc = await measureSrcdocDocument(page);
+  expect(editSrcdoc.scrollWidth).toBeLessThanOrEqual(editSrcdoc.clientWidth);
+  expect(editSrcdoc.scrollHeight).toBeLessThanOrEqual(editSrcdoc.clientHeight);
+
+  await enterPlay(page);
+  const playStage = await measureStage(page);
+  expect(playStage.stage.scrollWidth).toBeLessThanOrEqual(playStage.stage.clientWidth);
+  expect(playStage.stage.scrollHeight).toBeLessThanOrEqual(playStage.stage.clientHeight);
+  const playSrcdoc = await measureSrcdocDocument(page);
+  expect(playSrcdoc.scrollWidth).toBeLessThanOrEqual(playSrcdoc.clientWidth);
+  expect(playSrcdoc.scrollHeight).toBeLessThanOrEqual(playSrcdoc.clientHeight);
 });
 
 it("視窗大小改變時舞台重新計算，仍然置中且完整可見、不出捲軸", async () => {
