@@ -26,7 +26,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 2. **讀規範**：用你原生的檔案讀取能力讀工作目錄裡的 `reference/modes.md` 與 `reference/slide-design.md`（第 2、3、6、7 節）。
 3. **挑敘事模式**：看內文小節的論證走向（不是看封面），依 `modes.md` 挑一種，並記下一句理由——這句理由之後要放進題目的 `note`。作者的大綱明顯是話題式標題或明說了模式時，以作者為準。
 4. **逐節定關係與節奏**：每一頁**必填 `relationship`**——這一節的內容之間是什麼關係（`slide-design.md` 第 6.1 節）：並列歸屬→`membership`、順序步驟時間→`order`、A vs B／前後→`contrast`、統轄分解→`parent`、依賴因果→`link`、交集→`overlap`、單一主張或一個數字→`none`。**先判關係，不要先想版面**；判錯關係會讓有方向的內容被講成並列的內容。
-   `type` 是**選填**的，只在這一節剛好適用第 6.3 節的已知解時才填（封面／章節頁／要點頁／對照頁／大數字頁／結語頁）；不確定或內容需要自己的構圖時就留空，交給 build 決定。節奏：封面、章節、結語是 `anchor`；一個數字的頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；**不為了頁數或節奏捏假頁**。
+   **不要填 `type`。** 版面是 build 的事，不是計畫的事——規劃階段一旦寫下 `type`，build 就會直接去拿那個頁型的現成範例，再也不會去想這一頁該長什麼樣（實際發生過：每一頁並列要點都被寫成 `bullets`，於是每一頁都是同一面卡片牆）。你的工作是把**關係**判準確，版面由 build 依關係挑。節奏：封面、章節、結語是 `anchor`；一個數字的頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；**不為了頁數或節奏捏假頁**。
    **相鄰兩頁的 `relationship` 相同時要特別小心**：它們很可能會被建成一模一樣的版面（`validate` 的 `rhythm.repeated-shape` 會抓）。先想想這兩節是不是該合併，或其中一節其實是別的關係。
 5. **寫逐頁計畫**：每一頁列出主張（一句話，以 15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（以 18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句（作者要點的完整版，**不得虛構任何數據、名稱、日期**）。
 6. **出題**：3～7 題，第一題固定問敘事模式，最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`＝有背景圖、`off`＝不加；`note` 說明會用哪種配方）；中間每一題對應一個你拿不準的頁型判斷（例如「第 5 頁的 12 分鐘要不要做成大數字頁」）或配色。每題都要有 `recommended`（你的建議，必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
@@ -43,7 +43,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
   "animation": "full",
   "background": "on",
   "pages": [
-    { "n": 1, "relationship": "none", "type": "cover", "rhythm": "anchor", "title": "從大綱到上台只要 12 分鐘" },
+    { "n": 1, "relationship": "none", "rhythm": "anchor", "title": "從大綱到上台只要 12 分鐘" },
     { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "簡報是最常重做的文件" }
   ],
   "questions": [
@@ -77,7 +77,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 
 `animation` 只能是 `full`、`minimal`、`none`（省略視同 `full`）；`background` 只能是 `on`、`off`（省略視同 `on`）。`type` 只能是 `cover`、`section`、`bullets`、`compare`、`number`、`closing`；`rhythm` 只能是 `anchor`、`dense`、`breathing`；`n` 從 1（或既有頁數 +1）連續遞增；`questions[].id` 用英數與 `-`，同一份內不重複。
 
-每頁另有一個**選用的 `blueprint` 物件**（`relationship`／`nodes`／`steps`），那是 `comotion-build` 在構圖階段寫的，**plan 階段不要寫**；重新規劃時也不要把既有的 blueprint 刪掉，除非那一頁的內容真的改了。
+每頁另有一個**選用的 `blueprint` 物件**與一個選用的 `type`，兩者都是 `comotion-build` 在構圖階段寫的，**plan 階段都不要寫**；重新規劃時也不要把既有的 blueprint 刪掉，除非那一頁的內容真的改了。
 
 ## `plan/design-spec.md` 的 JSON 段
 
