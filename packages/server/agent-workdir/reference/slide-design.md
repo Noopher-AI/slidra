@@ -41,6 +41,8 @@
 | 頁尾簡報名（左下） | 文字框宣告 x=80 y=668 w=600 字級 18 muted，內容 `{{ presentation_name }}` |
 | 頁碼（右下） | 文字框宣告 x=800 y=668 w=400 字級 18 muted 靠右，內容 `{{ slide_number }} / {{ slide_total }}`（寬度要放得下模板字串本身，換行是以字面量算的） |
 
+**背景類型的裝飾一律不進頁面 SVG**：大圓、光暈、色團、光束、對角線、格線、光點——這些只出現在背景圖資產裡。頁面 SVG 只放內容元素、scrim 與頁尾；`background: off` 時才照各頁型的說明補回去。不要自己發明新的裝飾幾何。
+
 - 內容區 x 80～1200、y 72～648；標題頂端固定 y=72、左緣固定 x=80，整份不漂移。
 - 裝飾幾何（圓、線、path）**可以超出畫布**，這是刻意的出血；文字框不可以。
 - `{{ … }}` 是動態文字，顯示時才代換成實際值，`cat` 讀回看到的是字面。
@@ -171,13 +173,18 @@ agent 直接下命令</text>
 
 ### 4.5 大數字頁（number，breathing）
 
-背景 `background`。兩圈 primary 光暈與一圈 accent 細環托著 140 字級的數字，下方一行說明；來源可省。**數字只能來自作者的大綱**。沒有數字、只有一句主張時，數字列改成字級 48（`claim`）、fill text、≤ 2 行、y=264，說明列 y=432。
+背景 `background`。140 字級的數字置中，下方一行說明；來源可省。數字四周的光暈與細環是背景類型的裝飾，`background` 是 `on` 時由背景圖負責氣氛，頁面 SVG 不放；只有計畫 `background: off` 時才把下面三行補在 `el-number` 之前：
 
 ```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <ellipse id="el-halo-1" data-comot-name="外光暈" cx="640" cy="330" rx="300" ry="300" fill="<primary>" opacity="0.10"/>
 <ellipse id="el-halo-2" data-comot-name="內光暈" cx="640" cy="330" rx="220" ry="220" fill="<primary>" opacity="0.05"/>
 <ellipse id="el-ring" data-comot-name="強調細環" cx="640" cy="330" rx="150" ry="150" fill="none" stroke="<accent>" stroke-width="3" opacity="0.7"/>
+```
+
+**數字只能來自作者的大綱**。沒有數字、只有一句主張時，數字列改成字級 48（`claim`）、fill text、≤ 2 行、y=264，說明列 y=432。
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <text id="el-number" data-comot-name="大數字" data-comot-text-width="1120" x="80" y="216" font-size="140" font-weight="700" fill="<accent>" data-comot-text-align="center">12 分鐘</text>
 <text id="el-caption" data-comot-name="說明" data-comot-text-width="920" x="180" y="440" font-size="28" fill="<text>" data-comot-text-align="center">從大綱到可上台的初稿</text>
 <text id="el-source" data-comot-name="來源" data-comot-text-width="1120" x="80" y="600" font-size="18" fill="<muted>" data-comot-text-align="center">第一批試用團隊的平均時間</text>
