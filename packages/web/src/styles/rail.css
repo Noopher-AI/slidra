@@ -166,6 +166,32 @@
   pointer-events: none;
 }
 
+/* [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B「頁碼圓點｜…；✦ n 標示
+   該頁動畫數」）。可見度只看「這頁有沒有效果」，不像留言鈕那樣滑入才顯
+   示——這是規劃時就想看到的資訊，不是操作後的回饋，所以恆亮。沿用
+   `.overview-comment-button` 已驗證過的「疊在縮圖上的實色 chip」處理
+   （而非設計原型量測稿裡的半透明玻璃），同一組 token、同一種視覺語言，
+   只是換到左下角。空字串時 `:empty` 直接不佔位、不畫底色。 */
+.overview-effect-badge {
+  position: absolute;
+  left: calc(var(--space-1) + var(--space-3));
+  bottom: calc(var(--space-1) + var(--space-3));
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--ink-700);
+  box-shadow: var(--shadow-seg);
+  font-size: var(--text-xs-hint);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.overview-effect-badge:empty {
+  display: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    T3 [E2.T3]：New/Templates 選單項目、縮圖右鍵選單、拖曳插入線、留言鈕
    入口、From outline… 對話框。
