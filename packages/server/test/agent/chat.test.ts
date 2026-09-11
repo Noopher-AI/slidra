@@ -441,6 +441,29 @@ describe("chat: cancel (#303)", () => {
     expect(after.turnRunning).toBe(false);
   });
 
+  it("stop also drops messages queued behind the running turn, and says how many", async () => {
+    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"], ["第二輪"]], holdPromptOnIndex: 1 }));
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
+    await postChat(server, "做一件很久的事");
+    await untilChunk;
+    // Queued behind the held turn: never started, so stopping must throw it away.
+    await postChat(server, "排在後面的第二則");
+
+    const untilDone = sse.readUntil((e) => e.event === "chat-done");
+    expect((await fetch(`${server.url}/api/chat/cancel`, { method: "POST" })).status).toBe(202);
+    const collected = await untilDone;
+    await sse.close();
+
+    const notice = collected.find((e) => e.event === "chat-notice");
+    expect((notice!.data as { text: string }).text).toContain("1 則尚未開始的訊息");
+    // The fake agent logs every prompt it receives; the queued one never got sent.
+    const log = await readFile(logPath, "utf-8");
+    expect(log).not.toContain("排在後面的第二則");
+  });
+
   it("POST /api/chat/cancel with no turn running is a 409, not a silent no-op", async () => {
     const server = await serve(fakeAgent({}));
     const response = await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });

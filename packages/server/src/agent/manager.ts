@@ -27,7 +27,12 @@ export interface AgentStatus {
   source: AgentSource;
   /** Always both agents, in `ADAPTER_SPECS`'s order — regardless of which is `current`. */
   agents: AgentCard[];
-  /** #303: true while the current session is inside an author turn — a tab loaded mid-turn shows Stop from this, not from the next `chat-chunk`. False with no session. */
+  /**
+   * #303: true whenever there is something Stop can stop — a turn in
+   * flight, a message queued behind it, or an adapter handshake on its way
+   * to one. A tab loaded mid-turn shows Stop from this, not from the next
+   * `chat-chunk`. False with no session.
+   */
   turnRunning: boolean;
 }
 
@@ -193,7 +198,7 @@ export class AgentManager {
     return {
       current: this.current,
       source: this.source,
-      turnRunning: this.session?.isTurnRunning() ?? false,
+      turnRunning: this.session?.isBusy() ?? false,
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
@@ -254,7 +259,7 @@ export class AgentManager {
     this.session.sendMessage(text);
   }
 
-  /** #303: cancels the current session's running turn (see `AgentChatSession.cancel`). Throws when no agent is selected or no turn is running. */
+  /** #303: stops the current session — the turn in flight plus every message queued behind it (see `AgentChatSession.cancel`). Throws when no agent is selected or there is nothing to stop. */
   async cancel(): Promise<void> {
     if (!this.session) {
       throw new CoMotionError("尚未選擇 agent，沒有可以停止的回合");

@@ -174,6 +174,14 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
     }
   });
 
+  // #303: a line the server itself has to say — today only "Stop also
+  // threw away N queued messages". It belongs in the conversation as a
+  // system line, not in the error banner: nothing failed.
+  source.addEventListener("chat-notice", (event) => {
+    const { text } = JSON.parse((event as MessageEvent).data) as { text: string };
+    options.updateMessages((previous) => appendSystemMessage(previous, options.nextMessageId(), text));
+  });
+
   source.addEventListener("chat-error", (event) => {
     const { message } = JSON.parse((event as MessageEvent).data) as { message: string };
     activeReplyId = null;

@@ -149,6 +149,8 @@ interface ChatEvents {
    * is stored separately from the other, turn-scoped events above).
    */
   "available-commands": (payload: { commands: readonly acp.AvailableCommand[] }) => void;
+  /** A line the server itself has to say (not the agent) — e.g. how many queued messages Stop threw away. */
+  "chat-notice": (payload: { text: string }) => void;
 }
 
 /**
@@ -192,6 +194,16 @@ export class AgentChatSession extends EventEmitter {
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
+  /**
+   * #303: messages accepted but not yet started, in send order. The queue
+   * is a plain array rather than state hidden inside `turnQueue`'s promise
+   * chain for one reason: `cancel()` has to be able to *empty* it. Stopping
+   * only the turn in flight let the next queued message start the instant
+   * the stopped one ended, which reads as "Stop restarted the agent".
+   */
+  private readonly pendingTurns: string[] = [];
+  /** True from the first `sendMessage` until the adapter handshake settles — the window where a turn is coming but `session/prompt` has not been sent yet. */
+  private settingUp = false;
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
   /**
@@ -300,14 +312,26 @@ export class AgentChatSession extends EventEmitter {
    * immediately; the reply streams separately over SSE).
    */
   sendMessage(text: string): void {
-    this.turnQueue = this.turnQueue.then(() => this.runTurn(text));
+    this.pendingTurns.push(text);
+    this.turnQueue = this.turnQueue.then(() => {
+      const next = this.pendingTurns.shift();
+      // `cancel()` emptied the queue: this message was dropped on purpose
+      // and the author has already been told how many went with it.
+      if (next === undefined) return;
+      return this.runTurn(next);
+    });
     // A rejected turn must not poison the queue for the next message.
     this.turnQueue = this.turnQueue.catch(() => {});
   }
 
-  /** True while an author-requested `session/prompt` is awaited — the window in which `cancel()` has something to cancel. */
-  isTurnRunning(): boolean {
-    return this.relayingCurrentTurn;
+  /**
+   * True whenever `cancel()` has something to stop: a turn in flight, a
+   * message queued behind it, or an adapter handshake on its way to one.
+   * The chat panel shows Stop from this, so every state the author would
+   * describe as "it is working" has a working Stop button.
+   */
+  isBusy(): boolean {
+    return this.relayingCurrentTurn || this.pendingTurns.length > 0 || this.settingUp;
   }
 
   /**
@@ -325,11 +349,33 @@ export class AgentChatSession extends EventEmitter {
    * mistake worth surfacing (a 409 upstream), not a silent no-op.
    */
   async cancel(): Promise<void> {
-    if (!this.relayingCurrentTurn || !this.connection || this.sessionId === undefined) {
+    // Queued-but-unstarted messages go first and unconditionally: whatever
+    // else Stop can or cannot reach, nothing the author has not seen start
+    // may start after they pressed it.
+    const dropped = this.pendingTurns.length;
+    this.pendingTurns.length = 0;
+
+    const turnInFlight = this.relayingCurrentTurn && this.connection !== undefined && this.sessionId !== undefined;
+    if (turnInFlight) {
+      this.cancelledUntilNextPrompt = true;
+      await this.connection!.cancel({ sessionId: this.sessionId! });
+    } else if (this.settingUp) {
+      // Still shaking hands with the adapter, so there is no `sessionId` to
+      // cancel against. Rejecting the awaited call is the only way out;
+      // `ensureSession`'s own catch then tears the half-built session down
+      // so the next message starts from a clean spawn.
+      const reject = this.activeReject;
+      this.activeReject = undefined;
+      reject?.(new CoMotionError(`${this.config.label} 的連線在建立過程中被停止，請重新發送訊息`));
+    } else if (dropped === 0) {
       throw new CoMotionError("目前沒有進行中的回合可以停止");
     }
-    this.cancelledUntilNextPrompt = true;
-    await this.connection.cancel({ sessionId: this.sessionId });
+
+    if (dropped > 0) {
+      this.emitTyped("chat-notice", {
+        text: `已停止；另有 ${dropped} 則尚未開始的訊息一併取消。`,
+      });
+    }
   }
 
   /** True when an update or permission request has no author turn to belong to (see `cancelledUntilNextPrompt`). */
@@ -453,6 +499,7 @@ export class AgentChatSession extends EventEmitter {
    */
   private ensureSession(): Promise<void> {
     if (!this.readyPromise) {
+      this.settingUp = true;
       this.readyPromise = this.establishSession().catch(async (error) => {
         // A failed setup must be retried on the next message — but retrying
         // must spawn a genuinely fresh session, not leave the failed
@@ -463,6 +510,9 @@ export class AgentChatSession extends EventEmitter {
         // handler already tore things down and rejected us here (fix 1).
         await this.teardownSession();
         throw error;
+      });
+      this.readyPromise = this.readyPromise.finally(() => {
+        this.settingUp = false;
       });
     }
     return this.readyPromise;
@@ -841,12 +891,15 @@ export class AgentChatSession extends EventEmitter {
     const onError: ChatEvents["chat-error"] = (payload) => send("chat-error", payload);
     const onCommand: ChatEvents["chat-command"] = (payload) => send("chat-command", payload);
     const onCommandUpdate: ChatEvents["chat-command-update"] = (payload) => send("chat-command-update", payload);
+    const onNotice: ChatEvents["chat-notice"] = (payload) => send("chat-notice", payload);
+    this.on("chat-notice", onNotice);
     this.on("chat-chunk", onChunk);
     this.on("chat-done", onDone);
     this.on("chat-error", onError);
     this.on("chat-command", onCommand);
     this.on("chat-command-update", onCommandUpdate);
     return () => {
+      this.off("chat-notice", onNotice);
       this.off("chat-chunk", onChunk);
       this.off("chat-done", onDone);
       this.off("chat-error", onError);
