@@ -67,6 +67,9 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 | `/comotion-validate` | `comotion-validate` | 跑 `co-motion validate` 並把每個錯誤釘成留言，只留言不動手 |
 | `/comotion-animate` | `comotion-animate` | 為指定頁或整份加上依序揭露的動畫與轉場 |
 | `/comotion-style` | `comotion-style` | 統一整份的字級、顏色與字型，或把某頁樣式套到全部 |
+| `/comotion-style-kit` | `comotion-style-kit` | 從風格庫挑一種寫進 `plan/design-spec.md`（配色、字級、字型、間距節奏） |
+| `/comotion-background-kit` | `comotion-background-kit` | 從背景庫挑一種配方建成資產並套到頁面 |
+| `/comotion-layout-kit` | `comotion-layout-kit` | 從版面庫挑一種排某一頁，附槽位字數預算與角色標記 |
 | `/comotion-table` | `comotion-table` | 把貼上的 Markdown 表格在指定頁做成表格 |
 | `/comotion-chart` | `comotion-chart` | 用一組數列在指定頁做出圖表，可選雙軸與堆疊 |
 | `/comotion-notes` | `comotion-notes` | 依每頁內容補上口語化的備忘稿，可指定時長 |
