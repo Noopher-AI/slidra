@@ -1955,6 +1955,118 @@ describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)
   });
 });
 
+// NOOP-382: reproduces, at the postMessage-protocol + real-DOM-event
+// boundary (never against beginMoveGesture/updateMoveGesture/endMoveGesture
+// directly), the actual root cause of the drag-to-move regression this
+// ticket was filed for. The ticket's own hypothesis — a broken
+// selectionIds/originals chain inside beginMoveGesture — did not reproduce
+// under investigation (confirmed empirically in the sandbox QA harness:
+// gesture-start/gesture-move/preview all fire correctly). The real cause is
+// that the slide lives in a sandboxed, out-of-process iframe: once a move
+// drag's pointer crosses that iframe's own rendered edge, ordinary
+// cross-document hit-testing stops delivering pointermove/pointerup to
+// selection-runtime.js entirely (`Element.setPointerCapture()` inside the
+// iframe does not override this for an out-of-process sandboxed frame —
+// verified empirically, not assumed). Without a fallback, the iframe's
+// "gesture-end" message simply never arrives: no "element move" command,
+// no history entry, no console error. canvas.ts's own window-level
+// pointermove/pointerup listeners (added right alongside onWindowMessage)
+// are that fallback — this test drives them directly, the same way the
+// gesture-move/gesture-end messages above are driven directly, since
+// neither is a public boundary either.
+describe("mountCanvas 的拖曳手勢：pointer 離開 slide iframe 邊界後仍要送出 element move (NOOP-382)", () => {
+  it("iframe 只送出 gesture-start/一次 gesture-move 就再也沒有下文（模擬遊標離開 iframe）：host 自己的 pointermove/pointerup 仍能完成手勢並送出 element move", async () => {
+    const slideMarkupWithEl =
+      '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideMarkupWithEl, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) =>
+      window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    send({ source: "comot-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 100, y: 100 } });
+    // One real gesture-move from the iframe, proving the drag actually
+    // started (this much already worked pre-fix) — then nothing else ever
+    // arrives from it, as if the pointer had crossed its rendered edge.
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 120 }, modifiers: { shift: false, alt: false } });
+
+    // jsdom's frame.getBoundingClientRect()/offsetWidth are both 0, which
+    // makes canvas.ts's toFrameClientPoint an identity conversion here
+    // (matches this test's 1:1 svgRect/viewBox) — a real host-received
+    // client point of (300, 130) is therefore also user-space (300, 130).
+    window.dispatchEvent(new PointerEvent("pointermove", { clientX: 300, clientY: 130 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { clientX: 300, clientY: 130 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const moveCalls = commandCalls.filter((call) => call.name === "element move");
+    expect(moveCalls).toEqual([
+      {
+        name: "element move",
+        input: { slidePath: "slides/001.svg", elementIds: ["el-a"], dx: 200, dy: 30 },
+      },
+    ]);
+  });
+
+  it("沒有進行中的 move 手勢時，host 的 pointermove/pointerup 是無害的 no-op（不會誤送 element move）", async () => {
+    const slideMarkupWithEl =
+      '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
+    const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/presentation")) {
+          return new Response(JSON.stringify(project), { status: 200 });
+        }
+        if (url.endsWith("/api/files/slides/001.svg")) {
+          return new Response(slideMarkupWithEl, { status: 200 });
+        }
+        if (url.endsWith("/api/command")) {
+          commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
+          return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    controller = mountCanvas(container);
+    await controller.reload();
+
+    window.dispatchEvent(new PointerEvent("pointermove", { clientX: 300, clientY: 130 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { clientX: 300, clientY: 130 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(commandCalls).toEqual([]);
+  });
+});
+
 // NOOP-334: beginMoveGesture's !viewport guard (above) had no equivalent in
 // beginScaleGesture/beginRotateGesture/beginTextboxWidthGesture — they share
 // the same toUserPoint(point) call that silently returns {x:0,y:0} while
