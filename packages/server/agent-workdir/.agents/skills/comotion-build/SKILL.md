@@ -45,7 +45,7 @@ page-5.note=數字改成 11.8 分鐘
    6. `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
    7. 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照步驟 1 重寫整頁 SVG（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
 5. **第一頁閘門**：先做封面與第一張內容頁，各 `co-motion validate <presentation-id> slides/00N.svg`。有錯誤就**先改做法**（關鍵詞太長就改短、字級或顏色寫錯就改回表上的值、少了動畫就補），確認兩頁都 0 錯誤，才做第 3 頁起。
-6. **逐頁建置**：依 `pages` 的順序，一頁做完再做下一頁。頁面只放計畫裡的「頁面關鍵詞」：標題 ≤ 15 字、每條 1 行 ≤ 18 字、3～5 條、全頁 ≤ 600 字（其他密度的門檻 `validate` 會告訴你）；完整的句子、論證、數據解釋全部進備忘稿。大數字頁的數字、任何名稱與日期只能來自計畫。
+6. **逐頁建置**：依 `pages` 的順序，一頁做完再做下一頁。頁面只放計畫裡的「頁面關鍵詞」，完整的句子、論證、數據解釋全部進備忘稿。**字數門檻（presentation：標題 ≤ 24 字、每條 ≤ 32 字且 ≤ 2 行、2～7 條、全頁 ≤ 1000 字；其他密度 `validate` 會告訴你）是「明顯誇張」的底線，不是目標**——好的頁面通常遠比它短，但沒有超過就不要為了更短而犧牲把話講清楚。大數字頁的數字、任何名稱與日期只能來自計畫。
 7. **整份轉場**：`animation` 不是 `none` 時，第 1 頁一做完就先下一次 `co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（不然第一頁閘門的 `validate` 一定報 `motion.transition`），全部頁面做完再下一次，讓後加的頁也有轉場。
 8. **全份驗證，修到 0 錯誤**：`co-motion validate <presentation-id>`。讀 `data.errors[]`，每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`：
    - `text.*`：改短關鍵詞或把句子搬進備忘稿；條數超過就拆頁（同時用 `plan set outline` 補一頁進計畫，`status` 維持 `confirmed`）。單一文字框的字可以用 `text set` 改，改動多就整頁 `slide set --svg` 重寫。
@@ -70,7 +70,7 @@ page-5.note=數字改成 11.8 分鐘
 
 - **計畫未確認不動手**：`status` 不是 `confirmed` 且訊息沒帶【計畫確認】時，只回一句話。
 - **不改計畫的內容判斷**：頁的主張、順序、模式以確認過的計畫為準；只有 `validate` 逼你拆頁時才改 `pages`，而且要寫回檔案。
-- **不把完整句子放上頁面**：要點超過 1 行或 18 字就是寫成講稿了，改短並把句子搬進備忘稿。
+- **不把整段講稿放上頁面**：一條要點佔到三行、或長得像完整論證，就改短並把句子搬進備忘稿。（門檻見步驟 6：那是底線不是目標。）
 - **不自己發明版面**：座標、字級、顏色、幾何全部取自 design-spec 與指南第 4 節的範例；背景圖只用第 4b 節的四種配方，不畫插圖、不放圖示、不讓背景承載意義；不自己放 `<tspan>`、不用 `<script>`、不加 rect 框線與陰影。
 - **不逐元素拼頁**：`textbox add`／`element insert` 只用來微調一個元素；整頁一律用 `--svg` 寫。
 - **不虛構事實**：計畫裡沒有的數據、名稱、日期一個都不准補。

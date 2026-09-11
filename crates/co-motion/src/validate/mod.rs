@@ -43,7 +43,11 @@ pub struct ValidationReport {
     pub without_plan: bool,
 }
 
-/// Density thresholds (contract §3).
+/// Density thresholds (contract §3). Deliberately loose: `geometry.*`
+/// already fails anything that physically does not fit the slide, so these
+/// only have to catch the genuinely absurd — a paragraph pasted onto a
+/// page, a title that is a whole sentence. Tightening them turns `validate`
+/// into a taste argument the author never asked for.
 #[derive(Debug, Clone, Copy)]
 pub struct Density {
     pub title_chars: usize,
@@ -57,28 +61,28 @@ pub struct Density {
 pub fn density_for(name: &str) -> Density {
     match name {
         "balanced" => Density {
-            title_chars: 20,
-            bullet_chars: 28,
-            bullet_lines: 2,
-            bullets: (3, 6),
-            column_bullets: (2, 5),
-            page_chars: 800,
+            title_chars: 32,
+            bullet_chars: 48,
+            bullet_lines: 3,
+            bullets: (2, 8),
+            column_bullets: (2, 7),
+            page_chars: 1400,
         },
         "text" => Density {
+            title_chars: 40,
+            bullet_chars: 64,
+            bullet_lines: 4,
+            bullets: (2, 9),
+            column_bullets: (2, 8),
+            page_chars: 2000,
+        },
+        _ => Density {
             title_chars: 24,
-            bullet_chars: 40,
-            bullet_lines: 3,
+            bullet_chars: 32,
+            bullet_lines: 2,
             bullets: (2, 7),
             column_bullets: (2, 6),
             page_chars: 1000,
-        },
-        _ => Density {
-            title_chars: 15,
-            bullet_chars: 18,
-            bullet_lines: 1,
-            bullets: (3, 5),
-            column_bullets: (2, 4),
-            page_chars: 600,
         },
     }
 }
@@ -1267,10 +1271,15 @@ mod tests {
                     24.0,
                     "#F4F6F8",
                     &[
-                        ("這一條要點寫得太長了超過十八個字元的上限", false),
+                        (
+                            "這一條要點寫得實在太長了長到超過三十二個字元的上限完全是把講稿貼到頁面上",
+                            false
+                        ),
                         ("折行第一段", true),
                         ("第二條", true),
-                        ("第三條", false)
+                        ("第三條", false),
+                        ("第四條", false),
+                        ("第五條", false)
                     ]
                 ),
             ),
@@ -1285,7 +1294,7 @@ mod tests {
                 .find(|e| e.rule == "text.bullet-length")
                 .unwrap()
                 .limit,
-            "≤ 18 字"
+            "≤ 32 字"
         );
     }
 
@@ -1303,7 +1312,10 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("這個標題實在是太長了超過十五個字的上限", false)]
+                    &[(
+                        "這個標題實在是太長了長到超過二十四個字的上限根本是一整句話",
+                        false
+                    )]
                 ),
                 textbox(
                     "el-body",
@@ -1318,7 +1330,9 @@ mod tests {
                         ("一二三四五六七八九十一二三四五六七", true),
                         ("一二三四五六七八九十一二三四五六七", true),
                         ("一二三四五六七八九十一二三四五六七", true),
-                        ("第六條", false)
+                        ("一二三四五六七八九十一二三四五六七", true),
+                        ("一二三四五六七八九十一二三四五六七", true),
+                        ("第八條", false)
                     ]
                 ),
             ),
@@ -1326,10 +1340,10 @@ mod tests {
         let r = rules(&run_one(&svg, "bullets", "dense"));
         assert!(r.contains(&"text.title-length"), "{r:?}");
         assert!(r.contains(&"text.bullet-count"), "{r:?}");
-        // 17 × 5 + 3 + 19 = 107 visible characters: well under the 600 budget.
+        // 17 × 7 + 3 + 28 = 150 visible characters: well under the 1000 budget.
         assert!(!r.contains(&"text.page-total"), "{r:?}");
 
-        let wall = "字".repeat(620);
+        let wall = "字".repeat(1020);
         let svg = slide(
             Some("#101418"),
             "n",

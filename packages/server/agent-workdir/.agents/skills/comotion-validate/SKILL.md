@@ -22,7 +22,7 @@ description: 跑 co-motion validate 驗證指定頁或整份投影片的文字�
 2. **跑驗證**：整份 `co-motion validate <presentation-id>`；指定頁就逐頁 `co-motion validate <presentation-id> slides/00N.svg`。結束碼非零代表**有錯誤**，不是命令壞了；`data` 長這樣：
 
    ```json
-   { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "23 字", "limit": "≤ 18 字", "message": "第 2 頁要點第 3 條 23 字，上限 18 字" } ] }
+   { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "37 字", "limit": "≤ 32 字", "message": "第 2 頁要點第 3 條 37 字，上限 32 字" } ] }
    ```
 
 3. **沒有計畫檔的簡報**：message 尾巴帶「（沒有 plan/ 計畫檔，只驗幾何與骨架）」時，`validate` 只跑了溢出、重疊、背景、備忘稿與禁忌；在回報裡說明文字量與字級配色沒有驗到，作者要完整驗證得先跑 `/comotion-plan`。

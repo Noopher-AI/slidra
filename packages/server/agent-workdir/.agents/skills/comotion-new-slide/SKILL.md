@@ -17,7 +17,7 @@ description: 在簡報最後（或指定位置）新增一頁：有計畫就照�
    - **沒有計畫但有範本**：`co-motion template list <presentation-id>`，有對應頁型的範本就 `co-motion slide add <presentation-id> --template <file 路徑>`，再 `text set` 覆寫文字。
    - **沒有計畫、沒有範本，但有結構相近的一頁**：`co-motion slide duplicate <presentation-id> slides/00N.svg` 複製它，再改文字。
    - **什麼都沒有**：照 `reference/slide-design.md` 第 4 節的骨架、配色 B 淺色簡潔，`slide add --svg` 寫一頁。不要自己發明版面。
-   頁面只放關鍵詞（每條要點 1 行 ≤ 18 字），完整句子寫進 `co-motion slide notes set`。
+   頁面只放關鍵詞（一條要點以 1 行為目標，`validate` 的上限是 2 行 32 字），完整句子寫進 `co-motion slide notes set`。
 
 3. **驗收**：`co-motion validate <presentation-id> slides/00N.svg`，有錯誤就修到 0；沒有計畫檔時它只驗幾何與骨架，另外 `cat` 讀回確認文字真的寫進去了。
    做完把新頁的路徑（`slides/00N.svg`）告訴使用者。

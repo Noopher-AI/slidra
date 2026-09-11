@@ -2502,9 +2502,13 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
             .status
             .success()
     );
+    // The plan's `background` defaults to "on", so the only complaint before
+    // `slide background set` runs is the missing background image itself —
+    // no scrim is demanded of a page that has no background image yet.
     let before = fixture.run_rust(&["validate", &id, "--json"]);
+    let before_out = String::from_utf8_lossy(&before.stdout).to_string();
     assert!(
-        before.status.success(),
+        before_out.contains("structure.background-image") && !before_out.contains("structure.scrim"),
         "no background yet, no scrim needed: {before:?}"
     );
 
