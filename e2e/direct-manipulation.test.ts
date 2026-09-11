@@ -509,6 +509,42 @@ it("拖曳單一元素放手後：預覽字串與寫入檔案的字串逐字元�
   }
 });
 
+it("拖曳單一元素放手後：overview 縮圖（iframe.overview-frame）的 transform 跟著同步更新；undo 後縮圖也還原（NOOP-350 [E5.T5] round-1 FAIL #2：N-01 沒有驗證縮圖同步）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const before = await readSlide(registry, presentationId);
+    const beforeTransform = readTransformAttr(before, "el-a");
+
+    // overview.ts's fetchAndFillThumbnail() sets the iframe's `srcdoc` from
+    // a plain fetch of the slide file — same markup, same el-a `<g>` — so
+    // this is the thumbnail's own copy of the transform, not the main
+    // canvas's.
+    const thumbEl = page.frameLocator('.overview-item[data-index="0"] iframe.overview-frame').locator("#el-a");
+    await expect.poll(() => thumbEl.getAttribute("transform").catch(() => null), { timeout: 15_000 }).toBe(beforeTransform);
+
+    await dragBy(page, { x: 180, y: 150 }, { x: 60, y: 40 }); // inside el-a (100..260, 100..200)
+
+    const after = await readSlide(registry, presentationId);
+    const afterTransform = readTransformAttr(after, "el-a");
+    expect(afterTransform).not.toBe(beforeTransform);
+
+    // The drop's live reload pushes a `presentation-changed` SSE event,
+    // which App.tsx's listener forwards to `overviewControllerRef.current.refresh()`
+    // (see App.tsx's #27 comment) — the thumbnail must pick up the moved
+    // element without a page reload.
+    await expect.poll(() => thumbEl.getAttribute("transform").catch(() => null), { timeout: 15_000 }).toBe(afterTransform);
+
+    const undo = await registry.dispatch("undo", { id: presentationId });
+    expect(undo.ok).toBe(true);
+    expect(await readSlide(registry, presentationId)).toBe(before);
+
+    await expect.poll(() => thumbEl.getAttribute("transform").catch(() => null), { timeout: 15_000 }).toBe(beforeTransform);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("驗收條件第四條 (a)：一次拖曳、中間 100 個 mouse-move 步，只產生一筆歷史", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
@@ -1574,6 +1610,10 @@ it("情境列：點選元素後按情境列的 Delete 送出 element delete（�
 
     const bar = page.locator(".context-bar");
     expect(await bar.isVisible()).toBe(true);
+    // [E5.T7]/F-17 決定 8: ghost until hovered long enough to solidify.
+    const barBox = (await bar.boundingBox())!;
+    await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
     await bar.getByRole("button", { name: "Delete" }).click();
     await page.waitForTimeout(150);
 
@@ -1602,6 +1642,10 @@ it("情境列：Bring to front 送出 element order；右鍵元素只選取、�
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
     expect(await page.locator(".element-context-menu").count()).toBe(0);
 
+    // [E5.T7]/F-17 決定 8: ghost until hovered long enough to solidify.
+    const bringToFrontBox = (await page.locator(".context-bar").getByRole("button", { name: "Bring to front" }).boundingBox())!;
+    await page.mouse.move(bringToFrontBox.x + bringToFrontBox.width / 2, bringToFrontBox.y + bringToFrontBox.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
     await page.locator(".context-bar").getByRole("button", { name: "Bring to front" }).click();
     await page.waitForTimeout(150);
 

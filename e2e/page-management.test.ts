@@ -510,6 +510,47 @@ it("縮圖右鍵選單（T3 plan §3.9／§4.4）：開啟、Comment to agent �
   }
 });
 
+it("縮圖右鍵選單「Save as template」：存檔後 Templates／New › Layouts 即時出現該範本，套用後內容與來源頁一致（NOOP-357／#289）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const beforeSlides = (await readProject(registry, presentationId)).slides;
+    const sourceContent = await readSlide(registry, presentationId, beforeSlides[1]);
+
+    await page.locator('.overview-item[data-index="1"]').click({ button: "right" });
+    const contextMenu = page.locator('[data-testid="thumb-context-menu"]');
+    await expect.poll(() => contextMenu.isVisible()).toBe(true);
+    await contextMenu.getByRole("menuitem", { name: "Save as template" }).click();
+
+    const modal = page.locator('[role="dialog"][aria-label="Save as template"]');
+    await expect.poll(() => modal.isVisible()).toBe(true);
+    await modal.getByLabel("Template name").fill("我的範本");
+    await modal.getByRole("button", { name: "Save" }).click();
+    await expect.poll(() => modal.isVisible()).toBe(false);
+
+    await page.getByRole("button", { name: "Templates" }).click();
+    const templatesMenu = page.locator('[role="menu"][data-menu="templates"]');
+    await expect.poll(() => templatesMenu.getByRole("menuitem", { name: "我的範本" }).isVisible()).toBe(true);
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "New" }).click();
+    const newMenu = page.locator('[role="menu"][data-menu="new"]');
+    await expect.poll(() => newMenu.getByRole("menuitem", { name: "我的範本" }).isVisible()).toBe(true);
+    await newMenu.getByRole("menuitem", { name: "我的範本" }).click();
+
+    await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
+      5,
+    );
+    const afterSlides = (await readProject(registry, presentationId)).slides;
+    const newSlidePath = afterSlides.find((slidePath) => !beforeSlides.includes(slidePath));
+    if (!newSlidePath) throw new Error("找不到新插入的投影片");
+    const newContent = await readSlide(registry, presentationId, newSlidePath);
+    expect(normalizeIds(newContent)).toBe(normalizeIds(sourceContent));
+  } finally {
+    await cleanup();
+  }
+});
+
 it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮圖右鍵選單", async () => {
   const { server, cleanup } = await startServerFor();
   try {

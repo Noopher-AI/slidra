@@ -29,6 +29,17 @@ from browser_harness.helpers import (
 
 _DEFAULT_URL = "http://127.0.0.1:5173"
 _FRAME_READY_TIMEOUT = 15.0
+# open_deck()'s first navigation pays costs no later goto_slide() rebuild
+# does: cold V8 JIT, a cold disk cache for Chromium's own binary and the
+# app's JS bundle, and (on a sandbox pod) contention with whatever the rest
+# of `quick_start.sh --qa` just finished building. Measured on this pod: the
+# same commit failed _require_runtime_ready()'s plain 15s bound on a build
+# fresh off `sandbox-setup`, then passed immediately on a rerun with
+# everything warm — same code, different outcome, so the 15s bound (not the
+# app) was the problem. goto_slide()'s rebuilds happen against an already-
+# warm browser and stay on _FRAME_READY_TIMEOUT so per-gesture waits in a
+# case script don't get slower for a one-time cost.
+_INITIAL_LOAD_TIMEOUT = 45.0
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _SLIDE_NAV_RE = re.compile(r"Slide (\d+) of (\d+)")
 
@@ -162,13 +173,16 @@ def _dispatch_mouse(**params):
         ) from exc
 
 
-def _click(x, y, clicks=1):
+def _click(x, y, clicks=1, modifiers=0):
     """pressed -> released at (x, y), via _dispatch_mouse — reimplements
     browser_harness.helpers.click_at_xy()'s gesture because that core
     primitive (imported nowhere in this module anymore) hardcodes a 5s
-    response timeout with no override, same gap as js()."""
-    _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", clickCount=clicks)
-    _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", clickCount=clicks)
+    response timeout with no override, same gap as js().
+
+    `modifiers` is CDP's bitmask (Alt=1, Ctrl=2, Meta/Cmd=4, Shift=8) — used
+    by select(..., additive=True)/click_at(..., shift=True) for ⇧-click."""
+    _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", clickCount=clicks, modifiers=modifiers)
+    _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", clickCount=clicks, modifiers=modifiers)
 
 
 def _qa_dir():
@@ -484,6 +498,39 @@ def open_deck():
         _new_tab(url)
     _activate_current_tab()
     _wait_for_load()
+    # `quick_start.sh --qa` launches Chromium with
+    # `--user-data-dir=$QA_DIR/profile`, a fixed on-disk profile that
+    # `--qa-stop` never deletes — only the serve/Chromium processes are
+    # killed, so the profile's disk HTTP cache survives a restart. Worse,
+    # `same`/`navigated` above can come back `True` (skipping any
+    # navigation at all) for a tab the DAEMON still remembers as pointing
+    # at this URL even though the Chromium PROCESS it belonged to is
+    # gone — `navigated` is the daemon's belief about tab identity, not a
+    # fact about which OS process (and therefore which cache/JS heap) is
+    # behind it, so it cannot be trusted to gate a cache-bypass here.
+    # Either way, a plain Page.navigate can end up serving a stale
+    # index.html that still references the PREVIOUS `dist/` build's
+    # content-hashed `main-*.js`/`canvas-*.js` — same URL, old code
+    # silently keeps running. This is invisible from every signal
+    # open_deck() already checks (HTTP 200, DOM ready, runtime-ready all
+    # still fire — just for the old bundle) and only shows up as a QA case
+    # passing (or failing) against the wrong commit's behaviour. Measured
+    # on this pod switching branch -> base for F-02/F-05 (NOOP-403): both
+    # cases falsely PASSED on base because the tab was still running the
+    # branch's cached bundle, with `navigated` False the whole time.
+    #
+    # Ask the live JS heap instead of the daemon: a real process restart
+    # cannot leave `window.__cmQaBundleVerified` behind (a fresh V8 heap
+    # has no globals), so checking for it — not `navigated` — is what
+    # decides whether THIS page has already been proven fresh in its own
+    # lifetime. A same-process warm reuse (many browser-use calls against
+    # one already-verified tab within one `--qa` session, the common case)
+    # finds the marker and skips straight to the ready-waits below.
+    if not _js_ro("!!window.__cmQaBundleVerified"):
+        _cdp_ro("Network.setCacheDisabled", cacheDisabled=True)
+        _cdp_ro("Page.reload", ignoreCache=True)
+        _wait_for_load()
+        _js_ro("window.__cmQaBundleVerified = true")
     # --window-size gives Chromium a window, not a viewport (verified: it
     # undershoots by however tall the OS chrome is). This is the only way
     # that reliably lands on exactly 1440x900, and it persists across
@@ -496,7 +543,7 @@ def open_deck():
     # of the session race a half-built runtime.
     _ready_probe(mark_pending=navigated)
     if navigated:
-        _require_runtime_ready()
+        _require_runtime_ready(_INITIAL_LOAD_TIMEOUT)
     _wait_frame_ready()
     return {
         "url": url,
@@ -552,9 +599,11 @@ def slide_count():
     return int(_js_ro("document.querySelectorAll('.overview-item').length"))
 
 
-def select(name_or_id):
+def select(name_or_id, additive=False):
     """Click the element matched by `data-comot-name` (or `#id` for an
-    `el-`-prefixed id) inside the slide iframe. Returns selection()."""
+    `el-`-prefixed id) inside the slide iframe. `additive=True` holds Shift
+    (CDP modifiers=8) so the click adds to/toggles the current selection
+    instead of replacing it. Returns selection()."""
     tid = _wait_frame_ready()
     box = _find_target_box(tid, name_or_id)
     if box is None:
@@ -566,7 +615,7 @@ def select(name_or_id):
     off = _iframe_offset()
     cx = box["x"] + box["width"] / 2 + off["x"]
     cy = box["y"] + box["height"] / 2 + off["y"]
-    _click(cx, cy)
+    _click(cx, cy, modifiers=8 if additive else 0)
     chip = _wait_chip_update()
     if not chip:
         # Round-5 plan contract: don't let an empty chip flow into
@@ -613,6 +662,50 @@ def selection():
         box = {"x": box["x"] + off["x"], "y": box["y"] + off["y"], "w": box["w"], "h": box["h"]}
     handles = {name: (xy[0] + off["x"], xy[1] + off["y"]) for name, xy in (result.get("handles") or {}).items()}
     return {"chip": chip, "box": box, "handles": handles}
+
+
+# [E5.T7]/F-17 決定 8: the selection context bar is ghost (pointer-events:
+# none, half-opaque) until the pointer hovers it continuously for
+# HOVER_SOLIDIFY_MS (packages/web/src/shell/stage-overlays/OverlayLayer.tsx)
+# — long enough that this constant, and the sleep below, are pinned to it by
+# name rather than guessed at independently.
+_CONTEXT_BAR_HOVER_SETTLE = 0.4
+
+
+def hover(x, y):
+    """Moves the (virtual) mouse to (x, y) in parent-document coordinates
+    with no button held, then waits long enough for the context bar's
+    hover-solidify delay to elapse — after this call, `context_bar()["solid"]`
+    is true if (x, y) was over the bar's rect."""
+    _dispatch_mouse(type="mouseMoved", x=x, y=y, button="none", buttons=0)
+    time.sleep(_CONTEXT_BAR_HOVER_SETTLE)
+
+
+def click_at(x, y, shift=False):
+    """Click at arbitrary parent-document coordinates — pressed -> released,
+    not tied to a named element the way select()/_find_target_box() are.
+    `shift=True` holds Shift (CDP modifiers=8), for an additive click that
+    is not on a `data-comot-name`'d element (e.g. a context bar button)."""
+    _click(x, y, modifiers=8 if shift else 0)
+
+
+def context_bar():
+    """The selection context bar's parent-document state: {"present",
+    "solid", "rect", "buttons"}. `rect` is None and `buttons` is {} when the
+    bar is not in the DOM (`present` False, same "no selection, no bar"
+    shape as selection()'s empty case). `buttons` maps each button's own
+    `title` to its center point, parent-document coordinates."""
+    result = _js_ro(
+        "(()=>{const bar=document.querySelector('.context-bar');"
+        "if(!bar)return {present:false,solid:false,rect:null,buttons:{}};"
+        "const r=bar.getBoundingClientRect();"
+        "const buttons={};bar.querySelectorAll('button[title]').forEach(b=>{"
+        "const br=b.getBoundingClientRect();"
+        "buttons[b.getAttribute('title')]=[br.x+br.width/2,br.y+br.height/2];});"
+        "return {present:true,solid:bar.classList.contains('is-solid'),"
+        "rect:{x:r.x,y:r.y,width:r.width,height:r.height},buttons:buttons};})()"
+    )
+    return result or {"present": False, "solid": False, "rect": None, "buttons": {}}
 
 
 _DRAG_SETTLE_TIMEOUT = 2.0
@@ -665,6 +758,17 @@ def drag(from_xy, to_xy, steps=10):
     _wait_status_bar_settled()
 
 
+def click_at(x, y):
+    """A single pressed/released click at (x, y) in parent-document
+    coordinates — the one-click counterpart to `dblclick`, for scenarios
+    that need a plain click first (e.g. selecting a table before its very
+    first double-click — see F-09/N-03, NOOP-399: `TableOverlay`'s own
+    mount effect must flush before a cold double-click on a never-selected
+    table reliably opens the cell editor, the same race e2e/table.test.ts's
+    E8 documents)."""
+    _click(x, y)
+
+
 def dblclick(x, y):
     """Two pressed/released pairs at (x, y) in parent-document coordinates,
     clickCount 1 then 2."""
@@ -672,6 +776,45 @@ def dblclick(x, y):
     _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", buttons=0, clickCount=1)
     _dispatch_mouse(type="mousePressed", x=x, y=y, button="left", buttons=1, clickCount=2)
     _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", buttons=0, clickCount=2)
+
+
+# Keyboard primitives (NOOP-399): F-04/F-09/N-03 are the first cases in this
+# module that need to type — nothing before them exercised anything past
+# mouse gestures. Only the three control keys those cases actually use;
+# extend this table rather than hand-rolling a one-off dispatch elsewhere.
+_KEY_SPECS = {
+    "Tab": {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9, "nativeVirtualKeyCode": 9},
+    "Enter": {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "nativeVirtualKeyCode": 13},
+    "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27},
+}
+
+
+def press(key):
+    """Dispatches one keydown+keyup for a control key (`"Tab"`, `"Enter"`,
+    `"Escape"` — see `_KEY_SPECS`). Uses CDP `Input.dispatchKeyEvent` with
+    `type="rawKeyDown"` then `"keyUp"` — the same pair Puppeteer/Playwright
+    send for a non-printable key — so Chromium applies its own native
+    editing behaviour (e.g. Enter inserting "\\n" into a focused
+    `<textarea>` when nothing prevents it) exactly as real hardware input
+    would, rather than this module reimplementing it. Delivered to
+    whatever element currently has focus, inside the slide iframe or the
+    parent document alike — CDP input dispatch is target-wide, same as
+    `_dispatch_mouse`."""
+    spec = _KEY_SPECS.get(key)
+    if spec is None:
+        raise ValueError(f"press: 不認得的鍵 {key!r}；已知：{sorted(_KEY_SPECS)}")
+    timeout = _ipc_timeout()
+    _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="rawKeyDown", **spec)
+    _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="keyUp", **spec)
+
+
+def type_text(text):
+    """Types `text` into whatever currently has focus, via CDP
+    `Input.insertText` — bypasses per-character key codes entirely (this
+    module's QA cases only ever type literal ASCII/CJK strings, never IME
+    composition — that path is e2e/text-edit.test.ts's concern, not this
+    one). Same target-wide delivery as `press`/`_dispatch_mouse`."""
+    _cdp("Input.insertText", _response_timeout=_ipc_timeout(), text=text)
 
 
 def slide_svg(n):
@@ -711,6 +854,73 @@ def active_element():
             return inner
     info["in_iframe"] = True
     return info
+
+
+def click_ui(selector):
+    """Clicks the centre of the first PARENT-document element matching
+    `selector` (plain CSS) — for dock buttons and floating panels that live
+    outside the slide iframe entirely (e.g. the Table insert panel; F-09/
+    N-03 need a table on a demo slide that starts with none). Raises if
+    nothing matches."""
+    box = _js_ro(
+        f"(()=>{{const e=document.querySelector({json.dumps(selector)});if(!e)return null;"
+        "const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
+    )
+    if box is None:
+        raise RuntimeError(f"click_ui: 找不到符合 {selector!r} 的元素")
+    _click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+
+
+def cell_box(row, col):
+    """Parent-document client rect of table cell (row, col) — the
+    `[data-comot-cell="row,col"]` group inside the slide iframe — or
+    `None` when nothing is currently rendered there (a merge-covered
+    position, or a hidden `repeat` template row)."""
+    tid = _wait_frame_ready()
+    box = _js_ro(
+        f"(()=>{{const e=document.querySelector('[data-comot-cell=\"{int(row)},{int(col)}\"]');"
+        "if(!e)return null;const r=e.getBoundingClientRect();"
+        "return {x:r.x,y:r.y,width:r.width,height:r.height};})()",
+        target_id=tid,
+    )
+    if box is None:
+        return None
+    off = _iframe_offset()
+    return {"x": box["x"] + off["x"], "y": box["y"] + off["y"], "width": box["width"], "height": box["height"]}
+
+
+def iframe_count(selector):
+    """`document.querySelectorAll(selector).length` inside the slide
+    iframe — for polling a LIVE on-screen count mid-edit (e.g.
+    `"#el-title text > tspan"`, F-04/NOOP-399), since `slide_svg()` only
+    ever reads the committed file on disk, never what is on screen before
+    Esc commits it."""
+    tid = _wait_frame_ready()
+    return _js_ro(f"document.querySelectorAll({json.dumps(selector)}).length", target_id=tid) or 0
+
+
+def iframe_selection_text():
+    """The slide iframe's own `window.getSelection()`, stringified — empty
+    when nothing is natively text-selected inside it. N-03 (NOOP-399): the
+    slide document's `<body>` carries `user-select:none` (NOOP-349), so
+    even a native double-click should never produce one."""
+    tid = _wait_frame_ready()
+    return _js_ro("String(window.getSelection())", target_id=tid) or ""
+
+
+def edit_textarea_user_select():
+    """`getComputedStyle(...).userSelect` of the runtime's hidden edit
+    textarea, or `None` when no edit session is open. N-03 (NOOP-399): the
+    slide document's own `user-select:none` deliberately excepts this one
+    element — it is the keyboard/IME sink for text editing and must stay
+    selectable."""
+    tid = _wait_frame_ready()
+    return _js_ro(
+        "(()=>{const h=document.querySelector('[data-comot-selection-host]');"
+        "if(!h||!h.shadowRoot)return null;const t=h.shadowRoot.querySelector('textarea');"
+        "return t?getComputedStyle(t).userSelect:null;})()",
+        target_id=tid,
+    )
 
 
 def status_bar():

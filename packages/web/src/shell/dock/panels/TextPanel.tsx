@@ -1,11 +1,14 @@
 import { useState, type KeyboardEvent } from "react";
 import type { CanvasController } from "../../../canvas.js";
+import { contrastFill } from "../../../contrast-fill.js";
 
 export interface TextPanelProps {
   onClose(): void;
   controller: CanvasController | null;
   /** The presentation's own canvas size (project.json's `canvas`) — every preset's size/width/position below is a percentage of THIS, never a hard-coded 1280×720. `null` before it has loaded, which disables Insert. */
   canvasSize: { width: number; height: number } | null;
+  /** The current slide's own page style (same shape `ShapeMenu` receives) — `pageStyle.accent`, when set, fills the inserted text. Without an accent, the fill comes from `contrastFill(pageStyle?.background ?? null)` instead (NOOP-353 拍板決定 7) — never omitted, never the SVG default black. `null` (no slide, or the slide declares no page style) reaches `contrastFill` as a `null` background. */
+  pageStyle: { background: string | null; accent: string | null } | null;
 }
 
 export type Align = "left" | "center" | "right";
@@ -55,6 +58,7 @@ export interface InsertTextBoxInput {
   fontSize: number;
   fontWeight: number;
   align: Align;
+  fill: string;
 }
 
 /**
@@ -65,13 +69,18 @@ export interface InsertTextBoxInput {
  * `export-panel.test.ts`/`stage-overlays.test.ts` — so an interactive
  * behaviour like this one can only be tested by pulling the computation
  * itself out from under the JSX). Behaviour is unchanged: this is exactly
- * what `insert()` used to compute inline.
+ * what `insert()` used to compute inline. Extended by NOOP-353 拍板決定 7 to
+ * also compute `fill`: `pageStyle.accent` when set, otherwise
+ * `contrastFill(pageStyle.background)` — the same accent-first, contrast-
+ * otherwise rule `ShapeMenu.tsx` applies to rect/ellipse `fill` and line
+ * `stroke`.
  */
 export function textPanelInsertInput(
   preset: Preset,
   align: Align,
   text: string,
   canvasSize: { width: number; height: number },
+  pageStyle: { background: string | null; accent: string | null } | null,
 ): InsertTextBoxInput {
   const spec = PRESETS[preset];
   const { tPercent, lPercent } = positionPercent(align, spec.width);
@@ -83,6 +92,7 @@ export function textPanelInsertInput(
     fontSize: (canvasSize.width * spec.size) / 100,
     fontWeight: spec.weight,
     align,
+    fill: pageStyle?.accent ?? contrastFill(pageStyle?.background ?? null),
   };
 }
 
@@ -91,7 +101,7 @@ export function textPanelInsertInput(
  * 預設＋三個對齊按鈕，`Enter`（無 Shift）直接插入，`Shift+Enter` 換行。每個
  * 編輯動作都對應一條 CLI 命令（A11）：這裡對應的是 `textbox add`。
  */
-export function TextPanel({ onClose, controller, canvasSize }: TextPanelProps) {
+export function TextPanel({ onClose, controller, canvasSize, pageStyle }: TextPanelProps) {
   const [text, setText] = useState("");
   const [preset, setPreset] = useState<Preset>("body");
   const [align, setAlign] = useState<Align>("left");
@@ -100,7 +110,7 @@ export function TextPanel({ onClose, controller, canvasSize }: TextPanelProps) {
 
   async function insert(): Promise<void> {
     if (!canInsert || !canvasSize) return;
-    await controller!.insertTextBox(textPanelInsertInput(preset, align, text, canvasSize));
+    await controller!.insertTextBox(textPanelInsertInput(preset, align, text, canvasSize, pageStyle));
     onClose();
   }
 

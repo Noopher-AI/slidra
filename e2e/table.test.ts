@@ -397,6 +397,81 @@ it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（
   }
 });
 
+// F-09 (NOOP-399): Tab used to have no handler at all inside the cell
+// editor's <input>, so it fell through to the browser default — focus
+// jumped clean out of the table to the dock's hand-tool button, and
+// whatever the user typed next went nowhere. This proves Tab now commits
+// the current cell, moves editing to the next one, and — critically —
+// keeps focus on the SAME <input> element the whole time (no
+// blur-then-remount cycle), so typing can continue immediately.
+it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-editor 並移到下一格，兩格都能寫入", async () => {
+  const { server, registry, presentationId, cleanup } = await newTableDeck("f9", { rows: 2, cols: 2 });
+  try {
+    const page = await openPage(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
+    await slideFrame.locator('[data-comot-cell="0,0"]').dblclick();
+    const editor = page.locator("input.table-cell-editor");
+    await expect.poll(() => editor.count()).toBe(1);
+    const editorHandle = await editor.elementHandle();
+    await editor.fill("A1");
+    const leftBeforeTab = await editor.evaluate((el) => (el as HTMLElement).style.left);
+
+    await editor.press("Tab");
+
+    // 沒有重新 mount：同一個 DOM 節點還在、還是 document.activeElement。
+    expect(await editorHandle!.evaluate((el) => el === document.activeElement)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("INPUT");
+    await expect
+      .poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.className))
+      .toContain("table-cell-editor");
+    // Tab 之後編輯器已經移到下一格：rect 的 left 改變了。
+    await expect.poll(() => editor.evaluate((el) => (el as HTMLElement).style.left)).not.toBe(leftBeforeTab);
+    expect(await editor.inputValue()).toBe("");
+
+    await editor.type("B1");
+    await editor.press("Enter");
+
+    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">A1<");
+    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 1)).toContain(">B1<");
+  } finally {
+    await cleanup();
+  }
+});
+
+// F-09 迴歸（Reviewer, NOOP-400）：Tab 落在 generated 格時，編輯框的初值必須
+// 是「同欄模板列的原文」，跟 E9 的雙擊路徑同一個契約——因為 `editing.row`
+// 已經被 `nextTableTabCell` 解析成模板列，寫回去的就是模板列。若初值取的是
+// generated 格自己的「已算好的值」，接著任何一次提交（Enter／blur／再按一次
+// Tab）都會把 `{{ }}` 模板表達式覆蓋成那個字面值，整欄的資料繫結當場消失。
+it("F-09b: Tab 落在 generated 格，input 初值是同欄模板原文，提交後模板列的 {{ }} 不被覆蓋", async () => {
+  const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("f9b", { rows: 2, cols: 2 });
+  try {
+    await bindToSalesCsv(registry, presentationId, elementId, 1);
+    const page = await openPage(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator('[data-comot-cell="2,0"]').click();
+    await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
+    await slideFrame.locator('[data-comot-cell="2,0"]').dblclick();
+    const editor = page.locator("input.table-cell-editor");
+    await expect.poll(() => editor.count()).toBe(1);
+    expect(await editor.inputValue()).toBe("{{ 產品 }}");
+
+    await editor.press("Tab");
+
+    expect(await editor.inputValue()).toBe("{{ 銷量 }}");
+
+    await editor.press("Enter");
+    await expect
+      .poll(async () => cellMarkup(await catSlide(registry, presentationId), 1, 1))
+      .toContain("{{ 銷量 }}");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產生一筆歷史，undo 還原", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e10", { rows: 2, cols: 2 });
   try {

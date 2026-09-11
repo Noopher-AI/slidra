@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { CanvasController, CanvasState, ChartWindowState, OverlayState } from "../../canvas.js";
 import { SelectionOverlay } from "./SelectionOverlay.js";
 import { ContextBar } from "./ContextBar.js";
@@ -58,6 +58,16 @@ const EMPTY_OVERLAY: OverlayState = {
   badges: [],
 };
 
+/**
+ * [E5.T7]/F-17 決定 8: how long the pointer must stay over/away from the
+ * context bar before it flips ghost<->solid — see `createHoverSolidifier`'s
+ * own doc comment for the flicker-prevention contract these gate. Exported
+ * for the unit tests that pin these exact values (and for `03-UI_RATIONALE.md`
+ * §C, which documents them by name).
+ */
+export const HOVER_SOLIDIFY_MS = 120;
+export const HOVER_GHOST_MS = 250;
+
 /** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer (NOOP-91 round-2 FAIL #4). */
 export function toLocalPoint(
   point: { x: number; y: number },
@@ -72,6 +82,74 @@ export function toLocalRect(
   offset: { x: number; y: number },
 ): { x: number; y: number; width: number; height: number } {
   return { x: rect.x - offset.x, y: rect.y - offset.y, width: rect.width, height: rect.height };
+}
+
+/**
+ * [E5.T7]/F-17: the context bar's own hover-solidify state (`.is-solid`
+ * ghost/solid toggle, `stage-overlays.css`) needs "is this point on top of
+ * the bar right now", against `rect` (`barRef.current.getBoundingClientRect()`)
+ * — both `point` and `rect` are parent-document client px, same space
+ * (`subscribeStageHover`'s conversion and a real `window.mousemove` land in
+ * the same coordinate system, no well offset needed). Inclusive of the
+ * edges, matching `getBoundingClientRect()`'s own "on the border counts as
+ * inside" convention for hit-testing.
+ */
+export function pointInsideRect(
+  point: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+): boolean {
+  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+}
+
+/**
+ * [E5.T7]/F-17 決定 8: ghost（半透明＋`pointer-events:none`）/solid（不透明＋
+ * `pointer-events:auto`）之間的雙延遲防閃爍——進入 rect 停留 `solidifyMs` 才轉
+ * solid，離開 rect 停留 `ghostMs` 才轉回 ghost；未滿延遲就反向的中途動作（快速
+ * 掃過、邊界抖動）取消還在等待的計時器，兩態都不因此提早或誤判切換。
+ * `onChange` 只在狀態真的改變時呼叫一次，不是每次 `update()` 都呼叫。
+ */
+export function createHoverSolidifier(
+  onChange: (solid: boolean) => void,
+  solidifyMs: number,
+  ghostMs: number,
+): { update(inside: boolean): void; reset(): void } {
+  let solid = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearTimer(): void {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function setSolid(next: boolean): void {
+    if (solid === next) return;
+    solid = next;
+    onChange(solid);
+  }
+
+  return {
+    update(inside: boolean) {
+      if (inside === solid) {
+        // Already in the target state — cancel whatever transition (the
+        // other direction) might still be pending, same "边界抖动不来回
+        // 闪" contract as a same-direction repeat.
+        clearTimer();
+        return;
+      }
+      if (timer !== null) return; // A transition to this same target is already pending.
+      const delay = inside ? solidifyMs : ghostMs;
+      timer = setTimeout(() => {
+        timer = null;
+        setSolid(inside);
+      }, delay);
+    },
+    reset() {
+      clearTimer();
+      setSolid(false);
+    },
+  };
 }
 
 /**
@@ -98,6 +176,12 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
   const [selection, setSelection] = useState<CanvasState["selection"] | null>(null);
   const [slidePath, setSlidePath] = useState<string | null>(null);
   const [chartWindow, setChartWindow] = useState<ChartWindowState | null>(null);
+  const [contextBarSolid, setContextBarSolid] = useState(false);
+  const contextBarRef = useRef<HTMLDivElement | null>(null);
+  const hoverSolidifierRef = useRef<ReturnType<typeof createHoverSolidifier> | null>(null);
+  if (!hoverSolidifierRef.current) {
+    hoverSolidifierRef.current = createHoverSolidifier(setContextBarSolid, HOVER_SOLIDIFY_MS, HOVER_GHOST_MS);
+  }
 
   // [E5.T3]：`OverlayLayer` 現在無條件掛載（見下方 render），所以這三個訂閱
   // 各自加上 `shellVisible` 閘門，讓「播放模式不訂閱、狀態重設為空」與兩層
@@ -110,6 +194,39 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
     }
     return controller.subscribeOverlay(setOverlay);
   }, [controller, shellVisible]);
+
+  // [E5.T7]/F-17: the context bar's own hover tracking — two sources feed
+  // the same `pointInsideRect` check because the pointer crosses in and out
+  // of the sandboxed iframe freely: `subscribeStageHover` while it is over
+  // the slide, this component's own `window.mousemove` for everywhere else
+  // in the parent document (both already report parent-document client px,
+  // so no well offset is needed here — see `pointInsideRect`'s own doc
+  // comment). Not gated on `overlay.union` — the reset effect below already
+  // forces ghost the instant there is no bar to hover, so a stale "inside"
+  // from just before a selection change cannot linger.
+  useEffect(() => {
+    if (!controller || !shellVisible) return;
+    function handlePointerAt(point: { x: number; y: number }): void {
+      const bar = contextBarRef.current;
+      if (!bar) return;
+      hoverSolidifierRef.current?.update(pointInsideRect(point, bar.getBoundingClientRect()));
+    }
+    const unsubscribeStageHover = controller.subscribeStageHover(handlePointerAt);
+    const onMouseMove = (event: MouseEvent) => handlePointerAt({ x: event.clientX, y: event.clientY });
+    window.addEventListener("mousemove", onMouseMove);
+    return () => {
+      unsubscribeStageHover();
+      window.removeEventListener("mousemove", onMouseMove);
+    };
+  }, [controller, shellVisible]);
+
+  // [E5.T7]/F-17 契約表：rect 為 null（沒有選取，或正在拖曳）立即重設 ghost、
+  // 清掉待處理的計時器——不用等下一次 hover 事件才發現「已經沒有列可以停留」。
+  useEffect(() => {
+    if (overlay.union === null || overlay.dragging) {
+      hoverSolidifierRef.current?.reset();
+    }
+  }, [overlay.union, overlay.dragging]);
 
   // E2.T14 §0(b): a single selected table renders `TableOverlay` — this is
   // the one place `OverlayLayer` looks at the raw selection/slide state
@@ -179,6 +296,8 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
               bounds={bounds}
               dragging={overlay.dragging}
               hasAnimation={overlay.hasAnimation}
+              solid={contextBarSolid}
+              barRef={contextBarRef}
               onEditAnimation={onEditAnimation}
               onEditStyle={onEditStyle}
               onComment={comment.onOpenForSelection}

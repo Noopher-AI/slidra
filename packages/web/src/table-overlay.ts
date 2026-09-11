@@ -120,3 +120,48 @@ export function columnBoundaryPositions(
 export function editorRectForCell(cellRects: readonly TableCellRect[], cell: CellAddress): Rect | null {
   return cellRectAt(cellRects, cell);
 }
+
+/** The address-plus-flags shape `nextTableTabCell`/`templateRowForColumn` need from a `TableModel`'s `cells` (F-09, NOOP-399) — deliberately narrower than the full `TableCell`, so this module still takes no dependency on `slide-dom.ts`. */
+export interface TabbableCell extends CellAddress {
+  repeat: boolean;
+  generated: boolean;
+}
+
+/** The template row's own row index for `col` — the `repeat` cell sharing that column, or `null` when none exists. Mirrors selection-runtime.js's `findTemplateCellForColumn` (架構: "雙擊編輯的是模板列"), so a Tab-in-editing landing on a generated cell resolves the same write target a double-click on it would. */
+export function templateRowForColumn(cells: readonly TabbableCell[], col: number): number | null {
+  return cells.find((cell) => cell.col === col && cell.repeat)?.row ?? null;
+}
+
+/**
+ * Tab/⇧Tab's next cell while a table cell is being edited (F-09, NOOP-399,
+ * plan §4/§7.2) — navigates OWN (display) addresses via `tabTarget`,
+ * re-resolving each candidate against `cells` (never rects, never
+ * `rowSpan`/`colSpan` arithmetic — plan §7.5) and skipping any address with
+ * no cell of its own (a merge's covered interior) or whose cell is a
+ * hidden template row (`repeat`). The loop always terminates: `tabTarget`
+ * clamps at the grid's edges, so once advancing stops changing the address
+ * this returns `null` — "stay put", the same "原地不動、不加列" contract
+ * `tabTarget` itself already has, now surfaced through the skip loop too.
+ * The returned `row` is the WRITE address: for an ordinary cell that is
+ * its own row, but for a `generated` cell it is the template row sharing
+ * its column (same remap `postTableCellDblclick` applies on double-click),
+ * since a generated cell's own row is not directly editable.
+ */
+export function nextTableTabCell(
+  cells: readonly TabbableCell[],
+  current: CellAddress,
+  rowCount: number,
+  colCount: number,
+  direction: 1 | -1,
+): { row: number; col: number; atRow: number } | null {
+  let address: CellAddress = current;
+  for (;;) {
+    const next = tabTarget(address, rowCount, colCount, direction);
+    if (next.row === address.row && next.col === address.col) return null;
+    address = next;
+    const cell = cells.find((entry) => entry.row === address.row && entry.col === address.col);
+    if (!cell || cell.repeat) continue;
+    const row = cell.generated ? (templateRowForColumn(cells, cell.col) ?? cell.row) : cell.row;
+    return { row, col: cell.col, atRow: cell.row };
+  }
+}

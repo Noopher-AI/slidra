@@ -392,6 +392,17 @@ export interface CanvasController {
    */
   subscribeStageInput: (listener: (event: StageInputEvent) => void) => () => void;
   /**
+   * [E5.T7]/F-17: the runtime's on-slide pointer position, reported only
+   * while nothing else is consuming the pointer and something is selected
+   * (see `SelectionMessage`'s "stage-hover" doc comment) — already
+   * converted to this parent document's client px. `OverlayLayer` combines
+   * this with its own `window.mousemove` (for the area outside the iframe)
+   * to drive the context bar's ghost/solid toggle. A transient event
+   * channel, same shape as `subscribeStageInput` — nothing is replayed to a
+   * listener that subscribes after a move already fired.
+   */
+  subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => () => void;
+  /**
    * Tells `selection-runtime.js` whether 抓取模式 (the ✋ toggle or a
    * temporary Space-hold) is active — while true, the runtime hands every
    * pointer to the pan relay above instead of starting a selection/drag
@@ -517,6 +528,7 @@ export interface CanvasController {
     fontSize: number;
     fontWeight: number;
     align: "left" | "center" | "right";
+    fill: string;
   }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
@@ -675,6 +687,14 @@ interface SelectionMessage {
     | "stage-pan-move"
     | "stage-pan-end"
     | "stage-space"
+    // [E5.T7]/F-17: the runtime's own pointermove, reported whenever nothing
+    // else (a gesture, a stage-pan, a text-select drag) is already consuming
+    // the pointer and at least one element is selected — the parent uses
+    // this (plus its own `window.mousemove` for the area outside the
+    // iframe) to decide whether the context bar's hover-solidify state
+    // should switch. `point` is iframe-local client px, converted the same
+    // way as the stage-pan/-wheel points above.
+    | "stage-hover"
     // NOOP-90/T2 §4.6: precise per-selected-element bounding boxes plus
     // each one's ancestor chain, replacing the old host-computed "guides"
     // approach (ADR-0011 amend) — the runtime measures with
@@ -1180,6 +1200,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // the previous document's `stageHandMode` variable held).
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
+  /** [E5.T7]/F-17: `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `stageInputListeners`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
+  const stageHoverListeners = new Set<(point: { x: number; y: number }) => void>();
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
   // bounds/ancestors, kept in the runtime's OWN
   // iframe client px — the conversion to this parent document's client px
@@ -1332,6 +1354,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // rather than closing over a specific iframe, so it keeps working across
   // play()/exitPlay() rebuilds without being re-attached.
   window.addEventListener("message", onWindowMessage);
+  // NOOP-382: catches the tail of a move drag once the pointer has crossed
+  // the sandboxed slide iframe's own edge — see onHostPointerMoveDuringMoveGesture's
+  // doc comment for why the iframe alone cannot see that part of the drag.
+  window.addEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
+  window.addEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
   // [E2.T17]: the embed overlay's parent-side conversion reads the frame's
   // rect at message time, so a window resize that moves/scales the frame
   // without the runtime re-reporting would leave the player behind. The
@@ -1515,6 +1542,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       )
         void orderSelection(modifiers.shift ? "back" : "down");
       else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
+      // F-02: ←/→ paging, relayed here for the same reason every other key
+      // in this branch is — App.tsx's own document-level keydown listener
+      // for ArrowLeft/ArrowRight never sees a keypress that landed inside
+      // this iframe. selection-runtime.js's `isRelayedStageKey` already
+      // withholds this while a text edit or gesture is in progress, so no
+      // extra guard is needed here (unlike App.tsx's listener, which guards
+      // against caret movement in a chat/text field itself instead — that
+      // guard has no equivalent inside this iframe because a real DOM
+      // textarea there also owns `editingId`, the same thing the relay
+      // already checks).
+      else if (message.key === "ArrowLeft") void previous();
+      else if (message.key === "ArrowRight") void next();
       // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
       // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key
       // 轉送」而不是父文件自己的 keydown——兩條路徑呼叫同一組 controller
@@ -1660,6 +1699,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "stage-space") {
       emitStageInput({ type: message.down ? "space-down" : "space-up" });
+      return;
+    }
+    if (message.event === "stage-hover") {
+      if (!isValidPoint(message.point)) return;
+      emitStageHover(toParentClientPoint(message.point));
       return;
     }
     if (message.event === "runtime-ready") {
@@ -1870,6 +1914,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return { x: rect.left + point.x * scale, y: rect.top + point.y * scale };
   }
 
+  /**
+   * The exact inverse of `toParentClientPoint`: this HOST document's own
+   * client coordinates -> iframe-local client coordinates, as
+   * selection-runtime.js's `event.clientX/clientY` would see them. Used
+   * only by the move-gesture boundary-crossing fallback below (NOOP-382) —
+   * every other conversion in this module goes iframe -> parent, because
+   * every other input this host acts on originates inside the iframe.
+   */
+  function toFrameClientPoint(point: { x: number; y: number }): { x: number; y: number } {
+    const rect = frame.getBoundingClientRect();
+    const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1;
+    return { x: (point.x - rect.left) / scale, y: (point.y - rect.top) / scale };
+  }
+
   /** Same conversion as `toParentClientPoint`, applied to a whole rect — width/height scale by the same factor the corner point does (uniform iframe scaling, never a separate X/Y factor). Used for the "bounds" event's per-item/union rects (§4.6). */
   function toParentClientRect(rect: Rect): Rect {
     const frameRect = frame.getBoundingClientRect();
@@ -1978,6 +2036,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function emitStageInput(event: StageInputEvent): void {
     for (const listener of stageInputListeners) listener(event);
+  }
+
+  function emitStageHover(point: { x: number; y: number }): void {
+    for (const listener of stageHoverListeners) listener(point);
   }
 
   /** Shared by handleSelectionMessage's "clear" case and the public clearSelection() (NOOP-83 §4.5) — same four steps either way. */
@@ -2403,6 +2465,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     fontSize: number;
     fontWeight: number;
     align: "left" | "center" | "right";
+    fill: string;
   }): Promise<void> {
     if (mode !== "view") return;
     await runCommand("textbox add", { slidePath: slides[currentIndex], ...input });
@@ -2411,6 +2474,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // --- Drag-to-move (§4.2) ---
 
   function beginMoveGesture(point: { x: number; y: number }): void {
+    // NOOP-382: every early return here used to be silent — a drag would
+    // simply not start, with no preview, no history entry, and nothing in
+    // the console to say why. Each guard below now warns identifiably so a
+    // future regression in any of these preconditions is diagnosable from
+    // the console alone instead of requiring a fresh investigation.
+    if (selectionIds.length === 0) {
+      console.warn("[beginMoveGesture] abort: no selection");
+      return;
+    }
+    if (!currentSlideModel) {
+      console.warn("[beginMoveGesture] abort: currentSlideModel is null");
+      return;
+    }
     // Without this guard, toUserPoint(point) silently returns { x: 0, y: 0 }
     // when the runtime's first "viewport" message has not landed yet, and
     // that becomes the gesture's startUser with no indication anything went
@@ -2418,7 +2494,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // origin (NOOP-328: traced to a 180px-off drag landing spot). Declining
     // to start the gesture at all is the same posture updateMoveGesture
     // already takes on every subsequent move while viewport is null.
-    if (selectionIds.length === 0 || !currentSlideModel || !viewport) return;
+    if (!viewport) {
+      console.warn("[beginMoveGesture] abort: viewport is null (first 'viewport' message has not landed yet)");
+      return;
+    }
     const index = elementIndex();
     const originals = new Map<string, OriginalTransform>();
     for (const id of selectionIds) {
@@ -2432,7 +2511,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         // multi-selection.
       }
     }
-    if (originals.size === 0) return;
+    if (originals.size === 0) {
+      console.warn("[beginMoveGesture] abort: none of the selected ids resolved to a decomposable transform");
+      return;
+    }
     activeGesture = {
       kind: "move",
       ids: [...originals.keys()],
@@ -2580,6 +2662,60 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // this command just made will arrive back over /api/events and drive
     // reload() on its own — this module deliberately adds no second
     // refresh path (§4.9's closing note).
+  }
+
+  /**
+   * NOOP-382 root cause: the slide iframe is sandboxed (`allow-scripts`,
+   * no `allow-same-origin`), which puts it in its own out-of-process
+   * document. A move drag that carries the pointer past the iframe's own
+   * rendered edge stops delivering pointermove/pointerup to
+   * selection-runtime.js entirely — the browser's normal cross-document
+   * hit-testing routes those events to whatever THIS host document shows
+   * at that point instead, silently, with nothing to catch or log on
+   * either side. `Element.setPointerCapture()` called inside the iframe
+   * does not override this for an out-of-process sandboxed frame (verified
+   * empirically against this app: the same drag still lost every event
+   * past the boundary with capture requested). Confirmed with the actual
+   * demo deck: a drag that stays inside the iframe's rendered area — same
+   * distance, different direction — always worked, which is why the scale
+   * handles looked fine while drag-to-move looked completely broken; the
+   * demo's title merely sits close enough to the iframe's edge that a
+   * sideways drag on it crosses the boundary.
+   *
+   * These two host-level listeners are the fallback for exactly the
+   * portion of a move drag the iframe can no longer see once the cursor
+   * has left it — registered once for the controller's lifetime (same
+   * pattern as `onWindowMessage`), scoped to `activeGesture.kind === "move"`
+   * only. Scale/rotate/textbox-width/marquee keep the pre-existing
+   * (iframe-only) behavior untouched, matching this ticket's scope.
+   */
+  function onHostPointerMoveDuringMoveGesture(event: PointerEvent): void {
+    if (!activeGesture || activeGesture.kind !== "move") return;
+    updateMoveGesture(toFrameClientPoint({ x: event.clientX, y: event.clientY }), {
+      shift: event.shiftKey,
+      alt: event.altKey,
+    });
+    // Same renewal this gesture kind already gets from the iframe's own
+    // "gesture-move" (handleSelectionMessage) — a drag that spends most of
+    // its time past the boundary must not let the human editing lease
+    // lapse just because it is this path, not that one, doing the reporting.
+    if (Date.now() - lastEditingLeaseAt >= HUMAN_RENEW_THROTTLE_MS) beginEditingLease();
+  }
+
+  function onHostPointerUpDuringMoveGesture(): void {
+    if (!activeGesture || activeGesture.kind !== "move") return;
+    // No point conversion needed: endMoveGesture commits gesture.lastDelta,
+    // already up to date from the last updateMoveGesture call (host- or
+    // iframe-driven) — exactly what the iframe-originated "gesture-end"
+    // path (handleSelectionMessage) also relies on.
+    overlaySettling = true;
+    void endMoveGesture(false).then(() => {
+      if (pendingSelectionIds === null && activeGesture === null) {
+        overlaySettling = false;
+        notifyOverlay();
+      }
+      endEditingLease();
+    });
   }
 
   // --- Scale handles (§4.2-follow-up) ---
@@ -3988,6 +4124,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         stageInputListeners.delete(listener);
       };
     },
+    subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => {
+      stageHoverListeners.add(listener);
+      return () => {
+        stageHoverListeners.delete(listener);
+      };
+    },
     setStageHandMode: (hand: boolean) => {
       stageHandMode = hand;
       postToFrame({ command: "stage-mode", hand: stageHandMode });
@@ -4086,6 +4228,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       tableRangeListeners.clear();
       chartWindowListeners.clear();
       window.removeEventListener("message", onWindowMessage);
+      window.removeEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
+      window.removeEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React
       // (ADR-0001); this module has no business deciding what else lives

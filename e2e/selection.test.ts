@@ -383,6 +383,72 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
   }
 });
 
+// [E5.T7]/F-17（#279 決定 8）：a bullet-list layout's second line used to sit
+// right where the (always-opaque, always-`pointer-events:auto`) context bar
+// renders after selecting the first line — the bar visually and hit-test
+// blocked that line, so clicking it (or ⇧-clicking it to add to the
+// selection) landed on the bar instead. Fixed by making the bar itself
+// ghost (半透明、`pointer-events:none`) until the pointer actually hovers it
+// for `HOVER_SOLIDIFY_MS`, and reverting to ghost after it leaves for
+// `HOVER_GHOST_MS` (`OverlayLayer`'s `createHoverSolidifier`,
+// `packages/web/test/stage-overlays.test.ts` unit-tests the delay logic
+// itself directly). This is the one e2e case that crosses the parent
+// document/iframe boundary the unit tests cannot reach: a real click must
+// pass through the bar's on-screen position into the iframe underneath it.
+it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停留 hover 後才能按到它自己的按鈕", async () => {
+  const deck = await makeDeckDir(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
+      '  <g id="el-title" data-comot-name="標題">\n' +
+      '    <rect x="100" y="60" width="1080" height="100" fill="#c66"/>\n' +
+      // openApp() waits for the slide's first painted <text> before
+      // returning — this fixture is otherwise all <rect>.
+      '    <text x="120" y="120" font-size="20">標題</text>\n' +
+      "  </g>\n" +
+      // Starts right at the title's bottom edge and runs deep enough
+      // (measured empirically: with this deck's viewBox/viewport pair the
+      // context bar renders fully inside this rect's on-screen box) that
+      // the bar's fixed CSS-px band below the title always lands on top of
+      // it, reproducing the ticket's "情境列擋住下一行" layout.
+      '  <g id="el-subtitle" data-comot-name="副標">\n' +
+      '    <rect x="100" y="170" width="1080" height="400" fill="#6c9"/>\n' +
+      "  </g>\n" +
+      "</svg>\n",
+  );
+  const { server, cleanup } = await startServerFor(deck.dir);
+  try {
+    const page = await openApp(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+    await slideFrame.locator("#el-title").click();
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("標題");
+
+    const barBox = await page.locator(".context-bar").boundingBox();
+    expect(barBox).not.toBeNull();
+    expect(await page.locator(".context-bar.is-solid").count()).toBe(0);
+    const overBar = { x: barBox!.x + barBox!.width / 2, y: barBox!.y + barBox!.height / 2 };
+
+    // Ghost state, no hover yet: a real mouse click at the bar's own
+    // on-screen position must pass straight through to the subtitle rect
+    // the bar happens to be sitting on top of.
+    await page.mouse.click(overBar.x, overBar.y);
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("副標");
+
+    // Hover the (subtitle's own, freshly repositioned) bar long enough to
+    // solidify, then its Delete button must actually receive a click —
+    // proof `.is-solid` really flips `pointer-events` back to `auto`, not
+    // just a class name with no effect.
+    const barBox2 = await page.locator(".context-bar").boundingBox();
+    expect(barBox2).not.toBeNull();
+    await page.mouse.move(barBox2!.x + barBox2!.width / 2, barBox2!.y + barBox2!.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
+    await page.locator('.context-bar button[title="Delete"]').click();
+
+    await expect.poll(() => slideFrame.locator("#el-subtitle").count()).toBe(0);
+  } finally {
+    await cleanup();
+    await deck.cleanup();
+  }
+});
+
 // The above-flip branch (`ContextBar`'s `fitsBelow === false`) is NOT
 // e2e'd here — measured directly (see this PR's delivery notes): `.canvas-
 // area`'s CSS reserves a FIXED `--space-gutter-bottom: 76px` below the
