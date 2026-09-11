@@ -60,6 +60,7 @@ pub mod comment;
 pub mod convert;
 pub mod effect;
 pub mod element;
+pub mod font;
 pub mod ls;
 pub mod new;
 pub mod open;
@@ -164,6 +165,7 @@ pub const TAKEOVER_TABLE: &[&str] = &[
     "effect move",
     "effect remove",
     "effect set",
+    "font",
     "ls",
     "new",
     "open",
@@ -270,6 +272,7 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "table col delete",
     "table col width",
     "asset import",
+    "font import",
 ];
 
 #[cfg(test)]
@@ -366,6 +369,7 @@ mod tests {
                 "effect move",
                 "effect remove",
                 "effect set",
+                "font",
                 "ls",
                 "new",
                 "open",
@@ -384,7 +388,7 @@ mod tests {
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
-        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 58);
+        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 59);
         assert_eq!(
             REGISTERED_COMMAND_NAMES,
             [
@@ -446,6 +450,7 @@ mod tests {
                 "table col delete",
                 "table col width",
                 "asset import",
+                "font import",
             ]
         );
     }

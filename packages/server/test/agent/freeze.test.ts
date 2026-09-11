@@ -75,13 +75,19 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018, #303): mint one page with one text
+  // box, and take the element id straight from `textbox add`'s own result.
   const id = opened.data!.id;
-  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(slide.ok).toBe(true);
-  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
-  const match = /<text id="(el-[^"]+)"/.exec(svgText);
-  if (!match) throw new Error("test fixture: title element id not found");
-  return { id, elementId: match[1] };
+  expect((await runCli(["slide", "add", id])).ok).toBe(true);
+  const added = await runCli<{ elementId: string }>([
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "標題",
+  ]);
+  expect(added.ok).toBe(true);
+  // These tests count undo entries, and the two setup commands above leave
+  // their own. Drop the history so the deck reaches each test exactly as it
+  // did when `new` still shipped a first slide: one page, empty undo stack.
+  await rm(path.join(coMotionHome, "history", id), { recursive: true, force: true });
+  return { id, elementId: added.data!.elementId };
 }
 
 function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {

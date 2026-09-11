@@ -1961,7 +1961,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
 /// Reads `docs/spec/cli.md` directly rather than shelling out — this test
 /// IS the parser, not a caller of one.
 #[test]
-fn cli_md_lists_exactly_the_87_rust_dispatched_commands() {
+fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
     let spec_path = repo_root().join("docs/spec/cli.md");
     let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
 
@@ -2003,8 +2003,8 @@ fn cli_md_lists_exactly_the_87_rust_dispatched_commands() {
     // independent extraction pass).
     let all_backtick_headings = heading_starts.len();
     assert_eq!(
-        all_backtick_headings, 87,
-        "docs/spec/cli.md must have exactly 87 backtick-H2 command headings, found {all_backtick_headings}"
+        all_backtick_headings, 88,
+        "docs/spec/cli.md must have exactly 88 backtick-H2 command headings, found {all_backtick_headings}"
     );
 
     let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
@@ -2021,15 +2021,15 @@ fn cli_md_lists_exactly_the_87_rust_dispatched_commands() {
         .collect();
     assert_eq!(
         commands::REGISTERED_COMMAND_NAMES.len(),
-        58,
-        "REGISTERED_COMMAND_NAMES must stay 58"
+        59,
+        "REGISTERED_COMMAND_NAMES must stay 59"
     );
     let takeover_total = commands::element::TAKEOVER.len()
         + commands::text::TAKEOVER.len()
         + commands::textbox::TAKEOVER.len()
         + commands::comment::TAKEOVER.len();
     assert_eq!(takeover_total, 29, "the four TAKEOVER tables must total 29");
-    assert_eq!(rust_names.len(), 87, "58 + 29 must equal 87");
+    assert_eq!(rust_names.len(), 88, "59 + 29 must equal 88");
 
     let rust_set: std::collections::BTreeSet<&str> =
         rust_names.iter().map(String::as_str).collect();
@@ -2037,8 +2037,8 @@ fn cli_md_lists_exactly_the_87_rust_dispatched_commands() {
         spec_entries.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
         spec_entries.len(),
-        87,
-        "docs/spec/cli.md must have exactly 87 command entries"
+        88,
+        "docs/spec/cli.md must have exactly 88 command entries"
     );
 
     let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
@@ -2159,7 +2159,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
-    assert_eq!(rust_names.len(), 87);
+    assert_eq!(rust_names.len(), 88);
 
     for name in &rust_names {
         let tokens: Vec<&str> = name.split(' ').collect();
@@ -2395,6 +2395,65 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
             .any(|r| r.starts_with("text.") || r.starts_with("style.")),
         "{rules:?}"
     );
+}
+
+/// #303: `font import` embeds a second family and the write path can
+/// immediately measure text in it — the whole point of the command, since a
+/// style catalogue that varies typography is useless if the family it names
+/// cannot be used.
+#[test]
+fn font_import_embeds_a_second_family_that_text_can_then_use() {
+    let fixture = Fixture::new("font-import");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+
+    // The bundled font doubles as a stand-in for "some other open-source
+    // family": what matters here is the embedding path, not which face it is.
+    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/NotoSansTC-Presentation.ttf");
+    let imported = fixture.run_rust(&[
+        "font", "import", &id, source,
+        "--family", "Catalogue Serif",
+        "--license", "SIL Open Font License 1.1",
+        "--source", "https://example.org/font",
+        "--json",
+    ]);
+    assert!(imported.status.success(), "{imported:?}");
+    let data = &json_envelope(&imported)["data"];
+    // Named after the family, not the source file — the family is unique by
+    // contract, so the name cannot collide with the already-embedded default.
+    assert_eq!(data["file"].as_str(), Some("fonts/Catalogue-Serif.ttf"));
+
+    // project.json carries the full five-field entry the format requires.
+    let project = fixture.run_rust(&["cat", &id, "project.json"]);
+    let text = String::from_utf8_lossy(&project.stdout);
+    assert!(text.contains("Catalogue Serif"), "{text}");
+    assert!(text.contains("SIL Open Font License 1.1"), "{text}");
+    assert!(text.contains("https://example.org/font"), "{text}");
+
+    // The new family is usable straight away.
+    fixture.run_rust(&["slide", "add", &id]);
+    let textbox = fixture.run_rust(&[
+        "textbox", "add", &id, "slides/001.svg",
+        "--x", "80", "--y", "100", "--width", "600",
+        "--text", "新字型", "--font-family", "Catalogue Serif",
+    ]);
+    assert!(textbox.status.success(), "{textbox:?}");
+
+    // A family may only be embedded once, and a non-font is refused.
+    let duplicate = fixture.run_rust(&[
+        "font", "import", &id, source,
+        "--family", "Catalogue Serif",
+        "--license", "x", "--source", "y",
+    ]);
+    assert!(!duplicate.status.success(), "{duplicate:?}");
+    let readme = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let not_a_font = fixture.run_rust(&[
+        "font", "import", &id, readme,
+        "--family", "Bogus", "--license", "x", "--source", "y",
+    ]);
+    assert!(!not_a_font.status.success(), "{not_a_font:?}");
 }
 
 /// #303 phase two: `slide add --svg` ingests an agent-authored page (text

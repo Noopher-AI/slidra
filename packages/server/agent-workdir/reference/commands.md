@@ -96,6 +96,12 @@
 **範例**：`co-motion convert <presentation-id>`
 > 這個命令由使用者或 CoMotion 本身使用，agent 通常用不到。
 
+## font import
+
+**參數**：`<presentation-id>` `<來源路徑或 URL>`、`--family <家族名>`、`--license <授權>`、`--source <出處>`（三個旗標皆必填）、`--license-file <路徑或 URL>`（選填）。
+**用途**：把一個字型檔內嵌進簡報，之後 `--font-family` 就能用這個家族名。家族名在一份簡報內不得重複；檔名取自家族名。
+**範例**：`co-motion font import <presentation-id> https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'`
+
 ## effect add
 
 **參數**：`<presentation-id>` `<slide-path>` `<element-ids>`（逗號分隔）、`--family <enter|emphasis|exit|path|media>`、`--effect <效果名稱>`、`--start <on-click|with-previous|after-previous>`（選填）、`--duration`、`--delay`、`--d`、`--index`（皆選填）。

@@ -209,6 +209,7 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
             }
             "table" => (commands::table::run(&positional), None),
             "asset" => (dispatch_asset(&positional), None),
+            "font" => (commands::font::run(&positional), None),
             "effect add" => (commands::effect::add(&positional), None),
             "effect list" => (commands::effect::list(&positional), None),
             "effect move" => (commands::effect::move_cmd(&positional), None),

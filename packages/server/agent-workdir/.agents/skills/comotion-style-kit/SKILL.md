@@ -30,7 +30,7 @@ description: 從 25 種風格裡挑一種寫進 plan/design-spec.md——配色�
 1. **讀索引**（下面那張表），用作者的描述做模糊匹配，挑出 1 個最合的、外加 2 個備選。
 2. **讀中選的那一個檔**：`references/<編號>-<名字>.md`。**一次只讀一個**，不要把整個 references/ 讀進來。
 3. **確認畫布**：`co-motion cat <presentation-id> project.json`。不是 1280×720 時，字級與 `layout` 錨點全部乘以 `k = width ÷ 1280`。
-4. **字型**：風格指定的家族若不在簡報裡（`co-motion cat <presentation-id> project.json` 的 `fonts`），用 `co-motion font import` 匯入；匯不到就退回內建的 `Noto Sans TC`，並在回報裡說明。
+4. **字型**：風格的 `typography` 指定 heading／body 兩個家族。不在簡報裡（`co-motion cat <presentation-id> project.json` 的 `fonts`）時，照 `reference/fonts.md` 的清單用 `co-motion font import` 匯入——**`--family` 要逐字照抄清單上的家族名**，`--license` 與 `--source` 也照抄。匯不到（下載失敗、解析失敗）就退回內建的 `Noto Sans TC`，並在回報裡說明少了什麼。中文家族最多匯入 2 種。
 5. **寫入**：`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼選這個風格。
 6. **回報**：照下面的格式，附上另外兩個備選，讓作者知道還有什麼可以換。
 
@@ -45,7 +45,7 @@ description: 從 25 種風格裡挑一種寫進 plan/design-spec.md——配色�
 
 ## 使用的命令
 
-`cat`、`plan set`、`font import`。
+`cat`、`plan set`、`font import`。字型清單見 `reference/fonts.md`。
 
 ## 回報格式
 

@@ -20,7 +20,7 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 
 編輯規約只示範少數幾個命令的語法。`co-motion` 完整的命令清單——每個命令的名稱、參數與一句用途——在 [`reference/commands.md`](reference/commands.md)。動手前先查那份參考，不要用編輯規約裡的少數範例去猜其他命令的語法。
 
-版面、字級、配色與各種頁型的座標一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)；`comotion-plan`、`comotion-build`、`comotion-new-slide` 都會指到它們。設計規則的驗證交給 `co-motion validate` 命令，不要自己心算。
+版面、字級、配色與各種頁型的座標一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)，可匯入的開源字型依 [`reference/fonts.md`](reference/fonts.md)；`comotion-plan`、`comotion-build`、`comotion-new-slide` 都會指到它們。設計規則的驗證交給 `co-motion validate` 命令，不要自己心算。
 
 ## 虛擬檔案結構
 

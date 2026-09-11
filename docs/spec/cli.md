@@ -92,13 +92,13 @@ interface CommandResult<Data = unknown> {
 
 ## 不經 registry 的入口：`serve` 與 `export`
 
-`serve`／`export` 這兩個子命令**不算在 87 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
+`serve`／`export` 這兩個子命令**不算在 88 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
 
 Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `CO_MOTION_BIN`，再 `exec` Node 執行 `@co-motion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
 
 ## 命令條目格式說明
 
-下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_87_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 89，與 Rust 註冊的 87 條命令對不上。
+下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_88_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 90，與 Rust 註冊的 88 條命令對不上。
 
 每個命令條目固定五個小節，順序不變：
 
@@ -108,7 +108,7 @@ Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對�
 4. **錯誤情境**：一張表，至少一列，每列是「情境 → `failureKind`」。
 5. **範例**：一行可以直接複製貼上執行的命令。
 
-以下 87 條命令依 `CommandRegistry.names()` 的**註冊順序**排列（不是字母順序）：
+以下 88 條命令依 `CommandRegistry.names()` 的**註冊順序**排列（不是字母順序）：
 ## `new`
 
 **語法**
@@ -2936,6 +2936,50 @@ co-motion slide render <presentation-id> <slide-path>
 
 ```
 co-motion slide render pres-abc123 slides/001.svg
+```
+
+## `font import`
+
+**語法**
+
+```
+co-motion font import <presentation-id> <source> --family <家族名> --license <授權> --source <出處> [--license-file <路徑或 URL>]
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `source`（位置參數）：字串，必填。開頭是 `http://`／`https://` 時下載，否則視為本機路徑（相對於 CLI 行程的工作目錄），與 `asset import` 的 `source` 同規則。
+- `--family`：字串，必填，不可為空。這是之後 `--font-family`／`font-family` 屬性要寫的名字。**同一份簡報內不得重複**（格式規定 `fonts[].family` 唯一）。
+- `--license`：字串，必填。授權名稱或全文。
+- `--source`（旗標）：字串，必填。字型的出處（通常是下載頁網址）。
+- `--license-file`：字串，選填。授權全文的來源（路徑或 URL）；省略時以 `--license` 與 `--source` 的內容寫出一份 `fonts/LICENSE-<檔名>.txt`。
+
+`--license`／`--source` 之所以必填，是因為 `project.json` 的 `FontEntry` 五個欄位都必填（見 `comot-format.md`）：嵌入他人字型的簡報必須帶著它被嵌入時的條款。
+
+容器內的檔名取自**家族名**而非來源檔名（家族唯一，所以不會與既有字型撞名），副檔名沿用來源（`ttf`／`otf`／`ttc`／`woff2`／`woff`，認不出時用 `ttf`）。寫入走 `create_presentation_file`，所以匯入本身可以復原。
+
+**成功 `data`**
+
+```json
+{ "family": "Noto Serif TC", "file": "fonts/Noto-Serif-TC.ttf", "licenseFile": "fonts/LICENSE-Noto-Serif-TC.ttf.txt" }
+```
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| 本機來源檔讀不到 | `not-found` |
+| URL 下載失敗 | `failed` |
+| 位置參數不是兩個，或缺 `--family`／`--license`／`--source` | `failed` |
+| `--family` 已經內嵌於這份簡報 | `failed` |
+| 來源不是可解析的字型檔 | `failed` |
+
+**範例**
+
+```
+co-motion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'
 ```
 
 ## `asset import`
