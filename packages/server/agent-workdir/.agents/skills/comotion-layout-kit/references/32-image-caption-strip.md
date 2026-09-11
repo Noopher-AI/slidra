@@ -11,16 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="160" width="1120" height="380" fill="#E4E4E4" stroke="#AAAAAA"/>
-<text x="560" y="360" font-size="18" fill="#888888">圖片</text>
-<rect x="80" y="540" width="1120" height="80" fill="#F2F2F2"/>
-<text x="110" y="580" font-size="20" fill="#444444">一句圖說（label）</text>
-<text x="110" y="606" font-size="14" fill="#999999">出處</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="160" width="1120" height="380" fill="#D5D5D5" stroke="#BFBFBF"/><text x="640" y="360" font-size="24" fill="#777777" text-anchor="middle">圖片</text><rect x="80" y="540" width="1120" height="96" fill="#EDEDED"/><text x="120" y="590" font-size="28" fill="#2E2E2E">一句圖說：說明這張圖在說什麼</text><text x="120" y="624" font-size="18" fill="#A0A0A0">出處</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

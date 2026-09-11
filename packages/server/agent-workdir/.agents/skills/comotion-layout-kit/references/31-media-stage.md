@@ -11,13 +11,8 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）：要看的是什麼</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="240" y="170" width="800" height="450" fill="#E0E0E0" stroke="#888888"/>
-<ellipse cx="640" cy="395" rx="44" ry="44" fill="#FFFFFF" stroke="#666666" stroke-width="3"/>
-<path d="M626 372l40 23l-40 23z" fill="#666666"/>
-<text x="480" y="660" font-size="15" fill="#999999">出處與長度（label，可省）</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題：要看的是什麼</text><rect x="80" y="126" width="64" height="5" fill="#909090"/><rect x="240" y="176" width="800" height="450" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="640" cy="401" rx="48" ry="48" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M627 384l34 17l-34 17z" fill="#909090"/><text x="640" y="672" font-size="18" fill="#A0A0A0" text-anchor="middle">訪談片段・1 分 20 秒</text>
 </svg>
 ```
 

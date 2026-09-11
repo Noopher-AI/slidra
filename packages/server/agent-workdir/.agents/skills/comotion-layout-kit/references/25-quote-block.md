@@ -11,16 +11,9 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<text x="140" y="240" font-size="72" fill="#DDDDDD">&#8220;</text>
-<text x="200" y="340" font-size="36" fill="#333333">被引用的那句話，</text>
-<text x="200" y="400" font-size="36" fill="#333333">可以到第二行。</text>
-<line x1="200" y1="460" x2="280" y2="460" stroke="#999999" stroke-width="3"/>
-<text x="200" y="510" font-size="18" fill="#777777">出處・身分（label）</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="140" y="280" font-size="96" fill="#DDDDDD" font-weight="700">“</text><text x="210" y="330" font-size="40" fill="#2E2E2E">被引用的那一句話，</text><text x="210" y="400" font-size="40" fill="#2E2E2E">可以到第二行。</text><rect x="210" y="450" width="80" height="4" fill="#909090"/><text x="210" y="510" font-size="24" fill="#555555">受訪者・身分</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

@@ -11,21 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<ellipse cx="640" cy="380" rx="110" ry="110" fill="#DDDDDD" stroke="#888888"/>
-<text x="595" y="388" font-size="18" fill="#333333">核心</text>
-<g stroke="#AAAAAA" stroke-width="2">
-<line x1="640" y1="270" x2="640" y2="200"/><line x1="750" y1="380" x2="900" y2="380"/>
-<line x1="640" y1="490" x2="640" y2="560"/><line x1="530" y1="380" x2="380" y2="380"/>
-</g>
-<rect x="540" y="150" width="200" height="56" fill="#F0F0F0" stroke="#AAAAAA"/>
-<rect x="900" y="352" width="200" height="56" fill="#F0F0F0" stroke="#AAAAAA"/>
-<rect x="540" y="560" width="200" height="56" fill="#F0F0F0" stroke="#AAAAAA"/>
-<rect x="180" y="352" width="200" height="56" fill="#F0F0F0" stroke="#AAAAAA"/>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<ellipse cx="640" cy="400" rx="130" ry="130" fill="#DCDCDC" stroke="#909090" stroke-width="3"/><text x="640" y="410" font-size="28" fill="#2E2E2E" font-weight="700" text-anchor="middle">核心</text><line x1="640" y1="176" x2="640" y2="270" stroke="#BFBFBF" stroke-width="2"/><line x1="1000" y1="400" x2="770" y2="400" stroke="#BFBFBF" stroke-width="2"/><line x1="640" y1="616" x2="640" y2="530" stroke="#BFBFBF" stroke-width="2"/><line x1="280" y1="400" x2="510" y2="400" stroke="#BFBFBF" stroke-width="2"/><rect x="480" y="176" width="320" height="64" fill="#EDEDED" stroke="#BFBFBF"/><text x="640" y="216" font-size="24" fill="#777777" text-anchor="middle">外圍一</text><rect x="1000" y="368" width="320" height="64" fill="#EDEDED" stroke="#BFBFBF"/><text x="1160" y="408" font-size="24" fill="#777777" text-anchor="middle">外圍二</text><rect x="480" y="560" width="320" height="64" fill="#EDEDED" stroke="#BFBFBF"/><text x="640" y="600" font-size="24" fill="#777777" text-anchor="middle">外圍三</text><rect x="120" y="368" width="320" height="64" fill="#EDEDED" stroke="#BFBFBF"/><text x="280" y="408" font-size="24" fill="#777777" text-anchor="middle">外圍四</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

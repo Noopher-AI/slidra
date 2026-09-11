@@ -11,22 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="340" height="440" fill="#F4F4F4" stroke="#AAAAAA"/>
-<rect x="80" y="176" width="340" height="6" fill="#666666"/>
-<text x="110" y="230" font-size="20" fill="#444444">欄標一</text>
-<text x="110" y="290" font-size="15" fill="#777777">內文，可以放</text>
-<text x="110" y="320" font-size="15" fill="#777777">好幾行</text>
-<rect x="470" y="176" width="340" height="440" fill="#F4F4F4" stroke="#AAAAAA"/>
-<rect x="470" y="176" width="340" height="6" fill="#666666"/>
-<text x="500" y="230" font-size="20" fill="#444444">欄標二</text>
-<rect x="860" y="176" width="340" height="440" fill="#F4F4F4" stroke="#AAAAAA"/>
-<rect x="860" y="176" width="340" height="6" fill="#666666"/>
-<text x="890" y="230" font-size="20" fill="#444444">欄標三</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="340" height="440" fill="#EDEDED" stroke="#BFBFBF"/><rect x="80" y="176" width="340" height="6" fill="#909090"/><text x="108" y="238" font-size="28" fill="#2E2E2E" font-weight="700">欄標1</text><text x="108" y="300" font-size="22" fill="#777777">・內文1</text><text x="108" y="348" font-size="22" fill="#777777">・內文2</text><text x="108" y="396" font-size="22" fill="#777777">・內文3</text><text x="108" y="444" font-size="22" fill="#777777">・內文4</text><rect x="470" y="176" width="340" height="440" fill="#EDEDED" stroke="#BFBFBF"/><rect x="470" y="176" width="340" height="6" fill="#909090"/><text x="498" y="238" font-size="28" fill="#2E2E2E" font-weight="700">欄標2</text><text x="498" y="300" font-size="22" fill="#777777">・內文1</text><text x="498" y="348" font-size="22" fill="#777777">・內文2</text><text x="498" y="396" font-size="22" fill="#777777">・內文3</text><text x="498" y="444" font-size="22" fill="#777777">・內文4</text><rect x="860" y="176" width="340" height="440" fill="#EDEDED" stroke="#BFBFBF"/><rect x="860" y="176" width="340" height="6" fill="#909090"/><text x="888" y="238" font-size="28" fill="#2E2E2E" font-weight="700">欄標3</text><text x="888" y="300" font-size="22" fill="#777777">・內文1</text><text x="888" y="348" font-size="22" fill="#777777">・內文2</text><text x="888" y="396" font-size="22" fill="#777777">・內文3</text><text x="888" y="444" font-size="22" fill="#777777">・內文4</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

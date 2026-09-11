@@ -11,18 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="1120" height="60" fill="#E4E4E4" stroke="#AAAAAA"/>
-<rect x="640" y="176" width="280" height="384" fill="#D8D8D8" stroke="#666666" stroke-width="3"/>
-<text x="110" y="214" font-size="16" fill="#444444">項目　　　方案 A　　方案 B（推薦）　方案 C</text>
-<rect x="80" y="236" width="1120" height="56" fill="#FFFFFF" stroke="#DDDDDD"/>
-<rect x="80" y="292" width="1120" height="56" fill="#FAFAFA" stroke="#DDDDDD"/>
-<rect x="80" y="348" width="1120" height="56" fill="#FFFFFF" stroke="#DDDDDD"/>
-<text x="80" y="610" font-size="16" fill="#444444">推薦的理由（label）</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="1120" height="72" fill="#E4E4E4" stroke="#BFBFBF"/><rect x="80" y="248" width="1120" height="68" fill="#FFFFFF" stroke="#BFBFBF"/><rect x="80" y="316" width="1120" height="68" fill="#FAFAFA" stroke="#BFBFBF"/><rect x="80" y="384" width="1120" height="68" fill="#FFFFFF" stroke="#BFBFBF"/><rect x="80" y="452" width="1120" height="68" fill="#FAFAFA" stroke="#BFBFBF"/><rect x="640" y="176" width="280" height="340" fill="#DCDCDC" stroke="#5A5A5A" stroke-width="4"/><text x="112" y="222" font-size="24" fill="#2E2E2E" font-weight="700">項目</text><text x="400" y="222" font-size="24" fill="#555555" font-weight="700">方案 A</text><text x="672" y="222" font-size="24" fill="#2E2E2E" font-weight="700">方案 B</text><text x="960" y="222" font-size="24" fill="#555555" font-weight="700">方案 C</text><text x="112" y="292" font-size="22" fill="#777777">項目名</text><text x="400" y="292" font-size="22" fill="#777777">值</text><text x="672" y="292" font-size="22" fill="#777777">值</text><text x="960" y="292" font-size="22" fill="#777777">值</text><text x="112" y="360" font-size="22" fill="#777777">項目名</text><text x="400" y="360" font-size="22" fill="#777777">值</text><text x="672" y="360" font-size="22" fill="#777777">值</text><text x="960" y="360" font-size="22" fill="#777777">值</text><text x="112" y="428" font-size="22" fill="#777777">項目名</text><text x="400" y="428" font-size="22" fill="#777777">值</text><text x="672" y="428" font-size="22" fill="#777777">值</text><text x="960" y="428" font-size="22" fill="#777777">值</text><text x="112" y="496" font-size="22" fill="#777777">項目名</text><text x="400" y="496" font-size="22" fill="#777777">值</text><text x="672" y="496" font-size="22" fill="#777777">值</text><text x="960" y="496" font-size="22" fill="#777777">值</text><text x="80" y="584" font-size="24" fill="#2E2E2E">推薦的理由：為什麼是方案 B</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

@@ -11,21 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="100" y="280" width="220" height="120" fill="#EEEEEE" stroke="#AAAAAA"/>
-<text x="140" y="345" font-size="18" fill="#666666">node 1</text>
-<path d="M330 340h80" stroke="#666666" stroke-width="3" marker-end="url(#a)"/>
-<path d="M400 330l20 10l-20 10z" fill="#666666"/>
-<rect x="430" y="280" width="220" height="120" fill="#EEEEEE" stroke="#AAAAAA"/>
-<text x="470" y="345" font-size="18" fill="#666666">node 2</text>
-<path d="M660 340h80" stroke="#666666" stroke-width="3"/>
-<path d="M730 330l20 10l-20 10z" fill="#666666"/>
-<rect x="760" y="280" width="220" height="120" fill="#EEEEEE" stroke="#AAAAAA"/>
-<text x="800" y="345" font-size="18" fill="#666666">node 3</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="240" width="320" height="300" fill="#EDEDED" stroke="#BFBFBF"/><text x="240" y="400" font-size="28" fill="#2E2E2E" font-weight="700" text-anchor="middle">節點 1</text><text x="240" y="450" font-size="22" fill="#777777" text-anchor="middle">一句說明</text><line x1="416" y1="390" x2="506" y2="390" stroke="#909090" stroke-width="4"/><path d="M504 379l20 11l-20 11z" fill="#909090"/><rect x="460" y="240" width="320" height="300" fill="#EDEDED" stroke="#BFBFBF"/><text x="620" y="400" font-size="28" fill="#2E2E2E" font-weight="700" text-anchor="middle">節點 2</text><text x="620" y="450" font-size="22" fill="#777777" text-anchor="middle">一句說明</text><line x1="796" y1="390" x2="886" y2="390" stroke="#909090" stroke-width="4"/><path d="M884 379l20 11l-20 11z" fill="#909090"/><rect x="840" y="240" width="320" height="300" fill="#EDEDED" stroke="#BFBFBF"/><text x="1000" y="400" font-size="28" fill="#2E2E2E" font-weight="700" text-anchor="middle">節點 3</text><text x="1000" y="450" font-size="22" fill="#777777" text-anchor="middle">一句說明</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

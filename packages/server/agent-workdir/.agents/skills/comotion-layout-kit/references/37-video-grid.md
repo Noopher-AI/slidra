@@ -11,17 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="200" width="540" height="300" fill="#E4E4E4" stroke="#AAAAAA"/>
-<ellipse cx="350" cy="350" rx="30" ry="30" fill="#FFFFFF" stroke="#666666" stroke-width="2"/>
-<text x="80" y="540" font-size="16" fill="#666666">說明一</text>
-<rect x="660" y="200" width="540" height="300" fill="#E4E4E4" stroke="#AAAAAA"/>
-<ellipse cx="930" cy="350" rx="30" ry="30" fill="#FFFFFF" stroke="#666666" stroke-width="2"/>
-<text x="660" y="540" font-size="16" fill="#666666">說明二</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="200" width="540" height="300" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="350" cy="350" rx="36" ry="36" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M337 333l34 17l-34 17z" fill="#909090"/><text x="80" y="560" font-size="24" fill="#777777">說明1：這段在演什麼</text><rect x="660" y="200" width="540" height="300" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="930" cy="350" rx="36" ry="36" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M917 333l34 17l-34 17z" fill="#909090"/><text x="660" y="560" font-size="24" fill="#777777">說明2：這段在演什麼</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

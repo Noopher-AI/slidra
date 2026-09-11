@@ -11,24 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="230" width="1120" height="120" fill="#F2F2F2" stroke="#CCCCCC"/>
-<g stroke="#999999" stroke-width="3">
-<line x1="130" y1="270" x2="130" y2="310"/><line x1="160" y1="250" x2="160" y2="330"/>
-<line x1="190" y1="278" x2="190" y2="302"/><line x1="220" y1="240" x2="220" y2="340"/>
-<line x1="250" y1="262" x2="250" y2="318"/><line x1="280" y1="282" x2="280" y2="298"/>
-<line x1="310" y1="246" x2="310" y2="334"/><line x1="340" y1="270" x2="340" y2="310"/>
-</g>
-<ellipse cx="1130" cy="290" rx="28" ry="28" fill="#FFFFFF" stroke="#666666" stroke-width="3"/>
-<path d="M1121 276l18 14l-18 14z" fill="#666666"/>
-<text x="80" y="200" font-size="18" fill="#444444">要聽的是什麼（label）</text>
-<text x="80" y="420" font-size="18" fill="#666666">逐字重點一</text>
-<text x="80" y="470" font-size="18" fill="#666666">逐字重點二</text>
-<text x="80" y="600" font-size="14" fill="#999999">受訪者・長度</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<text x="80" y="180" font-size="28" fill="#2E2E2E" font-weight="700">要聽的是什麼（引導句）</text><rect x="80" y="230" width="1120" height="140" fill="#EDEDED" stroke="#BFBFBF"/><line x1="150" y1="254" x2="150" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="184" y1="282" x2="184" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="218" y1="282" x2="218" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="252" y1="254" x2="252" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="286" y1="282" x2="286" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="320" y1="282" x2="320" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="354" y1="254" x2="354" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="388" y1="282" x2="388" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="422" y1="282" x2="422" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="456" y1="254" x2="456" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="490" y1="282" x2="490" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="524" y1="282" x2="524" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="558" y1="254" x2="558" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="592" y1="282" x2="592" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="626" y1="282" x2="626" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="660" y1="254" x2="660" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="694" y1="282" x2="694" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="728" y1="282" x2="728" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="762" y1="254" x2="762" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="796" y1="282" x2="796" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="830" y1="282" x2="830" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="864" y1="254" x2="864" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="898" y1="282" x2="898" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="932" y1="282" x2="932" y2="318" stroke="#8A8A8A" stroke-width="5"/><line x1="966" y1="254" x2="966" y2="346" stroke="#8A8A8A" stroke-width="5"/><line x1="1000" y1="282" x2="1000" y2="318" stroke="#8A8A8A" stroke-width="5"/><ellipse cx="1120" cy="300" rx="34" ry="34" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M1107 283l34 17l-34 17z" fill="#909090"/><text x="80" y="450" font-size="24" fill="#777777">・逐字重點一</text><text x="80" y="510" font-size="24" fill="#777777">・逐字重點二</text><text x="80" y="570" font-size="24" fill="#777777">・逐字重點三</text><text x="80" y="624" font-size="18" fill="#A0A0A0">受訪者・長度</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

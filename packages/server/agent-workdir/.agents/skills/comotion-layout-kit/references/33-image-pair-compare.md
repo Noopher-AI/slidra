@@ -11,19 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="540" height="340" fill="#E8E8E8" stroke="#AAAAAA"/>
-<text x="300" y="350" font-size="16" fill="#888888">圖 A</text>
-<line x1="640" y1="176" x2="640" y2="516" stroke="#666666" stroke-width="3"/>
-<rect x="660" y="176" width="540" height="340" fill="#DCDCDC" stroke="#888888"/>
-<text x="880" y="350" font-size="16" fill="#777777">圖 B</text>
-<text x="80" y="556" font-size="20" fill="#444444">之前</text>
-<text x="660" y="556" font-size="20" fill="#333333">之後</text>
-<text x="80" y="596" font-size="15" fill="#888888">一句差異說明</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="540" height="340" fill="#D5D5D5" stroke="#BFBFBF"/><text x="350" y="356" font-size="22" fill="#777777" text-anchor="middle">圖 A</text><line x1="640" y1="176" x2="640" y2="516" stroke="#8A8A8A" stroke-width="3"/><rect x="660" y="176" width="540" height="340" fill="#DADADA" stroke="#909090"/><text x="930" y="356" font-size="22" fill="#777777" text-anchor="middle">圖 B</text><text x="80" y="568" font-size="28" fill="#555555" font-weight="700">之前</text><text x="660" y="568" font-size="28" fill="#2E2E2E" font-weight="700">之後</text><text x="80" y="614" font-size="22" fill="#777777">一句差異說明：要看的是哪裡</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

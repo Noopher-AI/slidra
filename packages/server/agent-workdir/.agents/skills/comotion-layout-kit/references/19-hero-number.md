@@ -11,14 +11,9 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<text x="440" y="380" font-size="140" fill="#DDDDDD">25 億</text>
-<text x="500" y="450" font-size="24" fill="#666666">說明（label）</text>
-<text x="540" y="600" font-size="16" fill="#999999">來源（label，可省）</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="640" y="400" font-size="140" fill="#2E2E2E" font-weight="700" text-anchor="middle">25 億</text><text x="640" y="480" font-size="28" fill="#777777" text-anchor="middle">這個數字代表什麼</text><text x="640" y="600" font-size="18" fill="#A0A0A0" text-anchor="middle">來源（可省）</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

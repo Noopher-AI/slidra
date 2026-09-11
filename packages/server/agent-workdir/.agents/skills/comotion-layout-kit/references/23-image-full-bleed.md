@@ -11,16 +11,8 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="0" y="0" width="1280" height="720" fill="#D8D8D8"/>
-<text x="520" y="120" font-size="20" fill="#888888">滿版圖片</text>
-<rect x="0" y="400" width="1280" height="320" fill="#FFFFFF" opacity="0.75"/>
-<text x="140" y="520" font-size="48" fill="#333333">壓在圖上的主張</text>
-<text x="140" y="580" font-size="20" fill="#666666">補充說明</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="1280" height="720" fill="#D0D0D0"/><text x="120" y="120" font-size="24" fill="#A0A0A0">滿版圖片</text><rect x="0" y="380" width="1280" height="340" fill="#FFFFFF" opacity="0.82"/><text x="140" y="510" font-size="48" fill="#2E2E2E" font-weight="700">壓在圖上的主張</text><text x="140" y="580" font-size="24" fill="#777777">補充說明</text>
 </svg>
 ```
 

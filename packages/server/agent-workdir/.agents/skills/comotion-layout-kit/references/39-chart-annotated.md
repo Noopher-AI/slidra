@@ -11,18 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="140" y="170" width="1000" height="400" fill="#F4F4F4" stroke="#AAAAAA"/>
-<path d="M200 500 L400 460 L600 470 L760 300 L1000 260" fill="none" stroke="#666666" stroke-width="3"/>
-<ellipse cx="760" cy="300" rx="12" ry="12" fill="#FFFFFF" stroke="#333333" stroke-width="3"/>
-<line x1="772" y1="292" x2="880" y2="220" stroke="#666666" stroke-width="1.5"/>
-<text x="890" y="215" font-size="16" fill="#333333">這裡開始轉折</text>
-<text x="890" y="245" font-size="14" fill="#888888">原因的一句話</text>
-<text x="140" y="620" font-size="14" fill="#999999">資料來源</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="780" height="400" fill="#F1F1F1" stroke="#BFBFBF"/><path d="M140 500L300 452L460 468L620 300L820 250" fill="none" stroke="#7A7A7A" stroke-width="5"/><ellipse cx="620" cy="300" rx="18" ry="18" fill="#FFFFFF" stroke="#333333" stroke-width="5"/><line x1="642" y1="288" x2="900" y2="244" stroke="#8A8A8A" stroke-width="2"/><text x="900" y="236" font-size="28" fill="#2E2E2E" font-weight="700">這裡開始轉折</text><text x="900" y="282" font-size="22" fill="#777777">原因的一句話</text><text x="80" y="614" font-size="18" fill="#A0A0A0">資料來源</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

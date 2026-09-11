@@ -11,19 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="160" y="480" width="200" height="120" fill="#EEEEEE" stroke="#AAAAAA"/>
-<text x="190" y="550" font-size="16" fill="#666666">階段一</text>
-<rect x="400" y="400" width="200" height="200" fill="#E4E4E4" stroke="#AAAAAA"/>
-<text x="430" y="510" font-size="16" fill="#666666">階段二</text>
-<rect x="640" y="300" width="200" height="300" fill="#D8D8D8" stroke="#999999"/>
-<text x="670" y="460" font-size="16" fill="#444444">階段三</text>
-<rect x="880" y="200" width="200" height="400" fill="#CCCCCC" stroke="#888888"/>
-<text x="910" y="410" font-size="16" fill="#333333">階段四</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="160" y="476" width="220" height="140" fill="#EDEDED" stroke="#BFBFBF"/><text x="270" y="458" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">數值</text><text x="270" y="554" font-size="24" fill="#777777" text-anchor="middle">階段1</text><rect x="400" y="376" width="220" height="240" fill="#EDEDED" stroke="#BFBFBF"/><text x="510" y="358" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">數值</text><text x="510" y="504" font-size="24" fill="#777777" text-anchor="middle">階段2</text><rect x="640" y="286" width="220" height="330" fill="#EDEDED" stroke="#BFBFBF"/><text x="750" y="268" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">數值</text><text x="750" y="459" font-size="24" fill="#777777" text-anchor="middle">階段3</text><rect x="880" y="176" width="220" height="440" fill="#DCDCDC" stroke="#BFBFBF"/><text x="990" y="158" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">數值</text><text x="990" y="404" font-size="24" fill="#777777" text-anchor="middle">階段4</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

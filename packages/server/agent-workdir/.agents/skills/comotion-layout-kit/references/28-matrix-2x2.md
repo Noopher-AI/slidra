@@ -11,23 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<line x1="640" y1="160" x2="640" y2="620" stroke="#666666" stroke-width="2"/>
-<line x1="140" y1="390" x2="1140" y2="390" stroke="#666666" stroke-width="2"/>
-<text x="600" y="150" font-size="14" fill="#888888">高</text>
-<text x="1150" y="396" font-size="14" fill="#888888">高</text>
-<rect x="180" y="200" width="400" height="160" fill="#F2F2F2" stroke="#CCCCCC"/>
-<text x="210" y="290" font-size="16" fill="#666666">象限一</text>
-<rect x="700" y="200" width="400" height="160" fill="#E4E4E4" stroke="#AAAAAA"/>
-<text x="730" y="290" font-size="16" fill="#444444">象限二（重點）</text>
-<rect x="180" y="420" width="400" height="160" fill="#F2F2F2" stroke="#CCCCCC"/>
-<text x="210" y="510" font-size="16" fill="#666666">象限三</text>
-<rect x="700" y="420" width="400" height="160" fill="#F2F2F2" stroke="#CCCCCC"/>
-<text x="730" y="510" font-size="16" fill="#666666">象限四</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<line x1="640" y1="176" x2="640" y2="616" stroke="#8A8A8A" stroke-width="3"/><line x1="120" y1="396" x2="1160" y2="396" stroke="#8A8A8A" stroke-width="3"/><text x="600" y="196" font-size="18" fill="#A0A0A0" text-anchor="end">高</text><text x="1160" y="424" font-size="18" fill="#A0A0A0" text-anchor="end">高</text><rect x="150" y="216" width="440" height="150" fill="#EDEDED" stroke="#BFBFBF"/><text x="180" y="300" font-size="24" fill="#777777">象限一</text><rect x="690" y="216" width="440" height="150" fill="#DCDCDC" stroke="#909090"/><text x="720" y="300" font-size="24" fill="#2E2E2E">象限二（重點）</text><rect x="150" y="426" width="440" height="150" fill="#EDEDED" stroke="#BFBFBF"/><text x="180" y="510" font-size="24" fill="#777777">象限三</text><rect x="690" y="426" width="440" height="150" fill="#EDEDED" stroke="#BFBFBF"/><text x="720" y="510" font-size="24" fill="#777777">象限四</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

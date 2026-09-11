@@ -11,17 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="1120" height="440" fill="#F2F2F2" stroke="#AAAAAA"/>
-<text x="120" y="230" font-size="18" fill="#666666">01　node 1 的 label</text>
-<line x1="120" y1="280" x2="1160" y2="280" stroke="#DDDDDD"/>
-<text x="120" y="340" font-size="18" fill="#666666">02　node 2 的 label</text>
-<line x1="120" y1="390" x2="1160" y2="390" stroke="#DDDDDD"/>
-<text x="120" y="450" font-size="18" fill="#666666">03　node 3 的 label</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="1120" height="440" fill="#EDEDED" stroke="#BFBFBF"/><text x="128" y="248" font-size="40" fill="#555555" font-weight="700">01</text><text x="232" y="246" font-size="24" fill="#777777">這個單位的一行關鍵詞</text><line x1="128" y1="304" x2="1152" y2="304" stroke="#DADADA" stroke-width="1"/><text x="128" y="388" font-size="40" fill="#555555" font-weight="700">02</text><text x="232" y="386" font-size="24" fill="#777777">這個單位的一行關鍵詞</text><line x1="128" y1="444" x2="1152" y2="444" stroke="#DADADA" stroke-width="1"/><text x="128" y="528" font-size="40" fill="#555555" font-weight="700">03</text><text x="232" y="526" font-size="24" fill="#777777">這個單位的一行關鍵詞</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

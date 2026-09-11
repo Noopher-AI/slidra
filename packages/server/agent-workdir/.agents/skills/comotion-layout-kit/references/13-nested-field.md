@@ -11,19 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="140" y="180" width="1000" height="420" fill="#F5F5F5" stroke="#999999" stroke-width="2"/>
-<text x="170" y="220" font-size="20" fill="#444444">母項（大 field）</text>
-<rect x="190" y="250" width="280" height="300" fill="#E6E6E6" stroke="#AAAAAA"/>
-<text x="220" y="290" font-size="16" fill="#555555">子項一</text>
-<rect x="500" y="250" width="280" height="300" fill="#E6E6E6" stroke="#AAAAAA"/>
-<text x="530" y="290" font-size="16" fill="#555555">子項二</text>
-<rect x="810" y="250" width="280" height="300" fill="#E6E6E6" stroke="#AAAAAA"/>
-<text x="840" y="290" font-size="16" fill="#555555">子項三</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="120" y="176" width="1080" height="440" fill="#F6F6F6" stroke="#BFBFBF"/><text x="152" y="222" font-size="28" fill="#2E2E2E" font-weight="700">母項</text><rect x="168" y="260" width="296" height="320" fill="#EDEDED" stroke="#BFBFBF"/><text x="196" y="306" font-size="24" fill="#555555" font-weight="700">子項1</text><text x="196" y="364" font-size="20" fill="#777777">內文一</text><text x="196" y="404" font-size="20" fill="#777777">內文二</text><text x="196" y="444" font-size="20" fill="#777777">內文三</text><rect x="536" y="260" width="296" height="320" fill="#EDEDED" stroke="#BFBFBF"/><text x="564" y="306" font-size="24" fill="#555555" font-weight="700">子項2</text><text x="564" y="364" font-size="20" fill="#777777">內文一</text><text x="564" y="404" font-size="20" fill="#777777">內文二</text><text x="564" y="444" font-size="20" fill="#777777">內文三</text><rect x="904" y="260" width="296" height="320" fill="#EDEDED" stroke="#BFBFBF"/><text x="932" y="306" font-size="24" fill="#555555" font-weight="700">子項3</text><text x="932" y="364" font-size="20" fill="#777777">內文一</text><text x="932" y="404" font-size="20" fill="#777777">內文二</text><text x="932" y="444" font-size="20" fill="#777777">內文三</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

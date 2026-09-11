@@ -11,20 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<line x1="640" y1="170" x2="640" y2="600" stroke="#666666" stroke-width="3"/>
-<text x="300" y="160" font-size="18" fill="#666666">左邊</text>
-<text x="900" y="160" font-size="18" fill="#666666">右邊</text>
-<rect x="380" y="210" width="240" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<rect x="660" y="210" width="160" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<rect x="300" y="300" width="320" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<rect x="660" y="300" width="280" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<rect x="460" y="390" width="160" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<rect x="660" y="390" width="360" height="60" fill="#E8E8E8" stroke="#AAAAAA"/>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<line x1="640" y1="176" x2="640" y2="616" stroke="#8A8A8A" stroke-width="4"/><text x="360" y="206" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">左邊</text><text x="920" y="206" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">右邊</text><rect x="320" y="240" width="300" height="72" fill="#EDEDED" stroke="#BFBFBF"/><rect x="660" y="240" width="200" height="72" fill="#EDEDED" stroke="#BFBFBF"/><text x="300" y="286" font-size="20" fill="#A0A0A0" text-anchor="end">項目</text><rect x="200" y="340" width="420" height="72" fill="#EDEDED" stroke="#BFBFBF"/><rect x="660" y="340" width="300" height="72" fill="#EDEDED" stroke="#BFBFBF"/><text x="180" y="386" font-size="20" fill="#A0A0A0" text-anchor="end">項目</text><rect x="440" y="440" width="180" height="72" fill="#EDEDED" stroke="#BFBFBF"/><rect x="660" y="440" width="380" height="72" fill="#EDEDED" stroke="#BFBFBF"/><text x="420" y="486" font-size="20" fill="#A0A0A0" text-anchor="end">項目</text><rect x="360" y="540" width="260" height="72" fill="#EDEDED" stroke="#BFBFBF"/><rect x="660" y="540" width="140" height="72" fill="#EDEDED" stroke="#BFBFBF"/><text x="340" y="586" font-size="20" fill="#A0A0A0" text-anchor="end">項目</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

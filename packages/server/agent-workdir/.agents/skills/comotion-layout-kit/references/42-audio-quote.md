@@ -11,21 +11,9 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<text x="140" y="240" font-size="64" fill="#DDDDDD">&#8220;</text>
-<text x="200" y="330" font-size="34" fill="#333333">被引用的那一句話，</text>
-<text x="200" y="385" font-size="34" fill="#333333">可以到第二行。</text>
-<text x="200" y="450" font-size="17" fill="#777777">受訪者・身分</text>
-<rect x="200" y="500" width="700" height="56" fill="#F2F2F2" stroke="#CCCCCC"/>
-<g stroke="#999999" stroke-width="2">
-<line x1="230" y1="518" x2="230" y2="538"/><line x1="250" y1="510" x2="250" y2="546"/>
-<line x1="270" y1="522" x2="270" y2="534"/><line x1="290" y1="506" x2="290" y2="550"/>
-</g>
-<ellipse cx="860" cy="528" rx="18" ry="18" fill="#FFFFFF" stroke="#666666" stroke-width="2"/>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="140" y="330" font-size="96" fill="#DDDDDD" font-weight="700">“</text><text x="220" y="372" font-size="44" fill="#2E2E2E">被引用的那一句話，</text><text x="220" y="444" font-size="44" fill="#2E2E2E">可以到第二行。</text><text x="220" y="500" font-size="24" fill="#555555">受訪者・身分</text><rect x="220" y="500" width="620" height="60" fill="#EDEDED" stroke="#BFBFBF"/><line x1="260" y1="500" x2="260" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="290" y1="516" x2="290" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="320" y1="516" x2="320" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="350" y1="500" x2="350" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="380" y1="516" x2="380" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="410" y1="516" x2="410" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="440" y1="500" x2="440" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="470" y1="516" x2="470" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="500" y1="516" x2="500" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="530" y1="500" x2="530" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="560" y1="516" x2="560" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="590" y1="516" x2="590" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="620" y1="500" x2="620" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="650" y1="516" x2="650" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="680" y1="516" x2="680" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="710" y1="500" x2="710" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="740" y1="516" x2="740" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="770" y1="516" x2="770" y2="544" stroke="#9A9A9A" stroke-width="5"/><line x1="800" y1="500" x2="800" y2="560" stroke="#9A9A9A" stroke-width="5"/><line x1="830" y1="516" x2="830" y2="544" stroke="#9A9A9A" stroke-width="5"/><ellipse cx="900" cy="530" rx="24" ry="24" fill="#FFFFFF" stroke="#909090" stroke-width="3"/>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

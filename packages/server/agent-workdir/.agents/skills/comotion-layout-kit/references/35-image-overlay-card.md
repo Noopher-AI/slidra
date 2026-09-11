@@ -11,18 +11,8 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="0" y="0" width="1280" height="720" fill="#DADADA"/>
-<text x="180" y="120" font-size="18" fill="#999999">滿版圖片</text>
-<rect x="680" y="140" width="520" height="440" fill="#FFFFFF" stroke="#BBBBBB"/>
-<text x="720" y="210" font-size="28" fill="#333333">標題（label）</text>
-<text x="720" y="280" font-size="16" fill="#666666">內文第一行</text>
-<text x="720" y="320" font-size="16" fill="#666666">內文第二行</text>
-<text x="720" y="360" font-size="16" fill="#666666">內文第三行</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="1280" height="720" fill="#D4D4D4"/><text x="140" y="110" font-size="22" fill="#A0A0A0">滿版圖片</text><rect x="660" y="120" width="540" height="480" fill="#FFFFFF" stroke="#BFBFBF"/><text x="700" y="204" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><text x="700" y="290" font-size="24" fill="#777777">・內文第一行</text><text x="700" y="346" font-size="24" fill="#777777">・內文第二行</text><text x="700" y="402" font-size="24" fill="#777777">・內文第三行</text>
 </svg>
 ```
 

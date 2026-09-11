@@ -11,16 +11,8 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="140" y="230" width="72" height="6" fill="#999999"/>
-<text x="140" y="310" font-size="64" fill="#333333">大標第一行</text>
-<text x="140" y="390" font-size="64" fill="#333333">大標第二行</text>
-<text x="140" y="490" font-size="26" fill="#666666">副標（label）</text>
-<text x="140" y="600" font-size="18" fill="#999999">日期・講者（label）</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="140" y="230" width="72" height="6" fill="#909090"/><text x="140" y="320" font-size="72" fill="#2E2E2E" font-weight="700">大標第一行</text><text x="140" y="404" font-size="72" fill="#2E2E2E" font-weight="700">大標第二行</text><text x="140" y="500" font-size="28" fill="#555555">副標（label）</text><text x="140" y="610" font-size="18" fill="#A0A0A0">日期・講者</text>
 </svg>
 ```
 

@@ -11,18 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="1120" height="60" fill="#E4E4E4" stroke="#AAAAAA"/>
-<text x="110" y="214" font-size="16" fill="#444444">表頭一　　表頭二　　表頭三　　表頭四</text>
-<rect x="80" y="236" width="1120" height="56" fill="#FFFFFF" stroke="#DDDDDD"/>
-<rect x="80" y="292" width="1120" height="56" fill="#FAFAFA" stroke="#DDDDDD"/>
-<rect x="80" y="348" width="1120" height="56" fill="#FFFFFF" stroke="#DDDDDD"/>
-<rect x="80" y="404" width="1120" height="56" fill="#FAFAFA" stroke="#DDDDDD"/>
-<text x="110" y="600" font-size="14" fill="#999999">資料來源與截止日期</text>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="1120" height="72" fill="#E4E4E4" stroke="#BFBFBF"/><text x="112" y="222" font-size="24" fill="#2E2E2E" font-weight="700">表頭一</text><text x="432" y="222" font-size="24" fill="#2E2E2E" font-weight="700">表頭二</text><text x="752" y="222" font-size="24" fill="#2E2E2E" font-weight="700">表頭三</text><text x="1032" y="222" font-size="24" fill="#2E2E2E" font-weight="700">表頭四</text><rect x="80" y="248" width="1120" height="68" fill="#FFFFFF" stroke="#BFBFBF"/><text x="112" y="292" font-size="22" fill="#777777">儲存格</text><text x="432" y="292" font-size="22" fill="#777777">儲存格</text><text x="752" y="292" font-size="22" fill="#777777">儲存格</text><text x="1032" y="292" font-size="22" fill="#777777">儲存格</text><rect x="80" y="316" width="1120" height="68" fill="#FAFAFA" stroke="#BFBFBF"/><text x="112" y="360" font-size="22" fill="#777777">儲存格</text><text x="432" y="360" font-size="22" fill="#777777">儲存格</text><text x="752" y="360" font-size="22" fill="#777777">儲存格</text><text x="1032" y="360" font-size="22" fill="#777777">儲存格</text><rect x="80" y="384" width="1120" height="68" fill="#FFFFFF" stroke="#BFBFBF"/><text x="112" y="428" font-size="22" fill="#777777">儲存格</text><text x="432" y="428" font-size="22" fill="#777777">儲存格</text><text x="752" y="428" font-size="22" fill="#777777">儲存格</text><text x="1032" y="428" font-size="22" fill="#777777">儲存格</text><rect x="80" y="452" width="1120" height="68" fill="#FAFAFA" stroke="#BFBFBF"/><text x="112" y="496" font-size="22" fill="#777777">儲存格</text><text x="432" y="496" font-size="22" fill="#777777">儲存格</text><text x="752" y="496" font-size="22" fill="#777777">儲存格</text><text x="1032" y="496" font-size="22" fill="#777777">儲存格</text><text x="80" y="600" font-size="18" fill="#A0A0A0">資料來源與截止日期</text>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 

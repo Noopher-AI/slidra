@@ -11,22 +11,10 @@
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CCCCCC"/>
-<text x="80" y="90" font-size="28" fill="#333333">標題（label）</text>
-<rect x="80" y="120" width="56" height="4" fill="#999999"/>
-<rect x="80" y="176" width="520" height="420" fill="#E4E4E4" stroke="#AAAAAA"/>
-<text x="290" y="400" font-size="18" fill="#888888">產品圖</text>
-<g font-size="16">
-<text x="660" y="210" fill="#777777">尺寸</text><text x="960" y="210" fill="#333333">數值</text>
-<line x1="660" y1="230" x2="1200" y2="230" stroke="#EEEEEE"/>
-<text x="660" y="280" fill="#777777">重量</text><text x="960" y="280" fill="#333333">數值</text>
-<line x1="660" y1="300" x2="1200" y2="300" stroke="#EEEEEE"/>
-<text x="660" y="350" fill="#777777">材質</text><text x="960" y="350" fill="#333333">數值</text>
-<line x1="660" y1="370" x2="1200" y2="370" stroke="#EEEEEE"/>
-<text x="660" y="420" fill="#777777">價格</text><text x="960" y="420" fill="#333333">數值</text>
-</g>
-<line x1="80" y1="656" x2="1200" y2="656" stroke="#CCCCCC"/>
-<text x="80" y="676" font-size="14" fill="#999999">頁尾三件</text>
+<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
+<rect x="80" y="176" width="520" height="440" fill="#D5D5D5" stroke="#BFBFBF"/><text x="340" y="400" font-size="24" fill="#777777" text-anchor="middle">產品圖</text><text x="660" y="232" font-size="22" fill="#A0A0A0">尺寸</text><text x="960" y="232" font-size="26" fill="#2E2E2E">數值</text><line x1="660" y1="262" x2="1200" y2="262" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="340" font-size="22" fill="#A0A0A0">重量</text><text x="960" y="340" font-size="26" fill="#2E2E2E">數值</text><line x1="660" y1="370" x2="1200" y2="370" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="448" font-size="22" fill="#A0A0A0">材質</text><text x="960" y="448" font-size="26" fill="#2E2E2E">數值</text><line x1="660" y1="478" x2="1200" y2="478" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="556" font-size="22" fill="#A0A0A0">價格</text><text x="960" y="556" font-size="26" fill="#2E2E2E">數值</text><line x1="660" y1="586" x2="1200" y2="586" stroke="#E6E6E6" stroke-width="1"/>
+<line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```
 
