@@ -138,9 +138,17 @@ async function readProjectJson(registry: CommandRegistry, presentationId: string
 /** Selects `elementId` on the stage, then opens Style › Object via the ContextBar's `Edit style` entry (§4.5, the one legal entry point). */
 async function selectAndOpenStyleObject(page: Page, frame: Frame, elementId: string): Promise<void> {
   await frame.locator(`#${elementId}`).click();
+  await hoverContextBar(page);
   await page.locator('button[title="Edit style"]').click();
   await expect.poll(() => page.locator('[role="tab"][data-tab="style"]').getAttribute("aria-selected")).toBe("true");
   await expect.poll(() => page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
+}
+
+/** [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
+async function hoverContextBar(page: Page): Promise<void> {
+  const box = (await page.locator(".context-bar").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
 }
 
 /**
@@ -545,6 +553,7 @@ it("D：情境列恰好一顆 Edit style；點擊只切右欄，不送任何命�
     await frame.locator("#el-a").click();
     await expect.poll(() => page.locator('button[title="Edit style"]').count()).toBe(1);
 
+    await hoverContextBar(page);
     await page.locator('button[title="Edit style"]').click();
     await expect.poll(() => page.locator('[role="tab"][data-tab="style"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");

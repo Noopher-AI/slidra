@@ -194,6 +194,13 @@ async function listComments(
   return result.data!.comments;
 }
 
+/** [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
+async function hoverContextBar(page: Page): Promise<void> {
+  const box = (await page.locator(".context-bar").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
+}
+
 it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁出現 comment pin（AC3 截圖）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
@@ -202,6 +209,7 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
 
     const bar = page.locator(".context-bar");
     await expect.poll(() => bar.isVisible(), { timeout: 5000 }).toBe(true);
+    await hoverContextBar(page);
     await bar.getByRole("button", { name: "Comment to AI" }).click();
 
     const composer = page.locator(".comment-composer");
@@ -233,6 +241,7 @@ it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘En
 
     const bar = page.locator(".context-bar");
     await expect.poll(() => bar.isVisible(), { timeout: 5000 }).toBe(true);
+    await hoverContextBar(page);
     await bar.getByRole("button", { name: "Comment to AI" }).click();
 
     const composer = page.locator(".comment-composer");
@@ -453,6 +462,7 @@ it("AC7：留言經 Save／Open 往返後仍在", async () => {
   try {
     const page = await openApp(server);
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
+    await hoverContextBar(page);
     await page.locator(".context-bar").getByRole("button", { name: "Comment to AI" }).click();
     const composer = page.locator(".comment-composer");
     await composer.locator("textarea").fill("存檔後應該還在");
