@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
-<rect x="0" y="0" width="1280" height="720" fill="#D0D0D0"/><text x="120" y="120" font-size="24" fill="#A0A0A0">滿版圖片</text><rect x="0" y="380" width="1280" height="340" fill="#FFFFFF" opacity="0.82"/><text x="140" y="510" font-size="48" fill="#2E2E2E" font-weight="700">壓在圖上的主張</text><text x="140" y="580" font-size="24" fill="#777777">補充說明</text>
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="1280" height="720" fill="#D0D0D0"/><text x="120" y="120" font-size="24" fill="#A0A0A0">Full-bleed image</text><rect x="0" y="380" width="1280" height="340" fill="#FFFFFF" opacity="0.82"/><text x="140" y="510" font-size="48" fill="#2E2E2E" font-weight="700">Claim over the image</text><text x="140" y="580" font-size="24" fill="#777777">Supporting note</text>
 </svg>

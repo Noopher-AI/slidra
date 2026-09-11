@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920">
-<rect x="0" y="0" width="1080" height="1920" fill="#FFFFFF" stroke="#CFCFCF"/>
-<rect x="0" y="0" width="1080" height="1180" fill="#D5D5D5"/><text x="540" y="600" font-size="44" fill="#777777" text-anchor="middle">滿版圖片</text><rect x="0" y="1080" width="1080" height="840" fill="#FFFFFF"/><rect x="72" y="1200" width="96" height="10" fill="#909090"/><text x="72" y="1340" font-size="96" fill="#2E2E2E" font-weight="700">大標第一行</text><text x="72" y="1460" font-size="96" fill="#2E2E2E" font-weight="700">大標第二行</text><text x="72" y="1570" font-size="44" fill="#555555">副標（label）</text><text x="72" y="1800" font-size="34" fill="#A0A0A0">日期・講者</text>
+<rect x="0" y="0" width="1080" height="1920" fill="#F3F3F3" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="1080" height="1180" fill="#D5D5D5"/><text x="540" y="600" font-size="44" fill="#777777" text-anchor="middle">Full-bleed image</text><rect x="0" y="1080" width="1080" height="840" fill="#FFFFFF"/><text x="72" y="1340" font-size="96" fill="#2E2E2E" font-weight="700">Headline line 1</text><text x="72" y="1460" font-size="96" fill="#2E2E2E" font-weight="700">Headline line 2</text><text x="72" y="1570" font-size="44" fill="#555555">Subtitle</text><text x="72" y="1800" font-size="34" fill="#A0A0A0">Date · Speaker</text>
 </svg>

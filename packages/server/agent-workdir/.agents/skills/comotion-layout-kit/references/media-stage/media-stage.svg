@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
-<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題：要看的是什麼</text><rect x="80" y="126" width="64" height="5" fill="#909090"/><rect x="240" y="176" width="800" height="450" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="640" cy="401" rx="48" ry="48" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M627 384l34 17l-34 17z" fill="#909090"/><text x="640" y="672" font-size="18" fill="#A0A0A0" text-anchor="middle">訪談片段・1 分 20 秒</text>
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title: what to look at</text><rect x="240" y="176" width="800" height="450" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="640" cy="401" rx="48" ry="48" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M627 384l34 17l-34 17z" fill="#909090"/><text x="640" y="672" font-size="18" fill="#A0A0A0" text-anchor="middle">Interview clip · 1:20</text>
 </svg>
