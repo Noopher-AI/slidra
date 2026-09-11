@@ -195,6 +195,19 @@ export class AgentChatSession extends EventEmitter {
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
   /**
+   * #303: set by `cancel()`, cleared when the next author turn starts. A
+   * real `claude-code-acp` answers our `session/prompt` with `cancelled`
+   * but its model keeps going for a while, still emitting `session/update`
+   * and `session/request_permission` with no prompt in flight (trial 4:
+   * 137 chunks and 20 commands after our `chat-done`). Everything that
+   * arrives while this is set — or while no turn is running at all — is
+   * dropped, and every permission request is answered `cancelled`, so no
+   * command can run outside a turn.
+   */
+  private cancelledUntilNextPrompt = false;
+  private droppedOutsideTurn = 0;
+  private refusedOutsideTurnLogged = false;
+  /**
    * The most recent `available_commands_update` the agent has sent, or `[]`
    * if it has never sent one. Unlike the turn-scoped events above, this
    * arrives outside any turn (typically right after `session/new`, before
@@ -292,6 +305,38 @@ export class AgentChatSession extends EventEmitter {
     this.turnQueue = this.turnQueue.catch(() => {});
   }
 
+  /** True while an author-requested `session/prompt` is awaited — the window in which `cancel()` has something to cancel. */
+  isTurnRunning(): boolean {
+    return this.relayingCurrentTurn;
+  }
+
+  /**
+   * #303: sends ACP `session/cancel` for the turn in flight. Per the ACP
+   * contract the agent then stops its model requests, aborts tool calls it
+   * still controls, flushes pending updates, and answers the original
+   * `session/prompt` with `stopReason: "cancelled"` — so the turn ends
+   * through `runTurn`'s normal path (`chat-done` carrying that stopReason,
+   * history group closed, editing lock released). A `co-motion` command
+   * the agent had already launched runs to completion on its own (each
+   * command is atomic); nothing written so far is rolled back — undo is
+   * the author's tool for that, not this.
+   *
+   * Throws when no author turn is running: cancelling nothing is a caller
+   * mistake worth surfacing (a 409 upstream), not a silent no-op.
+   */
+  async cancel(): Promise<void> {
+    if (!this.relayingCurrentTurn || !this.connection || this.sessionId === undefined) {
+      throw new CoMotionError("目前沒有進行中的回合可以停止");
+    }
+    this.cancelledUntilNextPrompt = true;
+    await this.connection.cancel({ sessionId: this.sessionId });
+  }
+
+  /** True when an update or permission request has no author turn to belong to (see `cancelledUntilNextPrompt`). */
+  private outsideTurn(): boolean {
+    return !this.relayingCurrentTurn || this.cancelledUntilNextPrompt;
+  }
+
   private async runTurn(text: string): Promise<void> {
     try {
       await this.ensureSession();
@@ -331,6 +376,12 @@ export class AgentChatSession extends EventEmitter {
     }
 
     this.relayingCurrentTurn = true;
+    this.cancelledUntilNextPrompt = false;
+    if (this.droppedOutsideTurn > 0) {
+      console.warn(`[agent] 上一輪停止後仍收到 ${this.droppedOutsideTurn} 則 session/update，已全部丟棄`);
+      this.droppedOutsideTurn = 0;
+    }
+    this.refusedOutsideTurnLogged = false;
     try {
       const response = await this.withInterrupt(
         this.connection!.prompt({
@@ -562,7 +613,10 @@ export class AgentChatSession extends EventEmitter {
           this.emitTyped("available-commands", { commands: update.availableCommands });
           return;
         }
-        if (!this.relayingCurrentTurn) return;
+        if (this.outsideTurn()) {
+          this.droppedOutsideTurn += 1;
+          return;
+        }
         if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
           this.emitTyped("chat-chunk", { text: update.content.text });
           return;
@@ -583,6 +637,15 @@ export class AgentChatSession extends EventEmitter {
         // turn.
       },
       requestPermission: async (params: acp.RequestPermissionRequest) => {
+        // #303: fail closed outside a turn — a stopped adapter that keeps
+        // asking gets `cancelled` every time, and we say so once.
+        if (this.outsideTurn()) {
+          if (!this.refusedOutsideTurnLogged) {
+            this.refusedOutsideTurnLogged = true;
+            console.warn("[agent] 沒有進行中的回合，拒絕 agent 的命令請求（已停止的回合仍在送出請求）");
+          }
+          return { outcome: { outcome: "cancelled" } };
+        }
         // Only a command actually about to run needs the floor — a request
         // the allowlist was always going to refuse touches nothing on
         // disk, so freezing for it would be pure side effect with no

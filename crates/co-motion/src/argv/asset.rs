@@ -26,6 +26,7 @@
 //! (orchestrator-owned).
 
 use super::ct::{optional_flag, require_id_positional, require_positional};
+use super::is_flag_like;
 use crate::errors::CoMotionError;
 
 #[derive(Debug, PartialEq)]
@@ -34,6 +35,10 @@ pub struct AssetImportArgs {
     pub source: String,
     /// Raw `--as` value, unvalidated. `None` when the flag was omitted.
     pub as_format: Option<String>,
+    /// `--svg` inline markup (#303 §13); `source` is empty when set.
+    pub svg: Option<String>,
+    /// `--name`, only with `--svg`.
+    pub name: Option<String>,
 }
 
 /// Parses `asset import <id> <source> [--as <value>]`. `args` is the
@@ -42,12 +47,48 @@ pub struct AssetImportArgs {
 /// `argv::chart`/`argv::table`'s per-subcommand parsers use.
 pub fn parse_import(args: &[String]) -> Result<AssetImportArgs, CoMotionError> {
     let id = require_id_positional(args, 0, "asset import", "presentation-id")?;
-    let source = require_positional(args, 1, "asset import", "source")?;
+    let svg = optional_flag(args, "--svg")?;
+    let name = optional_flag(args, "--name")?;
     let as_format = optional_flag(args, "--as")?;
+    // `--svg` builds the asset from inline markup (#303 §13): no source
+    // positional then, and `--name` is required. Both given → refuse.
+    let has_source_positional = args.get(1).is_some_and(|a| !is_flag_like(a));
+    if svg.is_some() {
+        if has_source_positional {
+            return Err(CoMotionError::invalid(
+                "asset import 的 --svg 與 <source> 不能同時給",
+            ));
+        }
+        if as_format.is_some() {
+            return Err(CoMotionError::invalid(
+                "asset import 的 --svg 不能與 --as 同時給",
+            ));
+        }
+        let Some(name) = name else {
+            return Err(CoMotionError::invalid(
+                "asset import --svg 缺少參數：--name",
+            ));
+        };
+        return Ok(AssetImportArgs {
+            id,
+            source: String::new(),
+            as_format: None,
+            svg,
+            name: Some(name),
+        });
+    }
+    if name.is_some() {
+        return Err(CoMotionError::invalid(
+            "asset import 的 --name 只能與 --svg 一起用",
+        ));
+    }
+    let source = require_positional(args, 1, "asset import", "source")?;
     Ok(AssetImportArgs {
         id,
         source,
         as_format,
+        svg: None,
+        name: None,
     })
 }
 

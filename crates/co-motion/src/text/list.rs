@@ -12,8 +12,7 @@ pub enum ListKind {
 }
 
 impl ListKind {
-    #[allow(dead_code)] // exercised by tests only; kept for symmetry with `from_token`.
-    fn as_token(self) -> &'static str {
+    pub(crate) fn as_token(self) -> &'static str {
         match self {
             ListKind::Bullet => "bullet",
             ListKind::Number => "number",

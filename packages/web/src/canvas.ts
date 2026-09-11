@@ -56,6 +56,7 @@
  * model. See docs on the postMessage protocol below (`SelectionMessage`).
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
+import { slidePaintKey } from "./slide-paint-key.js";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
 import type { EmbedProvider } from "./embed.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
@@ -1150,6 +1151,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // comment.
   let exiting = false;
   let mode: CanvasMode = "view";
+  // #303: the paint key (`slidePaintKey`) of the slide the view-mode iframe
+  // currently shows, or null whenever `srcdoc` was last set by something
+  // other than `render()` (empty deck, play/preview, a rebuilt frame) —
+  // those never count as "already painted". `render()` compares against
+  // it to skip a repaint that would show the exact same picture.
+  let paintedView: { slidePath: string; key: string } | null = null;
+  // #303: the play-mode twin of `paintedView`. A live reload while playing
+  // (`reload()` → `renderPlay(…, playEnter=false)`) used to reassign
+  // `srcdoc` unconditionally, which restarts the play runtime — the step
+  // position jumps back to the start and the page blinks — even when the
+  // agent's command only touched `<metadata>`. Same key, same slide, same
+  // frame ⇒ keep the running document; the plan cache was already
+  // invalidated by reload(), so the next real navigation re-reads it.
+  let paintedPlay: { slidePath: string; key: string } | null = null;
   let playerHasFocus = false;
   let error: string | null = null;
   // [E2.T7]/D8: the selection Preview entered from, restored (top-level ids
@@ -3429,6 +3444,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
       badgeTargets = [];
       overlayBadges = [];
+      paintedView = null;
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
       notifyChartWindow();
       return;
@@ -3439,7 +3455,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
     currentSlideMarkup = svgMarkup;
 
-    currentSlideMarkup = svgMarkup;
+    // #303: a reload whose only difference is `<metadata>` (an effect, a
+    // note, a comment, a transition landed) paints the same picture — skip
+    // the `srcdoc` navigation, which would blank the stage for nothing.
+    // A pending post-load selection still forces a repaint: it waits on
+    // the frame's `load` event (`selectOnceLoaded`), which only a
+    // navigation fires.
+    const paintKey = slidePaintKey(svgMarkup);
+    const repaint =
+      selectAfterLoad !== null ||
+      paintedView === null ||
+      paintedView.slidePath !== slidePath ||
+      paintedView.key !== paintKey;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
     // A non-compliant slide (should not happen — every write path asserts
@@ -3455,8 +3482,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // never outlives the slide it measured. The fresh iframe self-reports
     // its own bounds once its script runs (selection-runtime.js's
     // `reportElementBounds`), same "runtime-ready" timing `overlayBadges`
-    // already relies on.
-    elementBoundsById = new Map();
+    // already relies on. Kept when the repaint is skipped (#303): the
+    // document — and therefore its bounds — is unchanged.
+    if (repaint) elementBoundsById = new Map();
 
     // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse is treated
     // as having no animations at all in view mode (GUI table — the
@@ -3468,6 +3496,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
     }
     if (destroyed || thisGeneration !== generation) return;
+
+    if (!repaint) {
+      // #303: same picture, same document. reload() already dropped this
+      // side's selection — tell the live runtime so its selection box
+      // goes too — and re-measure the badges against the (possibly new)
+      // effect list, the job a fresh document's "runtime-ready" would do.
+      pushSelectionToRuntime([]);
+      requestBadgeMeasurement();
+      notifyChartWindow();
+      notify();
+      return;
+    }
 
     // [E2.T17]: the embed table is the parent's, not the iframe's — the
     // runtime is only told which ids to measure. Boxes are cleared here
@@ -3484,6 +3524,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       stageMediaFor(svgMarkup),
       Object.keys(embedEntries),
     );
+    paintedView = { slidePath, key: paintKey };
 
     // E2.T12: re-derive the open chart window's model off the just-loaded
     // markup so a committed edit's normalized result (formatSvgNumber
@@ -3600,6 +3641,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   ): Promise<void> {
     const captured = thisGeneration ?? generation;
     if (currentIndex === -1) {
+      paintedView = null;
+      paintedPlay = null;
       frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
       return;
     }
@@ -3607,6 +3650,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || captured !== generation) return;
+
+    // #303: only reload()'s background refresh (playEnter=false, no preview,
+    // startAt "first") may keep the running document; every arrival —
+    // page change, entering play, a Preview — paints anew.
+    const playKey = slidePaintKey(svgMarkup);
+    const keepRunningDocument =
+      !playEnter &&
+      previewEffectIndices === undefined &&
+      startAt === "first" &&
+      paintedPlay !== null &&
+      paintedPlay.slidePath === slidePath &&
+      paintedPlay.key === playKey;
 
     let planScript: string;
     let hideStyle: string;
@@ -3653,9 +3708,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // call leaving this (static) page does not act on stale data left
       // over from whichever slide was last painted successfully.
       currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
+      paintedView = null;
+      paintedPlay = null;
       frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
+
+    // #303: metadata-only change while playing — the plan above was
+    // re-read (so `currentPageTransition` and the effects cache are
+    // fresh) but the document on screen is the same picture: leave the
+    // runtime, and the author's step position, alone.
+    if (keepRunningDocument) return;
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
@@ -3663,12 +3726,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     embedBoxes = {};
     notifyEmbeds();
 
+    paintedView = null;
     frame.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       hideStyle,
       planScript,
     );
+    paintedPlay = { slidePath, key: playKey };
 
     const { effect, duration } = currentPageTransition.enter;
     if (playEnter && effect !== "none" && duration > 0) {
@@ -3957,6 +4022,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
     const old = frame;
+    paintedView = null; // #303: a new element has painted nothing yet.
+    paintedPlay = null;
     frame = buildFrame(sandbox);
     container.insertBefore(frame, old);
     old.remove();

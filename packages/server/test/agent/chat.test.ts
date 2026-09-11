@@ -84,14 +84,22 @@ async function openFreshPresentation(): Promise<string> {
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
-  return opened.data!.id;
+  // `new` creates no slides (ADR-0018): the tests below read and edit
+  // slides/001.svg, so mint one page with one title text box.
+  const id = opened.data!.id;
+  expect((await runCli(["slide", "add", id])).ok).toBe(true);
+  const added = await runCli([
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "測試簡報",
+  ]);
+  expect(added.ok).toBe(true);
+  return id;
 }
 
 /** Same as `openFreshPresentation`, but also returns the title element's id, read via `cat` (Seam A) — never guessed. */
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const id = await openFreshPresentation();
   const svgText = await readPresentationTextViaCli(id, "slides/001.svg");
-  const match = /<text id="(el-[^"]+)"/.exec(svgText);
+  const match = /<g id="(el-[^"]+)" data-comot-text-width/.exec(svgText);
   if (!match) throw new Error("test fixture: title element id not found");
   return { id, elementId: match[1] };
 }
@@ -352,6 +360,92 @@ describe("chat: reply streaming", () => {
 
     const done = collected.find((e) => e.event === "chat-done");
     expect((done!.data as { stopReason: string }).stopReason).toBe("end_turn");
+  });
+});
+
+describe("chat: cancel (#303)", () => {
+  it("POST /api/chat/cancel ends the running turn with chat-done stopReason=cancelled", async () => {
+    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    // Wait for the held turn to have produced its chunk (so it is really
+    // running), then stop it and read to the end of the turn.
+    const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
+    await postChat(server, "做一件很久的事");
+    await untilChunk;
+
+    const untilDone = sse.readUntil((e) => e.event === "chat-done");
+    const cancel = await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
+    expect(cancel.status).toBe(202);
+    const collected = await untilDone;
+    await sse.close();
+
+    const done = collected.find((e) => e.event === "chat-done");
+    expect((done!.data as { stopReason: string }).stopReason).toBe("cancelled");
+    const log = await readFile(logPath, "utf-8");
+    expect(log).toContain('"cancel"');
+    expect(log).toContain('"heldPromptEnded":"cancelled"');
+  });
+
+  it("late updates and permission requests after a cancelled turn are dropped and refused; the next message works normally", async () => {
+    const server = await serve(
+      fakeAgent({ replies: [["規約"], ["想一下"], ["第二輪"]], holdPromptOnIndex: 1, lateActivityAfterCancel: true }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
+    await postChat(server, "做一件很久的事");
+    await untilChunk;
+    const untilCancelled = sse.readUntil((e) => e.event === "chat-done");
+    await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
+    await untilCancelled;
+
+    // Give the fake agent's late activity time to arrive (50 ms timer),
+    // then run a normal second turn and read to its end: everything on
+    // the stream between the two chat-done events must belong to the
+    // second turn alone.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const untilSecondDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "第二則");
+    const secondTurn = await untilSecondDone;
+    await sse.close();
+
+    const chunkTexts = secondTurn.filter((e) => e.event === "chat-chunk").map((e) => (e.data as { text: string }).text);
+    expect(chunkTexts).toEqual(["第二輪"]);
+    expect(secondTurn.filter((e) => e.event === "chat-command")).toHaveLength(0);
+    expect((secondTurn.at(-1)!.data as { stopReason: string }).stopReason).toBe("end_turn");
+    const log = await readFile(logPath, "utf-8");
+    expect(log).toContain('"latePermissionOutcome":{"outcome":"cancelled"}');
+  });
+
+  it("GET /api/agent reports turnRunning=true during a held turn and false after it ends", async () => {
+    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
+    const idle = (await (await fetch(`${server.url}/api/agent`)).json()) as { turnRunning: boolean };
+    expect(idle.turnRunning).toBe(false);
+
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
+    await postChat(server, "做一件很久的事");
+    await untilChunk;
+    const running = (await (await fetch(`${server.url}/api/agent`)).json()) as { turnRunning: boolean };
+    expect(running.turnRunning).toBe(true);
+
+    const untilDone = sse.readUntil((e) => e.event === "chat-done");
+    await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
+    await untilDone;
+    await sse.close();
+    const after = (await (await fetch(`${server.url}/api/agent`)).json()) as { turnRunning: boolean };
+    expect(after.turnRunning).toBe(false);
+  });
+
+  it("POST /api/chat/cancel with no turn running is a 409, not a silent no-op", async () => {
+    const server = await serve(fakeAgent({}));
+    const response = await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { error: string }).error).toContain("沒有進行中的回合");
   });
 });
 

@@ -42,7 +42,7 @@ interface CommandResult<Data = unknown> {
 
 ## 終端輸出
 
-沒有註冊 renderer 的命令（81 條裡的 78 條）：預設輸出是「狀態行 + JSON」——先印一行 `message`，若 `data !== undefined` 再印一行 `JSON.stringify(data, null, 2)`；`data` 為 `undefined` 時只印狀態行，不印第二行。失敗時印 `message` 到 stderr，不印 JSON。
+沒有註冊 renderer 的命令（87 條裡的 84 條）：預設輸出是「狀態行 + JSON」——先印一行 `message`，若 `data !== undefined` 再印一行 `JSON.stringify(data, null, 2)`；`data` 為 `undefined` 時只印狀態行，不印第二行。失敗時印 `message` 到 stderr，不印 JSON。
 
 有 renderer 的三條命令（`cat`、`ls`、`slide render`）：輸出規則見下一節。
 
@@ -92,13 +92,13 @@ interface CommandResult<Data = unknown> {
 
 ## 不經 registry 的入口：`serve` 與 `export`
 
-`serve`／`export` 這兩個子命令**不算在 81 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
+`serve`／`export` 這兩個子命令**不算在 87 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
 
 Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `CO_MOTION_BIN`，再 `exec` Node 執行 `@co-motion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
 
 ## 命令條目格式說明
 
-下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_81_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 83，與 Rust 註冊的 81 條命令對不上。
+下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_87_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 89，與 Rust 註冊的 87 條命令對不上。
 
 每個命令條目固定五個小節，順序不變：
 
@@ -108,7 +108,7 @@ Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對�
 4. **錯誤情境**：一張表，至少一列，每列是「情境 → `failureKind`」。
 5. **範例**：一行可以直接複製貼上執行的命令。
 
-以下 81 條命令依 `CommandRegistry.names()` 的**註冊順序**排列（不是字母順序）：
+以下 87 條命令依 `CommandRegistry.names()` 的**註冊順序**排列（不是字母順序）：
 ## `new`
 
 **語法**
@@ -121,6 +121,8 @@ co-motion new <path> [--name <名稱>]
 
 - `path`：字串，必填。要建立的 `.comot` 檔案的本機檔案系統路徑（新檔案，不是既有簡報的識別碼——`new` 是唯一直接操作真實檔案系統路徑、不透過 `<presentation-id>` 的命令之一，因為它建立的目標本來就還不是一份「已開啟」的簡報）。
 - `--name`：字串，選填。簡報的顯示名稱，寫入 `project.json.name`；省略時預設為「新簡報」。
+
+建立出來的簡報**沒有任何投影片**（`project.json.slides` 是空陣列），只有 `project.json`、內嵌字型與其授權文字（ADR-0018）：第一頁由作者或 agent 之後用 `slide add` 或 `/comotion-outline` 產生，不預先放一張未經設計的佔位頁。
 
 **成功 `data`**
 
@@ -2178,6 +2180,152 @@ co-motion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c
 ```
 co-motion table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./cells.tsv
 ```
+## `plan set`
+
+**語法**
+
+```
+co-motion plan set <presentation-id> <name> <content>
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `name`：位置引數，必填，只能是 `outline`（寫 `plan/outline.md`）或 `design-spec`（寫 `plan/design-spec.md`）。
+- `content`：位置引數，必填，檔案全文。開頭必須是一個 ```` ```json ```` 圍欄（機器可讀段），其後可接任意 markdown 正文。寫入前會解析並驗證 JSON 段：`outline` 要有 `status`（`draft`｜`confirmed`）、`mode`（`pyramid`｜`narrative`｜`instructional`｜`showcase`｜`briefing`）、非空的 `pages`（每項 `n` 從 1 連續遞增、`type` ∈ cover｜section｜bullets｜compare｜number｜closing、`rhythm` ∈ anchor｜dense｜breathing、`title`），選填 `questions`（每題 `id` 唯一、`question`、`recommended` 必須是 2～4 個 `options` 之一的 `value`、選填 `note` 與 `free_text`）；`design-spec` 要有 `density`（`presentation`｜`balanced`｜`text`）、`palette`（七個角色 `background`／`secondary_bg`／`primary`／`accent`／`secondary_accent`／`text`／`muted`，皆為大寫 `#RRGGBB`）、`type_scale`（九個角色 `cover`／`section`／`number`／`claim`／`title`／`subtitle`／`body`／`column`／`caption`，皆為正數）。任何一項不合就拒絕、不落地。計畫檔不是投影片內容，**不進 undo 歷史**（ADR-0018）。
+
+**成功 `data`**
+
+```json
+{ "path": "plan/outline.md" }
+```
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| `name` 不是 `outline` 或 `design-spec` | `failed` |
+| `content` 沒有 ```` ```json ```` 圍欄、JSON 無法解析、或任一欄位不合上述規則 | `failed` |
+
+**範例**
+
+```
+co-motion plan set pres-1 outline '```json
+{ "status": "draft", "mode": "pyramid", "pages": [ { "n": 1, "type": "cover", "rhythm": "anchor", "title": "封面" } ] }
+```
+
+## 第 1 頁
+封面的主張與聽眾變化。'
+```
+
+## `plan list`
+
+**語法**
+
+```
+co-motion plan list <presentation-id>
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+
+**成功 `data`**
+
+```json
+{ "plans": [ { "file": "plan/outline.md", "status": "draft" }, { "file": "plan/design-spec.md" } ] }
+```
+
+`outline.md` 在時先列並帶 `status`；`design-spec.md` 沒有 `status` 欄。沒有任何計畫檔時 `plans` 是空陣列，仍然成功。
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| 計畫檔存在但 JSON 段不合規則（例如被手動改壞） | `failed` |
+
+**範例**
+
+```
+co-motion plan list pres-1
+```
+
+## `plan delete`
+
+**語法**
+
+```
+co-motion plan delete <presentation-id> [name]
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `name`：位置引數，選填，`outline` 或 `design-spec`；省略時刪除整個 `plan/` 目錄。不進 undo 歷史。
+
+**成功 `data`**
+
+```json
+{}
+```
+
+與 `template delete` 相同：`data` 欄位完全不存在，只印 `message`。
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| `name` 不是 `outline` 或 `design-spec` | `failed` |
+| 指定的計畫檔不存在，或省略 `name` 時沒有 `plan/` 目錄 | `not-found` |
+
+**範例**
+
+```
+co-motion plan delete pres-1
+co-motion plan delete pres-1 outline
+```
+
+## `validate`
+
+**語法**
+
+```
+co-motion validate <presentation-id> [slide-path]
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `slide-path`：位置引數，選填，必須在 `slides` 清單裡；省略時驗整份（含跨頁規則）。
+
+規則寫死在 Rust 裡，門檻依 `plan/design-spec.md` 的 `density` 選組（presentation：標題 ≤ 15 字、要點 ≤ 18 字且 1 行、3～5 條、全頁 ≤ 600 字；balanced：20／28／2 行／3～6／800；text：24／40／3 行／2～7／1000；字數不含空白，`{{ … }}` 動態文字佔位算 0 字），配色與字級表也從它讀；頁數、頁型、節奏從 `plan/outline.md` 讀。沒有計畫檔時只跑不需要計畫的規則（`geometry.*`、`structure.background`、`structure.notes`、`taboo.*`），`message` 加註「（沒有 plan/ 計畫檔，只驗幾何與骨架）」。`rule` 的固定值：`text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total`、`focus.single-title`、`geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap`、`style.font-size`、`style.text-fill`、`style.shape-fill`、`structure.background`、`structure.notes`、`structure.template`、`roster.page-count`、`roster.page-type`、`rhythm.breathing-cards`、`motion.transition`、`motion.enter`、`structure.scrim`、`taboo.thank-you`、`taboo.duplicate-cover`、`taboo.stroke`。字級 ≤ 字級表 `caption` 的文字框（頁尾）允許延伸到畫布底 − 16·k，其餘文字框到畫布底 − 72·k。`structure.scrim`（需 design-spec）：頁面有 `data-comot-role="background"` 元素時，每個文字框（字級 ≤ caption 的頁尾與字級 ≥ claim 的大字除外）必須完全落在一個文件順序在它之前、fill 為 background 或 secondary_bg、opacity ≥ 0.6 的 rect 之內。背景圖元素本身不受任何規則約束。
+
+**成功 `data`**
+
+```json
+{ "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "23 字", "limit": "≤ 18 字", "message": "第 2 頁要點第 3 條 23 字，上限 18 字" } ] }
+```
+
+`element` 對整頁規則為 `null`。`message` 是 `共 N 頁，M 個錯誤`。**有錯誤時 exit code 是 1**，但 `ok` 仍為 `true`、報告照常印出——與 `effect list` 的空清單同理，非零代表「有發現」，不是故障。
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| `slide-path` 不在 `slides` 清單裡 | `not-found` |
+| 計畫檔存在但 JSON 段不合規則 | `failed` |
+
+**範例**
+
+```
+co-motion validate pres-1
+co-motion validate pres-1 slides/003.svg
+```
+
 ## `effect add`
 
 **語法**
@@ -2796,6 +2944,7 @@ co-motion slide render pres-abc123 slides/001.svg
 
 ```
 co-motion asset import <presentation-id> <source> [--as csv]
+co-motion asset import <presentation-id> --svg <markup> --name <檔名.svg>
 ```
 
 **參數**
@@ -2803,6 +2952,8 @@ co-motion asset import <presentation-id> <source> [--as csv]
 - `presentation-id`：字串，必填。
 - `source`：字串，必填。開頭是 `http://` 或 `https://` 時視為 URL，一律用 `fetch` 下載；否則視為本機檔案系統路徑，用 `readFile` 讀取。**相對路徑合法，相對於 CLI 行程當下的工作目錄解析**（這是凍結現行行為的定案；`packages/server/agent-workdir/reference/commands.md` 目前寫的「本機絕對路徑」是敘述不精確，不是契約，本規格才是準確描述）。
 - `--as`：字串，選填。唯一合法值是 `csv`，代表這是一筆資料資產而非媒體資產；給其他任何值都直接失敗。省略 `--as` 時走既有的媒體匯入路徑（byte-for-byte 相容現行行為）。
+- `--svg`：字串，選填（#303 §13）。從命令列內容直接建立一個 SVG 資產，與 `source` 位置參數、`--as` 互斥。內容根節點必須是 `<svg>`，不允許 `<script>`／`<foreignObject>`。
+- `--name`：字串，只能與 `--svg` 一起給、且必填。只允許 `[A-Za-z0-9_-]+\.svg`；寫入 `assets/<檔名>`，**不做衝突改名**：同名已存在時失敗（背景配方靠路徑重用，靜默改名會破壞重用）。成功 `data` 為 `{ "path": "assets/<檔名>", "mimeType": "image/svg+xml", "kind": "image" }`。
 
 **成功 `data`**
 
@@ -2830,6 +2981,7 @@ co-motion asset import <presentation-id> <source> [--as csv]
 | URL 回應非 2xx 狀態碼 | `failed` |
 | `--as` 給的值不是 `csv` | `failed` |
 | 檔頭位元組不符合任何支援的媒體格式（且未給 `--as csv`） | `failed` |
+| `--svg` 與 `<source>` 或 `--as` 同時給；`--svg` 缺 `--name`；`--name` 不合格式；`--svg` 根節點不是 `<svg>` 或含禁用元素；`assets/<檔名>` 已存在 | `failed` |
 
 > **本機來源檔案不存在 → `not-found`**：理由是與 `chart data set --csv` 讀本機檔案時 ENOENT 對應到 `CoMotionNotFoundError`（`not-found`）的慣例保持一致。
 
@@ -2844,12 +2996,13 @@ co-motion asset import pres-abc123 ./sales.csv --as csv
 **語法**
 
 ```
-co-motion slide add <presentation-id> [--template <template-path>] [--at <index>]
+co-motion slide add <presentation-id> [--template <template-path>] [--svg <markup>] [--at <index>]
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
+- `--svg`：選填字串，一整頁的 SVG 標記（#303，ADR-0018）：agent 一次寫完一頁，CoMotion 寫入前跑 ingest——根節點必須是 `<svg>`；`viewBox` 省略時補成畫布尺寸、與畫布不同則拒絕；每個直接放在根 `<svg>` 底下、帶 `data-comot-text-width` 的 `<text>`「文字框宣告」會被換成真正的文字框（與 `textbox add` 產出相同的 `<g>` 結構：`x`／`y` 是左上角、內容以換行分段、`data-comot-list` 每段一個 token、`data-comot-text-align` 對齊、`font-size` 省略為 24、`font-family` 省略為 Noto Sans TC；宣告裡不得有子元素）；接著跑與 `convert` 相同的正規化（裸圖元包 `<g>`、補 id、transform 搬上容器），`<script>`／`<foreignObject>`、重複 id 等不可修的問題一律拒絕、不落地。`<defs>`、`<style>`、漸層、濾鏡、clipPath、`path` 皆允許。agent 可以自己給 `id`。與 `--template` 互斥。
 - `--template`：選填字串，`project.json` 的 `templates` 清單裡某個範本的虛擬路徑；省略則新增一張空白投影片（依簡報目前畫布尺寸產生一個沒有任何元素的合規 `<svg>`）。套用範本時，範本內容會逐位元組複製，但每個元素的 `id`（以及引用這些 id 的效果/留言 `target`）都會重新產生，避免與範本本身或其他已套用過的投影片重複。
 - `--at`：選填，數字字串；省略則附加在最後一張投影片之後。必須是整數，且落在 `0`（清單最前）到「目前投影片總數」（清單最後，等同附加）之間，含端點；只有解析階段檢查「是否為合法數字」，是否為整數與是否落在範圍內是在實際執行時才驗證。
 
@@ -2859,7 +3012,11 @@ co-motion slide add <presentation-id> [--template <template-path>] [--at <index>
 { "slidePath": "slides/003.svg" }
 ```
 
-新投影片的虛擬路徑，檔名取「目前 `slides/` 目錄下最小尚未使用的 `NNN.svg` 編號」，不是單純遞增。
+新投影片的虛擬路徑，檔名取「目前 `slides/` 目錄下最小尚未使用的 `NNN.svg` 編號」，不是單純遞增。帶 `--svg` 時多一個 `elementIds`（文件順序的所有頂層容器 id）：
+
+```json
+{ "slidePath": "slides/003.svg", "elementIds": ["el-title", "el-a1b2c3d4e5f6"] }
+```
 
 **錯誤情境**
 
@@ -2869,12 +3026,90 @@ co-motion slide add <presentation-id> [--template <template-path>] [--at <index>
 | `--template` 指定的路徑完全不存在（既不是範本也不是投影片） | `not-found` |
 | `--template` 指定的路徑其實是一張投影片而不是範本 | `failed` |
 | `--at` 不是整數，或不在 `0` 到目前投影片總數之間 | `failed` |
+| `--svg` 與 `--template` 同時給 | `failed` |
+| `--svg` 的根節點不是 `<svg>`、`viewBox` 與畫布不符、文字框宣告含子元素或不在根 `<svg>` 底下、正規化不可修（`<script>`、重複 id…） | `failed` |
 
 **範例**
 
 ```
 co-motion slide add pres-abc123
 co-motion slide add pres-abc123 --template templates/001.svg --at 0
+co-motion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'
+```
+
+## `slide set`
+
+**語法**
+
+```
+co-motion slide set <presentation-id> <slide-path> --svg <markup>
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `slide-path`：字串，必填，`project.json` 的 `slides` 或 `templates` 清單裡的虛擬路徑。
+- `--svg`：字串，必填。一整頁的 SVG 標記，ingest 規則與 `slide add --svg` 完全相同。新標記沒有帶 `<metadata>` 時，沿用舊頁的 `<metadata>`（備忘稿、留言、效果、轉場都留下）；帶了就以新的為準。
+
+**成功 `data`**
+
+```json
+{ "slidePath": "slides/003.svg", "elementIds": ["el-title"] }
+```
+
+整頁覆寫走與 `text set` 相同的歷史紀錄路徑，`undo` 還原成覆寫前的整頁。
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| `slide-path` 不存在 | `not-found` |
+| `slide-path` 不在 `slides` 或 `templates` 清單裡 | `failed` |
+| 缺少 `--svg`，或 `--svg` 的內容未通過 ingest（同 `slide add --svg`） | `failed` |
+
+**範例**
+
+```
+co-motion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-comot-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'
+```
+
+## `slide background set`
+
+**語法**
+
+```
+co-motion slide background set <presentation-id> <slide-path> --asset <assets/檔名> [--opacity <0～1>]
+co-motion slide background set <presentation-id> <slide-path> --none
+```
+
+**參數**
+
+- `presentation-id`：字串，必填。
+- `slide-path`：字串，必填，`slides` 或 `templates` 清單裡的虛擬路徑。
+- `--asset`：字串，`assets/` 底下既有資產的虛擬路徑。在該頁**最底層**（`<metadata>` 之後、所有元素之前）放一個滿版 `<image href x=0 y=0 width=畫布寬 height=畫布高>`，容器固定為 `id="el-background"`、`data-comot-name="背景圖"`、`data-comot-role="background"`、`data-comot-lock="true"`。該頁已有 `data-comot-role="background"` 的元素時整個替換，不重複。
+- `--opacity`：數字，選填，0～1，寫在 `<image>` 上。
+- `--none`：移除該元素。`--asset` 與 `--none` 必須且只能給一個。
+
+`slide add --svg`／`slide set --svg` 的內容裡若已含 `data-comot-role="background"` 的容器，原樣保留並補上鎖定。這個寫入進入復原歷史。
+
+**成功 `data`**
+
+`--asset`：`{ "elementId": "el-background" }`；`--none`：無 `data`。
+
+**錯誤情境**
+
+| 情境 | `failureKind` |
+|---|---|
+| `presentation-id` 不存在 | `not-found` |
+| `slide-path` 不存在；`--asset` 指向的檔案不存在；`--none` 時該頁沒有背景圖 | `not-found` |
+| `slide-path` 不在 `slides` 或 `templates` 清單裡；`--asset` 不在 `assets/` 底下；`--opacity` 超出 0～1；`--asset`／`--none` 未擇一 | `failed` |
+
+**範例**
+
+```
+co-motion slide background set pres-abc123 slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8
+co-motion slide background set pres-abc123 slides/002.svg --none
 ```
 
 ## `slide delete`

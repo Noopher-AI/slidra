@@ -120,6 +120,21 @@ describe("startChatStream", () => {
     expect(started.working).toBe(false);
   });
 
+  it("#303: a cancelled turn appends the 「已停止」 system line and marks unfinished commands interrupted", () => {
+    started = start();
+    started.fake.emit("chat-chunk", { text: "開始" });
+    started.fake.emit("chat-command", { toolCallId: "t1", command: "co-motion slide add x", status: "in_progress" });
+
+    started.fake.emit("chat-done", { stopReason: "cancelled" });
+
+    expect(started.working).toBe(false);
+    expect(started.messages).toEqual([
+      { id: 0, role: "agent", text: "開始" },
+      { id: 1, role: "command", toolCallId: "t1", command: "co-motion slide add x", status: "in_progress", interrupted: true },
+      { id: 2, role: "system", text: "已停止" },
+    ]);
+  });
+
   it("clears working when the stream drops mid-turn, so the author is not left in a fake 「工作中」", () => {
     started = start();
     started.fake.emit("chat-chunk", { text: "好的" });

@@ -47,6 +47,33 @@ impl Fixture {
         Fixture { home, workspace }
     }
 
+    /// `new` creates no slides (ADR-0018); the tests below address
+    /// `slides/001.svg` and its first `el-…` element, so seed one text box
+    /// there. `textbox add` writes a compliant `<g id="el-…">` container, so
+    /// a later `convert` is a no-op on it.
+    fn seed_slide(&self, id: &str) {
+        let add = self.run_rust(&["slide", "add", id]);
+        assert!(add.status.success(), "setup: `slide add` failed: {add:?}");
+        let textbox = self.run_rust(&[
+            "textbox",
+            "add",
+            id,
+            "slides/001.svg",
+            "--x",
+            "80",
+            "--y",
+            "80",
+            "--width",
+            "600",
+            "--text",
+            "標題",
+        ]);
+        assert!(
+            textbox.status.success(),
+            "setup: `textbox add` failed: {textbox:?}"
+        );
+    }
+
     fn run_rust(&self, args: &[&str]) -> Output {
         Command::new(rust_bin())
             .args(args)
@@ -92,6 +119,73 @@ fn extract_first_element_id(svg: &str) -> String {
         .expect("id attribute value must be closed by a quote")
         + start;
     format!("el-{}", &svg[start..end])
+}
+
+/// #303: parallel invocations against one presentation are serialised by
+/// the per-presentation lock (`workspace::lock`). Before it, an agent
+/// issuing a dozen `effect add` calls at once had two processes
+/// read-modify-write the same slide and corrupt `<comot:effects>`.
+#[test]
+fn concurrent_effect_adds_on_one_slide_are_serialised_by_the_presentation_lock() {
+    let fixture = Fixture::new("concurrent-effects");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
+    let svg = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&svg));
+
+    const PARALLEL: usize = 8;
+    let children: Vec<std::process::Child> = (0..PARALLEL)
+        .map(|_| {
+            Command::new(rust_bin())
+                .args([
+                    "effect",
+                    "add",
+                    &id,
+                    "slides/001.svg",
+                    &element_id,
+                    "--family",
+                    "enter",
+                    "--effect",
+                    "fade",
+                ])
+                .env("CO_MOTION_HOME", &fixture.home)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("compiled co-motion binary must spawn")
+        })
+        .collect();
+    for child in children {
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "every parallel `effect add` must succeed: {output:?}"
+        );
+    }
+
+    let listed = fixture.run_rust(&["effect", "list", &id, "slides/001.svg", "--json"]);
+    assert!(listed.status.success(), "{listed:?}");
+    let envelope = json_envelope(&listed);
+    let effects = envelope["data"]["effects"]
+        .as_array()
+        .expect("effect list --json must carry data.effects");
+    assert_eq!(
+        effects.len(),
+        PARALLEL,
+        "all {PARALLEL} effects must have landed, none lost to a race: {envelope}"
+    );
+
+    // The lock file is the CLI's own furniture: never a virtual entry.
+    let ls = fixture.run_rust(&["ls", &id]);
+    assert!(ls.status.success(), "{ls:?}");
+    assert!(
+        !String::from_utf8_lossy(&ls.stdout).contains(".co-motion.lock"),
+        "{}",
+        String::from_utf8_lossy(&ls.stdout)
+    );
 }
 
 #[test]
@@ -157,6 +251,7 @@ fn no_takeover_table_command_ever_invokes_node() {
         open_output
     );
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
 
     let slide_svg_output = run_without_node(&["cat", &id, "slides/001.svg"]);
     assert!(
@@ -307,6 +402,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
     );
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
 
     let before = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
     let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
@@ -375,6 +471,7 @@ fn new_open_and_convert(fixture: &Fixture) -> String {
     );
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
     let convert_output = fixture.run_rust(&["convert", &id]);
     assert!(
         convert_output.status.success(),
@@ -943,6 +1040,7 @@ fn cat_json_multi_path_returns_ordered_array_shape() {
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_out);
+    fixture.seed_slide(&id);
 
     let single = fixture.run_rust(&["cat", &id, "project.json", "--json"]);
     assert!(single.status.success(), "{single:?}");
@@ -1063,6 +1161,7 @@ fn chart_table_asset_commands_are_dispatched_by_rust_not_node() {
     fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
     fixture.run_rust(&["convert", &id]);
 
     let create = fixture.run_rust(&["chart", "create", &id, "slides/001.svg"]);
@@ -1286,6 +1385,7 @@ fn asset_import_local_file_lands_under_assets_via_rust_binary() {
     fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
 
     let png_path = fixture.workspace.join("tiny.png");
     let png_bytes: &[u8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01];
@@ -1318,6 +1418,7 @@ fn chart_data_set_reads_csv_from_stdin() {
     fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
     fixture.run_rust(&["convert", &id]);
 
     let create = fixture.run_rust(&["chart", "create", &id, "slides/001.svg"]);
@@ -1508,6 +1609,7 @@ fn new_and_open(fixture: &Fixture) -> (String, String) {
     );
     let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
     // The freshly-created default template is not `assert_slide_compliant`
     // (its `<text>` runs bare, not wrapped in a `<g>` container) until
     // `convert` runs — every `element::edit`/`element::clipboard` command
@@ -1859,7 +1961,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
 /// Reads `docs/spec/cli.md` directly rather than shelling out — this test
 /// IS the parser, not a caller of one.
 #[test]
-fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
+fn cli_md_lists_exactly_the_87_rust_dispatched_commands() {
     let spec_path = repo_root().join("docs/spec/cli.md");
     let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
 
@@ -1901,8 +2003,8 @@ fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
     // independent extraction pass).
     let all_backtick_headings = heading_starts.len();
     assert_eq!(
-        all_backtick_headings, 81,
-        "docs/spec/cli.md must have exactly 81 backtick-H2 command headings, found {all_backtick_headings}"
+        all_backtick_headings, 87,
+        "docs/spec/cli.md must have exactly 87 backtick-H2 command headings, found {all_backtick_headings}"
     );
 
     let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
@@ -1919,19 +2021,25 @@ fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
         .collect();
     assert_eq!(
         commands::REGISTERED_COMMAND_NAMES.len(),
-        52,
-        "REGISTERED_COMMAND_NAMES must stay 52"
+        58,
+        "REGISTERED_COMMAND_NAMES must stay 58"
     );
     let takeover_total = commands::element::TAKEOVER.len()
         + commands::text::TAKEOVER.len()
         + commands::textbox::TAKEOVER.len()
         + commands::comment::TAKEOVER.len();
     assert_eq!(takeover_total, 29, "the four TAKEOVER tables must total 29");
-    assert_eq!(rust_names.len(), 81, "52 + 29 must equal 81");
+    assert_eq!(rust_names.len(), 87, "58 + 29 must equal 87");
 
-    let rust_set: std::collections::BTreeSet<&str> = rust_names.iter().map(String::as_str).collect();
-    let spec_set: std::collections::BTreeSet<&str> = spec_entries.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(spec_entries.len(), 81, "docs/spec/cli.md must have exactly 81 command entries");
+    let rust_set: std::collections::BTreeSet<&str> =
+        rust_names.iter().map(String::as_str).collect();
+    let spec_set: std::collections::BTreeSet<&str> =
+        spec_entries.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        spec_entries.len(),
+        87,
+        "docs/spec/cli.md must have exactly 87 command entries"
+    );
 
     let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
     let in_spec_not_in_rust: Vec<&str> = spec_set.difference(&rust_set).copied().collect();
@@ -1946,7 +2054,13 @@ fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
 
     // Every entry has all five required subsections, in order (spec's own
     // "命令條目格式說明": 語法 → 參數 → 成功 data → 錯誤情境 → 範例).
-    let required_markers = ["**語法**", "**參數**", "**成功 `data`**", "**錯誤情境**", "**範例**"];
+    let required_markers = [
+        "**語法**",
+        "**參數**",
+        "**成功 `data`**",
+        "**錯誤情境**",
+        "**範例**",
+    ];
     let mut problems: Vec<String> = Vec::new();
     for (name, body) in &spec_entries {
         let positions: Vec<Option<usize>> = required_markers.iter().map(|m| body.find(m)).collect();
@@ -1964,10 +2078,14 @@ fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
             }
         }
     }
-    assert!(problems.is_empty(), "subsection problems:\n{}", problems.join("\n"));
+    assert!(
+        problems.is_empty(),
+        "subsection problems:\n{}",
+        problems.join("\n")
+    );
 }
 
-/// Acceptance criterion 2 (plan §5 A4): every one of the 81 documented
+/// Acceptance criterion 2 (plan §5 A4): every one of the 85 documented
 /// commands is actually dispatched by Rust — `PATH` pointed at an empty
 /// directory (`no_takeover_table_command_ever_invokes_node`'s own
 /// technique) so a command that fell through to a Node fallback would fail
@@ -1980,7 +2098,10 @@ fn cli_md_lists_exactly_the_81_rust_dispatched_commands() {
 fn every_documented_command_is_dispatched_by_rust_without_node() {
     let fixture = Fixture::new("all-81-smoke");
 
-    let empty_path_dir = env::temp_dir().join(format!("co-motion-all-81-empty-path-{}", std::process::id()));
+    let empty_path_dir = env::temp_dir().join(format!(
+        "co-motion-all-81-empty-path-{}",
+        std::process::id()
+    ));
     fs::create_dir_all(&empty_path_dir).unwrap();
 
     let run_without_node = |args: &[&str]| -> Output {
@@ -1993,13 +2114,25 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
     };
 
     let comot_path = fixture.workspace.join("smoke.comot");
-    let new_out = run_without_node(&["new", comot_path.to_str().unwrap(), "--name", "81 條命令煙霧測試"]);
+    let new_out = run_without_node(&[
+        "new",
+        comot_path.to_str().unwrap(),
+        "--name",
+        "87 條命令煙霧測試",
+    ]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = run_without_node(&["open", comot_path.to_str().unwrap()]);
-    assert!(open_out.status.success(), "setup: `open` failed: {open_out:?}");
+    assert!(
+        open_out.status.success(),
+        "setup: `open` failed: {open_out:?}"
+    );
     let id = extract_id(&open_out);
+    fixture.seed_slide(&id);
     let convert_out = run_without_node(&["convert", &id]);
-    assert!(convert_out.status.success(), "setup: `convert` failed: {convert_out:?}");
+    assert!(
+        convert_out.status.success(),
+        "setup: `convert` failed: {convert_out:?}"
+    );
     let cat_out = run_without_node(&["cat", &id, "slides/001.svg"]);
     assert!(cat_out.status.success(), "setup: `cat` failed: {cat_out:?}");
     let element_id = extract_first_element_id(&String::from_utf8_lossy(&cat_out.stdout));
@@ -2009,7 +2142,8 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
     // slot to reach its own dispatch arm rather than erroring out of argv
     // parsing before that (which would trivially "succeed" at "not
     // invoking node" without proving anything about dispatch).
-    let renderer_commands: std::collections::BTreeSet<&str> = ["cat", "ls", "slide render"].into_iter().collect();
+    let renderer_commands: std::collections::BTreeSet<&str> =
+        ["cat", "ls", "slide render"].into_iter().collect();
     let mut failures: Vec<String> = Vec::new();
     let mut renderer_shape_failures: Vec<String> = Vec::new();
 
@@ -2025,13 +2159,13 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
-    assert_eq!(rust_names.len(), 81);
+    assert_eq!(rust_names.len(), 87);
 
     for name in &rust_names {
         let tokens: Vec<&str> = name.split(' ').collect();
         // Build a minimally-plausible argv: every command's first
         // positional after its own verb tokens is the presentation id
-        // (universal across all 81, per docs/spec/cli.md); `new` is the
+        // (universal across all 85, per docs/spec/cli.md); `new` is the
         // one exception (its first positional is a filesystem path, not an
         // id) and is already exercised by setup above, so it is skipped
         // here rather than special-cased into a false failure.
@@ -2073,7 +2207,9 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let looks_like_status_line_json = stdout.starts_with(|c: char| !c.is_whitespace())
                 && stdout.contains('\n')
-                && stdout[stdout.find('\n').unwrap_or(0)..].trim_start().starts_with('{');
+                && stdout[stdout.find('\n').unwrap_or(0)..]
+                    .trim_start()
+                    .starts_with('{');
             let is_renderer = renderer_commands.contains(name.as_str());
             if is_renderer && looks_like_status_line_json {
                 renderer_shape_failures.push(format!(
@@ -2111,8 +2247,12 @@ fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
     let new_out = fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
-    assert!(open_out.status.success(), "setup: `open` failed: {open_out:?}");
+    assert!(
+        open_out.status.success(),
+        "setup: `open` failed: {open_out:?}"
+    );
     let id = extract_id(&open_out);
+    fixture.seed_slide(&id);
 
     let big_bytes = vec![b'x'; 8 * 1024 * 1024];
     let work_dir = fixture.home.join("work").join(&id);
@@ -2137,7 +2277,514 @@ fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        !stderr.to_lowercase().contains("error") && !stderr.contains("EPIPE") && !stderr.contains("broken pipe"),
+        !stderr.to_lowercase().contains("error")
+            && !stderr.contains("EPIPE")
+            && !stderr.contains("broken pipe"),
         "stderr must not mention an error: {stderr:?}"
+    );
+}
+
+/// #303: `plan set` validates before writing and never records history;
+/// `validate` exits 1 with findings and 0 (with the no-plan suffix) once
+/// the plan files are gone.
+#[test]
+fn plan_set_then_validate_round_trip_via_rust_binary() {
+    let fixture = Fixture::new("plan-validate");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
+
+    let design_spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n正文\n";
+    let bad_spec = design_spec.replace("\"presentation\"", "\"loose\"");
+    let rejected = fixture.run_rust(&["plan", "set", &id, "design-spec", &bad_spec]);
+    assert_eq!(rejected.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr).contains("density"),
+        "{rejected:?}"
+    );
+    let listed = fixture.run_rust(&["plan", "list", &id, "--json"]);
+    assert_eq!(
+        json_envelope(&listed)["data"]["plans"],
+        serde_json::json!([]),
+        "a rejected set must not land"
+    );
+
+    let written = fixture.run_rust(&["plan", "set", &id, "design-spec", design_spec]);
+    assert!(written.status.success(), "{written:?}");
+    assert_eq!(
+        json_envelope(&fixture.run_rust(&[
+            "plan",
+            "set",
+            &id,
+            "design-spec",
+            design_spec,
+            "--json"
+        ]))["data"]["path"],
+        "plan/design-spec.md"
+    );
+    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"標題\" } ] }\n```\n";
+    assert!(
+        fixture
+            .run_rust(&["plan", "set", &id, "outline", outline])
+            .status
+            .success()
+    );
+    let listed = json_envelope(&fixture.run_rust(&["plan", "list", &id, "--json"]));
+    assert_eq!(
+        listed["data"]["plans"],
+        serde_json::json!([{ "file": "plan/outline.md", "status": "draft" }, { "file": "plan/design-spec.md" }])
+    );
+    let cat = fixture.run_rust(&["cat", &id, "plan/outline.md"]);
+    assert!(
+        String::from_utf8_lossy(&cat.stdout).starts_with("```json"),
+        "{cat:?}"
+    );
+    let undo = fixture.run_rust(&["undo", &id]);
+    // The seeded slide/textbox are the only history; three `plan set`s added none.
+    assert!(undo.status.success(), "{undo:?}");
+    fixture.run_rust(&["redo", &id]);
+
+    let report = fixture.run_rust(&["validate", &id, "--json"]);
+    assert_eq!(report.status.code(), Some(1), "{report:?}");
+    let envelope = json_envelope(&report);
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(
+        envelope["message"],
+        "共 1 頁，".to_string()
+            + &envelope["data"]["errors"]
+                .as_array()
+                .unwrap()
+                .len()
+                .to_string()
+            + " 個錯誤"
+    );
+    let rules: Vec<&str> = envelope["data"]["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["rule"].as_str().unwrap())
+        .collect();
+    assert!(rules.iter().any(|r| r.starts_with("text.")), "{rules:?}");
+    assert!(rules.contains(&"structure.template"), "{rules:?}");
+
+    let deleted = fixture.run_rust(&["plan", "delete", &id]);
+    assert!(deleted.status.success(), "{deleted:?}");
+    assert_eq!(
+        fixture.run_rust(&["plan", "delete", &id]).status.code(),
+        Some(1),
+        "second delete is not-found"
+    );
+    let report = fixture.run_rust(&["validate", &id, "--json"]);
+    let envelope = json_envelope(&report);
+    let message = envelope["message"].as_str().unwrap();
+    assert!(
+        message.ends_with("（沒有 plan/ 計畫檔，只驗幾何與骨架）"),
+        "{message}"
+    );
+    let rules: Vec<&str> = envelope["data"]["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["rule"].as_str().unwrap())
+        .collect();
+    assert!(
+        !rules
+            .iter()
+            .any(|r| r.starts_with("text.") || r.starts_with("style.")),
+        "{rules:?}"
+    );
+}
+
+/// #303 phase two: `slide add --svg` ingests an agent-authored page (text
+/// box declaration → real text box, bleeding ellipse + `<defs>` gradient
+/// allowed), `validate` raises no geometry/stroke finding for the
+/// decoration, and `slide set --svg` keeps the notes set before it.
+/// #303 §13: an SVG asset built from inline markup, set as a page's locked
+/// background at index 0, checked by `validate`'s `structure.scrim`, then
+/// removed with `--none`.
+#[test]
+fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
+    let fixture = Fixture::new("slide-background");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+
+    let bg_svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><defs><linearGradient id="g"><stop offset="0" stop-color="#4F8DFF"/><stop offset="1" stop-color="#101418"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/></svg>"##;
+    let imported = fixture.run_rust(&[
+        "asset",
+        "import",
+        &id,
+        "--svg",
+        bg_svg,
+        "--name",
+        "bg-mesh.svg",
+        "--json",
+    ]);
+    assert!(imported.status.success(), "{imported:?}");
+    assert_eq!(
+        json_envelope(&imported)["data"]["path"],
+        "assets/bg-mesh.svg"
+    );
+    let cat_asset = fixture.run_rust(&["cat", &id, "assets/bg-mesh.svg"]);
+    assert_eq!(String::from_utf8_lossy(&cat_asset.stdout), bg_svg);
+    // Same name again is refused, not silently renamed.
+    let again = fixture.run_rust(&[
+        "asset",
+        "import",
+        &id,
+        "--svg",
+        bg_svg,
+        "--name",
+        "bg-mesh.svg",
+    ]);
+    assert!(!again.status.success());
+    assert!(String::from_utf8_lossy(&again.stderr).contains("已存在"));
+    let bad_name = fixture.run_rust(&[
+        "asset",
+        "import",
+        &id,
+        "--svg",
+        bg_svg,
+        "--name",
+        "bad name.svg",
+    ]);
+    assert!(!bad_name.status.success());
+    let scripted = fixture.run_rust(&[
+        "asset",
+        "import",
+        &id,
+        "--svg",
+        "<svg><script>x</script></svg>",
+        "--name",
+        "evil.svg",
+    ]);
+    assert!(!scripted.status.success());
+
+    // A page with a plan so validate runs the scrim rule.
+    let outline = "```json\n{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"on\", \"pages\": [ { \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" } ] }\n```\n";
+    let spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 72, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n";
+    assert!(
+        fixture
+            .run_rust(&["plan", "set", &id, "outline", outline])
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run_rust(&["plan", "set", &id, "design-spec", spec])
+            .status
+            .success()
+    );
+
+    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">n</comot:notes><comot:transition xmlns:comot="https://co-motion.dev/ns" enter="fade" enter-duration="0.3"/><comot:effects xmlns:comot="https://co-motion.dev/ns"><comot:effect target="el-title" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></comot:effects></metadata><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text><text id="el-body" data-comot-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-comot-list="bullet bullet bullet">一
+二
+三</text></svg>"##;
+    assert!(
+        fixture
+            .run_rust(&["slide", "add", &id, "--svg", page])
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run_rust(&[
+                "template",
+                "add",
+                &id,
+                "--from",
+                "slides/001.svg",
+                "--name",
+                "要點頁"
+            ])
+            .status
+            .success()
+    );
+    let before = fixture.run_rust(&["validate", &id, "--json"]);
+    assert!(
+        before.status.success(),
+        "no background yet, no scrim needed: {before:?}"
+    );
+
+    let set = fixture.run_rust(&[
+        "slide",
+        "background",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--asset",
+        "assets/bg-mesh.svg",
+        "--opacity",
+        "0.8",
+        "--json",
+    ]);
+    assert!(set.status.success(), "{set:?}");
+    assert_eq!(json_envelope(&set)["data"]["elementId"], "el-background");
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    let bg_pos = cat
+        .find("id=\"el-background\"")
+        .expect("background present");
+    let title_pos = cat.find("id=\"el-title\"").unwrap();
+    assert!(
+        bg_pos < title_pos,
+        "background must be the first element: {cat}"
+    );
+    assert!(
+        cat.contains("data-comot-role=\"background\" data-comot-lock=\"true\""),
+        "{cat}"
+    );
+    assert!(
+        cat.contains("href=\"../assets/bg-mesh.svg\" opacity=\"0.8\""),
+        "{cat}"
+    );
+    // Locked: a plain move is refused.
+    let moved = fixture.run_rust(&[
+        "element",
+        "move",
+        &id,
+        "slides/001.svg",
+        "el-background",
+        "--dx",
+        "1",
+        "--dy",
+        "0",
+    ]);
+    assert!(!moved.status.success(), "{moved:?}");
+
+    // Unscrimmed body copy over a background is a finding; a panel clears it.
+    let unscrimmed = fixture.run_rust(&["validate", &id, "--json"]);
+    assert_eq!(unscrimmed.status.code(), Some(1));
+    let rules: Vec<String> = json_envelope(&unscrimmed)["data"]["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["rule"].as_str().unwrap().to_string())
+        .collect();
+    assert!(rules.iter().all(|r| r == "structure.scrim"), "{rules:?}");
+    assert!(rules.len() >= 2, "{rules:?}");
+    let panel = fixture.run_rust(&[
+        "element",
+        "insert",
+        "rect",
+        &id,
+        "slides/001.svg",
+        "--x",
+        "80",
+        "--y",
+        "60",
+        "--width",
+        "1120",
+        "--height",
+        "320",
+        "--fill",
+        "#1B2129",
+    ]);
+    assert!(panel.status.success(), "{panel:?}");
+    let panel_id = extract_id_field(&panel.stdout, "elementId");
+    assert!(
+        fixture
+            .run_rust(&[
+                "element",
+                "order",
+                &id,
+                "slides/001.svg",
+                &panel_id,
+                "back",
+                "--force"
+            ])
+            .status
+            .success()
+    );
+    // `back` puts it behind everything, including the locked background;
+    // one step up puts it right above the background, still before the text.
+    assert!(
+        fixture
+            .run_rust(&[
+                "element",
+                "order",
+                &id,
+                "slides/001.svg",
+                &panel_id,
+                "up",
+                "--force"
+            ])
+            .status
+            .success()
+    );
+    let scrimmed = fixture.run_rust(&["validate", &id, "--json"]);
+    assert!(scrimmed.status.success(), "{scrimmed:?}");
+
+    // Setting again replaces; --none removes.
+    assert!(
+        fixture
+            .run_rust(&[
+                "slide",
+                "background",
+                "set",
+                &id,
+                "slides/001.svg",
+                "--asset",
+                "assets/bg-mesh.svg"
+            ])
+            .status
+            .success()
+    );
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert_eq!(cat.matches("data-comot-role=\"background\"").count(), 1);
+    assert!(!cat.contains("opacity=\"0.8\""));
+    let removed = fixture.run_rust(&[
+        "slide",
+        "background",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--none",
+    ]);
+    assert!(removed.status.success(), "{removed:?}");
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert!(!cat.contains("el-background"));
+    let none_again = fixture.run_rust(&[
+        "slide",
+        "background",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--none",
+    ]);
+    assert!(!none_again.status.success());
+    // Undo restores the background.
+    assert!(fixture.run_rust(&["undo", &id]).status.success());
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert!(cat.contains("el-background"), "{cat}");
+}
+
+#[test]
+fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
+    let fixture = Fixture::new("slide-svg");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let open_output = fixture.run_rust(&["open", comot_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+
+    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><defs><linearGradient id="glow"><stop offset="0" stop-color="#4F8DFF"/></linearGradient></defs><ellipse cx="1180" cy="60" rx="420" ry="420" fill="url(#glow)" opacity="0.12"/><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text><text data-comot-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-comot-list="bullet bullet bullet">一
+二
+三</text></svg>"##;
+    let added = fixture.run_rust(&["slide", "add", &id, "--svg", page, "--json"]);
+    assert!(added.status.success(), "{added:?}");
+    let envelope = json_envelope(&added);
+    assert_eq!(envelope["data"]["slidePath"], "slides/001.svg");
+    let ids = envelope["data"]["elementIds"].as_array().unwrap();
+    assert_eq!(ids.len(), 3, "{envelope}");
+    assert_eq!(ids[1], "el-title");
+
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert!(cat.contains(r#"viewBox="0 0 1280 720""#), "{cat}");
+    assert!(cat.contains("data-comot-text-height="), "{cat}");
+    assert!(cat.contains("<tspan"), "{cat}");
+    assert!(
+        cat.contains(r#"data-comot-list="bullet bullet bullet""#),
+        "{cat}"
+    );
+    assert!(cat.contains("data-comot-list-marker"), "{cat}");
+    assert!(cat.contains("<defs>"), "{cat}");
+    assert!(cat.contains(r#"opacity="0.12""#), "{cat}");
+    assert!(
+        !cat.contains(r#"<text data-comot-text-width"#),
+        "declaration must not be stored: {cat}"
+    );
+
+    // A bleeding, gradient-filled ellipse is decoration: no geometry/stroke/fill finding.
+    let report = fixture.run_rust(&["validate", &id, "--json"]);
+    let findings = json_envelope(&report)["data"]["errors"].clone();
+    let rules: Vec<String> = findings
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["rule"].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        !rules
+            .iter()
+            .any(|r| r.starts_with("geometry.") || r == "taboo.stroke" || r == "style.shape-fill"),
+        "{rules:?}"
+    );
+
+    // Rejections land nothing.
+    let bad = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r#"<svg viewBox="0 0 1920 1080"></svg>"#,
+    ]);
+    assert_eq!(bad.status.code(), Some(1), "{bad:?}");
+    assert!(
+        String::from_utf8_lossy(&bad.stderr).contains("viewBox"),
+        "{bad:?}"
+    );
+    let evil = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r#"<svg><script>1</script></svg>"#,
+    ]);
+    assert_eq!(evil.status.code(), Some(1), "{evil:?}");
+    let both = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        "<svg/>",
+        "--template",
+        "templates/001.svg",
+    ]);
+    assert_eq!(both.status.code(), Some(1), "{both:?}");
+    let listed =
+        String::from_utf8_lossy(&fixture.run_rust(&["ls", &id, "slides"]).stdout).into_owned();
+    assert_eq!(listed.matches(".svg").count(), 1, "{listed}");
+
+    // `slide set --svg` keeps the notes the old page carried.
+    let notes = fixture.run_rust(&["slide", "notes", "set", &id, "slides/001.svg", "講稿"]);
+    assert!(notes.status.success(), "{notes:?}");
+    let replaced = fixture.run_rust(&[
+        "slide",
+        "set",
+        &id,
+        "slides/001.svg",
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" fill="#F4F6F8">改寫</text></svg>"##,
+        "--json",
+    ]);
+    assert!(replaced.status.success(), "{replaced:?}");
+    assert_eq!(
+        json_envelope(&replaced)["data"]["elementIds"],
+        serde_json::json!(["el-title"])
+    );
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert!(cat.contains("講稿"), "notes must survive slide set: {cat}");
+    assert!(cat.contains("改寫"), "{cat}");
+    assert!(!cat.contains("<defs>"), "{cat}");
+    let undo = fixture.run_rust(&["undo", &id]);
+    assert!(undo.status.success(), "{undo:?}");
+    let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
+        .into_owned();
+    assert!(
+        cat.contains("<defs>"),
+        "undo must restore the page before slide set: {cat}"
+    );
+    let missing = fixture.run_rust(&["slide", "set", &id, "slides/001.svg"]);
+    assert_eq!(missing.status.code(), Some(1), "{missing:?}");
+    assert!(
+        String::from_utf8_lossy(&missing.stderr).contains("--svg"),
+        "{missing:?}"
     );
 }

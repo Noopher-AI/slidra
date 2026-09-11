@@ -13,6 +13,14 @@ export interface ChatPanelProps {
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /**
+   * #303: while `working` the Send button becomes a Stop button
+   * (`.chat-stop`) that asks the server to cancel the agent's turn; Esc
+   * in the textarea does the same. `stopping` disables it while the
+   * cancel request is in flight.
+   */
+  onStop(): void;
+  stopping: boolean;
   /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
   agent: AgentUiStatus;
   /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
@@ -54,6 +62,8 @@ export function ChatPanel({
   draft,
   onDraftChange,
   onSubmit,
+  onStop,
+  stopping,
   agent,
   onOpenSettings,
   comments,
@@ -172,6 +182,14 @@ export function ChatPanel({
       handleDraftKeyDown(event);
       return;
     }
+    // #303: Esc stops a running turn — unless the slash menu is open, in
+    // which case Esc keeps its existing meaning (dismiss the menu) and the
+    // author presses it once more to stop.
+    if (event.key === "Escape" && working && !showMenu) {
+      event.preventDefault();
+      if (!stopping) onStop();
+      return;
+    }
     handleSlashKeyDown(event);
   }
 
@@ -284,9 +302,22 @@ export function ChatPanel({
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
-            ↑
-          </button>
+          {working ? (
+            <button
+              type="button"
+              className="chat-stop"
+              aria-label="Stop"
+              title="停止 (Esc)"
+              disabled={stopping}
+              onClick={onStop}
+            >
+              停止
+            </button>
+          ) : (
+            <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
+              ↑
+            </button>
+          )}
         </div>
       </form>
     </aside>

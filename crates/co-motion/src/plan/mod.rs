@@ -1,0 +1,614 @@
+//! `plan/` — the presentation's own plan files (#303, ADR-0018):
+//! `plan/outline.md` (page roster, mode, gate questions, status) and
+//! `plan/design-spec.md` (density, palette, type scale). Each file opens
+//! with one ```` ```json ```` fence — the machine-readable part this module
+//! parses and validates — followed by free markdown for people and agents.
+//!
+//! Plan files are not slide content: writing/deleting them never touches
+//! the undo history (unlike every `slides/`/`templates/` write).
+
+use crate::errors::{CoMotionError, CoMotionResult};
+use crate::workspace::{self, virtual_fs};
+use serde_json::Value;
+use std::path::Path;
+
+pub const OUTLINE_PATH: &str = "plan/outline.md";
+pub const DESIGN_SPEC_PATH: &str = "plan/design-spec.md";
+
+pub const MODES: &[&str] = &[
+    "pyramid",
+    "narrative",
+    "instructional",
+    "showcase",
+    "briefing",
+];
+pub const PAGE_TYPES: &[&str] = &[
+    "cover", "section", "bullets", "compare", "number", "closing",
+];
+pub const RHYTHMS: &[&str] = &["anchor", "dense", "breathing"];
+pub const DENSITIES: &[&str] = &["presentation", "balanced", "text"];
+pub const ANIMATIONS: &[&str] = &["full", "minimal", "none"];
+pub const BACKGROUNDS: &[&str] = &["on", "off"];
+pub const VISUALS: &[&str] = &["editorial-tech"];
+pub const PALETTE_ROLES: &[&str] = &[
+    "background",
+    "secondary_bg",
+    "primary",
+    "accent",
+    "secondary_accent",
+    "text",
+    "muted",
+];
+pub const TYPE_ROLES: &[&str] = &[
+    "cover", "section", "number", "claim", "title", "subtitle", "body", "column", "caption",
+];
+
+/// `template add --name` for each page type (contract §5).
+pub fn template_name_for(page_type: &str) -> &'static str {
+    match page_type {
+        "cover" => "封面",
+        "section" => "章節頁",
+        "bullets" => "要點頁",
+        "compare" => "對照頁",
+        "number" => "大數字頁",
+        "closing" => "結語頁",
+        _ => "",
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanPage {
+    pub n: usize,
+    pub page_type: String,
+    pub rhythm: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutlinePlan {
+    pub status: String,
+    pub mode: String,
+    /// `full` | `minimal` | `none` (contract §9); absent reads as `full`.
+    pub animation: String,
+    /// `on` | `off` (contract §13); absent reads as `on`.
+    pub background: String,
+    pub pages: Vec<PlanPage>,
+    pub question_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DesignSpec {
+    pub density: String,
+    /// Visual language name (contract §9); absent reads as `editorial-tech`.
+    pub visual: String,
+    /// Role -> uppercase `#RRGGBB`, in `PALETTE_ROLES` order.
+    pub palette: Vec<(String, String)>,
+    /// Role -> size, in `TYPE_ROLES` order.
+    pub type_scale: Vec<(String, f64)>,
+}
+
+impl DesignSpec {
+    pub fn color(&self, role: &str) -> &str {
+        self.palette
+            .iter()
+            .find(|(r, _)| r == role)
+            .map(|(_, c)| c.as_str())
+            .expect("validated palette has every role")
+    }
+    pub fn size(&self, role: &str) -> f64 {
+        self.type_scale
+            .iter()
+            .find(|(r, _)| r == role)
+            .map(|(_, s)| *s)
+            .expect("validated type scale has every role")
+    }
+}
+
+/// Extracts the JSON inside the leading ```` ```json ```` fence. The fence
+/// must be the first non-blank content of the file.
+pub fn extract_json_fence(text: &str) -> CoMotionResult<Value> {
+    let trimmed = text.trim_start_matches(['\u{FEFF}', ' ', '\t', '\r', '\n']);
+    let Some(rest) = trimmed.strip_prefix("```json") else {
+        return Err(CoMotionError::invalid(
+            "計畫檔必須以 ```json 圍欄開頭（機器可讀段）",
+        ));
+    };
+    let Some(end) = rest.find("\n```") else {
+        return Err(CoMotionError::invalid(
+            "計畫檔的 ```json 圍欄沒有結尾的 ```",
+        ));
+    };
+    let body = &rest[..end];
+    serde_json::from_str(body)
+        .map_err(|err| CoMotionError::invalid(format!("計畫檔的 JSON 段無法解析：{err}")))
+}
+
+fn require_object<'a>(
+    value: &'a Value,
+    what: &str,
+) -> CoMotionResult<&'a serde_json::Map<String, Value>> {
+    value
+        .as_object()
+        .ok_or_else(|| CoMotionError::invalid(format!("{what} 必須是 JSON 物件")))
+}
+
+fn require_str<'a>(
+    obj: &'a serde_json::Map<String, Value>,
+    key: &str,
+    what: &str,
+) -> CoMotionResult<&'a str> {
+    obj.get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| CoMotionError::invalid(format!("{what} 缺少字串欄位 {key}")))
+}
+
+fn require_enum(value: &str, allowed: &[&str], what: &str) -> CoMotionResult<()> {
+    if allowed.contains(&value) {
+        Ok(())
+    } else {
+        Err(CoMotionError::invalid(format!(
+            "{what} 的值 {value} 不合法，只能是：{}",
+            allowed.join("、")
+        )))
+    }
+}
+
+/// Validates and reads `plan/outline.md`'s JSON section (contract §1).
+pub fn parse_outline(text: &str) -> CoMotionResult<OutlinePlan> {
+    let value = extract_json_fence(text)?;
+    let obj = require_object(&value, "outline")?;
+    let status = require_str(obj, "status", "outline")?;
+    require_enum(status, &["draft", "confirmed"], "outline.status")?;
+    let mode = require_str(obj, "mode", "outline")?;
+    require_enum(mode, MODES, "outline.mode")?;
+    let animation = match obj.get("animation") {
+        None => "full",
+        Some(value) => {
+            let animation = value
+                .as_str()
+                .ok_or_else(|| CoMotionError::invalid("outline.animation 必須是字串"))?;
+            require_enum(animation, ANIMATIONS, "outline.animation")?;
+            animation
+        }
+    };
+    let background = match obj.get("background") {
+        None => "on",
+        Some(value) => {
+            let background = value
+                .as_str()
+                .ok_or_else(|| CoMotionError::invalid("outline.background 必須是字串"))?;
+            require_enum(background, BACKGROUNDS, "outline.background")?;
+            background
+        }
+    };
+
+    let pages_value = obj
+        .get("pages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| CoMotionError::invalid("outline 缺少 pages 陣列"))?;
+    if pages_value.is_empty() {
+        return Err(CoMotionError::invalid("outline.pages 不可為空"));
+    }
+    let mut pages = Vec::with_capacity(pages_value.len());
+    for (index, page) in pages_value.iter().enumerate() {
+        let what = format!("outline.pages[{index}]");
+        let page = require_object(page, &what)?;
+        let n = page
+            .get("n")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| CoMotionError::invalid(format!("{what} 缺少整數欄位 n")))?;
+        if n as usize != index + 1 {
+            return Err(CoMotionError::invalid(format!(
+                "{what}.n 必須是 {}（從 1 連續遞增），實際是 {n}",
+                index + 1
+            )));
+        }
+        let page_type = require_str(page, "type", &what)?;
+        require_enum(page_type, PAGE_TYPES, &format!("{what}.type"))?;
+        let rhythm = require_str(page, "rhythm", &what)?;
+        require_enum(rhythm, RHYTHMS, &format!("{what}.rhythm"))?;
+        let title = require_str(page, "title", &what)?;
+        pages.push(PlanPage {
+            n: n as usize,
+            page_type: page_type.to_string(),
+            rhythm: rhythm.to_string(),
+            title: title.to_string(),
+        });
+    }
+
+    let mut question_count = 0;
+    if let Some(questions) = obj.get("questions") {
+        let questions = questions
+            .as_array()
+            .ok_or_else(|| CoMotionError::invalid("outline.questions 必須是陣列"))?;
+        let mut seen_ids: Vec<&str> = Vec::new();
+        for (index, question) in questions.iter().enumerate() {
+            let what = format!("outline.questions[{index}]");
+            let question = require_object(question, &what)?;
+            let id = require_str(question, "id", &what)?;
+            if id.is_empty()
+                || !id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(CoMotionError::invalid(format!(
+                    "{what}.id 只能是英數字、- 與 _：{id}"
+                )));
+            }
+            if seen_ids.contains(&id) {
+                return Err(CoMotionError::invalid(format!("{what}.id 重複：{id}")));
+            }
+            seen_ids.push(id);
+            require_str(question, "question", &what)?;
+            if let Some(note) = question.get("note") {
+                if !note.is_string() {
+                    return Err(CoMotionError::invalid(format!("{what}.note 必須是字串")));
+                }
+            }
+            let recommended = require_str(question, "recommended", &what)?;
+            let options = question
+                .get("options")
+                .and_then(Value::as_array)
+                .ok_or_else(|| CoMotionError::invalid(format!("{what} 缺少 options 陣列")))?;
+            if options.len() < 2 || options.len() > 4 {
+                return Err(CoMotionError::invalid(format!(
+                    "{what}.options 必須有 2 到 4 個選項，實際 {}",
+                    options.len()
+                )));
+            }
+            let mut values: Vec<&str> = Vec::new();
+            for (option_index, option) in options.iter().enumerate() {
+                let option_what = format!("{what}.options[{option_index}]");
+                let option = require_object(option, &option_what)?;
+                let value = require_str(option, "value", &option_what)?;
+                require_str(option, "label", &option_what)?;
+                values.push(value);
+            }
+            if !values.contains(&recommended) {
+                return Err(CoMotionError::invalid(format!(
+                    "{what}.recommended 必須是 options 之一的 value：{recommended}"
+                )));
+            }
+            if let Some(free_text) = question.get("free_text") {
+                if !free_text.is_boolean() {
+                    return Err(CoMotionError::invalid(format!(
+                        "{what}.free_text 必須是布林值"
+                    )));
+                }
+            }
+            question_count += 1;
+        }
+    }
+
+    Ok(OutlinePlan {
+        status: status.to_string(),
+        mode: mode.to_string(),
+        animation: animation.to_string(),
+        background: background.to_string(),
+        pages,
+        question_count,
+    })
+}
+
+fn is_hex_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..]
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('A'..='F').contains(&c))
+}
+
+/// Validates and reads `plan/design-spec.md`'s JSON section (contract §1).
+pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
+    let value = extract_json_fence(text)?;
+    let obj = require_object(&value, "design-spec")?;
+    let density = require_str(obj, "density", "design-spec")?;
+    require_enum(density, DENSITIES, "design-spec.density")?;
+    let visual = match obj.get("visual") {
+        None => "editorial-tech",
+        Some(value) => {
+            let visual = value
+                .as_str()
+                .ok_or_else(|| CoMotionError::invalid("design-spec.visual 必須是字串"))?;
+            require_enum(visual, VISUALS, "design-spec.visual")?;
+            visual
+        }
+    };
+
+    let palette_obj = obj
+        .get("palette")
+        .and_then(Value::as_object)
+        .ok_or_else(|| CoMotionError::invalid("design-spec 缺少 palette 物件"))?;
+    let mut palette = Vec::with_capacity(PALETTE_ROLES.len());
+    for role in PALETTE_ROLES {
+        let color = palette_obj
+            .get(*role)
+            .and_then(Value::as_str)
+            .ok_or_else(|| CoMotionError::invalid(format!("design-spec.palette 缺少 {role}")))?;
+        if !is_hex_color(color) {
+            return Err(CoMotionError::invalid(format!(
+                "design-spec.palette.{role} 必須是大寫的 #RRGGBB：{color}"
+            )));
+        }
+        palette.push((role.to_string(), color.to_string()));
+    }
+
+    let scale_obj = obj
+        .get("type_scale")
+        .and_then(Value::as_object)
+        .ok_or_else(|| CoMotionError::invalid("design-spec 缺少 type_scale 物件"))?;
+    let mut type_scale = Vec::with_capacity(TYPE_ROLES.len());
+    for role in TYPE_ROLES {
+        let size = scale_obj
+            .get(*role)
+            .and_then(Value::as_f64)
+            .ok_or_else(|| CoMotionError::invalid(format!("design-spec.type_scale 缺少 {role}")))?;
+        if !size.is_finite() || size <= 0.0 {
+            return Err(CoMotionError::invalid(format!(
+                "design-spec.type_scale.{role} 必須是大於 0 的數字"
+            )));
+        }
+        type_scale.push((role.to_string(), size));
+    }
+
+    Ok(DesignSpec {
+        density: density.to_string(),
+        visual: visual.to_string(),
+        palette,
+        type_scale,
+    })
+}
+
+/// Which plan file a `plan set`/`plan delete` name addresses.
+pub fn plan_path_for(name: &str) -> CoMotionResult<&'static str> {
+    match name {
+        "outline" => Ok(OUTLINE_PATH),
+        "design-spec" => Ok(DESIGN_SPEC_PATH),
+        other => Err(CoMotionError::invalid(format!(
+            "計畫檔名稱只能是 outline 或 design-spec：{other}"
+        ))),
+    }
+}
+
+/// Reads `plan/outline.md` if present. `Ok(None)` when the file is absent;
+/// a present-but-invalid file is an error (never silently ignored).
+pub fn read_outline(work_dir: &Path) -> CoMotionResult<Option<OutlinePlan>> {
+    match virtual_fs::read_virtual_file(work_dir, OUTLINE_PATH) {
+        Ok(text) => parse_outline(&text).map(Some),
+        Err(CoMotionError::NotFound(_)) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+pub fn read_design_spec(work_dir: &Path) -> CoMotionResult<Option<DesignSpec>> {
+    match virtual_fs::read_virtual_file(work_dir, DESIGN_SPEC_PATH) {
+        Ok(text) => parse_design_spec(&text).map(Some),
+        Err(CoMotionError::NotFound(_)) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+/// `plan set`: validates the content for `name`, then writes it — no undo
+/// history entry (plan files are not slide content).
+pub fn set_plan(id: &str, name: &str, content: &str) -> CoMotionResult<String> {
+    let path = plan_path_for(name)?;
+    match name {
+        "outline" => {
+            parse_outline(content)?;
+        }
+        _ => {
+            parse_design_spec(content)?;
+        }
+    }
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let plan_dir = work_dir.join("plan");
+    std::fs::create_dir_all(&plan_dir)
+        .map_err(|_| CoMotionError::invalid(format!("寫入檔案時發生錯誤：{path}")))?;
+    let file_name = path
+        .strip_prefix("plan/")
+        .expect("plan paths live under plan/");
+    std::fs::write(plan_dir.join(file_name), content)
+        .map_err(|_| CoMotionError::invalid(format!("寫入檔案時發生錯誤：{path}")))?;
+    Ok(path.to_string())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanListEntry {
+    pub file: String,
+    pub status: Option<String>,
+}
+
+/// `plan list`: the plan files present, outline first.
+pub fn list_plans(id: &str) -> CoMotionResult<Vec<PlanListEntry>> {
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let mut entries = Vec::new();
+    if let Some(outline) = read_outline(&work_dir)? {
+        entries.push(PlanListEntry {
+            file: OUTLINE_PATH.to_string(),
+            status: Some(outline.status),
+        });
+    }
+    if read_design_spec(&work_dir)?.is_some() {
+        entries.push(PlanListEntry {
+            file: DESIGN_SPEC_PATH.to_string(),
+            status: None,
+        });
+    }
+    Ok(entries)
+}
+
+/// `plan delete`: one named file, or the whole `plan/` directory when
+/// `name` is `None`. Not-found when there is nothing to delete.
+pub fn delete_plan(id: &str, name: Option<&str>) -> CoMotionResult<String> {
+    let work_dir = workspace::resolve_work_dir(id)?;
+    match name {
+        Some(name) => {
+            let path = plan_path_for(name)?;
+            let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, path)?;
+            std::fs::remove_file(&real_path)
+                .map_err(|_| CoMotionError::invalid(format!("刪除檔案時發生錯誤：{path}")))?;
+            Ok(path.to_string())
+        }
+        None => {
+            if virtual_fs::list_virtual_entries(&work_dir, "plan").is_err() {
+                return Err(CoMotionError::not_found("找不到目錄：plan/"));
+            }
+            std::fs::remove_dir_all(work_dir.join("plan"))
+                .map_err(|_| CoMotionError::invalid("刪除檔案時發生錯誤：plan/"))?;
+            Ok("plan/".to_string())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub(crate) const OUTLINE_OK: &str = "```json\n{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ { \"n\": 1, \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"封面\" }, { \"n\": 2, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"要點\" } ], \"questions\": [ { \"id\": \"mode\", \"question\": \"骨架\", \"note\": \"看法\", \"recommended\": \"pyramid\", \"options\": [ { \"value\": \"pyramid\", \"label\": \"結論先行\" }, { \"value\": \"narrative\", \"label\": \"故事線\" } ], \"free_text\": true } ] }\n```\n\n## 第 1 頁\n說明。\n";
+
+    pub(crate) const DESIGN_SPEC_OK: &str = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n正文。\n";
+
+    #[test]
+    fn parses_a_valid_outline() {
+        let plan = parse_outline(OUTLINE_OK).unwrap();
+        assert_eq!(plan.status, "draft");
+        assert_eq!(plan.mode, "pyramid");
+        assert_eq!(plan.pages.len(), 2);
+        assert_eq!(plan.pages[1].page_type, "bullets");
+        assert_eq!(plan.question_count, 1);
+    }
+
+    #[test]
+    fn parses_a_valid_design_spec() {
+        let spec = parse_design_spec(DESIGN_SPEC_OK).unwrap();
+        assert_eq!(spec.density, "presentation");
+        assert_eq!(spec.color("accent"), "#F5B942");
+        assert_eq!(spec.size("number"), 140.0);
+    }
+
+    #[test]
+    fn rejects_a_file_without_a_json_fence() {
+        let err = parse_outline("# 只有正文\n").unwrap_err();
+        assert!(err.message().contains("```json"), "{}", err.message());
+    }
+
+    #[test]
+    fn rejects_non_consecutive_page_numbers() {
+        let text = OUTLINE_OK.replace("\"n\": 2", "\"n\": 3");
+        let err = parse_outline(&text).unwrap_err();
+        assert!(err.message().contains("從 1 連續遞增"), "{}", err.message());
+    }
+
+    #[test]
+    fn rejects_an_unknown_page_type_mode_and_status() {
+        assert!(parse_outline(&OUTLINE_OK.replace("\"bullets\"", "\"timeline\"")).is_err());
+        assert!(
+            parse_outline(&OUTLINE_OK.replace("\"pyramid\", \"pages\"", "\"funnel\", \"pages\""))
+                .is_err()
+        );
+        assert!(parse_outline(&OUTLINE_OK.replace("\"draft\"", "\"done\"")).is_err());
+    }
+
+    #[test]
+    fn rejects_a_recommended_value_outside_the_options() {
+        let text = OUTLINE_OK.replace(
+            "\"recommended\": \"pyramid\"",
+            "\"recommended\": \"showcase\"",
+        );
+        let err = parse_outline(&text).unwrap_err();
+        assert!(err.message().contains("recommended"), "{}", err.message());
+    }
+
+    #[test]
+    fn rejects_too_few_options_and_duplicate_ids() {
+        let one_option =
+            OUTLINE_OK.replace(", { \"value\": \"narrative\", \"label\": \"故事線\" }", "");
+        assert!(
+            parse_outline(&one_option)
+                .unwrap_err()
+                .message()
+                .contains("2 到 4")
+        );
+        let dup = OUTLINE_OK.replace(
+            "\"questions\": [",
+            "\"questions\": [ { \"id\": \"mode\", \"question\": \"x\", \"recommended\": \"a\", \"options\": [ { \"value\": \"a\", \"label\": \"a\" }, { \"value\": \"b\", \"label\": \"b\" } ] },",
+        );
+        assert!(parse_outline(&dup).unwrap_err().message().contains("重複"));
+    }
+
+    #[test]
+    fn rejects_lowercase_or_missing_palette_colors_and_bad_sizes() {
+        let lower = DESIGN_SPEC_OK.replace("#F5B942", "#f5b942");
+        assert!(
+            parse_design_spec(&lower)
+                .unwrap_err()
+                .message()
+                .contains("#RRGGBB")
+        );
+        let missing = DESIGN_SPEC_OK.replace("\"muted\": \"#9AA7B4\"", "\"mutedd\": \"#9AA7B4\"");
+        assert!(
+            parse_design_spec(&missing)
+                .unwrap_err()
+                .message()
+                .contains("muted")
+        );
+        let zero = DESIGN_SPEC_OK.replace("\"body\": 24", "\"body\": 0");
+        assert!(
+            parse_design_spec(&zero)
+                .unwrap_err()
+                .message()
+                .contains("大於 0")
+        );
+        let density = DESIGN_SPEC_OK.replace("\"presentation\"", "\"dense\"");
+        assert!(parse_design_spec(&density).is_err());
+    }
+
+    #[test]
+    fn animation_and_visual_are_optional_enums() {
+        let outline = parse_outline(OUTLINE_OK).unwrap();
+        assert_eq!(outline.animation, "full");
+        let minimal = OUTLINE_OK.replacen("\"mode\"", "\"animation\": \"minimal\", \"mode\"", 1);
+        assert_eq!(parse_outline(&minimal).unwrap().animation, "minimal");
+        let bad = OUTLINE_OK.replacen("\"mode\"", "\"animation\": \"lots\", \"mode\"", 1);
+        assert!(
+            parse_outline(&bad)
+                .unwrap_err()
+                .message()
+                .contains("animation")
+        );
+        assert_eq!(outline.background, "on");
+        let off = OUTLINE_OK.replacen("\"mode\"", "\"background\": \"off\", \"mode\"", 1);
+        assert_eq!(parse_outline(&off).unwrap().background, "off");
+        let bad_bg = OUTLINE_OK.replacen("\"mode\"", "\"background\": \"maybe\", \"mode\"", 1);
+        assert!(
+            parse_outline(&bad_bg)
+                .unwrap_err()
+                .message()
+                .contains("background")
+        );
+
+        let spec = parse_design_spec(DESIGN_SPEC_OK).unwrap();
+        assert_eq!(spec.visual, "editorial-tech");
+        let named = DESIGN_SPEC_OK.replacen(
+            "\"density\"",
+            "\"visual\": \"editorial-tech\", \"density\"",
+            1,
+        );
+        assert_eq!(parse_design_spec(&named).unwrap().visual, "editorial-tech");
+        let bad =
+            DESIGN_SPEC_OK.replacen("\"density\"", "\"visual\": \"brutalist\", \"density\"", 1);
+        assert!(
+            parse_design_spec(&bad)
+                .unwrap_err()
+                .message()
+                .contains("visual")
+        );
+    }
+
+    #[test]
+    fn plan_path_names_are_fixed() {
+        assert_eq!(plan_path_for("outline").unwrap(), OUTLINE_PATH);
+        assert_eq!(plan_path_for("design-spec").unwrap(), DESIGN_SPEC_PATH);
+        assert!(plan_path_for("brief").is_err());
+    }
+}

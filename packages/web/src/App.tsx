@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, type AgentUiStatus } from "./agent-status.js";
+import { fromAgentResponse, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
@@ -18,6 +18,8 @@ import { StatusBar } from "./shell/StatusBar.js";
 import { SidePanel, type SideId, type SubId } from "./shell/side/SidePanel.js";
 import { ChatPanel } from "./shell/side/ChatPanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
+import { PlanGateModal } from "./shell/PlanGateModal.js";
+import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 
 /**
@@ -97,6 +99,18 @@ export function App() {
   // event (an agent's own `comment add`/`edit`/`delete` reaches here the
   // same way a GUI-originated write does, both go through the same file).
   const [comments, setComments] = useState<NumberedComment[]>([]);
+  // #303: the plan-confirmation gate's input — `plan/outline.md`'s parsed
+  // head, reloaded on mount and on every presentation-changed event the
+  // same way `comments` is (the agent's `plan set` is just another file
+  // write under the work dir, which changes.ts's recursive watcher
+  // already reports). `null` = no plan file, or one the parser rejected.
+  const [planOutline, setPlanOutline] = useState<PlanOutline | null>(null);
+  // The fence text of the draft the author last answered. The agent only
+  // rewrites the file (as `confirmed`, or as a new draft) some time after
+  // 確認/重做 is sent, so the very same draft would re-open the gate on the
+  // next unrelated presentation-changed event without this. A *different*
+  // draft (new fence text) is a new question and does re-open it.
+  const [answeredPlanFence, setAnsweredPlanFence] = useState<string | null>(null);
   // Read inside handlers registered from an effect that doesn't re-run on
   // every render (the overview-mount effect below, keyed on play-mode
   // only) — same "latest ref" reasoning as `canvasStateRef`'s own comment.
@@ -436,6 +450,9 @@ export function App() {
         // here the same way any other file write does — this is what
         // makes Pinned context update itself without a page refresh.
         void refreshComments();
+        // #303: `comotion-plan`'s `plan set` lands here too — this is what
+        // opens the plan-confirmation gate without a page refresh.
+        void refreshPlan();
       },
       onError: setLiveReloadError,
       onFrozenChange: setEditingFrozen,
@@ -480,6 +497,7 @@ export function App() {
     presentationLoaderRef.current?.load();
     void refreshSaveState();
     void refreshComments();
+    void refreshPlan();
     return () => {
       liveReload.stop();
       unsubscribe();
@@ -892,6 +910,9 @@ export function App() {
       const data: unknown = await response.json();
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
+      // #303: a turn already in flight (started before this tab loaded, or
+      // from another client) shows Stop right away.
+      setWorking(turnRunningFrom(data));
     } catch {
       setAgentStatus({ kind: "error", message: "無法取得 agent 狀態：連線已中斷" });
     } finally {
@@ -1316,17 +1337,48 @@ export function App() {
   }
 
   /**
-   * [E2.T8] §4.8: `OutlineModal`'s `Draft with agent` — a plain chat
-   * message with a fixed prefix naming the current page and the insertion
-   * point, sent through the exact same path a hand-typed message takes
-   * (architecture 拍板: no separate API, no client-side outline parsing).
+   * [E2.T8] §4.8 / #303: `OutlineModal`'s `Draft with agent` — a plain chat
+   * message invoking the shipped `/comotion-plan` skill (the same text an
+   * author would type by hand, so the skill really triggers — #248), with
+   * a fixed position line (contract §4), sent through the exact same path
+   * a hand-typed message takes (architecture 拍板: no separate API, no
+   * client-side outline parsing). The skill writes `plan/outline.md`,
+   * which opens `<PlanGateModal>` below; building only starts from that
+   * gate's 確認並建置. A presentation with no slides yet (ADR-0018: `new`
+   * creates none) is a real request too — not a no-op.
    */
   async function draftWithAgent(outline: string): Promise<void> {
-    const index = canvasState.currentIndex;
-    const slidePath = canvasState.slides[index];
-    if (slidePath === undefined) return; // No current slide to insert after — nothing this can mean.
-    const prefix = `【從大綱草擬新頁】請依下面的大綱，用 co-motion slide add 在第 ${index + 1} 頁（${slidePath}）之後依序插入新頁，每一行大綱一頁；縮排的行是上一行那一頁的副標。插入後請用 textbox add 把文字放進新頁。`;
-    await sendChatText(`${prefix}\n\n${outline}`);
+    const count = canvasState.slides.length;
+    const position =
+      count === 0
+        ? "【從大綱規劃】這份簡報還沒有任何投影片。"
+        : `【從大綱規劃】目前有 ${count} 頁，新頁接在最後。`;
+    await sendChatText(`/comotion-plan ${position}\n\n${outline}`);
+  }
+
+  /**
+   * #303: the chat panel's Stop button — `POST /api/chat/cancel`. The
+   * turn's actual end still arrives over the stream (`chat-done` with
+   * `stopReason: "cancelled"`, which chat-stream.ts turns into the 「已停止」
+   * line); this only asks. A 409 means the turn had already ended by the
+   * time the author pressed Stop — nothing to show beyond clearing the
+   * in-flight state, since the stream's own ending already did the rest.
+   */
+  const [stopping, setStopping] = useState(false);
+  async function stopChatTurn(): Promise<void> {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      const response = await fetch("/api/chat/cancel", { method: "POST" });
+      if (!response.ok && response.status !== 409) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "停止失敗");
+      }
+    } catch {
+      setError("停止失敗：連線已中斷");
+    } finally {
+      setStopping(false);
+    }
   }
 
   /** slidePath = the current slide's virtual path. */
@@ -1382,6 +1434,45 @@ export function App() {
     );
     overviewControllerRef.current?.setSlidesWithComments(withComments);
     if (errors.length > 0) controllerRef.current?.reportError(errors[0]);
+  }
+
+  /**
+   * #303: re-reads `plan/outline.md` through the same `/api/files/` route
+   * every other virtual path uses (it goes through `cat`, so a missing
+   * file is an honest 404 → no plan). A parse failure is logged by
+   * `parsePlanOutline` and treated as no plan — never thrown into render.
+   */
+  async function refreshPlan(): Promise<void> {
+    try {
+      const response = await fetch("/api/files/plan/outline.md");
+      if (response.status === 404) {
+        setPlanOutline(null);
+        return;
+      }
+      if (!response.ok) {
+        console.warn(`讀取 plan/outline.md 失敗：HTTP ${response.status}`);
+        return;
+      }
+      setPlanOutline(parsePlanOutline(await response.text()));
+    } catch (error) {
+      console.warn(`讀取 plan/outline.md 失敗：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** The gate's two agent-bound exits (contract §4) — remember the draft so the same file cannot re-open the gate while the agent works. */
+  function answerPlan(text: string): void {
+    if (planOutline) setAnsweredPlanFence(planOutline.fenceText);
+    void sendChatText(text);
+  }
+
+  /** 放棄: the one exit that needs no agent — deletes the whole `plan/`; the gate closes when the refetch finds nothing. */
+  async function discardPlan(): Promise<void> {
+    const result = await runCanvasCommand("plan delete", {});
+    if (result && !result.ok) {
+      controllerRef.current?.reportError(result.message);
+      return;
+    }
+    await refreshPlan();
   }
 
   function findComment(slidePath: string, target: string): NumberedComment | undefined {
@@ -1484,6 +1575,13 @@ export function App() {
 
   return (
     <div className="app" data-mode={canvasState.mode}>
+      {shellVisible &&
+        planOutline !== null &&
+        planOutline.status === "draft" &&
+        planOutline.questions.length > 0 &&
+        planOutline.fenceText !== answeredPlanFence && (
+          <PlanGateModal key={planOutline.fenceText} outline={planOutline} onSend={answerPlan} onDiscard={() => void discardPlan()} />
+        )}
       {shellVisible && (
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
@@ -1627,6 +1725,8 @@ export function App() {
                 draft={draft}
                 onDraftChange={setDraft}
                 onSubmit={() => void sendMessage()}
+                onStop={() => void stopChatTurn()}
+                stopping={stopping}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}
                 onPinnedRemove={(commentId) => {

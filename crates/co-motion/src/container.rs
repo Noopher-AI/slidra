@@ -88,6 +88,11 @@ fn collect_files(
         let entry = entry?;
         let full_path = entry.path();
         let file_type = entry.file_type()?;
+        if entry.file_name() == crate::workspace::lock::LOCK_FILE_NAME {
+            // The CLI's per-presentation lock lives in the work directory
+            // while a command runs (`pack` itself holds it) — never packed.
+            continue;
+        }
         if file_type.is_dir() {
             collect_files(root, &full_path, files)?;
         } else if file_type.is_file() {

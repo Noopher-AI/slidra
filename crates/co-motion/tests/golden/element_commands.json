@@ -266,13 +266,13 @@
   },
   {
     "command": "text set",
-    "label": "textbox-full-replace-clears-list-state",
+    "label": "textbox-full-replace-keeps-list-state",
     "fixture": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\"><text font-family=\"Noto Sans TC\" font-size=\"16\" data-comot-list=\"bullet\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">old</tspan></text><text data-comot-list-marker=\"true\" font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"0\">•</tspan></text></g></svg>",
     "args": {
       "elementId": "tb",
       "newText": "new text"
     },
-    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">new text</tspan></text></g></svg>"
+    "expected": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><g id=\"tb\" data-comot-text-width=\"200\" data-comot-text-height=\"23.168\"><text font-family=\"Noto Sans TC\" font-size=\"16\" data-comot-list=\"bullet\" xml:space=\"preserve\"><tspan x=\"24\" y=\"18.56\">new text</tspan></text><text data-comot-list-marker=\"true\" font-family=\"Noto Sans TC\" font-size=\"16\" xml:space=\"preserve\"><tspan x=\"0\" y=\"18.56\">•</tspan></text></g></svg>"
   },
   {
     "command": "text set",

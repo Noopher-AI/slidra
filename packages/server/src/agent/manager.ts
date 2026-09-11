@@ -27,6 +27,8 @@ export interface AgentStatus {
   source: AgentSource;
   /** Always both agents, in `ADAPTER_SPECS`'s order — regardless of which is `current`. */
   agents: AgentCard[];
+  /** #303: true while the current session is inside an author turn — a tab loaded mid-turn shows Stop from this, not from the next `chat-chunk`. False with no session. */
+  turnRunning: boolean;
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
@@ -191,6 +193,7 @@ export class AgentManager {
     return {
       current: this.current,
       source: this.source,
+      turnRunning: this.session?.isTurnRunning() ?? false,
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
@@ -249,6 +252,14 @@ export class AgentManager {
       throw new CoMotionError("尚未選擇 agent，無法傳送訊息");
     }
     this.session.sendMessage(text);
+  }
+
+  /** #303: cancels the current session's running turn (see `AgentChatSession.cancel`). Throws when no agent is selected or no turn is running. */
+  async cancel(): Promise<void> {
+    if (!this.session) {
+      throw new CoMotionError("尚未選擇 agent，沒有可以停止的回合");
+    }
+    await this.session.cancel();
   }
 
   /** Attaches one SSE stream's `send` to whichever session is (or later becomes) current; returns a detach function. */

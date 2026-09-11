@@ -3,8 +3,10 @@
 // slide/format.ts + slide-style.ts + table/model.ts(partial) slice).
 // `notes`/`transition`/`normalise`/`ops` land in this commit ([E4.T4]:
 // container and slide commands).
+pub mod background;
 pub mod comments;
 pub mod format;
+pub mod ingest;
 pub mod normalise;
 pub mod notes;
 pub mod ops;

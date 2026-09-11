@@ -68,6 +68,10 @@
 
 （此表以目前程式碼實際使用到的屬性為準，逐項精確驗證規則以對應的 `crates/co-motion/src` 模組——`element/text.rs`、`element/edit.rs`、`table/model.rs`、`chart/model.rs`——為權威來源；本表是總覽，不是每個屬性驗證規則的完整重述。）
 
+### 背景圖元素（#303 §13）
+
+一張投影片最多有一個頂層容器帶 `data-comot-role="background"`：固定 `id="el-background"`、`data-comot-name="背景圖"`、`data-comot-lock="true"`，內容是一個滿版的 `<image href="../assets/…" x="0" y="0" width="畫布寬" height="畫布高" [opacity]>`，位置在 `<metadata>` 之後、所有其他元素之前（最底層）。由 `slide background set` 寫入／替換／移除；`slide add --svg`／`slide set --svg` 的內容若已含這個容器，原樣保留並補鎖。`validate` 不對它套用任何幾何、樣式、禁忌規則，只用它的存在決定是否檢查 `structure.scrim`。
+
 ## `<metadata>` 內的 `comot:*`
 
 **只有下面這 6 種標籤活在 `<svg>` 的 `<metadata>` 子節點裡**：`comot:effects`（包 `comot:effect`）、`comot:transition`、`comot:notes`、`comot:comments`（包 `comot:comment`）。命名空間 URI 統一為 `https://co-motion.dev/ns`（`EFFECTS_NS` 常數，`NOTES_NS`／`TRANSITION_NS`／`COMMENTS_NS` 皆取同一個字面值）。
@@ -170,6 +174,14 @@ ADR-0012 amendment 的第二個例外形狀：一個 `data-comot-type="table"` �
 容器屬性：`data-comot-cols`／`data-comot-rows` 為以空白分隔的正數列（欄寬／列高，使用者單位）；`data-comot-header` = `"1"` 代表有標題列；`data-comot-theme` ∈ `dark|light|zebra`（缺席時預設 `dark`）。`<comot:source>` 選填，出現時 `src` 是 `assets/` 下 CSV 檔的虛擬路徑（`table bind` 綁定的來源，`table refresh` 讀它重新整理）；一個表格容器最多一個 `<comot:source>`。
 
 儲存格 `<g data-comot-cell="row,col">`：`row`/`col` 0-based；`data-comot-span="rowSpan,colSpan"` 選填（缺席等同 `1,1`）；`data-comot-repeat="row"` 標記這是綁定表格的模板列（永遠搭配 `display="none"`，一個表格最多一列是模板列）；`data-comot-generated="1"` 標記這格內容是 `table bind`/`table refresh` 從 CSV 自動產生；`data-comot-align` ∈ `left|center|right`（缺席預設 `left`）。文字內容在 `<text><tspan>...</tspan></text>` 裡；儲存格底色是 `<rect>` 的 `fill`（`none` 或 `#RRGGBB`）與可選 `fill-opacity`（0 到 1）；文字顏色是 `<text>` 的 `fill`（必須是 `#RRGGBB`）；字重是 `<text>` 的 `font-weight`（100 到 900 的整百）。**表格網格必須被儲存格完整覆蓋，不得有洞，合併範圍不得重疊**（`validateTableModel` 的結構不變式）。
+
+## `plan/`
+
+`plan/` 是簡報自己的計畫檔目錄（#303，ADR-0018），固定兩個檔名：`plan/outline.md`（狀態 `status: draft|confirmed`、敘事模式、逐頁 `pages`、要問作者的 `questions`、選填的 `animation`）與 `plan/design-spec.md`（`density`、六角色 `palette`、`type_scale`、選填的 `visual`）。每份檔案以一個 ```` ```json ```` 圍欄開頭——那是機器可讀段，`plan set` 寫入前解析並驗欄位——其後是給人與 agent 看的 markdown 正文。只能經 `plan set|list|delete` 寫、經 `cat` 讀；計畫不是投影片內容，不進 undo 歷史。目錄可以不存在。
+
+### 文字框宣告不是儲存格式
+
+`slide add --svg`／`slide set --svg` 接受一種**輸入形式**：直接放在根 `<svg>` 底下、帶 `data-comot-text-width` 的裸 `<text>`（內容以換行分段，可帶 `data-comot-list`、`data-comot-text-align`）。寫入時它一律被換成 `slides/` 一節描述的真正文字框結構（`<g data-comot-text-width data-comot-text-height transform>` 包 `<text>` 與 `<tspan>`）；`.comot` 裡永遠不會存到一個帶 `data-comot-text-width` 的裸 `<text>`。
 
 ## `fonts/`
 

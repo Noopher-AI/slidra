@@ -94,6 +94,17 @@ function isValidCard(value: unknown): value is AgentResponseCard {
  * keeps its previous value rather than this function fabricating one
  * (errors over fallbacks, same rule `live-reload.ts`'s own parsers follow).
  */
+/**
+ * #303: `GET /api/agent`'s `turnRunning` — whether the agent is inside an
+ * author turn right now. A tab opened or reloaded mid-turn sets `working`
+ * from this so Stop shows immediately, instead of waiting for the next
+ * `chat-chunk`. A missing or non-boolean field reads as "not running".
+ */
+export function turnRunningFrom(data: unknown): boolean {
+  if (typeof data !== "object" || data === null) return false;
+  return (data as Record<string, unknown>).turnRunning === true;
+}
+
 export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const { current, source, agents } = data as Record<string, unknown>;

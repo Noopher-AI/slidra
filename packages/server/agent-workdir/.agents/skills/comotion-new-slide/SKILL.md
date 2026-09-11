@@ -1,35 +1,33 @@
 ---
 name: comotion-new-slide
-description: 在簡報最後（或指定位置）新增一頁，放上標題與內文，並確認結果真的長對了
+description: 在簡報最後（或指定位置）新增一頁：有計畫就照設計指南的頁型範例一頁寫一份 SVG 並套動畫，沒有計畫才照抄既有版面或退回指南的骨架
 ---
 
 # 新增一頁投影片
 
-使用者說「加一頁講 X」時的完整流程。每一步都用 `co-motion`，不要自己寫 SVG。
-命令的完整參數見 `reference/commands.md`，這裡只寫順序與容易做錯的地方。
+使用者說「加一頁講 X」時的完整流程。命令的完整參數見 `reference/commands.md`，這裡只寫順序與容易做錯的地方。
 
 ## 步驟
 
 1. **先看現有的頁**：`co-motion ls <presentation-id> slides`
    知道目前有幾頁、新頁會變成第幾頁。
 
-2. **照抄既有版面，而不是從空白開始**：如果已有結構相近的一頁，用
-   `co-motion slide duplicate <presentation-id> slides/00N.svg` 複製它，再改文字。
-   這樣字級、邊界、配色都會跟整份簡報一致。
-   真的沒有可抄的版面時才用 `co-motion slide add <presentation-id>`（`--at <索引>` 指定插入位置，省略則加到最後）。
+2. **決定怎麼做，依序判斷**：
+   - **有計畫**（`co-motion cat <presentation-id> plan/design-spec.md` 讀得到）：讀出配色、字級表與 `plan/outline.md` 的 `animation`；依內容的關係從 `reference/slide-design.md` 第 6 節挑頁型（並列要點→要點頁、A vs B→對照頁、一個數字→大數字頁），取第 4 節該頁型的完整 SVG 範例，`<role>` 換成色碼、範例文字換成使用者給的關鍵詞，`co-motion slide add <presentation-id> --svg '<SVG>'`（`--at <索引>` 指定位置）；接著 `slide style set --background`；**其他頁有背景圖時**（`cat` 任一頁看得到 `data-comot-role="background"` 的 `<image href="../assets/…">`）新頁也要有：把第 4b 節該頁型的 scrim rect 寫進 SVG，再 `co-motion slide background set <presentation-id> slides/00N.svg --asset <同一個 assets/ 路徑> --opacity <第 4b 節建議值>`，不要另建資產；然後依第 5 節套動畫（強度照計畫，背景圖不加效果）、`slide notes set` 寫講稿。也把這一頁補進 `plan/outline.md` 的 `pages`（`status` 維持不變）。
+   - **沒有計畫但有範本**：`co-motion template list <presentation-id>`，有對應頁型的範本就 `co-motion slide add <presentation-id> --template <file 路徑>`，再 `text set` 覆寫文字。
+   - **沒有計畫、沒有範本，但有結構相近的一頁**：`co-motion slide duplicate <presentation-id> slides/00N.svg` 複製它，再改文字。
+   - **什麼都沒有**：照 `reference/slide-design.md` 第 4 節的骨架、配色 B 淺色簡潔，`slide add --svg` 寫一頁。不要自己發明版面。
+   頁面只放關鍵詞（每條要點 1 行 ≤ 18 字），完整句子寫進 `co-motion slide notes set`。
 
-3. **改文字**：複製來的頁面用 `co-motion text set` 覆寫既有元素的文字；
-   空白頁才需要 `co-motion textbox add ... --x --y --width --text`。
-   要下 `--x/--y` 之前，先 `co-motion cat <presentation-id> slides/00N.svg`
-   看鄰近頁面同類元素的座標，照抄那組數字——不要自己猜版面。
-
-4. **驗收**：`co-motion cat <presentation-id> slides/00N.svg` 確認文字真的寫進去了。
+3. **驗收**：`co-motion validate <presentation-id> slides/00N.svg`，有錯誤就修到 0；沒有計畫檔時它只驗幾何與骨架，另外 `cat` 讀回確認文字真的寫進去了。
    做完把新頁的路徑（`slides/00N.svg`）告訴使用者。
 
 ## 容易做錯的地方
 
-- **不要用 `slide add` 之後才發現是空白頁**：空白頁沒有任何文字元素，
-  接著下 `text set` 會找不到 element id。空白頁一定要走 `textbox add`。
+- **SVG 的引號**：整段用單引號包住，裡面只用雙引號，不能有半形單引號；文字裡的 `&` 寫 `&amp;`。
+- **背景圖要跟整份一致**：整份有背景圖，新頁沒有，會在縮圖列裡特別突兀；同理整份沒有就不要單獨加。
+- **所有文字用文字框宣告**（`<text data-comot-text-width=…>`），內容直接換行分段；不要自己放 `<tspan>`，否則不能就地編輯、`validate` 也驗不到。
+- **不要用 `slide add` 之後才發現是空白頁**：沒帶 `--svg`／`--template` 的 `slide add` 是空白頁，沒有任何文字元素，接著下 `text set` 會找不到 element id。
 - **索引從 1 開始，檔名補零到三位**：第 2 頁是 `slides/002.svg`。
 - **一次只做一頁**：使用者說「加三頁」時，一頁做完並確認過再做下一頁，
   中途出錯才知道停在哪裡。

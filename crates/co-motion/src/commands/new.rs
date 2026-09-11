@@ -46,6 +46,8 @@ fn create_new_presentation(output_path: &str, name: &str) -> Result<(), CoMotion
             .map_err(|_| CoMotionError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
         std::fs::create_dir_all(staging.join("fonts"))
             .map_err(|_| CoMotionError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
+        std::fs::create_dir_all(staging.join("slides"))
+            .map_err(|_| CoMotionError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
         container::pack_directory(&staging, Path::new(output_path))
     })();
 

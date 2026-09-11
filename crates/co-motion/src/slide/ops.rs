@@ -176,6 +176,9 @@ fn assert_valid_index(index: f64, max: usize, arg_name: &str) -> CoMotionResult<
 pub struct AddSlideInput {
     pub template_path: Option<String>,
     pub at: Option<f64>,
+    /// Already-ingested page markup (`slide add --svg`, #303) — written as
+    /// is instead of a blank page or a template copy.
+    pub content: Option<String>,
 }
 
 #[derive(Debug)]
@@ -190,8 +193,12 @@ pub struct AddSlideResult {
 pub fn add_slide(id: &str, input: AddSlideInput) -> CoMotionResult<AddSlideResult> {
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
 
-    let content = match &input.template_path {
-        Some(template_path) => {
+    let content = match (&input.content, &input.template_path) {
+        (Some(_), Some(_)) => {
+            return Err(CoMotionError::invalid("--svg 與 --template 不能同時使用"));
+        }
+        (Some(content), None) => content.clone(),
+        (None, Some(template_path)) => {
             let templates = read_template_entries(&project);
             if templates.iter().any(|t| &t.file == template_path) {
                 let raw = virtual_fs::read_virtual_file(
@@ -207,7 +214,7 @@ pub fn add_slide(id: &str, input: AddSlideInput) -> CoMotionResult<AddSlideResul
                 )));
             }
         }
-        None => build_blank_slide_svg(project.canvas.width, project.canvas.height),
+        (None, None) => build_blank_slide_svg(project.canvas.width, project.canvas.height),
     };
 
     let at = input.at.unwrap_or(project.slides.len() as f64);
@@ -690,6 +697,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: None,
+                content: None,
             },
         )
         .unwrap();
@@ -718,6 +726,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: None,
+                content: None,
             },
         )
         .unwrap();
@@ -732,6 +741,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: Some(99.0),
+                content: None,
             },
         )
         .unwrap_err();
@@ -756,6 +766,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: Some(0.5),
+                content: None,
             },
         )
         .unwrap_err();
@@ -773,6 +784,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: None,
+                content: None,
             },
         )
         .unwrap();
@@ -824,6 +836,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: None,
+                content: None,
             },
         )
         .unwrap();
@@ -981,6 +994,7 @@ mod tests {
             AddSlideInput {
                 template_path: None,
                 at: None,
+                content: None,
             },
         )
         .unwrap();

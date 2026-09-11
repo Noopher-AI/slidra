@@ -145,6 +145,9 @@ async function openFreshPresentation(name = "測試簡報"): Promise<string> {
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  const added = await runCli(["slide", "add", opened.data!.id]);
+  expect(added.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -173,6 +176,9 @@ async function openPresentationWithRampAsset(): Promise<string> {
   await writeFile(comotPath, zipped);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  const added = await runCli(["slide", "add", opened.data!.id]);
+  expect(added.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -391,7 +397,7 @@ describe("startServe", () => {
     await expect(serve(id, { port: first.port })).rejects.toThrow(/連接埠/);
   });
 
-  it("rejects with an explicit error when the presentation has no slides", async () => {
+  it("serves a presentation with no slides (ADR-0018: `new` creates none; the editor makes the first page)", async () => {
     const { zipSync } = await import("fflate");
     const { writeFile } = await import("node:fs/promises");
     const zipped = zipSync({
@@ -407,7 +413,10 @@ describe("startServe", () => {
     expect(opened.ok).toBe(true);
     const id = opened.data!.id;
 
-    await expect(serve(id)).rejects.toThrow();
+    const server = await serve(id);
+    const response = await fetch(`${server.url}/api/presentation`);
+    expect(response.status).toBe(200);
+    expect((await response.json()).slides).toEqual([]);
   });
 
   it("responds with an explicit error, not an empty body, for a slide that does not exist", async () => {

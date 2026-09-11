@@ -1,4 +1,4 @@
-//! `FORMAT_VERSION`, `SLIDE_FILE_NAME`, and `build_minimal_presentation`,
+//! `FORMAT_VERSION` and `build_minimal_presentation`,
 //! originally ported from `packages/core/src/presentation.ts` ([E4.T12]
 //! deletes that TypeScript source; Rust is now the sole implementation).
 //!
@@ -6,11 +6,7 @@
 //! and `new` produces `formatVersion: 4` directly, so the crate's own idea
 //! of "current" format version is 4.
 
-use crate::id::generate_opaque_id;
-
 pub const FORMAT_VERSION: u32 = 4;
-
-pub const SLIDE_FILE_NAME: &str = "slides/001.svg";
 
 const PRESENTATION_FONT_FAMILY: &str = "Noto Sans TC";
 const PRESENTATION_FONT_FILE: &str = "fonts/NotoSansTC-Presentation.ttf";
@@ -28,24 +24,20 @@ const PRESENTATION_FONT_LICENSE_BYTES: &[u8] = include_bytes!(concat!(
     "/../../assets/fonts/LICENSE-NotoSansTC.txt"
 ));
 
-fn escape_xml_text(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
 /// Builds the file set for a minimal presentation (ADR-0003 container
-/// shape): `project.json` + a single title slide + the embedded
-/// presentation font (ADR-0016) + its license text. Returns
-/// `(relative_path, bytes)` pairs — `assets/`/`fonts/` themselves are not
-/// listed (the caller creates them, or `container::pack_directory` adds
-/// empty directory entries for them automatically).
+/// shape): `project.json` with **no slides** (ADR-0018: a new presentation
+/// starts empty so the first page is whatever the author or the agent
+/// makes first, never an unstyled placeholder) + the embedded presentation
+/// font (ADR-0016) + its license text. Returns `(relative_path, bytes)`
+/// pairs — `assets/`/`fonts/`/`slides/` themselves are not listed (the
+/// caller creates them, or `container::pack_directory` adds empty
+/// directory entries for them automatically).
 pub fn build_minimal_presentation(name: &str) -> Vec<(String, Vec<u8>)> {
     let project = serde_json::json!({
         "formatVersion": FORMAT_VERSION,
         "name": name,
         "canvas": { "width": 1280, "height": 720 },
-        "slides": [SLIDE_FILE_NAME],
+        "slides": [],
         "fonts": [
             {
                 "file": PRESENTATION_FONT_FILE,
@@ -60,15 +52,8 @@ pub fn build_minimal_presentation(name: &str) -> Vec<(String, Vec<u8>)> {
         serde_json::to_string_pretty(&project).expect("Value serialization cannot fail");
     project_json.push('\n');
 
-    let title_element_id = format!("el-{}", generate_opaque_id());
-    let slide_svg = format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\">\n  <text id=\"{title_element_id}\" data-comot-name=\"標題\" x=\"640\" y=\"360\" text-anchor=\"middle\" font-family=\"{PRESENTATION_FONT_FAMILY}\" font-size=\"48\">{}</text>\n</svg>\n",
-        escape_xml_text(name)
-    );
-
     vec![
         ("project.json".to_string(), project_json.into_bytes()),
-        (SLIDE_FILE_NAME.to_string(), slide_svg.into_bytes()),
         (
             PRESENTATION_FONT_FILE.to_string(),
             PRESENTATION_FONT_BYTES.to_vec(),
@@ -85,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn produces_formatversion_4_directly() {
+    fn produces_formatversion_4_with_no_slides() {
         let files = build_minimal_presentation("測試簡報");
         let (_, project_bytes) = files
             .iter()
@@ -93,19 +78,10 @@ mod tests {
             .unwrap();
         let project: serde_json::Value = serde_json::from_slice(project_bytes).unwrap();
         assert_eq!(project["formatVersion"], 4);
-        assert_eq!(project["slides"], serde_json::json!(["slides/001.svg"]));
+        assert_eq!(project["name"], "測試簡報");
+        assert_eq!(project["slides"], serde_json::json!([]));
         assert_eq!(project["fonts"][0]["family"], "Noto Sans TC");
-    }
-
-    #[test]
-    fn escapes_the_presentation_name_in_the_slide_svg() {
-        let files = build_minimal_presentation("A & <B>");
-        let (_, svg_bytes) = files
-            .iter()
-            .find(|(path, _)| path == SLIDE_FILE_NAME)
-            .unwrap();
-        let svg = String::from_utf8(svg_bytes.clone()).unwrap();
-        assert!(svg.contains("A &amp; &lt;B&gt;"));
+        assert!(files.iter().all(|(path, _)| !path.starts_with("slides/")));
     }
 
     #[test]
@@ -121,28 +97,5 @@ mod tests {
             .find(|(path, _)| path == "fonts/LICENSE-NotoSansTC.txt")
             .unwrap();
         assert!(!license_bytes.is_empty());
-    }
-
-    #[test]
-    fn each_call_mints_a_fresh_title_element_id() {
-        let files1 = build_minimal_presentation("X");
-        let files2 = build_minimal_presentation("X");
-        let svg1 = String::from_utf8(
-            files1
-                .into_iter()
-                .find(|(p, _)| p == SLIDE_FILE_NAME)
-                .unwrap()
-                .1,
-        )
-        .unwrap();
-        let svg2 = String::from_utf8(
-            files2
-                .into_iter()
-                .find(|(p, _)| p == SLIDE_FILE_NAME)
-                .unwrap()
-                .1,
-        )
-        .unwrap();
-        assert_ne!(svg1, svg2);
     }
 }

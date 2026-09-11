@@ -116,18 +116,17 @@ const DEFAULT_HOST = "127.0.0.1";
 
 /**
  * Validates the presentation and starts the HTTP server. Validation
- * (unknown id, no slides) happens before the socket is ever bound, so a
- * bad startup fails loudly without a half-started server left behind.
+ * (unknown id) happens before the socket is ever bound, so a bad startup
+ * fails loudly without a half-started server left behind. A presentation
+ * with no slides is valid (ADR-0018: `new` creates none) — the editor
+ * shows "此簡報沒有投影片" and the first page is made from there.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
   const { presentationId } = options;
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
-  const project = await loadProject(presentationId);
-  if (project.slides.length === 0) {
-    throw new CoMotionError("簡報沒有投影片");
-  }
+  await loadProject(presentationId);
   const agentWorkdir = await deployAgentWorkdir();
 
   const staticDir = options.staticDir ?? resolveWebDist();
@@ -362,6 +361,10 @@ async function handleRequest(
     if (req.method === "POST") {
       if (url.pathname === "/api/chat") {
         await handleChatPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/chat/cancel") {
+        await handleChatCancelPost(manager, res);
         return;
       }
       if (url.pathname === "/api/agent/probe") {
@@ -612,7 +615,34 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
     sendJson(res, 400, { error: "訊息內容不可為空" });
     return;
   }
+  // #303: one line per author message so a turn that starts unexpectedly
+  // (e.g. right after a cancel) can be traced to the request that caused it.
+  console.log(`[chat] ${new Date().toISOString()} message ${JSON.stringify(text.slice(0, 60))}${text.length > 60 ? "…" : ""}`);
   manager.sendMessage(text);
+  sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/chat/cancel` (#303) — the chat panel's Stop button. Sends ACP
+ * `session/cancel` for the turn in flight; the turn then ends through the
+ * normal path with a `chat-done` whose `stopReason` is `cancelled` on
+ * `/api/chat/stream`. No body. 202 once the cancel notification is on its
+ * way; 409 when nothing is running (no agent selected, or the agent is
+ * idle) — the author pressed Stop on a turn that had already ended.
+ *
+ * What stopping does NOT do: a `co-motion` command the agent had already
+ * launched keeps running to completion (each command is atomic), and
+ * nothing already written to the presentation is rolled back — the
+ * author's undo is the tool for that.
+ */
+async function handleChatCancelPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+  try {
+    console.log(`[chat] ${new Date().toISOString()} cancel requested`);
+    await manager.cancel();
+  } catch (error) {
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "目前沒有進行中的回合可以停止" });
+    return;
+  }
   sendJson(res, 202, { ok: true });
 }
 
