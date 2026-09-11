@@ -106,6 +106,26 @@ export function ChatPanel({
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [draft]);
 
+  // Auto-scroll: keep the newest line visible as the agent streams, but
+  // only while the author is already reading the bottom. Someone who
+  // scrolled up to re-read an earlier command must not be yanked back
+  // down by the next chunk — so the panel stops following the moment they
+  // leave the bottom, and resumes when they return to it.
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followBottomRef = useRef(true);
+  function handleMessagesScroll(): void {
+    const el = messagesRef.current;
+    if (!el) return;
+    followBottomRef.current = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+  }
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el || !followBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    // `working` is in the deps because the "agent is working…" line below
+    // the messages changes the scroll height on its own.
+  }, [messages, working]);
+
   const query = slashQuery(draft);
   // Esc's dismissal is scoped to "the trigger span currently in progress"
   // (contract: continuing to type must NOT reopen it) — only reset the
@@ -195,7 +215,7 @@ export function ChatPanel({
 
   return (
     <aside className="chat-sidebar">
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
         {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
           message.role === "notice" ? (
@@ -323,6 +343,21 @@ export function ChatPanel({
     </aside>
   );
 }
+
+/**
+ * Whether the chat log is scrolled close enough to the bottom to keep
+ * following new messages. Pure so the threshold is testable without a
+ * layout engine (jsdom reports every scroll metric as 0).
+ *
+ * The slack exists because "at the bottom" is never exact — a fractional
+ * device-pixel row height leaves a pixel or two behind, and a message that
+ * grows while it streams can outrun the scroll by a line.
+ */
+export function isNearBottom(scrollHeight: number, scrollTop: number, clientHeight: number): boolean {
+  return scrollHeight - scrollTop - clientHeight <= BOTTOM_SLACK_PX;
+}
+
+const BOTTOM_SLACK_PX = 48;
 
 /** ACP tool-call 狀態 → 使用者看到的字——逐字搬自 App.tsx。 */
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
