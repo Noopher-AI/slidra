@@ -194,6 +194,14 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("context-bar-item-danger");
     // [E2.T7]: hasAnimation: false — no Edit animation button at all (not merely disabled/hidden).
     expect(markup).not.toContain("Edit animation");
+    // [E2.T18] A9: Copy/Cut/Paste each render their OWN icon — three distinct
+    // markup strings, not one icon copy-pasted three times (merged in from a
+    // deleted test that asserted the same intent via internal SVG details —
+    // circle counts, stroke widths — instead of this public-shape check).
+    const iconMarkups = ["Copy", "Cut", "Paste"].map(
+      (title) => new RegExp(`<button[^>]*title="${title}"[^>]*>(.*?)<\\/button>`).exec(markup)?.[1] ?? "",
+    );
+    expect(new Set(iconMarkups).size).toBe(3);
   });
 
   // [E2.T7]/07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」
@@ -230,34 +238,6 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       "Duplicate",
       "Delete",
     ]);
-  });
-
-  // [E2.T18] A9: Copy/Cut/Paste each render their OWN icon (registry.tsx's
-  // `copy`/`cut`/`paste` shapes are distinct enough to tell apart in raw
-  // markup) rather than three buttons accidentally sharing one icon.
-  it("Copy／Cut／Paste 三個按鈕各自用自己的 icon，不互相搞混", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ContextBar, {
-        union: { x: 100, y: 100, width: 160, height: 100 },
-        bounds: { width: 1280, height: 720 },
-        dragging: false,
-        hasAnimation: false,
-        onEditAnimation: () => {},
-        onComment: () => {},
-        onOrder: () => {},
-        onCopy: () => {},
-        onCut: () => {},
-        onPaste: () => {},
-        onDuplicate: () => {},
-        onDelete: () => {},
-      }),
-    );
-    const copyButton = /<button[^>]*title="Copy"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
-    const cutButton = /<button[^>]*title="Cut"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
-    const pasteButton = /<button[^>]*title="Paste"[^>]*>(.*?)<\/button>/.exec(markup)?.[1] ?? "";
-    expect(copyButton).toContain('width="9"');
-    expect(cutButton.match(/<circle/g)).toHaveLength(2);
-    expect(pasteButton).toContain('width="10"');
   });
 
   it("剛好卡在翻轉門檻上：貼齊 Dock 保留區上緣仍算「放得下」，不翻轉", () => {
