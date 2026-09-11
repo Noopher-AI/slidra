@@ -1,6 +1,6 @@
 ---
 name: comotion-layout-kit
-description: 從 30 種版面裡挑一種來排這一頁——每種都附線框 SVG、槽位的字數預算與角色標記，並聲明它解的是哪一種內容關係
+description: 從 31 種版面裡挑一種來排這一頁——每種都附線框 SVG、槽位的字數預算與角色標記，並聲明它解的是哪一種內容關係
 ---
 
 # 版面庫
@@ -36,7 +36,7 @@ description: 從 30 種版面裡挑一種來排這一頁——每種都附線框
 7. **寫回 blueprint**：`shape` 填這個版面的名字，`nodes`／`steps` 填實際值。
 8. **檢查**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。
 
-## 30 種版面
+## 31 種版面
 
 **先看關係，再看名字。** 索引照關係分組——這一頁的 `relationship` 決定你該看哪一組，作者的描述只在組內幫你挑。
 
@@ -104,8 +104,9 @@ description: 從 30 種版面裡挑一種來排這一頁——每種都附線框
 | 23 | `image-full-bleed` | 整頁一張圖，文字壓在 scrim 上 | 1 |
 | 25 | `quote-block` | 一段引用佔據版面，出處在下 | 1 |
 | 27 | `chart-focus` | 圖表佔主要空間，旁邊一句結論 | 1 |
+| 31 | `media-stage` | 影片或音訊佔舞台中央，上方說明要看什麼 | 1 |
 
-圖文與資料類的版面（22–27）需要真實的素材：`image-*` 需要匯入的圖片，`chart-focus` 需要一組數據，`quote-block` 需要一段真實的引用，`kpi-row`／`hero-number` 的數字**只能來自作者**。素材不存在時就換一個版面，不要放佔位圖或編數字。
+圖文與資料類的版面（22–27、31）需要真實的素材：`image-*` 需要匯入的圖片，`chart-focus` 需要一組數據，`quote-block` 需要一段真實的引用，`media-stage` 需要一段真的影片，`kpi-row`／`hero-number` 的數字**只能來自作者**。素材不存在時就換一個版面，不要放佔位圖或編數字。
 
 ## 使用的命令
 

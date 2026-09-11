@@ -23,7 +23,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 1. **看現況**：`co-motion cat <presentation-id> project.json`（畫布尺寸、頁數）、`co-motion plan list <presentation-id>`、`co-motion template list <presentation-id>`。
    - 已有 `status` 為 `confirmed` 的計畫，且輸入不是【重做】：**先不要寫**，在對話裡問作者「已有一份確認過的計畫，要重做還是沿用」，等他回答。
    - 輸入完全空白、或只是一句閒聊：不要猜，回一句話問作者要用哪份大綱。
-2. **讀規範**：用你原生的檔案讀取能力讀工作目錄裡的 `reference/modes.md` 與 `reference/slide-design.md`（第 2、3、6、7 節）。
+2. **讀規範**：用你原生的檔案讀取能力讀工作目錄裡的 `reference/modes.md` 與 `reference/slide-design.md`（第 6、7 節）。配色與字級**不要自己配**，第 8 步會從風格庫適配一種。
 3. **挑敘事模式**：看內文小節的論證走向（不是看封面），依 `modes.md` 挑一種，並記下一句理由——這句理由之後要放進題目的 `note`。作者的大綱明顯是話題式標題或明說了模式時，以作者為準。
 4. **逐節定關係與節奏**：每一頁**必填 `relationship`**——這一節的內容之間是什麼關係（`slide-design.md` 第 6.1 節）：並列歸屬→`membership`、順序步驟時間→`order`、A vs B／前後→`contrast`、統轄分解→`parent`、依賴因果→`link`、交集→`overlap`、單一主張或一個數字→`none`。**先判關係，不要先想版面**；判錯關係會讓有方向的內容被講成並列的內容。
    **不要填 `type`。** 版面是 build 的事，不是計畫的事——規劃階段一旦寫下 `type`，build 就會直接去拿那個頁型的現成範例，再也不會去想這一頁該長什麼樣（實際發生過：每一頁並列要點都被寫成 `bullets`，於是每一頁都是同一面卡片牆）。你的工作是把**關係**判準確，版面由 build 依關係挑。節奏：封面、章節、結語是 `anchor`；一個數字的頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；**不為了頁數或節奏捏假頁**。
@@ -32,7 +32,11 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 5. **寫逐頁計畫**：每一頁列出主張（一句話，以 15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（以 18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句（作者要點的完整版，**不得虛構任何數據、名稱、日期**）。
 6. **出題**：3～7 題，第一題固定問敘事模式，最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`＝有背景圖、`off`＝不加；`note` 說明會用哪種配方）；中間每一題對應一個你拿不準的頁型判斷（例如「第 5 頁的 12 分鐘要不要做成大數字頁」）或配色。每題都要有 `recommended`（你的建議，必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
 7. **寫入 `plan/outline.md`**：`co-motion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方，含 `animation` 預設 `full`、`background` 預設 `on`）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號 `'`（打不進命令列）。
-8. **寫入 `plan/design-spec.md`**：依 `slide-design.md` 第 3 節挑**一組**配色（作者指定了顏色或風格就照作者）、密度預設 `presentation`、字級表照第 2 節（`cover` 是 72；畫布不是 1280×720 時每個字級乘以 `k = width ÷ 1280`）、`layout` 錨點（沿用預設即可，畫布不同時乘以 `k`）、`visual` 固定 `editorial-tech`，`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼選這組配色與這個密度。
+8. **從風格庫適配一種風格，寫入 `plan/design-spec.md`**：讀 `.agents/skills/comotion-style-kit/SKILL.md` 的索引，拿**主題與作者的描述**去對「第一秒的感覺」那一欄，挑一個最合的，讀它的 `references/` 檔，把裡面的 JSON 寫進 `design-spec.md`（畫布不是 1280×720 時字級與 `layout` 全部乘以 `k = width ÷ 1280`）：`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼是這個風格。
+   - 風格檔的 `typography` 指定的字型家族不在簡報裡時，照 `reference/fonts.md` 用 `co-motion font import` 匯入；匯不到就退回 `Noto Sans TC` 並在回報說明。
+   - 作者沒給任何風格描述時，依主題判斷（飲食文化→暖色紙感、技術產品→深色精準、公部門→中性克制）。
+   - 25 種都不合時，挑最近的一種改，或自己配一組——但欄位必須填滿。自己配的在正文寫下它的名字與理由。
+   - **順便決定背景**：讀風格檔的「建議背景」與 `.agents/skills/comotion-background-kit/SKILL.md` 的索引，挑一種配方，把它的編號與名字寫進背景那一題的 `note`（例如「建議 02 dot-grid，淡格線，內容頁用」）。風格檔建議 `off` 時，背景題的 `recommended` 就給 `off`。
 9. **停下來**：不下任何 `slide`、`textbox`、`element` 命令。回報時說明「計畫已寫好，編輯器會彈出確認視窗；按確認並建置就會開工」。沒有視窗的環境（作者直接在終端機對話）就把計畫表貼在對話裡，請作者回覆 `/comotion-build 【計畫確認】` 加上每題的答案。
 
 ## `plan/outline.md` 的 JSON 段
@@ -96,11 +100,11 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 
 ## 使用的命令
 
-`cat`、`plan list`、`plan set`、`template list`。
+`cat`、`plan list`、`plan set`、`template list`、`font import`。素材庫：`comotion-style-kit`（風格）、`comotion-background-kit`（背景）。
 
 ## 回報格式
 
-先一行：模式與理由、配色組、動畫強度、有無背景圖、共幾頁。接著一張表，每頁一列：`頁碼｜頁型｜節奏｜主張`。最後一行固定：「計畫已寫進 plan/，請在確認視窗裡拍板；要改哪一頁可以按重新規劃並告訴我。」
+先一行：模式與理由、**風格名稱與一句感覺**、動畫強度、**建議的背景配方**、共幾頁。接著一張表，每頁一列：`頁碼｜頁型｜節奏｜主張`。最後一行固定：「計畫已寫進 plan/，請在確認視窗裡拍板；要改哪一頁可以按重新規劃並告訴我。」
 
 ## 不可做的事
 

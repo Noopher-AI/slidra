@@ -20,6 +20,8 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 
 編輯規約只示範少數幾個命令的語法。`co-motion` 完整的命令清單——每個命令的名稱、參數與一句用途——在 [`reference/commands.md`](reference/commands.md)。動手前先查那份參考，不要用編輯規約裡的少數範例去猜其他命令的語法。
 
+**三個素材庫是正常流程的一部分，不是額外的選項**：`comotion-plan` 從 `comotion-style-kit` 適配風格與配色、順便決定 `comotion-background-kit` 的配方；`comotion-build` 逐頁從 `comotion-layout-kit` 挑版面。三個庫都明寫「目錄是起點，不是白名單」——可以改、可以混、也可以自己生。中途內容變了（臨時多一段影片、一張圖、一組數據）就回庫裡重挑一個版面，並同步改 `blueprint`。
+
 版面、字級、配色與各種頁型的座標一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)，可匯入的開源字型依 [`reference/fonts.md`](reference/fonts.md)；`comotion-plan`、`comotion-build`、`comotion-new-slide` 都會指到它們。設計規則的驗證交給 `co-motion validate` 命令，不要自己心算。
 
 ## 虛擬檔案結構
