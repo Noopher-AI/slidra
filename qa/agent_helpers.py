@@ -364,6 +364,36 @@ def _ready_probe(mark_pending=False):
     return int(r["seq"]), bool(r["pending"])
 
 
+# NOOP-413 round 2: `_ready_probe()`'s own `Runtime.evaluate` call cannot run
+# until this module's Python code gets around to issuing it, which — for
+# `open_deck()`'s cold-start reload — was always well after `Page.reload` +
+# `_wait_for_load()` had already returned. A parent-document reload tears
+# down and rebuilds the entire JS heap, so any earlier `window.addEventListener`
+# is gone with it; installing the probe only afterward meant the reload's own
+# "runtime-ready" (sent by the iframe as soon as the freshly-loaded parent
+# renders it) had already been posted, with nobody listening yet, into a void
+# nothing after ever fires into again — a guaranteed 45s timeout on every cold
+# start, not a flaky one (round 1 Review FAIL #2 item 3).
+#
+# `Page.addScriptToEvaluateOnNewDocument` sidesteps the ordering problem
+# entirely instead of trying to win it: Chrome evaluates the registered
+# source at the very start of EVERY subsequent document load on this target —
+# guaranteed before that document's own <script> tags run, which is in turn
+# before canvas.ts's `buildFrame()`/`container.appendChild(frame)` can create
+# the slide iframe or `frame.srcdoc = ...` can start it building — so the
+# `message` listener and the srcdoc MutationObserver are both live before
+# there is anything for them to miss. Registered once per `open_deck()` call;
+# idempotent to call again on a reused tab (`_READY_PROBE_JS`'s own
+# `s.v !== VERSION` check means only the very first of any stacked
+# registrations actually installs anything on a given document — see its
+# comment).
+def _install_ready_probe():
+    _cdp_ro(
+        "Page.addScriptToEvaluateOnNewDocument",
+        source=_READY_PROBE_JS.replace("MARK_PENDING", "false"),
+    )
+
+
 def _wait_rebuild_started(grace=_REBUILD_START_GRACE):
     """Give a just-triggered slide change `grace` seconds to actually begin.
 
@@ -497,6 +527,12 @@ def open_deck():
     if navigated:
         _new_tab(url)
     _activate_current_tab()
+    # Registered before any wait/reload below (see _install_ready_probe's
+    # comment) so the message listener and srcdoc MutationObserver are both
+    # live before canvas.ts's own scripts run on whichever navigation
+    # actually rebuilds the iframe — the initial one just triggered by
+    # `_new_tab`, or the cache-busting reload a few lines down.
+    _install_ready_probe()
     _wait_for_load()
     # `quick_start.sh --qa` launches Chromium with
     # `--user-data-dir=$QA_DIR/profile`, a fixed on-disk profile that
@@ -526,7 +562,8 @@ def open_deck():
     # lifetime. A same-process warm reuse (many browser-use calls against
     # one already-verified tab within one `--qa` session, the common case)
     # finds the marker and skips straight to the ready-waits below.
-    if not _js_ro("!!window.__cmQaBundleVerified"):
+    reloaded = not _js_ro("!!window.__cmQaBundleVerified")
+    if reloaded:
         _cdp_ro("Network.setCacheDisabled", cacheDisabled=True)
         _cdp_ro("Page.reload", ignoreCache=True)
         _wait_for_load()
@@ -536,15 +573,31 @@ def open_deck():
     # that reliably lands on exactly 1440x900, and it persists across
     # browser-use calls since it's a CDP-level override, not a CLI flag.
     _cdp_ro("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
-    # Installs the "runtime-ready" probe on the parent document. After a fresh
-    # navigation the probe is necessarily younger than the iframe it has to
-    # watch, so it cannot have observed that build starting — mark the window
-    # open explicitly and wait it out, rather than letting the first gesture
-    # of the session race a half-built runtime.
-    _ready_probe(mark_pending=navigated)
-    if navigated:
+    # NOOP-413 round 2: gate on `navigated or reloaded`, not `navigated`
+    # alone. In this harness `navigated` alone routinely comes back False on
+    # the very first open_deck() of a brand-new `--qa` session too — not just
+    # on the daemon-staleness case the comment above documents — because
+    # Chromium is launched already pointed at CO_MOTION_QA_URL, so the
+    # daemon's `current_tab()` matches from the start. The bundle-freshness
+    # reload above (`reloaded`) is what actually tells us a real navigation —
+    # with a real iframe rebuild racing the exact same probe-installation
+    # question — just happened, regardless of what `navigated` says; gating
+    # only on `navigated` skipped `_require_runtime_ready` entirely on that
+    # path and left `_wait_frame_ready` on its short default, which is what
+    # produced this round's own new flake (cold `_wait_frame_ready` timeout
+    # right after the bundle-check reload, `navigated` False throughout).
+    #
+    # No explicit _ready_probe(mark_pending=...) call here (round 1 had one,
+    # and it was the bug): _install_ready_probe() above already guarantees
+    # the probe was watching before this navigation's iframe could exist, so
+    # its `pending` genuinely reflects reality — forcing it True regardless,
+    # the way round 1 did, is what produced FAIL #2 item 3's deadlock
+    # whenever the real "runtime-ready" had in fact already arrived (nothing
+    # was ever going to flip a force-set True back to False again).
+    cold = navigated or reloaded
+    if cold:
         _require_runtime_ready(_INITIAL_LOAD_TIMEOUT)
-    _wait_frame_ready()
+    _wait_frame_ready(_INITIAL_LOAD_TIMEOUT if cold else _FRAME_READY_TIMEOUT)
     return {
         "url": url,
         "presentation_id": os.environ.get("CO_MOTION_QA_PRESENTATION_ID", ""),
@@ -683,9 +736,14 @@ def hover(x, y):
 
 def click_at(x, y, shift=False):
     """Click at arbitrary parent-document coordinates — pressed -> released,
-    not tied to a named element the way select()/_find_target_box() are.
-    `shift=True` holds Shift (CDP modifiers=8), for an additive click that
-    is not on a `data-comot-name`'d element (e.g. a context bar button)."""
+    not tied to a named element the way select()/_find_target_box() are —
+    the one-click counterpart to `dblclick`, for scenarios that need a plain
+    click first (e.g. selecting a table before its very first double-click —
+    see F-09/N-03, NOOP-399: `TableOverlay`'s own mount effect must flush
+    before a cold double-click on a never-selected table reliably opens the
+    cell editor, the same race e2e/table.test.ts's E8 documents). `shift=True`
+    holds Shift (CDP modifiers=8), for an additive click that is not on a
+    `data-comot-name`'d element (e.g. a context bar button)."""
     _click(x, y, modifiers=8 if shift else 0)
 
 
@@ -758,17 +816,6 @@ def drag(from_xy, to_xy, steps=10):
     _wait_status_bar_settled()
 
 
-def click_at(x, y):
-    """A single pressed/released click at (x, y) in parent-document
-    coordinates — the one-click counterpart to `dblclick`, for scenarios
-    that need a plain click first (e.g. selecting a table before its very
-    first double-click — see F-09/N-03, NOOP-399: `TableOverlay`'s own
-    mount effect must flush before a cold double-click on a never-selected
-    table reliably opens the cell editor, the same race e2e/table.test.ts's
-    E8 documents)."""
-    _click(x, y)
-
-
 def dblclick(x, y):
     """Two pressed/released pairs at (x, y) in parent-document coordinates,
     clickCount 1 then 2."""
@@ -788,23 +835,39 @@ _KEY_SPECS = {
     "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27},
 }
 
+# NOOP-413 round 2: `rawKeyDown` is CDP's own term for "does not generate a
+# text event" — it never inserted "\n" into a focused <textarea>, in direct
+# contradiction of press()'s old docstring. Verified against F-04 (round 1
+# Review): with "rawKeyDown", the hard line break in the typed title was
+# silently dropped every time. Only Enter is in this table because it is the
+# only key in _KEY_SPECS whose whole point is to insert text; Tab/Escape stay
+# on "rawKeyDown" since a real "keyDown" with text for them would insert their
+# glyph instead of moving focus / cancelling.
+_KEY_TEXT = {"Enter": "\r"}
+
 
 def press(key):
     """Dispatches one keydown+keyup for a control key (`"Tab"`, `"Enter"`,
-    `"Escape"` — see `_KEY_SPECS`). Uses CDP `Input.dispatchKeyEvent` with
-    `type="rawKeyDown"` then `"keyUp"` — the same pair Puppeteer/Playwright
-    send for a non-printable key — so Chromium applies its own native
-    editing behaviour (e.g. Enter inserting "\\n" into a focused
-    `<textarea>` when nothing prevents it) exactly as real hardware input
-    would, rather than this module reimplementing it. Delivered to
-    whatever element currently has focus, inside the slide iframe or the
-    parent document alike — CDP input dispatch is target-wide, same as
-    `_dispatch_mouse`."""
+    `"Escape"` — see `_KEY_SPECS`). For a key in `_KEY_TEXT` (currently just
+    Enter), the keydown is sent as CDP `Input.dispatchKeyEvent`
+    `type="keyDown"` with `text` set — the pair that actually makes Chromium
+    insert the character into a focused `<textarea>`, since `"rawKeyDown"`
+    is CDP's designation for a key event that carries no text. Every other
+    key keeps `type="rawKeyDown"` (Puppeteer/Playwright's pairing for a
+    non-printable key) so it only moves focus / triggers its native
+    behaviour without also typing its own glyph. Either way `"keyUp"`
+    follows. Delivered to whatever element currently has focus, inside the
+    slide iframe or the parent document alike — CDP input dispatch is
+    target-wide, same as `_dispatch_mouse`."""
     spec = _KEY_SPECS.get(key)
     if spec is None:
         raise ValueError(f"press: 不認得的鍵 {key!r}；已知：{sorted(_KEY_SPECS)}")
     timeout = _ipc_timeout()
-    _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="rawKeyDown", **spec)
+    text = _KEY_TEXT.get(key)
+    if text is not None:
+        _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="keyDown", text=text, **spec)
+    else:
+        _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="rawKeyDown", **spec)
     _cdp("Input.dispatchKeyEvent", _response_timeout=timeout, type="keyUp", **spec)
 
 
@@ -829,14 +892,30 @@ def save_state():
     return json.loads(_http_get(f"{_server_url()}/api/save-state"))
 
 
+# NOOP-413 round 2: selection-runtime.js's in-place-edit <textarea> lives
+# inside the selection host's shadow root (attachShadow({mode:"open"}), see
+# selection-runtime.js), and document.activeElement does not pierce a shadow
+# boundary on its own — it stops at the host element. Descending via
+# `.shadowRoot.activeElement` (open shadow roots only, which is all this
+# codebase creates) until there is no deeper one left is what actually reaches
+# the focused element; without it active_element() always reported the host
+# DIV, never the textarea itself (root cause of F-04's first assertion,
+# round 1 Review).
+_ACTIVE_ELEMENT_JS = (
+    "(()=>{let e=document.activeElement;"
+    "while(e&&e.shadowRoot&&e.shadowRoot.activeElement){e=e.shadowRoot.activeElement;}"
+    "if(!e)return null;"
+    "return {tag:e.tagName,class:e.className||'',id:e.id||null};})()"
+)
+
+
 def active_element():
-    """Parent document's document.activeElement, description. When it is
-    the slide IFRAME, descends one level into the slide frame's own
-    activeElement instead (in_iframe: True either way in that case)."""
-    info = _js_ro(
-        "(()=>{const e=document.activeElement;if(!e)return null;"
-        "return {tag:e.tagName,class:e.className||'',id:e.id||null};})()"
-    )
+    """Parent document's document.activeElement, descending into any open
+    shadow root's own activeElement (e.g. selection-runtime.js's in-place-
+    edit host) until there is no deeper one. When it is the slide IFRAME,
+    descends one level into the slide frame's own activeElement instead
+    (in_iframe: True either way in that case)."""
+    info = _js_ro(_ACTIVE_ELEMENT_JS)
     if info is None:
         return {"tag": "", "class": "", "id": None, "in_iframe": False}
     if info.get("tag") != "IFRAME":
@@ -844,11 +923,7 @@ def active_element():
         return info
     tid = _iframe_target_id()
     if tid:
-        inner = _js_ro(
-            "(()=>{const e=document.activeElement;if(!e)return null;"
-            "return {tag:e.tagName,class:e.className||'',id:e.id||null};})()",
-            target_id=tid,
-        )
+        inner = _js_ro(_ACTIVE_ELEMENT_JS, target_id=tid)
         if inner is not None:
             inner["in_iframe"] = True
             return inner
