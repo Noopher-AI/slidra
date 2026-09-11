@@ -2501,6 +2501,39 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
   });
 });
 
+describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client px（[E5.T7]/F-17）", () => {
+  function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
+    const frameWindow = controllerFrame.contentWindow as unknown as Window;
+    window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+  }
+
+  it("有效 point：轉成父文件 client px 後推給 listener", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const points: { x: number; y: number }[] = [];
+    controller.subscribeStageHover((point) => points.push(point));
+
+    // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion
+    // (same fixture shape subscribeOverlay's own tests above rely on).
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 12, y: 34 } });
+
+    expect(points).toEqual([{ x: 12, y: 34 }]);
+  });
+
+  it("非法 point（缺欄位／非有限數）：靜默丟棄，不呼叫 listener", async () => {
+    controller = mountCanvas(container);
+    await controller.reload();
+    const points: { x: number; y: number }[] = [];
+    controller.subscribeStageHover((point) => points.push(point));
+
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: Number.NaN, y: 1 } });
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 1 } });
+    send(controller.frameElement, { source: "comot-selection", event: "stage-hover" });
+
+    expect(points).toEqual([]);
+  });
+});
+
 describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHandler 註冊的處理器（#198）", () => {
   function relayStageKey(key: string, shift: boolean): void {
     window.dispatchEvent(

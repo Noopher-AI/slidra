@@ -1574,6 +1574,10 @@ it("情境列：點選元素後按情境列的 Delete 送出 element delete（�
 
     const bar = page.locator(".context-bar");
     expect(await bar.isVisible()).toBe(true);
+    // [E5.T7]/F-17 決定 8: ghost until hovered long enough to solidify.
+    const barBox = (await bar.boundingBox())!;
+    await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + barBox.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
     await bar.getByRole("button", { name: "Delete" }).click();
     await page.waitForTimeout(150);
 
@@ -1602,6 +1606,10 @@ it("情境列：Bring to front 送出 element order；右鍵元素只選取、�
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
     expect(await page.locator(".element-context-menu").count()).toBe(0);
 
+    // [E5.T7]/F-17 決定 8: ghost until hovered long enough to solidify.
+    const bringToFrontBox = (await page.locator(".context-bar").getByRole("button", { name: "Bring to front" }).boundingBox())!;
+    await page.mouse.move(bringToFrontBox.x + bringToFrontBox.width / 2, bringToFrontBox.y + bringToFrontBox.height / 2);
+    await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
     await page.locator(".context-bar").getByRole("button", { name: "Bring to front" }).click();
     await page.waitForTimeout(150);
 

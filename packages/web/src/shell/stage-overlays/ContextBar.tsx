@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { Icon } from "../../icons/index.js";
 
 export interface ContextBarProps {
@@ -8,6 +8,23 @@ export interface ContextBarProps {
   bounds: { width: number; height: number };
   /** Hidden while a drag is in progress (`OverlayState.dragging`). */
   dragging: boolean;
+  /**
+   * [E5.T7]/F-17: whether the bar has "solidified" (`OverlayLayer`'s own
+   * `createHoverSolidifier`, driven by hover position) — adds `.is-solid`,
+   * which is what actually flips `pointer-events` back to `auto`
+   * (`stage-overlays.css`). Defaults to `false` (ghost) so every existing
+   * call site — none of which know about hover — renders exactly as before.
+   */
+  solid?: boolean;
+  /**
+   * [E5.T7]/F-17: lets `OverlayLayer` read this element's own
+   * `getBoundingClientRect()` to compare against the tracked pointer
+   * position — the placement `useLayoutEffect` below already needs its own
+   * ref for the same node, so when the caller supplies one this replaces
+   * that internal ref instead of stacking a second one. Optional so every
+   * existing call site is unaffected.
+   */
+  barRef?: RefObject<HTMLDivElement | null>;
   /** [E2.T7]: `OverlayState.hasAnimation` — whether Edit animation renders at all (not merely disabled) next to Edit style. */
   hasAnimation: boolean;
   /** [E2.T7]: switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
@@ -62,8 +79,9 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
  * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
  * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
  * 送任何命令、不改選取。 */
-export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimation, onEditStyle, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
-  const barRef = useRef<HTMLDivElement | null>(null);
+export function ContextBar({ union, bounds, dragging, hasAnimation, solid = false, barRef: externalBarRef, onEditAnimation, onEditStyle, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
+  const internalBarRef = useRef<HTMLDivElement | null>(null);
+  const barRef = externalBarRef ?? internalBarRef;
   const unionX = union?.x ?? 0;
   // Horizontal placement needs the bar's rendered width (content-dependent),
   // so it is applied after layout: left-aligned with the selection box, then
@@ -82,7 +100,7 @@ export function ContextBar({ union, bounds, dragging, hasAnimation, onEditAnimat
   const fitsBelow = below + BAR_HEIGHT <= bounds.height - DOCK_RESERVE;
   const top = Math.min(fitsBelow ? below : Math.max(MARGIN, union.y - GAP - BAR_HEIGHT), bounds.height - DOCK_RESERVE - BAR_HEIGHT);
   return (
-    <div ref={barRef} className="context-bar" role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
+    <div ref={barRef} className={`context-bar${solid ? " is-solid" : ""}`} role="toolbar" aria-label="Selection" style={{ left: union.x, top }}>
       <button type="button" className="context-bar-item context-bar-item-comment" title="Comment to AI" onClick={onComment}>
         <Icon name="comment" size="control" />
         Comment to AI
