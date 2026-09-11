@@ -29,6 +29,17 @@ from browser_harness.helpers import (
 
 _DEFAULT_URL = "http://127.0.0.1:5173"
 _FRAME_READY_TIMEOUT = 15.0
+# open_deck()'s first navigation pays costs no later goto_slide() rebuild
+# does: cold V8 JIT, a cold disk cache for Chromium's own binary and the
+# app's JS bundle, and (on a sandbox pod) contention with whatever the rest
+# of `quick_start.sh --qa` just finished building. Measured on this pod: the
+# same commit failed _require_runtime_ready()'s plain 15s bound on a build
+# fresh off `sandbox-setup`, then passed immediately on a rerun with
+# everything warm — same code, different outcome, so the 15s bound (not the
+# app) was the problem. goto_slide()'s rebuilds happen against an already-
+# warm browser and stay on _FRAME_READY_TIMEOUT so per-gesture waits in a
+# case script don't get slower for a one-time cost.
+_INITIAL_LOAD_TIMEOUT = 45.0
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _SLIDE_NAV_RE = re.compile(r"Slide (\d+) of (\d+)")
 
@@ -496,7 +507,7 @@ def open_deck():
     # of the session race a half-built runtime.
     _ready_probe(mark_pending=navigated)
     if navigated:
-        _require_runtime_ready()
+        _require_runtime_ready(_INITIAL_LOAD_TIMEOUT)
     _wait_frame_ready()
     return {
         "url": url,
