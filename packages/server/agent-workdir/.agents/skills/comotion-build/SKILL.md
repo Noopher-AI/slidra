@@ -36,14 +36,22 @@ page-5.note=數字改成 11.8 分鐘
    - **帶【計畫確認】、但計畫已經是 `confirmed` 而且 `co-motion ls <presentation-id> slides` 已有投影片**：這是同一次確認被送了兩次（視窗與聊天框各一次，實際發生過）。**不要重建**——回一句「這份計畫已經建置過了（目前 N 頁）。要重做請說「重做第 X 頁」或「全部重做」」，然後停下。硬要重建會把作者手上的頁面覆蓋掉，而且兩次確認的答案可能不一樣。
 3. **讀規格與現況**：`co-motion cat <presentation-id> plan/design-spec.md`（配色、密度、字級表、`visual`；計畫的 `background` 決定要不要背景圖）、`co-motion cat <presentation-id> project.json`（畫布；`k = width ÷ 1280`，指南的所有座標、半徑、字級乘以 k，`viewBox` 寫成畫布尺寸）、`co-motion template list <presentation-id>`、`co-motion ls <presentation-id> slides`。讀工作目錄的 `reference/slide-design.md`（第 0、1、4、4b、5 節是你的工作範圍）。
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪些頁型放」決定這份簡報要用到哪幾種配方（通常封面／結語一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
-4. **一頁怎麼做**（每一頁都照這個順序）：
-   1. 取該頁型在指南第 4 節的 SVG 範例，把每個 `<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。計畫 `background` 是 `on` 時，**再把第 4b 節該頁型的 scrim rect 加進去**（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡，頁面 SVG 只有內容、scrim 與頁尾；也不要自己加範例以外的裝飾幾何。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。
-   2. 整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。
-   3. `co-motion slide style set <presentation-id> slides/00N.svg --background <該頁型指定的角色色碼>`（封面／要點／對照／大數字用 background，章節頁 secondary_bg，結語頁 primary）。章節頁另下 `element style set el-watermark opacity 0.18`。
-   4. 計畫 `background` 是 `on`：`co-motion slide background set <presentation-id> slides/00N.svg --asset <該頁型配方的 data.path> --opacity <第 4b 節的建議值>`；是 `off` 就不下（重做某頁而它已有背景、計畫卻是 `off` 時，`--none` 拿掉）。背景圖**不加任何效果**。
-   5. 從回傳的 `data.elementIds`（或 `cat`）確認元素 id 都在，再依指南第 5 節該頁型與計畫 `animation` 強度的腳本逐條 `co-motion effect add`；`animation` 是 `none` 就跳過。
-   6. `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
-   7. 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照步驟 1 重寫整頁 SVG（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
+4. **一頁怎麼做**（六個階段，照順序；前一階段沒做完不要跳下一階段）
+
+   1. **構圖思考**（不下命令）：先想清楚這一頁要講幾件事、彼此什麼關係，決定頁型（指南第 6 節）與**講述步驟的切法**——這就是之後的動畫步數。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。
+   2. **背景製作**：計畫 `background` 是 `on` 時，確認步驟 3 已經建好這個頁型要用的配方資產（一種配方只建一次，之後每頁重用）；`off` 就跳過。背景只負責氣氛，**不承載意義**。
+   3. **前景製作**：取該頁型在指南第 4 節的 SVG 範例，`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）；`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
+      - `co-motion slide style set <presentation-id> slides/00N.svg --background <該頁型指定的角色色碼>`（封面／要點／對照／大數字用 background，章節頁 secondary_bg，結語頁 primary）。章節頁另下 `element style set el-watermark opacity 0.18`。
+      - `background` 是 `on`：`co-motion slide background set <presentation-id> slides/00N.svg --asset <該頁型配方的 data.path> --opacity <第 4b 節的建議值>`；是 `off` 就不下（重做某頁而它已有背景、計畫卻是 `off` 時，`--none` 拿掉）。
+   4. **group（把一段話變成一個東西）**：依步驟 1 切好的講述步驟，把**同一段裡的元素**組成一個群組：`co-motion element group <presentation-id> slides/00N.svg <元素 id,逗號分隔>`，記下回傳的 `data.elementId`（群組自己的 id）。典型的分法——要點頁每張卡片一組（卡片底＋編號＋要點字）、對照頁左欄一組右欄一組（面板＋頂線＋欄標＋內文）、封面標題與副標一組、大數字頁數字與說明一組。標題自成一段時不必特地開群組。
+      - 群組是**邏輯單位**：作者在編輯器裡拖一下就整段一起動，動畫也只要下一次。
+      - `element group` 會清掉成員身上既有的效果（回傳的 `removedEffects` 會告訴你幾個），所以**一定要先 group 再套動畫**。
+      - 背景圖、頁尾線、頁尾文字、頁碼不進任何群組。
+   5. **動畫套用**：依指南第 5 節該頁型的講述步驟，**對群組 id（沒有群組的就對元素 id）**下 `co-motion effect add`——一段一個 `on-click`，一頁不超過 5 個；`animation` 是 `none` 就整段跳過。群組化之後多數頁面只需要 1～4 次 `effect add`，不再需要一長串 `with-previous`。
+   6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤；`co-motion effect list <presentation-id> slides/00N.svg --json` 的 `steps` 長度要等於步驟 1 想好的段數（對不上就是動畫加錯了，現在修，不要留到最後）。然後補這一頁的收尾：
+      - `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
+      - 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照這六步重寫整頁（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
+
 5. **第一頁閘門**：先做封面與第一張內容頁，各 `co-motion validate <presentation-id> slides/00N.svg`。有錯誤就**先改做法**（關鍵詞太長就改短、字級或顏色寫錯就改回表上的值、少了動畫就補），確認兩頁都 0 錯誤，才做第 3 頁起。
 6. **逐頁建置**：依 `pages` 的順序，一頁做完再做下一頁。頁面只放計畫裡的「頁面關鍵詞」，完整的句子、論證、數據解釋全部進備忘稿。**字數門檻（presentation：標題 ≤ 24 字、每條 ≤ 32 字且 ≤ 2 行、2～7 條、全頁 ≤ 1000 字；其他密度 `validate` 會告訴你）是「明顯誇張」的底線，不是目標**——好的頁面通常遠比它短，但沒有超過就不要為了更短而犧牲把話講清楚。大數字頁的數字、任何名稱與日期只能來自計畫。
 7. **整份轉場**：`animation` 不是 `none` 時，第 1 頁一做完就先下一次 `co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（不然第一頁閘門的 `validate` 一定報 `motion.transition`），全部頁面做完再下一次，讓後加的頁也有轉場。
@@ -60,7 +68,7 @@ page-5.note=數字改成 11.8 分鐘
 
 ## 使用的命令
 
-`cat`、`ls`、`plan set`、`template list`、`template add`、`asset import`、`slide add`、`slide set`、`slide style set`、`slide background set`、`element style set`、`effect add`、`slide transition set`、`text set`、`slide notes set`、`validate`。
+`cat`、`ls`、`plan set`、`template list`、`template add`、`asset import`、`slide add`、`slide set`、`slide style set`、`slide background set`、`element style set`、`element group`、`effect add`、`slide transition set`、`text set`、`slide notes set`、`validate`。
 
 ## 回報格式
 

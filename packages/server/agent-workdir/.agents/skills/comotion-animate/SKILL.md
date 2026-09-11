@@ -26,7 +26,7 @@ description: 為指定頁或整份簡報加上依序揭露的動畫效果與頁�
    - 使用者要「重做」：`co-motion effect remove <presentation-id> slides/00N.svg <全部 1-based index，逗號分隔>`，再依步驟 5 重新加。
    - 使用者要「補」：只對缺的元素 `effect add`，需要時用 `co-motion effect move <presentation-id> slides/00N.svg <index> up|down` 把順序調對。
    - **不得在未讀 `effect list` 的情況下直接對已有效果的頁加效果。**
-5. **先分段，再加效果**：把這一頁的元素按「講者會分幾段講」分組——標題一段，之後每個要點（或每組對照）一段；標題的底線、卡片的編號、數字的說明屬於它所在的那一段，不自成一段。**一段一個 `on-click`，段內其餘元素 `--start with-previous`**；一頁的 `on-click` 不超過 5 個。裝飾幾何與背景不加效果。然後對每個元素跑一次 `co-motion effect add`，風格對應的 family／effect／duration 見下表：
+5. **先分段，再加效果**：把這一頁的元素按「講者會分幾段講」分組——標題一段，之後每個要點（或每組對照）一段；標題的底線、卡片的編號、數字的說明屬於它所在的那一段，不自成一段。**一段一個 `on-click`**；一頁的 `on-click` 不超過 5 個。同一段的元素已經被 `element group` 成一個群組時，直接對群組 id 下一個效果就好；沒有群組時段內其餘元素用 `--start with-previous`。裝飾幾何與背景不加效果。然後對每個元素跑一次 `co-motion effect add`，風格對應的 family／effect／duration 見下表：
 
    | 風格 | 標題 | 要點 | 圖／表／圖表 | duration |
    |---|---|---|---|---|

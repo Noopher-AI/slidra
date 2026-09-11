@@ -8,7 +8,7 @@
 //! `geometry.right-overflow`, ...) — the skills and the editor key on them.
 
 use crate::errors::{CoMotionError, CoMotionResult};
-use crate::geometry::transform::parse_transform;
+use crate::geometry::transform::{Matrix, multiply_matrices, parse_transform};
 use crate::plan::{self, DesignSpec, OutlinePlan, template_name_for};
 use crate::slide::scan::{ScannedNode, attribute_value, scan_document};
 use crate::text::unescape_xml_text;
@@ -247,9 +247,38 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
         }
     }
 
-    for (order, element) in root.children.iter().filter(|c| c.tag == "g").enumerate() {
+    let mut order = 0usize;
+    collect_elements(svg, root, parse_transform(None)?, &mut order, &mut facts)?;
+
+    Ok(facts)
+}
+
+/// Walks one level of `<g>` children, descending into any group that is not
+/// itself an element.
+///
+/// A group made with `element group` is a `<g id=…>` wrapping other
+/// elements — the members keep their own ids and carry no
+/// `data-comot-text-width` on the wrapper. Reading only the root's children
+/// therefore made every grouped text box invisible to `validate`: an
+/// overflowing bullet stopped being reported the moment the author (or the
+/// build) grouped it with its card. Recursing fixes that; the group's own
+/// `transform` composes onto its members' so their coordinates stay in
+/// canvas space.
+fn collect_elements(
+    svg: &str,
+    parent: &ScannedNode,
+    inherited: Matrix,
+    order: &mut usize,
+    facts: &mut SlideFacts,
+) -> CoMotionResult<()> {
+    for element in parent.children.iter().filter(|c| c.tag == "g") {
         let Some(id) = attribute_value(element, "id") else {
             continue;
+        };
+        let element_order = {
+            let current = *order;
+            *order += 1;
+            current
         };
         if attribute_value(element, "data-comot-role").as_deref() == Some("background") {
             // The page's background image (#303 §13): furniture, exempt from
@@ -257,7 +286,10 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
             facts.has_background = true;
             continue;
         }
-        let matrix = parse_transform(attribute_value(element, "transform").as_deref())?;
+        let matrix = multiply_matrices(
+            &inherited,
+            &parse_transform(attribute_value(element, "transform").as_deref())?,
+        );
         if let Some(width) = number_attr(element, "data-comot-text-width") {
             let Some(text) = find_child(element, "text") else {
                 continue;
@@ -294,7 +326,7 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
                 fill,
                 bold,
                 paragraphs,
-                order,
+                order: element_order,
             });
             continue;
         }
@@ -306,6 +338,9 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
             .iter()
             .find(|c| c.tag == "rect" || c.tag == "ellipse")
         else {
+            // Not a text box and not a shape: this is a group wrapper, so
+            // its members are the elements — walk into it.
+            collect_elements(svg, element, matrix, order, facts)?;
             continue;
         };
         let (width, height) = if primitive.tag == "rect" {
@@ -343,10 +378,10 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
             stroke: attribute_value(primitive, "stroke")
                 .or_else(|| attribute_value(element, "stroke")),
             opacity,
-            order,
+            order: element_order,
         });
     }
-    Ok(facts)
+    Ok(())
 }
 
 /// Everything `validate` needs about the presentation, gathered once.
@@ -1359,6 +1394,44 @@ mod tests {
         );
         let r = rules(&run_one(&svg, "bullets", "dense"));
         assert!(r.contains(&"text.page-total"), "{r:?}");
+    }
+
+    #[test]
+    fn grouped_elements_are_still_seen_by_every_rule() {
+        // Grouping a card with its copy (the build's own flow: 構圖 → 背景 →
+        // 前景 → group → 動畫) used to hide the members from `validate`
+        // entirely — an overflowing bullet stopped being reported the moment
+        // it was grouped. The group's transform composes onto its members'.
+        let body = textbox("el-wide", 600.0, 240.0, 1400.0, 24.0, "#F4F6F8", &[("超寬", false)]);
+        let loose = rules(&run_one(&slide(Some("#101418"), "n", &body), "bullets", "dense"));
+        assert!(loose.contains(&"geometry.right-overflow"), "{loose:?}");
+
+        let grouped = rules(&run_one(
+            &slide(
+                Some("#101418"),
+                "n",
+                &format!("<g id=\"el-group\" data-comot-name=\"卡片組\">{body}</g>"),
+            ),
+            "bullets",
+            "dense",
+        ));
+        assert!(grouped.contains(&"geometry.right-overflow"), "{grouped:?}");
+    }
+
+    #[test]
+    fn a_group_transform_composes_onto_its_members() {
+        // A group moved in the editor carries a transform; its members'
+        // canvas coordinates are the composition, not their local ones.
+        let body = textbox("el-body", 80.0, 200.0, 600.0, 24.0, "#F4F6F8", &[("要點", false)]);
+        let svg = slide(
+            Some("#101418"),
+            "n",
+            &format!("<g id=\"el-group\" transform=\"translate(600 0)\">{body}</g>"),
+        );
+        let facts = read_slide_facts(&svg).unwrap();
+        let tb = facts.text_boxes.iter().find(|t| t.id == "el-body").unwrap();
+        assert_eq!(tb.x, 680.0);
+        assert_eq!(tb.y, 200.0);
     }
 
     #[test]

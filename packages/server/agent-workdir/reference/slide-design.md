@@ -372,7 +372,9 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 
 計畫 `animation`：`full`（預設，逐段揭露）、`minimal`（整頁一次到齊，只留一個 on-click）、`none`（不加）。
 
-每頁寫完 SVG 後下 `co-motion effect add <presentation-id> slides/00N.svg <元素 id> --family enter --effect <效果> --start <時機> --duration <秒>`。整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+**同一段裡的元素先 `element group` 成一個群組，再對群組下一個效果**，不要一長串 `with-previous`：群組是邏輯單位，作者拖一下整段一起動，動畫也只要一次（`element group` 會清掉成員既有的效果，所以一定先 group 再套動畫）。下表的 `with-previous` 只在沒有群組時才需要。
+
+每頁寫完 SVG、分好群組後下 `co-motion effect add <presentation-id> slides/00N.svg <元素 id> --family enter --effect <效果> --start <時機> --duration <秒>`。整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
 
 | 頁型 | full 的講述步驟 | minimal |
 |---|---|---|
