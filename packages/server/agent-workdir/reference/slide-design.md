@@ -234,15 +234,17 @@ agent 直接下命令</text>
 
 背景圖是一張獨立的 SVG 資產，用 `slide background set` 放在頁面**最底層**（容器 `id="el-background"`、`data-comot-role="background"`、鎖定，作者拖不動、`validate` 不驗它）。它把頁面的氣質再往上拉一層，但**不承載意義**：拿掉它，頁面的意思一個字都不少。計畫 `plan/outline.md` 的 `background` 是 `off` 時，整份都不放。
 
-### 哪些頁型放、放多濃
+### 哪一頁放哪一種、放多濃
 
-| 頁型 | 預設配方 | `--opacity` |
-|---|---|---|
-| 封面 | 柔焦色團 | 0.9 |
-| 章節頁 | 對角光束 | 0.7 |
-| 大數字頁 | 漸層網格 | 0.8 |
-| 結語頁 | 柔焦色團 | 0.6（結語頁底色是 primary，色團會變成同色系的層次） |
-| 要點頁、對照頁 | 點陣格線 | 0.5（淡版；內容區的卡片與面板本身就是 scrim） |
+分派看**節奏**（`rhythm`），不看頁型——節奏說的正是這一頁要多安靜或多滿。
+
+| `rhythm` | 這一頁是什麼 | 預設配方 | `--opacity` |
+|---|---|---|---|
+| `anchor` | 定錨頁：封面、章節、結語 | 柔焦色團 | 0.9（頁面底色是 `primary` 時降到 0.6，色團會變成同色系的層次） |
+| `breathing` | 喘息頁：一個數字、一句主張 | 漸層網格 | 0.8 |
+| `dense` | 資訊頁：有多個語意單位 | 點陣格線 | 0.5（淡版；內容區的 `field` 本身就是 scrim） |
+
+想要更強的方向感時（`order` 關係的頁面），`anchor` 與 `breathing` 可以改用「對角光束」——光束本身有方向，配並列的內容會說錯話。
 
 一份簡報**只用一種配方**（封面與結語可以共用色團、內容頁共用一種），同配方同配色只建一個資產，所有頁面重用同一個路徑。
 
@@ -369,15 +371,16 @@ agent 直接下命令</text>
 
 ### 有背景圖時的 scrim 規則
 
-背景圖再暗也會降低小字的對比，所以 `validate` 的 `structure.scrim` 會要求：**頁面有背景圖時，每個文字框（頁尾除外）都要完全落在一塊「scrim 面板」上**——一個在文件順序上位於它之前、fill 是 `background` 或 `secondary_bg`、`opacity` 缺省或 ≥ 0.6 的 rect。字級 ≥ `claim`（48）的大字例外：封面大標、章節名、大數字、結語主張不需要 scrim，配方保證那些區域是暗的。
+背景圖再暗也會降低小字的對比，所以 `validate` 的 `structure.scrim` 會要求：**頁面有背景圖時，每個文字框（頁尾除外）都要完全落在一塊「scrim 面板」上**——一個在文件順序上位於它之前、fill 是 `background` 或 `secondary_bg`、`opacity` 缺省或 ≥ 0.6 的 rect。字級 ≥ `claim`（48）的大字例外：大標、章節名、大數字、結語主張不需要 scrim，配方保證那些區域是暗的。
 
-- **要點頁、對照頁**：卡片（`el-card-n`）與面板（`el-panel-left/right`）本來就是 scrim，標題在 y 72～130 沒有面板——加一條標題 scrim：`<rect id="el-scrim-title" data-comot-name="標題底" x="64" y="64" width="1152" height="88" fill="<background>" opacity="0.7"/>`，放在標題之前。
-- **封面**：副標與日期講者要一條 scrim：`<rect id="el-scrim-sub" data-comot-name="副標底" x="64" y="468" width="576" height="184" fill="<background>" opacity="0.65"/>`，放在 `el-subtitle` 之前（寬度只到 x=640，避開右側大圓，scrim 才不會在亮部露出一塊灰板；副標因此限寬 560）。
-- **章節頁**：accent 標籤（28）要 scrim：`<rect id="el-scrim-label" data-comot-name="標籤底" x="64" y="224" width="432" height="56" fill="<secondary_bg>" opacity="0.7"/>`。
-- **大數字頁**：說明（28）與來源（18）要 scrim：`<rect id="el-scrim-caption" data-comot-name="說明底" x="160" y="436" width="960" height="212" fill="<background>" opacity="0.65"/>`，放在 `el-caption` 之前。
-- **結語頁**：標籤（22）與下一步（24）要 scrim，fill 用 `<primary>`（該頁底色）：`<rect id="el-scrim-next" data-comot-name="下一步底" x="64" y="188" width="1032" height="60" fill="<primary>" opacity="0.7"/>` 與 `<rect id="el-scrim-label" … x="64" y="488" width="1032" height="56" fill="<primary>" opacity="0.7"/>`。
+**怎麼滿足它，是這一頁的構圖決定，不是查表：**
 
-scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 只數 `secondary_bg` 且 ≥ 200×80 的 rect，上面這些 `background` 色或小尺寸的 scrim 不會被算進去；章節頁那條用了 `secondary_bg` 但高度只有 56，同樣不算。
+- **已經有 `field` 的頁面**（卡片、面板、共同場域）——`field` 本身就是 scrim，只要它的 fill 是 `background`／`secondary_bg`、opacity ≥ 0.6，落在上面的 `label` 就過了。這是最自然的做法：**先想這段文字屬於哪個 `field`，而不是先想要加哪一塊 scrim**。
+- **落在 `field` 之外的文字**（標題、頁間說明、來源）——替它加一塊 scrim rect：涵蓋該文字框的四邊、放在它之前、fill 取 `background` 或 `secondary_bg`（頁面底色是 `primary` 時取 `primary`）、`opacity` 0.65～0.7。寬高由那個文字框決定，不是固定值。
+- **scrim 不要越過亮部**：配方保證左半與中央（x 80～760、y 72～648）是暗的，亮部在右緣與右下。一塊延伸到亮部的 scrim 會在那裡露出一片灰板——寧可讓文字框窄一點。
+- **不需要 scrim 就不要加**：`claim` 級以上的大字、以及頁尾，都在規則的例外裡。多加一塊面板會讓喘息頁變擁擠。
+
+scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg` 且 ≥ 200×80 的 rect——用 `background` 色、或尺寸小於這個的 scrim 不會被算進去。
 
 ### 命令順序
 
@@ -390,26 +393,44 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 
 ## 5. 動畫腳本
 
-**一次點擊＝講者講一件事，不是畫一個元素。** 一頁需要幾個 `on-click`，由這一頁要分幾段講決定；同一段話裡的東西（標題與它的底線、卡片與卡片裡的編號與字、數字與它的說明）一起進場，用 `with-previous`。裝飾幾何與背景圖**完全不加效果**——它們不承載意義，沒有可以講的那一步。
+**一次點擊＝講者講一件事，不是畫一個元素。** 一頁需要幾個 `on-click`，由這一頁要分幾段講決定（就是 `blueprint.steps`）。
 
 計畫 `animation`：`full`（預設，逐段揭露）、`minimal`（整頁一次到齊，只留一個 on-click）、`none`（不加）。
 
-**同一段裡的元素先 `element group` 成一個群組，再對群組下一個效果**，不要一長串 `with-previous`：群組是邏輯單位，作者拖一下整段一起動，動畫也只要一次（`element group` 會清掉成員既有的效果，所以一定先 group 再套動畫）。下表的 `with-previous` 只在沒有群組時才需要。
+### 5.1 效果下在群組上，不下在具名元素上
 
-每頁寫完 SVG、分好群組後下 `co-motion effect add <presentation-id> slides/00N.svg <元素 id> --family enter --effect <效果> --start <時機> --duration <秒>`。整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+先把同一段話裡的元素 `element group` 成一個群組，**再對群組 id 下一個效果**。群組就是動畫的錨點——一段一個錨點，一個錨點一個效果。不要去記某個元素叫什麼名字，也不要串一長串 `with-previous`。
 
-| 頁型 | full 的講述步驟 | minimal |
-|---|---|---|
-| 封面 | **1 步**：`el-title` fly-up on-click 0.5，`el-subtitle`／`el-meta` fade with-previous 0.4 | 同 full |
-| 章節頁 | **1 步**：`el-label` fade on-click 0.3，`el-section-title` fly-up with-previous 0.5 | 同 full |
-| 要點頁 | **1＋N 步**：`el-title` fly-up on-click 0.5（`el-underline` with-previous 0.3）；之後**每張卡片一步**——`el-card-n` fade on-click 0.3，`el-num-n`／`el-point-n` with-previous 0.3 | **1 步**：標題 on-click，全部要點 with-previous |
-| 對照頁 | **3 步**：標題 → 左欄整組（面板、頂線、欄標、內文、`el-vs-circle`／`el-vs` 全部 with-previous）→ 右欄整組 | **1 步**：整頁一起 |
-| 大數字頁 | **1 步**：`el-number` zoom on-click 0.5，`el-caption`／`el-source` fade with-previous 0.4 | 同 full |
-| 結語頁 | **1 步**：`el-claim` fly-up on-click 0.5，`el-label`／`el-next`／`el-square` with-previous 0.4 | 同 full |
+```
+co-motion effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
+```
 
-- **一頁的 `on-click` 步驟不超過 5**。要點頁超過 4 條就該拆頁，不是多按幾次。
-- 頁尾線、簡報名、頁碼、背景圖、所有裝飾幾何不加效果。
-- 可用的 enter 效果只有 `appear`、`fade`、`fly-up`、`fly-left`、`zoom`。
+- `element group` 會清掉成員既有的效果，所以**一定先 group 再套動畫**。
+- 整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+
+### 5.2 哪些東西不進動畫（靠角色判斷）
+
+| 角色 | 進動畫？ |
+|---|---|
+| `node`（連同它的 `field`／`label`，通常已在同一個群組裡） | ✅ 每段一個 `on-click` |
+| `spine` | ✅ 跟它串起的第一段一起（`with-previous`），或自成第一步 |
+| `edge` | ✅ 跟它連接的後一個 node 一起 |
+| `garnish` | ❌ **絕不加效果**。裝飾是關係成立之後才加的，沒有可以講的那一步 |
+| `background`（背景圖） | ❌ 絕不加效果 |
+| 頁尾線、簡報名、頁碼 | ❌ 不加效果 |
+
+**判斷依據是角色，不是元素叫什麼名字。** 沒有標角色又看起來像裝飾的東西（純色塊、線、圓）一律不加。
+
+### 5.3 強度
+
+| `animation` | 做法 |
+|---|---|
+| `full` | 每個講述步驟一個 `on-click`，步數等於 `blueprint.steps` |
+| `minimal` | 整頁只有一個 `on-click`（第一個群組），其餘 `with-previous` |
+| `none` | 不加效果，也不下轉場 |
+
+- **一頁的 `on-click` 步驟不超過 5**。超過就該拆頁，不是多按幾次。
+- 可用的 enter 效果只有 `appear`、`fade`、`fly-up`、`fly-left`、`zoom`。選哪一個看內容：並列用 `fade`、有方向的用 `fly-left`／`fly-up`、單一焦點用 `zoom`。
 
 ## 6. 先定關係，再選解法
 
@@ -507,6 +528,10 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 | `structure.background-image` | 計畫 `background` 是 `on` 時，每一頁都有背景圖（漏下 `slide background set` 會被這條抓到） |
 | `blueprint.*` | 有寫 `blueprint` 的頁面，畫出來的 node 數與 on-click 步數要跟構圖時寫的一致 |
 | `rhythm.repeated-shape` | 相鄰兩頁不得用同一個 `blueprint.shape` 解同一種 `relationship`、又是同樣的單位數 |
+| `blueprint.required` | 計畫 `confirmed` 之後，每一頁都必須寫下 `blueprint` |
+| `role.required` | `relationship` 不是 `none` 的頁面，至少要標出一個 `node` |
+| `role.garnish-animated` | `garnish` 不得有任何進場效果（第 5.2 節） |
+| `roster.relationship-variety` | 4 頁以上時，同一種 `relationship` 不得超過半數 |
 | `role.*` | 有宣告角色的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊（第 3b 節） |
 | `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的特徵字級） |
 | `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 |

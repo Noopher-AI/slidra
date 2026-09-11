@@ -37,6 +37,10 @@ description: 跑 co-motion validate 驗證指定頁或整份投影片的文字�
 | `focus.` | 一頁只有一個標題角色 | 合併或拆頁 |
 | `geometry.` | 文字框的右緣、下緣溢出；同欄文字框重疊（裝飾用的圓、線、path 可以出血，不驗） | 縮短文字或減少條數 |
 | `style.` | 字級、文字色、色塊色是否在 design-spec 的表上（大數字與粗體標籤可用 accent、結語頁文字可用 background；色塊可 `none` 或 `url(#…)` 漸層） | 改回表上的值 |
+| `blueprint.required` | 計畫已確認，但這一頁沒有寫下構圖決定 | 補上 `blueprint`（`shape`／`nodes`／`steps`），用 `plan set outline` 寫回 |
+| `role.garnish-animated` | 標成 `garnish` 的元素卻有動畫——裝飾沒有可以講的那一步 | 拿掉那個效果，或這個元素根本不是裝飾、改標 `node`／`label` |
+| `role.required` | 有關係的頁面沒有標出任何 `node` | 替每個語意單位加 `data-comot-role="node"`（指南第 3b 節） |
+| `roster.relationship-variety` | 4 頁以上、同一種關係佔超過一半——每頁資訊結構都一樣 | 回去看內容，找出其實是順序／對比／一個數字的那幾節，改它們的 `relationship` |
 | `rhythm.repeated-shape` | 相鄰兩頁用同一個 `blueprint.shape` 解同一種 `relationship`、單位數也一樣——同一頁做了兩次 | 換一種構圖（第 6.2 節有別的解），或把兩頁合併 |
 | `blueprint.` | 頁面跟構圖時寫下的 `blueprint` 對不上：`blueprint.nodes` 是 node 數不符、`blueprint.steps` 是 on-click 步數不符 | 先判斷哪一邊對：頁面畫錯就改頁面，構圖想錯就用 `plan set outline` 改 blueprint |
 | `role.` | 有宣告 `data-comot-role` 的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊 | 改角色或補標籤；裝飾要承載意義就不該是 `garnish` |

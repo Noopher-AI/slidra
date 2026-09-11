@@ -2464,7 +2464,10 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
     assert!(!scripted.status.success());
 
     // A page with a plan so validate runs the scrim rule.
-    let outline = "```json\n{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"on\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" } ] }\n```\n";
+    // This fixture is about the background/scrim round trip, so its page
+    // carries the blueprint and `none` relationship that keep the two
+    // page-metadata rules (#303) out of the way.
+    let outline = "```json\n{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"on\", \"pages\": [ { \"n\": 1, \"relationship\": \"none\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 0, \"steps\": 1 } } ] }\n```\n";
     let spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 72, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n";
     assert!(
         fixture
@@ -2567,8 +2570,10 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
         .iter()
         .map(|e| e["rule"].as_str().unwrap().to_string())
         .collect();
-    assert!(rules.iter().all(|r| r == "structure.scrim"), "{rules:?}");
-    assert!(rules.len() >= 2, "{rules:?}");
+    // The fixture's plan carries neither a blueprint nor node roles, so it
+    // also trips those two now (#303) — this assertion is about the scrim.
+    let scrims = rules.iter().filter(|r| *r == "structure.scrim").count();
+    assert!(scrims >= 2, "{rules:?}");
     let panel = fixture.run_rust(&[
         "element",
         "insert",

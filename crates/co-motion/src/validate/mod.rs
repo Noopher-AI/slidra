@@ -9,7 +9,7 @@
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::geometry::transform::{Matrix, multiply_matrices, parse_transform};
-use crate::plan::{self, DesignSpec, OutlinePlan, template_name_for};
+use crate::plan::{self, DesignSpec, OutlinePlan, RELATIONSHIPS, template_name_for};
 use crate::slide::scan::{ScannedNode, attribute_value, scan_document};
 use crate::text::unescape_xml_text;
 use crate::workspace::project::{read_project_json, read_template_entries};
@@ -167,6 +167,8 @@ pub struct SlideFacts {
     pub has_background: bool,
     /// `on-click` enter effects — the page's click steps (#303 §D).
     pub click_steps: usize,
+    /// Every effect's `target` id, in document order.
+    pub effect_targets: Vec<String>,
 }
 
 /// Characters that count toward a text budget: everything but whitespace.
@@ -247,6 +249,12 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
         }
         facts.has_transition = find_child(metadata, "comot:transition").is_some();
         if let Some(effects) = find_child(metadata, "comot:effects") {
+            facts.effect_targets = effects
+                .children
+                .iter()
+                .filter(|c| c.tag == "comot:effect")
+                .filter_map(|c| attribute_value(c, "target"))
+                .collect();
             facts.click_steps = effects
                 .children
                 .iter()
@@ -637,6 +645,31 @@ pub fn check_slide(
         }
     }
 
+    // Decoration is added AFTER the relationship works, so it has no step of
+    // its own to be told in — the role decides this, not the element's name
+    // (ppt-master does the same: `decoration` is excluded by the compiler).
+    for target in &facts.effect_targets {
+        let is_garnish = facts
+            .text_boxes
+            .iter()
+            .any(|t| &t.id == target && t.role.as_deref() == Some("garnish"))
+            || facts
+                .shapes
+                .iter()
+                .any(|sh| &sh.id == target && sh.role.as_deref() == Some("garnish"));
+        if is_garnish {
+            push(
+                errors,
+                slide,
+                Some(target),
+                "role.garnish-animated",
+                "garnish 有動畫",
+                "garnish 不加效果",
+                format!("第 {n} 頁 {target} 是 garnish 卻有進場效果——裝飾沒有可以講的那一步"),
+            );
+        }
+    }
+
     let spines = role_of("spine");
     if spines > 1 {
         push(
@@ -726,6 +759,57 @@ pub fn check_slide(
                 "≥ 1 個 enter 效果",
                 format!("第 {n} 頁沒有任何進場效果（計畫 animation={animation}）"),
             );
+        }
+    }
+
+    // --- #303: the metadata that makes every rule below possible is not
+    // optional. Both of these were opt-in first, and the first real run
+    // showed what opt-in means in practice: the build wrote neither, so
+    // every blueprint and role rule sat silent while the deck came out as
+    // four variations of the same page.
+    if let Some(page) = page {
+        let confirmed = ctx.outline.is_some_and(|o| o.status == "confirmed");
+        if confirmed && page.blueprint.is_none() {
+            push(
+                errors,
+                slide,
+                None,
+                "blueprint.required",
+                "沒有 blueprint",
+                "每頁都要有 blueprint",
+                format!(
+                    "第 {n} 頁沒有寫下構圖決定——在 plan/outline.md 這一頁加上 blueprint（shape／nodes／steps）"
+                ),
+            );
+        }
+        // A page that carries a relationship has semantic units; say which
+        // elements they are. `none` pages (cover, a single number, a closing
+        // claim) have no relationship to carry and so need no nodes.
+        if page.relationship != "none" {
+            let nodes = facts
+                .text_boxes
+                .iter()
+                .filter(|t| t.role.as_deref() == Some("node"))
+                .count()
+                + facts
+                    .shapes
+                    .iter()
+                    .filter(|sh| sh.role.as_deref() == Some("node"))
+                    .count();
+            if nodes == 0 {
+                push(
+                    errors,
+                    slide,
+                    None,
+                    "role.required",
+                    "沒有 node",
+                    "≥ 1 個 data-comot-role=node",
+                    format!(
+                        "第 {n} 頁是 {} 關係卻沒有標出任何 node——每個語意單位都要標角色（指南第 3b 節）",
+                        page.relationship
+                    ),
+                );
+            }
         }
     }
 
@@ -1145,6 +1229,42 @@ pub fn check_deck(
     slides: &[(String, SlideFacts)],
     errors: &mut Vec<ValidationError>,
 ) {
+    // #303 — a deck whose pages are mostly one relationship is a deck that
+    // was not thought about: every page then carries the same information
+    // shape, and no amount of layout variety makes them read differently.
+    // Observed for real — a four-page deck with three `membership` pages
+    // came out as three versions of the same page.
+    if let Some(outline) = ctx.outline {
+        let total = outline.pages.len();
+        if total >= 4 {
+            for candidate in RELATIONSHIPS {
+                let count = outline
+                    .pages
+                    .iter()
+                    .filter(|p| p.relationship == *candidate)
+                    .count();
+                if count * 2 > total {
+                    let slide = slides
+                        .first()
+                        .map(|(path, _)| path.as_str())
+                        .unwrap_or("slides/001.svg");
+                    push(
+                        errors,
+                        slide,
+                        None,
+                        "roster.relationship-variety",
+                        format!("{count}／{total} 頁是 {candidate}"),
+                        "同一種關係不超過半數",
+                        format!(
+                            "{total} 頁裡有 {count} 頁是 {candidate} 關係——每頁的資訊結構都一樣，讀起來會是同一頁。回去看內容，有沒有哪幾節其實是順序、對比或一個數字"
+                        ),
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
     // #303 §A' — the anti-pattern ppt-master names outright: reusing one
     // carrier for a second page without a page job. Two ADJACENT pages that
     // carry the same relationship, chose the same composition, and hold the
@@ -1344,7 +1464,10 @@ mod tests {
             // `background` defaults to "on"; the fixtures below carry no
             // background image because they are testing other rules, so
             // they opt out explicitly. The rule itself has its own test.
-            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {pages} ] }}\n```\n"
+            // `draft` + `none` keeps these fixtures minimal: they are about
+            // other rules, so they opt out of the two that demand a
+            // blueprint and node roles (each has its own test).
+            "```json\n{{ \"status\": \"draft\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {pages} ] }}\n```\n"
         ))
         .unwrap()
     }
@@ -1444,7 +1567,7 @@ mod tests {
     fn run_one(svg: &str, page_type: &str, rhythm: &str) -> Vec<ValidationError> {
         let spec = spec();
         let outline = outline(&format!(
-            "{{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"{page_type}\", \"rhythm\": \"{rhythm}\", \"title\": \"t\" }}"
+            "{{ \"n\": 1, \"relationship\": \"none\", \"type\": \"{page_type}\", \"rhythm\": \"{rhythm}\", \"title\": \"t\" }}"
         ));
         let names = vec![template_name_for(page_type).to_string()];
         let ctx = Context {
@@ -1595,6 +1718,93 @@ mod tests {
     }
 
     #[test]
+    fn a_deck_may_not_be_mostly_one_relationship() {
+        // #303: observed for real — a four-page deck with three `membership`
+        // pages came out as three versions of the same page. Layout variety
+        // cannot rescue an information shape that never changes.
+        let page = |n: usize, rel: &str| {
+            format!(
+                "{{ \"n\": {n}, \"relationship\": \"{rel}\", \"rhythm\": \"dense\", \"title\": \"t\" }}"
+            )
+        };
+        let run = |rels: [&str; 4]| {
+            let pages: Vec<String> = rels
+                .iter()
+                .enumerate()
+                .map(|(i, rel)| page(i + 1, rel))
+                .collect();
+            let outline = plan::parse_outline(&format!(
+                "```json\n{{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ {} ] }}\n```\n",
+                pages.join(", ")
+            ))
+            .unwrap();
+            let ctx = Context {
+                canvas_width: 1280.0,
+                canvas_height: 720.0,
+                outline: Some(&outline),
+                spec: None,
+                template_names: &[],
+            };
+            let body = textbox("el-t", 80.0, 72.0, 600.0, 40.0, "#F4F6F8", &[("t", false)]);
+            let slides: Vec<(String, SlideFacts)> = (1..=4)
+                .map(|i| {
+                    (
+                        format!("slides/00{i}.svg"),
+                        read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap(),
+                    )
+                })
+                .collect();
+            let mut errors = Vec::new();
+            check_deck(&ctx, &slides, &mut errors);
+            rules(&errors)
+        };
+
+        // Three of four the same — the deck we actually produced.
+        assert!(run(["none", "membership", "membership", "membership"])
+            .contains(&"roster.relationship-variety"));
+        // Exactly half is fine.
+        assert!(!run(["none", "none", "membership", "membership"])
+            .contains(&"roster.relationship-variety"));
+        assert!(!run(["none", "order", "contrast", "membership"])
+            .contains(&"roster.relationship-variety"));
+    }
+
+    #[test]
+    fn a_confirmed_page_must_write_down_its_blueprint_and_mark_its_nodes() {
+        // #303: both were opt-in first, and the first real run showed what
+        // opt-in means — the build wrote neither, so every rule that reads
+        // them sat silent.
+        let spec = spec();
+        let body = textbox("el-t", 80.0, 72.0, 600.0, 40.0, "#F4F6F8", &[("t", false)]);
+        let run = |status: &str, rel: &str, blueprint: &str| {
+            let outline = plan::parse_outline(&format!(
+                "```json\n{{ \"status\": \"{status}\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"{rel}\", \"rhythm\": \"dense\", \"title\": \"t\"{blueprint} }} ] }}\n```\n"
+            ))
+            .unwrap();
+            let ctx = Context {
+                canvas_width: 1280.0,
+                canvas_height: 720.0,
+                outline: Some(&outline),
+                spec: Some(&spec),
+                template_names: &[],
+            };
+            let facts = read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap();
+            let mut errors = Vec::new();
+            check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
+            rules(&errors)
+        };
+
+        let missing = run("confirmed", "membership", "");
+        assert!(missing.contains(&"blueprint.required"), "{missing:?}");
+        assert!(missing.contains(&"role.required"), "{missing:?}");
+
+        // A draft is still being planned; a `none` page has no units to mark.
+        let draft = run("draft", "none", "");
+        assert!(!draft.contains(&"blueprint.required"), "{draft:?}");
+        assert!(!draft.contains(&"role.required"), "{draft:?}");
+    }
+
+    #[test]
     fn two_adjacent_pages_may_not_solve_the_same_relationship_the_same_way() {
         // #303 §A': the anti-pattern ppt-master names outright — reusing one
         // carrier for a second page with no page job. Same relationship,
@@ -1667,8 +1877,9 @@ mod tests {
             rules(&errors)
         };
 
-        // No blueprint: nothing to reconcile.
-        assert!(!run("").iter().any(|r| r.starts_with("blueprint.")));
+        // No blueprint on a confirmed page is itself the error now: the
+        // build has to write down what it decided (#303).
+        assert!(run("").contains(&"blueprint.required"));
 
         // Matching blueprint passes.
         let matching = ", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 2, \"steps\": 1 }";
@@ -1717,6 +1928,36 @@ mod tests {
         ));
         assert!(r.contains(&"role.edge-endpoints"), "{r:?}");
         assert!(r.contains(&"role.node-label"), "{r:?}");
+
+        // Decoration has no step of its own to be told in: an effect aimed
+        // at a `garnish` is the role not being believed.
+        let garnish_shape = "<g id=\"el-rule\" data-comot-role=\"garnish\"><rect x=\"80\" y=\"136\" width=\"56\" height=\"4\" fill=\"#F5B942\"/></g>";
+        let animated = slide_with_motion_targets(&format!("{plain}{garnish_shape}"), &["el-rule"]);
+        let facts = read_slide_facts(&animated).unwrap();
+        let spec = spec();
+        let names = vec![template_name_for("bullets").to_string()];
+        let outline = outline("{ \"n\": 1, \"relationship\": \"none\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" }");
+        let ctx = Context {
+            canvas_width: 1280.0,
+            canvas_height: 720.0,
+            outline: Some(&outline),
+            spec: Some(&spec),
+            template_names: &names,
+        };
+        let mut errors = Vec::new();
+        check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
+        assert!(rules(&errors).contains(&"role.garnish-animated"), "{:?}", rules(&errors));
+    }
+
+    /// A slide whose effect list targets exactly `targets`.
+    fn slide_with_motion_targets(body: &str, targets: &[&str]) -> String {
+        let effects: String = targets
+            .iter()
+            .map(|t| format!("<comot:effect target=\"{t}\" family=\"enter\" effect=\"fade\" start=\"on-click\" duration=\"0.4\" delay=\"0\"/>"))
+            .collect();
+        format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\" style=\"background-color:#101418\"><metadata><comot:notes xmlns:comot=\"https://co-motion.dev/ns\">n</comot:notes><comot:transition xmlns:comot=\"https://co-motion.dev/ns\" enter=\"fade\" enter-duration=\"0.3\"/><comot:effects xmlns:comot=\"https://co-motion.dev/ns\">{effects}</comot:effects></metadata>{body}</svg>"
+        )
     }
 
     #[test]

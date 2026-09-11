@@ -52,6 +52,8 @@ page-5.note=數字改成 11.8 分鐘
 
       挑到的 `shape` 剛好是第 6.3 節某個已知解時（`card-wall`→`bullets`、`split-panel`→`compare`、`hero-number`→`number`、`cover-stack`→`cover`、`claim-field`→`section`／`closing`），**才**順手把 `"type"` 也寫進這一頁（`validate` 會多驗一條該頁型的簽名字級，範本也會登記）；自己組的構圖就不要寫 `type`。
 
+      **這個 blueprint 是必填的**：計畫確認之後每一頁都要有，`validate` 的 `blueprint.required` 會擋。同樣地，前景階段每個語意單位都要標 `data-comot-role="node"`，否則 `role.required` 會擋——這兩條先前是選用的，結果沒有人寫，整套對帳形同虛設。
+
       - `shape`：你選的構圖叫什麼（第 6.2 節的名字，例如 `card-wall`／`shared-field`／`spine-path`；自己組的就給一個描述性的名字）。**相鄰兩頁不要用同一個 shape 解同一種關係**，`validate` 的 `rhythm.repeated-shape` 會抓。
       - `nodes`：這一頁有幾個語意單位（之後要標成 `data-comot-role="node"` 的那些）。
       - `steps`：這一頁分幾次點擊講完，也就是 `on-click` 的數量。
@@ -64,7 +66,7 @@ page-5.note=數字改成 11.8 分鐘
       - 群組是**邏輯單位**：作者在編輯器裡拖一下就整段一起動，動畫也只要下一次。
       - `element group` 會清掉成員身上既有的效果（回傳的 `removedEffects` 會告訴你幾個），所以**一定要先 group 再套動畫**。
       - 背景圖、頁尾線、頁尾文字、頁碼不進任何群組。
-   5. **動畫套用**：依指南第 5 節該頁型的講述步驟，**對群組 id（沒有群組的就對元素 id）**下 `co-motion effect add`——一段一個 `on-click`，一頁不超過 5 個；`animation` 是 `none` 就整段跳過。群組化之後多數頁面只需要 1～4 次 `effect add`，不再需要一長串 `with-previous`。
+   5. **動畫套用**：依指南第 5 節，**對群組 id（沒有群組的就對元素 id）**下 `co-motion effect add`——一段一個 `on-click`，一頁不超過 5 個；`animation` 是 `none` 就整段跳過。**`garnish` 與背景圖絕不加效果**（`validate` 的 `role.garnish-animated` 會擋）。群組化之後多數頁面只需要 1～4 次 `effect add`，不再需要一長串 `with-previous`。
    6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。`validate` 會拿步驟 1 的 `blueprint` 跟實際頁面對帳——`blueprint.nodes` 是畫出來的 node 數不符、`blueprint.steps` 是點擊步數不符。**兩邊不一致時先問哪一邊對**：頁面畫錯就改頁面，構圖當初想錯就改 `blueprint`（用 `plan set outline` 寫回），不要留著不管，也不要為了讓數字好看而亂改構圖。然後補這一頁的收尾：
       - `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
       - 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照這六步重寫整頁（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
