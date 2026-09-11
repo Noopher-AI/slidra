@@ -368,18 +368,24 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 
 ## 5. 動畫腳本
 
-計畫 `animation` 決定強度：`full`（完整，預設）、`minimal`（只做標題與要點，不動裝飾）、`none`（不加）。每頁寫完 SVG 後依下表下 `co-motion effect add <presentation-id> slides/00N.svg <元素 id> --family enter --effect <效果> --start <時機> --duration <秒>`；**每頁第一個效果 `on-click`**，裝飾 `with-previous` 0.4，卡片與條目 `after-previous` 0.3。整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+**一次點擊＝講者講一件事，不是畫一個元素。** 一頁需要幾個 `on-click`，由這一頁要分幾段講決定；同一段話裡的東西（標題與它的底線、卡片與卡片裡的編號與字、數字與它的說明）一起進場，用 `with-previous`。裝飾幾何與背景圖**完全不加效果**——它們不承載意義，沒有可以講的那一步。
 
-| 頁型 | full（依序） | minimal |
+計畫 `animation`：`full`（預設，逐段揭露）、`minimal`（整頁一次到齊，只留一個 on-click）、`none`（不加）。
+
+每頁寫完 SVG 後下 `co-motion effect add <presentation-id> slides/00N.svg <元素 id> --family enter --effect <效果> --start <時機> --duration <秒>`。整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+
+| 頁型 | full 的講述步驟 | minimal |
 |---|---|---|
-| 封面 | `el-bar` fade on-click 0.3 → `el-title` fly-up after-previous 0.5 → `el-subtitle` fade with-previous 0.4 → `el-meta` fade with-previous 0.4 | `el-title` fly-up on-click 0.5 → `el-subtitle` fade with-previous 0.4 |
-| 章節頁 | `el-spine` fade on-click 0.4 → `el-watermark` fade with-previous 0.4 → `el-label` fade after-previous 0.3 → `el-section-title` fly-up with-previous 0.5 | `el-section-title` fly-up on-click 0.5 |
-| 要點頁 | `el-title` fly-up on-click 0.5 → `el-underline` fade with-previous 0.3 → 每張卡片：`el-card-n` fade after-previous 0.3、`el-num-n` fade with-previous 0.3、`el-point-n` fly-left with-previous 0.3 | `el-title` fly-up on-click 0.5 → 每條 `el-point-n` fade after-previous 0.3 |
-| 對照頁 | `el-title` fly-up on-click 0.5 → `el-underline` fade with-previous 0.3 → 左側四個（面板、頂線、欄標、內文）fade after-previous 0.3 各 with-previous → `el-vs-circle` zoom after-previous 0.4、`el-vs` fade with-previous 0.3 → 右側四個同左 | `el-title` fly-up on-click 0.5 → `el-body-left` fade after-previous 0.3 → `el-body-right` fade after-previous 0.3 |
-| 大數字頁 | `el-halo-1` fade on-click 0.4 → `el-halo-2` fade with-previous 0.4 → `el-ring` zoom with-previous 0.5 → `el-number` zoom after-previous 0.5 → `el-caption` fade with-previous 0.4 → `el-source` fade with-previous 0.4 | `el-number` zoom on-click 0.5 → `el-caption` fade with-previous 0.4 |
-| 結語頁 | `el-label` fade on-click 0.3 → `el-claim` fly-up after-previous 0.5 → `el-next` fade with-previous 0.4 → `el-square` zoom after-previous 0.4 | `el-claim` fly-up on-click 0.5 → `el-next` fade with-previous 0.4 |
+| 封面 | **1 步**：`el-title` fly-up on-click 0.5，`el-subtitle`／`el-meta` fade with-previous 0.4 | 同 full |
+| 章節頁 | **1 步**：`el-label` fade on-click 0.3，`el-section-title` fly-up with-previous 0.5 | 同 full |
+| 要點頁 | **1＋N 步**：`el-title` fly-up on-click 0.5（`el-underline` with-previous 0.3）；之後**每張卡片一步**——`el-card-n` fade on-click 0.3，`el-num-n`／`el-point-n` with-previous 0.3 | **1 步**：標題 on-click，全部要點 with-previous |
+| 對照頁 | **3 步**：標題 → 左欄整組（面板、頂線、欄標、內文、`el-vs-circle`／`el-vs` 全部 with-previous）→ 右欄整組 | **1 步**：整頁一起 |
+| 大數字頁 | **1 步**：`el-number` zoom on-click 0.5，`el-caption`／`el-source` fade with-previous 0.4 | 同 full |
+| 結語頁 | **1 步**：`el-claim` fly-up on-click 0.5，`el-label`／`el-next`／`el-square` with-previous 0.4 | 同 full |
 
-頁尾線、簡報名、頁碼不加效果。可用的 enter 效果只有 `appear`、`fade`、`fly-up`、`fly-left`、`zoom`。
+- **一頁的 `on-click` 步驟不超過 5**。要點頁超過 4 條就該拆頁，不是多按幾次。
+- 頁尾線、簡報名、頁碼、背景圖、所有裝飾幾何不加效果。
+- 可用的 enter 效果只有 `appear`、`fade`、`fly-up`、`fly-left`、`zoom`。
 
 ## 6. 挑頁型：看內容的關係，不看順序
 
