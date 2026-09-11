@@ -29,7 +29,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 5. **寫逐頁計畫**：每一頁列出主張（一句話，以 15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（以 18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句（作者要點的完整版，**不得虛構任何數據、名稱、日期**）。
 6. **出題**：3～7 題，第一題固定問敘事模式，最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`＝有背景圖、`off`＝不加；`note` 說明會用哪種配方）；中間每一題對應一個你拿不準的頁型判斷（例如「第 5 頁的 12 分鐘要不要做成大數字頁」）或配色。每題都要有 `recommended`（你的建議，必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
 7. **寫入 `plan/outline.md`**：`co-motion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方，含 `animation` 預設 `full`、`background` 預設 `on`）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號 `'`（打不進命令列）。
-8. **寫入 `plan/design-spec.md`**：依 `slide-design.md` 第 3 節挑**一組**配色（作者指定了顏色或風格就照作者）、密度預設 `presentation`、字級表照第 2 節（`cover` 是 72；畫布不是 1280×720 時每個字級乘以 `k = width ÷ 1280`）、`visual` 固定 `editorial-tech`，`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼選這組配色與這個密度。
+8. **寫入 `plan/design-spec.md`**：依 `slide-design.md` 第 3 節挑**一組**配色（作者指定了顏色或風格就照作者）、密度預設 `presentation`、字級表照第 2 節（`cover` 是 72；畫布不是 1280×720 時每個字級乘以 `k = width ÷ 1280`）、`layout` 錨點（沿用預設即可，畫布不同時乘以 `k`）、`visual` 固定 `editorial-tech`，`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼選這組配色與這個密度。
 9. **停下來**：不下任何 `slide`、`textbox`、`element` 命令。回報時說明「計畫已寫好，編輯器會彈出確認視窗；按確認並建置就會開工」。沒有視窗的環境（作者直接在終端機對話）就把計畫表貼在對話裡，請作者回覆 `/comotion-build 【計畫確認】` 加上每題的答案。
 
 ## `plan/outline.md` 的 JSON 段
@@ -82,9 +82,12 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
   "density": "presentation",
   "palette": { "background": "#101418", "secondary_bg": "#1B2129", "primary": "#4F8DFF", "accent": "#F5B942", "secondary_accent": "#6DD3A5", "text": "#F4F6F8", "muted": "#9AA7B4" },
   "type_scale": { "cover": 72, "section": 56, "number": 140, "claim": 48, "title": 40, "subtitle": 28, "body": 24, "column": 22, "caption": 18 },
+  "layout": { "side_margin": 80, "bottom_margin": 72, "footer_margin": 16, "gutter": 24, "spacing": [8, 16, 24, 40, 64] },
   "visual": "editorial-tech"
 }
 ```
+
+`layout` 是**整份共用的版面錨點**：安全區的三個邊界、欄間距、以及允許的間距級距。這份簡報每一頁的座標都可以不一樣，但**這幾個數字全份一致**——`validate` 用三個邊界驗溢出，`gutter` 與 `spacing` 是 build 排版時唯一該取用的間距來源（不要每頁自己發明數字）。整組可省略，省略時就是上面這些預設值；寫了就必須是合法數字，打錯會直接報錯。畫布不是 1280×720 時，這些值跟字級一樣乘以 `k`。
 
 ## 使用的命令
 

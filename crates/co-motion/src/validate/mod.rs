@@ -18,6 +18,9 @@ use crate::workspace::{self, virtual_fs};
 /// Font-derived line height of the bundled Noto Sans TC (hhea), as a
 /// multiple of font-size — the same 1.448 `text::wrap` produces.
 const LINE_HEIGHT: f64 = 1.45;
+/// Fallbacks for a deck with no `plan/design-spec.md` at all. With a spec
+/// the anchors come from its `layout` block (#303 §C) — these numbers only
+/// serve the plan-free run, which validates geometry and nothing else.
 const SIDE_MARGIN: f64 = 80.0;
 const BOTTOM_MARGIN: f64 = 72.0;
 /// How close to the canvas bottom a caption-sized (footer) text box may go.
@@ -441,16 +444,27 @@ pub fn check_slide(
     let page_type = page.map(|p| p.page_type.as_str());
 
     // --- geometry (no plan needed) ---
-    let right_limit = ctx.canvas_width - SIDE_MARGIN * k;
+    // The safe area is the deck's own declared anchor, not a constant:
+    // page composition is free, but every page agrees on where the page
+    // ends (#303 §C).
+    let (side_margin, bottom_margin, footer_margin) = match ctx.spec {
+        Some(spec) => (
+            spec.layout.side_margin,
+            spec.layout.bottom_margin,
+            spec.layout.footer_margin,
+        ),
+        None => (SIDE_MARGIN, BOTTOM_MARGIN, FOOTER_MARGIN),
+    };
+    let right_limit = ctx.canvas_width - side_margin * k;
     // Caption-sized boxes are the footer (簡報名、頁碼): they live in the
     // bottom margin by design and may run down to the canvas edge minus
     // a hairline; everything else stops at the content zone.
     let caption_size = ctx.spec.map(|spec| spec.size("caption")).unwrap_or(18.0) * k;
     for tb in &facts.text_boxes {
         let bottom_limit = if tb.font_size <= caption_size + 0.5 {
-            ctx.canvas_height - FOOTER_MARGIN * k
+            ctx.canvas_height - footer_margin * k
         } else {
-            ctx.canvas_height - BOTTOM_MARGIN * k
+            ctx.canvas_height - bottom_margin * k
         };
         let right = tb.x + tb.width;
         if right > right_limit + 0.5 {

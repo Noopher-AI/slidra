@@ -76,6 +76,35 @@ pub struct OutlinePlan {
     pub question_count: usize,
 }
 
+/// The deck-wide layout anchors (#303 §C). Coordinates are the page's own
+/// business — these are what every page must nonetheless agree on, so
+/// freeing composition does not also free consistency. `validate` enforces
+/// the three margins; `gutter` and `spacing` are the rhythm the build reads
+/// when it places things, and are declared here so the whole deck draws
+/// from one set of steps rather than inventing gaps per page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutAnchors {
+    pub side_margin: f64,
+    pub bottom_margin: f64,
+    pub footer_margin: f64,
+    pub gutter: f64,
+    pub spacing: Vec<f64>,
+}
+
+impl Default for LayoutAnchors {
+    /// The values the six page-type samples were drawn with, so a spec
+    /// written before this block reads exactly as it always did.
+    fn default() -> Self {
+        Self {
+            side_margin: 80.0,
+            bottom_margin: 72.0,
+            footer_margin: 16.0,
+            gutter: 24.0,
+            spacing: vec![8.0, 16.0, 24.0, 40.0, 64.0],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DesignSpec {
     pub density: String,
@@ -85,6 +114,8 @@ pub struct DesignSpec {
     pub palette: Vec<(String, String)>,
     /// Role -> size, in `TYPE_ROLES` order.
     pub type_scale: Vec<(String, f64)>,
+    /// Deck-wide layout anchors; absent reads as `LayoutAnchors::default()`.
+    pub layout: LayoutAnchors,
 }
 
 impl DesignSpec {
@@ -351,12 +382,69 @@ pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
         type_scale.push((role.to_string(), size));
     }
 
+    let layout = parse_layout_anchors(obj)?;
+
     Ok(DesignSpec {
         density: density.to_string(),
         visual: visual.to_string(),
         palette,
         type_scale,
+        layout,
     })
+}
+
+/// Reads the optional `layout` object. Every field is optional and falls
+/// back to the default anchor, but a field that IS present must be a
+/// positive finite number (or, for `spacing`, a non-empty array of them) —
+/// a typo becomes an error, never a silent default.
+fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> CoMotionResult<LayoutAnchors> {
+    let mut anchors = LayoutAnchors::default();
+    let Some(layout) = obj.get("layout") else {
+        return Ok(anchors);
+    };
+    let layout = layout
+        .as_object()
+        .ok_or_else(|| CoMotionError::invalid("design-spec.layout 必須是物件"))?;
+
+    for (key, slot) in [
+        ("side_margin", &mut anchors.side_margin),
+        ("bottom_margin", &mut anchors.bottom_margin),
+        ("footer_margin", &mut anchors.footer_margin),
+        ("gutter", &mut anchors.gutter),
+    ] {
+        let Some(value) = layout.get(key) else { continue };
+        let number = value
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0)
+            .ok_or_else(|| {
+                CoMotionError::invalid(format!("design-spec.layout.{key} 必須是 ≥ 0 的數字"))
+            })?;
+        *slot = number;
+    }
+
+    if let Some(value) = layout.get("spacing") {
+        let steps = value
+            .as_array()
+            .ok_or_else(|| CoMotionError::invalid("design-spec.layout.spacing 必須是陣列"))?;
+        if steps.is_empty() {
+            return Err(CoMotionError::invalid(
+                "design-spec.layout.spacing 不能是空陣列",
+            ));
+        }
+        let mut parsed = Vec::with_capacity(steps.len());
+        for step in steps {
+            let number = step
+                .as_f64()
+                .filter(|n| n.is_finite() && *n > 0.0)
+                .ok_or_else(|| {
+                    CoMotionError::invalid("design-spec.layout.spacing 的每一項必須是大於 0 的數字")
+                })?;
+            parsed.push(number);
+        }
+        anchors.spacing = parsed;
+    }
+
+    Ok(anchors)
 }
 
 /// Which plan file a `plan set`/`plan delete` name addresses.
@@ -476,6 +564,38 @@ mod tests {
         assert_eq!(plan.pages.len(), 2);
         assert_eq!(plan.pages[1].page_type, "bullets");
         assert_eq!(plan.question_count, 1);
+    }
+
+    #[test]
+    fn layout_anchors_default_to_the_sample_values_and_reject_a_typo() {
+        // #303 §C: composition is the page's own business, the safe area is
+        // the deck's. A spec written before the block reads as it always did.
+        let default = parse_design_spec(DESIGN_SPEC_OK).unwrap().layout;
+        assert_eq!(default, LayoutAnchors::default());
+        assert_eq!(default.side_margin, 80.0);
+
+        let with_layout = DESIGN_SPEC_OK.replace(
+            "\"type_scale\"",
+            "\"layout\": { \"side_margin\": 64, \"gutter\": 32, \"spacing\": [12, 24, 48] }, \"type_scale\"",
+        );
+        let anchors = parse_design_spec(&with_layout).unwrap().layout;
+        assert_eq!(anchors.side_margin, 64.0);
+        assert_eq!(anchors.gutter, 32.0);
+        assert_eq!(anchors.spacing, vec![12.0, 24.0, 48.0]);
+        // Untouched fields keep the default.
+        assert_eq!(anchors.bottom_margin, 72.0);
+
+        // A present-but-wrong value is an error, never a silent default.
+        let typo = DESIGN_SPEC_OK.replace(
+            "\"type_scale\"",
+            "\"layout\": { \"side_margin\": \"80\" }, \"type_scale\"",
+        );
+        assert!(parse_design_spec(&typo).is_err());
+        let empty = DESIGN_SPEC_OK.replace(
+            "\"type_scale\"",
+            "\"layout\": { \"spacing\": [] }, \"type_scale\"",
+        );
+        assert!(parse_design_spec(&empty).is_err());
     }
 
     #[test]
