@@ -96,15 +96,19 @@ async function openFreshPresentation(name = "測試簡報"): Promise<{ id: strin
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018, #303): the tests below edit
+  // slides/001.svg, so mint one page with one title text box.
   const id = opened.data!.id;
-  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(slide.ok).toBe(true);
-  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
-  const match = svgText.match(/<text id="([^"]+)"/);
-  if (!match) {
-    throw new Error("test fixture is missing the expected <text id=…> element");
+  expect((await runCli(["slide", "add", id])).ok).toBe(true);
+  const added = await runCli<{ elementId: string }>([
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", name,
+  ]);
+  expect(added.ok).toBe(true);
+  const elementId = added.data!.elementId;
+  if (typeof elementId !== "string" || elementId === "") {
+    throw new Error("textbox add did not report the new element's id");
   }
-  return { id, elementId: match[1] };
+  return { id, elementId };
 }
 
 /**
@@ -189,6 +193,36 @@ describe("GET /api/events", () => {
 
     const frame = await second.readFrame();
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
+  });
+
+  it("ignores the CLI's .co-motion.lock, so a read command does not look like a change", async () => {
+    // #303 regression: the lock is created and removed around every CLI
+    // command, reads included, inside the watched work directory. Treating
+    // it as content made every live-reload trigger a re-read that took the
+    // lock again — an endless reload loop that dropped the author's
+    // selection the moment they clicked an element.
+    const { id, elementId } = await openFreshPresentation();
+    const server = await serve(id);
+    const frameReader = await connectEvents(server);
+
+    const lockPath = path.join(await workDirFor(id), ".co-motion.lock");
+    for (let i = 0; i < 3; i++) {
+      await writeFile(lockPath, "");
+      await rm(lockPath);
+    }
+
+    // One read, raced twice: the reader may only be pulled once, or the
+    // losing promise swallows the frame the second assertion waits for.
+    const pending = frameReader.readFrame();
+    const timeout = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+
+    // Well past the watcher's 100ms debounce: nothing may have arrived.
+    expect(await Promise.race([pending, timeout(500)])).toBe(null);
+
+    // A real edit still gets through — the filter skips the lock, not the
+    // notification path itself.
+    await setText(id, elementId, "鎖檔不算改動");
+    expect(await pending).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
   it("close() on the running server returns promptly even with a client still connected", async () => {
