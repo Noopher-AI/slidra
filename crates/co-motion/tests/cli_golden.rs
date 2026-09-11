@@ -2324,7 +2324,7 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
         ]))["data"]["path"],
         "plan/design-spec.md"
     );
-    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"標題\" } ] }\n```\n";
+    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"標題\" } ] }\n```\n";
     assert!(
         fixture
             .run_rust(&["plan", "set", &id, "outline", outline])
@@ -2464,7 +2464,7 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
     assert!(!scripted.status.success());
 
     // A page with a plan so validate runs the scrim rule.
-    let outline = "```json\n{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"on\", \"pages\": [ { \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" } ] }\n```\n";
+    let outline = "```json\n{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"on\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" } ] }\n```\n";
     let spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 72, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n";
     assert!(
         fixture

@@ -3289,6 +3289,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const hitIds: string[] = [];
     const hitNames: (string | null)[] = [];
     for (const element of currentSlideModel.elements) {
+      // A locked element is not selectable at all (ADR-0013). The click
+      // path already refuses it inside the runtime; the marquee resolves
+      // hits out here against reported bounds, which include every element
+      // with an id — so without this the full-bleed background image was
+      // caught by every single marquee.
+      if (element.locked) continue;
       const bounds = computeBounds(element.id);
       // An element the runtime never reported bounds for (jsdom in tests,
       // or a genuinely gone element) is simply not selectable by marquee —

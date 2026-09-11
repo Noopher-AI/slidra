@@ -457,7 +457,7 @@ pub fn check_slide(
     let n = index + 1;
     let k = ctx.k();
     let page = ctx.outline.and_then(|o| o.pages.get(index));
-    let page_type = page.map(|p| p.page_type.as_str());
+    let page_type = page.and_then(|p| p.page_type.as_deref());
 
     // --- geometry (no plan needed) ---
     // The safe area is the deck's own declared anchor, not a constant:
@@ -1062,7 +1062,11 @@ pub fn check_slide(
     }
 
     if let Some(page) = page {
-        let signature = match page.page_type.as_str() {
+        // #303 §A': the roster only checks a page that CLAIMS to be a known
+        // solution. A page with no `type` composed its own answer to the
+        // relationship, and has no signature to match.
+        if let Some(declared_type) = page.page_type.as_deref() {
+        let signature = match declared_type {
             "cover" => "cover",
             "section" => "section",
             "number" => "number",
@@ -1081,12 +1085,12 @@ pub fn check_slide(
                 None,
                 "roster.page-type",
                 format!("沒有字級 {expected:.0} 的文字框"),
-                format!("{} 頁需有字級 {expected:.0}", page.page_type),
+                format!("{declared_type} 頁需有字級 {expected:.0}"),
                 format!(
-                    "第 {n} 頁計畫是 {} 頁，卻沒有字級 {expected:.0} 的文字框",
-                    page.page_type
+                    "第 {n} 頁計畫是 {declared_type} 頁，卻沒有字級 {expected:.0} 的文字框"
                 ),
             );
+        }
         }
         check_rhythm(n, slide, page.rhythm.as_str(), Some(spec), k, facts, errors);
     }
@@ -1141,6 +1145,42 @@ pub fn check_deck(
     slides: &[(String, SlideFacts)],
     errors: &mut Vec<ValidationError>,
 ) {
+    // #303 §A' — the anti-pattern ppt-master names outright: reusing one
+    // carrier for a second page without a page job. Two ADJACENT pages that
+    // carry the same relationship, chose the same composition, and hold the
+    // same number of units are the same page twice. The page's own content
+    // is not the justification — the relationship already said they are
+    // alike — so this asks for one of the two to be composed differently.
+    if let Some(outline) = ctx.outline {
+        for window in outline.pages.windows(2) {
+            let (first, second) = (&window[0], &window[1]);
+            let (Some(a), Some(b)) = (first.blueprint.as_ref(), second.blueprint.as_ref()) else {
+                continue;
+            };
+            if first.relationship != second.relationship
+                || a.shape != b.shape
+                || a.nodes != b.nodes
+            {
+                continue;
+            }
+            let Some((slide, _)) = slides.get(second.n - 1) else {
+                continue;
+            };
+            push(
+                errors,
+                slide,
+                None,
+                "rhythm.repeated-shape",
+                format!("{} × {} 個單位", a.shape, a.nodes),
+                "相鄰兩頁不用同一種構圖解同一種關係",
+                format!(
+                    "第 {} 頁與第 {} 頁都是 {} 關係、都用 {}、都是 {} 個單位——換一種構圖，或把兩頁合併",
+                    first.n, second.n, first.relationship, a.shape, a.nodes
+                ),
+            );
+        }
+    }
+
     if let Some((last_path, last)) = slides.last() {
         for tb in &last.text_boxes {
             let text = tb.full_text().trim().to_lowercase();
@@ -1210,7 +1250,10 @@ pub fn check_deck(
     }
     let mut seen: Vec<&str> = Vec::new();
     for page in &outline.pages {
-        let page_type = page.page_type.as_str();
+        // A page that composed its own answer registers no template.
+        let Some(page_type) = page.page_type.as_deref() else {
+            continue;
+        };
         if seen.contains(&page_type) {
             continue;
         }
@@ -1401,7 +1444,7 @@ mod tests {
     fn run_one(svg: &str, page_type: &str, rhythm: &str) -> Vec<ValidationError> {
         let spec = spec();
         let outline = outline(&format!(
-            "{{ \"n\": 1, \"type\": \"{page_type}\", \"rhythm\": \"{rhythm}\", \"title\": \"t\" }}"
+            "{{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"{page_type}\", \"rhythm\": \"{rhythm}\", \"title\": \"t\" }}"
         ));
         let names = vec![template_name_for(page_type).to_string()];
         let ctx = Context {
@@ -1568,7 +1611,7 @@ mod tests {
         // `slide()` writes exactly one on-click enter effect.
         let run = |blueprint: &str| {
             let outline = plan::parse_outline(&format!(
-                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {{ \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\"{blueprint} }} ] }}\n```\n"
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\"{blueprint} }} ] }}\n```\n"
             ))
             .unwrap();
             let ctx = Context {
@@ -1588,11 +1631,11 @@ mod tests {
         assert!(!run("").iter().any(|r| r.starts_with("blueprint.")));
 
         // Matching blueprint passes.
-        let matching = ", \"blueprint\": { \"relationship\": \"membership\", \"nodes\": 2, \"steps\": 1 }";
+        let matching = ", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 2, \"steps\": 1 }";
         assert!(!run(matching).iter().any(|r| r.starts_with("blueprint.")));
 
         // Drew three nodes but planned two; told in two steps but drew one.
-        let mismatched = ", \"blueprint\": { \"relationship\": \"membership\", \"nodes\": 3, \"steps\": 2 }";
+        let mismatched = ", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 3, \"steps\": 2 }";
         let r = run(mismatched);
         assert!(r.contains(&"blueprint.nodes"), "{r:?}");
         assert!(r.contains(&"blueprint.steps"), "{r:?}");
@@ -1685,7 +1728,7 @@ mod tests {
         let names = vec![template_name_for("number").to_string()];
         let run = |svg: &str, background: &str| {
             let outline = plan::parse_outline(&format!(
-                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"{background}\", \"pages\": [ {{ \"n\": 1, \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }} ] }}\n```\n"
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"{background}\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }} ] }}\n```\n"
             ))
             .unwrap();
             let ctx = Context {
@@ -1974,7 +2017,7 @@ mod tests {
         );
         let spec = spec();
         let outline = outline(
-            "{ \"n\": 1, \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }",
+            "{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }",
         );
         let names = vec!["大數字頁".to_string()];
         let ctx = Context {
@@ -2040,7 +2083,7 @@ mod tests {
         );
         let spec = spec();
         let outline = outline(
-            "{ \"n\": 1, \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"t\" }, { \"n\": 2, \"type\": \"closing\", \"rhythm\": \"anchor\", \"title\": \"t\" }",
+            "{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"t\" }, { \"n\": 2, \"relationship\": \"membership\", \"type\": \"closing\", \"rhythm\": \"anchor\", \"title\": \"t\" }",
         );
         let names = vec!["封面".to_string()];
         let ctx = Context {
@@ -2276,7 +2319,7 @@ mod tests {
             ("none", "cover", false, false),
         ] {
             let outline = plan::parse_outline(&format!(
-                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"animation\": \"{animation}\", \"pages\": [ {{ \"n\": 1, \"type\": \"{page_type}\", \"rhythm\": \"anchor\", \"title\": \"t\" }} ] }}\n```\n"
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"animation\": \"{animation}\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"{page_type}\", \"rhythm\": \"anchor\", \"title\": \"t\" }} ] }}\n```\n"
             ))
             .unwrap();
             let ctx = Context {

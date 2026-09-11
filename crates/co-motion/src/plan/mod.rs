@@ -74,8 +74,11 @@ pub fn template_name_for(page_type: &str) -> &'static str {
 /// step is a private thought and nothing can tell whether the page kept it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageBlueprint {
-    /// One of `RELATIONSHIPS`.
-    pub relationship: String,
+    /// A short name for the composition actually chosen (#303 §A') — e.g.
+    /// `card-wall`, `shared-field`, `split-panel`. Free text: it exists so
+    /// two adjacent pages that solved the same relationship the same way
+    /// can be spotted, not to be validated against a catalogue.
+    pub shape: String,
     /// How many semantic units the page carries — reconciled against the
     /// elements that declare `data-comot-role="node"`.
     pub nodes: usize,
@@ -87,7 +90,12 @@ pub struct PageBlueprint {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanPage {
     pub n: usize,
-    pub page_type: String,
+    /// What this page's content IS — one of `RELATIONSHIPS`. Required: the
+    /// geometry has to carry it (#303 §A').
+    pub relationship: String,
+    /// A known solution's name, when one fits (#303 §A'). Absent means the
+    /// page composes its own answer to `relationship`.
+    pub page_type: Option<String>,
     pub rhythm: String,
     pub title: String,
     /// Absent until the build's 構圖思考 step writes it.
@@ -264,15 +272,34 @@ pub fn parse_outline(text: &str) -> CoMotionResult<OutlinePlan> {
                 index + 1
             )));
         }
-        let page_type = require_str(page, "type", &what)?;
-        require_enum(page_type, PAGE_TYPES, &format!("{what}.type"))?;
+        // #303 §A': the relationship is what the composition must carry, so
+        // it is the required field. The page TYPE is now optional — a name
+        // for a known solution to a relationship, useful when one fits and
+        // absent when the page needs its own answer.
+        let relationship = require_str(page, "relationship", &what)?;
+        require_enum(
+            relationship,
+            RELATIONSHIPS,
+            &format!("{what}.relationship"),
+        )?;
+        let page_type = match page.get("type") {
+            None => None,
+            Some(value) => {
+                let page_type = value
+                    .as_str()
+                    .ok_or_else(|| CoMotionError::invalid(format!("{what}.type 必須是字串")))?;
+                require_enum(page_type, PAGE_TYPES, &format!("{what}.type"))?;
+                Some(page_type.to_string())
+            }
+        };
         let rhythm = require_str(page, "rhythm", &what)?;
         require_enum(rhythm, RHYTHMS, &format!("{what}.rhythm"))?;
         let title = require_str(page, "title", &what)?;
         let blueprint = parse_blueprint(page, &what)?;
         pages.push(PlanPage {
             n: n as usize,
-            page_type: page_type.to_string(),
+            relationship: relationship.to_string(),
+            page_type,
             rhythm: rhythm.to_string(),
             title: title.to_string(),
             blueprint,
@@ -439,15 +466,14 @@ fn parse_blueprint(
         .as_object()
         .ok_or_else(|| CoMotionError::invalid(format!("{what}.blueprint 必須是物件")))?;
 
-    let relationship = obj
-        .get("relationship")
+    let shape = obj
+        .get("shape")
         .and_then(Value::as_str)
-        .ok_or_else(|| CoMotionError::invalid(format!("{what}.blueprint 缺少 relationship")))?;
-    require_enum(
-        relationship,
-        RELATIONSHIPS,
-        &format!("{what}.blueprint.relationship"),
-    )?;
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            CoMotionError::invalid(format!("{what}.blueprint 缺少非空字串欄位 shape"))
+        })?;
 
     let mut counts = [0usize; 2];
     for (index, key) in ["nodes", "steps"].iter().enumerate() {
@@ -460,7 +486,7 @@ fn parse_blueprint(
     }
 
     Ok(Some(PageBlueprint {
-        relationship: relationship.to_string(),
+        shape: shape.to_string(),
         nodes: counts[0],
         steps: counts[1],
     }))
@@ -625,7 +651,7 @@ pub fn delete_plan(id: &str, name: Option<&str>) -> CoMotionResult<String> {
 mod tests {
     use super::*;
 
-    pub(crate) const OUTLINE_OK: &str = "```json\n{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ { \"n\": 1, \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"封面\" }, { \"n\": 2, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"要點\" } ], \"questions\": [ { \"id\": \"mode\", \"question\": \"骨架\", \"note\": \"看法\", \"recommended\": \"pyramid\", \"options\": [ { \"value\": \"pyramid\", \"label\": \"結論先行\" }, { \"value\": \"narrative\", \"label\": \"故事線\" } ], \"free_text\": true } ] }\n```\n\n## 第 1 頁\n說明。\n";
+    pub(crate) const OUTLINE_OK: &str = "```json\n{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"封面\" }, { \"n\": 2, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"要點\" } ], \"questions\": [ { \"id\": \"mode\", \"question\": \"骨架\", \"note\": \"看法\", \"recommended\": \"pyramid\", \"options\": [ { \"value\": \"pyramid\", \"label\": \"結論先行\" }, { \"value\": \"narrative\", \"label\": \"故事線\" } ], \"free_text\": true } ] }\n```\n\n## 第 1 頁\n說明。\n";
 
     pub(crate) const DESIGN_SPEC_OK: &str = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n正文。\n";
 
@@ -635,7 +661,7 @@ mod tests {
         assert_eq!(plan.status, "draft");
         assert_eq!(plan.mode, "pyramid");
         assert_eq!(plan.pages.len(), 2);
-        assert_eq!(plan.pages[1].page_type, "bullets");
+        assert_eq!(plan.pages[1].page_type.as_deref(), Some("bullets"));
         assert_eq!(plan.question_count, 1);
     }
 

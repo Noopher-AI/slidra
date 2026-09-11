@@ -2329,6 +2329,45 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     expect(state?.selection.ids).toEqual(["el-a"]);
   });
 
+  it("鎖定的背景圖不會被框選選到（#303：滿版背景本來每次框選都會被抓進去）", async () => {
+    const withBackground =
+      '<svg viewBox="0 0 1280 720">' +
+      '<g id="el-background" data-comot-role="background" data-comot-lock="true"><image x="0" y="0" width="1280" height="720" href="../assets/bg.svg"/></g>' +
+      '<g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g>' +
+      "</svg>";
+    stubFetch(withBackground);
+    controller = mountCanvas(container);
+    await controller.reload();
+    let state: CanvasState | undefined;
+    controller.subscribe((next) => {
+      state = next;
+    });
+    const frameWindow = controller.frameElement.contentWindow as unknown as Window;
+    const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
+
+    send({
+      source: "comot-selection",
+      event: "viewport",
+      svgRect: { x: 0, y: 0, width: 1280, height: 720 },
+      viewBox: { x: 0, y: 0, width: 1280, height: 720 },
+    });
+    // The runtime reports bounds for every id-carrying element, background included.
+    send({
+      source: "comot-selection",
+      event: "element-bounds",
+      items: [
+        { id: "el-background", rect: { x: 0, y: 0, width: 1280, height: 720 }, local: { x: 0, y: 0, width: 1280, height: 720 } },
+        { id: "el-a", rect: { x: 100, y: 100, width: 160, height: 100 }, local: { x: 0, y: 0, width: 160, height: 100 } },
+      ],
+    });
+    send({ source: "comot-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
+    send({ source: "comot-selection", event: "gesture-move", point: { x: 300, y: 250 } });
+    send({ source: "comot-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(state?.selection.ids).toEqual(["el-a"]);
+  });
+
   it("從未收到 element-bounds 就結束 marquee：即使矩形涵蓋元素也選不到任何東西（不丟例外）", async () => {
     stubFetch(slideMarkupWithEl);
     controller = mountCanvas(container);
