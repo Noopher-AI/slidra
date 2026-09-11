@@ -5,8 +5,10 @@ const VALID_FENCE = JSON.stringify({
   status: "draft",
   mode: "pyramid",
   pages: [
-    { n: 1, type: "cover", rhythm: "anchor", title: "封面" },
-    { n: 2, type: "bullets", rhythm: "dense", title: "三個重點" },
+    { n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "封面" },
+    // #303 §A': most pages carry no `type` — the planner only names the
+    // relationship and the build decides the layout.
+    { n: 2, relationship: "membership", rhythm: "dense", title: "三個重點" },
   ],
   questions: [
     {
@@ -35,7 +37,8 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
     expect(outline).not.toBeNull();
     expect(outline!.status).toBe("draft");
     expect(outline!.mode).toBe("pyramid");
-    expect(outline!.pages.map((p) => p.type)).toEqual(["cover", "bullets"]);
+    expect(outline!.pages.map((p) => p.relationship)).toEqual(["none", "membership"]);
+    expect(outline!.pages.map((p) => p.type)).toEqual(["cover", null]);
     expect(outline!.questions).toHaveLength(1);
     expect(outline!.questions[0]!.free_text).toBe(true);
     expect(outline!.fenceText).toBe(VALID_FENCE);
@@ -48,13 +51,13 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
       expect(parsePlanOutline("```json\n{not json\n```")).toBeNull();
       expect(parsePlanOutline("```json\n" + JSON.stringify({ status: "later", mode: "x", pages: [] }) + "\n```")).toBeNull();
       // pages must be non-empty, numbered from 1, with known type/rhythm
-      const badPages = { status: "draft", mode: "x", pages: [{ n: 2, type: "cover", rhythm: "anchor", title: "" }] };
+      const badPages = { status: "draft", mode: "x", pages: [{ n: 2, relationship: "none", type: "cover", rhythm: "anchor", title: "" }] };
       expect(parsePlanOutline("```json\n" + JSON.stringify(badPages) + "\n```")).toBeNull();
       // recommended must be one of the options
       const badQuestion = {
         status: "draft",
         mode: "x",
-        pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "t" }],
+        pages: [{ n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "t" }],
         questions: [{ id: "q", question: "?", recommended: "zzz", options: [{ value: "a", label: "A" }, { value: "b", label: "B" }] }],
       };
       expect(parsePlanOutline("```json\n" + JSON.stringify(badQuestion) + "\n```")).toBeNull();
@@ -64,8 +67,45 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
     }
   });
 
+  it("#303 §A'：整份計畫都沒有 type 也要解析得出來（否則確認視窗永遠不出現）", () => {
+    // The regression this pins: `type` became optional in the plan contract
+    // but this parser still required it, so every plan the planner wrote
+    // was silently discarded and the gate modal never appeared.
+    const noTypes = {
+      status: "draft",
+      mode: "briefing",
+      pages: [
+        { n: 1, relationship: "none", rhythm: "anchor", title: "封面" },
+        { n: 2, relationship: "order", rhythm: "dense", title: "三個步驟" },
+      ],
+      questions: [
+        { id: "palette", question: "配色", recommended: "A", options: [{ value: "A", label: "深色" }, { value: "B", label: "淺色" }] },
+      ],
+    };
+    const outline = parsePlanOutline("```json\n" + JSON.stringify(noTypes) + "\n```");
+    expect(outline).not.toBeNull();
+    expect(outline!.pages.map((p) => p.type)).toEqual([null, null]);
+    expect(outline!.pages.map((p) => p.relationship)).toEqual(["none", "order"]);
+    expect(outline!.questions).toHaveLength(1);
+  });
+
+  it("relationship 缺了或不在清單內就是壞檔", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const missing = { status: "draft", mode: "x", pages: [{ n: 1, rhythm: "anchor", title: "t" }] };
+      expect(parsePlanOutline("```json\n" + JSON.stringify(missing) + "\n```")).toBeNull();
+      const unknown = { status: "draft", mode: "x", pages: [{ n: 1, relationship: "sequence", rhythm: "anchor", title: "t" }] };
+      expect(parsePlanOutline("```json\n" + JSON.stringify(unknown) + "\n```")).toBeNull();
+      // A present-but-unknown `type` is still malformed.
+      const badType = { status: "draft", mode: "x", pages: [{ n: 1, relationship: "none", type: "hero", rhythm: "anchor", title: "t" }] };
+      expect(parsePlanOutline("```json\n" + JSON.stringify(badType) + "\n```")).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("a confirmed plan without questions parses with an empty list", () => {
-    const confirmed = { status: "confirmed", mode: "briefing", pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "t" }] };
+    const confirmed = { status: "confirmed", mode: "briefing", pages: [{ n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "t" }] };
     const outline = parsePlanOutline("```json\n" + JSON.stringify(confirmed) + "\n```");
     expect(outline?.status).toBe("confirmed");
     expect(outline?.questions).toEqual([]);

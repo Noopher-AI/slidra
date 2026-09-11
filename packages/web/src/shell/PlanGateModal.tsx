@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   PAGE_TYPE_LABELS,
+  RELATIONSHIP_LABELS,
   RHYTHM_LABELS,
   buildConfirmMessage,
   buildRedoMessage,
@@ -109,6 +110,7 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
               <thead>
                 <tr>
                   <th>頁碼</th>
+                  <th>關係</th>
                   <th>頁型</th>
                   <th>節奏</th>
                   <th>主張</th>
@@ -118,7 +120,11 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
                 {outline.pages.map((page) => (
                   <tr key={page.n}>
                     <td>{page.n}</td>
-                    <td>{PAGE_TYPE_LABELS[page.type]}</td>
+                    {/* #303 §A': the relationship is what the planner decided; the
+                        page type is only filled in when a known solution fits,
+                        so most rows show a dash there. */}
+                    <td>{RELATIONSHIP_LABELS[page.relationship]}</td>
+                    <td>{page.type === null ? "—" : PAGE_TYPE_LABELS[page.type]}</td>
                     <td>{RHYTHM_LABELS[page.rhythm]}</td>
                     <td>{page.title}</td>
                   </tr>

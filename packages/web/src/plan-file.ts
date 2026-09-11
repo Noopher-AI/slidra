@@ -14,10 +14,25 @@
 
 export type PlanPageType = "cover" | "section" | "bullets" | "compare" | "number" | "closing";
 export type PlanRhythm = "anchor" | "dense" | "breathing";
+/** #303 §A': what the page's content IS. Required — the geometry has to carry it. */
+export type PlanRelationship =
+  | "order"
+  | "link"
+  | "parent"
+  | "membership"
+  | "contrast"
+  | "overlap"
+  | "none";
 
 export interface PlanPage {
   n: number;
-  type: PlanPageType;
+  relationship: PlanRelationship;
+  /**
+   * #303 §A': a known solution's name, when one fits. Absent means the page
+   * composes its own answer to `relationship` — most pages, since the
+   * planner no longer chooses layouts at all.
+   */
+  type: PlanPageType | null;
   rhythm: PlanRhythm;
   title: string;
 }
@@ -47,6 +62,15 @@ export interface PlanOutline {
 
 const PAGE_TYPES: ReadonlySet<string> = new Set(["cover", "section", "bullets", "compare", "number", "closing"]);
 const RHYTHMS: ReadonlySet<string> = new Set(["anchor", "dense", "breathing"]);
+const RELATIONSHIPS: ReadonlySet<string> = new Set([
+  "order",
+  "link",
+  "parent",
+  "membership",
+  "contrast",
+  "overlap",
+  "none",
+]);
 
 export const PAGE_TYPE_LABELS: Readonly<Record<PlanPageType, string>> = {
   cover: "封面",
@@ -55,6 +79,17 @@ export const PAGE_TYPE_LABELS: Readonly<Record<PlanPageType, string>> = {
   compare: "對照頁",
   number: "大數字頁",
   closing: "結語頁",
+};
+
+/** #303 §A': what the page's content is, in the author's words. */
+export const RELATIONSHIP_LABELS: Readonly<Record<PlanRelationship, string>> = {
+  order: "順序",
+  link: "關聯",
+  parent: "統轄",
+  membership: "並列",
+  contrast: "對比",
+  overlap: "交集",
+  none: "單一主張",
 };
 
 export const RHYTHM_LABELS: Readonly<Record<PlanRhythm, string>> = {
@@ -78,12 +113,21 @@ function parsePages(raw: unknown): PlanPage[] | null {
   const pages: PlanPage[] = [];
   for (const [index, entry] of raw.entries()) {
     if (!isRecord(entry)) return null;
-    const { n, type, rhythm, title } = entry;
+    const { n, relationship, type, rhythm, title } = entry;
     if (typeof n !== "number" || n !== index + 1) return null;
-    if (typeof type !== "string" || !PAGE_TYPES.has(type)) return null;
+    if (typeof relationship !== "string" || !RELATIONSHIPS.has(relationship)) return null;
+    // `type` is optional (#303 §A'): a page with none composed its own
+    // answer. Present-but-unknown is still a malformed file.
+    if (type !== undefined && (typeof type !== "string" || !PAGE_TYPES.has(type))) return null;
     if (typeof rhythm !== "string" || !RHYTHMS.has(rhythm)) return null;
     if (typeof title !== "string") return null;
-    pages.push({ n, type: type as PlanPageType, rhythm: rhythm as PlanRhythm, title });
+    pages.push({
+      n,
+      relationship: relationship as PlanRelationship,
+      type: type === undefined ? null : (type as PlanPageType),
+      rhythm: rhythm as PlanRhythm,
+      title,
+    });
   }
   return pages;
 }
@@ -153,7 +197,7 @@ export function parsePlanOutline(text: string): PlanOutline | null {
   }
   const pages = parsePages(parsed.pages);
   if (pages === null) {
-    console.warn("plan/outline.md 的 pages 格式不對（非空、n 從 1 連續、type／rhythm 在清單內），忽略這份計畫");
+    console.warn("plan/outline.md 的 pages 格式不對（非空、n 從 1 連續、relationship／rhythm 在清單內、type 若有也要在清單內），忽略這份計畫");
     return null;
   }
   const questions = parseQuestions(parsed.questions);
