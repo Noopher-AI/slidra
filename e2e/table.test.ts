@@ -440,6 +440,38 @@ it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-edi
   }
 });
 
+// F-09 迴歸（Reviewer, NOOP-400）：Tab 落在 generated 格時，編輯框的初值必須
+// 是「同欄模板列的原文」，跟 E9 的雙擊路徑同一個契約——因為 `editing.row`
+// 已經被 `nextTableTabCell` 解析成模板列，寫回去的就是模板列。若初值取的是
+// generated 格自己的「已算好的值」，接著任何一次提交（Enter／blur／再按一次
+// Tab）都會把 `{{ }}` 模板表達式覆蓋成那個字面值，整欄的資料繫結當場消失。
+it("F-09b: Tab 落在 generated 格，input 初值是同欄模板原文，提交後模板列的 {{ }} 不被覆蓋", async () => {
+  const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("f9b", { rows: 2, cols: 2 });
+  try {
+    await bindToSalesCsv(registry, presentationId, elementId, 1);
+    const page = await openPage(server);
+    const slideFrame = page.frameLocator("iframe.slide-frame");
+
+    await slideFrame.locator('[data-comot-cell="2,0"]').click();
+    await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
+    await slideFrame.locator('[data-comot-cell="2,0"]').dblclick();
+    const editor = page.locator("input.table-cell-editor");
+    await expect.poll(() => editor.count()).toBe(1);
+    expect(await editor.inputValue()).toBe("{{ 產品 }}");
+
+    await editor.press("Tab");
+
+    expect(await editor.inputValue()).toBe("{{ 銷量 }}");
+
+    await editor.press("Enter");
+    await expect
+      .poll(async () => cellMarkup(await catSlide(registry, presentationId), 1, 1))
+      .toContain("{{ 銷量 }}");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產生一筆歷史，undo 還原", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e10", { rows: 2, cols: 2 });
   try {
