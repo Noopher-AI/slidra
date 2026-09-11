@@ -5,6 +5,7 @@ import { NewMenu } from "./rail/NewMenu.js";
 import { TemplatesMenu } from "./rail/TemplatesMenu.js";
 import { ThumbContextMenu } from "./rail/ThumbContextMenu.js";
 import { OutlineModal } from "./rail/OutlineModal.js";
+import { SaveTemplateModal } from "./rail/SaveTemplateModal.js";
 import type { TemplateEntry } from "./rail/useTemplateList.js";
 
 type CommandResult = { ok: boolean; message: string; data?: unknown };
@@ -57,6 +58,7 @@ export function Rail({
 }: RailProps) {
   const [menu, setMenu] = useState<RailMenu>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [saveTemplateIndex, setSaveTemplateIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const newButtonRef = useRef<HTMLButtonElement | null>(null);
   const templatesButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -100,6 +102,13 @@ export function Rail({
     setOutlineOpen(true);
   }
 
+  /** `SaveTemplateModal`「Save」——不像 `addSlideAt` 系列，這不改變頁面順序或 currentIndex，所以走 `runCommand`（非 `runPageCommand`），不 reload/showSlide。成功才關 modal；失敗留著輸入，讓既有的 `CanvasState.error` 橫幅顯示原因（同 `runCommand` 對其他 Ribbon 寫入失敗的既有作法）。 */
+  async function onSaveTemplateSubmit(name: string): Promise<void> {
+    if (saveTemplateIndex === null) return;
+    const result = await runCommand("template add", { from: slides[saveTemplateIndex], name });
+    if (result?.ok) setSaveTemplateIndex(null);
+  }
+
   function contextMenuHandlers(index: number) {
     return {
       onNewBelow: () => {
@@ -113,6 +122,10 @@ export function Rail({
       onDuplicate: () => {
         void runPageCommand("slide duplicate", { slidePath: slides[index] }, index + 1);
         onCloseContextMenu();
+      },
+      onSaveAsTemplate: () => {
+        onCloseContextMenu();
+        setSaveTemplateIndex(index);
       },
       onMoveUp: () => {
         if (index === 0) return;
@@ -194,6 +207,9 @@ export function Rail({
             onDraftWithAgent(outline);
           }}
         />
+      )}
+      {saveTemplateIndex !== null && (
+        <SaveTemplateModal onClose={() => setSaveTemplateIndex(null)} onSubmit={onSaveTemplateSubmit} />
       )}
     </aside>
   );
