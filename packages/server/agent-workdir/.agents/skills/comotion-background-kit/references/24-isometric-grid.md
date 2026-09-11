@@ -12,13 +12,12 @@
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<pattern id="bg-iso" width="60" height="34" patternUnits="userSpaceOnUse">
-<path d="M0 34L30 0L60 34" fill="none" stroke="<primary>" stroke-width="0.6" opacity="0.4"/>
-<path d="M0 0L30 34L60 0" fill="none" stroke="<primary>" stroke-width="0.6" opacity="0.25"/>
-</pattern>
+<pattern id="iso" width="72" height="42" patternUnits="userSpaceOnUse"><path d="M0 42L36 0L72 42" fill="none" stroke="<primary>" stroke-width="1.6" opacity="0.85"/><path d="M0 0L36 42L72 0" fill="none" stroke="<primary>" stroke-width="1.2" opacity="0.5"/></pattern>
+<linearGradient id="calm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="<background>" stop-opacity="0.92"/><stop offset="0.42" stop-color="<background>" stop-opacity="0.62"/><stop offset="1" stop-color="<background>" stop-opacity="0"/></linearGradient>
 </defs>
 <rect width="1280" height="720" fill="<background>"/>
-<rect width="1280" height="720" fill="url(#bg-iso)"/>
+<rect width="1280" height="720" fill="url(#iso)"/>
+<rect width="1280" height="720" fill="url(#calm)"/>
 </svg>
 ```
 

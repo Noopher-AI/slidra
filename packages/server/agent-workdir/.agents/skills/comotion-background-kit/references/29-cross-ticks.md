@@ -12,12 +12,12 @@
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<pattern id="bg-ticks" width="80" height="80" patternUnits="userSpaceOnUse">
-<path d="M40 34v12M34 40h12" stroke="<muted>" stroke-width="1" opacity="0.6"/>
-</pattern>
+<pattern id="tk" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M32 22v20M22 32h20" stroke="<muted>" stroke-width="1.8" opacity="0.75"/></pattern>
+<linearGradient id="calm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="<background>" stop-opacity="0.92"/><stop offset="0.42" stop-color="<background>" stop-opacity="0.62"/><stop offset="1" stop-color="<background>" stop-opacity="0"/></linearGradient>
 </defs>
 <rect width="1280" height="720" fill="<background>"/>
-<rect width="1280" height="720" fill="url(#bg-ticks)"/>
+<rect width="1280" height="720" fill="url(#tk)"/>
+<rect width="1280" height="720" fill="url(#calm)"/>
 </svg>
 ```
 

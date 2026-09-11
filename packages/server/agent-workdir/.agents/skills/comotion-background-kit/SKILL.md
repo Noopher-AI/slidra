@@ -1,6 +1,6 @@
 ---
 name: comotion-background-kit
-description: 從 30 種背景配方裡挑一種建成 SVG 資產並套到頁面——每種都附完整 SVG、適合的節奏與搭配的風格；用一句話描述想要的氣氛就會模糊匹配
+description: 從 38 種背景配方裡挑一種建成 SVG 資產並套到頁面——每種都附完整 SVG、適合的節奏與搭配的風格；用一句話描述想要的氣氛就會模糊匹配
 ---
 
 # 背景庫
@@ -35,44 +35,54 @@ description: 從 30 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 6. **套用**：逐頁 `co-motion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（見各配方檔）。
 7. **檢查**：`co-motion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照指南第 4b 節補 scrim，不要調降 opacity 了事。
 
-## 30 種配方
+## 38 種配方
 
-| 編號 | 名字 | 氣氛 | 適合的 `rhythm`／關係 | 建議風格 |
+| 編號 | 名字 | 氣氛 | 適合 | 建議風格 |
 |---|---|---|---|---|
-| 01 | `soft-blobs` | 柔焦色團，像光透過紙 | `anchor` | 02 |
-| 02 | `dot-grid` | 細點陣，像方格筆記本 | `dense` | 01、03 |
-| 03 | `diagonal-beams` | 斜向光束，有方向與速度 | `anchor`、`breathing`、`order` | 01 |
-| 04 | `gradient-wash` | 單向漸層，最安靜的一種 | 全部 | 全部 |
-| 05 | `corner-arc` | 右下一道大圓弧，像被放大的印記 | `anchor`、`breathing` | 01、06、13、20、23 |
-| 06 | `paper-fiber` | 極細斜向短線，紙的纖維 | 全部 | 02、05、14、16、24 |
-| 07 | `edge-frame` | 距邊的細框，像畫框或證書 | `anchor` | 14、18、20、21、24 |
-| 08 | `halftone-fade` | 逐漸變稀的網點，印刷的半色調 | `anchor`、`dense` | 09、22、24 |
-| 09 | `topo-lines` | 層疊的等高線，地形圖 | `anchor`、`breathing` | 10、12、23、24 |
-| 10 | `side-band` | 側緣一條滿高色帶，切出主次 | `anchor`、`dense` | 01、13、18、21 |
-| 11 | `grid-blueprint` | 方格網加粗主格線，製圖紙 | `dense` | 13、04、25 |
-| 12 | `arc-rings` | 右上同心細環，雷達的擴散 | `anchor`、`breathing` | 01、04、10、15、23 |
-| 13 | `noise-speckle` | 極細隨機斑點，底片顆粒 | 全部 | 02、05、09、22、24 |
-| 14 | `split-diagonal` | 對角線切成深淺兩半 | `anchor`、`contrast` | 07、09、11、15、22 |
-| 15 | `soft-vignette` | 四周略暗，注意力被帶到中間 | `breathing` | 07、15、19、20 |
-| 16 | `stacked-strata` | 由下往上變淡的橫帶，地層剖面 | `anchor`、`breathing` | 10、12、18、24 |
-| 17 | `ray-burst` | 右下射出的放射線，陽光 | `anchor`、`breathing` | 07、11、15、19 |
-| 18 | `frosted-panel` | 右半霧面玻璃，自帶 scrim | `anchor`、`dense` | 01、15、20、23 |
-| 19 | `dashed-path` | 虛線路徑，有起點與終點 | `order` | 05、10、12、23 |
-| 20 | `column-rules` | 等距垂直細線，報紙的欄線 | `dense` | 09、14、21、22 |
-| 21 | `corner-brackets` | 四角的直角括號，取景框 | 全部 | 04、07、13、22、25 |
-| 22 | `wave-band` | 下緣起伏的波形帶，水面 | `anchor`、`breathing` | 10、12、23、08 |
-| 23 | `concentric-square` | 同心方框，靶心 | `breathing` | 07、14、18、20 |
-| 24 | `isometric-grid` | 30 度等角格線，立體圖紙 | `dense` | 13、04、25 |
-| 25 | `spotlight-top` | 頂端打下的光束，舞台感 | `anchor`、`breathing` | 07、15、19、20 |
-| 26 | `margin-notes` | 左緣窄欄，書頁的注記欄 | `dense` | 14、09、21、24 |
-| 27 | `scatter-dots` | 右半散布的圓點，粒子 | `anchor`、`breathing` | 01、04、15、23 |
-| 28 | `step-blocks` | 右下階梯方塊，成長與進度 | `order`、`breathing` | 11、12、18、25 |
-| 29 | `cross-ticks` | 均勻的小十字，定位標記 | 全部 | 04、06、13、25 |
-| 30 | `duotone-split` | 左右二分加漸層接縫，天生為對照 | `contrast` | 09、11、14、17 |
+| 01 | `soft-blobs` | 三團重疊的光暈從右側漫進來，邊界完全化開。 | `anchor`（封面、章節、結語） | 02 `warm-editorial`（最搭）。01 `editorial-tech` 的深底會把色團吃掉，要用的話 opacity 拉到 1.0 並把漸層的 stop-opacity 調高。 |
+| 02 | `dot-grid` | 均勻的細點陣鋪滿整頁，像方格筆記本或工程圖紙。 | `dense`（內容頁） | 01 `editorial-tech`、03 `clean-brief`（opacity 要壓低）。02 `warm-editorial` 的紙感跟格線衝突，不建議。 |
+| 03 | `diagonal-beams` | 三道從右上斜向左下的光束，左側被徑向漸層壓暗。 | `anchor`、`breathing`，以及 `order` 關係的頁面（光束的方向會強化閱讀方向） | 01 `editorial-tech`。淺底風格上光束會太顯眼，要用的話 opacity 降到 0.3 以下。 |
+| 04 | `gradient-wash` | 從左下到右上的單向漸層，沒有任何圖形。 | 任何節奏 | 全部。特別適合 03、06、17、21、25 這些克制的風格。 |
+| 05 | `corner-arc` | 右下角一道大圓弧切進畫面，像一枚被放大的印記。 | `anchor`、`breathing` | 01、06、13、20、23。 |
+| 06 | `paper-fiber` | 極細的斜向短線隨機分布，像紙的纖維。 | 任何節奏，尤其是紙感風格的全部頁面 | 02、05、14、16、24。 |
+| 07 | `edge-frame` | 距離邊界一段距離的細框，像展場的畫框或證書的邊。 | `anchor` | 14、18、20、21、24。 |
+| 08 | `halftone-fade` | 從右下往左上逐漸變稀的網點，像印刷的半色調。 | `anchor`、`dense` 皆可 | 09、22、24。 |
+| 09 | `topo-lines` | 層層疊起的等高線，像地形圖。 | `anchor`、`breathing` | 10、12、23、24。 |
+| 11 | `grid-blueprint` | 完整的方格網加上較粗的主格線，像製圖紙。 | `dense` | 13、04、25。 |
+| 12 | `arc-rings` | 右上角一組同心細環，像雷達或聲波的擴散。 | `anchor`、`breathing` | 01、04、10、15、23。 |
+| 13 | `noise-speckle` | 極細的隨機斑點，像底片顆粒或影印的雜訊。 | 任何節奏 | 02、05、09、22、24。 |
+| 14 | `split-diagonal` | 一條對角線把畫面分成深淺兩半。 | `anchor`、以及 `contrast` 關係的頁面 | 07、09、11、15、22。 |
+| 15 | `soft-vignette` | 四周略暗、中央略亮，像打了一盞柔光。 | `breathing`（大數字、一句主張） | 07、15、19、20。 |
+| 16 | `stacked-strata` | 水平的色帶由下往上逐層變淡，像地層剖面。 | `anchor`、`breathing` | 10、12、18、24。 |
+| 18 | `frosted-panel` | 右半一塊半透明的霧面板，像玻璃壓在畫面上。 | `anchor`、`dense` | 01、15、20、23。 |
+| 19 | `dashed-path` | 一條虛線從左下彎到右上，像地圖上的路徑或流程的軌跡。 | `order` 關係的頁面（它會強化 `spine-path` 的方向） | 05、10、12、23。 |
+| 21 | `corner-brackets` | 四個角落各一組直角括號，像取景框或掃描的定位標記。 | 任何節奏 | 04、07、13、22、25。 |
+| 22 | `wave-band` | 畫面下緣一道起伏的波形帶，像水面或聲波。 | `anchor`、`breathing` | 10、12、23、08。 |
+| 24 | `isometric-grid` | 30 度的等角格線，像工程的立體圖紙。 | `dense`，特別是講架構或系統的頁面 | 13、04、25。 |
+| 25 | `spotlight-top` | 從頂端中央打下來的一束光，往下逐漸散開。 | `anchor`（封面）、`breathing` | 07、15、19、20。 |
+| 27 | `scatter-dots` | 大小不一的圓點隨機散布在右半，像粒子或星點。 | `anchor`、`breathing` | 01、04、15、23。 |
+| 29 | `cross-ticks` | 均勻分布的小十字標記，像設計稿的定位點或星圖。 | 任何節奏 | 04、06、13、25。 |
+| 31 | `mesh-gradient` | 四團顏色在畫面上互相滲透，邊界完全化開，像未乾的顏料。 | 任何節奏 | 全部，特別是 01、10、15、23。 |
+| 32 | `blob-corners` | 左上與右下各一團有機形狀，中間留出一條乾淨的斜向通道。 | `anchor`、`breathing` | 02、08、11、16、23。 |
+| 33 | `layered-waves` | 三層波浪由上而下填滿，顏色愈往下愈實。 | `anchor`、`breathing`；內容集中在上半時也可用於 `dense` | 10、12、22、23。 |
+| 34 | `stacked-peaks` | 三層山稜線由高到低疊起。 | `anchor`、`breathing` | 10、12、24。 |
+| 35 | `low-poly` | 整面被切成不規則的三角形，像揉皺又攤平的紙。 | 任何節奏 | 01、04、13、15。 |
+| 36 | `polygon-scatter` | 七個大小不一的多邊形散在右半，只有描邊沒有實心。 | `anchor`、`breathing` | 01、04、13、25。 |
+| 37 | `bokeh-orbs` | 大小不一的光圈散布在右半，像失焦的夜景。 | `anchor`、`breathing` | 01、15、20、23。 |
+| 38 | `perspective-floor` | 地平線上的透視格線，往右方的消失點收斂。 | `anchor`、`breathing`，以及 `order` 關係的頁面 | 01、04、13、15。 |
+| 39 | `hex-mesh` | 六角網格鋪滿整面，像蜂巢或分子結構。 | `dense` | 01、04、13、25。 |
+| 40 | `chevron-stack` | 下半部一疊之字形，愈往下愈實。 | `anchor`、`breathing` | 07、11、15、22。 |
+| 41 | `ten-print` | 由隨機斜線組成的迷宮紋理（10 PRINT 的那個圖案）。 | `dense`、`anchor` | 01、04、13、22、25。 |
+| 42 | `scales` | 半圓層層交疊成魚鱗。 | `dense`、`anchor` | 02、05、12、24。 |
+| 43 | `ripple` | 從右下角擴散出去的同心圓。 | `anchor`、`breathing` | 01、10、15、23。 |
+| 44 | `oscillate` | 十條起伏的曲線平行排列，相位交錯。 | `dense`、`anchor` | 08、10、19、22。 |
+| 45 | `grain-gradient` | 右上一團光，整面覆蓋細顆粒。 | 任何節奏 | 02、05、09、22、24。 |
 
-挑的時候先看**適合的節奏**那一欄：`anchor` 的頁面字少留白多，經得起有個性的背景；`dense` 的頁面已經有卡片與面板，背景只能是質地。標「全部」的四個（04、06、13、21、29）最不會出錯。
+**挑的時候先看「適合」那一欄。** `anchor` 的頁面字少留白多，經得起有個性的背景；`dense` 的頁面已經有卡片與面板，背景只能是質地。
 
-標了**關係**的三個是特例：`19 dashed-path` 與 `28 step-blocks` 有方向，只給 `order`；`30 duotone-split` 天生二分，只給 `contrast`。把它們用在並列的內容上，背景會說錯話。
+有方向的三個是特例：`19 dashed-path`、`38 perspective-floor` 有明確方向，只給 `order` 關係；用在並列的內容上，背景會說錯話。
+
+**每一個都經過 PNG 實測。** 深色底上 1px 的線與低透明度的點是看不見的——所以圖樣本身畫得夠粗夠亮，再用一層 `calm` 漸層遮罩讓左半與中央衰減，而不是把整張圖都調淡。這是七個配方在第一版被判定「等於沒做」之後改的做法。
 
 ## 使用的命令
 

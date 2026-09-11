@@ -12,13 +12,10 @@
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <defs>
-<linearGradient id="bg-spot" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0" stop-color="<primary>" stop-opacity="0.35"/>
-<stop offset="1" stop-color="<primary>" stop-opacity="0"/>
-</linearGradient>
+<linearGradient id="sp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="<primary>" stop-opacity="0.4"/><stop offset="0.55" stop-color="<primary>" stop-opacity="0.1"/><stop offset="1" stop-color="<primary>" stop-opacity="0"/></linearGradient><radialGradient id="spg" cx="0.5" cy="0" r="0.8"><stop offset="0" stop-color="<accent>" stop-opacity="0.2"/><stop offset="1" stop-color="<accent>" stop-opacity="0"/></radialGradient>
 </defs>
 <rect width="1280" height="720" fill="<background>"/>
-<path d="M420 0H860L1140 720H140Z" fill="url(#bg-spot)"/>
+<path d="M380 0H900L1180 720H100Z" fill="url(#sp)"/><rect width="1280" height="720" fill="url(#spg)"/>
 </svg>
 ```
 
