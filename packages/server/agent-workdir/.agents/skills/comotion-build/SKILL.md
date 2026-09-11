@@ -34,7 +34,7 @@ page-5.note=數字改成 11.8 分鐘
    - 訊息帶【計畫確認】：把每題答案套進計畫的 JSON 段（`mode` 題改 `mode`；`animation` 題改 `animation`；`background` 題改 `background`；`page-N` 題改該頁的 `type`，並依 `slide-design.md` 對應調整 `rhythm`；`palette` 題改 `design-spec.md` 的 `palette`；`.note` 與「補充」的內容改進該頁正文的關鍵詞或備忘稿），`questions` 清空，`status` 改成 `confirmed`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（配色有改就也 `plan set design-spec`）。
    - 沒有【計畫確認】且 `status` 不是 `confirmed`：**停下來**回「計畫還沒確認，請先在確認視窗拍板」，不碰任何投影片。
    - **帶【計畫確認】、但計畫已經是 `confirmed` 而且 `co-motion ls <presentation-id> slides` 已有投影片**：這是同一次確認被送了兩次（視窗與聊天框各一次，實際發生過）。**不要重建**——回一句「這份計畫已經建置過了（目前 N 頁）。要重做請說「重做第 X 頁」或「全部重做」」，然後停下。硬要重建會把作者手上的頁面覆蓋掉，而且兩次確認的答案可能不一樣。
-3. **讀規格與現況**：`co-motion cat <presentation-id> plan/design-spec.md`（配色、密度、字級表、`visual`；計畫的 `background` 決定要不要背景圖）、`co-motion cat <presentation-id> project.json`（畫布；`k = width ÷ 1280`，指南的所有座標、半徑、字級乘以 k，`viewBox` 寫成畫布尺寸）、`co-motion template list <presentation-id>`、`co-motion ls <presentation-id> slides`。讀工作目錄的 `reference/slide-design.md`（第 0、1、3b、4、4b、5、6 節是你的工作範圍）。
+3. **讀規格與現況**：`co-motion cat <presentation-id> plan/design-spec.md`（配色、密度、字級表、`shape_language`、`visual`；計畫的 `background` 決定要不要背景圖）。**`shape_language` 決定每一頁的形狀怎麼表現**——圓角、裝飾密度、留白節奏、材質；讀 `.agents/skills/comotion-style-kit/shapes/<名字>.md` 的「怎麼做到」那一節，整份每一頁都照它。一份簡報只有一種形狀語言、`co-motion cat <presentation-id> project.json`（畫布；`k = width ÷ 1280`，指南的所有座標、半徑、字級乘以 k，`viewBox` 寫成畫布尺寸）、`co-motion template list <presentation-id>`、`co-motion ls <presentation-id> slides`。讀工作目錄的 `reference/slide-design.md`（第 0、1、3b、4、4b、5、6 節是你的工作範圍）。
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪一頁放哪一種」（看 `rhythm`）決定這份簡報要用到哪幾種配方（通常 `anchor` 一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
 4. **一頁怎麼做**（六個階段，照順序；前一階段沒做完不要跳下一階段）
 
@@ -70,7 +70,8 @@ page-5.note=數字改成 11.8 分鐘
    **中途發現內容需要別的版面時**：回版面庫重挑，不要硬塞。最常見的三種——
       - **臨時多了一段影片或音訊**：版面庫 31 `media-stage`（`element insert video --media assets/<檔名>`，外部平台用 `--embed`）。
       - **臨時有了圖**：22 `image-left`、23 `image-full-bleed`、24 `image-grid`。
-      - **臨時有了一組數據**：27 `chart-focus`、26 `kpi-row`。
+      - **臨時有了一組數據**：27 `chart-focus`、26 `kpi-row`，多組同型用 40 `chart-small-multiples`。
+      - **內容其實是循環、漏斗、金字塔或地理分布**：46 `cycle`、47 `funnel`、48 `pyramid`、50 `map`。
       換版面就要**同步改 `blueprint.shape`、`nodes` 與 `steps`**（`plan set outline` 寫回），否則 `validate` 的 `blueprint.*` 會抓到兩邊不一致——那正是它存在的目的。**素材還不存在時不要先排版**：不要放佔位圖、不要編數字，先用不需要素材的版面，素材到了再 `slide set --svg` 換掉。
 
    6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。`validate` 會拿步驟 1 的 `blueprint` 跟實際頁面對帳——`blueprint.nodes` 是畫出來的 node 數不符、`blueprint.steps` 是點擊步數不符。**兩邊不一致時先問哪一邊對**：頁面畫錯就改頁面，構圖當初想錯就改 `blueprint`（用 `plan set outline` 寫回），不要留著不管，也不要為了讓數字好看而亂改構圖。然後補這一頁的收尾：

@@ -14,6 +14,7 @@
   "type_scale": {"cover": 64, "section": 50, "number": 128, "claim": 44, "title": 36, "subtitle": 26, "body": 22, "column": 20, "caption": 17},
   "layout": {"side_margin": 88, "bottom_margin": 80, "footer_margin": 16, "gutter": 28, "spacing": [8, 16, 28, 44, 72]},
   "typography": {"heading": "Source Han Serif TC", "body": "Noto Serif TC", "heading_weight": 700, "body_weight": 400},
+  "shape_language": "ink-wash",
   "visual": "editorial-tech"
 }
 ```

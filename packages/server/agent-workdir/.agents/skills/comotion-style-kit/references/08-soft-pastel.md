@@ -14,6 +14,7 @@
   "type_scale": {"cover": 68, "section": 52, "number": 132, "claim": 46, "title": 38, "subtitle": 27, "body": 24, "column": 22, "caption": 18},
   "layout": {"side_margin": 80, "bottom_margin": 80, "footer_margin": 16, "gutter": 32, "spacing": [12, 20, 32, 48, 72]},
   "typography": {"heading": "jf open 粉圓", "body": "jf open 粉圓", "heading_weight": 700, "body_weight": 400},
+  "shape_language": "soft-rounded",
   "visual": "editorial-tech"
 }
 ```

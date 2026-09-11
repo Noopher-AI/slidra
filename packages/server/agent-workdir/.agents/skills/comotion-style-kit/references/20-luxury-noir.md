@@ -14,6 +14,7 @@
   "type_scale": {"cover": 88, "section": 64, "number": 168, "claim": 56, "title": 44, "subtitle": 28, "body": 24, "column": 22, "caption": 17},
   "layout": {"side_margin": 120, "bottom_margin": 96, "footer_margin": 16, "gutter": 40, "spacing": [16, 32, 56, 88, 128]},
   "typography": {"heading": "Playfair Display", "body": "Noto Serif TC", "heading_weight": 400, "body_weight": 400},
+  "shape_language": "swiss-minimal",
   "visual": "editorial-tech"
 }
 ```

@@ -14,6 +14,7 @@
   "type_scale": {"cover": 64, "section": 48, "number": 128, "claim": 44, "title": 36, "subtitle": 25, "body": 21, "column": 19, "caption": 15},
   "layout": {"side_margin": 72, "bottom_margin": 64, "footer_margin": 16, "gutter": 24, "spacing": [8, 16, 24, 40, 64]},
   "typography": {"heading": "Noto Serif TC", "body": "Noto Sans TC", "heading_weight": 700, "body_weight": 400},
+  "shape_language": "brutalist",
   "visual": "editorial-tech"
 }
 ```

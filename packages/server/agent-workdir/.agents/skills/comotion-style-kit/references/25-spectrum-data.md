@@ -14,6 +14,7 @@
   "type_scale": {"cover": 62, "section": 48, "number": 132, "claim": 42, "title": 36, "subtitle": 25, "body": 21, "column": 19, "caption": 15},
   "layout": {"side_margin": 72, "bottom_margin": 64, "footer_margin": 16, "gutter": 24, "spacing": [8, 16, 24, 32, 56]},
   "typography": {"heading": "Inter", "body": "Noto Sans TC", "heading_weight": 700, "body_weight": 400},
+  "shape_language": "data-dense",
   "visual": "editorial-tech"
 }
 ```

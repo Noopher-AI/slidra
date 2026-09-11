@@ -33,6 +33,8 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 6. **出題**：3～7 題，第一題固定問敘事模式，最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`＝有背景圖、`off`＝不加；`note` 說明會用哪種配方）；中間每一題對應一個你拿不準的頁型判斷（例如「第 5 頁的 12 分鐘要不要做成大數字頁」）或配色。每題都要有 `recommended`（你的建議，必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
 7. **寫入 `plan/outline.md`**：`co-motion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方，含 `animation` 預設 `full`、`background` 預設 `on`）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號 `'`（打不進命令列）。
 8. **從風格庫適配一種風格，寫入 `plan/design-spec.md`**：讀 `.agents/skills/comotion-style-kit/SKILL.md` 的索引，拿**主題與作者的描述**去對「第一秒的感覺」那一欄，挑一個最合的，讀它的 `references/` 檔，把裡面的 JSON 寫進 `design-spec.md`（畫布不是 1280×720 時字級與 `layout` 全部乘以 `k = width ÷ 1280`）：`co-motion plan set <presentation-id> design-spec '<全文>'`。正文寫一句為什麼是這個風格。
+   - 風格檔的 `shape_language` 是預設的形狀語言。作者的描述提到形狀、材質或手感時（「圓一點」「像手繪」「像水墨」），去 `comotion-style-kit/shapes/` 換一個——**只換形狀語言、不換配色**就能得到完全不同的頁面。
+   - 作者要的是社群貼文、直式或方形的單張時，先問清楚畫布，並在回報裡說明要用 `presentation canvas set` 設定；版面庫 51–55 是為這些畫布畫的。
    - 風格檔的 `typography` 指定的字型家族不在簡報裡時，照 `reference/fonts.md` 用 `co-motion font import` 匯入；匯不到就退回 `Noto Sans TC` 並在回報說明。
    - 作者沒給任何風格描述時，依主題判斷（飲食文化→暖色紙感、技術產品→深色精準、公部門→中性克制）。
    - 25 種都不合時，挑最近的一種改，或自己配一組——但欄位必須填滿。自己配的在正文寫下它的名字與理由。

@@ -14,6 +14,7 @@
   "type_scale": {"cover": 68, "section": 52, "number": 132, "claim": 46, "title": 38, "subtitle": 26, "body": 23, "column": 21, "caption": 17},
   "layout": {"side_margin": 72, "bottom_margin": 80, "footer_margin": 16, "gutter": 32, "spacing": [12, 20, 32, 48, 72]},
   "typography": {"heading": "cwTeXKai", "body": "Noto Sans TC", "heading_weight": 400, "body_weight": 400},
+  "shape_language": "paper-cut",
   "visual": "editorial-tech"
 }
 ```

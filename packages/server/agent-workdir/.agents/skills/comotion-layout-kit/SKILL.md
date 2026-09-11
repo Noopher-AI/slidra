@@ -1,6 +1,6 @@
 ---
 name: comotion-layout-kit
-description: 從 45 種版面裡挑一種來排這一頁——每種都附線框 SVG、槽位的字數預算與角色標記，並聲明它解的是哪一種內容關係
+description: 從 55 種版面裡挑一種來排這一頁——每種都附線框 SVG、槽位的字數預算與角色標記，並聲明它解的是哪一種內容關係
 ---
 
 # 版面庫
@@ -36,7 +36,7 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 7. **寫回 blueprint**：`shape` 填這個版面的名字，`nodes`／`steps` 填實際值。
 8. **檢查**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。
 
-## 45 種版面
+## 55 種版面
 
 > **線框照真實字級與真實比例畫。** 線框裡的標題就是 40、欄標 28、內文 24、說明 18——跟 `design-spec` 的字級表同一套；內容也填滿安全區（y 176～616）。所以線框的**比例是可以照抄的**：某個槽位在線框裡看起來多大，實際頁面就該多大。第一版的線框用了比較小的示意字級，結果示範出「字太小、下半留空」的錯誤比例，那一版已經全部重畫。
 >
@@ -56,6 +56,8 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 | 24 | `image-grid` | 等大的圖片格陣，各配一行說明 | 3–6 |
 | 26 | `kpi-row` | 一排大數字並列，各配一個標籤 | 3–4 |
 | 30 | `split-thirds` | 三個等寬直欄，各放多行 | 3 |
+| 49 | `infographic` | 平行直欄，每欄一個圖示加極簡標籤 | 2–5 |
+| 50 | `map` | 地理輪廓加標記點與圖例 | 2–6 |
 | 34 | `image-mosaic` | 主圖配幾張小圖的馬賽克，有主次 | 4–7 |
 | 40 | `chart-small-multiples` | 同一種圖表重複多格，形狀可比較 | 4–9 |
 | 43 | `table-full` | 一張表格佔滿內容區，用來查 | 1 表 |
@@ -70,6 +72,8 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 | 07 | `numbered-run` | 大編號領頭，說明橫排在旁 | 3–4 |
 | 08 | `stepped` | 逐階升高的色塊，高度就是訊息 | 3–5 |
 | 29 | `timeline-vertical` | 垂直主軸，節點在軸上說明在右 | 4–7 |
+| 46 | `cycle` | 閉環，箭頭回到起點 | 3–6 |
+| 47 | `funnel` | 上寬下窄，寬度就是量 | 3–5 |
 
 ### `contrast`（對比）
 
@@ -90,6 +94,7 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 | 12 | `indent-tree` | 縮排的層級清單 | 1 + 3–6 |
 | 13 | `nested-field` | 大場域裡包小場域 | 1 + 2–4 |
 | 14 | `scale-drop` | 尺寸逐層變小，大小即層級 | 3–4 |
+| 48 | `pyramid` | 下寬上窄的層級堆疊 | 3–5 |
 
 ### `link`（依賴／因果）
 
@@ -124,6 +129,18 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 | 41 | `audio-waveform` | 波形帶配逐字重點 | 1 |
 | 42 | `audio-quote` | 引用配一條可播的窄波形 | 1 |
 
+### 直式與方形畫布
+
+這五個**不是 16:9**，各自標了畫布尺寸。挑到它們時要先 `presentation canvas set` 設好畫布，而且**不要用 `k` 換算字級**——那個規則只在同比例時成立。
+
+| 編號 | 名字 | 畫布 | 一句話 |
+|---|---|---|---|
+| 51 | `vertical-stack` | 1080×1920 | 主張在上、圖在中、重點在下，手機一屏看完 |
+| 52 | `vertical-list` | 1242×1660 | 直式編號清單，捲動式的知識貼文 |
+| 53 | `vertical-cover` | 1080×1920 | 上半滿版圖、下半標題的直式封面 |
+| 54 | `square-quote` | 1080×1080 | 方形引用，最適合被轉發的單張 |
+| 55 | `square-kpi` | 1080×1080 | 方形數字卡 |
+
 **素材類版面（22–27、31–45）都需要真實的素材**：`image-*` 要匯入的圖片、`video-*`／`media-stage` 要影片、`audio-*` 要音檔、`chart-*` 要一組數據、`table-*`／`spec-sheet` 要欄位內容、`quote-block`／`audio-quote` 要真實的引用，`kpi-row`／`hero-number` 的數字**只能來自作者**。素材不存在時換一個不需要素材的版面，等素材到了再 `slide set --svg` 換回來——**不要放佔位圖、不要編數字**。
 
 依素材找版面：
@@ -143,7 +160,7 @@ description: 從 45 種版面裡挑一種來排這一頁——每種都附線框
 
 ## 使用的命令
 
-`cat`、`slide add`、`slide set`、`element group`、`plan set`、`validate`。
+`cat`、`slide add`、`slide set`、`element group`、`element insert`、`table create`、`chart create`、`presentation canvas set`、`plan set`、`validate`。
 
 ## 回報格式
 

@@ -1,0 +1,46 @@
+# 51 · vertical-stack
+
+**畫布**：1080×1920（9:16）　**這不是 16:9 的版面**
+**解的關係**：`none`
+**單位數**：1 + 2–4
+**一句話**：直式堆疊：主張在上、一張圖在中、重點在下——手機直握時一屏看完。
+
+**什麼時候用它**：限時動態、短影音封面、手機優先的單頁說明。
+**什麼時候不要用**：橫式簡報。這個版面的比例只在直立畫面成立。
+
+## 線框
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920">
+<rect x="0" y="0" width="1080" height="1920" fill="#FFFFFF" stroke="#CFCFCF"/>
+<rect x="72" y="120" width="88" height="8" fill="#909090"/><text x="72" y="240" font-size="84" fill="#2E2E2E" font-weight="700">一句主張，</text><text x="72" y="352" font-size="84" fill="#2E2E2E" font-weight="700">分兩行說完。</text><rect x="72" y="470" width="936" height="528" fill="#D5D5D5" stroke="#BFBFBF"/><text x="540" y="740" font-size="40" fill="#777777" text-anchor="middle">圖片或影片</text><text x="72" y="1130" font-size="44" fill="#777777">・第一個重點</text><text x="72" y="1250" font-size="44" fill="#777777">・第二個重點</text><text x="72" y="1370" font-size="44" fill="#777777">・第三個重點</text><line x1="72" y1="1700" x2="1008" y2="1700" stroke="#D0D0D0" stroke-width="2"/><text x="72" y="1780" font-size="36" fill="#A0A0A0">帳號或出處</text>
+</svg>
+```
+
+## 槽位
+
+| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+|---|---|---|---|---|
+| 主張 | `label` | 最上方，字要夠大 | 每行 10 字，≤ 2 行 | 1–2 |
+| 圖或影片 | `node` | 中段，接近方形 | — | — |
+| 重點 ×N | `label` | 下段，一行一個 | 14 字 | 1 |
+| 帳號出處 | `label` | 最下方 | 14 字 | 1 |
+
+## 節奏
+
+**字級不要用 `k` 換算**：直式畫面通常在手機上近距離看，主張要 80 以上才有力道。三段（主張／圖／重點）各佔約三分之一，段與段之間留一個大級距。
+
+`blueprint.shape` 寫 `vertical-stack`。
+
+## 怎麼設定畫布
+
+```
+co-motion presentation canvas set <presentation-id> --width 1080 --height 1920
+```
+
+畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+
+## 變體
+
+- **無圖**：拿掉中段，主張放大到佔一半。
+- **圖在最上**：圖出血到頂端，主張壓在圖下方。

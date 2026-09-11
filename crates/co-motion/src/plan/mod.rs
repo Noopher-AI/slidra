@@ -43,6 +43,22 @@ pub const DENSITIES: &[&str] = &["presentation", "balanced", "text"];
 pub const ANIMATIONS: &[&str] = &["full", "minimal", "none"];
 pub const BACKGROUNDS: &[&str] = &["on", "off"];
 pub const VISUALS: &[&str] = &["editorial-tech"];
+/// How the deck's shapes behave — corner radius, decoration density,
+/// whitespace rhythm, texture (#303). Borrowed from ppt-master's separation
+/// of *visual style* from *palette*: the shape language carries no colour,
+/// so any of it pairs with any palette. Absent reads as `plain`.
+pub const SHAPE_LANGUAGES: &[&str] = &[
+    "plain",
+    "swiss-minimal",
+    "soft-rounded",
+    "glass",
+    "paper-cut",
+    "ink-wash",
+    "chalkboard",
+    "sketch-notes",
+    "brutalist",
+    "data-dense",
+];
 pub const PALETTE_ROLES: &[&str] = &[
     "background",
     "secondary_bg",
@@ -154,6 +170,8 @@ pub struct DesignSpec {
     pub type_scale: Vec<(String, f64)>,
     /// Deck-wide layout anchors; absent reads as `LayoutAnchors::default()`.
     pub layout: LayoutAnchors,
+    /// One of `SHAPE_LANGUAGES`; absent reads as `plain` (#303).
+    pub shape_language: String,
 }
 
 impl DesignSpec {
@@ -442,6 +460,16 @@ pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
     }
 
     let layout = parse_layout_anchors(obj)?;
+    let shape_language = match obj.get("shape_language") {
+        None => "plain",
+        Some(value) => {
+            let name = value.as_str().ok_or_else(|| {
+                CoMotionError::invalid("design-spec.shape_language 必須是字串")
+            })?;
+            require_enum(name, SHAPE_LANGUAGES, "design-spec.shape_language")?;
+            name
+        }
+    };
 
     Ok(DesignSpec {
         density: density.to_string(),
@@ -449,6 +477,7 @@ pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
         palette,
         type_scale,
         layout,
+        shape_language: shape_language.to_string(),
     })
 }
 
@@ -663,6 +692,23 @@ mod tests {
         assert_eq!(plan.pages.len(), 2);
         assert_eq!(plan.pages[1].page_type.as_deref(), Some("bullets"));
         assert_eq!(plan.question_count, 1);
+    }
+
+    #[test]
+    fn shape_language_is_optional_and_checked_against_the_list() {
+        // #303: borrowed from ppt-master — the shape language carries no
+        // colour, so any of it pairs with any palette. Absent is `plain`.
+        assert_eq!(parse_design_spec(DESIGN_SPEC_OK).unwrap().shape_language, "plain");
+        let with = DESIGN_SPEC_OK.replace(
+            "\"type_scale\"",
+            "\"shape_language\": \"ink-wash\", \"type_scale\"",
+        );
+        assert_eq!(parse_design_spec(&with).unwrap().shape_language, "ink-wash");
+        let bogus = DESIGN_SPEC_OK.replace(
+            "\"type_scale\"",
+            "\"shape_language\": \"bauhaus\", \"type_scale\"",
+        );
+        assert!(parse_design_spec(&bogus).is_err());
     }
 
     #[test]

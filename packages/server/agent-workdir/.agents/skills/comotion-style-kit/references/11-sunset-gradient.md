@@ -14,6 +14,7 @@
   "type_scale": {"cover": 72, "section": 56, "number": 148, "claim": 48, "title": 40, "subtitle": 28, "body": 24, "column": 22, "caption": 18},
   "layout": {"side_margin": 80, "bottom_margin": 72, "footer_margin": 16, "gutter": 28, "spacing": [12, 20, 32, 48, 72]},
   "typography": {"heading": "Space Grotesk", "body": "Noto Sans TC", "heading_weight": 700, "body_weight": 400},
+  "shape_language": "soft-rounded",
   "visual": "editorial-tech"
 }
 ```
