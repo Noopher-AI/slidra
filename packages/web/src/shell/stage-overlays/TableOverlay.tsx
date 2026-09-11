@@ -198,7 +198,7 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
                 event.shiftKey ? -1 : 1,
               );
               if (!next) return;
-              const cell = table.cells.find((c) => c.row === next.atRow && c.col === next.col);
+              const cell = table.cells.find((c) => c.row === next.row && c.col === next.col);
               setEditing({ row: next.row, col: next.col, atRow: next.atRow, text: cell?.text ?? "" });
             }
           }}
