@@ -13,7 +13,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <rect x="0" y="0" width="1280" height="720" fill="#FFFFFF" stroke="#CFCFCF"/>
 <text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">標題（label）</text><rect x="80" y="126" width="64" height="5" fill="#909090"/>
-<rect x="180" y="200" width="540" height="300" fill="#EDEDED" stroke="#BFBFBF"/><text x="212" y="248" font-size="24" fill="#555555">層一</text><rect x="420" y="330" width="540" height="286" fill="#E3E3E3" stroke="#BFBFBF"/><text x="880" y="378" font-size="24" fill="#555555" text-anchor="end">層二</text><rect x="420" y="330" width="300" height="170" fill="#DCDCDC" stroke="#909090"/><text x="570" y="428" font-size="24" fill="#2E2E2E" font-weight="700" text-anchor="middle">共同區</text>
+<rect x="140" y="190" width="620" height="300" fill="#EDEDED" stroke="#BFBFBF"/><text x="176" y="242" font-size="26" fill="#555555" font-weight="700">層一</text><rect x="460" y="330" width="620" height="286" fill="#E3E3E3" stroke="#BFBFBF"/><text x="1044" y="382" font-size="26" fill="#555555" font-weight="700" text-anchor="end">層二</text><rect x="460" y="330" width="300" height="160" fill="#DCDCDC" stroke="#909090"/><text x="610" y="424" font-size="26" fill="#2E2E2E" font-weight="700" text-anchor="middle">共同區</text>
 <line x1="80" y1="656" x2="1200" y2="656" stroke="#D0D0D0" stroke-width="1"/><text x="80" y="688" font-size="18" fill="#A0A0A0">簡報名　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　N / N</text>
 </svg>
 ```

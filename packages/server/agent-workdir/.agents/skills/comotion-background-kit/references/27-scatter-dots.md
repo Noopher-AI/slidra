@@ -12,14 +12,7 @@
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
 <rect width="1280" height="720" fill="<background>"/>
-<g fill="<accent>">
-<circle cx="880" cy="110" r="5" opacity="0.7"/><circle cx="1010" cy="200" r="3" opacity="0.5"/>
-<circle cx="1180" cy="130" r="7" opacity="0.6"/><circle cx="940" cy="330" r="2.5" opacity="0.45"/>
-<circle cx="1090" cy="420" r="4" opacity="0.55"/><circle cx="1230" cy="330" r="3" opacity="0.4"/>
-<circle cx="820" cy="480" r="3.5" opacity="0.5"/><circle cx="1150" cy="560" r="6" opacity="0.5"/>
-<circle cx="980" cy="620" r="2.5" opacity="0.35"/><circle cx="1240" cy="660" r="4" opacity="0.45"/>
-<circle cx="760" cy="230" r="2" opacity="0.3"/><circle cx="1060" cy="80" r="2.5" opacity="0.4"/>
-</g>
+<circle cx="687" cy="114" r="9" fill="<accent>" opacity="0.57"/><circle cx="763" cy="114" r="7" fill="<primary>" opacity="0.6"/><circle cx="768" cy="529" r="12" fill="<primary>" opacity="0.35"/><circle cx="1001" cy="336" r="9" fill="<accent>" opacity="0.7"/><circle cx="736" cy="53" r="15" fill="<primary>" opacity="0.46"/><circle cx="799" cy="258" r="8" fill="<primary>" opacity="0.68"/><circle cx="806" cy="183" r="11" fill="<accent>" opacity="0.52"/><circle cx="1252" cy="594" r="8" fill="<primary>" opacity="0.38"/><circle cx="1182" cy="693" r="4" fill="<primary>" opacity="0.59"/><circle cx="1201" cy="470" r="7" fill="<accent>" opacity="0.62"/><circle cx="1118" cy="168" r="12" fill="<primary>" opacity="0.39"/><circle cx="705" cy="262" r="8" fill="<primary>" opacity="0.46"/><circle cx="1068" cy="592" r="16" fill="<accent>" opacity="0.69"/><circle cx="1276" cy="561" r="8" fill="<primary>" opacity="0.37"/><circle cx="1054" cy="400" r="12" fill="<primary>" opacity="0.34"/><circle cx="796" cy="648" r="11" fill="<accent>" opacity="0.58"/><circle cx="737" cy="303" r="15" fill="<primary>" opacity="0.56"/><circle cx="1275" cy="170" r="9" fill="<primary>" opacity="0.62"/>
 </svg>
 ```
 
