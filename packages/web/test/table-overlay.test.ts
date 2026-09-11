@@ -4,9 +4,12 @@ import {
   cellsInRange,
   columnBoundaryPositions,
   isCellInRange,
+  nextTableTabCell,
   normalizeRange,
   rangeBoundingRect,
   tabTarget,
+  templateRowForColumn,
+  type TabbableCell,
   type TableCellRect,
 } from "../src/table-overlay.js";
 
@@ -77,6 +80,36 @@ describe("tabTarget (plan §4.5: row-major, stops at the last/first cell)", () =
   it("⇧Tab moves backward and stops at the first cell", () => {
     expect(tabTarget({ row: 1, col: 0 }, 3, 3, -1)).toEqual({ row: 0, col: 2 });
     expect(tabTarget({ row: 0, col: 0 }, 3, 3, -1)).toEqual({ row: 0, col: 0 });
+  });
+});
+
+describe("nextTableTabCell / templateRowForColumn（F-09, NOOP-399：儲存格編輯中的 Tab）", () => {
+  function cell(row: number, col: number, extra: Partial<TabbableCell> = {}): TabbableCell {
+    return { row, col, repeat: false, generated: false, ...extra };
+  }
+
+  it("下一格是合併覆蓋位置（沒有自己的 cell）：跳過，繼續前進", () => {
+    // 2x3 grid, (0,0) 橫向合併覆蓋 (0,1) — (0,1) 沒有自己的 cell 條目。
+    const cells = [cell(0, 0), cell(0, 2), cell(1, 0), cell(1, 1), cell(1, 2)];
+    expect(nextTableTabCell(cells, { row: 0, col: 0 }, 2, 3, 1)).toEqual({ row: 0, col: 2, atRow: 0 });
+  });
+
+  it("下一格是模板列（repeat === true）：跳過，繼續前進", () => {
+    // 3 rows x1 col：中間那列是隱藏的模板列。
+    const cells = [cell(0, 0), cell(1, 0, { repeat: true }), cell(2, 0)];
+    expect(nextTableTabCell(cells, { row: 0, col: 0 }, 3, 1, 1)).toEqual({ row: 2, col: 0, atRow: 2 });
+  });
+
+  it("目標格是 generated：寫入位址取同欄模板列的 row，atRow 是目標格自己的畫面列", () => {
+    const cells = [cell(0, 0, { repeat: true }), cell(0, 1, { repeat: true }), cell(1, 0, { generated: true }), cell(1, 1, { generated: true })];
+    expect(nextTableTabCell(cells, { row: 1, col: 0 }, 2, 2, 1)).toEqual({ row: 0, col: 1, atRow: 1 });
+    expect(templateRowForColumn(cells, 1)).toBe(0);
+  });
+
+  it("最後一格 Tab／第一格 ⇧Tab：原地不動（回傳 null），不加列、不離開編輯", () => {
+    const cells = [cell(0, 0), cell(0, 1), cell(1, 0), cell(1, 1)];
+    expect(nextTableTabCell(cells, { row: 1, col: 1 }, 2, 2, 1)).toBeNull();
+    expect(nextTableTabCell(cells, { row: 0, col: 0 }, 2, 2, -1)).toBeNull();
   });
 });
 

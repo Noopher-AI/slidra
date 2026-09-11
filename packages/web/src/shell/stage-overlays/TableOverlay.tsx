@@ -6,6 +6,7 @@ import {
   cellRectAt,
   cellsInRange,
   columnBoundaryPositions,
+  nextTableTabCell,
   rangeBoundingRect,
   type CellRange,
   type TableCellRect,
@@ -168,8 +169,38 @@ export function TableOverlay({ controller, wellRef, slidePath, tableId, table }:
           value={editing.text}
           onChange={(event) => setEditing({ ...editing, text: event.target.value })}
           onKeyDown={(event) => {
-            if (event.key === "Enter") commitEdit(editing);
-            if (event.key === "Escape") setEditing(null);
+            if (event.key === "Enter") {
+              commitEdit(editing);
+              return;
+            }
+            if (event.key === "Escape") {
+              setEditing(null);
+              return;
+            }
+            if (event.key === "Tab") {
+              // F-09 (NOOP-399): commit without `setEditing(null)` — going
+              // through `commitEdit` would drop `editing` to null for one
+              // render, unmounting this very `<input>` and firing the
+              // `onBlur` below a second time before the next cell's editor
+              // remounts. Setting `editing` straight to the next cell keeps
+              // the same host `<input>` across the re-render (identical JSX
+              // shape, no key change), so focus never leaves it — the
+              // browser default this replaces (`preventDefault()`) is
+              // exactly that focus loss (see F-09's reproduction: Tab used
+              // to move `document.activeElement` to the dock's hand tool).
+              event.preventDefault();
+              void run("table cell set", { row: editing.row, col: editing.col, text: editing.text });
+              const next = nextTableTabCell(
+                table.cells,
+                { row: editing.atRow, col: editing.col },
+                table.rows.length,
+                table.cols.length,
+                event.shiftKey ? -1 : 1,
+              );
+              if (!next) return;
+              const cell = table.cells.find((c) => c.row === next.atRow && c.col === next.col);
+              setEditing({ row: next.row, col: next.col, atRow: next.atRow, text: cell?.text ?? "" });
+            }
           }}
           onBlur={() => editing && commitEdit(editing)}
         />
