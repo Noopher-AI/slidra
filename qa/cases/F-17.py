@@ -15,13 +15,16 @@ A、B 兩條都 FAIL（點擊被情境列擋下，選取不變或加選失敗）
 PASS；C 是回歸防線（hover 後仍按得到 Delete），兩邊都應該 PASS。
 
 Execute 時對照 Plan 的兩處修正：
-  1. Plan §5(A) 原本指第 1 頁「標題→副標」——實測（`_iframe_offset`／
-     `getBoundingClientRect` 直接量）在目前這份 demo 素材＋字型度量下，
-     副標的實際 box（y 389–414）與情境列 box（y 417–454）之間有約 3px
-     空隙，並不真的重疊，無法用來重現「點擊被擋下」。改用第 3 頁「第一
-     點→第二點」（純滑鼠、非 additive）——`elementFromPoint` 直接證實這
-     裡選第一點後，第二點的中心點命中的是 `<button class="context-bar-
-     item">`，不是 iframe，確實重現。
+  1. Plan §5(A) 指第 1 頁「標題→副標」——Execute 當時判定這個場景無法重現
+     而改用第 3 頁「第一點→第二點」；Review（NOOP-386）在 1440×900 重新
+     量過，選「標題」之後情境列在 (442,378)–(1092,414)、副標的 box 在
+     y 394.25–419.25，兩者重疊 23.6px，副標中心 (656,406.8) 在 base 上
+     `elementFromPoint` 命中 `BUTTON.context-bar-item`、點下去選取停在
+     「標題」——票面場景確實重現得出來（Execute 量到的「約 3px 空隙」是選
+     「副標」之後排在它下方的那一列，不是本場景）。因此 A0 把票面逐字的
+     第 1 頁場景補回來，第 3 頁「第一點→第二點」保留為 A：`elementFromPoint`
+     同樣證實那裡的第二點中心命中的是 `<button class="context-bar-item">`，
+     是同一個缺陷在條列版面上的第二個實例，兩條都留著。
   2. C 段（hover 後點 Delete）刻意留在第 1 頁，不用第 3 頁：第 3 頁的
      情境列因為多一顆 Edit animation 按鈕而變寬（764px），在 1440px 寬
      的視窗下會被右邊 Chat 面板（x≈1101 起）局部遮住最右側的 Delete/
@@ -59,6 +62,20 @@ def wait_selection_chip(expected: str, timeout: float = 2.0) -> str:
 
 def main() -> int:
     open_deck()  # noqa: F821
+
+    # A0（父票驗收條件逐字那一條，Review 補回）：第 1 頁，選「標題」後直接
+    # 點「副標」的座標。Review 在自己的 pod 量過（1440×900，`select("標題")`
+    # 之後）：情境列 (442,378)–(1092,414)、副標的 box y 394.25–419.25，兩者
+    # 在 y 軸重疊 23.6px，副標中心 (656,406.8) 在 base 上 `elementFromPoint`
+    # 命中的是 `BUTTON.context-bar-item`、點下去選取停在「標題」——票面描述
+    # 的場景在目前的 demo 素材下確實重現得出來（交付留言所述「約 3px 空隙」
+    # 量到的是選「副標」之後才排在它下方的那一列，不是本場景）。
+    goto_slide(1)  # noqa: F821
+    select("標題")  # noqa: F821
+    time.sleep(0.5)  # 讓情境列真的渲染、定位穩定，避免量到動畫中途的座標
+    select("副標")  # noqa: F821
+    chip_a0 = wait_selection_chip("Selected: 副標")
+    check("A0 第 1 頁：選標題後直接點副標的座標，選取變成副標", chip_a0 == "Selected: 副標", chip_a0)
 
     # A：第 3 頁，非 additive 點擊——「第一點」被選取後，「第二點」的位置
     # 落在情境列範圍內；base 上這一點命中的是情境列本身（`.context-bar-
