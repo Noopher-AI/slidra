@@ -528,6 +528,7 @@ export interface CanvasController {
     fontSize: number;
     fontWeight: number;
     align: "left" | "center" | "right";
+    fill: string;
   }) => Promise<void>;
   /** Closes the element context menu without acting on it (click-outside, Esc, or opening another floating layer — §4.5). No-op when already closed. */
   /**
@@ -2445,6 +2446,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     fontSize: number;
     fontWeight: number;
     align: "left" | "center" | "right";
+    fill: string;
   }): Promise<void> {
     if (mode !== "view") return;
     await runCommand("textbox add", { slidePath: slides[currentIndex], ...input });

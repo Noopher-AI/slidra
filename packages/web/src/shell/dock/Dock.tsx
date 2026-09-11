@@ -40,7 +40,7 @@ export interface DockProps {
   onAnimationAdded(): void;
   /** The presentation's own canvas size (project.json's `canvas`) — TextPanel converts the prototype's percentage-based defaults into real pixels against it, instead of assuming 1280×720. `null` before `presentationInfo` has loaded. */
   canvasSize: { width: number; height: number } | null;
-  /** [E2.T17] plan §4.1: ShapeMenu's rect/ellipse fill and line stroke default to the current slide's own accent colour. `null` before a slide has loaded, or when the slide declares no page style at all — ShapeMenu falls back to a non-null accent token for `line` specifically (an unstroked line renders as an invisible hole). */
+  /** [E2.T17] plan §4.1, extended by NOOP-353 拍板決定 7: ShapeMenu's rect/ellipse fill, line stroke, and TextPanel's text fill all default to the current slide's own accent colour when set. Without an accent, all three compute a contrast colour off `pageStyle.background` instead (`contrast-fill.ts`) — never omitted, never a design-token fallback. `null` before a slide has loaded, or when the slide declares no page style at all, reaches that computation as a `null` background. */
   pageStyle: { background: string | null; accent: string | null } | null;
 }
 
@@ -217,7 +217,7 @@ export function Dock({
       case "arrange":
         return <ArrangeMenu selection={selection} controller={controller} onClose={onClose} />;
       case "text":
-        return <TextPanel onClose={onClose} controller={controller} canvasSize={canvasSize} />;
+        return <TextPanel onClose={onClose} controller={controller} canvasSize={canvasSize} pageStyle={pageStyle} />;
       case "image":
         return <ImagePanel onClose={onClose} controller={controller} canvasSize={canvasSize} slidePath={slidePath} />;
       case "video":
