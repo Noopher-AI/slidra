@@ -38,7 +38,17 @@ page-5.note=數字改成 11.8 分鐘
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪些頁型放」決定這份簡報要用到哪幾種配方（通常封面／結語一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
 4. **一頁怎麼做**（六個階段，照順序；前一階段沒做完不要跳下一階段）
 
-   1. **構圖思考**（不下命令）：先想清楚這一頁要講幾件事、彼此什麼關係，決定頁型（指南第 6 節）與**講述步驟的切法**——這就是之後的動畫步數。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。
+   1. **構圖思考**：先想清楚這一頁要講幾件事、彼此什麼關係，決定頁型（指南第 6 節）與**講述步驟的切法**。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。想完**把結論寫下來**，不要只放在心裡——在 `plan/outline.md` 這一頁的物件加上 `blueprint`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（`status` 維持 `confirmed`）：
+
+      ```json
+      { "n": 2, "type": "bullets", "rhythm": "dense", "title": "…",
+        "blueprint": { "relationship": "membership", "nodes": 3, "steps": 4 } }
+      ```
+
+      - `relationship`：這一頁的內容之間是什麼關係，決定幾何要承載什麼——`order`（順序、排名、流程）、`link`（依賴、影響、轉換）、`parent`（統轄、分解）、`membership`（歸屬、並列、分組）、`contrast`（對比、選項、前後）、`overlap`（交集、共用）、`none`（單一主張，封面與大數字頁常是這個）。
+      - `nodes`：這一頁有幾個語意單位（之後要標成 `data-comot-role="node"` 的那些）。
+      - `steps`：這一頁分幾次點擊講完，也就是 `on-click` 的數量。
+      - **不要只因為節點數就採用等分格線或鏡射對稱**：三個並列的想法才用三欄，三段有先後的想法要看得出方向。
    2. **背景製作**：計畫 `background` 是 `on` 時，確認步驟 3 已經建好這個頁型要用的配方資產（一種配方只建一次，之後每頁重用）；`off` 就跳過。背景只負責氣氛，**不承載意義**。
    3. **前景製作**：取該頁型在指南第 4 節的 SVG 範例當**起點**，`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。**範例是起點不是規格**：欄寬比例、卡片高度、要不要合併成一塊面板、標題擺哪裡，都可以為了這一頁的內容調整——只要（一）不越過 `design-spec.layout` 的安全區，（二）字級與顏色仍取自字級表與配色，（三）間距取自 `layout.gutter` 與 `layout.spacing` 的級距。**不要為了貼合範例而犧牲內容**，也不要無緣無故偏離它。`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**依指南第 3b 節替元素標上角色**（`data-comot-role`：`field`／`node`／`spine`／`edge`／`label`／`garnish`）——這是之後 group 與動畫的依據，也是 `validate` 檢查結構的依據：卡片底是 `field`、整張卡片是 `node`、卡片裡的字是 `label`、底線與小方塊是 `garnish`。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
       - `co-motion slide style set <presentation-id> slides/00N.svg --background <該頁型指定的角色色碼>`（封面／要點／對照／大數字用 background，章節頁 secondary_bg，結語頁 primary）。章節頁另下 `element style set el-watermark opacity 0.18`。
@@ -48,7 +58,7 @@ page-5.note=數字改成 11.8 分鐘
       - `element group` 會清掉成員身上既有的效果（回傳的 `removedEffects` 會告訴你幾個），所以**一定要先 group 再套動畫**。
       - 背景圖、頁尾線、頁尾文字、頁碼不進任何群組。
    5. **動畫套用**：依指南第 5 節該頁型的講述步驟，**對群組 id（沒有群組的就對元素 id）**下 `co-motion effect add`——一段一個 `on-click`，一頁不超過 5 個；`animation` 是 `none` 就整段跳過。群組化之後多數頁面只需要 1～4 次 `effect add`，不再需要一長串 `with-previous`。
-   6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤；`co-motion effect list <presentation-id> slides/00N.svg --json` 的 `steps` 長度要等於步驟 1 想好的段數（對不上就是動畫加錯了，現在修，不要留到最後）。然後補這一頁的收尾：
+   6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。`validate` 會拿步驟 1 的 `blueprint` 跟實際頁面對帳——`blueprint.nodes` 是畫出來的 node 數不符、`blueprint.steps` 是點擊步數不符。**兩邊不一致時先問哪一邊對**：頁面畫錯就改頁面，構圖當初想錯就改 `blueprint`（用 `plan set outline` 寫回），不要留著不管，也不要為了讓數字好看而亂改構圖。然後補這一頁的收尾：
       - `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
       - 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照這六步重寫整頁（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
 
@@ -68,11 +78,11 @@ page-5.note=數字改成 11.8 分鐘
 
 ## 使用的命令
 
-`cat`、`ls`、`plan set`、`template list`、`template add`、`asset import`、`slide add`、`slide set`、`slide style set`、`slide background set`、`element style set`、`element group`、`effect add`、`slide transition set`、`text set`、`slide notes set`、`validate`。
+`cat`、`ls`、`plan set`（寫回 blueprint）、`template list`、`template add`、`asset import`、`slide add`、`slide set`、`slide style set`、`slide background set`、`element style set`、`element group`、`effect add`、`slide transition set`、`text set`、`slide notes set`、`validate`。
 
 ## 回報格式
 
-先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」（或做到第幾頁停下的原因）。逐頁一行：`第 N 頁（slides/00N.svg）：<頁型>：<標題>——新增 / 覆寫，<on-click 步驟數> 步`。**`on-click` 步驟數要跟指南第 5 節該頁型的講述步驟對得上**（封面／章節／大數字／結語各 1 步，要點頁 1＋卡片數，對照頁 3 步），對不上就是動畫加錯了，回報前先修好。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁的關係不在頁型表上而退回了要點頁。
+先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」（或做到第幾頁停下的原因）。逐頁一行：`第 N 頁（slides/00N.svg）：<頁型>／<關係>：<標題>——新增 / 覆寫，<node 數> 個單位、<on-click 步驟數> 步`。**`on-click` 步驟數要跟指南第 5 節該頁型的講述步驟對得上**（封面／章節／大數字／結語各 1 步，要點頁 1＋卡片數，對照頁 3 步），對不上就是動畫加錯了，回報前先修好。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁的關係不在頁型表上而退回了要點頁。
 
 ## 不可做的事
 

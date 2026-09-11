@@ -466,6 +466,7 @@ scrim 是面板，喘息頁（章節、大數字）的 `rhythm.breathing-cards` 
 | `structure.background`、`structure.notes`、`structure.template` | 背景已設、備忘稿非空、出現過的頁型都登記了範本 |
 | `structure.scrim` | 有背景圖的頁，每個文字框（頁尾與 ≥ claim 的大字除外）都落在一塊 scrim 面板上（第 4b 節） |
 | `structure.background-image` | 計畫 `background` 是 `on` 時，每一頁都有背景圖（漏下 `slide background set` 會被這條抓到） |
+| `blueprint.*` | 有寫 `blueprint` 的頁面，畫出來的 node 數與 on-click 步數要跟構圖時寫的一致 |
 | `role.*` | 有宣告角色的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊（第 3b 節） |
 | `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的特徵字級） |
 | `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 |

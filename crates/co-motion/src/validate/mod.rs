@@ -165,6 +165,8 @@ pub struct SlideFacts {
     pub enter_effects: usize,
     /// A `data-comot-role="background"` element is present (#303 §13).
     pub has_background: bool,
+    /// `on-click` enter effects — the page's click steps (#303 §D).
+    pub click_steps: usize,
 }
 
 /// Characters that count toward a text budget: everything but whitespace.
@@ -245,6 +247,13 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
         }
         facts.has_transition = find_child(metadata, "comot:transition").is_some();
         if let Some(effects) = find_child(metadata, "comot:effects") {
+            facts.click_steps = effects
+                .children
+                .iter()
+                .filter(|c| c.tag == "comot:effect")
+                .filter(|c| attribute_value(c, "family").as_deref() == Some("enter"))
+                .filter(|c| attribute_value(c, "start").as_deref() == Some("on-click"))
+                .count();
             facts.enter_effects = effects
                 .children
                 .iter()
@@ -716,6 +725,51 @@ pub fn check_slide(
                 "0 個進場效果",
                 "≥ 1 個 enter 效果",
                 format!("第 {n} 頁沒有任何進場效果（計畫 animation={animation}）"),
+            );
+        }
+    }
+
+    // --- blueprint (#303 §D): the build's 構圖思考 step, reconciled against
+    // the page it then drew. Only pages whose plan carries a blueprint are
+    // checked — the step is written down precisely so it stops being a
+    // private thought nothing can verify.
+    if let Some(blueprint) = page.and_then(|p| p.blueprint.as_ref()) {
+        let nodes = facts
+            .text_boxes
+            .iter()
+            .filter(|t| t.role.as_deref() == Some("node"))
+            .count()
+            + facts
+                .shapes
+                .iter()
+                .filter(|sh| sh.role.as_deref() == Some("node"))
+                .count();
+        if nodes != blueprint.nodes {
+            push(
+                errors,
+                slide,
+                None,
+                "blueprint.nodes",
+                format!("{nodes} 個"),
+                format!("{} 個", blueprint.nodes),
+                format!(
+                    "第 {n} 頁畫了 {nodes} 個 node，構圖時說的是 {}——改頁面或改構圖，不要兩邊不一致",
+                    blueprint.nodes
+                ),
+            );
+        }
+        if facts.click_steps != blueprint.steps {
+            push(
+                errors,
+                slide,
+                None,
+                "blueprint.steps",
+                format!("{} 步", facts.click_steps),
+                format!("{} 步", blueprint.steps),
+                format!(
+                    "第 {n} 頁有 {} 個 on-click 步驟，構圖時說的是 {} 步",
+                    facts.click_steps, blueprint.steps
+                ),
             );
         }
     }
@@ -1495,6 +1549,53 @@ mod tests {
         );
         let r = rules(&run_one(&svg, "bullets", "dense"));
         assert!(r.contains(&"text.page-total"), "{r:?}");
+    }
+
+    #[test]
+    fn a_blueprint_is_reconciled_against_the_page_that_was_drawn() {
+        // #303 §D: 構圖思考 writes down node count and click steps; the page
+        // has to match what was decided, or one of the two is wrong.
+        let spec = spec();
+        let names = vec![template_name_for("bullets").to_string()];
+        let node = |id: &str| {
+            format!(
+                "<g id=\"{id}\" data-comot-role=\"node\"><rect x=\"80\" y=\"200\" width=\"200\" height=\"80\" fill=\"#1B2129\"/></g>"
+            )
+        };
+        let label = textbox("el-l1", 100.0, 240.0, 160.0, 24.0, "#F4F6F8", &[("字", false)]);
+        let body = format!("{}{}{label}", node("el-n1"), node("el-n2"));
+
+        // `slide()` writes exactly one on-click enter effect.
+        let run = |blueprint: &str| {
+            let outline = plan::parse_outline(&format!(
+                "```json\n{{ \"status\": \"confirmed\", \"mode\": \"pyramid\", \"background\": \"off\", \"pages\": [ {{ \"n\": 1, \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\"{blueprint} }} ] }}\n```\n"
+            ))
+            .unwrap();
+            let ctx = Context {
+                canvas_width: 1280.0,
+                canvas_height: 720.0,
+                outline: Some(&outline),
+                spec: Some(&spec),
+                template_names: &names,
+            };
+            let facts = read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap();
+            let mut errors = Vec::new();
+            check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
+            rules(&errors)
+        };
+
+        // No blueprint: nothing to reconcile.
+        assert!(!run("").iter().any(|r| r.starts_with("blueprint.")));
+
+        // Matching blueprint passes.
+        let matching = ", \"blueprint\": { \"relationship\": \"membership\", \"nodes\": 2, \"steps\": 1 }";
+        assert!(!run(matching).iter().any(|r| r.starts_with("blueprint.")));
+
+        // Drew three nodes but planned two; told in two steps but drew one.
+        let mismatched = ", \"blueprint\": { \"relationship\": \"membership\", \"nodes\": 3, \"steps\": 2 }";
+        let r = run(mismatched);
+        assert!(r.contains(&"blueprint.nodes"), "{r:?}");
+        assert!(r.contains(&"blueprint.steps"), "{r:?}");
     }
 
     #[test]

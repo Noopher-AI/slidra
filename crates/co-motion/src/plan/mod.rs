@@ -26,6 +26,19 @@ pub const PAGE_TYPES: &[&str] = &[
     "cover", "section", "bullets", "compare", "number", "closing",
 ];
 pub const RHYTHMS: &[&str] = &["anchor", "dense", "breathing"];
+/// The relationship a page's content has (#303 §D), borrowed from
+/// ppt-master's relationship atoms. It is what the composition has to
+/// carry — named in the plan so the page's geometry answers to something
+/// stated, not to the build's memory.
+pub const RELATIONSHIPS: &[&str] = &[
+    "order",
+    "link",
+    "parent",
+    "membership",
+    "contrast",
+    "overlap",
+    "none",
+];
 pub const DENSITIES: &[&str] = &["presentation", "balanced", "text"];
 pub const ANIMATIONS: &[&str] = &["full", "minimal", "none"];
 pub const BACKGROUNDS: &[&str] = &["on", "off"];
@@ -56,12 +69,29 @@ pub fn template_name_for(page_type: &str) -> &'static str {
     }
 }
 
+/// What the build decided in its 構圖思考 step, written down so it can be
+/// reconciled against the page it then drew (#303 §D). Without this the
+/// step is a private thought and nothing can tell whether the page kept it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageBlueprint {
+    /// One of `RELATIONSHIPS`.
+    pub relationship: String,
+    /// How many semantic units the page carries — reconciled against the
+    /// elements that declare `data-comot-role="node"`.
+    pub nodes: usize,
+    /// How many click steps the page is told in — reconciled against the
+    /// page's `on-click` enter effects.
+    pub steps: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanPage {
     pub n: usize,
     pub page_type: String,
     pub rhythm: String,
     pub title: String,
+    /// Absent until the build's 構圖思考 step writes it.
+    pub blueprint: Option<PageBlueprint>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,11 +269,13 @@ pub fn parse_outline(text: &str) -> CoMotionResult<OutlinePlan> {
         let rhythm = require_str(page, "rhythm", &what)?;
         require_enum(rhythm, RHYTHMS, &format!("{what}.rhythm"))?;
         let title = require_str(page, "title", &what)?;
+        let blueprint = parse_blueprint(page, &what)?;
         pages.push(PlanPage {
             n: n as usize,
             page_type: page_type.to_string(),
             rhythm: rhythm.to_string(),
             title: title.to_string(),
+            blueprint,
         });
     }
 
@@ -391,6 +423,47 @@ pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
         type_scale,
         layout,
     })
+}
+
+/// Reads a page's optional `blueprint` object. Absent is fine (the page has
+/// not been composed yet); present must be complete and well-typed — a
+/// half-written blueprint would reconcile against nothing.
+fn parse_blueprint(
+    page: &serde_json::Map<String, Value>,
+    what: &str,
+) -> CoMotionResult<Option<PageBlueprint>> {
+    let Some(value) = page.get("blueprint") else {
+        return Ok(None);
+    };
+    let obj = value
+        .as_object()
+        .ok_or_else(|| CoMotionError::invalid(format!("{what}.blueprint 必須是物件")))?;
+
+    let relationship = obj
+        .get("relationship")
+        .and_then(Value::as_str)
+        .ok_or_else(|| CoMotionError::invalid(format!("{what}.blueprint 缺少 relationship")))?;
+    require_enum(
+        relationship,
+        RELATIONSHIPS,
+        &format!("{what}.blueprint.relationship"),
+    )?;
+
+    let mut counts = [0usize; 2];
+    for (index, key) in ["nodes", "steps"].iter().enumerate() {
+        counts[index] = obj
+            .get(*key)
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                CoMotionError::invalid(format!("{what}.blueprint 缺少非負整數欄位 {key}"))
+            })? as usize;
+    }
+
+    Ok(Some(PageBlueprint {
+        relationship: relationship.to_string(),
+        nodes: counts[0],
+        steps: counts[1],
+    }))
 }
 
 /// Reads the optional `layout` object. Every field is optional and falls

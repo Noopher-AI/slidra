@@ -75,6 +75,8 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 
 `animation` 只能是 `full`、`minimal`、`none`（省略視同 `full`）；`background` 只能是 `on`、`off`（省略視同 `on`）。`type` 只能是 `cover`、`section`、`bullets`、`compare`、`number`、`closing`；`rhythm` 只能是 `anchor`、`dense`、`breathing`；`n` 從 1（或既有頁數 +1）連續遞增；`questions[].id` 用英數與 `-`，同一份內不重複。
 
+每頁另有一個**選用的 `blueprint` 物件**（`relationship`／`nodes`／`steps`），那是 `comotion-build` 在構圖階段寫的，**plan 階段不要寫**；重新規劃時也不要把既有的 blueprint 刪掉，除非那一頁的內容真的改了。
+
 ## `plan/design-spec.md` 的 JSON 段
 
 ```json
