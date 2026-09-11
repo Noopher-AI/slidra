@@ -1,6 +1,6 @@
 # SVG 作者指南：「編輯／科技」視覺語言
 
-這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色、六種頁型的完整 SVG 範例、每種頁型的動畫腳本、挑頁型與密度規則，以及最後用 `co-motion validate` 驗收。`comotion-plan` 用第 2、3、6、7 節寫 `plan/design-spec.md` 與挑頁型；`comotion-build` 用第 1、4、4b、5 節做頁面；`comotion-new-slide` 在有計畫時照同一套做一頁。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
+這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色、元素角色、一份語法示範與六個已知解的骨架、動畫腳本、挑關係與密度規則，以及最後用 `co-motion validate` 驗收。`comotion-plan` 用第 2、3、6、7 節寫 `plan/design-spec.md` 與挑頁型；`comotion-build` 用第 1、4、4b、5 節做頁面；`comotion-new-slide` 在有計畫時照同一套做一頁。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
 
 所有數字以 **1280×720** 畫布為準（`co-motion new` 的預設）。畫布不是 1280×720 時，先 `cat project.json` 讀出 `canvas.width`，算出 `k = width ÷ 1280`，把所有座標、寬度、半徑、字級都乘以 k（1920×1080 就是 ×1.5），`viewBox` 也要寫成畫布尺寸。
 
@@ -102,133 +102,50 @@
 - `validate` 會擋的四件事：`garnish` 不可以是文字框（裝飾不承載意義）；一頁最多一條 `spine`；有 `edge` 就至少要有兩個 `node`；`label` 的數量不得少於當作色塊的 `node`（沒有標籤的節點不是語意單位）。
 - 文字框宣告上的 `data-comot-role` 會被帶到正規化後的元素上；寫了不在表上的角色會直接被 `slide add --svg` 拒絕。
 
-## 4. 六種已知解（完整 SVG）
+## 4. 語法示範與六種已知解的骨架
 
-**這一節不是版型目錄，是六個已知解的完整寫法。** 挑版面的流程在第 6 節：先定關係，再選解法——這六份只覆蓋 `membership`／`contrast`／`none` 三種關係的其中一種解，`order`／`parent`／`link`／`overlap` 要用第 3b 節的角色自己組。**相鄰兩頁不要用同一個解**（`validate` 的 `rhythm.repeated-shape` 會抓）。
+這一節**不給可以直接貼上的完整頁面**。版面是每一頁自己的決定（流程在第 6 節）；這裡只給兩樣東西：一份示範「一頁合格的 SVG 在語法上長什麼樣」，以及六個已知解的骨架，讓你知道它們的結構，而不是照抄它們的座標。
 
-**這一節的範例是起點，不是規格。** 欄寬比例、卡片高度、要不要把三張卡片合併成一塊面板、標題擺左上還是壓在色塊上——都可以為了這一頁的內容調整。不變的只有三件事：不越過 `design-spec.layout` 的安全區、字級與顏色取自字級表與配色、間距取自 `layout.gutter` 與 `layout.spacing` 的級距。為了貼合範例而把話講不清楚是本末倒置；無緣無故偏離它也沒有意義。
+### 4.0 語法示範（唯一一份完整 SVG）
 
-每種頁型一份可直接貼的 SVG（範例文字是示意，替換成計畫裡的關鍵詞；`<role>` 換成配色）。每一頁只講一個想法；文字比範例多就縮短或拆頁，不縮字級。
-
-### 4.1 封面（cover，anchor）
-
-背景 `background`。氣氛（兩顆出血的半透明大圓、一條對角 accent 細線）全部在背景圖裡（第 4b 節「柔焦色團」配方內含），頁面 SVG 只放內容與 scrim——裝飾不是元素，作者在編輯器裡就不會誤選到它們。大標是大綱裡最強的一句主張。
+這一頁只為了示範寫法：文字框怎麼宣告、角色怎麼標、頁尾三件怎麼放、scrim 疊在誰前面。**它不是版面建議**——內容頁不會長這樣。
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect id="el-bar" data-comot-name="強調短棒" x="80" y="216" width="64" height="6" fill="<accent>"/>
-<text id="el-title" data-comot-name="大標" data-comot-text-width="1000" x="80" y="248" font-size="72" font-weight="700" fill="<text>">人與 agent 共編
-的簡報工具</text>
-<text id="el-subtitle" data-comot-name="副標" data-comot-text-width="560" x="80" y="480" font-size="28" fill="<muted>">2026 Q3 產品說明</text>
-<text id="el-meta" data-comot-name="日期講者" data-comot-text-width="600" x="80" y="612" font-size="18" fill="<muted>">Noopher AI · 2026-09</text>
-</svg>
-```
-
-### 4.2 章節頁（section，anchor）
-
-背景 `secondary_bg`。左側 primary 骨架色條，右下 320 字級的章節編號浮水印（**裸 `<text>`**，不是文字框：它是裝飾），章節名壓在左中。只有小節名、沒有要點的小節才長成章節頁。
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect id="el-spine" data-comot-name="骨架色條" x="0" y="0" width="16" height="720" fill="<primary>"/>
-<text id="el-watermark" data-comot-name="章節浮水印" x="1200" y="640" font-size="320" font-weight="700" fill="<muted>" opacity="0.18" text-anchor="end">02</text>
-<text id="el-label" data-comot-name="章節編號" data-comot-text-width="400" x="80" y="248" font-size="28" font-weight="700" fill="<accent>">02</text>
-<text id="el-section-title" data-comot-name="章節名" data-comot-text-width="760" x="80" y="304" font-size="56" font-weight="700" fill="<text>">核心概念</text>
+<rect id="el-scrim-title" data-comot-name="標題底" data-comot-role="field" x="80" y="64" width="1120" height="88" fill="<background>" opacity="0.7"/>
+<text id="el-title" data-comot-name="頁標題" data-comot-role="label" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">標題是這一頁的主張</text>
+<g id="el-unit-1" data-comot-role="node"><rect x="80" y="176" width="1120" height="72" fill="<secondary_bg>"/></g>
+<text id="el-point-1" data-comot-name="要點 1" data-comot-role="label" data-comot-text-width="960" x="200" y="195" font-size="24" fill="<text>">一行關鍵詞，不加句號</text>
 <line id="el-footer-rule" data-comot-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
 <text id="el-footer-name" data-comot-name="頁尾簡報名" data-comot-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
 <text id="el-footer-page" data-comot-name="頁碼" data-comot-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-comot-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
 </svg>
 ```
 
-浮水印寫完後 `co-motion element style set <presentation-id> slides/00N.svg el-watermark opacity 0.18`（若寫入時 opacity 沒被保留）。
+從這一份要帶走的**語法事實**（不是版面事實）：
 
-### 4.3 要點頁（bullets，dense）
+- 文字一律是 `<text data-comot-text-width=…>` 宣告，內容直接換行分段，不要自己放 `<tspan>`；`<role>` 是配色角色的佔位，寫入前換成 design-spec 的色碼。
+- 每個元素有 `id` 與 `data-comot-name`（作者在編輯器裡看到的名字），語意元素再加 `data-comot-role`（第 3b 節）。
+- scrim 就是一塊在被墊文字**之前**出現的 rect；它同時可以是那段內容的 `field`。
+- 頁尾三件（線、`{{ presentation_name }}`、`{{ slide_number }} / {{ slide_total }}`）的座標是全份固定的骨架（第 1 節），內容頁都放，封面與結語不放。
+- 座標與尺寸取自 `design-spec.layout` 的安全區與間距級距——上面的 80／1120／656 是 `side_margin: 80` 時的值，錨點不同就跟著換。
 
-背景 `background`。3～5 張橫向卡片，每張是「面板 + accent 編號 + 一行關鍵詞」三個元素；卡片從 y=176 起、高 72、間距 16（第 n 張的 y = 176 + (n−1) × 88；編號 y 再 +20、關鍵詞 y 再 +19）。4 張最後一張 y=440，5 張 y=528，都在頁尾線之上。
+### 4.1–4.6 六種已知解的骨架
 
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<text id="el-title" data-comot-name="頁標題" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">簡報是最常重做的文件</text>
-<rect id="el-underline" data-comot-name="標題底線" x="80" y="136" width="56" height="4" fill="<accent>"/>
-<rect id="el-card-1" data-comot-name="卡片 1" x="80" y="176" width="1120" height="72" fill="<secondary_bg>"/>
-<text id="el-num-1" data-comot-name="編號 1" data-comot-text-width="64" x="104" y="196" font-size="28" font-weight="700" fill="<accent>">01</text>
-<text id="el-point-1" data-comot-name="要點 1" data-comot-text-width="960" x="200" y="195" font-size="24" fill="<text>">團隊最常做、最常重做的文件</text>
-<rect id="el-card-2" data-comot-name="卡片 2" x="80" y="264" width="1120" height="72" fill="<secondary_bg>"/>
-<text id="el-num-2" data-comot-name="編號 2" data-comot-text-width="64" x="104" y="284" font-size="28" font-weight="700" fill="<accent>">02</text>
-<text id="el-point-2" data-comot-name="要點 2" data-comot-text-width="960" x="200" y="283" font-size="24" fill="<text>">AI 當外掛，產出的人改不動</text>
-<rect id="el-card-3" data-comot-name="卡片 3" x="80" y="352" width="1120" height="72" fill="<secondary_bg>"/>
-<text id="el-num-3" data-comot-name="編號 3" data-comot-text-width="64" x="104" y="372" font-size="28" font-weight="700" fill="<accent>">03</text>
-<text id="el-point-3" data-comot-name="要點 3" data-comot-text-width="960" x="200" y="371" font-size="24" fill="<text>">人改過的，AI 下一輪又蓋掉</text>
-<line id="el-footer-rule" data-comot-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
-<text id="el-footer-name" data-comot-name="頁尾簡報名" data-comot-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
-<text id="el-footer-page" data-comot-name="頁碼" data-comot-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-comot-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
-</svg>
-```
+這六個是第 6.3 節那張表的另一面：知道它們的結構，才知道什麼時候該用、什麼時候該自己組。**骨架只說有哪些角色、誰墊著誰、垂直節奏怎麼走；座標、比例、尺寸由這一頁的內容決定。**
 
-### 4.4 對照頁（compare，dense）
+| 已知解 | 關係 | 骨架 |
+|---|---|---|
+| **封面**（`cover-stack`） | `none` | accent 短棒 `garnish` → 大標（`cover` 字級，≤ 2 行）→ 副標（`subtitle`）→ 日期講者（`caption`）。四件由上而下貼左緣堆疊，垂直間距取 `layout.spacing` 的大級距。**不放頁尾。** |
+| **章節頁**（`claim-field`） | `none` | 左緣 primary `spine` 色條（滿高）→ 章節編號 `label`（`subtitle` 字級、accent）→ 章節名 `label`（`section` 字級）壓在左中。右下可放一個**裸 `<text>`** 的大號編號浮水印（不是文字框，它是 `garnish`，`opacity` 0.18）。放頁尾。 |
+| **要點頁**（`card-wall`） | `membership` | 標題 `label` → accent 底線 `garnish` → N 個 `node`，每個 `node` 是一塊 `field` 加上編號 `label` 與一行關鍵詞 `label`。N 個 node 等高、等間距垂直排列（沒有方向，所以節奏必須均勻）。放頁尾。 |
+| **對照頁**（`split-panel`） | `contrast` | 標題 `label` → accent 底線 `garnish` → 左右兩個 `node`，各自是一塊等寬等高的 `field` ＋ 頂線 `garnish`（左 primary、右 secondary_accent）＋ 欄標 `label` ＋ 內文 `label`。兩欄的條數與基準線要對齊，差異才看得出來。中間可放一顆 VS 圓（`node` 之間的分界，不是 `garnish`）。放頁尾。 |
+| **大數字頁**（`hero-number`） | `none` | 大數字 `label`（`number` 字級，置中）→ 說明 `label`（`caption`／`subtitle` 字級，置中）→ 來源 `label`（`caption`，可省）。**數字只能來自作者的大綱**；沒有數字、只有一句主張時，改用 `claim` 字級、fill `text`、≤ 2 行。放頁尾。 |
+| **結語頁**（`claim-field`） | `none` | 底色**滿版 `primary`**（`slide style set --background <primary>`），全部文字用 `background` 色 → 小標 `label`（accent）→ 結論 `label`（`claim` 字級，≤ 2 行）→ 下一步 `label`。右下一個 accent 方塊 `garnish`。結語是一句帶得走的結論，**不是「謝謝」、不是聯絡方式、不是封面再放一次**；大綱沒有結論就不做。**不放頁尾。** |
 
-背景 `background`。兩塊等寬等重的面板，左頂線 primary、右頂線 secondary_accent，中間一顆 accent 細環的 VS 圓；每欄 2～4 條、條數盡量一樣多。
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<text id="el-title" data-comot-name="頁標題" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">傳統工具 vs CoMotion</text>
-<rect id="el-underline" data-comot-name="標題底線" x="80" y="136" width="56" height="4" fill="<accent>"/>
-<rect id="el-panel-left" data-comot-name="左面板" x="80" y="176" width="520" height="360" fill="<secondary_bg>"/>
-<rect id="el-topline-left" data-comot-name="左頂線" x="80" y="176" width="520" height="4" fill="<primary>"/>
-<text id="el-head-left" data-comot-name="左欄標" data-comot-text-width="472" x="104" y="204" font-size="28" font-weight="700" fill="<text>">傳統工具</text>
-<text id="el-body-left" data-comot-name="左欄內文" data-comot-text-width="472" x="104" y="260" font-size="22" fill="<text>" data-comot-list="bullet bullet bullet">母片繼承
-專有格式
-AI 只能建議</text>
-<rect id="el-panel-right" data-comot-name="右面板" x="680" y="176" width="520" height="360" fill="<secondary_bg>"/>
-<rect id="el-topline-right" data-comot-name="右頂線" x="680" y="176" width="520" height="4" fill="<secondary_accent>"/>
-<text id="el-head-right" data-comot-name="右欄標" data-comot-text-width="472" x="704" y="204" font-size="28" font-weight="700" fill="<text>">CoMotion</text>
-<text id="el-body-right" data-comot-name="右欄內文" data-comot-text-width="472" x="704" y="260" font-size="22" fill="<text>" data-comot-list="bullet bullet bullet">範本複製後獨立
-開放 SVG
-agent 直接下命令</text>
-<ellipse id="el-vs-circle" data-comot-name="VS 圓" cx="640" cy="356" rx="36" ry="36" fill="<secondary_bg>" stroke="<accent>" stroke-width="3"/>
-<text id="el-vs" data-comot-name="VS" data-comot-text-width="72" x="604" y="336" font-size="28" font-weight="700" fill="<accent>" data-comot-text-align="center">VS</text>
-<line id="el-footer-rule" data-comot-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
-<text id="el-footer-name" data-comot-name="頁尾簡報名" data-comot-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
-<text id="el-footer-page" data-comot-name="頁碼" data-comot-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-comot-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
-</svg>
-```
-
-### 4.5 大數字頁（number，breathing）
-
-背景 `background`。140 字級的數字置中，下方一行說明；來源可省。數字四周的光暈與細環是背景類型的裝飾，`background` 是 `on` 時由背景圖負責氣氛，頁面 SVG 不放；只有計畫 `background: off` 時才把下面三行補在 `el-number` 之前：
-
-```xml
-<ellipse id="el-halo-1" data-comot-name="外光暈" cx="640" cy="330" rx="300" ry="300" fill="<primary>" opacity="0.10"/>
-<ellipse id="el-halo-2" data-comot-name="內光暈" cx="640" cy="330" rx="220" ry="220" fill="<primary>" opacity="0.05"/>
-<ellipse id="el-ring" data-comot-name="強調細環" cx="640" cy="330" rx="150" ry="150" fill="none" stroke="<accent>" stroke-width="3" opacity="0.7"/>
-```
-
-**數字只能來自作者的大綱**。沒有數字、只有一句主張時，數字列改成字級 48（`claim`）、fill text、≤ 2 行、y=264，說明列 y=432。
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<text id="el-number" data-comot-name="大數字" data-comot-text-width="1120" x="80" y="216" font-size="140" font-weight="700" fill="<accent>" data-comot-text-align="center">12 分鐘</text>
-<text id="el-caption" data-comot-name="說明" data-comot-text-width="920" x="180" y="440" font-size="28" fill="<text>" data-comot-text-align="center">從大綱到可上台的初稿</text>
-<text id="el-source" data-comot-name="來源" data-comot-text-width="1120" x="80" y="600" font-size="18" fill="<muted>" data-comot-text-align="center">第一批試用團隊的平均時間</text>
-<line id="el-footer-rule" data-comot-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
-<text id="el-footer-name" data-comot-name="頁尾簡報名" data-comot-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
-<text id="el-footer-page" data-comot-name="頁碼" data-comot-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-comot-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
-</svg>
-```
-
-### 4.6 結語頁（closing，anchor）
-
-背景 **`primary` 滿版**（`slide style set --background <primary>`），全部文字用 `background` 色，小標 accent，右下一個 accent 方塊。結語是一句帶得走的結論或下一步，**不是「謝謝」、不是聯絡方式、不是封面再放一次**；大綱沒有結論就不做結語頁。
-
-```xml
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<text id="el-label" data-comot-name="結語小標" data-comot-text-width="400" x="80" y="200" font-size="22" font-weight="700" fill="<accent>">下一步</text>
-<text id="el-claim" data-comot-name="結論" data-comot-text-width="1000" x="80" y="248" font-size="48" font-weight="700" fill="<background>">開放 beta 給 50 個團隊
-收集從零開始的真實案例</text>
-<text id="el-next" data-comot-name="下一步說明" data-comot-text-width="1000" x="80" y="520" font-size="24" fill="<background>">2026 Q4 開始收案</text>
-<rect id="el-square" data-comot-name="強調方塊" x="1104" y="544" width="96" height="96" fill="<accent>"/>
-</svg>
-```
+- 骨架沒有給座標是刻意的：**同一個骨架在不同內容下本來就該有不同比例**。三條短要點與三條長要點的卡片高度不會一樣。
+- 用了其中一個骨架時，把對應的名字寫進 `blueprint.shape`（表格第一欄的括號），並把 `type` 一併寫回計畫（第 6.3 節）。
+- `order`／`parent`／`link`／`overlap` 沒有骨架，用第 3b 節的角色自己組——`spine` 拉出方向、`node` 沿著它排、`edge` 連接必要的兩端。
 
 ## 4b. 背景圖：由你產生的 SVG 圖片，放在頁面最底層
 
@@ -385,7 +302,7 @@ scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg`
 ### 命令順序
 
 1. 同配方同配色只做一次：`co-motion asset import <presentation-id> --svg '<背景 SVG>' --name bg-mesh-a.svg`（檔名只能用英數、`-`、`_`，副檔名 `.svg`；同名已存在會被拒絕，換個名字或先刪）。回傳 `data.path` 是 `assets/bg-mesh-a.svg`。
-2. 照第 4 節寫該頁：`co-motion slide add <presentation-id> --svg '<整頁 SVG>'`（含上面的 scrim rect）。
+2. 寫該頁：`co-motion slide add <presentation-id> --svg '<整頁 SVG>'`（含上面的 scrim rect；語法照第 4.0 節）。
 3. `co-motion slide background set <presentation-id> slides/00N.svg --asset assets/bg-mesh-a.svg --opacity 0.7`；要拿掉就 `--none`。
 4. 動畫照第 5 節；**背景圖不加任何效果**，它從第一格就在。
 
@@ -468,7 +385,7 @@ co-motion effect add <presentation-id> slides/00N.svg <群組 id> --family enter
 
 ### 6.3 已知解：六種頁型
 
-第 4 節的六份完整 SVG，是下列組合的**已知解**，可以直接用，但不是唯一答案：
+第 4 節列出骨架的那六個，是下列組合的**已知解**——知道結構就好，不是照抄的對象，更不是唯一答案：
 
 | 頁型 | 解的是什麼 | 對應 |
 |---|---|---|
