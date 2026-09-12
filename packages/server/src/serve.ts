@@ -127,7 +127,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const host = options.host ?? DEFAULT_HOST;
 
   await loadProject(presentationId);
-  const agentWorkdir = await deployAgentWorkdir();
+  const agentWorkdir = await deployAgentWorkdir(presentationId);
 
   const staticDir = options.staticDir ?? resolveWebDist();
 

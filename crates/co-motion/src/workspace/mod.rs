@@ -110,6 +110,103 @@ pub mod registry {
         home.join("projects.json")
     }
 
+    /// The advisory lock guarding a `projects.json` read-modify-write. Its
+    /// name is shared verbatim with `packages/server`'s
+    /// `withProjectsRegistryLock` — the two must never drift, since a lock
+    /// only excludes anybody at all if every writer agrees on the path.
+    fn registry_lock_path(home: &Path) -> PathBuf {
+        home.join(".projects.json.lock")
+    }
+
+    /// How long to keep trying before giving up on acquiring the lock.
+    const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// A lock file older than this is assumed to belong to a process that
+    /// died before releasing it, and is stolen. Deliberately far longer
+    /// than any real read-modify-write of this file takes.
+    const LOCK_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+
+    /// How long to wait between acquisition attempts.
+    const LOCK_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(20);
+
+    /// True when `path` exists and has not been touched for `LOCK_STALE_AFTER`.
+    fn lock_is_stale(path: &Path) -> bool {
+        let Ok(metadata) = std::fs::metadata(path) else {
+            return false;
+        };
+        let Ok(modified) = metadata.modified() else {
+            return false;
+        };
+        modified
+            .elapsed()
+            .map(|age| age > LOCK_STALE_AFTER)
+            .unwrap_or(false)
+    }
+
+    /// Runs `body` while holding the `projects.json` advisory lock, so that
+    /// a read-modify-write of the registry cannot interleave with another
+    /// process's.
+    ///
+    /// `projects.json` is the one file the Rust CLI and `packages/server`
+    /// both write, and every writer reads the whole map, changes one entry
+    /// and writes the whole map back. Both sides write through a temp file
+    /// then `rename`, so the file is never *torn* — but that says nothing
+    /// about lost updates: two `co-motion open` runs racing each other each
+    /// read the same map, and whichever writes second silently drops the
+    /// other's brand-new entry, leaving a work directory on disk that no id
+    /// reaches any more.
+    ///
+    /// Held only for the duration of `body`, which must never shell out to
+    /// another `co-motion` command — that would deadlock against this same
+    /// lock.
+    ///
+    /// The lock is an exclusive-create of a lock file: portable, dependency
+    /// free, and released by unlinking. A process that dies while holding
+    /// it leaves the file behind, so a lock nobody has touched for
+    /// `LOCK_STALE_AFTER` is stolen rather than waited on forever.
+    pub(crate) fn with_registry_lock<T>(
+        home: &Path,
+        body: impl FnOnce() -> CoMotionResult<T>,
+    ) -> CoMotionResult<T> {
+        std::fs::create_dir_all(home)
+            .map_err(|_| CoMotionError::invalid("無法寫入簡報登記資料"))?;
+        let lock_path = registry_lock_path(home);
+        let deadline = std::time::Instant::now() + LOCK_TIMEOUT;
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(_) => break,
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if lock_is_stale(&lock_path) {
+                        let _ = std::fs::remove_file(&lock_path);
+                        continue;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err(CoMotionError::invalid(
+                            "另一個 co-motion 正在寫入簡報登記資料，請稍後再試",
+                        ));
+                    }
+                    std::thread::sleep(LOCK_RETRY_INTERVAL);
+                }
+                Err(_) => return Err(CoMotionError::invalid("無法寫入簡報登記資料")),
+            }
+        }
+        // Released on every path out of `body`, including a panic unwind —
+        // a leaked lock file would block every later writer for
+        // `LOCK_STALE_AFTER`.
+        struct LockGuard(PathBuf);
+        impl Drop for LockGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _guard = LockGuard(lock_path);
+        body()
+    }
+
     /// Reads and validates `projects.json`. A genuinely missing file is an
     /// empty registry (nothing has ever been `open`ed under this home yet);
     /// every other failure — malformed JSON, an I/O error, a malformed
@@ -323,6 +420,61 @@ pub mod registry {
             ));
             std::fs::create_dir_all(&dir).unwrap();
             dir
+        }
+
+        // The `projects.json` advisory lock. It exists because two
+        // processes that each read the whole registry, change one entry and
+        // write the whole map back will silently drop each other's changes
+        // — temp-file + rename makes the file untearable, not race-free.
+
+        #[test]
+        fn registry_lock_uses_the_exact_filename_packages_server_also_hardcodes() {
+            let home = temp_dir("lock-name");
+            let seen = with_registry_lock(&home, || {
+                Ok(std::fs::read_dir(&home)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>())
+            })
+            .unwrap();
+            assert_eq!(seen, vec![".projects.json.lock".to_string()]);
+        }
+
+        #[test]
+        fn registry_lock_excludes_a_second_holder_while_the_first_is_inside() {
+            let home = temp_dir("lock-excludes");
+            with_registry_lock(&home, || {
+                let blocked = with_registry_lock(&home, || Ok(()));
+                assert!(blocked.is_err(), "a second holder must not get in");
+                Ok(())
+            })
+            .unwrap();
+        }
+
+        #[test]
+        fn registry_lock_is_released_when_the_body_fails() {
+            let home = temp_dir("lock-release");
+            let failed = with_registry_lock(&home, || {
+                Err::<(), _>(CoMotionError::invalid("body 自己壞掉"))
+            });
+            assert!(failed.is_err());
+            assert!(!registry_lock_path(&home).exists());
+            assert!(with_registry_lock(&home, || Ok(())).is_ok());
+        }
+
+        #[test]
+        fn registry_lock_steals_a_lock_left_behind_by_a_dead_process() {
+            let home = temp_dir("lock-steal");
+            let lock = registry_lock_path(&home);
+            let long_ago = std::time::SystemTime::now()
+                - (LOCK_STALE_AFTER + std::time::Duration::from_secs(1));
+            let handle = std::fs::File::create(&lock).unwrap();
+            handle
+                .set_times(std::fs::FileTimes::new().set_modified(long_ago))
+                .unwrap();
+            drop(handle);
+
+            assert!(with_registry_lock(&home, || Ok(())).is_ok());
         }
 
         #[test]
