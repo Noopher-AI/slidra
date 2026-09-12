@@ -461,10 +461,9 @@ export function App() {
         setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
         void refreshAgentStatus();
       },
-      // 同 `agent-changed`：系統訊息只從這個事件插入，POST 自己的 200 不插，
-      // 發起切換的分頁也是靠這裡知道結果。
-      onAgentModelChanged: (event) => {
-        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `模型已切換為 ${event.name}`));
+      // 換模型不值得一則系統訊息：膠囊本身就顯示現在是哪個。這裡只是讓
+      // 別的分頁（或發起切換的這一頁）把膠囊更新過來。
+      onAgentModelChanged: () => {
         void refreshAgentStatus();
       },
     });
