@@ -1,21 +1,25 @@
-# `/slidra-style` 示範輸入
+# `/slidra-style` demo input
 
-在 `demo/` 打包出的示範簡報上執行（四頁，`slides/001.svg`～`slides/004.svg`，畫布 1280×720；此份簡報沒有文字框，皆為純 `<text>` 元素）。
+Run against the demo deck packaged from `demo/` (four slides, `slides/001.svg` through
+`slides/004.svg`, canvas 1280x720; this deck has no text boxes — everything is plain `<text>`
+elements).
 
-## 示範輸入
+## Demo input
 
 ```
-/slidra-style 把第 1 頁的標題字級改成 72，標題跟副標的顏色都改成 #F4F6F8
+/slidra-style Change the title font size on slide 1 to 72, and set both the title and subtitle colors to #F4F6F8
 ```
 
-## 預期結果
+## Expected result
 
-- `slidra cat <id> slides/001.svg` 可看到 `el-title` 的 `font-size="72"`。
-- `el-title` 與 `el-subtitle` 的 `fill="#F4F6F8"`。
-- agent 的回報裡列出改動的 element id、屬性、新值。
+- `slidra cat <id> slides/001.svg` shows `font-size="72"` on `el-title`.
+- Both `el-title` and `el-subtitle` show `fill="#F4F6F8"`.
+- The agent's report lists the changed element ids, properties, and new values.
 
-## 不該發生的事
+## What should not happen
 
-- 不嘗試設定 `line-height`／行距——這是唯一一條「拒絕執行」的要求；agent 應明確回答目前不支援，不得改 `y` 座標或加空行假造效果。
-- 不對表格或圖表元素直接用 `element style set`。
-- 不使用雙引號；顏色值需以單引號包住並保留 `#`。
+- Attempting to set `line-height`/line spacing — this is the one requirement that should be "refused":
+  the agent should clearly state this isn't currently supported, and must not fake the effect by changing
+  the `y` coordinate or adding blank lines.
+- Using `element style set` directly on a table or chart element.
+- Using double quotes; color values must be wrapped in single quotes with the `#` kept intact.

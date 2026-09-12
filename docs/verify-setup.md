@@ -1,47 +1,53 @@
-# 驗證前置（`npm run verify:setup`）
+# Verification prerequisites (`npm run verify:setup`)
 
-這份文件只寫 `npm run verify:setup` 涵蓋不到、或執行時容易誤解的部分。步驟本身
-（安裝、建置、前置檢查、準備簡報、啟動）不在這裡重述，跑 `npm run verify:setup --help`
-看。
+This document covers only what `npm run verify:setup` doesn't handle, or parts that are easy to
+misunderstand when running it. The steps themselves (install, build, prerequisite checks, prepare the
+deck, start) aren't repeated here — run `npm run verify:setup --help` to see them.
 
-## 為什麼每次改前端都要重建
+## Why you have to rebuild every time you touch the frontend
 
-`slidra serve` 只吃 `apps/web/dist` 的靜態檔，沒有 dev server proxy
-（ADR-0002）。改了 `apps/web` 的原始碼卻用 `--skip-build` 重跑，畫面上看到的
-會是舊的建置產物。`--skip-build` 只在完全沒動前端原始碼時可用。
+`slidra serve` only reads static files from `packages/web/dist` — there's no dev-server proxy
+(ADR-0002). If you've changed source under `packages/web` but rerun with `--skip-build`, what you see
+on screen is the old build output. `--skip-build` is only safe to use when you haven't touched frontend
+source at all.
 
-## PATH 的作用範圍到哪為止
+## How far the PATH change reaches
 
-`export PATH=".../node_modules/.bin:$PATH"` 只影響本腳本啟動的 `serve` 行程，以及
-它 fork 出來的 agent 子行程——這條鏈只在「serve 由 `npm run verify:setup` 啟動」時
-成立。**自己另外跑 `node_modules/.bin/slidra serve` 的話，agent 對話仍然會拿到
-`command not found: slidra`**，因為那個行程沒有經過腳本的 PATH 修正。已知限制，
-修法是一律用 `npm run verify:setup` 啟動，不要手動組指令。
+`export PATH=".../node_modules/.bin:$PATH"` only affects the `serve` process this script starts, and the
+agent subprocesses it forks — this chain only holds when "serve was started by
+`npm run verify:setup`." **If you separately run `node_modules/.bin/slidra serve` yourself, the agent
+conversation still gets `command not found: slidra`**, because that process never went through the
+script's PATH fix. This is a known limitation; the fix is to always start it via
+`npm run verify:setup`, never assemble the command by hand.
 
-## agent 不用另外安裝，但要選一個才能聊天
+## The agent doesn't need separate installation, but you must pick one to chat
 
-`claude-code-acp` / `codex-acp`（NOOP-230 起）是 `@slidra/server` 的一般 npm
-相依，`npm install` 就裝好，不用再全域安裝。`--agent` 只覆蓋這一次 serve 用哪一
-個；沒帶的話看使用者設定檔（`<SLIDRA_HOME>/settings.json`）之前選過的，兩者都
-沒有時 serve 照常啟動，只是聊天會回報「尚未選擇 agent」，直到選定為止。
+`claude-code-acp` / `codex-acp` are ordinary npm dependencies of `@slidra/server` — `npm install`
+installs them, no global install needed. `--agent` only overrides which one is used for this single
+`serve` run; without it, the setting falls back to whatever was previously chosen in the user's settings
+file (`<SLIDRA_HOME>/settings.json`); if neither is set, `serve` still starts normally, but chat will
+report "no agent selected" until one is chosen.
 
-前置腳本每次會執行 `npm install` 同步 workspace 相依，避免切換分支後漏裝
-adapter。Codex adapter 使用唯讀沙箱與逐次請求授權；編輯規約要求命令經過
-Slidra 的 `allow_once` 白名單檢查後執行，才能寫入簡報與復原快照。
-不需要把使用者的 Codex 全域設定改成完整存取。
+The setup script runs `npm install` every time to sync workspace dependencies, so switching branches
+never leaves an adapter un-installed. The Codex adapter uses a read-only sandbox with per-request
+authorization; the editing charter requires that commands pass Slidra's `allow_once` allowlist check
+before they can write to the deck or its undo snapshots. There's no need to change the user's global
+Codex settings to full access.
 
-## `--qa`：沙箱 QA 層
+## `--qa`: the sandboxed QA layer
 
-`--qa` 在既有流程（安裝／建置／前置檢查／簡報）之後，背景起一份 `slidra serve`
-與一個 headless Chromium（帶 `--remote-debugging-port`），供 `browser-use` 操作，然後
-腳本自己結束（不像不帶 `--qa` 時那樣 `exec` 進 `serve` 常駐）。它寫出
-`.quickstart/qa/qa.env`（`BU_CDP_URL`、`BH_AGENT_WORKSPACE=qa/`、伺服器網址與簡報識別碼
-等），`source` 之後 `browser-use` 就能透過 `qa/agent_helpers.py` 的原語操作這份 demo
-簡報；細節與原語清單見 `qa/README.md`。跑完用 `./quick_start.sh --qa-stop` 收尾，會把
-背景的 serve 與 Chromium 一併收掉。不帶 `--qa` 時的行為完全不受影響。
+`--qa` runs after the usual flow (install/build/prerequisite checks/deck prep): it starts a
+`slidra serve` and a headless Chromium (with `--remote-debugging-port`) in the background for
+`browser-use` to drive, and then the script itself exits (unlike the no-`--qa` case, where it `exec`s
+into `serve` and stays resident). It writes out `.quickstart/qa/qa.env` (`BU_CDP_URL`,
+`BH_AGENT_WORKSPACE=qa/`, the server URL, the deck id, and so on); after `source`-ing it, `browser-use`
+can operate on this demo deck via the primitives in `qa/agent_helpers.py` — see `qa/README.md` for
+details and the primitive list. When done, wrap up with `./quick_start.sh --qa-stop`, which tears down
+both the background `serve` and Chromium. Behavior without `--qa` is completely unaffected.
 
-## `--fresh` 什麼時候非用不可
+## When you must use `--fresh`
 
-改了 `demo/` 之後。腳本不會自動重打包既有的示範簡報——重打包會換一組簡報識別碼，
-把使用者手上的網址與終端機指令全部作廢（見 `quick_start.sh` 裡的對應註解）。
-`--blank` 模式下的空白簡報同理，改了想重建也要加 `--fresh`。
+After changing anything under `demo/`. The script doesn't automatically repackage the existing demo
+deck — repackaging it swaps in a new deck id, invalidating every URL and terminal command the user
+already has (see the corresponding comment in `quick_start.sh`). The same applies to the blank deck in
+`--blank` mode: if you change it and want to rebuild it, add `--fresh` too.

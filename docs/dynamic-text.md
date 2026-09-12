@@ -1,23 +1,36 @@
-## 動態文字
+## Dynamic text
 
-任何文字元素的內容裡可以直接寫 `{{ 變數名稱 }}`，顯示時會被替換成即時計算出來的值。這只是查表替換，**不是樣板引擎**——沒有條件、迴圈、過濾器，也沒有跳脫語法（ADR-0010：投影片內容不可信，替換發生在 sandbox 之外，是查表，不是執行）。
+Any text element's content can include `{{ variable_name }}` directly; at display time it's replaced
+with a value computed live. This is a lookup-based substitution only, **not a template engine** — no
+conditionals, loops, filters, or escape syntax (ADR-0010: slide content is untrusted input, and
+substitution happens outside the sandbox — it's a lookup, not execution).
 
-### 支援的變數
+### Supported variables
 
-| 變數 | 值 |
+| Variable | Value |
 |---|---|
-| `slide_number` | 這張投影片在 `project.json` 的 `slides` 陣列裡目前的序號（從 1 開始），每次顯示時重新計算——投影片順序改變後永遠正確，不需要任何「重排」相關的動作 |
-| `slide_total` | 目前的投影片總數 |
-| `presentation_name` | 簡報名稱（`project.json` 的 `name`） |
+| `slide_number` | This slide's current index (1-based) in `project.json`'s `slides` array, recomputed every time it's displayed — always correct after the slide order changes, with no "renumber" action needed |
+| `slide_total` | The current total number of slides |
+| `presentation_name` | The deck's name (`project.json`'s `name`) |
 
-### 行為
+### Behavior
 
-- 變數名稱前後允許空白：`{{ slide_number }}`、`{{  slide_number  }}` 都可以。
-- 出現未知變數名稱（不是上面三個之一）：**原樣保留字面文字，不拋錯**。
-- 沒有配對的 `{{`（沒有對應的 `}}`）：**原樣保留，不拋錯**。這不是格式錯誤，是「沒有變數」。
-- 同一個文字元素裡可以有多個變數，也可以同一個變數出現多次，各自獨立替換。
-- 文字框（`data-slidra-text-width` 容器包住的多行 `<tspan>`）裡的每一行各自掃描替換，不會觸發重新換行；替換後文字比原本 placeholder 長或短造成視覺跑版是刻意接受的代價，不會自動修正。
+- Whitespace around the variable name is allowed: both `{{ slide_number }}` and `{{  slide_number  }}` work.
+- An unknown variable name (not one of the three above): **kept as literal text, no error thrown**.
+- An unmatched `{{` (no corresponding `}}`): **kept as literal text, no error thrown**. This isn't a
+  format error — it's "no variable here."
+- A single text element can contain multiple variables, and the same variable can appear more than once;
+  each occurrence is substituted independently.
+- Inside a text box (multi-line `<tspan>`s wrapped by a `data-slidra-text-width` container), each line is
+  scanned and substituted independently, and this never triggers rewrapping; if the substituted text is
+  longer or shorter than the original placeholder and causes visual misalignment, that's a deliberately
+  accepted cost — it is not corrected automatically.
 
-### 已知且刻意接受的代價
+### Known and deliberately accepted cost
 
-替換只發生在**顯示路徑**（`slidra serve` 讀取投影片內容給前端看的那一刻），不會寫回 `.svg` 檔案本身。用別的軟體開啟這份 `.slidra`（或直接 `cat` 這個檔案）會看到字面的 `{{ slide_number }}`，不會看到替換後的數字。這是刻意的取捨：`{{ }}` 是投影片檔案內容的一部分，不是渲染快照；`cat` 命令回傳的仍然是位元組完全相同的原始檔案（byte-exact 契約不變）。
+Substitution happens only on the **display path** (the moment `slidra serve` reads slide content to
+show the frontend) — it is never written back into the `.svg` file itself. Opening this `.slidra` file
+with other software (or just `cat`-ing the file) shows the literal `{{ slide_number }}`, not the
+substituted number. This is a deliberate tradeoff: `{{ }}` is part of the slide file's content, not a
+render snapshot; the `cat` command still returns the exact same original bytes (the byte-exact contract
+is unchanged).

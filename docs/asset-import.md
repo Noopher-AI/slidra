@@ -1,26 +1,36 @@
-## 資產匯入
+## Asset import
 
-`asset import` 把圖片、影片或音訊複製（本機來源）或下載（URL 來源）進簡報的 `assets/` 目錄，一律走檔頭位元組驗證，見 ADR-0015。
+`asset import` copies (local source) or downloads (URL source) an image, video, or audio file into the
+deck's `assets/` directory. It always validates by header bytes — see ADR-0015.
 
-### 來源
+### Sources
 
-- **本機絕對路徑**：直接讀取檔案。
-- **URL**（`http://` 或 `https://`）：下載回應本體，`Content-Type` 標頭只是提示，不作為格式判斷依據（不可信輸入）。
+- **Local absolute path**: reads the file directly.
+- **URL** (`http://` or `https://`): downloads the response body. The `Content-Type` header is only a
+  hint and is never used to determine format (it's untrusted input).
 
-### 格式驗證：只看檔頭位元組，不看副檔名
+### Format validation: header bytes only, never the file extension
 
-匯入時讀取檔案開頭的位元組，比對支援格式的簽章（見下方清單）。**副檔名完全不參與格式判斷**：
+On import, the file's leading bytes are read and matched against the signatures of supported formats
+(see the table below). **The file extension plays no part in format determination**:
 
-- 副檔名偽裝（例如把文字檔改名成 `.png`）：檔頭比對不到任何已知簽章，一律拒絕，`assets/` 不會多出任何檔案。
-- 副檔名遺失或錯誤，但內容確實是支援的媒體：以偵測到的真實格式決定寫入檔案的副檔名，不採用來源的副檔名。
-- URL 回應的 `Content-Type` 與偵測到的位元組不一致：一律以位元組偵測結果為準；`Content-Type` 宣稱是媒體但位元組不是，一律拒絕。
+- Extension spoofing (e.g. renaming a text file to `.png`): the header doesn't match any known
+  signature, so it's rejected outright — no file is added to `assets/`.
+- Extension is missing or wrong, but the content is genuinely a supported media type: the extension
+  written to disk is decided by the detected real format, not by the source's extension.
+- The URL response's `Content-Type` disagrees with the detected bytes: the byte-detection result always
+  wins. If `Content-Type` claims media but the bytes don't back it up, it's rejected outright.
 
-支援格式清單的單一來源是 `crates/slidra/src/media_format.rs`（位元組簽章偵測，`asset import` 實際跑的地方）——`packages/server/src/media-types.ts` 是與它同步維護的副檔名／MIME 對照表，`packages/server/src/raw.ts` 提供給瀏覽器讀取 `/api/raw/` 資產時用的 Content-Type 表就是從這份對照表衍生的，不是另外維護的第三份。
+The single source of truth for the list of supported formats is `crates/slidra/src/media_format.rs`
+(byte-signature detection — where `asset import` actually runs). `packages/server/src/media-types.ts` is
+an extension/MIME lookup table maintained in sync with it; `packages/server/src/raw.ts`, which supplies
+the Content-Type used when the browser reads assets from `/api/raw/`, derives its table from that same
+lookup table rather than maintaining a third copy.
 
-| 副檔名 | MIME type | 種類 |
+| Extension | MIME type | Kind |
 |---|---|---|
 | `.png` | image/png | image |
-| `.jpg`（含 `.jpeg`） | image/jpeg | image |
+| `.jpg` (incl. `.jpeg`) | image/jpeg | image |
 | `.gif` | image/gif | image |
 | `.webp` | image/webp | image |
 | `.mp4` | video/mp4 | video |
@@ -35,12 +45,18 @@
 | `.oga` | audio/ogg | audio |
 | `.aac` | audio/aac | audio |
 
-### 檔名衝突規則
+### Filename collision rule
 
-目的檔名 =（去除副檔名的來源檔名，非法檔案系統字元以 `_` 取代）+（偵測到的格式決定的副檔名）。
+Destination filename = (source filename with extension stripped, illegal filesystem characters replaced
+with `_`) + (extension decided by the detected format).
 
-若 `assets/<name><ext>` 已經存在，依序嘗試 `<name>-1<ext>`、`<name>-2<ext>`……直到找到第一個不存在的檔名為止。**絕不覆蓋既有檔案，絕不使用時間戳**——時間戳無法在測試裡穩定斷言，也不利於除錯時肉眼辨識。
+If `assets/<name><ext>` already exists, `<name>-1<ext>`, `<name>-2<ext>`, ... are tried in order until
+the first name that doesn't exist yet is found. **Existing files are never overwritten, and timestamps
+are never used** — timestamps can't be asserted reliably in tests and make eyeballing filenames harder
+when debugging.
 
-### 復原（undo/redo）
+### Undo/redo
 
-匯入是一個獨立的 undo 步驟：`slidra undo` 會把剛匯入的檔案從 `assets/` 移除；`slidra redo` 會把它的原始位元組原封不動地寫回來。跟其他任何寫入命令共用同一個 undo/redo 堆疊，沒有另外一套資產匯入專用的復原邏輯。
+An import is its own independent undo step: `slidra undo` removes the just-imported file from
+`assets/`; `slidra redo` writes its original bytes back byte-for-byte. It shares the same undo/redo
+stack as every other write command — there is no separate recovery logic specific to asset import.

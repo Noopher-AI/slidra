@@ -1,87 +1,126 @@
-# 視覺 QA 判讀規約
+# Visual QA judgment protocol
 
-這份文件給**讀截圖、寫發現報告**的 agent 用。場景執行器（將由 `[E3.T4]` 重建）負責把 app 開到定義好的場景並截圖；這份規約定義的是下一步——看著那些截圖，該回報什麼、不該回報什麼、回報要長什麼樣子。
+This document is for the agent that **reads screenshots and writes up a findings report**. A scene
+runner (to be rebuilt separately) is responsible for opening the app to defined scenes and taking
+screenshots; this protocol defines the next step — looking at those screenshots, what to report, what
+not to report, and what a report should look like.
 
-沒有這份規約，"看看有什麼問題" 這種指令只會換來一堆「間距可以再大一點」之類的噪音。噪音在第三次之後會讓人不再讀報告。
+Without this protocol, an instruction like "see if anything looks off" just produces a pile of noise
+like "the spacing could be a bit bigger." After the third round of that, people stop reading the report.
 
-## 五類判準
+## Five judgment categories
 
-只沿著這五類找問題。每一類都要能回答「使用者會因此遭遇什麼」，答不出來就不是這五類裡的問題（見下方「過濾規則」）。
+Only look for problems along these five categories. Each one must be able to answer "what will the user
+run into because of this" — if you can't answer that, it doesn't belong in these five categories (see
+"Filter rule" below).
 
-### 1. 前景與背景對比不足，內容實際不可見
+### 1. Insufficient foreground/background contrast — content is genuinely invisible
 
-不是「對比度可以更好看」，是使用者**看不見**該看見的東西。
+Not "the contrast could look nicer" — the user **cannot see** something they're supposed to see.
 
-- **案例**：#133，插入文字時填色沿用了深色系預設，文字顏色與 `demo/` deck 的 `#101418` 深色背景幾乎同色，黑字壓黑底。
-- **使用者後果**：使用者插入文字後，畫面上看起來像什麼都沒發生，會以為操作失敗而重複嘗試，或誤以為工具壞了。
+- **Example**: inserting text picked up a dark-theme default fill color, and the text color came out
+  nearly identical to the `demo/` deck's `#101418` dark background — black text on a black background.
+- **User consequence**: after inserting text, the screen looks like nothing happened, so the user assumes
+  the action failed and retries it, or concludes the tool is broken.
 
-### 2. 狀態指示對比不足，看不出目前狀態
+### 2. Insufficient status-indicator contrast — current state can't be read
 
-元素**有**視覺標記表示狀態，但標記弱到判讀不出來，跟「完全沒有標記」在使用者眼裡是同一回事。
+An element **does** carry a visual marker for its state, but the marker is too weak to read, which looks
+the same to the user as having no marker at all.
 
-- **案例**：#137，多選時的選取框只有 1px outline，與畫布內容視覺上幾乎融合。
-- **使用者後果**：使用者多選之後看不出到底選中了哪些元素、選了幾個，操作下一步（例如 arrange）時是在賭，而不是在確認。
+- **Example**: the multi-selection box used only a 1px outline that visually blends into the canvas
+  content.
+- **User consequence**: after multi-selecting, the user can't tell which elements are selected or how
+  many, so the next action (e.g. arrange) is a gamble rather than a confirmed choice.
 
-### 3. 操作完成後沒有視覺回饋
+### 3. No visual feedback after an action completes
 
-使用者做了一個動作，動作在資料層面成功了，但畫面上沒有任何東西改變來確認這件事。
+The user performs an action, it succeeds at the data level, but nothing on screen changes to confirm it.
 
-- **案例**：#132，插入文字方塊後沒有出現選取框。
-- **使用者後果**：使用者不知道插入是否成功、新元素在哪裡，會重複點擊插入或用滑鼠亂找，浪費操作。
+- **Example**: no selection box appeared after inserting a text box.
+- **User consequence**: the user doesn't know whether the insert succeeded or where the new element is,
+  so they click insert again or hunt around with the mouse, wasting effort.
 
-### 4. 空間分配失衡，主要工作區被次要面板擠壓
+### 4. Unbalanced space allocation — secondary panels crowd out the main work area
 
-次要功能（面板、側欄、工具列）占據的畫面比例，壓縮到使用者真正在做事的主要工作區。
+Secondary features (panels, sidebars, toolbars) take up enough screen proportion to squeeze the main work
+area where the user is actually getting things done.
 
-- **案例**：#136，兩個面板並排時互相擠壓，畫布可視範圍被壓縮到不成比例的小。
-- **使用者後果**：使用者在做主要任務（編輯畫布內容）時，可視空間不足，需要頻繁縮放或捲動才能看到自己在編輯的東西。
+- **Example**: two panels placed side by side crowded each other, compressing the visible canvas area
+  down to a disproportionately small size.
+- **User consequence**: while doing the main task (editing canvas content), the user doesn't have enough
+  visible space, and has to zoom or scroll frequently just to see what they're editing.
 
-### 5. 編輯狀態的可辨識性與實際行為不一致
+### 5. Edit-state indication doesn't match actual behavior
 
-畫面顯示的編輯狀態（游標位置、選取範圍、焦點）跟實際會發生的行為對不上。
+The edit state shown on screen (cursor position, selection range, focus) doesn't match what will actually
+happen.
 
-- **案例**：#138，文字編輯時游標視覺上永遠停在文字末尾，不論實際點擊或移動到哪裡。
-- **使用者後果**：使用者依畫面上的游標位置判斷接下來打字會插入在哪裡，實際輸入位置卻不是看到的那裡，導致打錯地方而不自知。
+- **Example**: while editing text, the visible cursor always stayed at the end of the text regardless of
+  where the user actually clicked or moved it.
+- **User consequence**: the user judges where the next keystroke will land based on the visible cursor
+  position, but the actual input location isn't where it appears to be, so they end up typing in the
+  wrong place without realizing it.
 
-## 過濾規則
+## Filter rule
 
-每一條發現都必須能寫出「作者會因此做錯什麼事」——具體到「使用者會誤以為 X」「使用者會重複做 Y」「使用者會看不到 Z」這個層級。
+Every finding must be able to state "what will the user get wrong because of this" — concrete enough to
+reach the level of "the user will mistakenly think X," "the user will repeat Y," "the user won't be able
+to see Z."
 
-- 講得出使用者後果 → 回報。
-- 講不出使用者後果、只能講「這裡看起來可以更好」「間距/字級/顏色風格上可以再調整」→ 不回報。**主觀美感偏好不算後果。**
-- 不確定算不算五類之一 → 不回報。這份規約只覆蓋五類，覆蓋不到的問題交給別的機制，不要在這裡硬套。
+- Can state a user consequence -> report it.
+- Can't state a user consequence, and can only say "this could look better" or "the spacing/font
+  size/color could use tuning" -> don't report it. **Subjective aesthetic preference doesn't count as a
+  consequence.**
+- Unsure whether it fits one of the five categories -> don't report it. This protocol only covers these
+  five categories; problems outside them belong to a different mechanism — don't force them in here.
 
-## 中間狀態場景
+## Intermediate-state scenes
 
-以下場景是操作過程中的過渡畫面（例如選單展開後、尚未選定最終動作前），本身不是使用者會停留判讀的終態，因此**判準欄留空、不判讀**：
+The following scenes are transitional screens mid-interaction (e.g. after a menu opens, before a final
+action is chosen) — they aren't an end state the user would pause and scrutinize, so **leave the judgment
+column blank for them; don't judge them**:
 
 - `new-slide-menu`
 - `shape-menu`
 - `insert-shape-menu`
 
-判讀這些畫面等於是在評判一個使用者根本不會盯著看的瞬間，容易逼出「選單項目間距」這類假問題。看到這三個場景 id，直接跳過，不要為了湊發現數量硬找。
+Judging these screens amounts to critiquing a moment the user would never actually stare at, and tends
+to force out false problems like "menu item spacing." When you see one of these three scene ids, skip it
+outright — don't manufacture a finding just to pad the count.
 
-## 報告格式
+## Report format
 
-輸出是 Markdown，發現列表**固定依場景 id 字串遞增排序**（ASCII 順序，例如 `arrange` 排在 `copy` 之前）。相同輸入跑兩次要能拿去 `diff`，看不出差異；順序或措辭上的隨機變動視為規約沒有被遵守。
+Output is Markdown; the findings list is **always sorted ascending by scene id string** (ASCII order,
+e.g. `arrange` sorts before `copy`). Running the same input twice should produce output that `diff`s
+clean; any random variation in order or wording counts as the protocol not being followed.
 
-場景 id 與命名規則沿用 `[E3.T4]`（#141）manifest 裡定義的 id——這份規約的排序規則只要求「依場景 id 遞增」，不重新定義 id 本身怎麼取。
+Scene ids and naming follow the ids defined in the scene manifest — this protocol's ordering rule only
+requires "ascending by scene id"; it doesn't redefine how the ids themselves are assigned.
 
-每一則發現一行，欄位固定順序、以 `|` 分隔：
+Each finding is one line, fields in fixed order, separated by `|`:
 
 ```
-| 場景 id | 判準類別 | 使用者後果 | 截圖檔名 |
+| scene id | judgment category | user consequence | screenshot filename |
 ```
 
-- **場景 id**：對應該場景在 manifest 裡的 id，原樣照抄，不重新措辭。
-- **判準類別**：五類之一的簡短標籤，例如 `對比不足`、`狀態指示不清`、`操作無回饋`、`空間失衡`、`編輯狀態不一致`。
-- **使用者後果**：一句話，符合「過濾規則」的判準——具體到使用者會做錯什麼。
-- **截圖檔名**：manifest 裡該場景對應的截圖檔名，原樣照抄。
+- **Scene id**: the scene's id from the manifest, copied verbatim, not reworded.
+- **Judgment category**: a short label for one of the five categories, e.g. `insufficient-contrast`,
+  `unclear-status-indicator`, `no-action-feedback`, `unbalanced-space`, `inconsistent-edit-state`.
+- **User consequence**: one sentence meeting the "Filter rule" bar — concrete about what the user will
+  get wrong.
+- **Screenshot filename**: the screenshot filename for that scene from the manifest, copied verbatim.
 
-沒有發現的場景不出現在表格裡——不需要為「這裡沒問題」湊一行。中間狀態場景（見上一節）永遠不出現在表格裡。
+Scenes with no findings don't appear in the table — there's no need to pad a "nothing wrong here" row.
+Intermediate-state scenes (see the previous section) never appear in the table.
 
-## 限制
+## Limits
 
-- **這份報告不是合併門檻。** 報告本身不阻擋、不核准任何 PR，是給人類參考用的輔助訊號。
-- **判斷不可重現。** 「有沒有問題」是 agent 讀圖後的主觀判讀，同一張圖兩次執行可能給出不同結論；這是預期中的限制，不是需要修的 bug。
-- **不定義量化閾值。** 這份規約不規定對比度數值、間距像素、色差公式之類的量化標準——判讀依賴的是「使用者會不會因此做錯事」這個問題，不是可計算的門檻值。
+- **This report is not a merge gate.** The report itself doesn't block or approve any PR — it's a
+  supplementary signal for humans to consult.
+- **The judgment isn't reproducible.** "Is there a problem" is the agent's subjective read after looking
+  at an image; running the same image twice may yield different conclusions. This is an expected
+  limitation, not a bug to fix.
+- **No quantitative thresholds are defined.** This protocol doesn't specify numeric contrast ratios,
+  spacing in pixels, color-difference formulas, or similar quantitative standards — the judgment relies on
+  "will the user get something wrong because of this," not a computable threshold.

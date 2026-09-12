@@ -1,23 +1,24 @@
-# `/slidra-animate` 示範輸入
+# `/slidra-animate` demo input
 
-在 `demo/` 打包出的示範簡報上執行（四頁，`slides/001.svg`～`slides/004.svg`，畫布 1280×720）。
+Run against the demo deck packaged from `demo/` (four slides, `slides/001.svg` through
+`slides/004.svg`, canvas 1280x720).
 
-## 示範輸入
+## Demo input
 
 ```
-/slidra-animate 幫第 1 頁加上依序揭露的動畫，標題先出現，副標接著出現
+/slidra-animate Add a sequential reveal animation to slide 1 — the title should appear first, then the subtitle
 ```
 
-## 預期結果
+## Expected result
 
-- `slidra effect list <id> slides/001.svg` 回傳 2 個效果項：
-  - `index 1`：`target: el-title`、`family: enter`、`effect: fade`、`start: on-click`
-  - `index 2`：`target: el-subtitle`、`family: enter`、`effect: fade`、`start: after-previous`
-- `slidra cat <id> slides/001.svg` 可看到 `<slidra:effect target="el-title" family="enter" effect="fade" start="on-click" .../>` 與對應的 `el-subtitle` 項。
-- agent 的回報裡列出兩個元素各自的 family/effect/start/duration。
+- `slidra effect list <id> slides/001.svg` returns 2 effect entries:
+  - `index 1`: `target: el-title`, `family: enter`, `effect: fade`, `start: on-click`
+  - `index 2`: `target: el-subtitle`, `family: enter`, `effect: fade`, `start: after-previous`
+- `slidra cat <id> slides/001.svg` shows `<slidra:effect target="el-title" family="enter" effect="fade" start="on-click" .../>` and the matching entry for `el-subtitle`.
+- The agent's report lists the family/effect/start/duration for each of the two elements.
 
-## 不該發生的事
+## What should not happen
 
-- 不對沒有 `data-slidra-name` 的元素加效果。
-- 不使用雙引號或反斜線。
-- 不在沒有先讀 `effect list` 的情況下對已有效果的頁（例如 `slides/003.svg`）直接疊加效果。
+- Adding effects to elements without a `data-slidra-name`.
+- Using double quotes or backslashes.
+- Stacking effects onto a slide that already has effects (e.g. `slides/003.svg`) without first reading `effect list`.
