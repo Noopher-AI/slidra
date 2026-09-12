@@ -11,7 +11,6 @@ export interface ChatPanelProps {
   messages: ChatMessage[];
   working: boolean;
   streamReady: boolean;
-  error: string | null;
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
@@ -65,7 +64,6 @@ export function ChatPanel({
   messages,
   working,
   streamReady,
-  error,
   draft,
   onDraftChange,
   onSubmit,
@@ -226,7 +224,11 @@ export function ChatPanel({
       <div className="chat-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
         {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
-          message.role === "notice" ? (
+          message.role === "error" ? (
+            <p key={message.id} className="chat-error" role="alert">
+              {message.text}
+            </p>
+          ) : message.role === "notice" ? (
             <p key={message.id} className="chat-notice" role="alert">
               {message.text}
             </p>
@@ -276,7 +278,6 @@ export function ChatPanel({
         )}
         {working && <p className="chat-working">agent is working…</p>}
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
-        {error && <p className="chat-error">{error}</p>}
       </div>
       {hasComments && (
         <div className="chat-pinned">

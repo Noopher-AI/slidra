@@ -56,7 +56,6 @@ interface Harness {
   messages: ChatMessage[];
   working: boolean;
   streamReady: boolean;
-  error: string | null;
 }
 
 function start(): Harness {
@@ -65,7 +64,6 @@ function start(): Harness {
     messages: [] as ChatMessage[],
     working: false,
     streamReady: false,
-    error: null as string | null,
   } as Harness;
   harness.stream = startChatStream({
     updateMessages: (update) => {
@@ -76,9 +74,6 @@ function start(): Harness {
     },
     setStreamReady: (ready) => {
       harness.streamReady = ready;
-    },
-    setError: (message) => {
-      harness.error = message;
     },
     nextMessageId: () => nextId++,
     eventSourceFactory: (url) => {
@@ -232,7 +227,8 @@ describe("startChatStream", () => {
 
     started.fake.emit("chat-error", { message: "agent 掛了" });
 
-    expect(started.error).toBe("agent 掛了");
+    // The failure lands in the timeline after the partial reply, not in a banner.
+    expect(started.messages.at(-1)).toEqual({ id: 1, role: "error", text: "agent 掛了" });
     expect(started.working).toBe(false);
     // A reported failure is an outcome, not a lost turn — no interruption notice on top of it.
     expect(notices(started.messages)).toEqual([]);

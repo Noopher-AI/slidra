@@ -23,7 +23,7 @@ import {
   appendChunkToMessage,
   appendCommandMessage,
   appendMessage,
-  appendNoticeMessage,
+  appendErrorMessage, appendNoticeMessage,
   markUnfinishedCommandsInterrupted,
   updateCommandMessage,
   type ChatMessage,
@@ -40,7 +40,6 @@ export interface ChatStreamOptions {
   setWorking(working: boolean): void;
   /** False whenever the stream cannot currently hear a reply, so sending is gated off. */
   setStreamReady(ready: boolean): void;
-  setError(message: string): void;
   /** Hands out the next stable message id. Ids are never derived from position. */
   nextMessageId(): number;
   eventSourceFactory?: (url: string) => EventSource;
@@ -193,7 +192,8 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
     activeReplyId = null;
     turnInFlight = false;
     options.setWorking(false);
-    options.setError(message);
+    // In the timeline, where it happened — not a banner that outlives it.
+    options.updateMessages((previous) => appendErrorMessage(previous, options.nextMessageId(), message));
   });
 
   return {

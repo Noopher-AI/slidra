@@ -89,7 +89,21 @@ export interface SystemMessage {
   text: string;
 }
 
-export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage | SystemMessage;
+/**
+ * Something that went wrong, said by nobody: the agent's turn failed, a
+ * request the panel made (send, stop, switch model) did not go through.
+ * A message rather than a banner for the same reason `NoticeMessage` is:
+ * *when* it happened is the point — it stays put at the moment it
+ * occurred while later turns are appended below it, instead of hanging at
+ * the bottom looking current long after the fact.
+ */
+export interface ErrorMessage {
+  id: number;
+  role: "error";
+  text: string;
+}
+
+export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage | SystemMessage | ErrorMessage;
 
 /** Appends a brand-new message (author or agent) with the given id. */
 export function appendMessage(
@@ -116,6 +130,11 @@ export function appendChunkToMessage(messages: ChatMessage[], id: number, text: 
 /** Appends a notice about the conversation itself — a lost turn, not speech. */
 export function appendNoticeMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
   return [...messages, { id, role: "notice", text }];
+}
+
+/** Appends an error at the moment it happened — a failed turn or a failed panel request. */
+export function appendErrorMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
+  return [...messages, { id, role: "error", text }];
 }
 
 /** Appends a system message — a routine fact about the conversation (e.g. an agent switch), not a lost turn. */

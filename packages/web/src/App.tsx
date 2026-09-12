@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
-import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
+import { appendMessage, appendSystemMessage, type ChatMessage, appendErrorMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent, type SaveState } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
@@ -932,12 +932,12 @@ export function App() {
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "切換模型失敗");
+        pushChatError(body.error ?? "切換模型失敗");
         return;
       }
       await refreshAgentStatus();
     } catch {
-      setError("切換模型失敗：連線已中斷");
+      pushChatError("切換模型失敗：連線已中斷");
     }
   }
 
@@ -947,12 +947,12 @@ export function App() {
       const response = await fetch("/api/agent/session", { method: "POST" });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "無法取得模型清單");
+        pushChatError(body.error ?? "無法取得模型清單");
         return;
       }
       await refreshAgentStatus();
     } catch {
-      setError("無法取得模型清單：連線已中斷");
+      pushChatError("無法取得模型清單：連線已中斷");
     }
   }
 
@@ -1280,7 +1280,10 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /** 錯誤進時間軸：發生在哪一則之後就留在那裡，不是一條掛在最下面、事過境遷還在的橫條。 */
+  function pushChatError(text: string): void {
+    setMessages((prev) => appendErrorMessage(prev, nextMessageIdRef.current++, text));
+  }
   // True once the EventSource connection is open and can actually receive
   // a reply. A message sent while this is false (initial connect, or
   // mid-reconnect after a drop) would be answered with no listener
@@ -1301,7 +1304,6 @@ export function App() {
       updateMessages: setMessages,
       setWorking,
       setStreamReady,
-      setError,
       nextMessageId: () => nextMessageIdRef.current++,
     });
     return () => stream.stop();
@@ -1332,12 +1334,11 @@ export function App() {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
       // with no trace.
-      setError("聊天連線尚未就緒，請稍候再試一次");
+      pushChatError("聊天連線尚未就緒，請稍候再試一次");
       return;
     }
     const id = nextMessageIdRef.current++;
     setMessages((prev) => appendMessage(prev, id, "author", displayText ?? text));
-    setError(null);
     // The turn starts here, not at its first SSE event: an agent that
     // reads and thinks for a while before saying anything would otherwise
     // leave the author looking at a screen with no sign it is working.
@@ -1353,7 +1354,7 @@ export function App() {
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
         setWorking(false);
-        setError(body.error ?? "傳送訊息失敗");
+        pushChatError(body.error ?? "傳送訊息失敗");
         // NOOP-230 §4.4/Plan §4.8: a `reason`-carrying 409 means the server's
         // own agent state disagrees with what this tab last knew (unset/
         // unauthenticated) — re-GET so the empty state appears immediately,
@@ -1372,7 +1373,7 @@ export function App() {
       // the same `error` state the non-OK branch above uses, naming the
       // message so it is clear which one failed.
       setWorking(false);
-      setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
+      pushChatError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
   }
 
@@ -1426,10 +1427,10 @@ export function App() {
       const response = await fetch("/api/chat/cancel", { method: "POST" });
       if (!response.ok && response.status !== 409) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "停止失敗");
+        pushChatError(body.error ?? "停止失敗");
       }
     } catch {
-      setError("停止失敗：連線已中斷");
+      pushChatError("停止失敗：連線已中斷");
     } finally {
       setStopping(false);
     }
@@ -1446,15 +1447,14 @@ export function App() {
       const response = await fetch("/api/chat/new", { method: "POST" });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "無法重開對話");
+        pushChatError(body.error ?? "無法重開對話");
         return;
       }
     } catch {
-      setError("無法重開對話：連線已中斷");
+      pushChatError("無法重開對話：連線已中斷");
       return;
     }
     setMessages([]);
-    setError(null);
   }
 
   /** slidePath = the current slide's virtual path. */
@@ -1784,7 +1784,6 @@ export function App() {
                 messages={messages}
                 working={working}
                 streamReady={streamReady}
-                error={error}
                 draft={draft}
                 onDraftChange={setDraft}
                 onSubmit={() => void sendMessage()}
