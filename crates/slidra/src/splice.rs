@@ -78,7 +78,7 @@ pub fn set_attr_splice(svg: &str, node: &ScannedNode, attr: &str, value: &str) -
     }
 }
 
-/// Resolves `font_family` in `fonts`, throwing the same "缺少字型" error
+/// Resolves `font_family` in `fonts`, throwing the same "missing font" error
 /// every text-box measurement call uses on a miss. Used here by the table
 /// write path (`table/layout.rs`) to re-measure/wrap a cell's text.
 pub fn resolve_font<'a>(
@@ -89,7 +89,7 @@ pub fn resolve_font<'a>(
     match fonts.get(font_family) {
         Some(font) => Ok(font as &dyn FontMetrics),
         None => Err(SlidraError::invalid(format!(
-            "簡報未內嵌字型 {font_family}，無法重新換行：{element_id}"
+            "presentation does not embed font {font_family}, cannot rewrap: {element_id}"
         ))),
     }
 }
@@ -144,7 +144,7 @@ mod tests {
         match resolve_font(&fonts, "Missing Family", "el-abc123") {
             Err(err) => assert_eq!(
                 err.message(),
-                "簡報未內嵌字型 Missing Family，無法重新換行：el-abc123"
+                "presentation does not embed font Missing Family, cannot rewrap: el-abc123"
             ),
             Ok(_) => panic!("expected an error"),
         }

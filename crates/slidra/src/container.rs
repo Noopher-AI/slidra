@@ -21,7 +21,7 @@ pub fn pack_directory(source_dir: &Path, output_path: &Path) -> SlidraResult<()>
     collect_files(source_dir, source_dir, &mut files)
         // source_dir is either a private staging directory or the hidden
         // work directory (ADR-0004) — never quote it.
-        .map_err(|_| SlidraError::invalid("讀取簡報內容時發生錯誤"))?;
+        .map_err(|_| SlidraError::invalid("error reading presentation content"))?;
 
     let mut has_dir_entry: BTreeMap<&str, bool> =
         REQUIRED_DIRS.iter().map(|&d| (d, false)).collect();
@@ -47,30 +47,48 @@ pub fn pack_directory(source_dir: &Path, output_path: &Path) -> SlidraResult<()>
                 writer
                     .add_directory(format!("{dir}/"), dir_options)
                     .map_err(|_| {
-                        SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+                        SlidraError::invalid(format!(
+                            "failed to write presentation file: {}",
+                            output_path.display()
+                        ))
                     })?;
             }
         }
         for (path, content) in &files {
             writer.start_file(path, file_options).map_err(|_| {
-                SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+                SlidraError::invalid(format!(
+                    "failed to write presentation file: {}",
+                    output_path.display()
+                ))
             })?;
             writer.write_all(content).map_err(|_| {
-                SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+                SlidraError::invalid(format!(
+                    "failed to write presentation file: {}",
+                    output_path.display()
+                ))
             })?;
         }
         writer.finish().map_err(|_| {
-            SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+            SlidraError::invalid(format!(
+                "failed to write presentation file: {}",
+                output_path.display()
+            ))
         })?;
     }
 
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent).map_err(|_| {
-            SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+            SlidraError::invalid(format!(
+                "failed to write presentation file: {}",
+                output_path.display()
+            ))
         })?;
     }
     std::fs::write(output_path, &buffer).map_err(|_| {
-        SlidraError::invalid(format!("無法寫入簡報檔案：{}", output_path.display()))
+        SlidraError::invalid(format!(
+            "failed to write presentation file: {}",
+            output_path.display()
+        ))
     })?;
     Ok(())
 }
@@ -109,18 +127,25 @@ fn collect_files(
 /// marker before trusting it — there is no migration to run afterwards.
 pub fn unpack_container(slidra_path: &Path, target_dir: &Path) -> SlidraResult<()> {
     let slidra_display = slidra_path.display().to_string();
-    let metadata = std::fs::metadata(slidra_path)
-        .map_err(|_| SlidraError::invalid(format!("找不到簡報檔案：{slidra_display}")))?;
+    let metadata = std::fs::metadata(slidra_path).map_err(|_| {
+        SlidraError::invalid(format!("presentation file not found: {slidra_display}"))
+    })?;
     if !metadata.is_file() {
         return Err(SlidraError::invalid(format!(
-            "指定的路徑不是檔案：{slidra_display}"
+            "specified path is not a file: {slidra_display}"
         )));
     }
 
-    let raw = std::fs::read(slidra_path)
-        .map_err(|_| SlidraError::invalid(format!("無法讀取簡報檔案：{slidra_display}")))?;
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(raw))
-        .map_err(|_| SlidraError::invalid(format!("簡報檔案已損壞，無法解壓：{slidra_display}")))?;
+    let raw = std::fs::read(slidra_path).map_err(|_| {
+        SlidraError::invalid(format!(
+            "failed to read presentation file: {slidra_display}"
+        ))
+    })?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(raw)).map_err(|_| {
+        SlidraError::invalid(format!(
+            "presentation file is corrupted, cannot unzip: {slidra_display}"
+        ))
+    })?;
 
     let resolved_target_dir = target_dir.to_path_buf();
     // Validate every entry name before writing anything: a partially-
@@ -128,45 +153,62 @@ pub fn unpack_container(slidra_path: &Path, target_dir: &Path) -> SlidraResult<(
     // the whole unpack rather than being skipped or silently sanitised.
     for i in 0..archive.len() {
         let entry = archive.by_index(i).map_err(|_| {
-            SlidraError::invalid(format!("簡報檔案已損壞，無法解壓：{slidra_display}"))
+            SlidraError::invalid(format!(
+                "presentation file is corrupted, cannot unzip: {slidra_display}"
+            ))
         })?;
         let name = entry.name().to_string();
         assert_entry_within_target(&name, &slidra_display)?;
     }
 
     let unpack_result = (|| -> SlidraResult<()> {
-        std::fs::create_dir_all(target_dir)
-            .map_err(|_| SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}")))?;
+        std::fs::create_dir_all(target_dir).map_err(|_| {
+            SlidraError::invalid(format!(
+                "failed to unzip presentation file: {slidra_display}"
+            ))
+        })?;
 
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i).map_err(|_| {
-                SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                SlidraError::invalid(format!(
+                    "failed to unzip presentation file: {slidra_display}"
+                ))
             })?;
             let name = entry.name().to_string();
             let dest_path = join_relative(&resolved_target_dir, &name);
             if name.ends_with('/') {
                 std::fs::create_dir_all(&dest_path).map_err(|_| {
-                    SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                    SlidraError::invalid(format!(
+                        "failed to unzip presentation file: {slidra_display}"
+                    ))
                 })?;
                 continue;
             }
             if let Some(parent) = dest_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|_| {
-                    SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                    SlidraError::invalid(format!(
+                        "failed to unzip presentation file: {slidra_display}"
+                    ))
                 })?;
             }
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf).map_err(|_| {
-                SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                SlidraError::invalid(format!(
+                    "failed to unzip presentation file: {slidra_display}"
+                ))
             })?;
             std::fs::write(&dest_path, &buf).map_err(|_| {
-                SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                SlidraError::invalid(format!(
+                    "failed to unzip presentation file: {slidra_display}"
+                ))
             })?;
         }
 
         for &dir in REQUIRED_DIRS.iter() {
             std::fs::create_dir_all(target_dir.join(dir)).map_err(|_| {
-                SlidraError::invalid(format!("無法解壓縮簡報檔案：{slidra_display}"))
+                SlidraError::invalid(format!(
+                    "failed to unzip presentation file: {slidra_display}"
+                ))
             })?;
         }
 
@@ -187,13 +229,13 @@ pub fn unpack_container(slidra_path: &Path, target_dir: &Path) -> SlidraResult<(
 fn assert_entry_within_target(entry_path: &str, slidra_display: &str) -> SlidraResult<()> {
     if entry_path.starts_with('/') || entry_path.starts_with('\\') {
         return Err(SlidraError::invalid(format!(
-            "簡報檔案內含不合法的路徑：{slidra_display}"
+            "presentation file contains an invalid path: {slidra_display}"
         )));
     }
     for segment in entry_path.split(['/', '\\']) {
         if segment == ".." {
             return Err(SlidraError::invalid(format!(
-                "簡報檔案內含不合法的路徑：{slidra_display}"
+                "presentation file contains an invalid path: {slidra_display}"
             )));
         }
     }
@@ -242,10 +284,12 @@ fn assert_no_legacy_comotion_slides(work_dir: &Path, slidra_display: &str) -> Sl
 fn validate_project_json(work_dir: &Path, slidra_display: &str) -> SlidraResult<()> {
     let project_json_path = work_dir.join("project.json");
     let raw = std::fs::read_to_string(&project_json_path).map_err(|_| {
-        SlidraError::invalid(format!("簡報檔案缺少 project.json：{slidra_display}"))
+        SlidraError::invalid(format!(
+            "presentation file missing project.json: {slidra_display}"
+        ))
     })?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|_| {
-        SlidraError::invalid(format!("project.json 不是合法的 JSON：{slidra_display}"))
+        SlidraError::invalid(format!("project.json is not valid JSON: {slidra_display}"))
     })?;
 
     // The structural check itself never mentions slidra_display (ADR-0004) —
@@ -384,7 +428,7 @@ mod tests {
         let target = temp_dir("traversal-target");
         std::fs::remove_dir_all(&target).ok();
         let err = unpack_container(&slidra_path, &target).unwrap_err();
-        assert!(err.message().contains("不合法的路徑"));
+        assert!(err.message().contains("invalid path"));
         assert!(!target.exists());
 
         std::fs::remove_dir_all(&slidra_dir).ok();
@@ -407,7 +451,7 @@ mod tests {
         let target = temp_dir("no-project-json-target");
         std::fs::remove_dir_all(&target).ok();
         let err = unpack_container(&slidra_path, &target).unwrap_err();
-        assert!(err.message().contains("缺少 project.json"));
+        assert!(err.message().contains("missing project.json"));
         assert!(!target.exists());
 
         std::fs::remove_dir_all(&slidra_dir).ok();
@@ -418,6 +462,6 @@ mod tests {
         let target = temp_dir("nonexistent-target");
         std::fs::remove_dir_all(&target).ok();
         let err = unpack_container(Path::new("/nonexistent/path/x.slidra"), &target).unwrap_err();
-        assert!(err.message().contains("找不到簡報檔案"));
+        assert!(err.message().contains("presentation file not found"));
     }
 }

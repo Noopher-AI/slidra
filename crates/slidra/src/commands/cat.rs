@@ -27,7 +27,7 @@ pub fn run(args: &[String], json_flag: bool) -> CommandResult {
         let paths = &args[1..];
         if paths.is_empty() {
             return CommandResult::failure(
-                "命令 cat 缺少參數：path".to_string(),
+                "command cat missing argument: path".to_string(),
                 FailureKind::Failed,
             );
         }
@@ -45,7 +45,7 @@ pub fn run(args: &[String], json_flag: bool) -> CommandResult {
                 }
             }
         }
-        let message = format!("已讀取：{}", paths.join("、"));
+        let message = format!("read: {}", paths.join(", "));
         return CommandResult::success(message, Some(serde_json::Value::Array(results)));
     }
 
@@ -55,7 +55,7 @@ pub fn run(args: &[String], json_flag: bool) -> CommandResult {
     };
     match workspace::virtual_fs::read_virtual_file(&work_dir, &path) {
         Ok(content) => CommandResult::success(
-            format!("已讀取：{path}"),
+            format!("read: {path}"),
             Some(serde_json::json!({ "content": content })),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -87,7 +87,7 @@ mod tests {
     fn missing_id_argument_fails() {
         let result = run(&[], false);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 cat 缺少參數：id");
+        assert_eq!(result.message, "command cat missing argument: id");
     }
 
     #[test]

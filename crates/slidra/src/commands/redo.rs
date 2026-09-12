@@ -8,13 +8,16 @@ use crate::result::{CommandResult, FailureKind};
 
 pub fn run(args: &[String]) -> CommandResult {
     let Some(id) = args.first() else {
-        return CommandResult::failure("命令 redo 缺少參數：presentation-id", FailureKind::Failed);
+        return CommandResult::failure(
+            "command redo missing argument: presentation-id",
+            FailureKind::Failed,
+        );
     };
 
     match history::redo(id) {
         Ok(result) => {
             let data = serde_json::json!({ "restoredPaths": result.restored_paths });
-            CommandResult::success("已重做上一步操作", Some(data))
+            CommandResult::success("redid the last operation", Some(data))
         }
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
@@ -35,7 +38,10 @@ mod tests {
     fn missing_id_argument_fails_without_falling_back_to_node() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 redo 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command redo missing argument: presentation-id"
+        );
     }
 
     #[test]

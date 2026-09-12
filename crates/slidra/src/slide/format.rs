@@ -83,7 +83,7 @@ pub const CHART_CONTAINER_TYPE: &str = "chart";
 
 /// Appended to the issues `slidra convert` can actually repair — never to
 /// the ones it refuses to touch.
-const CONVERT_HINT: &str = "請執行 slidra convert <簡報識別碼> 轉換成合規格式。";
+const CONVERT_HINT: &str = "run slidra convert <presentation-id> to convert to a compliant format.";
 
 /// `data-slidra-text-width`; see `SlideElement::text_width`'s doc comment.
 pub const TEXT_WIDTH_ATTRIBUTE: &str = "data-slidra-text-width";
@@ -288,7 +288,7 @@ impl Checker<'_> {
             self.report(
                 element,
                 ComplianceCode::DuplicateId,
-                format!("識別碼 {id} 重複出現，每個元素的識別碼必須唯一。"),
+                format!("id {id} appears more than once, every element must have a unique id."),
                 Some(id.to_string()),
             );
             return;
@@ -301,9 +301,9 @@ impl Checker<'_> {
             element,
             ComplianceCode::UnknownTag,
             format!(
-                "<{}> 不是合法的投影片元素，合法圖元為 {}；多邊形與折線請改用 <path>。",
+                "<{}> is not a valid slide element, valid primitives are {}; use <path> instead for polygons and polylines.",
                 element.tag,
-                SLIDE_PRIMITIVE_TAGS.join("、")
+                SLIDE_PRIMITIVE_TAGS.join(", ")
             ),
             None,
         );
@@ -328,7 +328,7 @@ impl Checker<'_> {
             self.report(
                 element,
                 ComplianceCode::PrimitiveTransform,
-                format!("<{}> 的 transform 寫在圖元上，位置與旋轉必須寫在容器的 transform 上。{CONVERT_HINT}", element.tag),
+                format!("<{}>'s transform is written on the primitive; position and rotation must be written on the container's transform. {CONVERT_HINT}", element.tag),
                 container_id.map(String::from),
             );
         }
@@ -340,7 +340,7 @@ impl Checker<'_> {
             self.report(
                 element,
                 ComplianceCode::TooDeep,
-                format!("容器巢狀超過 {MAX_CONTAINER_DEPTH} 層。"),
+                format!("container nesting exceeds {MAX_CONTAINER_DEPTH} levels."),
                 None,
             );
             return;
@@ -351,7 +351,7 @@ impl Checker<'_> {
             None => self.report(
                 element,
                 ComplianceCode::MissingId,
-                format!("容器 <g> 沒有 id，識別碼必須掛在容器上。{CONVERT_HINT}"),
+                format!("container <g> has no id, the identifier must be attached to the container. {CONVERT_HINT}"),
                 None,
             ),
             Some(id_str) => self.note_id(element, id_str),
@@ -363,7 +363,7 @@ impl Checker<'_> {
                     element,
                     ComplianceCode::BadTransform,
                     format!(
-                        "容器{}的 transform 無法解析：{}",
+                        "container {}'s transform cannot be parsed: {}",
                         id_suffix(id.as_deref()),
                         err.message()
                     ),
@@ -381,7 +381,10 @@ impl Checker<'_> {
             self.report(
                 element,
                 ComplianceCode::EmptyContainer,
-                format!("容器{}裡沒有任何圖元或子容器。", id_suffix(id.as_deref())),
+                format!(
+                    "container {} has no primitives or child containers.",
+                    id_suffix(id.as_deref())
+                ),
                 id.clone(),
             );
             return;
@@ -394,7 +397,7 @@ impl Checker<'_> {
                     element,
                     ComplianceCode::InvalidTableShape,
                     format!(
-                        "表格容器{}格式不正確：{}",
+                        "table container {} format is incorrect: {}",
                         id_suffix(id.as_deref()),
                         problem
                     ),
@@ -426,7 +429,7 @@ impl Checker<'_> {
                     element,
                     ComplianceCode::InvalidChartShape,
                     format!(
-                        "圖表容器{}必須恰好包含一個 <slidra:chart> 與一個內嵌 <svg>。",
+                        "chart container {} must contain exactly one <slidra:chart> and one embedded <svg>.",
                         id_suffix(id.as_deref())
                     ),
                     id.clone(),
@@ -462,7 +465,7 @@ impl Checker<'_> {
                 element,
                 ComplianceCode::MixedChildren,
                 format!(
-                    "容器{}同時含有圖元與子容器，容器只能二擇一。",
+                    "container {} has both primitives and child containers, a container can only be one or the other.",
                     id_suffix(id.as_deref())
                 ),
                 id.clone(),
@@ -520,7 +523,7 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
                 column: 1,
                 tag: None,
                 element_id: None,
-                message: "投影片的根節點不是 <svg>".to_string(),
+                message: "root node of the slide is not <svg>".to_string(),
             }];
         }
     };
@@ -535,7 +538,7 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
         checker.report(
             svg_root,
             ComplianceCode::MissingViewbox,
-            "根節點 <svg> 沒有 viewBox，投影片就沒有座標系。".to_string(),
+            "root node <svg> has no viewBox, the slide has no coordinate system.".to_string(),
             None,
         );
     }
@@ -546,7 +549,7 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
                 element,
                 ComplianceCode::ForbiddenTag,
                 format!(
-                    "<{}> 不是合法元素，轉換命令不會替你移除，請自行刪除後再轉換。",
+                    "<{}> is not a valid element, the convert command will not remove it for you, please delete it yourself before converting.",
                     element.tag
                 ),
                 None,
@@ -570,7 +573,7 @@ pub fn check_slide_compliance(svg: &str) -> Vec<ComplianceIssue> {
                 child,
                 ComplianceCode::BarePrimitive,
                 format!(
-                    "<{}> 是裸圖元，必須包在 <g> 容器裡。{CONVERT_HINT}",
+                    "<{}> is a bare primitive, must be wrapped in a <g> container. {CONVERT_HINT}",
                     child.tag
                 ),
                 None,
@@ -602,12 +605,12 @@ pub fn assert_slide_compliant(svg: &str, slide_path: &str) -> SlidraResult<()> {
         return Ok(());
     };
     let more = if issues.len() > 1 {
-        format!("（另有 {} 處問題）", issues.len() - 1)
+        format!("(and {} more issue(s))", issues.len() - 1)
     } else {
         String::new()
     };
     Err(SlidraError::invalid(format!(
-        "投影片 {slide_path} 不合規（第 {} 行第 {} 欄）：{}{}",
+        "slide {slide_path} non-compliant (line {}, column {}): {}{}",
         first.line, first.column, first.message, more
     )))
 }
@@ -632,7 +635,7 @@ pub fn read_text_align(container: &ScannedNode, element_id: &str) -> SlidraResul
         Some("center") => Ok(TextAlign::Center),
         Some("right") => Ok(TextAlign::Right),
         Some(other) => Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的 {TEXT_ALIGN_ATTRIBUTE} 不是合法值（left、center 或 right）：{other}"
+            "element {element_id}\'s {TEXT_ALIGN_ATTRIBUTE} is not a valid value (left, center or right): {other}"
         ))),
     }
 }
@@ -719,7 +722,7 @@ fn parse_positive_dimension(raw: &str, element_id: &str, attribute: &str) -> Sli
     match value {
         Some(v) if !trimmed.is_empty() && v.is_finite() && v > 0.0 => Ok(v),
         _ => Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的 {attribute} 不是合法的正數：{raw}"
+            "element {element_id}\'s {attribute} is not a valid positive number: {raw}"
         ))),
     }
 }
@@ -812,9 +815,9 @@ fn to_element(element: &ScannedNode, svg: &str) -> SlidraResult<SlideElement> {
 
 /// Parses a compliant slide into its model. A non-compliant slide fails
 /// exactly as `assert_slide_compliant` does. `slide_path` defaults to
-/// `"投影片"` when `None`, matching the TS source's default parameter.
+/// `"slide"` when `None`, matching the TS source's default parameter.
 pub fn parse_slide(svg: &str, slide_path: Option<&str>) -> SlidraResult<SlideModel> {
-    let slide_path = slide_path.unwrap_or("投影片");
+    let slide_path = slide_path.unwrap_or("slide");
     assert_slide_compliant(svg, slide_path)?;
     let roots = scan_document(svg)?;
     let svg_root = roots
@@ -831,7 +834,7 @@ pub fn parse_slide(svg: &str, slide_path: Option<&str>) -> SlidraResult<SlideMod
         .collect();
     if parts.len() != 4 || parts.iter().any(|value| !value.is_finite()) {
         return Err(SlidraError::invalid(format!(
-            "投影片 {slide_path} 的 viewBox 不是四個數字：{view_box_text}"
+            "viewBox of slide {slide_path} is not four numbers: {view_box_text}"
         )));
     }
     let view_box = ViewBox {
@@ -1022,7 +1025,7 @@ mod tests {
         let err = read_text_align(&node, "e1").unwrap_err();
         assert_eq!(
             err.message(),
-            "元素 e1 的 data-slidra-text-align 不是合法值（left、center 或 right）：justify"
+            "element e1\'s data-slidra-text-align is not a valid value (left, center or right): justify"
         );
     }
 
@@ -1051,6 +1054,6 @@ mod tests {
     fn parse_slide_rejects_a_noncompliant_slide_by_default_path_name() {
         let svg = r#"<svg viewBox="0 0 100 100"><rect id="r1" width="1" height="1"/></svg>"#;
         let err = parse_slide(svg, None).unwrap_err();
-        assert!(err.message().contains("投影片 投影片 不合規"));
+        assert!(err.message().contains("slide slide non-compliant"));
     }
 }

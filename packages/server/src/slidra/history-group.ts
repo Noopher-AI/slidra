@@ -100,16 +100,16 @@ async function readStack(home: string, id: string): Promise<StackFile> {
     if (isEnoent(error)) {
       return { undo: [], redo: [], openGroup: null };
     }
-    throw new SlidraError("復原歷史已損毀");
+    throw new SlidraError("undo history is corrupted");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new SlidraError("復原歷史已損毀");
+    throw new SlidraError("undo history is corrupted");
   }
   if (!isStackFile(parsed)) {
-    throw new SlidraError("復原歷史已損毀");
+    throw new SlidraError("undo history is corrupted");
   }
   return parsed;
 }
@@ -124,7 +124,7 @@ async function writeStack(home: string, id: string, stack: StackFile): Promise<v
     await rename(tempPath, finalPath);
   } catch {
     await rm(tempPath, { force: true }).catch(() => {});
-    throw new SlidraError("無法寫入復原歷史");
+    throw new SlidraError("failed to write undo history");
   }
 }
 
@@ -132,7 +132,7 @@ async function deleteSnapshot(home: string, id: string, snapshotId: string): Pro
   try {
     await rm(snapshotPath(home, id, snapshotId), { force: true });
   } catch {
-    throw new SlidraError("無法刪除復原快照");
+    throw new SlidraError("failed to delete undo snapshot");
   }
 }
 
@@ -183,7 +183,7 @@ export async function endHistoryGroup(id: string): Promise<void> {
   const stack = await readStack(home, id);
   const group = stack.openGroup;
   if (!group) {
-    throw new SlidraError("沒有開啟中的復原群組");
+    throw new SlidraError("no open undo group");
   }
   stack.openGroup = null;
   const evictedSnapshotIds = group.entries.length > 0 ? pushGroupToUndoStack(stack, group) : [];

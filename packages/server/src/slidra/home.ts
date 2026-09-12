@@ -80,23 +80,23 @@ export async function readProjectsRegistry(): Promise<SlidraRegistry> {
     if (isEnoent(error)) {
       return new Map();
     }
-    throw new SlidraError("無法讀取簡報登記資料");
+    throw new SlidraError("failed to read presentation registry data");
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new SlidraError("簡報登記資料已損毀");
+    throw new SlidraError("presentation registry data is corrupted");
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new SlidraError("簡報登記資料已損毀");
+    throw new SlidraError("presentation registry data is corrupted");
   }
 
   const registry: SlidraRegistry = new Map();
   for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (!isRegistryEntry(value)) {
-      throw new SlidraError(`簡報登記資料已損毀：${id}`);
+      throw new SlidraError(`presentation registry data is corrupted: ${id}`);
     }
     registry.set(id, value);
   }
@@ -168,13 +168,13 @@ export async function withProjectsRegistryLock<T>(body: () => Promise<T>): Promi
     try {
       handle = await open(lockPath, "wx");
     } catch (error) {
-      if (!isEexist(error)) throw new SlidraError("無法寫入簡報登記資料");
+      if (!isEexist(error)) throw new SlidraError("failed to write presentation registry data");
       if (await lockIsStale(lockPath)) {
         await rm(lockPath, { force: true }).catch(() => {});
         continue;
       }
       if (Date.now() >= deadline) {
-        throw new SlidraError("另一個 slidra 正在寫入簡報登記資料，請稍後再試");
+        throw new SlidraError("another slidra is writing presentation registry data, please try again later");
       }
       await sleep(LOCK_RETRY_INTERVAL_MS);
       continue;
@@ -208,7 +208,7 @@ export async function writeProjectsRegistry(registry: SlidraRegistry): Promise<v
     await rename(tempPath, finalPath);
   } catch {
     await rm(tempPath, { force: true }).catch(() => {});
-    throw new SlidraError("無法寫入簡報登記資料");
+    throw new SlidraError("failed to write presentation registry data");
   }
 }
 
@@ -221,7 +221,7 @@ export async function workDirFor(id: string): Promise<string> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) {
-    throw new SlidraNotFoundError(`找不到識別碼對應的簡報：${id}`);
+    throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   }
   return entry.workDir;
 }

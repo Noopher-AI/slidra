@@ -117,21 +117,21 @@ function navigateWorkdirTree(root: WorkdirNode, relativePath: string): WorkdirNo
  * empty path (or one made of only `/`/`.`) resolves to the tree's own
  * root, which is a directory, not a file. That would otherwise read as if
  * the agent asked for *something* and got a directory — but an empty path
- * did not name anything at all, so it is refused as "找不到檔案" instead,
+ * did not name anything at all, so it is refused as "file not found" instead,
  * before the root is ever reached.
  */
 export async function readAgentWorkdirFile(workdirReal: string, relativePath: string): Promise<string> {
   const hasSegment = relativePath.split("/").some((segment) => segment.length > 0);
   if (!hasSegment) {
-    throw new SlidraNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`file not found: ${relativePath}`);
   }
   const root = await buildWorkdirTree(workdirReal);
   const node = navigateWorkdirTree(root, relativePath);
   if (!node) {
-    throw new SlidraNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`file not found: ${relativePath}`);
   }
   if (node.type !== "file") {
-    throw new SlidraNotFoundError(`不是檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`not a file: ${relativePath}`);
   }
   let buffer: Buffer;
   try {

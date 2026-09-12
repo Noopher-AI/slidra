@@ -83,7 +83,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已在 {slide_path} 新增表格 {element_id}"),
+                format!("added table {element_id} in {slide_path}"),
                 serde_json::json!({ "elementId": element_id }),
             )
         }
@@ -113,7 +113,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已更新 {slide_path} 表格 {element_id} 的儲存格"),
+                format!("updated cells of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -139,7 +139,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已更新 {slide_path} 表格 {element_id} 的儲存格樣式"),
+                format!("updated cell style of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -165,9 +165,9 @@ pub fn run(args: &[String]) -> CommandResult {
                 &slide_path,
                 &updated
             ));
-            let verb = if unmerge { "取消合併" } else { "合併" };
+            let verb = if unmerge { "unmerge" } else { "merge" };
             ok(
-                format!("已{verb} {slide_path} 表格 {element_id} 的儲存格"),
+                format!("{verb} the cells of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -197,7 +197,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已更新 {slide_path} 表格 {element_id} 的欄寬"),
+                format!("updated column width of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -223,7 +223,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已在 {slide_path} 表格 {element_id} 插入一欄"),
+                format!("inserted a column into table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -249,7 +249,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已刪除 {slide_path} 表格 {element_id} 的一欄"),
+                format!("deleted a column from table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -275,7 +275,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已在 {slide_path} 表格 {element_id} 插入一列"),
+                format!("inserted a row into table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -301,7 +301,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已刪除 {slide_path} 表格 {element_id} 的一列"),
+                format!("deleted a row from table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -327,7 +327,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已將 {slide_path} 表格 {element_id} 的主題改為 {theme}"),
+                format!("changed theme of table {element_id} in {slide_path} to {theme}"),
                 serde_json::json!({}),
             )
         }
@@ -353,7 +353,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已更新 {slide_path} 表格 {element_id} 的表頭設定"),
+                format!("updated header settings of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -385,7 +385,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已將 {slide_path} 表格 {element_id} 綁定到 {source}"),
+                format!("bound table {element_id} in {slide_path} to {source}"),
                 serde_json::json!({}),
             )
         }
@@ -404,7 +404,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 Some(source) => source,
                 None => {
                     return err_result(SlidraError::invalid(format!(
-                        "表格 {element_id} 沒有資料來源"
+                        "table {element_id} has no data source"
                     )));
                 }
             };
@@ -425,7 +425,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已重新整理 {slide_path} 表格 {element_id} 的資料"),
+                format!("refreshed data of table {element_id} in {slide_path}"),
                 serde_json::json!({}),
             )
         }
@@ -458,7 +458,9 @@ pub fn run(args: &[String]) -> CommandResult {
                     &updated
                 ));
                 return ok(
-                    format!("已將 {slide_path} 表格 {element_id} 的內容改為 {from} 的資料"),
+                    format!(
+                        "changed content of table {element_id} in {slide_path} to data from {from}"
+                    ),
                     serde_json::json!({}),
                 );
             }
@@ -468,7 +470,7 @@ pub fn run(args: &[String]) -> CommandResult {
                     Ok(text) => text,
                     Err(_) => {
                         return err_result(SlidraError::not_found(format!(
-                            "找不到 Markdown 檔案：{markdown_file}"
+                            "Markdown file not found: {markdown_file}"
                         )));
                     }
                 }
@@ -489,7 +491,9 @@ pub fn run(args: &[String]) -> CommandResult {
                 &updated
             ));
             ok(
-                format!("已將 {slide_path} 表格 {element_id} 的內容改為 Markdown 表格"),
+                format!(
+                    "changed content of table {element_id} in {slide_path} to a Markdown table"
+                ),
                 serde_json::json!({}),
             )
         }
@@ -508,7 +512,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &range
             ));
             ok(
-                format!("已複製 {element_id} 的儲存格範圍"),
+                format!("copied cell range of {element_id}"),
                 serde_json::json!({ "tsv": tsv }),
             )
         }
@@ -534,7 +538,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &result.updated
             ));
             ok(
-                format!("已剪下 {element_id} 的儲存格範圍"),
+                format!("cut cell range of {element_id}"),
                 serde_json::json!({ "tsv": result.tsv }),
             )
         }
@@ -550,7 +554,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 Ok(text) => text,
                 Err(_) => {
                     return err_result(SlidraError::not_found(format!(
-                        "找不到來源檔案：{tsv_file}"
+                        "source file not found: {tsv_file}"
                     )));
                 }
             };
@@ -570,7 +574,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 &result.updated
             ));
             ok(
-                format!("已貼上 {} 個儲存格到 {element_id}", result.cells),
+                format!("pasted {} cells into {element_id}", result.cells),
                 serde_json::json!({ "cells": result.cells }),
             )
         }
@@ -766,7 +770,7 @@ mod tests {
             "0",
         ]));
         assert!(!result.ok);
-        assert_eq!(result.message, "表格至少要有一欄");
+        assert_eq!(result.message, "table must have at least one column");
     }
 
     #[test]
@@ -813,7 +817,7 @@ mod tests {
         std::fs::write(
             fixture.work.join("slides/001.svg"),
             r#"<svg viewBox="0 0 1280 720">
-  <g id="el-title" data-slidra-name="標題">
+  <g id="el-title" data-slidra-name="title">
     <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">示範簡報</text>
   </g>
 </svg>"#,
@@ -855,11 +859,11 @@ mod tests {
             "--col",
             "0",
             "--text",
-            "你好",
+            "hello",
         ]));
         assert!(set_result.ok, "{}", set_result.message);
         let svg_after_edit = fixture.slide();
-        assert!(svg_after_edit.contains("你好"));
+        assert!(svg_after_edit.contains("hello"));
         crate::slide::scan::scan_document(&svg_after_edit)
             .expect("markup must remain well-formed after a splice-based edit");
     }

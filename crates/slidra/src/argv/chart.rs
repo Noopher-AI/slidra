@@ -71,7 +71,9 @@ pub enum ChartCommand {
 /// — a series name may not itself contain `=`.
 fn parse_chart_series_flag(raw: &str) -> SlidraResult<(String, Vec<f64>)> {
     let eq = raw.find('=').ok_or_else(|| {
-        SlidraError::invalid(format!("--series 格式錯誤，必須是 name=v1,v2,...：{raw}"))
+        SlidraError::invalid(format!(
+            "--series format error, must be name=v1,v2,...: {raw}"
+        ))
     })?;
     let name = raw[..eq].to_string();
     let values = raw[eq + 1..]
@@ -80,7 +82,7 @@ fn parse_chart_series_flag(raw: &str) -> SlidraResult<(String, Vec<f64>)> {
             let value = super::parse_js_number(token).unwrap_or(f64::NAN);
             if token.trim().is_empty() || !value.is_finite() {
                 Err(SlidraError::invalid(format!(
-                    "--series 的值不是合法數字：{raw}"
+                    "--series value is not a valid number: {raw}"
                 )))
             } else {
                 Ok(value)
@@ -94,7 +96,7 @@ fn parse_chart_series_flag(raw: &str) -> SlidraResult<(String, Vec<f64>)> {
 /// `parse_chart_series_flag`.
 fn parse_chart_color_flag(raw: &str) -> SlidraResult<(String, String)> {
     let eq = raw.find('=').ok_or_else(|| {
-        SlidraError::invalid(format!("--color 格式錯誤，必須是 name=#RRGGBB：{raw}"))
+        SlidraError::invalid(format!("--color format error, must be name=#RRGGBB: {raw}"))
     })?;
     Ok((raw[..eq].to_string(), raw[eq + 1..].to_string()))
 }
@@ -150,7 +152,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<ChartCommand> {
             + ((categories_raw.is_some() || !series_raw.is_empty()) as u8);
         if given_count != 1 {
             return Err(SlidraError::invalid(
-                "chart data set 必須恰好提供一種資料來源：--categories/--series、--csv 或 --csv-asset",
+                "chart data set must provide exactly one data source: --categories/--series, --csv, or --csv-asset",
             ));
         }
 
@@ -177,7 +179,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<ChartCommand> {
             });
         }
         let categories_raw = categories_raw
-            .ok_or_else(|| SlidraError::invalid("chart data set 缺少參數：--categories"))?;
+            .ok_or_else(|| SlidraError::invalid("chart data set missing argument: --categories"))?;
         let categories: Vec<String> = categories_raw.split(',').map(str::to_string).collect();
         let series = series_raw
             .iter()
@@ -252,7 +254,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<ChartCommand> {
             "off" => false,
             _ => {
                 return Err(SlidraError::invalid(format!(
-                    "chart stack set 不支援的值：{on_off}"
+                    "chart stack set unsupported value: {on_off}"
                 )));
             }
         };
@@ -294,7 +296,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<ChartCommand> {
 
     let unknown = rest.iter().take(2).cloned().collect::<Vec<_>>().join(" ");
     Err(SlidraError::invalid(format!(
-        "未知的子命令：chart {unknown}"
+        "unknown subcommand: chart {unknown}"
     )))
 }
 
@@ -329,7 +331,7 @@ mod tests {
         let err = parse(&s(&["data", "set", "pres-1", "slides/001.svg", "el-a"])).unwrap_err();
         assert_eq!(
             err.message(),
-            "chart data set 必須恰好提供一種資料來源：--categories/--series、--csv 或 --csv-asset"
+            "chart data set must provide exactly one data source: --categories/--series, --csv, or --csv-asset"
         );
     }
 
@@ -349,7 +351,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "chart data set 必須恰好提供一種資料來源：--categories/--series、--csv 或 --csv-asset"
+            "chart data set must provide exactly one data source: --categories/--series, --csv, or --csv-asset"
         );
     }
 
@@ -437,13 +439,13 @@ mod tests {
             "sideways",
         ]))
         .unwrap_err();
-        assert_eq!(err.message(), "chart stack set 不支援的值：sideways");
+        assert_eq!(err.message(), "chart stack set unsupported value: sideways");
     }
 
     #[test]
     fn unknown_subcommand_reports_the_first_two_tokens() {
         let err = parse(&s(&["frobnicate", "extra"])).unwrap_err();
-        assert_eq!(err.message(), "未知的子命令：chart frobnicate extra");
+        assert_eq!(err.message(), "unknown subcommand: chart frobnicate extra");
     }
 
     #[test]

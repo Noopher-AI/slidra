@@ -237,7 +237,7 @@ impl Utf16Tracker {
 /// corresponding to `byte_pos`.
 fn describe(svg: &str, tracker: &mut Utf16Tracker, byte_pos: usize) -> String {
     let (line, column) = position_at(svg, tracker.at(svg, byte_pos));
-    format!("第 {line} 行第 {column} 欄")
+    format!("line {line}, column {column}")
 }
 
 /// Rule 1: skip a `<!...>` / `<?...>` construct, returning the Rust byte
@@ -299,7 +299,9 @@ fn scan_attributes(
         }
         let name = svg[name_start..i].to_string();
         if name.is_empty() {
-            return Err(SlidraError::invalid("屬性語法錯誤：無法解析屬性名稱"));
+            return Err(SlidraError::invalid(
+                "attribute syntax error: cannot parse attribute name",
+            ));
         }
 
         while i < to {
@@ -315,7 +317,7 @@ fn scan_attributes(
         // still produces the right error — just like the TS original.
         if char_at(svg, i) != Some('=') {
             return Err(SlidraError::invalid(format!(
-                "屬性語法錯誤：屬性 {name} 缺少 ="
+                "attribute syntax error: attribute {name} is missing ="
             )));
         }
         i += 1; // '=' is one ASCII byte
@@ -330,7 +332,7 @@ fn scan_attributes(
         let quote = char_at(svg, i);
         if quote != Some('"') && quote != Some('\'') {
             return Err(SlidraError::invalid(format!(
-                "屬性語法錯誤：屬性 {name} 的值未以引號括住"
+                "attribute syntax error: value of attribute {name} is not quoted"
             )));
         }
         let quote = quote.expect("just matched Some(_) above");
@@ -342,7 +344,7 @@ fn scan_attributes(
         }
         if i >= to {
             return Err(SlidraError::invalid(format!(
-                "屬性語法錯誤：屬性 {name} 的引號未封閉"
+                "attribute syntax error: quote of attribute {name} is not closed"
             )));
         }
         let value = svg[value_start..i].to_string();
@@ -387,7 +389,7 @@ fn read_open_tag(svg: &str, tracker: &mut Utf16Tracker, start: usize) -> SlidraR
     let tag = svg[start + 1..j].to_string();
     if tag.is_empty() {
         return Err(SlidraError::invalid(format!(
-            "標記語法錯誤：{} 不是合法的標籤",
+            "markup syntax error: {} is not a valid tag",
             describe(svg, tracker, start)
         )));
     }
@@ -410,7 +412,7 @@ fn read_open_tag(svg: &str, tracker: &mut Utf16Tracker, start: usize) -> SlidraR
     }
     if !found_close {
         return Err(SlidraError::invalid(format!(
-            "標記語法錯誤：{} 的 <{}> 標籤沒有結尾的 >",
+            "markup syntax error: {}'s <{}> tag has no closing >",
             describe(svg, tracker, start),
             tag
         )));
@@ -487,7 +489,7 @@ pub fn scan_document(svg: &str) -> SlidraResult<Vec<ScannedNode>> {
                     // No `describe()` here either — scan.ts's own message
                     // for this case carries no position.
                     return Err(SlidraError::invalid(format!(
-                        "標記語法錯誤：<{}> 沒有對應的結束標籤",
+                        "markup syntax error: <{}> has no matching closing tag",
                         frame.tag
                     )));
                 }
@@ -505,7 +507,7 @@ pub fn scan_document(svg: &str) -> SlidraResult<Vec<ScannedNode>> {
                 }
                 None => {
                     return Err(SlidraError::invalid(format!(
-                        "標記語法錯誤：{} 的註解或宣告沒有結尾",
+                        "markup syntax error: comment or declaration in {} has no end",
                         describe(svg, &mut tracker, i)
                     )));
                 }
@@ -517,7 +519,7 @@ pub fn scan_document(svg: &str) -> SlidraResult<Vec<ScannedNode>> {
                 Some(p) => p,
                 None => {
                     return Err(SlidraError::invalid(format!(
-                        "標記語法錯誤：{} 的結束標籤沒有結尾的 >",
+                        "markup syntax error: closing tag in {} has no closing >",
                         describe(svg, &mut tracker, i)
                     )));
                 }
@@ -526,14 +528,14 @@ pub fn scan_document(svg: &str) -> SlidraResult<Vec<ScannedNode>> {
 
             if stack.is_empty() {
                 return Err(SlidraError::invalid(format!(
-                    "標記語法錯誤：{} 出現多餘的結束標籤",
+                    "markup syntax error: {} has an extra closing tag",
                     describe(svg, &mut tracker, i)
                 )));
             }
             let expected_tag = stack.last().expect("checked non-empty above").tag.clone();
             if closing_name != expected_tag {
                 return Err(SlidraError::invalid(format!(
-                    "標記語法錯誤：{} 的結束標籤是 </{}>，但目前開啟的是 <{}>",
+                    "markup syntax error: closing tag in {} is </{}>, but the currently open tag is <{}>",
                     describe(svg, &mut tracker, i),
                     closing_name,
                     expected_tag
@@ -691,40 +693,40 @@ mod tests {
 
     #[test]
     fn unclosed_comment_is_an_error() {
-        assert!(err_message("<a><!-- never closed</a>").contains("註解或宣告沒有結尾"));
+        assert!(err_message("<a><!-- never closed</a>").contains("comment or declaration in"));
     }
 
     #[test]
     fn unclosed_cdata_is_an_error() {
-        assert!(err_message("<a><![CDATA[ never closed</a>").contains("註解或宣告沒有結尾"));
+        assert!(err_message("<a><![CDATA[ never closed</a>").contains("comment or declaration in"));
     }
 
     #[test]
     fn unclosed_start_tag_missing_gt_is_an_error() {
-        assert!(err_message(r#"<a bar="1""#).contains("沒有結尾的 >"));
+        assert!(err_message(r#"<a bar="1""#).contains("has no closing >"));
     }
 
     #[test]
     fn mismatched_end_tag_name_is_an_error() {
         let message = err_message("<a></b>");
-        assert!(message.contains("結束標籤是"));
+        assert!(message.contains("closing tag in"));
         assert!(message.contains("</b>"));
         assert!(message.contains("<a>"));
     }
 
     #[test]
     fn stray_end_tag_at_top_level_is_an_error() {
-        assert!(err_message("<a></a></a>").contains("多餘的結束標籤"));
+        assert!(err_message("<a></a></a>").contains("extra closing tag"));
     }
 
     #[test]
     fn attribute_missing_equals_is_an_error() {
-        assert!(err_message("<a bar/>").contains("缺少 ="));
+        assert!(err_message("<a bar/>").contains("missing ="));
     }
 
     #[test]
     fn attribute_value_without_quotes_is_an_error() {
-        assert!(err_message("<a bar=1/>").contains("未以引號括住"));
+        assert!(err_message("<a bar=1/>").contains("not quoted"));
     }
 
     #[test]
@@ -739,12 +741,12 @@ mod tests {
         // split, the attribute "name" it recovers is the literal `"`
         // character, and the value it starts reading immediately hits the
         // region boundary before finding a matching close quote.
-        assert!(err_message(r#"<a "="/>"#).contains("引號未封閉"));
+        assert!(err_message(r#"<a "="/>"#).contains("is not closed"));
     }
 
     #[test]
     fn empty_attribute_name_is_an_error() {
-        assert!(err_message(r#"<a ="x"/>"#).contains("無法解析屬性名稱"));
+        assert!(err_message(r#"<a ="x"/>"#).contains("cannot parse attribute name"));
     }
 
     // --- UTF-16 offset semantics (the load-bearing behavior this file's

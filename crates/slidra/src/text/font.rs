@@ -98,7 +98,7 @@ pub const DEFAULT_FONT_BYTES: &[u8] = include_bytes!(concat!(
 pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans TC";
 
 fn corrupt() -> SlidraError {
-    SlidraError::invalid("字型檔案無效或已損毀")
+    SlidraError::invalid("font file is invalid or corrupted")
 }
 
 // --- Raw big-endian reads. Out-of-bounds returns 0 rather than panicking —
@@ -141,7 +141,7 @@ fn require_table(tables: &HashMap<String, TableRecord>, tag: &str) -> SlidraResu
     tables
         .get(tag)
         .copied()
-        .ok_or_else(|| SlidraError::invalid(format!("字型檔案缺少必要的資料表：{tag}")))
+        .ok_or_else(|| SlidraError::invalid(format!("font file is missing required table: {tag}")))
 }
 
 #[derive(Debug)]
@@ -334,7 +334,7 @@ fn parse_coverage(bytes: &[u8], offset: usize) -> SlidraResult<HashMap<u16, u16>
         }
     } else {
         return Err(SlidraError::invalid(format!(
-            "不支援的 Coverage 格式：{format}"
+            "unsupported Coverage format: {format}"
         )));
     }
     Ok(map)
@@ -373,7 +373,7 @@ fn parse_class_def(bytes: &[u8], offset: usize) -> SlidraResult<HashMap<u16, u16
         }
     } else {
         return Err(SlidraError::invalid(format!(
-            "不支援的 ClassDef 格式：{format}"
+            "unsupported ClassDef format: {format}"
         )));
     }
     Ok(map)
@@ -613,7 +613,7 @@ fn parse_pair_pos_subtable(bytes: &[u8], subtable_offset: usize) -> SlidraResult
     }
 
     Err(SlidraError::invalid(format!(
-        "不支援的 PairPos 格式：{format}"
+        "unsupported PairPos format: {format}"
     )))
 }
 
@@ -657,7 +657,7 @@ fn parse_cmap(bytes: &[u8], cmap: TableRecord) -> SlidraResult<CmapKind> {
     if let Some(offset) = format4_offset {
         return build_format4(bytes, offset);
     }
-    Err(SlidraError::invalid("字型的 cmap 格式不支援"))
+    Err(SlidraError::invalid("font cmap format not supported"))
 }
 
 fn build_format12(bytes: &[u8], offset: usize) -> SlidraResult<CmapKind> {
@@ -792,7 +792,9 @@ pub fn parse_font(bytes: &[u8]) -> SlidraResult<ParsedFont> {
     }
     let sfnt_version = u32_at(bytes, 0);
     if sfnt_version == TAG_WOFF || sfnt_version == TAG_WOFF2 {
-        return Err(SlidraError::invalid("不支援的字型格式，需要 TTF 或 OTF"));
+        return Err(SlidraError::invalid(
+            "unsupported font format, requires TTF or OTF",
+        ));
     }
     if sfnt_version != SFNT_VERSION_TRUETYPE
         && sfnt_version != SFNT_VERSION_TRUE
@@ -1043,7 +1045,7 @@ mod tests {
     fn parse_coverage_unsupported_format_errors() {
         let bytes = vec![0u8, 9, 0, 0]; // format = 9
         let err = parse_coverage(&bytes, 0).unwrap_err();
-        assert!(err.message().contains("不支援的 Coverage 格式"));
+        assert!(err.message().contains("unsupported Coverage format"));
     }
 
     #[test]
@@ -1207,7 +1209,7 @@ mod tests {
     #[test]
     fn parse_font_rejects_too_short_input() {
         let err = parse_font(&[0u8; 4]).unwrap_err();
-        assert_eq!(err.message(), "字型檔案無效或已損毀");
+        assert_eq!(err.message(), "font file is invalid or corrupted");
     }
 
     #[test]
@@ -1215,7 +1217,10 @@ mod tests {
         let mut bytes = vec![0u8; 12];
         bytes[0..4].copy_from_slice(&TAG_WOFF.to_be_bytes());
         let err = parse_font(&bytes).unwrap_err();
-        assert_eq!(err.message(), "不支援的字型格式，需要 TTF 或 OTF");
+        assert_eq!(
+            err.message(),
+            "unsupported font format, requires TTF or OTF"
+        );
     }
 
     #[test]
@@ -1223,7 +1228,7 @@ mod tests {
         let mut bytes = vec![0u8; 12];
         bytes[0..4].copy_from_slice(&0xdeadbeefu32.to_be_bytes());
         let err = parse_font(&bytes).unwrap_err();
-        assert_eq!(err.message(), "字型檔案無效或已損毀");
+        assert_eq!(err.message(), "font file is invalid or corrupted");
     }
 
     #[test]
@@ -1232,7 +1237,10 @@ mod tests {
         let mut bytes = vec![0u8; 12];
         bytes[0..4].copy_from_slice(&SFNT_VERSION_TRUETYPE.to_be_bytes());
         let err = parse_font(&bytes).unwrap_err();
-        assert!(err.message().contains("字型檔案缺少必要的資料表"));
+        assert!(
+            err.message()
+                .contains("font file is missing required table")
+        );
     }
 
     #[test]

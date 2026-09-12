@@ -31,7 +31,7 @@ pub fn exec_node(argv: &[OsString]) -> i32 {
     let repo_root = match locate_repo_root() {
         Some(root) => root,
         None => {
-            eprintln!("找不到 slidra 的 serve/export 入口");
+            eprintln!("slidra serve/export entry point not found");
             return 1;
         }
     };
@@ -51,7 +51,7 @@ pub fn exec_node(argv: &[OsString]) -> i32 {
     let status = match command.status() {
         Ok(status) => status,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("找不到 node");
+            eprintln!("node not found");
             return 1;
         }
         Err(err) => {

@@ -66,13 +66,15 @@ impl PresentationLock {
                     }
                     if started.elapsed() >= ACQUIRE_TIMEOUT {
                         return Err(SlidraError::invalid(
-                            "簡報正被另一個 slidra 命令使用中，等待逾時；請稍後再試",
+                            "presentation is currently in use by another slidra command, wait timed out; please try again later",
                         ));
                     }
                     std::thread::sleep(RETRY_INTERVAL);
                 }
                 Err(_) => {
-                    return Err(SlidraError::invalid("無法建立簡報的鎖定檔"));
+                    return Err(SlidraError::invalid(
+                        "failed to create presentation lock file",
+                    ));
                 }
             }
         }

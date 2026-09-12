@@ -52,7 +52,7 @@ fn require_positional(
     match args.get(index) {
         Some(value) if !value.is_empty() && !is_flag_like(value) => Ok(value.clone()),
         _ => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
+            "command {command} missing argument: {arg_name}"
         ))),
     }
 }
@@ -69,7 +69,7 @@ fn require_id_positional(
     match args.get(index) {
         Some(value) if !value.is_empty() => Ok(value.clone()),
         _ => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
+            "command {command} missing argument: {arg_name}"
         ))),
     }
 }
@@ -77,12 +77,12 @@ fn require_id_positional(
 fn require_flag(args: &[String], flag: &str, command: &str) -> SlidraResult<String> {
     let Some(index) = args.iter().position(|a| a == flag) else {
         return Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{flag}"
+            "command {command} missing argument: {flag}"
         )));
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(value.clone()),
-        _ => Err(SlidraError::invalid(format!("{flag} 缺少值"))),
+        _ => Err(SlidraError::invalid(format!("{flag} missing value"))),
     }
 }
 
@@ -92,7 +92,7 @@ fn optional_flag(args: &[String], flag: &str) -> SlidraResult<Option<String>> {
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(Some(value.clone())),
-        _ => Err(SlidraError::invalid(format!("{flag} 缺少值"))),
+        _ => Err(SlidraError::invalid(format!("{flag} missing value"))),
     }
 }
 
@@ -116,7 +116,9 @@ fn optional_number_flag(args: &[String], flag: &str) -> SlidraResult<Option<f64>
     };
     let value = js_number(&raw);
     if !value.is_finite() {
-        return Err(SlidraError::invalid(format!("{flag} 不是合法數字：{raw}")));
+        return Err(SlidraError::invalid(format!(
+            "{flag} is not a valid number: {raw}"
+        )));
     }
     Ok(Some(value))
 }
@@ -131,7 +133,7 @@ fn require_id_list(args: &[String], index: usize, command: &str) -> SlidraResult
         .collect();
     if ids.iter().any(|token| token.is_empty()) {
         return Err(SlidraError::invalid(format!(
-            "命令 {command} 的元素清單格式錯誤：{raw}"
+            "command {command}\'s element list has invalid format: {raw}"
         )));
     }
     Ok(ids)
@@ -150,7 +152,7 @@ fn require_index_list(args: &[String], index: usize, command: &str) -> SlidraRes
         let value = js_number(token.trim());
         if !is_integer(value) {
             return Err(SlidraError::invalid(format!(
-                "命令 {command} 的效果項編號格式錯誤：{raw}"
+                "command {command}\'s effect item number has invalid format: {raw}"
             )));
         }
         out.push(value as i64);
@@ -165,7 +167,7 @@ fn require_index(args: &[String], index: usize, command: &str) -> SlidraResult<i
     let value = js_number(&raw);
     if !is_integer(value) {
         return Err(SlidraError::invalid(format!(
-            "命令 {command} 的效果項編號不是合法整數：{raw}"
+            "command {command}\'s effect item number is not a valid integer: {raw}"
         )));
     }
     Ok(value as i64)
@@ -209,7 +211,7 @@ fn parse_add(args: &[String]) -> SlidraResult<AddArgs> {
     let family = require_flag(args, "--family", COMMAND)?;
     if !["enter", "emphasis", "exit", "path", "media"].contains(&family.as_str()) {
         return Err(SlidraError::invalid(format!(
-            "effect add 不支援的 family：{family}"
+            "effect add unsupported family: {family}"
         )));
     }
     let effect = require_flag(args, "--effect", COMMAND)?;
@@ -217,7 +219,7 @@ fn parse_add(args: &[String]) -> SlidraResult<AddArgs> {
     if let Some(start) = &start {
         if !["on-click", "with-previous", "after-previous"].contains(&start.as_str()) {
             return Err(SlidraError::invalid(format!(
-                "effect add 不支援的 start：{start}"
+                "effect add unsupported start: {start}"
             )));
         }
     }
@@ -256,7 +258,7 @@ fn run_add(parsed: AddArgs) -> CommandResult {
     match outcome {
         Ok(()) => CommandResult::success(
             format!(
-                "已在 {slide_path} 為 {} 個元素新增 {}/{} 效果",
+                "added {}/{} effect for {} elements in {slide_path}",
                 element_ids.len(),
                 input.family,
                 input.effect
@@ -296,7 +298,7 @@ pub fn remove(args: &[String]) -> CommandResult {
         // the argv positional itself carried, not the effective removal
         // count (plan 3.3: "length before dedup").
         Ok(()) => CommandResult::success(
-            format!("已移除 {slide_path} 的 {} 個效果項", indices.len()),
+            format!("removed {} effect items from {slide_path}", indices.len()),
             Some(json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -326,7 +328,7 @@ pub fn move_cmd(args: &[String]) -> CommandResult {
         Err(err) => return argv_error(err.message().to_string()),
     };
     if direction != "up" && direction != "down" {
-        return argv_error(format!("effect move 不支援的方向：{direction}"));
+        return argv_error(format!("effect move unsupported direction: {direction}"));
     }
 
     let outcome = (|| -> SlidraResult<()> {
@@ -337,11 +339,11 @@ pub fn move_cmd(args: &[String]) -> CommandResult {
     match outcome {
         Ok(()) => CommandResult::success(
             format!(
-                "已將 {slide_path} 的第 {index} 個效果項{}",
+                "effect item #{index} in {slide_path} has been {}",
                 if direction == "up" {
-                    "上移"
+                    "move up"
                 } else {
-                    "下移"
+                    "move down"
                 }
             ),
             Some(json!({})),
@@ -378,7 +380,7 @@ pub fn set(args: &[String]) -> CommandResult {
     };
     if let Some(start) = &start {
         if !["on-click", "with-previous", "after-previous"].contains(&start.as_str()) {
-            return argv_error(format!("effect set 不支援的 start：{start}"));
+            return argv_error(format!("effect set unsupported start: {start}"));
         }
     }
     let duration = match optional_number_flag(args, "--duration") {
@@ -408,7 +410,7 @@ pub fn set(args: &[String]) -> CommandResult {
     })();
     match outcome {
         Ok(()) => CommandResult::success(
-            format!("已更新 {slide_path} 的第 {index} 個效果項"),
+            format!("updated effect item #{index} in {slide_path}"),
             Some(json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -432,7 +434,7 @@ pub fn list(args: &[String]) -> CommandResult {
 
     match list_data(&id, &slide_path) {
         Ok((count, data)) => {
-            CommandResult::success(format!("{slide_path} 有 {count} 個效果項"), Some(data))
+            CommandResult::success(format!("{slide_path} has {count} effect items"), Some(data))
         }
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
@@ -531,7 +533,10 @@ mod tests {
     fn add_missing_presentation_id_is_argv_error_without_failure_kind() {
         let result = add(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 effect add 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command effect add missing argument: presentation-id"
+        );
         assert_eq!(result.failure_kind, None);
     }
 
@@ -548,7 +553,10 @@ mod tests {
     fn require_id_positional_still_rejects_a_missing_positional() {
         let args: Vec<String> = vec![];
         let err = require_id_positional(&args, 0, "effect list", "presentation-id").unwrap_err();
-        assert_eq!(err.message(), "命令 effect list 缺少參數：presentation-id");
+        assert_eq!(
+            err.message(),
+            "command effect list missing argument: presentation-id"
+        );
     }
 
     #[test]
@@ -563,7 +571,7 @@ mod tests {
             "fade".to_string(),
         ]);
         assert!(!result.ok);
-        assert_eq!(result.message, "effect add 不支援的 family：bogus");
+        assert_eq!(result.message, "effect add unsupported family: bogus");
         assert_eq!(result.failure_kind, None);
     }
 
@@ -576,7 +584,10 @@ mod tests {
             "sideways".to_string(),
         ]);
         assert!(!result.ok);
-        assert_eq!(result.message, "effect move 不支援的方向：sideways");
+        assert_eq!(
+            result.message,
+            "effect move unsupported direction: sideways"
+        );
     }
 
     #[test]
@@ -589,7 +600,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 effect remove 的效果項編號格式錯誤：1,x"
+            "command effect remove\'s effect item number has invalid format: 1,x"
         );
     }
 
@@ -603,7 +614,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 effect set 的效果項編號不是合法整數：1.5"
+            "command effect set\'s effect item number is not a valid integer: 1.5"
         );
     }
 
@@ -623,7 +634,10 @@ mod tests {
     fn list_missing_id_is_argv_error() {
         let result = list(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 effect list 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command effect list missing argument: presentation-id"
+        );
         assert_eq!(result.failure_kind, None);
     }
 }

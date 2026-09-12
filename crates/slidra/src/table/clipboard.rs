@@ -44,7 +44,7 @@ pub fn parse_cell_range(raw: &str) -> SlidraResult<CellRange> {
     let trimmed = raw.trim();
     let fail = || {
         SlidraError::invalid(format!(
-            "--range 格式錯誤，必須是 r,c:r,c（非負整數）：{raw}"
+            "--range format error, must be r,c:r,c (non-negative integers): {raw}"
         ))
     };
     let (first, second) = trimmed.split_once(':').ok_or_else(fail)?;
@@ -63,7 +63,9 @@ pub fn parse_cell_range(raw: &str) -> SlidraResult<CellRange> {
 pub fn parse_cell_anchor(raw: &str) -> SlidraResult<CellAnchor> {
     let trimmed = raw.trim();
     let (row, col) = parse_nonneg_pair(trimmed).ok_or_else(|| {
-        SlidraError::invalid(format!("--at 格式錯誤，必須是 r,c（非負整數）：{raw}"))
+        SlidraError::invalid(format!(
+            "--at format error, must be r,c (non-negative integers): {raw}"
+        ))
     })?;
     Ok(CellAnchor { row, col })
 }
@@ -89,7 +91,7 @@ fn require_range_within_bounds(range: &CellRange, model: &TableModel) -> SlidraR
     let cols = model.cols.len();
     if range.bottom >= rows || range.right >= cols {
         return Err(SlidraError::invalid(format!(
-            "--range 超出表格實際列／欄數（表格為 {rows} 列 {cols} 欄）"
+            "--range exceeds actual table row/column count (table is {rows} rows {cols} columns)"
         )));
     }
     Ok(())
@@ -177,7 +179,7 @@ pub fn paste_table_cell_range(
 ) -> SlidraResult<PasteResult> {
     assert_slide_compliant(svg_content, slide_path)?;
     if tsv.is_empty() {
-        return Err(SlidraError::invalid("沒有可貼上的內容"));
+        return Err(SlidraError::invalid("no content to paste"));
     }
 
     let model = read_table_model(svg_content, table_element_id)?;
@@ -185,7 +187,7 @@ pub fn paste_table_cell_range(
     let cols = model.cols.len();
     if anchor.row >= rows || anchor.col >= cols {
         return Err(SlidraError::invalid(format!(
-            "--at 超出表格實際列／欄數（表格為 {rows} 列 {cols} 欄）"
+            "--at exceeds actual table row/column count (table is {rows} rows {cols} columns)"
         )));
     }
 
@@ -269,7 +271,7 @@ mod tests {
     #[test]
     fn parse_cell_range_rejects_malformed_input() {
         let err = parse_cell_range("nope").unwrap_err();
-        assert!(err.message().contains("--range 格式錯誤"));
+        assert!(err.message().contains("--range format error"));
     }
 
     #[test]
@@ -331,7 +333,10 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(err.message().contains("超出表格實際列／欄數"));
+        assert!(
+            err.message()
+                .contains("exceeds actual table row/column count")
+        );
     }
 
     #[test]
@@ -437,7 +442,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "沒有可貼上的內容");
+        assert_eq!(err.message(), "no content to paste");
     }
 
     #[test]
@@ -452,6 +457,9 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert!(err.message().contains("超出表格實際列／欄數"));
+        assert!(
+            err.message()
+                .contains("exceeds actual table row/column count")
+        );
     }
 }

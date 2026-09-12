@@ -113,7 +113,7 @@ pub struct ResolvedAssetImport {
 /// to octet-stream, no guessing from the extension).
 pub fn resolve_asset_import(input: ResolveAssetImportInput) -> SlidraResult<ResolvedAssetImport> {
     let format = detect_media_format(input.bytes).ok_or_else(|| {
-        SlidraError::invalid("不支援的媒體格式：檔案內容不是已知的圖片、影片或音訊格式")
+        SlidraError::invalid("unsupported media format: file content is not a recognized image, video or audio format")
     })?;
     let base_name = sanitize_asset_base_name(input.source_name);
     let file_name =
@@ -164,22 +164,22 @@ pub fn resolve_data_asset_import(
 ) -> SlidraResult<ResolvedDataAssetImport> {
     if !input.source_name.to_ascii_lowercase().ends_with(".csv") {
         return Err(SlidraError::invalid(format!(
-            "資料資產必須是 .csv 檔案：{}",
+            "data asset must be a .csv file: {}",
             input.source_name
         )));
     }
 
     let text = std::str::from_utf8(input.bytes)
-        .map_err(|_| SlidraError::invalid("CSV 內容不是合法的 UTF-8 文字"))?;
+        .map_err(|_| SlidraError::invalid("CSV content is not valid UTF-8 text"))?;
     if contains_illegal_csv_control_char(text) {
-        return Err(SlidraError::invalid("CSV 內容不是合法的 UTF-8 文字"));
+        return Err(SlidraError::invalid("CSV content is not valid UTF-8 text"));
     }
 
     let parsed = parse_table_csv(text)?;
     for header in &parsed.headers {
         if RESERVED_CSV_HEADER_NAMES.contains(&header.as_str()) {
             return Err(SlidraError::invalid(format!(
-                "CSV 標頭不可使用保留名稱（與動態文字變數衝突）：{header}"
+                "CSV header cannot use reserved name (conflicts with dynamic text variable): {header}"
             )));
         }
     }
@@ -286,7 +286,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "不支援的媒體格式：檔案內容不是已知的圖片、影片或音訊格式"
+            "unsupported media format: file content is not a recognized image, video or audio format"
         );
     }
 
@@ -329,7 +329,7 @@ mod tests {
             existing_asset_names: &existing,
         })
         .unwrap_err();
-        assert_eq!(err.message(), "資料資產必須是 .csv 檔案：sales.txt");
+        assert_eq!(err.message(), "data asset must be a .csv file: sales.txt");
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
             existing_asset_names: &existing,
         })
         .unwrap_err();
-        assert_eq!(err.message(), "CSV 內容不是合法的 UTF-8 文字");
+        assert_eq!(err.message(), "CSV content is not valid UTF-8 text");
     }
 
     #[test]
@@ -367,7 +367,7 @@ mod tests {
             existing_asset_names: &existing,
         })
         .unwrap_err();
-        assert_eq!(err.message(), "CSV 內容不是合法的 UTF-8 文字");
+        assert_eq!(err.message(), "CSV content is not valid UTF-8 text");
     }
 
     #[test]
@@ -381,7 +381,7 @@ mod tests {
             existing_asset_names: &existing,
         })
         .unwrap_err();
-        assert_eq!(err.message(), "CSV 內容不是合法的 UTF-8 文字");
+        assert_eq!(err.message(), "CSV content is not valid UTF-8 text");
     }
 
     #[test]
@@ -396,7 +396,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "CSV 標頭不可使用保留名稱（與動態文字變數衝突）：slide_number"
+            "CSV header cannot use reserved name (conflicts with dynamic text variable): slide_number"
         );
     }
 

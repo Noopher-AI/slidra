@@ -37,7 +37,7 @@ fn require_svg_root(svg_content: &str) -> SlidraResult<ScannedNode> {
     roots
         .into_iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// A slide's Page style: background colour and accent colour.
@@ -134,7 +134,7 @@ fn serialize_style_declarations(declarations: &[(String, String)]) -> String {
 pub fn set_slide_page_style(svg_content: &str, update: &PageStyleUpdate) -> SlidraResult<String> {
     if update.background.is_none() && update.accent.is_none() {
         return Err(SlidraError::invalid(
-            "命令 slide style set 至少要給 --background 或 --accent",
+            "command slide style set requires at least --background or --accent",
         ));
     }
     let svg_root = require_svg_root(svg_content)?;
@@ -247,14 +247,17 @@ mod tests {
     #[test]
     fn missing_svg_root_errors() {
         let err = read_slide_page_style(r#"<g id="a"/>"#).unwrap_err();
-        assert!(err.message().contains("根節點不是 <svg>"));
+        assert!(
+            err.message()
+                .contains("root node of the slide is not <svg>")
+        );
     }
 
     #[test]
     fn write_neither_flag_given_errors() {
         let svg = r#"<svg viewBox="0 0 100 100"></svg>"#;
         let err = set_slide_page_style(svg, &PageStyleUpdate::default()).unwrap_err();
-        assert!(err.message().contains("至少要給"));
+        assert!(err.message().contains("requires at least"));
     }
 
     #[test]

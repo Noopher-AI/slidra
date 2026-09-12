@@ -131,7 +131,9 @@ pub fn break_allowed_between(previous: u32, next: u32) -> bool {
 
 fn assert_width(width: f64) -> SlidraResult<()> {
     if !width.is_finite() || width <= 0.0 {
-        return Err(SlidraError::invalid("文字框寬度必須是大於 0 的數字"));
+        return Err(SlidraError::invalid(
+            "text box width must be a number greater than 0",
+        ));
     }
     Ok(())
 }
@@ -280,7 +282,9 @@ fn line_x(align: Align, width: f64, indent: f64, line_width: f64) -> f64 {
 pub fn wrap_text(text: &str, options: &WrapOptions) -> SlidraResult<WrappedText> {
     assert_width(options.width)?;
     if text.contains('\r') {
-        return Err(SlidraError::invalid("文字內容不接受 \\r，硬換行請用 \\n"));
+        return Err(SlidraError::invalid(
+            "text content does not accept \\r, use \\n for hard line breaks",
+        ));
     }
 
     let units_per_em = f64::from(options.font.units_per_em());
@@ -301,7 +305,9 @@ pub fn wrap_text(text: &str, options: &WrapOptions) -> SlidraResult<WrappedText>
             .copied()
             .unwrap_or(0.0);
         if indent >= options.width {
-            return Err(SlidraError::invalid("列表縮排大於文字框寬度，無法排版"));
+            return Err(SlidraError::invalid(
+                "list indent is greater than text box width, cannot lay out",
+            ));
         }
         let paragraph_lines = wrap_paragraph(
             paragraph,
@@ -562,7 +568,10 @@ mod tests {
             indents: Some(&indents),
         };
         let err = wrap_text("hi", &options).unwrap_err();
-        assert_eq!(err.message(), "列表縮排大於文字框寬度，無法排版");
+        assert_eq!(
+            err.message(),
+            "list indent is greater than text box width, cannot lay out"
+        );
     }
 
     #[test]
@@ -576,7 +585,10 @@ mod tests {
             indents: None,
         };
         let err = wrap_text("hi", &options).unwrap_err();
-        assert_eq!(err.message(), "文字框寬度必須是大於 0 的數字");
+        assert_eq!(
+            err.message(),
+            "text box width must be a number greater than 0"
+        );
 
         let options_neg = WrapOptions {
             width: -5.0,
@@ -599,7 +611,10 @@ mod tests {
             indents: None,
         };
         let err = wrap_text("a\rb", &options).unwrap_err();
-        assert_eq!(err.message(), "文字內容不接受 \\r，硬換行請用 \\n");
+        assert_eq!(
+            err.message(),
+            "text content does not accept \\r, use \\n for hard line breaks"
+        );
     }
 
     #[test]

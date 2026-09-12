@@ -16,7 +16,7 @@ fn parse_direction(raw: &str) -> SlidraResult<AlignDirection> {
         "vcenter" => Ok(AlignDirection::VCenter),
         "bottom" => Ok(AlignDirection::Bottom),
         _ => Err(SlidraError::invalid(format!(
-            "element align 不支援的方向：{raw}"
+            "element align unsupported direction: {raw}"
         ))),
     }
 }
@@ -34,7 +34,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     write::write_presentation_file(&id, &slide_path, &updated)?;
 
     Ok(CommandResult::success(
-        format!("已對齊 {slide_path} 的 {} 個元素", element_ids.len()),
+        format!("aligned {} elements in {slide_path}", element_ids.len()),
         Some(serde_json::json!({})),
     ))
 }

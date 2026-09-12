@@ -71,8 +71,8 @@ pub struct TemplateEntry {
 /// have a `slides` array."
 pub fn read_project_json(work_dir: &Path) -> SlidraResult<ProjectJson> {
     let text = virtual_fs::read_virtual_file(work_dir, "project.json")?;
-    let value: Value =
-        serde_json::from_str(&text).map_err(|_| SlidraError::invalid("簡報設定檔已損毀"))?;
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|_| SlidraError::invalid("presentation config file is corrupted"))?;
     let obj = validate_project_json(&value)?;
 
     let format_version = obj
@@ -132,9 +132,9 @@ fn validate_project_json(value: &Value) -> SlidraResult<&serde_json::Map<String,
     // objects are distinct `Value` variants here, unlike JS where
     // `typeof [] === "object"`), so this one check also covers the TS
     // original's separate `Array.isArray(value)` branch.
-    let obj = value
-        .as_object()
-        .ok_or_else(|| SlidraError::invalid("project.json 格式錯誤：內容不是物件"))?;
+    let obj = value.as_object().ok_or_else(|| {
+        SlidraError::invalid("project.json format error: content is not an object")
+    })?;
 
     let format_version_ok = matches!(
         obj.get("formatVersion"),
@@ -142,13 +142,13 @@ fn validate_project_json(value: &Value) -> SlidraResult<&serde_json::Map<String,
     );
     if !format_version_ok {
         return Err(SlidraError::invalid(format!(
-            "project.json 格式錯誤：formatVersion 必須是 {}",
+            "project.json format error: formatVersion must be {}",
             crate::presentation::FORMAT_VERSION
         )));
     }
     if !matches!(obj.get("name"), Some(Value::String(_))) {
         return Err(SlidraError::invalid(
-            "project.json 格式錯誤：缺少或型別錯誤的 name",
+            "project.json format error: missing or wrong type for name",
         ));
     }
     let canvas_ok = matches!(
@@ -159,20 +159,20 @@ fn validate_project_json(value: &Value) -> SlidraResult<&serde_json::Map<String,
     );
     if !canvas_ok {
         return Err(SlidraError::invalid(
-            "project.json 格式錯誤：缺少或型別錯誤的 canvas",
+            "project.json format error: missing or wrong type for canvas",
         ));
     }
     let slides = match obj.get("slides") {
         Some(Value::Array(arr)) => arr,
         _ => {
             return Err(SlidraError::invalid(
-                "project.json 格式錯誤：slides 不是陣列",
+                "project.json format error: slides is not an array",
             ));
         }
     };
     if !slides.iter().all(Value::is_string) {
         return Err(SlidraError::invalid(
-            "project.json 格式錯誤：slides 內含無效項目",
+            "project.json format error: slides contains an invalid item",
         ));
     }
     if let Some(fonts) = obj.get("fonts") {
@@ -184,7 +184,7 @@ fn validate_project_json(value: &Value) -> SlidraResult<&serde_json::Map<String,
     if let Some(transition) = obj.get("transition") {
         if !transition.is_string() {
             return Err(SlidraError::invalid(
-                "project.json 格式錯誤：transition 不是字串",
+                "project.json format error: transition is not a string",
             ));
         }
     }
@@ -198,16 +198,16 @@ const FONT_ENTRY_STRING_FIELDS: [&str; 5] = ["file", "family", "license", "licen
 fn validate_fonts(value: &Value) -> SlidraResult<()> {
     let arr = value
         .as_array()
-        .ok_or_else(|| SlidraError::invalid("project.json 格式錯誤：fonts 不是陣列"))?;
+        .ok_or_else(|| SlidraError::invalid("project.json format error: fonts is not an array"))?;
     let mut seen_families = std::collections::HashSet::new();
     for entry in arr {
-        let obj = entry
-            .as_object()
-            .ok_or_else(|| SlidraError::invalid("project.json 格式錯誤：fonts 內含無效項目"))?;
+        let obj = entry.as_object().ok_or_else(|| {
+            SlidraError::invalid("project.json format error: fonts contains an invalid item")
+        })?;
         for field in FONT_ENTRY_STRING_FIELDS {
             if !matches!(obj.get(field), Some(Value::String(_))) {
                 return Err(SlidraError::invalid(format!(
-                    "project.json 格式錯誤：fonts 內的項目缺少或型別錯誤的 {field}"
+                    "project.json format error: fonts item missing or wrong type for {field}"
                 )));
             }
         }
@@ -218,7 +218,7 @@ fn validate_fonts(value: &Value) -> SlidraResult<()> {
                 .expect("validated above");
             if path.starts_with('/') || path.split('/').any(|segment| segment == "..") {
                 return Err(SlidraError::invalid(
-                    "project.json 格式錯誤：fonts 內含不合法的路徑",
+                    "project.json format error: fonts contains an invalid path",
                 ));
             }
         }
@@ -229,7 +229,7 @@ fn validate_fonts(value: &Value) -> SlidraResult<()> {
             .to_string();
         if !seen_families.insert(family) {
             return Err(SlidraError::invalid(
-                "project.json 格式錯誤：fonts 內有重複的 family",
+                "project.json format error: fonts has a duplicate family",
             ));
         }
     }
@@ -241,32 +241,32 @@ fn validate_fonts(value: &Value) -> SlidraResult<()> {
 /// entries in the same array — the natural mid-upgrade state of a file only
 /// some of whose writes have gone through normalization, not an error.
 fn validate_templates(value: &Value) -> SlidraResult<()> {
-    let arr = value
-        .as_array()
-        .ok_or_else(|| SlidraError::invalid("project.json 格式錯誤：templates 不是陣列"))?;
+    let arr = value.as_array().ok_or_else(|| {
+        SlidraError::invalid("project.json format error: templates is not an array")
+    })?;
     for entry in arr {
         if entry.is_string() {
             continue;
         }
-        let obj = entry
-            .as_object()
-            .ok_or_else(|| SlidraError::invalid("project.json 格式錯誤：templates 內含無效項目"))?;
+        let obj = entry.as_object().ok_or_else(|| {
+            SlidraError::invalid("project.json format error: templates contains an invalid item")
+        })?;
         let file = match obj.get("file") {
             Some(Value::String(s)) => s,
             _ => {
                 return Err(SlidraError::invalid(
-                    "project.json 格式錯誤：templates 內的項目缺少或型別錯誤的 file",
+                    "project.json format error: templates item missing or wrong type for file",
                 ));
             }
         };
         if !matches!(obj.get("name"), Some(Value::String(_))) {
             return Err(SlidraError::invalid(
-                "project.json 格式錯誤：templates 內的項目缺少或型別錯誤的 name",
+                "project.json format error: templates item missing or wrong type for name",
             ));
         }
         if file.starts_with('/') || file.split('/').any(|segment| segment == "..") {
             return Err(SlidraError::invalid(
-                "project.json 格式錯誤：templates 內含不合法的路徑",
+                "project.json format error: templates contains an invalid path",
             ));
         }
     }
@@ -416,7 +416,7 @@ mod tests {
         let err = read_project_json(&work).unwrap_err();
         assert_eq!(
             err.message(),
-            "project.json 格式錯誤：缺少或型別錯誤的 name"
+            "project.json format error: missing or wrong type for name"
         );
         std::fs::remove_dir_all(&work).ok();
     }
@@ -489,7 +489,7 @@ mod tests {
         let work = temp_dir("bad-syntax");
         write_project_json(&work, "{not valid json");
         let err = read_project_json(&work).unwrap_err();
-        assert_eq!(err.message(), "簡報設定檔已損毀");
+        assert_eq!(err.message(), "presentation config file is corrupted");
         std::fs::remove_dir_all(&work).ok();
     }
 

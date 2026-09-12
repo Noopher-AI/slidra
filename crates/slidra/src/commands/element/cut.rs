@@ -21,13 +21,13 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     let payload = clipboard::extract_elements_for_copy(&slide.content, &slide_path, &element_ids)?;
     let updated = edit::delete_elements(&slide.content, &slide_path, &element_ids)?;
     let contents = serde_json::to_string(&payload)
-        .map_err(|_| SlidraError::invalid("無法序列化剪貼簿內容"))?;
+        .map_err(|_| SlidraError::invalid("failed to serialize clipboard content"))?;
     write::write_clipboard_file(&id, &contents)?;
     write::write_presentation_file(&id, &slide_path, &updated)?;
     let svg = clipboard::serialize_clipboard_svg(&payload)?;
 
     Ok(CommandResult::success(
-        format!("已剪下 {slide_path} 的 {} 個元素", element_ids.len()),
+        format!("cut {} elements in {slide_path}", element_ids.len()),
         Some(serde_json::json!({ "svg": svg })),
     ))
 }

@@ -272,7 +272,7 @@ fn resolve_font<'a>(
         .map(|boxed| boxed.as_ref())
         .ok_or_else(|| {
             SlidraError::invalid(format!(
-                "簡報未內嵌字型 {font_family}，無法重新換行：{element_id}"
+                "presentation does not embed font {font_family}, cannot rewrap: {element_id}"
             ))
         })
 }
@@ -301,13 +301,13 @@ pub(crate) fn read_text_font_info(
     };
     if !font_size.is_finite() || font_size <= 0.0 {
         return Err(SlidraError::invalid(format!(
-            "文字框的 font-size 不是合法的正數，無法重新換行：{element_id}"
+            "font-size of the text box is not a valid positive number, cannot rewrap: {element_id}"
         )));
     }
     let anchor = attribute_value(text_node, "text-anchor");
     if anchor.is_some() && anchor.as_deref() != Some("start") {
         return Err(SlidraError::invalid(format!(
-            "文字框的 <text> 不可使用 text-anchor（尚未支援對齊）：{element_id}"
+            "<text> of the text box cannot use text-anchor (alignment not yet supported): {element_id}"
         )));
     }
     Ok((font_family, font_size))
@@ -328,7 +328,9 @@ fn assert_valid_xml_text(new_text: &str) -> SlidraResult<()> {
     if new_text.chars().all(is_xml_1_0_char) {
         Ok(())
     } else {
-        Err(SlidraError::invalid("文字內容包含 XML 不允許的字元"))
+        Err(SlidraError::invalid(
+            "text content contains characters not allowed in XML",
+        ))
     }
 }
 
@@ -415,7 +417,7 @@ fn render_plain_text_content(
                 };
                 if !font_size.is_finite() || font_size <= 0.0 {
                     return Err(SlidraError::invalid(format!(
-                        "元素的 font-size 不是合法的正數，無法排出多行文字：{element_id}"
+                        "element\'s font-size is not a valid positive number, cannot lay out multi-line text: {element_id}"
                     )));
                 }
                 (font_family, font_size)
@@ -464,13 +466,13 @@ fn replace_container_text(
     let text_children = content_text_children(container);
     if group_children_present || text_children.len() != 1 {
         return Err(SlidraError::invalid(format!(
-            "元素不是文字元素：{element_id}"
+            "element is not a text element: {element_id}"
         )));
     }
     let text_node = text_children[0];
     if text_node.self_closing {
         return Err(SlidraError::invalid(format!(
-            "元素沒有文字內容：{element_id}"
+            "element has no text content: {element_id}"
         )));
     }
 
@@ -479,7 +481,7 @@ fn replace_container_text(
         let width: f64 = text_width_raw.parse().unwrap_or(f64::NAN);
         if !width.is_finite() || width <= 0.0 {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 的 {TEXT_WIDTH_ATTRIBUTE} 不是合法的正數：{text_width_raw}"
+                "element {element_id}\'s {TEXT_WIDTH_ATTRIBUTE} is not a valid positive number: {text_width_raw}"
             )));
         }
         let (font_family, font_size) = read_text_font_info(text_node, element_id)?;
@@ -590,7 +592,7 @@ pub fn replace_element_text(
 
     let roots = scan_document(svg_content)?;
     let node = find_node_by_id(&roots, element_id)
-        .ok_or_else(|| SlidraError::invalid(format!("找不到元素：{element_id}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {element_id}")))?;
     assert_not_locked(node, element_id, force)?;
 
     if node.tag == "g" {
@@ -598,12 +600,12 @@ pub fn replace_element_text(
     }
     if node.tag != "text" {
         return Err(SlidraError::invalid(format!(
-            "元素不是文字元素：{element_id}"
+            "element is not a text element: {element_id}"
         )));
     }
     if node.self_closing {
         return Err(SlidraError::invalid(format!(
-            "元素沒有文字內容：{element_id}"
+            "element has no text content: {element_id}"
         )));
     }
     let rendered = render_plain_text_content(node, new_text, element_id, fonts)?;
@@ -709,24 +711,25 @@ fn require_text_box<'a>(
     roots: &'a [ScannedNode],
     element_id: &str,
 ) -> SlidraResult<(&'a ScannedNode, &'a ScannedNode)> {
-    let container = find_node_by_id(roots, element_id)
-        .ok_or_else(|| SlidraError::invalid(format!("元素不是文字元素：{element_id}")))?;
+    let container = find_node_by_id(roots, element_id).ok_or_else(|| {
+        SlidraError::invalid(format!("element is not a text element: {element_id}"))
+    })?;
     if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_none() {
         return Err(SlidraError::invalid(format!(
-            "元素不是文字框：{element_id}"
+            "element is not a text box: {element_id}"
         )));
     }
     let group_children_present = container.children.iter().any(|c| c.tag == "g");
     let text_children = content_text_children(container);
     if group_children_present || text_children.len() != 1 {
         return Err(SlidraError::invalid(format!(
-            "元素不是文字元素：{element_id}"
+            "element is not a text element: {element_id}"
         )));
     }
     let text_node = text_children[0];
     if text_node.self_closing {
         return Err(SlidraError::invalid(format!(
-            "元素沒有文字內容：{element_id}"
+            "element has no text content: {element_id}"
         )));
     }
     Ok((container, text_node))
@@ -747,7 +750,9 @@ pub fn resize_text_box(
     force: bool,
 ) -> SlidraResult<(String, usize)> {
     if !new_width.is_finite() || new_width <= 0.0 {
-        return Err(SlidraError::invalid("文字框寬度必須是大於 0 的數字"));
+        return Err(SlidraError::invalid(
+            "text box width must be a number greater than 0",
+        ));
     }
     // Wrap against the value that will actually be written (4-decimal
     // `format_svg_number`), not the raw input — a positive width below
@@ -758,7 +763,7 @@ pub fn resize_text_box(
         .expect("format_svg_number output always reparses");
     if rounded_width <= 0.0 {
         return Err(SlidraError::invalid(
-            "文字框寬度四捨五入後不是大於 0 的數字",
+            "text box width, after rounding, is not a number greater than 0",
         ));
     }
 
@@ -891,25 +896,25 @@ pub fn set_text_run_style(
 ) -> SlidraResult<(String, usize)> {
     if update.font_weight.is_none() && update.font_style.is_none() {
         return Err(SlidraError::invalid(
-            "text style set 至少要給 --font-weight 或 --font-style",
+            "text style set must give at least --font-weight or --font-style",
         ));
     }
     if let Some(weight) = &update.font_weight {
         if !is_legal_font_weight(weight) {
             return Err(SlidraError::invalid(format!(
-                "--font-weight 必須是 normal、bold 或 100 的倍數（100–900）：{weight}"
+                "--font-weight must be normal, bold, or a multiple of 100 (100-900): {weight}"
             )));
         }
     }
     if let Some(style) = &update.font_style {
         if style != "normal" && style != "italic" {
             return Err(SlidraError::invalid(format!(
-                "--font-style 必須是 normal 或 italic：{style}"
+                "--font-style must be normal or italic: {style}"
             )));
         }
     }
     if start >= end {
-        return Err(SlidraError::invalid("--range 的起點必須小於終點"));
+        return Err(SlidraError::invalid("--range start must be less than end"));
     }
 
     let roots = scan_document(svg_content)?;
@@ -919,7 +924,7 @@ pub fn set_text_run_style(
     let (content, runs) = read_text_box_runs(text_node, svg_content);
     if end > content.encode_utf16().count() {
         return Err(SlidraError::invalid(format!(
-            "--range 超出內容長度（{}）：{start}:{end}",
+            "--range exceeds content length ({}): {start}:{end}",
             content.encode_utf16().count()
         )));
     }
@@ -1008,7 +1013,7 @@ pub fn set_paragraph_list(
     let paragraph_count = content.split('\n').count();
     if paragraph >= paragraph_count {
         return Err(SlidraError::invalid(format!(
-            "第 {paragraph} 段不存在，這個文字框有 {paragraph_count} 段：{element_id}"
+            "paragraph {paragraph} does not exist, this text box has {paragraph_count} paragraphs: {element_id}"
         )));
     }
 
@@ -1116,7 +1121,9 @@ pub(crate) fn build_text_box_markup(
     fonts: &HashMap<String, Box<dyn FontMetrics>>,
 ) -> SlidraResult<(String, usize)> {
     if !input.x.is_finite() || !input.y.is_finite() {
-        return Err(SlidraError::invalid("文字框的座標必須是有限數字"));
+        return Err(SlidraError::invalid(
+            "coordinates of the text box must be finite numbers",
+        ));
     }
     let font = resolve_font(fonts, input.font_family, element_id)?;
 
@@ -1127,7 +1134,7 @@ pub(crate) fn build_text_box_markup(
     let normalized_width: f64 = format_svg_number(input.width).parse().unwrap_or(f64::NAN);
     if normalized_width <= 0.0 {
         return Err(SlidraError::invalid(
-            "文字框寬度四捨五入後不是大於 0 的數字",
+            "text box width, after rounding, is not a number greater than 0",
         ));
     }
     let normalized_font_size: f64 = format_svg_number(input.font_size)
@@ -1135,7 +1142,7 @@ pub(crate) fn build_text_box_markup(
         .unwrap_or(f64::NAN);
     if normalized_font_size <= 0.0 {
         return Err(SlidraError::invalid(
-            "文字框的 font-size 四捨五入後不是大於 0 的數字",
+            "font-size of the text box, after rounding, is not a number greater than 0",
         ));
     }
 
@@ -1232,7 +1239,7 @@ fn append_markup(svg_content: &str, markup: &str) -> SlidraResult<String> {
     let svg_root = roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
     Ok(apply_splices(
         svg_content,
         &[Splice {
@@ -1277,15 +1284,21 @@ mod tests {
         let svg = slide(
             r#"<text id="a"><tspan x="10" y="20">one</tspan><tspan x="10" y="35">two</tspan></text>"#,
         );
-        let updated =
-            replace_element_text(&svg, "a", "第一行\n第二行\n第三行", &font_book(), false).unwrap();
+        let updated = replace_element_text(
+            &svg,
+            "a",
+            "first line\nsecond line\nthird line",
+            &font_book(),
+            false,
+        )
+        .unwrap();
         assert_eq!(
             updated,
             slide(concat!(
                 r#"<text id="a">"#,
-                r#"<tspan x="10" y="20" data-slidra-break="1">第一行</tspan>"#,
-                r#"<tspan x="10" y="35" data-slidra-break="1">第二行</tspan>"#,
-                r#"<tspan x="10" y="50">第三行</tspan>"#,
+                r#"<tspan x="10" y="20" data-slidra-break="1">first line</tspan>"#,
+                r#"<tspan x="10" y="35" data-slidra-break="1">second line</tspan>"#,
+                r#"<tspan x="10" y="50">third line</tspan>"#,
                 "</text>"
             ))
         );
@@ -1295,18 +1308,19 @@ mod tests {
     fn text_set_growing_single_line_into_multiline_measures_font_line_height() {
         let svg = slide(r#"<text id="a" font-family="Noto Sans TC" font-size="16">one</text>"#);
         let updated =
-            replace_element_text(&svg, "a", "第一行\n第二行", &font_book(), false).unwrap();
+            replace_element_text(&svg, "a", "first line\nsecond line", &font_book(), false)
+                .unwrap();
         // No existing tspan gap to copy, so the step must come from the
         // font's own line height — just assert it actually wrapped into two
         // distinct, increasing `y` tspans rather than pin an exact pixel
         // value to the embedded font's metrics.
         assert!(
-            updated.contains(r#"<tspan x="0" y="0" data-slidra-break="1">第一行</tspan>"#),
+            updated.contains(r#"<tspan x="0" y="0" data-slidra-break="1">first line</tspan>"#),
             "{updated}"
         );
-        assert!(updated.contains("第二行"), "{updated}");
+        assert!(updated.contains("second line"), "{updated}");
         assert!(
-            !updated.contains(r#"y="0">第二行"#),
+            !updated.contains(r#"y="0">second line"#),
             "second line must not sit at the same y as the first: {updated}"
         );
     }
@@ -1323,21 +1337,24 @@ mod tests {
         let svg = slide(r#"<text id="a">hi</text>"#);
         let err =
             replace_element_text(&svg, "a", "bad\u{0001}char", &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "文字內容包含 XML 不允許的字元");
+        assert_eq!(
+            err.message(),
+            "text content contains characters not allowed in XML"
+        );
     }
 
     #[test]
     fn text_set_missing_element_is_not_found() {
         let svg = slide(r#"<text id="a">hi</text>"#);
         let err = replace_element_text(&svg, "nope", "x", &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "找不到元素：nope");
+        assert_eq!(err.message(), "element not found: nope");
     }
 
     #[test]
     fn text_set_respects_lock_and_force() {
         let svg = slide(r#"<text id="a" data-slidra-lock="true">hi</text>"#);
         let err = replace_element_text(&svg, "a", "x", &font_book(), false).unwrap_err();
-        assert!(err.message().contains("鎖定的版面骨架"));
+        assert!(err.message().contains("locked layout skeleton"));
         let updated = replace_element_text(&svg, "a", "x", &font_book(), true).unwrap();
         assert!(updated.contains(">x<"));
         assert!(updated.contains(r#"data-slidra-lock="true""#));
@@ -1347,14 +1364,14 @@ mod tests {
     fn text_set_self_closing_text_has_no_content_to_replace() {
         let svg = slide(r#"<text id="a"/>"#);
         let err = replace_element_text(&svg, "a", "x", &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "元素沒有文字內容：a");
+        assert_eq!(err.message(), "element has no text content: a");
     }
 
     #[test]
     fn text_set_on_a_non_text_bearing_element_errors() {
         let svg = slide(r#"<rect id="a" x="0" y="0" width="1" height="1"/>"#);
         let err = replace_element_text(&svg, "a", "x", &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "元素不是文字元素：a");
+        assert_eq!(err.message(), "element is not a text element: a");
     }
 
     // --- text set: text box (<g data-slidra-text-width>) ---
@@ -1463,14 +1480,17 @@ mod tests {
     fn textbox_width_non_positive_errors() {
         let svg = textbox_svg("500", &["hi"]);
         let err = resize_text_box(&svg, "tb", 0.0, &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "文字框寬度必須是大於 0 的數字");
+        assert_eq!(
+            err.message(),
+            "text box width must be a number greater than 0"
+        );
     }
 
     #[test]
     fn textbox_width_on_a_non_text_box_errors() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let err = resize_text_box(&svg, "a", 100.0, &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "元素不是文字框：a");
+        assert_eq!(err.message(), "element is not a text box: a");
     }
 
     #[test]
@@ -1479,7 +1499,7 @@ mod tests {
             r#"<g id="tb" data-slidra-lock="true" data-slidra-text-width="500"><text font-family="Noto Sans TC" font-size="16" xml:space="preserve">hi</text></g>"#,
         );
         let err = resize_text_box(&svg, "tb", 100.0, &font_book(), false).unwrap_err();
-        assert!(err.message().contains("鎖定的版面骨架"));
+        assert!(err.message().contains("locked layout skeleton"));
         assert!(resize_text_box(&svg, "tb", 100.0, &font_book(), true).is_ok());
     }
 
@@ -1543,7 +1563,7 @@ mod tests {
         let err = set_text_run_style(&svg, "tb", 0, 1, &update, &font_book(), false).unwrap_err();
         assert_eq!(
             err.message(),
-            "text style set 至少要給 --font-weight 或 --font-style"
+            "text style set must give at least --font-weight or --font-style"
         );
     }
 
@@ -1566,7 +1586,7 @@ mod tests {
             font_style: None,
         };
         let err = set_text_run_style(&svg, "tb", 3, 3, &update, &font_book(), false).unwrap_err();
-        assert_eq!(err.message(), "--range 的起點必須小於終點");
+        assert_eq!(err.message(), "--range start must be less than end");
     }
 
     #[test]
@@ -1577,7 +1597,7 @@ mod tests {
             font_style: None,
         };
         let err = set_text_run_style(&svg, "tb", 0, 99, &update, &font_book(), false).unwrap_err();
-        assert!(err.message().contains("--range 超出內容長度"));
+        assert!(err.message().contains("--range exceeds content length"));
     }
 
     // --- text list set ---
@@ -1612,7 +1632,7 @@ mod tests {
         let svg = textbox_svg("500", &["only one paragraph"]);
         let err =
             set_paragraph_list(&svg, "tb", 5, ListKind::Bullet, &font_book(), false).unwrap_err();
-        assert!(err.message().contains("第 5 段不存在"));
+        assert!(err.message().contains("paragraph 5 does not exist"));
     }
 
     #[test]
@@ -1700,7 +1720,7 @@ mod tests {
             align: TextAlign::Left,
         };
         let err = add_text_box(&svg, "el-new", &input, &font_book()).unwrap_err();
-        assert!(err.message().contains("簡報未內嵌字型"));
+        assert!(err.message().contains("presentation does not embed font"));
     }
 
     #[test]
@@ -1718,14 +1738,17 @@ mod tests {
             align: TextAlign::Left,
         };
         let err = add_text_box(&svg, "el-new", &input, &font_book()).unwrap_err();
-        assert_eq!(err.message(), "文字框寬度四捨五入後不是大於 0 的數字");
+        assert_eq!(
+            err.message(),
+            "text box width, after rounding, is not a number greater than 0"
+        );
 
         input.width = 300.0;
         input.font_size = 0.00001;
         let err = add_text_box(&svg, "el-new", &input, &font_book()).unwrap_err();
         assert_eq!(
             err.message(),
-            "文字框的 font-size 四捨五入後不是大於 0 的數字"
+            "font-size of the text box, after rounding, is not a number greater than 0"
         );
     }
 }

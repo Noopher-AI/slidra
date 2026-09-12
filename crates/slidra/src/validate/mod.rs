@@ -25,7 +25,14 @@ const SIDE_MARGIN: f64 = 80.0;
 const BOTTOM_MARGIN: f64 = 72.0;
 /// How close to the canvas bottom a caption-sized (footer) text box may go.
 const FOOTER_MARGIN: f64 = 16.0;
-const THANK_YOU: &[&str] = &["謝謝", "謝謝大家", "謝謝聆聽", "thank you", "thanks", "q&a"];
+const THANK_YOU: &[&str] = &[
+    "thank you",
+    "thank you all",
+    "thank you for listening",
+    "thank you",
+    "thanks",
+    "q&a",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
@@ -247,7 +254,7 @@ pub fn read_slide_facts(svg: &str) -> SlidraResult<SlideFacts> {
     let root = roots
         .iter()
         .find(|n| n.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
     let mut facts = SlideFacts::default();
 
     if let Some(style) = attribute_value(root, "style") {
@@ -558,10 +565,10 @@ pub fn check_slide(
                 slide,
                 Some(&tb.id),
                 "geometry.right-overflow",
-                format!("右緣 {right:.0}"),
+                format!("right edge {right:.0}"),
                 format!("≤ {right_limit:.0}"),
                 format!(
-                    "第 {n} 頁文字框 {} 右緣 {right:.0} 超過 {right_limit:.0}",
+                    "page {n} text box {} right edge {right:.0} exceeds {right_limit:.0}",
                     tb.id
                 ),
             );
@@ -573,10 +580,10 @@ pub fn check_slide(
                 slide,
                 Some(&tb.id),
                 "geometry.bottom-overflow",
-                format!("底 {bottom:.0}"),
+                format!("bottom {bottom:.0}"),
                 format!("≤ {bottom_limit:.0}"),
                 format!(
-                    "第 {n} 頁文字框 {} 底 {bottom:.0}（{} 行 × 1.45 × {}）超過 {bottom_limit:.0}",
+                    "page {n} text box {} bottom {bottom:.0} ({} lines x 1.45 x {}) exceeds {bottom_limit:.0}",
                     tb.id,
                     tb.lines(),
                     tb.font_size
@@ -606,10 +613,10 @@ pub fn check_slide(
         // presentation does not hold. Saying which one it is saves a guess.
         let message = match resolved.strip_prefix("assets/") {
             Some(name) => format!(
-                "第 {n} 頁 {element} 指向的資產不存在：{name}（用 ls <presentation-id> assets 對一次檔名，還沒匯入就先 asset import）"
+                "page {n} {element} points to an asset that does not exist: {name} (use ls <presentation-id> assets to check the filename; if not imported yet, run asset import first)"
             ),
             None => format!(
-                "第 {n} 頁 {element} 的 {} 不是資產路徑（投影片在 slides/ 底下，資產要寫成 ../assets/<檔名>）",
+                "the {} of page {n} {element} is not an asset path (slides live under slides/, assets must be written as ../assets/<filename>)",
                 reference.value
             ),
         };
@@ -619,7 +626,7 @@ pub fn check_slide(
             (!element.is_empty()).then_some(element),
             "asset.missing",
             reference.value.clone(),
-            "../assets/<這份簡報有的資產>",
+            "../assets/<an asset this presentation has>",
             message,
         );
     }
@@ -636,8 +643,8 @@ pub fn check_slide(
                     Some(&shape.id),
                     "taboo.stroke",
                     format!("stroke {stroke}"),
-                    "無框線",
-                    format!("第 {n} 頁色塊 {} 有框線 {stroke}", shape.id),
+                    "no border",
+                    format!("page {n} color block {} has border {stroke}", shape.id),
                 );
             }
         }
@@ -659,9 +666,13 @@ pub fn check_slide(
                     slide,
                     Some(&lower.id),
                     "geometry.text-overlap",
-                    format!("上一框底 {:.0}，本框頂 {:.0}", upper.bottom(), lower.y),
-                    "上一框底 < 本框頂",
-                    format!("第 {n} 頁文字框 {} 與 {} 重疊", upper.id, lower.id),
+                    format!(
+                        "previous box bottom {:.0}, this box top {:.0}",
+                        upper.bottom(),
+                        lower.y
+                    ),
+                    "previous box bottom < this box top",
+                    format!("page {n} text box {} overlaps {}", upper.id, lower.id),
                 );
             }
         }
@@ -674,9 +685,9 @@ pub fn check_slide(
             slide,
             None,
             "structure.background",
-            "未設定",
-            "已設定 background-color",
-            format!("第 {n} 頁沒有設定背景色"),
+            "not set",
+            "set background-color",
+            format!("page {n} has no background color set"),
         ),
         None => {}
         Some(color) => {
@@ -693,8 +704,10 @@ pub fn check_slide(
                         None,
                         "structure.background",
                         color.clone(),
-                        allowed.join(" 或 "),
-                        format!("第 {n} 頁背景色 {color} 不是配色的 background／secondary_bg"),
+                        allowed.join(" or "),
+                        format!(
+                            "page {n} background color {color} is not background/secondary_bg of the palette"
+                        ),
                     );
                 }
             }
@@ -706,9 +719,9 @@ pub fn check_slide(
             slide,
             None,
             "structure.notes",
-            "空",
-            "非空",
-            format!("第 {n} 頁沒有備忘稿"),
+            "empty",
+            "non-empty",
+            format!("page {n} has no speaker notes"),
         );
     }
 
@@ -737,10 +750,10 @@ pub fn check_slide(
                 slide,
                 Some(&tb.id),
                 "role.garnish-meaning",
-                "garnish 是文字框",
-                "garnish 不承載文字",
+                "garnish is a text box",
+                "garnish does not carry text",
                 format!(
-                    "第 {n} 頁 {} 標成 garnish 卻是文字框——裝飾不承載意義，改標 label／node 或拿掉文字",
+                    "page {n} {} is marked garnish but is a text box -- decoration should not carry meaning, relabel as label/node or remove the text",
                     tb.id
                 ),
             );
@@ -765,9 +778,11 @@ pub fn check_slide(
                 slide,
                 Some(target),
                 "role.garnish-animated",
-                "garnish 有動畫",
-                "garnish 不加效果",
-                format!("第 {n} 頁 {target} 是 garnish 卻有進場效果——裝飾沒有可以講的那一步"),
+                "garnish has animation",
+                "garnish does not take effects",
+                format!(
+                    "page {n} {target} is garnish but has an entrance effect -- decoration has no step worth narrating"
+                ),
             );
         }
     }
@@ -779,9 +794,9 @@ pub fn check_slide(
             slide,
             None,
             "role.spine-count",
-            format!("{spines} 條"),
-            "≤ 1 條",
-            format!("第 {n} 頁有 {spines} 條 spine——一頁只有一條閱讀主軸"),
+            format!("{spines}"),
+            "≤ 1",
+            format!("page {n} has {spines} spines -- a page has only one reading spine"),
         );
     }
 
@@ -793,9 +808,9 @@ pub fn check_slide(
             slide,
             None,
             "role.edge-endpoints",
-            format!("{nodes} 個 node"),
-            "≥ 2 個 node",
-            format!("第 {n} 頁有 edge 卻只有 {nodes} 個 node——連接線要有兩端"),
+            format!("{nodes} nodes"),
+            "≥ 2 nodes",
+            format!("page {n} has an edge but only {nodes} node(s) -- a connector needs two ends"),
         );
     }
 
@@ -811,10 +826,10 @@ pub fn check_slide(
             slide,
             None,
             "role.node-label",
-            format!("{labels} 個 label／{node_shapes} 個 node 色塊"),
-            "label 不少於 node 色塊",
+            format!("{labels} labels / {node_shapes} node color blocks"),
+            "label count is not fewer than node color blocks",
             format!(
-                "第 {n} 頁有 {node_shapes} 個 node 色塊但只有 {labels} 個 label——沒有標籤的節點不是語意單位"
+                "page {n} has {node_shapes} node shapes but only {labels} label(s) -- an unlabeled node is not a semantic unit"
             ),
         );
     }
@@ -828,9 +843,9 @@ pub fn check_slide(
                 slide,
                 None,
                 "motion.transition",
-                "沒有轉場",
-                "每頁有 <slidra:transition>",
-                format!("第 {n} 頁沒有設定轉場（計畫 animation={animation}）"),
+                "no transition",
+                "each page has <slidra:transition>",
+                format!("page {n} has no transition set (plan animation={animation})"),
             );
         }
         // #303: the plan says every page carries a background image, so a
@@ -843,9 +858,9 @@ pub fn check_slide(
                 slide,
                 None,
                 "structure.background-image",
-                "沒有背景圖",
-                "有 data-slidra-role=background 的圖片元素",
-                format!("第 {n} 頁沒有背景圖（計畫 background=on）"),
+                "no background image",
+                "an image element with data-slidra-role=background",
+                format!("page {n} has no background image (plan background=on)"),
             );
         }
         let needs_enter = match animation {
@@ -859,9 +874,9 @@ pub fn check_slide(
                 slide,
                 None,
                 "motion.enter",
-                "0 個進場效果",
-                "≥ 1 個 enter 效果",
-                format!("第 {n} 頁沒有任何進場效果（計畫 animation={animation}）"),
+                "0 entrance effects",
+                "≥ 1 enter effect",
+                format!("page {n} has no entrance effect (plan animation={animation})"),
             );
         }
     }
@@ -879,10 +894,10 @@ pub fn check_slide(
                 slide,
                 None,
                 "blueprint.required",
-                "沒有 blueprint",
-                "每頁都要有 blueprint",
+                "missing blueprint",
+                "every page must have a blueprint",
                 format!(
-                    "第 {n} 頁沒有寫下構圖決定——在 plan/outline.md 這一頁加上 blueprint（shape／nodes／steps）"
+                    "page {n} has no recorded composition decision -- add a blueprint (shape/nodes/steps) for this page in plan/outline.md"
                 ),
             );
         }
@@ -906,10 +921,10 @@ pub fn check_slide(
                     slide,
                     None,
                     "role.required",
-                    "沒有 node",
-                    "≥ 1 個 data-slidra-role=node",
+                    "missing node",
+                    "≥ 1 data-slidra-role=node",
                     format!(
-                        "第 {n} 頁是 {} 關係卻沒有標出任何 node——每個語意單位都要標角色（指南第 3b 節）",
+                        "page {n} is a {} relationship but has no node marked -- every semantic unit needs a marked role (see guide section 3b)",
                         page.relationship
                     ),
                 );
@@ -938,10 +953,10 @@ pub fn check_slide(
                 slide,
                 None,
                 "blueprint.nodes",
-                format!("{nodes} 個"),
-                format!("{} 個", blueprint.nodes),
+                format!("{nodes}"),
+                format!("{}", blueprint.nodes),
                 format!(
-                    "第 {n} 頁畫了 {nodes} 個 node，構圖時說的是 {}——改頁面或改構圖，不要兩邊不一致",
+                    "page {n} drew {nodes} nodes, but the composition specifies {} -- change the page or the composition, do not let them disagree",
                     blueprint.nodes
                 ),
             );
@@ -952,10 +967,10 @@ pub fn check_slide(
                 slide,
                 None,
                 "blueprint.steps",
-                format!("{} 步", facts.click_steps),
-                format!("{} 步", blueprint.steps),
+                format!("{} steps", facts.click_steps),
+                format!("{} steps", blueprint.steps),
                 format!(
-                    "第 {n} 頁有 {} 個 on-click 步驟，構圖時說的是 {} 步",
+                    "page {n} has {} on-click steps, but the composition specifies {} steps",
                     facts.click_steps, blueprint.steps
                 ),
             );
@@ -1004,10 +1019,10 @@ pub fn check_slide(
                     slide,
                     Some(&tb.id),
                     "structure.scrim",
-                    "沒有 scrim 面板",
-                    "文字框完全落在一個 background／secondary_bg 的 rect 之內",
+                    "missing scrim panel",
+                    "text box lies entirely within a background/secondary_bg rect",
                     format!(
-                        "第 {n} 頁有背景圖，文字框 {} 底下沒有遮住背景的面板（scrim）",
+                        "page {n} has a background image, but text box {} has no panel covering the background beneath it (scrim)",
                         tb.id
                     ),
                 );
@@ -1026,10 +1041,10 @@ pub fn check_slide(
             slide,
             None,
             "focus.single-title",
-            format!("{} 個", titles.len()),
-            "恰好 1 個",
+            format!("{}", titles.len()),
+            "exactly 1",
             format!(
-                "第 {n} 頁有 {} 個標題角色的文字框（字級 ≥ {title_size:.0}）",
+                "page {n} has {} text box(es) with title role (font size >= {title_size:.0})",
                 titles.len()
             ),
         );
@@ -1046,9 +1061,12 @@ pub fn check_slide(
                 slide,
                 Some(&title.id),
                 "text.title-length",
-                format!("{chars} 字"),
-                format!("≤ {} 字", density.title_chars),
-                format!("第 {n} 頁標題 {chars} 字，上限 {} 字", density.title_chars),
+                format!("{chars} characters"),
+                format!("≤ {} characters", density.title_chars),
+                format!(
+                    "page {n} title has {chars} characters, limit is {} characters",
+                    density.title_chars
+                ),
             );
         }
     }
@@ -1067,10 +1085,10 @@ pub fn check_slide(
                     slide,
                     Some(&tb.id),
                     "text.bullet-length",
-                    format!("{chars} 字"),
-                    format!("≤ {} 字", density.bullet_chars),
+                    format!("{chars} characters"),
+                    format!("≤ {} characters", density.bullet_chars),
                     format!(
-                        "第 {n} 頁要點第 {} 條 {chars} 字，上限 {} 字",
+                        "page {n} bullet point {} has {chars} characters, limit is {} characters",
                         i + 1,
                         density.bullet_chars
                     ),
@@ -1082,10 +1100,10 @@ pub fn check_slide(
                     slide,
                     Some(&tb.id),
                     "text.bullet-lines",
-                    format!("{} 行", paragraph.lines),
-                    format!("≤ {} 行", density.bullet_lines),
+                    format!("{} lines", paragraph.lines),
+                    format!("≤ {} lines", density.bullet_lines),
                     format!(
-                        "第 {n} 頁要點第 {} 條折成 {} 行，上限 {} 行",
+                        "page {n} bullet point {} wraps to {} lines, limit is {} lines",
                         i + 1,
                         paragraph.lines,
                         density.bullet_lines
@@ -1113,7 +1131,7 @@ pub fn check_slide(
                 .copied()
                 .filter(|tb| tb.x >= half)
                 .collect();
-            for (label, column) in [("左", left), ("右", right)] {
+            for (label, column) in [("left", left), ("right", right)] {
                 let count: usize = column.iter().map(|tb| tb.paragraphs.len()).sum();
                 if count < lo || count > hi {
                     push(
@@ -1121,9 +1139,11 @@ pub fn check_slide(
                         slide,
                         column.first().map(|tb| tb.id.as_str()),
                         "text.bullet-count",
-                        format!("{count} 條"),
-                        format!("{lo}～{hi} 條"),
-                        format!("第 {n} 頁對照{label}欄有 {count} 條要點，應為 {lo}～{hi} 條"),
+                        format!("{count} items"),
+                        format!("{lo}-{hi} items"),
+                        format!(
+                            "page {n} comparison column {label} has {count} bullet points, should be {lo}-{hi}"
+                        ),
                     );
                 }
             }
@@ -1136,9 +1156,9 @@ pub fn check_slide(
                     slide,
                     body_boxes.first().map(|tb| tb.id.as_str()),
                     "text.bullet-count",
-                    format!("{count} 條"),
-                    format!("{lo}～{hi} 條"),
-                    format!("第 {n} 頁有 {count} 條要點，應為 {lo}～{hi} 條"),
+                    format!("{count} items"),
+                    format!("{lo}-{hi} items"),
+                    format!("page {n} has {count} bullet points, should be {lo}-{hi}"),
                 );
             }
         }
@@ -1150,9 +1170,12 @@ pub fn check_slide(
             slide,
             None,
             "text.page-total",
-            format!("{total} 字"),
-            format!("≤ {} 字", density.page_chars),
-            format!("第 {n} 頁共 {total} 字，上限 {} 字", density.page_chars),
+            format!("{total} characters"),
+            format!("≤ {} characters", density.page_chars),
+            format!(
+                "page {n} has {total} characters total, limit is {} characters",
+                density.page_chars
+            ),
         );
     }
 
@@ -1175,9 +1198,9 @@ pub fn check_slide(
                 Some(&tb.id),
                 "style.font-size",
                 format!("{}", tb.font_size),
-                "type_scale 的值",
+                "type_scale's value",
                 format!(
-                    "第 {n} 頁文字框 {} 字級 {} 不在字級表上",
+                    "page {n} text box {} font size {} not in the font size table",
                     tb.id, tb.font_size
                 ),
             );
@@ -1198,19 +1221,19 @@ pub fn check_slide(
                 "style.text-fill",
                 fill.clone(),
                 format!(
-                    "{} 或 {}（大數字與粗體標籤可用 accent）",
+                    "{} or {} (accent can be used for large numbers and bold labels)",
                     text_fills[0], text_fills[1]
                 ),
-                format!("第 {n} 頁文字框 {} 顏色 {fill} 不是 text／muted", tb.id),
+                format!("page {n} text box {} color {fill} is not text/muted", tb.id),
             ),
             None => push(
                 errors,
                 slide,
                 Some(&tb.id),
                 "style.text-fill",
-                "未設定",
-                format!("{} 或 {}", text_fills[0], text_fills[1]),
-                format!("第 {n} 頁文字框 {} 沒有設定文字顏色", tb.id),
+                "not set",
+                format!("{} or {}", text_fills[0], text_fills[1]),
+                format!("page {n} text box {} has no text color set", tb.id),
             ),
         }
     }
@@ -1234,17 +1257,20 @@ pub fn check_slide(
                 Some(&shape.id),
                 "style.shape-fill",
                 fill.clone(),
-                "配色的 primary／accent／secondary_accent／secondary_bg／background、none 或 url(#…)",
-                format!("第 {n} 頁色塊 {} 顏色 {fill} 不在配色裡", shape.id),
+                "primary/accent/secondary_accent/secondary_bg/background of the palette, none, or url(#...)",
+                format!(
+                    "page {n} color block {} color {fill} is not in the palette",
+                    shape.id
+                ),
             ),
             None => push(
                 errors,
                 slide,
                 Some(&shape.id),
                 "style.shape-fill",
-                "未設定",
-                "配色裡的顏色",
-                format!("第 {n} 頁色塊 {} 沒有填色", shape.id),
+                "not set",
+                "a color in the palette",
+                format!("page {n} color block {} has no fill", shape.id),
             ),
         }
     }
@@ -1272,10 +1298,10 @@ pub fn check_slide(
                     slide,
                     None,
                     "roster.page-type",
-                    format!("沒有字級 {expected:.0} 的文字框"),
-                    format!("{declared_type} 頁需有字級 {expected:.0}"),
+                    format!("no text box with font size {expected:.0}"),
+                    format!("{declared_type} page must have font size {expected:.0}"),
                     format!(
-                        "第 {n} 頁計畫是 {declared_type} 頁，卻沒有字級 {expected:.0} 的文字框"
+                        "page {n} plan declares a {declared_type} page, but has no text box with font size {expected:.0}"
                     ),
                 );
             }
@@ -1320,9 +1346,9 @@ fn check_rhythm(
             slide,
             None,
             "rhythm.breathing-cards",
-            format!("{panels} 個面板"),
-            "≤ 2 個",
-            format!("第 {n} 頁是喘息頁，卻有 {panels} 個面板（secondary_bg 的卡片）"),
+            format!("{panels} panels"),
+            "≤ 2",
+            format!("page {n} is a breather page but has {panels} panels (secondary_bg cards)"),
         );
     }
 }
@@ -1357,10 +1383,10 @@ pub fn check_deck(
                         slide,
                         None,
                         "roster.relationship-variety",
-                        format!("{count}／{total} 頁是 {candidate}"),
-                        "同一種關係不超過半數",
+                        format!("{count}/{total} pages are {candidate}"),
+                        "the same relationship must not exceed half",
                         format!(
-                            "{total} 頁裡有 {count} 頁是 {candidate} 關係——每頁的資訊結構都一樣，讀起來會是同一頁。回去看內容，有沒有哪幾節其實是順序、對比或一個數字"
+                            "{count} of {total} pages are {candidate} relationships — every page has the same information structure, so they read as the same page. go back to the content and check whether some sections are actually sequence, contrast, or a single number"
                         ),
                     );
                     break;
@@ -1393,10 +1419,10 @@ pub fn check_deck(
                 slide,
                 None,
                 "rhythm.repeated-shape",
-                format!("{} × {} 個單位", a.shape, a.nodes),
-                "相鄰兩頁不用同一種構圖解同一種關係",
+                format!("{} × {} units", a.shape, a.nodes),
+                "adjacent pages should not use the same composition to resolve the same relationship",
                 format!(
-                    "第 {} 頁與第 {} 頁都是 {} 關係、都用 {}、都是 {} 個單位——換一種構圖，或把兩頁合併",
+                    "page {} and page {} are both {} relationships, both use {}, both have {} units -- use a different composition, or merge the two pages",
                     first.n, second.n, first.relationship, a.shape, a.nodes
                 ),
             );
@@ -1413,9 +1439,9 @@ pub fn check_deck(
                     Some(&tb.id),
                     "taboo.thank-you",
                     tb.full_text().trim().to_string(),
-                    "沒有謝謝頁",
+                    "no thank-you page",
                     format!(
-                        "最後一頁是「{}」，結語應是帶得走的結論",
+                        "the last page is \"{}\", the closing should be a takeaway conclusion",
                         tb.full_text().trim()
                     ),
                 );
@@ -1443,9 +1469,9 @@ pub fn check_deck(
                         path,
                         None,
                         "taboo.duplicate-cover",
-                        "與第 1 頁文字完全相同",
-                        "不重複封面",
-                        format!("第 {} 頁的文字與第 1 頁完全相同", i + 1),
+                        "text is identical to page 1",
+                        "no duplicate cover",
+                        format!("the text of page {} is identical to page 1", i + 1),
                     );
                 }
             }
@@ -1461,10 +1487,10 @@ pub fn check_deck(
             slide,
             None,
             "roster.page-count",
-            format!("{} 頁", slides.len()),
-            format!("{} 頁", outline.pages.len()),
+            format!("{} pages", slides.len()),
+            format!("{} pages", outline.pages.len()),
             format!(
-                "簡報有 {} 頁，計畫有 {} 頁",
+                "presentation has {} pages, plan has {} pages",
                 slides.len(),
                 outline.pages.len()
             ),
@@ -1491,9 +1517,11 @@ pub fn check_deck(
                 slide,
                 None,
                 "structure.template",
-                format!("沒有範本「{name}」"),
-                format!("有範本「{name}」"),
-                format!("計畫用到 {page_type} 頁，但沒有登記名為「{name}」的範本"),
+                format!("no template \"{name}\""),
+                format!("has template \"{name}\""),
+                format!(
+                    "plan uses page type {page_type}, but no template named \"{name}\" is registered"
+                ),
             );
         }
     }
@@ -1605,7 +1633,7 @@ pub fn validate_presentation(id: &str, slide_path: Option<&str>) -> SlidraResult
     let checked = match slide_path {
         Some(target) => {
             let Some(index) = project.slides.iter().position(|p| p == target) else {
-                return Err(SlidraError::not_found(format!("不是投影片：{target}")));
+                return Err(SlidraError::not_found(format!("not a slide: {target}")));
             };
             check_slide(&ctx, index, target, &slides[index].1, &mut errors);
             1
@@ -1707,7 +1735,7 @@ mod tests {
     fn good_bullets_page() -> String {
         slide(
             Some("#101418"),
-            "講稿。",
+            "speaker notes.",
             &format!(
                 "{}{}{}",
                 textbox(
@@ -1717,7 +1745,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("為什麼需要新工具", false)]
+                    &[("why a new tool is needed", false)]
                 ),
                 rect("el-rule", 80.0, 136.0, 56.0, 4.0, "#F5B942", None),
                 textbox(
@@ -1728,9 +1756,9 @@ mod tests {
                     24.0,
                     "#F4F6F8",
                     &[
-                        ("第一條要點", true),
-                        ("第二條要點", true),
-                        ("第三條要點", false)
+                        ("first bullet point", true),
+                        ("second bullet point", true),
+                        ("third bullet point", false)
                     ]
                 ),
             ),
@@ -1765,12 +1793,12 @@ mod tests {
     fn reads_text_boxes_paragraphs_and_shapes() {
         let facts = read_slide_facts(&good_bullets_page()).unwrap();
         assert_eq!(facts.background.as_deref(), Some("#101418"));
-        assert_eq!(facts.notes, "講稿。");
+        assert_eq!(facts.notes, "speaker notes.");
         assert_eq!(facts.text_boxes.len(), 2);
         let body = &facts.text_boxes[1];
         assert_eq!(body.paragraphs.len(), 3);
         assert_eq!(body.paragraphs[0].lines, 1);
-        assert_eq!(body.chars(), 15);
+        assert_eq!(body.chars(), 49);
         assert_eq!(facts.shapes.len(), 1);
         assert_eq!((facts.shapes[0].width, facts.shapes[0].height), (56.0, 4.0));
     }
@@ -1795,7 +1823,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("標題", false)]
+                    &[("title", false)]
                 ),
                 textbox(
                     "el-body",
@@ -1806,14 +1834,14 @@ mod tests {
                     "#F4F6F8",
                     &[
                         (
-                            "這一條要點寫得實在太長了長到超過三十二個字元的上限完全是把講稿貼到頁面上",
+                            "this bullet point is written way too long, exceeding the 32-character limit, essentially pasting the speaker script onto the page",
                             false
                         ),
-                        ("折行第一段", true),
-                        ("第二條", true),
-                        ("第三條", false),
-                        ("第四條", false),
-                        ("第五條", false)
+                        ("wrap first paragraph", true),
+                        ("second", true),
+                        ("third", false),
+                        ("fourth", false),
+                        ("fifth", false)
                     ]
                 ),
             ),
@@ -1828,7 +1856,7 @@ mod tests {
                 .find(|e| e.rule == "text.bullet-length")
                 .unwrap()
                 .limit,
-            "≤ 32 字"
+            "≤ 32 characters"
         );
     }
 
@@ -1847,7 +1875,7 @@ mod tests {
                     40.0,
                     "#F4F6F8",
                     &[(
-                        "這個標題實在是太長了長到超過二十四個字的上限根本是一整句話",
+                        "this title is really too long, exceeding the 24-character limit, it is basically a whole sentence",
                         false
                     )]
                 ),
@@ -1859,14 +1887,14 @@ mod tests {
                     24.0,
                     "#F4F6F8",
                     &[
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("一二三四五六七八九十一二三四五六七", true),
-                        ("第八條", false)
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("abcdefghijklmnopq", true),
+                        ("eighth", false)
                     ]
                 ),
             ),
@@ -1877,7 +1905,7 @@ mod tests {
         // 17 × 7 + 3 + 28 = 150 visible characters: well under the 1000 budget.
         assert!(!r.contains(&"text.page-total"), "{r:?}");
 
-        let wall = "字".repeat(1020);
+        let wall = "chars".repeat(1020);
         let svg = slide(
             Some("#101418"),
             "n",
@@ -2049,7 +2077,7 @@ mod tests {
             160.0,
             24.0,
             "#F4F6F8",
-            &[("字", false)],
+            &[("chars", false)],
         );
         let body = format!("{}{}{label}", node("el-n1"), node("el-n2"));
 
@@ -2100,7 +2128,7 @@ mod tests {
             1120.0,
             40.0,
             "#F4F6F8",
-            &[("標題", false)],
+            &[("title", false)],
         );
         let none = rules(&run_one(
             &slide(Some("#101418"), "n", &plain),
@@ -2197,7 +2225,7 @@ mod tests {
             1400.0,
             24.0,
             "#F4F6F8",
-            &[("超寬", false)],
+            &[("too wide", false)],
         );
         let loose = rules(&run_one(
             &slide(Some("#101418"), "n", &body),
@@ -2210,7 +2238,7 @@ mod tests {
             &slide(
                 Some("#101418"),
                 "n",
-                &format!("<g id=\"el-group\" data-slidra-name=\"卡片組\">{body}</g>"),
+                &format!("<g id=\"el-group\" data-slidra-name=\"card deck\">{body}</g>"),
             ),
             "bullets",
             "dense",
@@ -2229,7 +2257,7 @@ mod tests {
             600.0,
             24.0,
             "#F4F6F8",
-            &[("要點", false)],
+            &[("bullet point", false)],
         );
         let svg = slide(
             Some("#101418"),
@@ -2255,7 +2283,7 @@ mod tests {
             1000.0,
             48.0,
             "#F4F6F8",
-            &[("主張", false)],
+            &[("claim", false)],
         );
         let spec = spec();
         let names = vec![template_name_for("number").to_string()];
@@ -2304,7 +2332,7 @@ mod tests {
             1000.0,
             48.0,
             "#F4F6F8",
-            &[("主張", false)],
+            &[("claim", false)],
         );
         let svg = slide(None, "n", &format!("{bg}{claim}"));
         let facts = read_slide_facts(&svg).unwrap();
@@ -2316,7 +2344,7 @@ mod tests {
 
     #[test]
     fn scrim_is_required_under_body_copy_only_when_the_page_has_a_background_image() {
-        let bg = "<g id=\"el-background\" data-slidra-name=\"背景圖\" data-slidra-role=\"background\" data-slidra-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
+        let bg = "<g id=\"el-background\" data-slidra-name=\"background image\" data-slidra-role=\"background\" data-slidra-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
         let title = textbox(
             "el-title",
             80.0,
@@ -2324,7 +2352,7 @@ mod tests {
             1120.0,
             40.0,
             "#F4F6F8",
-            &[("標題", false)],
+            &[("title", false)],
         );
         let body = textbox(
             "el-body",
@@ -2333,7 +2361,7 @@ mod tests {
             800.0,
             24.0,
             "#F4F6F8",
-            &[("要點", false)],
+            &[("bullet point", false)],
         );
         let footer = textbox(
             "el-footer",
@@ -2342,7 +2370,7 @@ mod tests {
             600.0,
             18.0,
             "#9AA7B4",
-            &[("頁尾", false)],
+            &[("footer", false)],
         );
         let claim = textbox(
             "el-claim",
@@ -2351,7 +2379,7 @@ mod tests {
             1000.0,
             48.0,
             "#F4F6F8",
-            &[("大字", false)],
+            &[("large text", false)],
         );
         let panel = "<g id=\"el-panel\" transform=\"translate(80 176)\"><rect x=\"0\" y=\"0\" width=\"1120\" height=\"72\" fill=\"#1B2129\"/></g>";
         let faint = "<g id=\"el-faint\" transform=\"translate(80 176)\"><rect x=\"0\" y=\"0\" width=\"1120\" height=\"72\" fill=\"#1B2129\" opacity=\"0.3\"/></g>";
@@ -2402,8 +2430,8 @@ mod tests {
     #[test]
     fn dynamic_text_placeholders_count_as_zero_characters() {
         assert_eq!(count_chars("{{ slide_number }} / {{ slide_total }}"), 1);
-        assert_eq!(count_chars("第 {{ slide_number }} 頁"), 2);
-        assert_eq!(count_chars("沒有配對的 {{ 原樣算"), 10);
+        assert_eq!(count_chars("a {{ slide_number }} b"), 2);
+        assert_eq!(count_chars("left {{ over"), 10);
         assert_eq!(strip_placeholders("a{{x}}b{{y}}c"), "abc");
     }
 
@@ -2427,7 +2455,7 @@ mod tests {
             600.0,
             24.0,
             "#F4F6F8",
-            &[("太低了", false)],
+            &[("too low", false)],
         );
         let svg = slide(
             Some("#101418"),
@@ -2441,7 +2469,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("標題", false)]
+                    &[("title", false)]
                 ),
                 footer,
                 body
@@ -2470,7 +2498,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("標題一", false)]
+                    &[("Title 1", false)]
                 ),
                 textbox(
                     "el-b",
@@ -2479,7 +2507,7 @@ mod tests {
                     1120.0,
                     44.0,
                     "#FF0000",
-                    &[("標題二", false)]
+                    &[("Title 2", false)]
                 ),
                 textbox(
                     "el-c",
@@ -2488,7 +2516,7 @@ mod tests {
                     1120.0,
                     24.0,
                     "#F4F6F8",
-                    &[("一", true), ("二", true), ("三", false)]
+                    &[("one", true), ("two", true), ("three", false)]
                 ),
                 rect("el-r", 80.0, 136.0, 56.0, 4.0, "#123456", None),
             ),
@@ -2514,7 +2542,7 @@ mod tests {
                     1200.0,
                     40.0,
                     "#F4F6F8",
-                    &[("超出", false)]
+                    &[("exceeds", false)]
                 ),
                 textbox(
                     "el-b",
@@ -2523,7 +2551,7 @@ mod tests {
                     400.0,
                     24.0,
                     "#F4F6F8",
-                    &[("重疊", false)]
+                    &[("overlaps", false)]
                 ),
                 rect("el-r", 1200.0, 0.0, 200.0, 4.0, "#F5B942", Some("#000000")),
             ),
@@ -2604,7 +2632,7 @@ mod tests {
                     1680.0,
                     60.0,
                     "#F4F6F8",
-                    &[("不是大數字頁", false)]
+                    &[("not a big-number page", false)]
                 ),
                 rect("el-1", 120.0, 300.0, 300.0, 120.0, "#1B2129", None),
                 rect("el-2", 480.0, 300.0, 300.0, 120.0, "#1B2129", None),
@@ -2615,7 +2643,7 @@ mod tests {
         let outline = outline(
             "{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"number\", \"rhythm\": \"breathing\", \"title\": \"t\" }",
         );
-        let names = vec!["大數字頁".to_string()];
+        let names = vec!["big-number page".to_string()];
         let ctx = Context {
             canvas_width: 1920.0,
             canvas_height: 1080.0,
@@ -2649,7 +2677,7 @@ mod tests {
                 1000.0,
                 64.0,
                 "#F4F6F8",
-                &[("封面", false)],
+                &[("cover", false)],
             ),
         );
         let dup = slide(
@@ -2662,7 +2690,7 @@ mod tests {
                 1000.0,
                 64.0,
                 "#F4F6F8",
-                &[("封面", false)],
+                &[("cover", false)],
             ),
         );
         let thanks = slide(
@@ -2675,14 +2703,14 @@ mod tests {
                 1000.0,
                 48.0,
                 "#F4F6F8",
-                &[("謝謝大家", false)],
+                &[("thank you all", false)],
             ),
         );
         let spec = spec();
         let outline = outline(
             "{ \"n\": 1, \"relationship\": \"membership\", \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"t\" }, { \"n\": 2, \"relationship\": \"membership\", \"type\": \"closing\", \"rhythm\": \"anchor\", \"title\": \"t\" }",
         );
-        let names = vec!["封面".to_string()];
+        let names = vec!["cover".to_string()];
         let ctx = Context {
             canvas_width: 1280.0,
             canvas_height: 720.0,
@@ -2718,7 +2746,7 @@ mod tests {
                 .find(|e| e.rule == "structure.template")
                 .unwrap()
                 .limit,
-            "有範本「結語頁」"
+            "has template \"closing page\""
         );
     }
 
@@ -2736,7 +2764,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("標題", false)]
+                    &[("title", false)]
                 ),
                 textbox(
                     "el-body",
@@ -2745,7 +2773,7 @@ mod tests {
                     1120.0,
                     24.0,
                     "#F4F6F8",
-                    &[("一", true), ("二", true), ("三", false)]
+                    &[("one", true), ("two", true), ("three", false)]
                 ),
                 "<g id=\"el-circle\" transform=\"translate(1180 60)\"><ellipse cx=\"0\" cy=\"0\" rx=\"420\" ry=\"420\" fill=\"url(#glow)\" opacity=\"0.12\"/></g>",
                 "<g id=\"el-ring\" transform=\"translate(640 360)\"><ellipse cx=\"0\" cy=\"0\" rx=\"200\" ry=\"200\" fill=\"none\" stroke=\"#F5B942\" stroke-width=\"2\"/></g>",
@@ -2774,7 +2802,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("標題", false)]
+                    &[("title", false)]
                 ),
                 rect(
                     "el-card",
@@ -2805,7 +2833,7 @@ mod tests {
                     1000.0,
                     56.0,
                     "#F4F6F8",
-                    &[("章節名", false)]
+                    &[("section name", false)]
                 ),
                 "<g id=\"el-watermark\" transform=\"translate(760 640)\"><text x=\"0\" y=\"0\" font-size=\"320\" font-weight=\"700\" fill=\"#9AA7B4\" opacity=\"0.18\">02</text></g>",
             ),
@@ -2830,7 +2858,7 @@ mod tests {
                     1120.0,
                     40.0,
                     "#F4F6F8",
-                    &[("對照", false)]
+                    &[("comparison", false)]
                 ),
                 textbox(
                     "el-l1",
@@ -2839,7 +2867,7 @@ mod tests {
                     520.0,
                     22.0,
                     "#F4F6F8",
-                    &[("左一", false)]
+                    &[("left 1", false)]
                 ),
                 textbox(
                     "el-l2",
@@ -2848,7 +2876,7 @@ mod tests {
                     520.0,
                     22.0,
                     "#F4F6F8",
-                    &[("左二", false)]
+                    &[("left 2", false)]
                 ),
                 textbox(
                     "el-r1",
@@ -2857,7 +2885,7 @@ mod tests {
                     520.0,
                     22.0,
                     "#F4F6F8",
-                    &[("右一", false)]
+                    &[("right 1", false)]
                 ),
             ),
         );
@@ -2867,7 +2895,11 @@ mod tests {
             .filter(|e| e.rule == "text.bullet-count")
             .collect();
         assert_eq!(counts.len(), 1, "{errors:?}");
-        assert!(counts[0].message.contains("右欄"), "{}", counts[0].message);
+        assert!(
+            counts[0].message.contains("column right"),
+            "{}",
+            counts[0].message
+        );
 
         let closing = slide(
             Some("#4F8DFF"),
@@ -2879,7 +2911,7 @@ mod tests {
                 1000.0,
                 48.0,
                 "#101418",
-                &[("結論", false)],
+                &[("conclusion", false)],
             ),
         );
         let r = rules(&run_one(&closing, "closing", "anchor"));
@@ -2901,7 +2933,7 @@ mod tests {
                 1000.0,
                 64.0,
                 "#F4F6F8",
-                &[("封面", false)],
+                &[("cover", false)],
             ),
             false,
         );
@@ -2909,7 +2941,7 @@ mod tests {
         assert!(!facts.has_transition);
         assert_eq!(facts.enter_effects, 0);
         let spec = spec();
-        let names = vec!["封面".to_string()];
+        let names = vec!["cover".to_string()];
         for (animation, page_type, expect_transition, expect_enter) in [
             ("full", "cover", true, true),
             ("minimal", "cover", true, true),

@@ -14,7 +14,7 @@ fn parse_axis(raw: &str) -> SlidraResult<DistributeAxis> {
         // This error intentionally names the axis parameter "direction",
         // not "axis" — not a typo to fix here.
         _ => Err(SlidraError::invalid(format!(
-            "element distribute 不支援的方向：{raw}"
+            "element distribute unsupported direction: {raw}"
         ))),
     }
 }
@@ -32,7 +32,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     write::write_presentation_file(&id, &slide_path, &updated)?;
 
     Ok(CommandResult::success(
-        format!("已分佈 {slide_path} 的 {} 個元素", element_ids.len()),
+        format!("distributed {} elements in {slide_path}", element_ids.len()),
         Some(serde_json::json!({})),
     ))
 }

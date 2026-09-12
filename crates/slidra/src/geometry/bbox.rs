@@ -112,7 +112,9 @@ pub fn transform_rect(m: &Matrix, r: &Bbox) -> Bbox {
 /// degenerate zero box — there is no meaningful "bounding box of nothing".
 pub fn union_rects(rects: &[Bbox]) -> SlidraResult<Bbox> {
     if rects.is_empty() {
-        return Err(SlidraError::invalid("無法計算邊界框：沒有任何矩形可以聯集"));
+        return Err(SlidraError::invalid(
+            "cannot compute bounding box: no rectangles to union",
+        ));
     }
     let min_x = rects.iter().map(|r| r.x).fold(f64::INFINITY, f64::min);
     let min_y = rects.iter().map(|r| r.y).fold(f64::INFINITY, f64::min);
@@ -197,7 +199,7 @@ fn number_attr(primitive: &SlidePrimitive, name: &str, fallback: Option<f64>) ->
         _ => {
             return fallback.ok_or_else(|| {
                 SlidraError::invalid(format!(
-                    "<{}> 缺少計算邊界框需要的屬性：{}",
+                    "<{}> missing attribute needed to compute bounding box: {}",
                     primitive.tag, name
                 ))
             });
@@ -206,7 +208,7 @@ fn number_attr(primitive: &SlidePrimitive, name: &str, fallback: Option<f64>) ->
     let text = raw.trim();
     if !is_plain_svg_number(text) {
         return Err(SlidraError::invalid(format!(
-            "<{}> 的屬性 {} 不是純數字：{}（百分比與單位在容器鏈裡沒有唯一答案）",
+            "<{}>'s attribute {} is not a plain number: {} (percentages and units have no unique answer within the container chain)",
             primitive.tag, name, text
         )));
     }
@@ -250,7 +252,7 @@ fn resolve_font<'a>(
         .map(|boxed| boxed.as_ref())
         .ok_or_else(|| {
             SlidraError::invalid(format!(
-                "簡報未內嵌字型 {font_family}，無法重新換行：{element_id}"
+                "presentation does not embed font {font_family}, cannot rewrap: {element_id}"
             ))
         })
 }
@@ -280,7 +282,7 @@ fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> S
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             SlidraError::invalid(format!(
-                "<text> 缺少 font-family，無法計算邊界框：{}",
+                "<text> missing font-family, cannot compute bounding box: {}",
                 context.element_id
             ))
         })?;
@@ -295,7 +297,7 @@ fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> S
     };
     if !font_size.is_finite() || font_size <= 0.0 {
         return Err(SlidraError::invalid(format!(
-            "<text> 的 font-size 不是合法的正數，無法計算邊界框：{}",
+            "<text>'s font-size is not a valid positive number, cannot compute bounding box: {}",
             context.element_id
         )));
     }
@@ -327,7 +329,7 @@ fn text_bounds(primitive: &SlidePrimitive, context: &TextBoundsContext<'_>) -> S
     }
     if primitive.tspan_count > 0 {
         return Err(SlidraError::invalid(format!(
-            "<text> 有 tspan 卻沒有 data-slidra-text-width，無法計算每一行的寬度：{}",
+            "<text> has tspan but no data-slidra-text-width, cannot compute line width: {}",
             context.element_id
         )));
     }
@@ -402,19 +404,19 @@ pub fn primitive_bounds(
             })
         }
         "path" => {
-            let d = primitive
-                .attr("d")
-                .ok_or_else(|| SlidraError::invalid("<path> 缺少計算邊界框需要的屬性：d"))?;
+            let d = primitive.attr("d").ok_or_else(|| {
+                SlidraError::invalid("<path> missing attribute needed to compute bounding box: d")
+            })?;
             path_bounds(d)
         }
         "text" => match text {
             None => Err(SlidraError::invalid(
-                "尚無法計算文字元素的邊界框：待 #76 的字型度量落地",
+                "cannot yet compute bounding box for text elements: pending font metrics from #76",
             )),
             Some(context) => text_bounds(primitive, context),
         },
         other => Err(SlidraError::invalid(format!(
-            "無法計算邊界框：<{other}> 不是合法圖元"
+            "cannot compute bounding box: <{other}> is not a valid primitive"
         ))),
     }
 }
@@ -539,7 +541,7 @@ fn tokenize_path_data(d: &str) -> SlidraResult<Vec<PathTok>> {
         }
         let snippet: String = chars[i..].iter().take(12).collect();
         return Err(SlidraError::invalid(format!(
-            "<path> 的 d 語法錯誤：無法解析「{snippet}」"
+            "<path>'s d syntax error: cannot parse \"{snippet}\""
         )));
     }
     Ok(tokens)
@@ -552,7 +554,7 @@ fn next_number(tokens: &[PathTok], index: &mut usize, command: &str) -> SlidraRe
             Ok(*v)
         }
         _ => Err(SlidraError::invalid(format!(
-            "<path> 的 d 語法錯誤：{command} 指令的參數不足"
+            "<path>'s d syntax error: insufficient arguments for {command} command"
         ))),
     }
 }
@@ -647,7 +649,7 @@ pub fn path_bounds(d: &str) -> SlidraResult<Bbox> {
             PathTok::Number(_) => {
                 if command.is_empty() {
                     return Err(SlidraError::invalid(
-                        "<path> 的 d 語法錯誤：第一個指令必須是 M 或 m",
+                        "<path>'s d syntax error: first command must be M or m",
                     ));
                 }
                 // An `M`/`m` with more than one coordinate pair implicitly
@@ -765,7 +767,7 @@ pub fn path_bounds(d: &str) -> SlidraResult<Bbox> {
                 // and spin this loop forever. Report it instead.
                 if matches!(tokens.get(index), Some(PathTok::Number(_))) {
                     return Err(SlidraError::invalid(
-                        "<path> 的 d 語法錯誤：Z 指令後面不能接數字",
+                        "<path>'s d syntax error: Z command cannot be followed by a number",
                     ));
                 }
                 current = subpath_start;
@@ -776,12 +778,12 @@ pub fn path_bounds(d: &str) -> SlidraResult<Bbox> {
             }
             "A" => {
                 return Err(SlidraError::invalid(
-                    "尚無法計算含橢圓弧（A/a 指令）的 <path> 邊界框",
+                    "cannot yet compute bounding box for <path> containing elliptical arcs (A/a commands)",
                 ));
             }
             _ => {
                 return Err(SlidraError::invalid(format!(
-                    "<path> 的 d 語法錯誤：不支援的指令 {command}"
+                    "<path>'s d syntax error: unsupported command {command}"
                 )));
             }
         }
@@ -789,7 +791,7 @@ pub fn path_bounds(d: &str) -> SlidraResult<Bbox> {
 
     if xs.is_empty() {
         return Err(SlidraError::invalid(
-            "<path> 的 d 沒有任何座標，無法計算邊界框",
+            "<path>'s d has no coordinates, cannot compute bounding box",
         ));
     }
     let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -848,7 +850,7 @@ fn bounds_within(
 ) -> SlidraResult<Bbox> {
     if depth > MAX_CONTAINER_DEPTH {
         return Err(SlidraError::invalid(format!(
-            "容器巢狀超過 {MAX_CONTAINER_DEPTH} 層，無法計算邊界框"
+            "container nesting exceeds {MAX_CONTAINER_DEPTH} levels, cannot compute bounding box"
         )));
     }
     let matrix = multiply_matrices(ancestor_matrix, &element.matrix);
@@ -858,10 +860,9 @@ fn bounds_within(
     // and `element.table`'s `rows` are always core-computed heights
     // already baked into the file.
     if element.kind == SlideElementKind::Table {
-        let table = element
-            .table
-            .as_ref()
-            .ok_or_else(|| SlidraError::invalid(format!("表格 {} 缺少 table 資料", element.id)))?;
+        let table = element.table.as_ref().ok_or_else(|| {
+            SlidraError::invalid(format!("table {} missing table data", element.id))
+        })?;
         let width: f64 = table.cols.iter().sum();
         let height: f64 = table.rows.iter().sum();
         return Ok(transform_rect(
@@ -878,7 +879,7 @@ fn bounds_within(
     if element.kind == SlideElementKind::Group {
         if element.children.is_empty() {
             return Err(SlidraError::invalid(format!(
-                "群組 {} 裡沒有任何子元素，沒有邊界框",
+                "group {} has no child elements, no bounding box",
                 element.id
             )));
         }
@@ -892,7 +893,7 @@ fn bounds_within(
 
     if element.primitives.is_empty() {
         return Err(SlidraError::invalid(format!(
-            "元素 {} 裡沒有任何圖元，沒有邊界框",
+            "element {} has no elements inside, no bounding box",
             element.id
         )));
     }
@@ -1002,7 +1003,10 @@ mod tests {
     fn rect_bounds_missing_width_errors() {
         let p = prim("rect", &[("x", "1"), ("y", "2")]);
         let err = primitive_bounds(&p, None).unwrap_err();
-        assert!(err.message().contains("缺少計算邊界框需要的屬性"));
+        assert!(
+            err.message()
+                .contains("missing attribute needed to compute bounding box")
+        );
     }
 
     #[test]
@@ -1048,7 +1052,7 @@ mod tests {
             &[("x", "0"), ("y", "0"), ("width", "50%"), ("height", "10")],
         );
         let err = primitive_bounds(&p, None).unwrap_err();
-        assert!(err.message().contains("不是純數字"));
+        assert!(err.message().contains("not a plain number"));
     }
 
     #[test]
@@ -1083,7 +1087,7 @@ mod tests {
     #[test]
     fn path_bounds_rejects_arcs() {
         let err = path_bounds("M0 0 A5 5 0 0 1 10 10").unwrap_err();
-        assert!(err.message().contains("橢圓弧"));
+        assert!(err.message().contains("elliptical arc"));
     }
 
     #[test]
@@ -1156,7 +1160,7 @@ mod tests {
             fonts: None,
         };
         let err = element_bounds(&group, &options).unwrap_err();
-        assert!(err.message().contains("沒有任何子元素"));
+        assert!(err.message().contains("no child elements"));
     }
 
     #[test]
@@ -1190,7 +1194,7 @@ mod tests {
             fonts: None,
         };
         let err = element_bounds(&table_element, &options).unwrap_err();
-        assert!(err.message().contains("缺少 table 資料"));
+        assert!(err.message().contains("missing table data"));
     }
 
     #[test]
@@ -1226,7 +1230,7 @@ mod tests {
             fonts: None,
         };
         let err = element_bounds(&current, &options).unwrap_err();
-        assert!(err.message().contains("巢狀超過"));
+        assert!(err.message().contains("nesting exceeds"));
     }
 
     #[test]

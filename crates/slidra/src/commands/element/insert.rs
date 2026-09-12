@@ -28,7 +28,7 @@ fn parse_kind(raw: &str) -> SlidraResult<InsertElementKind> {
         "video" => Ok(InsertElementKind::Video),
         "audio" => Ok(InsertElementKind::Audio),
         _ => Err(SlidraError::invalid(format!(
-            "element insert 不支援的 kind：{raw}"
+            "element insert unsupported kind: {raw}"
         ))),
     }
 }
@@ -63,7 +63,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
 
     let data = serde_json::json!({ "elementId": element_id });
     Ok(CommandResult::success(
-        format!("已在 {slide_path} 新增元素 {element_id}"),
+        format!("added element {element_id} in {slide_path}"),
         Some(data),
     ))
 }

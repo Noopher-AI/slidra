@@ -56,7 +56,7 @@ pub fn assert_slide_path_listed(work_dir: &Path, virtual_path: &str) -> SlidraRe
         .iter()
         .any(|template| template.file == virtual_path);
     if !is_slide && !is_template {
-        return Err(SlidraError::invalid(format!("不是投影片：{virtual_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {virtual_path}")));
     }
     Ok(project)
 }
@@ -86,7 +86,7 @@ pub fn require_slide(id: &str, slide_path: &str) -> SlidraResult<RequiredSlide> 
 /// see `history::commit_snapshot_entries`'s doc for why): a caller that
 /// polls with a fixed delay after issuing a command could otherwise observe
 /// the new content on disk before the commit that makes `undo` recognize
-/// it, and see `undo` reject with "沒有可復原的操作" even though the edit it
+/// it, and see `undo` reject with "no operation to undo" even though the edit it
 /// means to revert is already visible. If the content write itself then
 /// fails, the commit is unwound (`revert_committed_entries`) — a failed
 /// command must not occupy an undo slot, and it must not leave an orphan
@@ -109,7 +109,7 @@ pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> S
             history::revert_committed_entries(id, &entries, &previous_stack)?;
             // real_path is a real filesystem path (ADR-0004) — never quote it.
             Err(SlidraError::invalid(format!(
-                "寫入投影片時發生錯誤：{virtual_path}"
+                "error writing slide: {virtual_path}"
             )))
         }
     }
@@ -126,7 +126,7 @@ pub fn write_presentation_file_without_history(
     let work_dir = workspace::resolve_work_dir(id)?;
     let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
     std::fs::write(&real_path, content)
-        .map_err(|_| SlidraError::invalid(format!("寫入投影片時發生錯誤：{virtual_path}")))
+        .map_err(|_| SlidraError::invalid(format!("error writing slide: {virtual_path}")))
 }
 
 /// Writes `content` to a virtual path that must not already exist — the
@@ -137,7 +137,9 @@ pub fn create_presentation_file(id: &str, virtual_path: &str, content: &[u8]) ->
     let work_dir = workspace::resolve_work_dir(id)?;
     let already_exists = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path).is_ok();
     if already_exists {
-        return Err(SlidraError::invalid(format!("檔案已存在：{virtual_path}")));
+        return Err(SlidraError::invalid(format!(
+            "file already exists: {virtual_path}"
+        )));
     }
 
     let entry = history::stage_new_file_entry(virtual_path);
@@ -155,7 +157,7 @@ pub fn create_presentation_file(id: &str, virtual_path: &str, content: &[u8]) ->
         history::discard_snapshot_entries(id, std::slice::from_ref(&entry))?;
         // real_path is a real filesystem path (ADR-0004) — never quote it.
         return Err(SlidraError::invalid(format!(
-            "寫入檔案時發生錯誤：{virtual_path}"
+            "error writing file: {virtual_path}"
         )));
     }
     let commit = history::commit_snapshot_entries(id, vec![entry])?;
@@ -180,7 +182,7 @@ pub fn delete_presentation_file(id: &str, virtual_path: &str) -> SlidraResult<()
             history::discard_snapshot_entries(id, &entries)?;
             // real_path is a real filesystem path (ADR-0004) — never quote it.
             Err(SlidraError::invalid(format!(
-                "刪除檔案時發生錯誤：{virtual_path}"
+                "error deleting file: {virtual_path}"
             )))
         }
     }
@@ -195,10 +197,10 @@ fn clipboard_file_path(home: &Path, id: &str) -> PathBuf {
 }
 
 /// Reads the presentation's clipboard file's raw text. Returns `Err` with
-/// "剪貼簿是空的" when the file has never been written (ENOENT) — the
+/// "clipboard is empty" when the file has never been written (ENOENT) — the
 /// caller (`element paste`, P7) is what turns that into a `Failed`
 /// `CommandResult`. JSON-parsing the text into a typed payload, and the
-/// "剪貼簿資料已損毀" error a parse failure produces, is deliberately NOT
+/// "clipboard data is corrupted" error a parse failure produces, is deliberately NOT
 /// this function's job — it belongs to whichever typed payload shape reads
 /// it (`element::clipboard::ClipboardPayload`, P7), which this ticket's
 /// foundation phase does not yet define.
@@ -207,9 +209,9 @@ pub fn read_clipboard_file(id: &str) -> SlidraResult<String> {
     match std::fs::read_to_string(clipboard_file_path(&home, id)) {
         Ok(text) => Ok(text),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            Err(SlidraError::invalid("剪貼簿是空的"))
+            Err(SlidraError::invalid("clipboard is empty"))
         }
-        Err(_) => Err(SlidraError::invalid("無法讀取剪貼簿")),
+        Err(_) => Err(SlidraError::invalid("failed to read clipboard")),
     }
 }
 
@@ -219,9 +221,10 @@ pub fn read_clipboard_file(id: &str) -> SlidraResult<String> {
 pub fn write_clipboard_file(id: &str, contents: &str) -> SlidraResult<()> {
     let home = workspace::resolve_home();
     let dir = home.join("clipboard");
-    std::fs::create_dir_all(&dir).map_err(|_| SlidraError::invalid("無法寫入剪貼簿"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|_| SlidraError::invalid("failed to write to clipboard"))?;
     std::fs::write(clipboard_file_path(&home, id), contents)
-        .map_err(|_| SlidraError::invalid("無法寫入剪貼簿"))
+        .map_err(|_| SlidraError::invalid("failed to write to clipboard"))
 }
 
 #[cfg(test)]
@@ -297,7 +300,7 @@ mod tests {
         assert!(assert_slide_path_listed(&work, "slides/001.svg").is_ok());
         assert!(assert_slide_path_listed(&work, "templates/001.svg").is_ok());
         let err = assert_slide_path_listed(&work, "project.json").unwrap_err();
-        assert_eq!(err.message(), "不是投影片：project.json");
+        assert_eq!(err.message(), "not a slide: project.json");
         std::fs::remove_dir_all(&work).ok();
     }
 
@@ -318,10 +321,10 @@ mod tests {
         .unwrap();
 
         let err = require_slide("pid-missing-real", "slides/999.svg").unwrap_err();
-        // resolve_virtual_file_path's "找不到檔案" error, not
-        // assert_slide_path_listed's "不是投影片" — proves the real-file
+        // resolve_virtual_file_path's "file not found" error, not
+        // assert_slide_path_listed's "not a slide" — proves the real-file
         // check ran first.
-        assert_eq!(err.message(), "找不到檔案：slides/999.svg");
+        assert_eq!(err.message(), "file not found: slides/999.svg");
 
         drop(fixture);
         std::fs::remove_dir_all(&work).ok();
@@ -370,7 +373,7 @@ mod tests {
         // branch. A directory swapped in for the slide file does not reach
         // that branch: `write_presentation_file`
         // resolves `real_path` via `resolve_virtual_file_path` BEFORE staging,
-        // and that resolution already rejects a directory ("不是檔案：…"), so
+        // and that resolution already rejects a directory ("not a file: …"), so
         // the function would return before ever calling `commit_snapshot_entries`.
         // A read-only file does reach it: `resolve_virtual_file_path` (a stat)
         // and `stage_snapshot_entries` (a read) both still succeed, and only
@@ -398,7 +401,7 @@ mod tests {
         std::fs::set_permissions(&slide_path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         let err = write_result.unwrap_err();
-        assert_eq!(err.message(), "寫入投影片時發生錯誤：slides/001.svg");
+        assert_eq!(err.message(), "error writing slide: slides/001.svg");
         assert_eq!(
             std::fs::read_to_string(&slide_path).unwrap(),
             "<svg>ORIGINAL</svg>",
@@ -408,7 +411,7 @@ mod tests {
         let undo_err = history::undo("pid-write-fail").unwrap_err();
         assert_eq!(
             undo_err.message(),
-            "沒有可復原的操作",
+            "no operation to undo",
             "the failed write must not occupy an undo slot"
         );
 
@@ -453,7 +456,7 @@ mod tests {
         );
 
         let err = history::undo("pid-write-no-history").unwrap_err();
-        assert_eq!(err.message(), "沒有可復原的操作");
+        assert_eq!(err.message(), "no operation to undo");
 
         drop(fixture);
         std::fs::remove_dir_all(&work).ok();
@@ -472,7 +475,7 @@ mod tests {
         .unwrap();
 
         let err = create_presentation_file("pid-create", "slides/001.svg", b"Y").unwrap_err();
-        assert_eq!(err.message(), "檔案已存在：slides/001.svg");
+        assert_eq!(err.message(), "file already exists: slides/001.svg");
 
         create_presentation_file("pid-create", "assets/new.png", b"\x89PNG").unwrap();
         assert_eq!(
@@ -524,7 +527,7 @@ mod tests {
     fn clipboard_file_round_trips_and_missing_file_is_reported_as_empty() {
         let fixture = Fixture::new("clipboard", "pid-clipboard");
         let err = read_clipboard_file("pid-clipboard").unwrap_err();
-        assert_eq!(err.message(), "剪貼簿是空的");
+        assert_eq!(err.message(), "clipboard is empty");
 
         write_clipboard_file("pid-clipboard", r#"{"sourceSlidePath":"slides/001.svg"}"#).unwrap();
         let read_back = read_clipboard_file("pid-clipboard").unwrap();

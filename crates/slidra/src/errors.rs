@@ -7,7 +7,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum SlidraError {
-    /// "找不到識別碼對應的簡報" and similar — maps to CommandResult's
+    /// "no presentation found for the given id" and similar — maps to CommandResult's
     /// `FailureKind::NotFound`.
     NotFound(String),
     /// Everything else: malformed history, malformed project.json, bad

@@ -178,7 +178,7 @@ mod tests {
         let result = resolve_presentation_fonts("pid-missing-font");
         match result {
             Err(err) => {
-                assert!(err.message().contains("nope.ttf") || err.message().contains("讀取"))
+                assert!(err.message().contains("nope.ttf") || err.message().contains("read"))
             }
             Ok(_) => panic!("expected a missing font file to error"),
         }

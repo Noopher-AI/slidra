@@ -86,7 +86,7 @@ fn parse_rows(text: &str) -> SlidraResult<Vec<Vec<String>>> {
         i += 1;
     }
     if in_quotes {
-        return Err(SlidraError::invalid("CSV 語法錯誤：引號未封閉"));
+        return Err(SlidraError::invalid("CSV syntax error: unclosed quote"));
     }
     if !field.is_empty() || !row.is_empty() {
         end_row(&mut field, &mut row, &mut rows);
@@ -104,7 +104,7 @@ pub fn parse_table_csv(text: &str) -> SlidraResult<ParsedTableCsv> {
         .filter(|row| !(row.len() == 1 && row[0].is_empty()))
         .collect();
     if all_rows.is_empty() {
-        return Err(SlidraError::invalid("CSV 沒有任何內容"));
+        return Err(SlidraError::invalid("CSV has no content"));
     }
     let mut iter = all_rows.into_iter();
     let headers = iter.next().expect("just checked non-empty");
@@ -114,19 +114,21 @@ pub fn parse_table_csv(text: &str) -> SlidraResult<ParsedTableCsv> {
     for (index, header) in headers.iter().enumerate() {
         if header.trim().is_empty() {
             return Err(SlidraError::invalid(format!(
-                "CSV 標頭第 {} 欄的欄名不可為空白",
+                "CSV header column {}'s name cannot be blank",
                 index + 1
             )));
         }
         if !seen.insert(header.as_str()) {
-            return Err(SlidraError::invalid(format!("CSV 標頭欄名重複：{header}")));
+            return Err(SlidraError::invalid(format!(
+                "CSV header column name duplicated: {header}"
+            )));
         }
     }
 
     for (row_index, row) in data_rows.iter().enumerate() {
         if row.len() != headers.len() {
             return Err(SlidraError::invalid(format!(
-                "CSV 第 {} 列的欄數（{}）與標頭（{}）不符",
+                "CSV row {}'s column count ({}) does not match header ({})",
                 row_index + 2,
                 row.len(),
                 headers.len()
@@ -191,31 +193,34 @@ mod tests {
     #[test]
     fn unclosed_quote_errors() {
         let err = parse_table_csv("a\n\"unterminated").unwrap_err();
-        assert_eq!(err.message(), "CSV 語法錯誤：引號未封閉");
+        assert_eq!(err.message(), "CSV syntax error: unclosed quote");
     }
 
     #[test]
     fn empty_content_errors() {
         let err = parse_table_csv("").unwrap_err();
-        assert_eq!(err.message(), "CSV 沒有任何內容");
+        assert_eq!(err.message(), "CSV has no content");
     }
 
     #[test]
     fn blank_header_cell_errors() {
         let err = parse_table_csv("a, \n1,2\n").unwrap_err();
-        assert_eq!(err.message(), "CSV 標頭第 2 欄的欄名不可為空白");
+        assert_eq!(err.message(), "CSV header column 2's name cannot be blank");
     }
 
     #[test]
     fn duplicate_header_errors() {
         let err = parse_table_csv("a,a\n1,2\n").unwrap_err();
-        assert_eq!(err.message(), "CSV 標頭欄名重複：a");
+        assert_eq!(err.message(), "CSV header column name duplicated: a");
     }
 
     #[test]
     fn mismatched_column_count_errors_with_1_based_row_number() {
         let err = parse_table_csv("a,b\n1,2\n3\n").unwrap_err();
-        assert_eq!(err.message(), "CSV 第 3 列的欄數（1）與標頭（2）不符");
+        assert_eq!(
+            err.message(),
+            "CSV row 3's column count (1) does not match header (2)"
+        );
     }
 
     #[test]

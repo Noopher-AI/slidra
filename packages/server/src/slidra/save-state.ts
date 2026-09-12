@@ -35,7 +35,7 @@ export async function readSaveState(id: string): Promise<SaveState> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) {
-    throw new SlidraNotFoundError(`找不到識別碼對應的簡報：${id}`);
+    throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   }
   if (entry.sourcePath === undefined || entry.savedAt === undefined) {
     return { known: false };

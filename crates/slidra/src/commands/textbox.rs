@@ -39,7 +39,7 @@ fn parse_align(
         "center" => Ok(TextAlign::Center),
         "right" => Ok(TextAlign::Right),
         _ => Err(SlidraError::invalid(format!(
-            "命令 {command} 的 align 必須是 left、center 或 right：{raw}"
+            "command {command}\'s align must be left, center or right: {raw}"
         ))),
     }
 }
@@ -94,7 +94,7 @@ mod add {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已在 {slide_path} 建立文字框 {element_id}（{lines} 行）"),
+            format!("created text box {element_id} in {slide_path} ({lines} lines)"),
             Some(serde_json::json!({ "elementId": element_id, "lines": lines })),
         ))
     }
@@ -125,7 +125,7 @@ mod width {
             .filter(|w: &f64| w.is_finite())
             .ok_or_else(|| {
                 SlidraError::invalid(format!(
-                    "命令 textbox width 的 width 不是合法數字：{width_raw}"
+                    "command textbox width\'s width is not a valid number: {width_raw}"
                 ))
             })?;
         let force = require_trailing_force_flag(args, 4, "textbox width")?;
@@ -137,7 +137,7 @@ mod width {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已調整 {element_id} 的文字框寬度（重新換行為 {lines} 行）"),
+            format!("adjusted text box width of {element_id} (rewrapped to {lines} lines)"),
             Some(serde_json::json!({ "lines": lines })),
         ))
     }
@@ -172,7 +172,7 @@ mod align {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已將 {element_id} 的文字框對齊設為 {align_raw}"),
+            format!("set text box alignment of {element_id} to {align_raw}"),
             Some(serde_json::json!({ "lines": lines })),
         ))
     }
@@ -275,7 +275,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 textbox width 的 width 不是合法數字：abc"
+            "command textbox width\'s width is not a valid number: abc"
         );
     }
 
@@ -376,7 +376,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 textbox align 的 align 必須是 left、center 或 right：top"
+            "command textbox align\'s align must be left, center or right: top"
         );
     }
 
@@ -403,6 +403,6 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert!(result.message.contains("簡報未內嵌字型"));
+        assert!(result.message.contains("presentation does not embed font"));
     }
 }

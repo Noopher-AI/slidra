@@ -102,7 +102,7 @@ fn arity_for(name: &str) -> SlidraResult<&'static [usize]> {
         "skewX" => Ok(&[1]),
         "skewY" => Ok(&[1]),
         _ => Err(SlidraError::invalid(format!(
-            "不支援的 transform 函式：{name}"
+            "unsupported transform function: {name}"
         ))),
     }
 }
@@ -150,7 +150,7 @@ pub fn parse_transform(value: Option<&str>) -> SlidraResult<Matrix> {
         let name = &text[name_start..i];
         if name.is_empty() {
             return Err(SlidraError::invalid(format!(
-                "transform 語法錯誤：無法解析函式名稱（{text}）"
+                "transform syntax error: cannot parse function name ({text})"
             )));
         }
 
@@ -162,14 +162,14 @@ pub fn parse_transform(value: Option<&str>) -> SlidraResult<Matrix> {
         }
         if char_at(text, i) != Some('(') {
             return Err(SlidraError::invalid(format!(
-                "transform 語法錯誤：{name} 後面缺少 ("
+                "transform syntax error: {name} missing ( after it"
             )));
         }
         let close = match find_char_from(text, i, ')') {
             Some(p) => p,
             None => {
                 return Err(SlidraError::invalid(format!(
-                    "transform 語法錯誤：{name} 的括號未封閉"
+                    "transform syntax error: {name}'s parenthesis not closed"
                 )));
             }
         };
@@ -253,7 +253,7 @@ fn parse_arguments(name: &str, args_text: &str) -> SlidraResult<Vec<f64>> {
     for token in tokens {
         if !is_svg_number_token(token) {
             return Err(SlidraError::invalid(format!(
-                "transform 語法錯誤：{name} 的參數不是數字（{token}）"
+                "transform syntax error: {name}'s argument is not a number ({token})"
             )));
         }
         // `is_svg_number_token` already restricted `token` to the exact
@@ -265,7 +265,7 @@ fn parse_arguments(name: &str, args_text: &str) -> SlidraResult<Vec<f64>> {
         // flagged here rather than silently assumed watertight.
         let value: f64 = token.parse().map_err(|_| {
             SlidraError::invalid(format!(
-                "transform 語法錯誤：{name} 的參數不是數字（{token}）"
+                "transform syntax error: {name}'s argument is not a number ({token})"
             ))
         })?;
         values.push(value);
@@ -276,9 +276,9 @@ fn parse_arguments(name: &str, args_text: &str) -> SlidraResult<Vec<f64>> {
             .iter()
             .map(|n| n.to_string())
             .collect::<Vec<_>>()
-            .join(" 或 ");
+            .join(" or ");
         return Err(SlidraError::invalid(format!(
-            "transform 語法錯誤：{name} 收到 {} 個參數，應為 {arity_desc} 個",
+            "transform syntax error: {name} received {} arguments, expected {arity_desc}",
             values.len()
         )));
     }
@@ -369,7 +369,7 @@ fn function_to_matrix(name: &str, args: &[f64]) -> SlidraResult<Matrix> {
             f: 0.0,
         }),
         _ => Err(SlidraError::invalid(format!(
-            "不支援的 transform 函式：{name}"
+            "unsupported transform function: {name}"
         ))),
     }
 }
@@ -410,7 +410,9 @@ pub fn apply_matrix_to_point(m: &Matrix, p: Point) -> Point {
 pub fn invert_matrix(m: &Matrix) -> SlidraResult<Matrix> {
     let det = m.a * m.d - m.b * m.c;
     if det == 0.0 {
-        return Err(SlidraError::invalid("transform 無法反轉：矩陣的行列式為 0"));
+        return Err(SlidraError::invalid(
+            "transform cannot be inverted: matrix determinant is 0",
+        ));
     }
     Ok(Matrix {
         a: m.d / det,
@@ -444,7 +446,7 @@ pub fn decompose_matrix(m: &Matrix) -> SlidraResult<TransformParts> {
     let determinant = m.a * m.d - m.b * m.c;
     if scale_x == 0.0 || determinant == 0.0 {
         return Err(SlidraError::invalid(
-            "transform 無法拆解：矩陣已退化（縮放為 0）",
+            "transform cannot be decomposed: matrix is degenerate (scale is 0)",
         ));
     }
     // With no skew, (a, b) and (c, d) are perpendicular. Comparing their dot
@@ -454,7 +456,7 @@ pub fn decompose_matrix(m: &Matrix) -> SlidraResult<TransformParts> {
     let dot = m.a * m.c + m.b * m.d;
     if dot.abs() > 1e-9 * scale_x * scale_y_raw {
         return Err(SlidraError::invalid(
-            "transform 無法拆解：矩陣含有傾斜（skew），這個模型沒有傾斜的語意",
+            "transform cannot be decomposed: matrix contains skew, this model has no semantics for skew",
         ));
     }
     Ok(TransformParts {
@@ -678,31 +680,31 @@ mod tests {
     #[test]
     fn unknown_function_name_is_an_error() {
         let err = parse_transform(Some("foo(1)")).unwrap_err();
-        assert!(err.message().contains("不支援的 transform 函式"));
+        assert!(err.message().contains("unsupported transform function"));
     }
 
     #[test]
     fn missing_open_paren_is_an_error() {
         let err = parse_transform(Some("translate")).unwrap_err();
-        assert!(err.message().contains("後面缺少"));
+        assert!(err.message().contains("missing ("));
     }
 
     #[test]
     fn unclosed_paren_is_an_error() {
         let err = parse_transform(Some("translate(10")).unwrap_err();
-        assert!(err.message().contains("括號未封閉"));
+        assert!(err.message().contains("parenthesis not closed"));
     }
 
     #[test]
     fn non_numeric_argument_is_an_error() {
         let err = parse_transform(Some("translate(abc)")).unwrap_err();
-        assert!(err.message().contains("不是數字"));
+        assert!(err.message().contains("not a number"));
     }
 
     #[test]
     fn wrong_argument_count_is_an_error() {
         let err = parse_transform(Some("translate(1 2 3)")).unwrap_err();
-        assert!(err.message().contains("應為"));
+        assert!(err.message().contains("expected"));
     }
 
     #[test]
@@ -761,7 +763,7 @@ mod tests {
             f: 0.0,
         };
         let err = invert_matrix(&m).unwrap_err();
-        assert!(err.message().contains("無法反轉"));
+        assert!(err.message().contains("cannot be inverted"));
     }
 
     #[test]
@@ -786,7 +788,7 @@ mod tests {
             f: 0.0,
         };
         let err = decompose_matrix(&m).unwrap_err();
-        assert!(err.message().contains("已退化"));
+        assert!(err.message().contains("degenerate"));
     }
 
     #[test]
@@ -801,7 +803,7 @@ mod tests {
             f: 0.0,
         };
         let err = decompose_matrix(&m).unwrap_err();
-        assert!(err.message().contains("傾斜"));
+        assert!(err.message().contains("skew"));
     }
 
     #[test]

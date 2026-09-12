@@ -133,9 +133,9 @@ fn read_stack(home: &Path, id: &str) -> SlidraResult<StackFile> {
                 open_group: None,
             });
         }
-        Err(_) => return Err(SlidraError::invalid("復原歷史已損毀")),
+        Err(_) => return Err(SlidraError::invalid("undo history is corrupted")),
     };
-    serde_json::from_str(&raw).map_err(|_| SlidraError::invalid("復原歷史已損毀"))
+    serde_json::from_str(&raw).map_err(|_| SlidraError::invalid("undo history is corrupted"))
 }
 
 /// Atomic write: temp file + rename. Every step (directory creation
@@ -161,7 +161,7 @@ fn write_stack(home: &Path, id: &str, stack: &StackFile) -> SlidraResult<()> {
 
     if write_result.is_err() {
         let _ = std::fs::remove_file(&temp_path);
-        return Err(SlidraError::invalid("無法寫入復原歷史"));
+        return Err(SlidraError::invalid("failed to write undo history"));
     }
     Ok(())
 }
@@ -177,7 +177,7 @@ fn write_snapshot(home: &Path, id: &str, snapshot_id: &str, content: &[u8]) -> S
         }
         std::fs::write(&file_path, content)
     })()
-    .map_err(|_| SlidraError::invalid("無法寫入復原快照"))
+    .map_err(|_| SlidraError::invalid("failed to write undo snapshot"))
 }
 
 /// `stack.json` still points at a snapshot file that is no longer there is
@@ -185,7 +185,7 @@ fn write_snapshot(home: &Path, id: &str, snapshot_id: &str, content: &[u8]) -> S
 /// smaller than it is.
 fn read_snapshot(home: &Path, id: &str, snapshot_id: &str) -> SlidraResult<Vec<u8>> {
     std::fs::read(snapshot_path(home, id, snapshot_id))
-        .map_err(|_| SlidraError::invalid("復原歷史已損毀"))
+        .map_err(|_| SlidraError::invalid("undo history is corrupted"))
 }
 
 /// Deletes one snapshot file. A file that is already gone is not an error
@@ -195,7 +195,7 @@ fn delete_snapshot(home: &Path, id: &str, snapshot_id: &str) -> SlidraResult<()>
     match std::fs::remove_file(snapshot_path(home, id, snapshot_id)) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(SlidraError::invalid("無法刪除復原快照")),
+        Err(_) => Err(SlidraError::invalid("failed to delete undo snapshot")),
     }
 }
 
@@ -264,7 +264,7 @@ fn delete_real_file_if_present(work_dir: &Path, virtual_path: &str) -> SlidraRes
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
         // real_path is a real filesystem path (ADR-0004) — never quote it.
         Err(_) => Err(SlidraError::invalid(format!(
-            "刪除檔案時發生錯誤：{virtual_path}"
+            "error deleting file: {virtual_path}"
         ))),
     }
 }
@@ -337,7 +337,7 @@ fn apply_group(
                 })()
                 .map_err(|_| {
                     // real_path is a real filesystem path (ADR-0004) — never quote it.
-                    SlidraError::invalid(format!("寫入投影片時發生錯誤：{}", entry.virtual_path))
+                    SlidraError::invalid(format!("error writing slide: {}", entry.virtual_path))
                 })?;
                 consumed_snapshot_ids.push(snapshot_id.clone());
             }
@@ -371,7 +371,7 @@ pub fn undo(id: &str) -> SlidraResult<UndoResult> {
     let group = stack
         .undo
         .pop()
-        .ok_or_else(|| SlidraError::invalid("沒有可復原的操作"))?;
+        .ok_or_else(|| SlidraError::invalid("no operation to undo"))?;
 
     let ApplyGroupResult {
         inverse_group,
@@ -402,7 +402,7 @@ pub fn redo(id: &str) -> SlidraResult<UndoResult> {
     let group = stack
         .redo
         .pop()
-        .ok_or_else(|| SlidraError::invalid("沒有可重做的操作"))?;
+        .ok_or_else(|| SlidraError::invalid("no operation to redo"))?;
 
     let ApplyGroupResult {
         inverse_group,
@@ -654,7 +654,7 @@ pub(crate) fn end_history_group(id: &str) -> SlidraResult<()> {
     let group = stack
         .open_group
         .take()
-        .ok_or_else(|| SlidraError::invalid("沒有開啟中的復原群組"))?;
+        .ok_or_else(|| SlidraError::invalid("no open undo group"))?;
     let evicted_snapshot_ids = if group.entries.is_empty() {
         Vec::new()
     } else {
@@ -744,7 +744,7 @@ mod tests {
         let err = undo("pid-no-file").unwrap_err();
         // Missing stack.json must be treated as an empty stack (not
         // "corrupted"), so the observed error is the empty-undo-stack one.
-        assert_eq!(err.message(), "沒有可復原的操作");
+        assert_eq!(err.message(), "no operation to undo");
         drop(fixture);
     }
 
@@ -922,7 +922,7 @@ mod tests {
         let fixture = Fixture::new("corrupt-syntax", "pid-corrupt-1");
         write_stack_json(&fixture.home, "pid-corrupt-1", "{not valid json");
         let err = undo("pid-corrupt-1").unwrap_err();
-        assert_eq!(err.message(), "復原歷史已損毀");
+        assert_eq!(err.message(), "undo history is corrupted");
         drop(fixture);
     }
 
@@ -936,7 +936,7 @@ mod tests {
             r#"{"undo":"nope","redo":[],"openGroup":null}"#,
         );
         let err = undo("pid-corrupt-2").unwrap_err();
-        assert_eq!(err.message(), "復原歷史已損毀");
+        assert_eq!(err.message(), "undo history is corrupted");
         drop(fixture);
     }
 
@@ -952,7 +952,7 @@ mod tests {
             r#"{"undo":[{"groupId":"g1","entries":[{"virtualPath":"slides/001.svg","snapshotId":"never-written"}]}],"redo":[],"openGroup":null}"#,
         );
         let err = undo("pid-missing-snap").unwrap_err();
-        assert_eq!(err.message(), "復原歷史已損毀");
+        assert_eq!(err.message(), "undo history is corrupted");
         drop(fixture);
     }
 
@@ -1169,7 +1169,7 @@ mod tests {
     fn end_history_group_without_an_open_group_errors() {
         let fixture = Fixture::new("no-open-group", "pid-no-open-group");
         let err = end_history_group("pid-no-open-group").unwrap_err();
-        assert_eq!(err.message(), "沒有開啟中的復原群組");
+        assert_eq!(err.message(), "no open undo group");
         drop(fixture);
     }
 }

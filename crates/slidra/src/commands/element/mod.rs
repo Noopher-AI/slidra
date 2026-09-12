@@ -226,7 +226,7 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert!(result.message.contains("鎖定的版面骨架"));
+        assert!(result.message.contains("locked layout skeleton"));
         // The rejected command must not have touched the slide file at all.
         assert!(fixture.read_slide().contains(r#"data-slidra-lock="true""#));
         assert!(!fixture.read_slide().contains("translate"));
@@ -315,11 +315,11 @@ mod tests {
                 fixture.id.clone(),
                 "slides/001.svg".to_string(),
                 "a".to_string(),
-                "標題".to_string(),
+                "title".to_string(),
             ],
         );
         assert!(named.ok, "{}", named.message);
-        assert!(fixture.read_slide().contains(r#"data-slidra-name="標題""#));
+        assert!(fixture.read_slide().contains(r#"data-slidra-name="title""#));
 
         let unlocked = dispatch(
             &["element", "unlock"],
@@ -439,7 +439,7 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "樣式屬性 rx 不在樣式白名單內");
+        assert_eq!(result.message, "style attribute rx not in style whitelist");
         // Rejected before any write — the slide file is untouched.
         assert!(!fixture.read_slide().contains("rx"));
     }
@@ -506,7 +506,10 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "element align 不支援的方向：middle");
+        assert_eq!(
+            result.message,
+            "element align unsupported direction: middle"
+        );
     }
 
     #[test]
@@ -563,7 +566,7 @@ mod tests {
         let undo_err = history::undo(&fixture.id).unwrap_err();
         assert_eq!(
             undo_err.message(),
-            "沒有可復原的操作",
+            "no operation to undo",
             "copy must not occupy an undo step"
         );
     }
@@ -647,7 +650,7 @@ mod tests {
             &[fixture.id.clone(), "slides/001.svg".to_string()],
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "剪貼簿是空的");
+        assert_eq!(result.message, "clipboard is empty");
     }
 
     #[test]
@@ -682,7 +685,7 @@ mod tests {
             &[fixture.id.clone(), "slides/001.svg".to_string()],
         );
         assert!(!second.ok);
-        assert_eq!(second.message, "剪貼簿是空的");
+        assert_eq!(second.message, "clipboard is empty");
     }
 
     #[test]
@@ -702,7 +705,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "找不到來源檔案：/definitely/does/not/exist.svg"
+            "source file not found: /definitely/does/not/exist.svg"
         );
     }
 
@@ -745,6 +748,6 @@ mod tests {
             &[fixture.id.clone(), "slides/001.svg".to_string()],
         );
         assert!(!pasted.ok);
-        assert_eq!(pasted.message, "剪貼簿是空的");
+        assert_eq!(pasted.message, "clipboard is empty");
     }
 }

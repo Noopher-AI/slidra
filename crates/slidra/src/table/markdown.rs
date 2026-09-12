@@ -99,7 +99,9 @@ pub fn parse_markdown_table(text: &str) -> SlidraResult<ParsedMarkdownTable> {
         .filter(|line| !line.is_empty())
         .collect();
     if lines.len() < 2 {
-        return Err(SlidraError::invalid("Markdown 表格至少需要標頭列與對齊列"));
+        return Err(SlidraError::invalid(
+            "Markdown table requires at least a header row and an alignment row",
+        ));
     }
 
     let headers = split_row(lines[0]);
@@ -107,7 +109,7 @@ pub fn parse_markdown_table(text: &str) -> SlidraResult<ParsedMarkdownTable> {
     if align_cells.len() != headers.len() || !align_cells.iter().all(|cell| is_align_row_cell(cell))
     {
         return Err(SlidraError::invalid(
-            "Markdown 表格第二列必須是對齊列（例如 :---、---:、:---:）",
+            "Markdown table's second row must be an alignment row (e.g. :---, ---:, :---:)",
         ));
     }
     let aligns: Vec<CellAlign> = align_cells.iter().map(|c| parse_align_cell(c)).collect();
@@ -117,7 +119,7 @@ pub fn parse_markdown_table(text: &str) -> SlidraResult<ParsedMarkdownTable> {
         let cells = split_row(line);
         if cells.len() != headers.len() {
             return Err(SlidraError::invalid(format!(
-                "Markdown 表格第 {} 列的欄數（{}）與標頭（{}）不符",
+                "Markdown table row {}'s column count ({}) does not match header ({})",
                 index + 3,
                 cells.len(),
                 headers.len()
@@ -166,7 +168,10 @@ mod tests {
     #[test]
     fn missing_alignment_row_errors() {
         let err = parse_markdown_table("| a |\n").unwrap_err();
-        assert_eq!(err.message(), "Markdown 表格至少需要標頭列與對齊列");
+        assert_eq!(
+            err.message(),
+            "Markdown table requires at least a header row and an alignment row"
+        );
     }
 
     #[test]
@@ -175,7 +180,7 @@ mod tests {
         let err = parse_markdown_table(md).unwrap_err();
         assert_eq!(
             err.message(),
-            "Markdown 表格第二列必須是對齊列（例如 :---、---:、:---:）"
+            "Markdown table's second row must be an alignment row (e.g. :---, ---:, :---:)"
         );
     }
 
@@ -185,7 +190,7 @@ mod tests {
         let err = parse_markdown_table(md).unwrap_err();
         assert_eq!(
             err.message(),
-            "Markdown 表格第 3 列的欄數（1）與標頭（2）不符"
+            "Markdown table row 3's column count (1) does not match header (2)"
         );
     }
 

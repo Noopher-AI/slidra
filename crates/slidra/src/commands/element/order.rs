@@ -13,7 +13,7 @@ fn parse_direction(raw: &str) -> SlidraResult<OrderDirection> {
         "up" => Ok(OrderDirection::Up),
         "down" => Ok(OrderDirection::Down),
         _ => Err(SlidraError::invalid(format!(
-            "element order 不支援的方向：{raw}"
+            "element order unsupported direction: {raw}"
         ))),
     }
 }
@@ -32,7 +32,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
 
     Ok(CommandResult::success(
         format!(
-            "已調整 {slide_path} 的 {} 個元素的疊置順序",
+            "adjusted stacking order of {} elements in {slide_path}",
             element_ids.len()
         ),
         Some(serde_json::json!({})),

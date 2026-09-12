@@ -25,7 +25,7 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// Depth-first search for the `<g id="...">` container named `id`, tracking
@@ -55,17 +55,20 @@ fn require_container<'a>(
     svg_root: &'a ScannedNode,
     id: &str,
 ) -> SlidraResult<(&'a ScannedNode, &'a ScannedNode)> {
-    find_container(svg_root, id).ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))
+    find_container(svg_root, id)
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))
 }
 
 fn validate_id_list(element_ids: &[String]) -> SlidraResult<()> {
     if element_ids.is_empty() {
-        return Err(SlidraError::invalid("元素清單不可為空"));
+        return Err(SlidraError::invalid("element list must not be empty"));
     }
     let mut seen = HashSet::with_capacity(element_ids.len());
     for id in element_ids {
         if !seen.insert(id) {
-            return Err(SlidraError::invalid(format!("元素清單重複：{id}")));
+            return Err(SlidraError::invalid(format!(
+                "element list has duplicates: {id}"
+            )));
         }
     }
     Ok(())
@@ -106,7 +109,7 @@ fn assert_not_table_container(
         == Some(crate::slide::format::TABLE_CONTAINER_TYPE)
     {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 是表格，{action}"
+            "element {element_id} is a table, {action}"
         )));
     }
     Ok(())
@@ -180,7 +183,7 @@ pub fn group_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if element_ids.len() < 2 {
-        return Err(SlidraError::invalid("群組至少需要兩個元素"));
+        return Err(SlidraError::invalid("group needs at least two elements"));
     }
 
     let roots = scan_document(svg_content)?;
@@ -192,7 +195,9 @@ pub fn group_elements(
 
     let parent_start = found[0].1.start;
     if found.iter().any(|(_, parent)| parent.start != parent_start) {
-        return Err(SlidraError::invalid("群組的元素必須在同一層容器內"));
+        return Err(SlidraError::invalid(
+            "group elements must be within the same container level",
+        ));
     }
 
     // Document order among the targets, as they actually appear in `parent`.
@@ -263,9 +268,9 @@ fn ungroup_one(svg_content: &str, slide_path: &str, id: &str) -> SlidraResult<Un
     let roots = scan_document(svg_content)?;
     let svg_root = require_svg_root(&roots)?;
     let (node, _parent) = require_container(svg_root, id)?;
-    assert_not_table_container(node, id, "不能解散群組")?;
+    assert_not_table_container(node, id, "cannot ungroup")?;
     if !is_group_container(node) {
-        return Err(SlidraError::invalid(format!("元素 {id} 不是群組")));
+        return Err(SlidraError::invalid(format!("element {id} is not a group")));
     }
     let group_matrix = parse_transform(attribute_of(node, "transform").map(|a| a.value.as_str()))?;
     let children = meaningful_children(node);
@@ -447,7 +452,7 @@ mod tests {
     fn group_requires_at_least_two_elements() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let err = group_elements(&svg, "slides/001.svg", &["a".to_string()], "el-g").unwrap_err();
-        assert_eq!(err.message(), "群組至少需要兩個元素");
+        assert_eq!(err.message(), "group needs at least two elements");
     }
 
     #[test]
@@ -462,7 +467,10 @@ mod tests {
             "el-g",
         )
         .unwrap_err();
-        assert_eq!(err.message(), "群組的元素必須在同一層容器內");
+        assert_eq!(
+            err.message(),
+            "group elements must be within the same container level"
+        );
     }
 
     #[test]
@@ -528,7 +536,7 @@ mod tests {
     fn ungroup_rejects_a_non_group_container() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let err = ungroup_elements(&svg, "slides/001.svg", &["a".to_string()]).unwrap_err();
-        assert_eq!(err.message(), "元素 a 不是群組");
+        assert_eq!(err.message(), "element a is not a group");
     }
 
     #[test]
@@ -537,7 +545,7 @@ mod tests {
             r#"<g id="t" data-slidra-type="table" data-slidra-cols="1" data-slidra-rows="1"><g data-slidra-cell="0,0"><rect x="0" y="0" width="1" height="1"/></g></g>"#,
         );
         let err = ungroup_elements(&svg, "slides/001.svg", &["t".to_string()]).unwrap_err();
-        assert_eq!(err.message(), "元素 t 是表格，不能解散群組");
+        assert_eq!(err.message(), "element t is a table, cannot ungroup");
     }
 
     #[test]
@@ -557,8 +565,8 @@ mod tests {
     fn name_set_writes_and_empty_string_removes_the_attribute() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let named =
-            set_element_name(&svg, "slides/001.svg", &["a".to_string()], "標題文字").unwrap();
-        assert!(named.contains(r#"data-slidra-name="標題文字""#));
+            set_element_name(&svg, "slides/001.svg", &["a".to_string()], "title text").unwrap();
+        assert!(named.contains(r#"data-slidra-name="title text""#));
         let cleared = set_element_name(&named, "slides/001.svg", &["a".to_string()], "").unwrap();
         assert_eq!(cleared, svg);
     }
@@ -572,9 +580,12 @@ mod tests {
             &svg,
             "slides/001.svg",
             &["a".to_string(), "b".to_string()],
-            "同名",
+            "same name",
         )
         .unwrap();
-        assert_eq!(updated.matches(r#"data-slidra-name="同名""#).count(), 2);
+        assert_eq!(
+            updated.matches(r#"data-slidra-name="same name""#).count(),
+            2
+        );
     }
 }

@@ -35,12 +35,12 @@ pub fn run(args: &[String]) -> CommandResult {
 
 fn describe(changed: usize, untouched: usize) -> String {
     if changed == 0 && untouched == 0 {
-        return "沒有投影片需要轉換".to_string();
+        return "no slides need converting".to_string();
     }
     if untouched == 0 {
-        return format!("已轉換 {changed} 張投影片");
+        return format!("converted {changed} slides");
     }
-    format!("已轉換 {changed} 張投影片，{untouched} 張原本就合規")
+    format!("converted {changed} slides, {untouched} already compliant")
 }
 
 struct SlideOutcome {
@@ -68,7 +68,7 @@ fn convert_presentation_slides(id_str: &str) -> SlidraResult<Vec<SlideOutcome>> 
         let mut generate_id = || format!("el-{}", id::generate_opaque_id());
         let result = normalise_slide_svg(&original, &mut generate_id).map_err(|err| {
             SlidraError::invalid(format!(
-                "{slide_path}：{}整份簡報都沒有被修改。",
+                "{slide_path}: {}the entire presentation was not modified.",
                 err.message()
             ))
         })?;
@@ -113,13 +113,13 @@ fn roll_back(written: &[&PendingSlide], failed: &PendingSlide) -> String {
     if !restored_to_original(failed) {
         not_restored.push(failed.slide_path.clone());
     }
-    let failure = format!("寫入投影片時發生錯誤：{}。", failed.slide_path);
+    let failure = format!("error writing slide: {}.", failed.slide_path);
     if not_restored.is_empty() {
-        return format!("{failure}整份簡報都沒有被修改。");
+        return format!("{failure}the entire presentation was not modified.");
     }
     format!(
-        "{failure}已改寫的投影片還原失敗，這幾張現在不是原始內容，其餘維持原樣：{}。請修復磁碟問題後重新執行 convert。",
-        not_restored.join("、")
+        "{failure}restoring the already-rewritten slides failed, these slides are no longer original content, the rest remain unchanged: {}. Fix the disk issue and re-run convert.",
+        not_restored.join(", ")
     )
 }
 
@@ -201,7 +201,10 @@ mod tests {
     fn missing_id_argument_fails() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 convert 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command convert missing argument: presentation-id"
+        );
     }
 
     #[test]
@@ -213,7 +216,7 @@ mod tests {
         );
         let result = run(&[fixture.id.clone()]);
         assert!(result.ok);
-        assert_eq!(result.message, "沒有投影片需要轉換");
+        assert_eq!(result.message, "no slides need converting");
     }
 
     #[test]
@@ -228,7 +231,7 @@ mod tests {
         );
         let result = run(&[fixture.id.clone()]);
         assert!(result.ok);
-        assert_eq!(result.message, "已轉換 1 張投影片");
+        assert_eq!(result.message, "converted 1 slides");
         let content = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
         assert!(content.contains("<g id="));
     }
@@ -246,7 +249,7 @@ mod tests {
         let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
         let result = run(&[fixture.id.clone()]);
         assert!(result.ok);
-        assert_eq!(result.message, "已轉換 0 張投影片，1 張原本就合規");
+        assert_eq!(result.message, "converted 0 slides, 1 already compliant");
         let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
         assert_eq!(before, after);
     }
@@ -264,8 +267,12 @@ mod tests {
         let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
         let result = run(&[fixture.id.clone()]);
         assert!(!result.ok);
-        assert!(result.message.starts_with("slides/001.svg："));
-        assert!(result.message.ends_with("整份簡報都沒有被修改。"));
+        assert!(result.message.starts_with("slides/001.svg: "));
+        assert!(
+            result
+                .message
+                .ends_with("the entire presentation was not modified.")
+        );
         let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
         assert_eq!(before, after);
     }

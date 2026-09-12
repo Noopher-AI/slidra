@@ -178,7 +178,7 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
       sendJson(res, 500, { error: "前端尚未建置，請先執行 build" });
       return;
     }
-    sendJson(res, 404, { error: "找不到檔案" });
+    sendJson(res, 404, { error: "file not found" });
   }
 }
 

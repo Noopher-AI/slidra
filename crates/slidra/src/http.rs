@@ -30,13 +30,15 @@ pub fn download_source(url: &str) -> SlidraResult<Vec<u8>> {
             response
                 .into_reader()
                 .read_to_end(&mut bytes)
-                .map_err(|_| SlidraError::invalid(format!("無法下載來源：{url}")))?;
+                .map_err(|_| SlidraError::invalid(format!("failed to download source: {url}")))?;
             Ok(bytes)
         }
         Err(ureq::Error::Status(status, _response)) => Err(SlidraError::invalid(format!(
-            "無法下載來源，伺服器回應 {status}：{url}"
+            "failed to download source, server responded {status}: {url}"
         ))),
-        Err(ureq::Error::Transport(_)) => Err(SlidraError::invalid(format!("無法下載來源：{url}"))),
+        Err(ureq::Error::Transport(_)) => Err(SlidraError::invalid(format!(
+            "failed to download source: {url}"
+        ))),
     }
 }
 
@@ -100,7 +102,7 @@ mod tests {
         let err = download_source(&url).unwrap_err();
         assert_eq!(
             err.message(),
-            format!("無法下載來源，伺服器回應 404：{url}")
+            format!("failed to download source, server responded 404: {url}")
         );
     }
 
@@ -115,6 +117,6 @@ mod tests {
 
         let url = format!("http://{addr}/unreachable");
         let err = download_source(&url).unwrap_err();
-        assert_eq!(err.message(), format!("無法下載來源：{url}"));
+        assert_eq!(err.message(), format!("failed to download source: {url}"));
     }
 }

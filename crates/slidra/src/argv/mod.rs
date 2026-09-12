@@ -45,7 +45,7 @@ pub fn require_positional(
 ) -> Result<String, String> {
     match args.get(index) {
         Some(value) if !value.is_empty() && !is_flag_like(value) => Ok(value.clone()),
-        _ => Err(format!("命令 {command} 缺少參數：{arg_name}")),
+        _ => Err(format!("command {command} missing argument: {arg_name}")),
     }
 }
 
@@ -64,7 +64,7 @@ pub fn require_id_positional(
 ) -> Result<String, String> {
     match args.get(index) {
         Some(value) if !value.is_empty() => Ok(value.clone()),
-        _ => Err(format!("命令 {command} 缺少參數：{arg_name}")),
+        _ => Err(format!("command {command} missing argument: {arg_name}")),
     }
 }
 
@@ -72,11 +72,11 @@ pub fn require_id_positional(
 /// absent or has no legal value.
 pub fn require_flag(args: &[String], flag: &str, command: &str) -> Result<String, String> {
     let Some(index) = args.iter().position(|a| a == flag) else {
-        return Err(format!("命令 {command} 缺少參數：{flag}"));
+        return Err(format!("command {command} missing argument: {flag}"));
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(value.clone()),
-        _ => Err(format!("{flag} 缺少值")),
+        _ => Err(format!("{flag} missing value")),
     }
 }
 
@@ -88,7 +88,7 @@ pub fn optional_flag(args: &[String], flag: &str) -> Result<Option<String>, Stri
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(Some(value.clone())),
-        _ => Err(format!("{flag} 缺少值")),
+        _ => Err(format!("{flag} missing value")),
     }
 }
 
@@ -97,7 +97,7 @@ pub fn require_number_flag(args: &[String], flag: &str, command: &str) -> Result
     raw.parse::<f64>()
         .ok()
         .filter(|v| v.is_finite())
-        .ok_or_else(|| format!("{flag} 不是合法數字：{raw}"))
+        .ok_or_else(|| format!("{flag} is not a valid number: {raw}"))
 }
 
 pub fn optional_number_flag(args: &[String], flag: &str) -> Result<Option<f64>, String> {
@@ -108,7 +108,7 @@ pub fn optional_number_flag(args: &[String], flag: &str) -> Result<Option<f64>, 
         .ok()
         .filter(|v| v.is_finite())
         .map(Some)
-        .ok_or_else(|| format!("{flag} 不是合法數字：{raw}"))
+        .ok_or_else(|| format!("{flag} is not a valid number: {raw}"))
 }
 
 /// A bare boolean flag with no value (`--force`, `--all`). Presence
@@ -135,7 +135,7 @@ pub fn collect_repeated_flag(
                 }
                 _ => {
                     return Err(crate::errors::SlidraError::invalid(format!(
-                        "{flag} 缺少值"
+                        "{flag} missing value"
                     )));
                 }
             }
@@ -196,7 +196,7 @@ mod tests {
         assert!(require_positional(&args, 0, "cmd", "path").is_err());
         assert_eq!(
             require_positional(&args, 1, "cmd", "path").unwrap_err(),
-            "命令 cmd 缺少參數：path"
+            "command cmd missing argument: path"
         );
     }
 
@@ -223,11 +223,11 @@ mod tests {
         let args = vec!["".to_string()];
         assert_eq!(
             require_id_positional(&args, 0, "cat", "id").unwrap_err(),
-            "命令 cat 缺少參數：id"
+            "command cat missing argument: id"
         );
         assert_eq!(
             require_id_positional(&args, 1, "cat", "id").unwrap_err(),
-            "命令 cat 缺少參數：id"
+            "command cat missing argument: id"
         );
     }
 
@@ -242,7 +242,7 @@ mod tests {
         let args = vec!["--width".to_string()];
         assert_eq!(
             require_flag(&args, "--width", "cmd").unwrap_err(),
-            "--width 缺少值"
+            "--width missing value"
         );
     }
 
@@ -257,7 +257,7 @@ mod tests {
         let args = vec!["--width".to_string(), "abc".to_string()];
         assert_eq!(
             require_number_flag(&args, "--width", "cmd").unwrap_err(),
-            "--width 不是合法數字：abc"
+            "--width is not a valid number: abc"
         );
     }
 
@@ -321,7 +321,7 @@ mod ct {
         value.starts_with("--")
     }
 
-    /// The positional argument at `index`, or a "缺少參數" error naming
+    /// The positional argument at `index`, or a "missing argument" error naming
     /// `arg_name`. A flag-shaped value in this slot is treated the same as
     /// a missing one (see `is_flag_like`'s doc).
     pub(super) fn require_positional(
@@ -333,7 +333,7 @@ mod ct {
         match args.get(index) {
             Some(value) if !is_flag_like(value) => Ok(value.clone()),
             _ => Err(SlidraError::invalid(format!(
-                "命令 {command} 缺少參數：{arg_name}"
+                "command {command} missing argument: {arg_name}"
             ))),
         }
     }
@@ -350,7 +350,7 @@ mod ct {
         match args.get(index) {
             Some(value) => Ok(value.clone()),
             None => Err(SlidraError::invalid(format!(
-                "命令 {command} 缺少參數：{arg_name}"
+                "command {command} missing argument: {arg_name}"
             ))),
         }
     }
@@ -362,13 +362,12 @@ mod ct {
         flag: &str,
         command: &str,
     ) -> Result<String, SlidraError> {
-        let index = args
-            .iter()
-            .position(|arg| arg == flag)
-            .ok_or_else(|| SlidraError::invalid(format!("命令 {command} 缺少參數：{flag}")))?;
+        let index = args.iter().position(|arg| arg == flag).ok_or_else(|| {
+            SlidraError::invalid(format!("command {command} missing argument: {flag}"))
+        })?;
         match args.get(index + 1) {
             Some(value) if !is_flag_like(value) => Ok(value.clone()),
-            _ => Err(SlidraError::invalid(format!("{flag} 缺少值"))),
+            _ => Err(SlidraError::invalid(format!("{flag} missing value"))),
         }
     }
 
@@ -383,7 +382,7 @@ mod ct {
         };
         match args.get(index + 1) {
             Some(value) if !is_flag_like(value) => Ok(Some(value.clone())),
-            _ => Err(SlidraError::invalid(format!("{flag} 缺少值"))),
+            _ => Err(SlidraError::invalid(format!("{flag} missing value"))),
         }
     }
 
@@ -398,7 +397,7 @@ mod ct {
         let raw = require_flag(args, flag, command)?;
         super::parse_js_number(&raw)
             .filter(|value| value.is_finite())
-            .ok_or_else(|| SlidraError::invalid(format!("{flag} 不是合法數字：{raw}")))
+            .ok_or_else(|| SlidraError::invalid(format!("{flag} is not a valid number: {raw}")))
     }
 
     /// `optional_flag` followed by the same `Number`/`isFinite` check as
@@ -417,7 +416,7 @@ mod ct {
         };
         let value = super::parse_js_number(&raw)
             .filter(|value| value.is_finite())
-            .ok_or_else(|| SlidraError::invalid(format!("{flag} 不是合法數字：{raw}")))?;
+            .ok_or_else(|| SlidraError::invalid(format!("{flag} is not a valid number: {raw}")))?;
         Ok(Some(value))
     }
 
@@ -435,7 +434,7 @@ mod ct {
         fn require_positional_rejects_flag_shaped_value() {
             let args = vec!["--foo".to_string()];
             let err = require_positional(&args, 0, "cmd", "path").unwrap_err();
-            assert_eq!(err.message(), "命令 cmd 缺少參數：path");
+            assert_eq!(err.message(), "command cmd missing argument: path");
         }
 
         #[test]
@@ -451,7 +450,7 @@ mod ct {
         fn require_id_positional_still_rejects_a_missing_positional() {
             let args: Vec<String> = vec![];
             let err = require_id_positional(&args, 0, "table create", "id").unwrap_err();
-            assert_eq!(err.message(), "命令 table create 缺少參數：id");
+            assert_eq!(err.message(), "command table create missing argument: id");
         }
 
         #[test]
@@ -464,7 +463,7 @@ mod ct {
         fn require_flag_missing_value_errors() {
             let args = vec!["--type".to_string()];
             let err = require_flag(&args, "--type", "cmd").unwrap_err();
-            assert_eq!(err.message(), "--type 缺少值");
+            assert_eq!(err.message(), "--type missing value");
         }
 
         #[test]
@@ -477,7 +476,7 @@ mod ct {
         fn require_number_flag_rejects_non_finite_result() {
             let args = vec!["--w".to_string(), "not-a-number".to_string()];
             let err = require_number_flag(&args, "--w", "cmd").unwrap_err();
-            assert_eq!(err.message(), "--w 不是合法數字：not-a-number");
+            assert_eq!(err.message(), "--w is not a valid number: not-a-number");
         }
     }
 }

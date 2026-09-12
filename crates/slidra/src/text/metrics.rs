@@ -27,7 +27,9 @@ pub fn measure_text_width(
     // not incidental: an invalid `font_size_px` still errors even when
     // `text` is empty, a quirk this port preserves rather than "fixes".
     if font_size_px.is_nan() || !font_size_px.is_finite() || font_size_px < 0.0 {
-        return Err(SlidraError::invalid("字級必須是非負的有限數"));
+        return Err(SlidraError::invalid(
+            "font size must be a non-negative finite number",
+        ));
     }
     if text.is_empty() || font_size_px == 0.0 {
         return Ok(0.0);
@@ -205,7 +207,10 @@ mod tests {
     fn negative_font_size_errors() {
         let font = MockFont::default();
         let err = measure_text_width(&font, "a", -1.0).unwrap_err();
-        assert_eq!(err.message(), "字級必須是非負的有限數");
+        assert_eq!(
+            err.message(),
+            "font size must be a non-negative finite number"
+        );
     }
 
     #[test]
@@ -226,7 +231,10 @@ mod tests {
         // order: an invalid fontSizePx throws even when text === "".
         let font = MockFont::default();
         let err = measure_text_width(&font, "", -1.0).unwrap_err();
-        assert_eq!(err.message(), "字級必須是非負的有限數");
+        assert_eq!(
+            err.message(),
+            "font size must be a non-negative finite number"
+        );
     }
 
     #[test]

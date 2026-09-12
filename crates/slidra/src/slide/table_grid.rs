@@ -60,7 +60,7 @@ fn is_finite_number_token(token: &str) -> bool {
 /// Matches the regex `^(\d+),(\d+)$` used by the cell address check.
 /// `u128` (rather than `usize`) keeps an absurdly long digit
 /// string from overflowing into a parse failure that would misreport as
-/// "格式錯誤" instead of "超出表格範圍" — JS's `Number()` would instead
+/// "malformed" instead of "out of table range" — JS's `Number()` would instead
 /// silently lose precision on such a string and still produce *a* number,
 /// which then almost always compares as out-of-range; `u128` reaches the
 /// same practical outcome without trying to reproduce IEEE-754 double
@@ -89,16 +89,20 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
     let rows_raw = attribute_of(container, "data-slidra-rows").map(|a| a.value.as_str());
     let (cols_raw, rows_raw) = match (cols_raw, rows_raw) {
         (Some(c), Some(r)) => (c, r),
-        _ => return Some("表格容器缺少 data-slidra-cols 或 data-slidra-rows".to_string()),
+        _ => {
+            return Some(
+                "table container missing data-slidra-cols or data-slidra-rows".to_string(),
+            );
+        }
     };
 
     let cols: Vec<&str> = cols_raw.split_whitespace().collect();
     let rows: Vec<&str> = rows_raw.split_whitespace().collect();
     if cols.is_empty() || cols.iter().any(|token| !is_finite_number_token(token)) {
-        return Some("data-slidra-cols 不是合法的數字列表".to_string());
+        return Some("data-slidra-cols is not a valid number list".to_string());
     }
     if rows.is_empty() || rows.iter().any(|token| !is_finite_number_token(token)) {
-        return Some("data-slidra-rows 不是合法的數字列表".to_string());
+        return Some("data-slidra-rows is not a valid number list".to_string());
     }
 
     let source_count = container
@@ -107,14 +111,19 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
         .filter(|child| child.tag == TABLE_SOURCE_TAG)
         .count();
     if source_count > 1 {
-        return Some(format!("表格容器必須恰好包含一個 <{TABLE_SOURCE_TAG}>"));
+        return Some(format!(
+            "table container must contain exactly one <{TABLE_SOURCE_TAG}>"
+        ));
     }
 
     let first_non_cell = container.children.iter().find(|child| {
         child.tag != TABLE_SOURCE_TAG && attribute_of(child, "data-slidra-cell").is_none()
     });
     if let Some(offender) = first_non_cell {
-        return Some(format!("表格容器不可含有非儲存格的 <{}>", offender.tag));
+        return Some(format!(
+            "table container cannot contain a <{}> that is not a cell",
+            offender.tag
+        ));
     }
 
     let cell_nodes = container
@@ -123,7 +132,7 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
         .filter(|child| attribute_of(child, "data-slidra-cell").is_some());
     for cell_node in cell_nodes {
         if cell_node.tag != "g" {
-            return Some("儲存格必須是 <g> 容器".to_string());
+            return Some("cell must be a <g> container".to_string());
         }
         let address = attribute_of(cell_node, "data-slidra-cell")
             .expect("just filtered on this attribute existing")
@@ -131,17 +140,17 @@ pub fn describe_table_shape_problem(container: &ScannedNode) -> Option<String> {
             .as_str();
         let (row, col) = match parse_cell_address(address) {
             Some(rc) => rc,
-            None => return Some(format!("data-slidra-cell 格式錯誤：{address}")),
+            None => return Some(format!("data-slidra-cell format error: {address}")),
         };
         if row >= rows.len() as u128 || col >= cols.len() as u128 {
-            return Some(format!("儲存格 ({row},{col}) 超出表格範圍"));
+            return Some(format!("cell ({row},{col}) out of table range"));
         }
         if cell_node
             .children
             .iter()
             .any(|grandchild| grandchild.tag == "g")
         {
-            return Some(format!("儲存格 ({row},{col}) 內不可含有子 <g>"));
+            return Some(format!("cell ({row},{col}) must not contain a child <g>"));
         }
     }
 
@@ -158,7 +167,9 @@ fn parse_number_list(raw: &str, element_id: &str, attr: &str) -> SlidraResult<Ve
                 .ok()
                 .filter(|value| value.is_finite())
                 .ok_or_else(|| {
-                    SlidraError::invalid(format!("元素 {element_id} 的 {attr} 含非數字：{token}"))
+                    SlidraError::invalid(format!(
+                        "element {element_id}\'s {attr} contains a non-number: {token}"
+                    ))
                 })
         })
         .collect()
@@ -172,10 +183,12 @@ fn parse_number_list(raw: &str, element_id: &str, attr: &str) -> SlidraResult<Ve
 /// unstated assumption), so it still returns a clean `SlidraError` rather
 /// than panicking if that invariant is ever violated.
 pub fn read_table_grid(container: &ScannedNode, element_id: &str) -> SlidraResult<TableGrid> {
-    let cols_raw = attribute_value(container, "data-slidra-cols")
-        .ok_or_else(|| SlidraError::invalid(format!("元素 {element_id} 缺少 data-slidra-cols")))?;
-    let rows_raw = attribute_value(container, "data-slidra-rows")
-        .ok_or_else(|| SlidraError::invalid(format!("元素 {element_id} 缺少 data-slidra-rows")))?;
+    let cols_raw = attribute_value(container, "data-slidra-cols").ok_or_else(|| {
+        SlidraError::invalid(format!("element {element_id} is missing data-slidra-cols"))
+    })?;
+    let rows_raw = attribute_value(container, "data-slidra-rows").ok_or_else(|| {
+        SlidraError::invalid(format!("element {element_id} is missing data-slidra-rows"))
+    })?;
     let cols = parse_number_list(&cols_raw, element_id, "data-slidra-cols")?;
     let rows = parse_number_list(&rows_raw, element_id, "data-slidra-rows")?;
     Ok(TableGrid { cols, rows })
@@ -210,7 +223,7 @@ mod tests {
         let container = table_container(svg);
         assert_eq!(
             describe_table_shape_problem(&container),
-            Some("表格容器缺少 data-slidra-cols 或 data-slidra-rows".to_string())
+            Some("table container missing data-slidra-cols or data-slidra-rows".to_string())
         );
     }
 
@@ -220,7 +233,7 @@ mod tests {
         let container = table_container(svg);
         assert_eq!(
             describe_table_shape_problem(&container),
-            Some("data-slidra-cols 不是合法的數字列表".to_string())
+            Some("data-slidra-cols is not a valid number list".to_string())
         );
     }
 
@@ -230,7 +243,7 @@ mod tests {
         let container = table_container(svg);
         assert_eq!(
             describe_table_shape_problem(&container),
-            Some("儲存格 (0,5) 超出表格範圍".to_string())
+            Some("cell (0,5) out of table range".to_string())
         );
     }
 
@@ -240,7 +253,7 @@ mod tests {
         let container = table_container(svg);
         assert_eq!(
             describe_table_shape_problem(&container),
-            Some("表格容器不可含有非儲存格的 <rect>".to_string())
+            Some("table container cannot contain a <rect> that is not a cell".to_string())
         );
     }
 
@@ -263,6 +276,6 @@ mod tests {
         let svg = r#"<g id="t1" data-slidra-type="table" data-slidra-rows="40"><g data-slidra-cell="0,0"><rect/></g></g>"#;
         let container = table_container(svg);
         let err = read_table_grid(&container, "t1").unwrap_err();
-        assert!(err.message().contains("缺少 data-slidra-cols"));
+        assert!(err.message().contains("missing data-slidra-cols"));
     }
 }

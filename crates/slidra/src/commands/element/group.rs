@@ -18,7 +18,10 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     write::write_presentation_file(&id, &slide_path, &result.svg)?;
 
     let suffix = if result.removed_effects > 0 {
-        format!("，並移除 {} 個成員自身的動畫效果", result.removed_effects)
+        format!(
+            ", and removed the animation effect(s) of {} member(s)",
+            result.removed_effects
+        )
     } else {
         String::new()
     };
@@ -28,7 +31,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     });
     Ok(CommandResult::success(
         format!(
-            "已將 {slide_path} 的 {} 個元素群組為 {new_group_id}{suffix}",
+            "grouped {} elements in {slide_path} into {new_group_id}{suffix}",
             element_ids.len()
         ),
         Some(data),

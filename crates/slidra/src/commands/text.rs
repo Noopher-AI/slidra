@@ -54,7 +54,7 @@ mod set {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已更新 {slide_path} 的元素 {element_id}"),
+            format!("updated element {element_id} in {slide_path}"),
             Some(serde_json::json!({})),
         ))
     }
@@ -71,22 +71,28 @@ mod style_set {
     /// decision D4) — hand-scanned digit runs either side of one colon.
     fn parse_range(raw: &str) -> SlidraResult<(usize, usize)> {
         let (left, right) = raw.split_once(':').ok_or_else(|| {
-            SlidraError::invalid(format!("--range 格式錯誤，必須是 數字:數字：{raw}"))
+            SlidraError::invalid(format!(
+                "--range format error, must be number:number: {raw}"
+            ))
         })?;
         let is_digits = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit());
         if !is_digits(left) || !is_digits(right) {
             return Err(SlidraError::invalid(format!(
-                "--range 格式錯誤，必須是 數字:數字：{raw}"
+                "--range format error, must be number:number: {raw}"
             )));
         }
         let start: usize = left.parse().map_err(|_| {
-            SlidraError::invalid(format!("--range 格式錯誤，必須是 數字:數字：{raw}"))
+            SlidraError::invalid(format!(
+                "--range format error, must be number:number: {raw}"
+            ))
         })?;
         let end: usize = right.parse().map_err(|_| {
-            SlidraError::invalid(format!("--range 格式錯誤，必須是 數字:數字：{raw}"))
+            SlidraError::invalid(format!(
+                "--range format error, must be number:number: {raw}"
+            ))
         })?;
         if start >= end {
-            return Err(SlidraError::invalid("--range 的起點必須小於終點"));
+            return Err(SlidraError::invalid("--range start must be less than end"));
         }
         Ok((start, end))
     }
@@ -101,7 +107,7 @@ mod style_set {
         let font_style = optional_flag(args, "--font-style")?.map(str::to_string);
         if font_weight.is_none() && font_style.is_none() {
             return Err(SlidraError::invalid(
-                "命令 text style set 至少要給 --font-weight 或 --font-style",
+                "command text style set requires at least --font-weight or --font-style",
             ));
         }
         let force = has_flag(args, "--force");
@@ -125,7 +131,7 @@ mod style_set {
 
         Ok(CommandResult::success(
             format!(
-                "已設定 {element_id} 第 {range_start}–{range_end} 個字元的樣式（{runs} 個片段）"
+                "set style for characters {range_start}–{range_end} of {element_id} ({runs} runs)"
             ),
             Some(serde_json::json!({ "runs": runs })),
         ))
@@ -145,7 +151,7 @@ mod list_set {
             "number" => Ok(ListKind::Number),
             "none" => Ok(ListKind::None),
             _ => Err(SlidraError::invalid(format!(
-                "--kind 必須是 bullet、number 或 none：{raw}"
+                "--kind must be bullet, number, or none: {raw}"
             ))),
         }
     }
@@ -153,11 +159,14 @@ mod list_set {
     fn parse_paragraph(raw: &str) -> SlidraResult<usize> {
         if !raw.chars().all(|c| c.is_ascii_digit()) || raw.is_empty() {
             return Err(SlidraError::invalid(format!(
-                "--paragraph 不是合法的非負整數：{raw}"
+                "--paragraph is not a valid non-negative integer: {raw}"
             )));
         }
-        raw.parse()
-            .map_err(|_| SlidraError::invalid(format!("--paragraph 不是合法的非負整數：{raw}")))
+        raw.parse().map_err(|_| {
+            SlidraError::invalid(format!(
+                "--paragraph is not a valid non-negative integer: {raw}"
+            ))
+        })
     }
 
     fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
@@ -184,7 +193,7 @@ mod list_set {
             ListKind::None => "none",
         };
         Ok(CommandResult::success(
-            format!("已將 {element_id} 第 {paragraph} 段設為 {kind_str}"),
+            format!("set paragraph {paragraph} of {element_id} to {kind_str}"),
             Some(serde_json::json!({ "paragraphs": paragraphs })),
         ))
     }
@@ -313,7 +322,7 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 text set 未知的參數：--json");
+        assert_eq!(result.message, "command text set unknown argument: --json");
     }
 
     #[test]
@@ -378,7 +387,7 @@ mod tests {
         assert_eq!(fixture.read_slide(), original);
         // No undo group was ever pushed for this no-op write.
         let undo_err = history::undo(&fixture.id).unwrap_err();
-        assert_eq!(undo_err.message(), "沒有可復原的操作");
+        assert_eq!(undo_err.message(), "no operation to undo");
     }
 
     #[test]
@@ -401,6 +410,9 @@ mod tests {
             ],
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "--range 格式錯誤，必須是 數字:數字：abc");
+        assert_eq!(
+            result.message,
+            "--range format error, must be number:number: abc"
+        );
     }
 }

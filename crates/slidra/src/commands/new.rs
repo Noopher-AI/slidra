@@ -12,14 +12,15 @@ pub fn run(args: &[String]) -> CommandResult {
     };
     let name = match argv::optional_flag(args, "--name") {
         Ok(Some(v)) => v,
-        Ok(None) => "新簡報".to_string(),
+        Ok(None) => "New Presentation".to_string(),
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
 
     match create_new_presentation(&path, &name) {
-        Ok(()) => {
-            CommandResult::success(format!("已建立簡報「{name}」"), Some(serde_json::json!({})))
-        }
+        Ok(()) => CommandResult::success(
+            format!("created presentation \"{name}\""),
+            Some(serde_json::json!({})),
+        ),
         Err(err) => CommandResult::failure(err.message().to_string(), FailureKind::Failed),
     }
 }
@@ -28,26 +29,33 @@ fn create_new_presentation(output_path: &str, name: &str) -> Result<(), SlidraEr
     let files = presentation::build_minimal_presentation(name);
     let staging =
         std::env::temp_dir().join(format!("slidra-new-{}", crate::id::random_hex_suffix()));
-    std::fs::create_dir_all(&staging)
-        .map_err(|_| SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
+    std::fs::create_dir_all(&staging).map_err(|_| {
+        SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
+    })?;
 
     let write_result = (|| -> Result<(), SlidraError> {
         for (relative_path, content) in &files {
             let dest = staging.join(relative_path);
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent).map_err(|_| {
-                    SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}"))
+                    SlidraError::invalid(format!(
+                        "failed to write presentation file: {output_path}"
+                    ))
                 })?;
             }
-            std::fs::write(&dest, content)
-                .map_err(|_| SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
+            std::fs::write(&dest, content).map_err(|_| {
+                SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
+            })?;
         }
-        std::fs::create_dir_all(staging.join("assets"))
-            .map_err(|_| SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
-        std::fs::create_dir_all(staging.join("fonts"))
-            .map_err(|_| SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
-        std::fs::create_dir_all(staging.join("slides"))
-            .map_err(|_| SlidraError::invalid(format!("無法寫入簡報檔案：{output_path}")))?;
+        std::fs::create_dir_all(staging.join("assets")).map_err(|_| {
+            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
+        })?;
+        std::fs::create_dir_all(staging.join("fonts")).map_err(|_| {
+            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
+        })?;
+        std::fs::create_dir_all(staging.join("slides")).map_err(|_| {
+            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
+        })?;
         container::pack_directory(&staging, Path::new(output_path))
     })();
 
@@ -63,14 +71,14 @@ mod tests {
     fn missing_path_argument_fails() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 new 缺少參數：path");
+        assert_eq!(result.message, "command new missing argument: path");
     }
 
     #[test]
     fn name_flag_missing_value_fails() {
         let result = run(&["/tmp/x.slidra".to_string(), "--name".to_string()]);
         assert!(!result.ok);
-        assert_eq!(result.message, "--name 缺少值");
+        assert_eq!(result.message, "--name missing value");
     }
 
     #[test]
@@ -81,7 +89,7 @@ mod tests {
         ));
         let result = run(&[path.to_string_lossy().into_owned()]);
         assert!(result.ok);
-        assert_eq!(result.message, "已建立簡報「新簡報」");
+        assert_eq!(result.message, "created presentation \"New Presentation\"");
         assert!(path.exists());
         std::fs::remove_file(&path).ok();
     }

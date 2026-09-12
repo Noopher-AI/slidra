@@ -259,9 +259,9 @@ mod tests {
             cells: vec![cell(0, 0, "x")],
         };
         let err = compute_table_layout(&model, &HashMap::new()).unwrap_err();
-        // `resolve_font`'s actual message text is "簡報未內嵌字型 ..." (the
+        // `resolve_font`'s actual message text is "presentation does not embed font ..." (the
         // presentation has no embedded font), not the literal substring
-        // "缺少字型" ("missing font") that the function name suggests.
-        assert!(err.message().contains("未內嵌字型"));
+        // "missing font" ("missing font") that the function name suggests.
+        assert!(err.message().contains("does not embed font"));
     }
 }

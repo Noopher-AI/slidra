@@ -28,7 +28,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
 
     Ok(CommandResult::success(
         format!(
-            "已設定 {slide_path} 的 {} 個元素的顯示名稱",
+            "set display name of {} elements in {slide_path}",
             element_ids.len()
         ),
         Some(serde_json::json!({})),

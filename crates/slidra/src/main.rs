@@ -35,13 +35,13 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         // left to hand off to, so Rust reports the error itself, matching
         // the existing wording byte-for-byte (originally printed by Node
         // for this exact message).
-        eprintln!("缺少命令名稱");
+        eprintln!("missing command name");
         return 1;
     };
 
     // Non-UTF-8 argv[0] can never match a takeover-table name (all of which
     // are ASCII) or "--version"/"serve"/"export", so it always falls
-    // through to the final "未知的命令" branch below — untouched, no lossy
+    // through to the final "unknown command" branch below — untouched, no lossy
     // conversion performed on it until it is actually printed (plan 4.1's
     // "non-UTF-8 bytes" row).
     if let Some(first_str) = first.to_str() {
@@ -106,14 +106,14 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
     // rows). This also covers a registered family name used with a
     // sub-command outside its own takeover entries when that family itself
     // is not in `TAKEOVER_TABLE` (e.g. `element frobnicate`) — deliberately
-    // NOT the family's own "未知的子命令：<family> <sub>" wording, which
+    // NOT the family's own "unknown subcommand: <family> <sub>" wording, which
     // stays reserved for families that ARE in `TAKEOVER_TABLE` (`slide`,
     // `chart`, `table`, `asset`, `presentation`, `template` — see
     // `dispatch_legacy_takeover`/`dispatch_asset`): reproducing that
     // wording for every other family here would be exactly the per-family
     // unknown-subcommand error surface `commands::mod`'s own doc comment
     // says this design avoids.
-    eprintln!("未知的命令：{}", first.to_string_lossy());
+    eprintln!("unknown command: {}", first.to_string_lossy());
     1
 }
 
@@ -302,7 +302,7 @@ fn hold_presentation_lock(positional: &[String]) -> Result<Option<PresentationLo
 /// never misfire on an unrelated flag. Reads ALL of stdin as UTF-8; a
 /// read failure (stdin not valid UTF-8, or genuinely empty with no data
 /// available) is treated as "no stdin substitution" and left to
-/// `commands::chart::run`'s own "--csv - 只能從命令列使用" fallback rather
+/// `commands::chart::run`'s own "--csv - can only be used from the command line" fallback rather
 /// than surfacing a raw I/O error here.
 fn maybe_read_stdin_csv(positional: &[String]) -> Option<String> {
     let has_csv_dash = positional
@@ -326,7 +326,7 @@ fn dispatch_asset(positional: &[String]) -> result::CommandResult {
         Some(first) if first == "import" => commands::asset_import::run(&positional[1..]),
         other => result::CommandResult::failure(
             format!(
-                "未知的子命令：asset {}",
+                "unknown subcommand: asset {}",
                 other.map(String::as_str).unwrap_or("")
             ),
             result::FailureKind::Failed,

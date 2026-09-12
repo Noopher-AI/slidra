@@ -104,7 +104,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) {
-    throw new SlidraError(`找不到識別碼對應的簡報：${id}`);
+    throw new SlidraError(`no presentation found for id: ${id}`);
   }
 
   const opened = await runJsonCommand<{ id: string }>(["open", stagedPath]);
@@ -119,7 +119,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
   const registryAfterOpen = await readProjectsRegistry();
   const stagedEntry = registryAfterOpen.get(id2);
   if (!stagedEntry) {
-    throw new SlidraError(`找不到識別碼對應的簡報：${id2}`);
+    throw new SlidraError(`no presentation found for id: ${id2}`);
   }
 
   const existingChildren = await readdir(entry.workDir);

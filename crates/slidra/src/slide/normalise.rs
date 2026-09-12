@@ -47,7 +47,7 @@ pub fn normalise_slide_svg(
     let issues = check_slide_compliance(svg);
     if let Some(blocking) = issues.iter().find(|issue| !is_repairable(issue.code)) {
         return Err(SlidraError::invalid(format!(
-            "投影片不合規（第 {} 行第 {} 欄）：{}轉換命令不會替你修這一項。",
+            "slide non-compliant (line {}, column {}): {}the convert command won't fix this for you.",
             blocking.line, blocking.column, blocking.message
         )));
     }
@@ -72,7 +72,9 @@ pub fn normalise_slide_svg(
         for _ in 0..8 {
             let id = generate_id();
             if id.is_empty() {
-                return Err(SlidraError::invalid("轉換失敗：識別碼產生器回傳空字串"));
+                return Err(SlidraError::invalid(
+                    "conversion failed: id generator returned an empty string",
+                ));
             }
             if !used_ids.contains(&id) {
                 used_ids.insert(id.clone());
@@ -81,7 +83,7 @@ pub fn normalise_slide_svg(
             }
         }
         Err(SlidraError::invalid(
-            "轉換失敗：連續 8 次產生的識別碼都與既有元素重複",
+            "conversion failed: 8 consecutive generated ids all duplicated existing elements",
         ))
     };
 
@@ -241,7 +243,7 @@ fn quote(value: &str) -> SlidraResult<String> {
         return Ok(format!("'{value}'"));
     }
     Err(SlidraError::invalid(format!(
-        "無法搬移含有兩種引號的屬性值：{value}"
+        "cannot move attribute value containing both quote types: {value}"
     )))
 }
 
@@ -342,7 +344,10 @@ mod tests {
         let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><script>evil()</script></svg>";
         let mut gen_fn = gen_ids(vec![]);
         let err = normalise_slide_svg(svg, &mut gen_fn).unwrap_err();
-        assert!(err.message().contains("不合規"));
-        assert!(err.message().contains("轉換命令不會替你修這一項"));
+        assert!(err.message().contains("non-compliant"));
+        assert!(
+            err.message()
+                .contains("the convert command won't fix this for you")
+        );
     }
 }

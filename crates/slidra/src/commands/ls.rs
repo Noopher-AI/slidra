@@ -19,7 +19,7 @@ pub fn run(args: &[String]) -> CommandResult {
     };
     match workspace::virtual_fs::list_virtual_entries(&work_dir, &virtual_path) {
         Ok(entries) => {
-            let message = format!("共 {} 個項目", entries.len());
+            let message = format!("{} items total", entries.len());
             CommandResult::success(message, Some(serde_json::json!({ "entries": entries })))
         }
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -57,7 +57,7 @@ mod tests {
     fn missing_id_argument_fails() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 ls 缺少參數：id");
+        assert_eq!(result.message, "command ls missing argument: id");
     }
 
     #[test]

@@ -40,7 +40,7 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// Depth-first search for the `<g id="...">` container named `id`, tracking
@@ -70,18 +70,21 @@ fn require_container<'a>(
     svg_root: &'a ScannedNode,
     id: &str,
 ) -> SlidraResult<(&'a ScannedNode, &'a ScannedNode)> {
-    find_container(svg_root, id).ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))
+    find_container(svg_root, id)
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))
 }
 
 /// `elementIds` must be a non-empty list with no repeated id.
 fn validate_id_list(element_ids: &[String]) -> SlidraResult<()> {
     if element_ids.is_empty() {
-        return Err(SlidraError::invalid("元素清單不可為空"));
+        return Err(SlidraError::invalid("element list must not be empty"));
     }
     let mut seen = HashSet::with_capacity(element_ids.len());
     for id in element_ids {
         if !seen.insert(id) {
-            return Err(SlidraError::invalid(format!("元素清單重複：{id}")));
+            return Err(SlidraError::invalid(format!(
+                "element list has duplicates: {id}"
+            )));
         }
     }
     Ok(())
@@ -169,7 +172,7 @@ fn require_finite_number(value: Option<f64>, flag: &str) -> SlidraResult<f64> {
     match value {
         Some(v) if v.is_finite() => Ok(v),
         _ => Err(SlidraError::invalid(format!(
-            "element insert 缺少或不合法的參數：--{flag}"
+            "element insert missing or invalid argument: --{flag}"
         ))),
     }
 }
@@ -181,7 +184,7 @@ fn require_positive_number(value: Option<f64>, flag: &str) -> SlidraResult<f64> 
     // would disagree), so there is no incomparable case left to worry about.
     if n <= 0.0 {
         return Err(SlidraError::invalid(format!(
-            "--{flag} 必須是大於 0 的數字"
+            "--{flag} must be a number greater than 0"
         )));
     }
     Ok(n)
@@ -196,7 +199,7 @@ fn require_embed_provider(value: &str) -> SlidraResult<&'static str> {
     match value {
         "youtube" => Ok("youtube"),
         _ => Err(SlidraError::invalid(format!(
-            "不支援的嵌入來源：{value}（支援的來源：youtube）"
+            "unsupported embed source: {value} (supported source: youtube)"
         ))),
     }
 }
@@ -247,13 +250,13 @@ pub fn insert_element(
         // as an overlay that renders nothing.
         if kind != InsertElementKind::Video {
             return Err(SlidraError::invalid(format!(
-                "--embed 只能用在 --kind video（收到 --kind {}）",
+                "--embed can only be used with --kind video (received --kind {})",
                 kind.as_str()
             )));
         }
         if input.media.is_none() {
             return Err(SlidraError::invalid(
-                "--embed 必須搭配 --media（嵌入播放器的網址）",
+                "--embed must be paired with --media (the embedded player URL)",
             ));
         }
         let provider = require_embed_provider(embed)?;
@@ -302,10 +305,9 @@ pub fn insert_element(
             let y = require_finite_number(input.y, "y")?;
             let width = require_positive_number(input.width, "width")?;
             let height = require_positive_number(input.height, "height")?;
-            let href = input
-                .href
-                .as_deref()
-                .ok_or_else(|| SlidraError::invalid("element insert image 缺少參數：--href"))?;
+            let href = input.href.as_deref().ok_or_else(|| {
+                SlidraError::invalid("element insert image missing argument: --href")
+            })?;
             container_attrs.push_str(&format!(
                 " transform=\"translate({} {})\"",
                 format_svg_number(x),
@@ -335,11 +337,11 @@ pub fn insert_element(
             let d = input
                 .d
                 .as_deref()
-                .ok_or_else(|| SlidraError::invalid("element insert path 缺少參數：--d"))?;
+                .ok_or_else(|| SlidraError::invalid("element insert path missing argument: --d"))?;
             let x = input.x.unwrap_or(0.0);
             let y = input.y.unwrap_or(0.0);
             if !x.is_finite() || !y.is_finite() {
-                return Err(SlidraError::invalid("--x/--y 必須是有限數字"));
+                return Err(SlidraError::invalid("--x/--y must be finite numbers"));
             }
             if x != 0.0 || y != 0.0 {
                 container_attrs.push_str(&format!(
@@ -573,7 +575,7 @@ pub fn move_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if !dx.is_finite() || !dy.is_finite() {
-        return Err(SlidraError::invalid("dx/dy 必須是有限數字"));
+        return Err(SlidraError::invalid("dx/dy must be finite numbers"));
     }
     let mut current = svg_content.to_string();
     for id in element_ids {
@@ -600,7 +602,7 @@ pub fn rotate_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if !degrees.is_finite() {
-        return Err(SlidraError::invalid("degrees 必須是有限數字"));
+        return Err(SlidraError::invalid("degrees must be a finite number"));
     }
     let mut current = svg_content.to_string();
     for id in element_ids {
@@ -717,7 +719,7 @@ fn move_one_step(svg: &str, id: &str, up: bool, force: bool) -> SlidraResult<Str
         // returns a `<g>`, so it is always among `siblings` — unreachable
         // in practice, kept as a hard error rather than a silent no-op.
         return Err(SlidraError::invalid(format!(
-            "找不到元素：{id}（未列在其父容器的子節點中）"
+            "element not found: {id} (not listed among its parent container's children)"
         )));
     };
     let swap_index = if up {
@@ -852,7 +854,7 @@ fn assert_not_table_container(
 ) -> SlidraResult<()> {
     if attribute_value(node, "data-slidra-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 是表格，{action}"
+            "element {element_id} is a table, {action}"
         )));
     }
     Ok(())
@@ -870,7 +872,7 @@ fn assert_not_chart_container(
 ) -> SlidraResult<()> {
     if attribute_value(node, "data-slidra-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 是圖表，{action}"
+            "element {element_id} is a chart, {action}"
         )));
     }
     Ok(())
@@ -888,8 +890,9 @@ fn assert_subtree_not_locked(svg: &str, id: &str, force: bool) -> SlidraResult<(
     assert_not_locked(node, id, force)?;
     if is_group_container(node) {
         for child in meaningful_children(node) {
-            let child_id = attribute_value(child, "id")
-                .ok_or_else(|| SlidraError::invalid("群組子容器缺少 id，無法縮放"))?;
+            let child_id = attribute_value(child, "id").ok_or_else(|| {
+                SlidraError::invalid("group child container missing id, cannot scale")
+            })?;
             assert_subtree_not_locked(svg, &child_id, force)?;
         }
     }
@@ -921,12 +924,14 @@ fn scale_numeric_attr(
     must_stay_positive: bool,
 ) -> SlidraResult<Splice> {
     let attr = attribute_of(node, name).ok_or_else(|| {
-        SlidraError::invalid(format!("元素 {element_id} 缺少屬性 {name}，無法縮放"))
+        SlidraError::invalid(format!(
+            "element {element_id} is missing attribute {name}, cannot scale"
+        ))
     })?;
     let value = attr.value.parse::<f64>().unwrap_or(f64::NAN);
     if !value.is_finite() {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的 {name} 不是合法數字：{}",
+            "element {element_id}\'s {name} is not a valid number: {}",
             attr.value
         )));
     }
@@ -934,7 +939,7 @@ fn scale_numeric_attr(
     let rounded = if must_stay_positive {
         assert_positive_after_rounding(
             scaled,
-            format!("元素 {element_id} 的 {name} 縮放後不是大於 0 的數字"),
+            format!("element {element_id}\'s {name} after scaling is not a number greater than 0"),
         )?
     } else {
         scaled
@@ -951,7 +956,9 @@ fn scale_numeric_attr(
 /// implement (`geometry::bbox::path_bounds` has the same limitation).
 fn scale_path_data(d: &str, factor: f64) -> SlidraResult<String> {
     if d.contains('A') || d.contains('a') {
-        return Err(SlidraError::invalid("path 含有橢圓弧，尚不支援縮放"));
+        return Err(SlidraError::invalid(
+            "path contains elliptical arc, scaling not yet supported",
+        ));
     }
     // Hand-written scan for `[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?` tokens —
     // no `regex` crate (plan decision D4). `d` is always ASCII (SVG path
@@ -1036,7 +1043,9 @@ fn build_primitive_scale_splices(
             let value = attr.value.parse::<f64>().unwrap_or(f64::NAN);
             let scaled = assert_positive_after_rounding(
                 value * factor,
-                format!("元素 {element_id} 的 font-size 縮放後不是大於 0 的數字"),
+                format!(
+                    "element {element_id}\'s font-size after scaling is not a number greater than 0"
+                ),
             )?;
             Ok(vec![Splice {
                 start: attr.start,
@@ -1065,7 +1074,9 @@ fn build_primitive_scale_splices(
             .collect(),
         "path" => {
             let attr = attribute_of(node, "d").ok_or_else(|| {
-                SlidraError::invalid(format!("元素 {element_id} 缺少屬性 d，無法縮放"))
+                SlidraError::invalid(format!(
+                    "element {element_id} is missing attribute d, cannot scale"
+                ))
             })?;
             let scaled_d = scale_path_data(&attr.value, factor)?;
             Ok(vec![Splice {
@@ -1075,7 +1086,7 @@ fn build_primitive_scale_splices(
             }])
         }
         other => Err(SlidraError::invalid(format!(
-            "不支援縮放的圖元 <{other}>：{element_id}"
+            "element <{other}> does not support scaling: {element_id}"
         ))),
     }
 }
@@ -1106,7 +1117,7 @@ fn scale_special_container(
         Some(t) if t == TABLE_CONTAINER_TYPE => {
             if sx != sy {
                 return Err(SlidraError::invalid(format!(
-                    "元素 {element_id} 是表格，文字無法非等比縮放，請改用 element scale"
+                    "element {element_id} is a table, text cannot be scaled non-uniformly, use element scale instead"
                 )));
             }
             let updated = apply_transform_delta(svg, element_id, force, |mut parts| {
@@ -1117,7 +1128,7 @@ fn scale_special_container(
             Ok(Some(updated))
         }
         Some(t) if t == CHART_CONTAINER_TYPE => Err(SlidraError::invalid(format!(
-            "元素 {element_id} 是圖表，縮放需要圖表命令族支援，見 NOOP-281"
+            "element {element_id} is a chart, scaling requires chart command family support, see NOOP-281"
         ))),
         _ => Ok(None),
     }
@@ -1142,16 +1153,22 @@ fn scale_leaf_primitives(
         let text_node = meaningful_children(container)
             .into_iter()
             .find(|primitive| primitive.tag == "text")
-            .ok_or_else(|| SlidraError::invalid(format!("元素不是合法的文字框：{element_id}")))?;
+            .ok_or_else(|| {
+                SlidraError::invalid(format!("element is not a valid text box: {element_id}"))
+            })?;
         let current_width: f64 = text_width_attr.value.parse().unwrap_or(f64::NAN);
         let (font_family, font_size) = read_text_font_info(text_node, element_id)?;
         let new_width = assert_positive_after_rounding(
             current_width * factor,
-            format!("元素 {element_id} 的文字框寬度縮放後不是大於 0 的數字"),
+            format!(
+                "element {element_id}\'s text box width after scaling is not a number greater than 0"
+            ),
         )?;
         let new_font_size = assert_positive_after_rounding(
             font_size * factor,
-            format!("元素 {element_id} 的 font-size 縮放後不是大於 0 的數字"),
+            format!(
+                "element {element_id}\'s font-size after scaling is not a number greater than 0"
+            ),
         )?;
         let with_font_size = apply_splices(
             svg,
@@ -1234,8 +1251,9 @@ fn scale_one_container(
 
         if is_group_container(refreshed_node) {
             for child in meaningful_children(refreshed_node) {
-                let child_id = attribute_value(child, "id")
-                    .ok_or_else(|| SlidraError::invalid("群組子容器缺少 id，無法縮放"))?;
+                let child_id = attribute_value(child, "id").ok_or_else(|| {
+                    SlidraError::invalid("group child container missing id, cannot scale")
+                })?;
                 worklist.push_back((child_id, false));
             }
         } else {
@@ -1270,7 +1288,9 @@ pub fn scale_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if !factor.is_finite() || factor <= 0.0 {
-        return Err(SlidraError::invalid("factor 必須是大於 0 的數字"));
+        return Err(SlidraError::invalid(
+            "factor must be a number greater than 0",
+        ));
     }
     let mut current = svg_content.to_string();
     for id in element_ids {
@@ -1359,7 +1379,7 @@ fn build_primitive_resize_splices(
         "text" => {
             if sx != sy {
                 return Err(SlidraError::invalid(format!(
-                    "元素 {element_id} 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+                    "element {element_id} contains <text>, font-size cannot be scaled non-uniformly, use element scale instead"
                 )));
             }
             build_primitive_scale_splices(node, sx, element_id)
@@ -1367,7 +1387,7 @@ fn build_primitive_resize_splices(
         "circle" => {
             if sx != sy {
                 return Err(SlidraError::invalid(format!(
-                    "元素 {element_id} 是 <circle>，無法非等比縮放，請改用 element scale"
+                    "element {element_id} is <circle>, cannot be scaled non-uniformly, use element scale instead"
                 )));
             }
             build_primitive_scale_splices(node, sx, element_id)
@@ -1375,13 +1395,13 @@ fn build_primitive_resize_splices(
         "path" => {
             if sx != sy {
                 return Err(SlidraError::invalid(format!(
-                    "元素 {element_id} 是 <path>，無法非等比縮放，請改用 element scale"
+                    "element {element_id} is <path>, cannot be scaled non-uniformly, use element scale instead"
                 )));
             }
             build_primitive_scale_splices(node, sx, element_id)
         }
         other => Err(SlidraError::invalid(format!(
-            "不支援縮放的圖元 <{other}>：{element_id}"
+            "element <{other}> does not support scaling: {element_id}"
         ))),
     }
 }
@@ -1402,7 +1422,7 @@ fn resize_leaf_primitives(
     if attribute_of(container, TEXT_WIDTH_ATTRIBUTE).is_some() {
         if sx != sy {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+                "element {element_id} contains <text>, font-size cannot be scaled non-uniformly, use element scale instead"
             )));
         }
         return scale_leaf_primitives(svg, container, sx, fonts, element_id);
@@ -1449,8 +1469,9 @@ fn resize_one_container(
 
         if is_group_container(refreshed_node) {
             for child in meaningful_children(refreshed_node) {
-                let child_id = attribute_value(child, "id")
-                    .ok_or_else(|| SlidraError::invalid("群組子容器缺少 id，無法縮放"))?;
+                let child_id = attribute_value(child, "id").ok_or_else(|| {
+                    SlidraError::invalid("group child container missing id, cannot scale")
+                })?;
                 worklist.push_back((child_id, false));
             }
         } else {
@@ -1513,7 +1534,7 @@ fn resize_one_target(
 ) -> SlidraResult<String> {
     let model = parse_slide(svg, Some(slide_path))?;
     let element = find_element_by_id(&model.elements, id)
-        .ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))?;
 
     let inverse = invert_matrix(&element.matrix)?;
     let local_box = element_bounds(
@@ -1525,7 +1546,7 @@ fn resize_one_target(
     )?;
     if local_box.width <= 0.0 || local_box.height <= 0.0 {
         return Err(SlidraError::invalid(format!(
-            "元素 {id} 沒有邊界框，無法縮放"
+            "element {id} has no bounding box, cannot scale"
         )));
     }
     let sx = width / local_box.width;
@@ -1575,10 +1596,14 @@ pub fn resize_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if !width.is_finite() || width <= 0.0 {
-        return Err(SlidraError::invalid("width 必須是大於 0 的數字"));
+        return Err(SlidraError::invalid(
+            "width must be a number greater than 0",
+        ));
     }
     if !height.is_finite() || height <= 0.0 {
-        return Err(SlidraError::invalid("height 必須是大於 0 的數字"));
+        return Err(SlidraError::invalid(
+            "height must be a number greater than 0",
+        ));
     }
     let mut current = svg_content.to_string();
     for id in element_ids {
@@ -1613,40 +1638,44 @@ const FORBIDDEN_STYLE_ATTRIBUTES: &[&str] = &["transform", "x", "y", "width", "h
 fn validate_style_attribute(attr: &str, value: &str) -> SlidraResult<()> {
     if FORBIDDEN_STYLE_ATTRIBUTES.contains(&attr) {
         return Err(SlidraError::invalid(format!(
-            "樣式屬性 {attr} 不在樣式白名單內，位置與大小必須透過 move/scale 命令調整"
+            "style attribute {attr} not in style whitelist, position and size must be adjusted via move/scale commands"
         )));
     }
     if attr.starts_with("data-slidra-") {
         return Err(SlidraError::invalid(format!(
-            "樣式屬性 {attr} 是保留屬性前綴 data-slidra-，不可透過 element style set 設定"
+            "style attribute {attr} has reserved prefix data-slidra-, cannot be set via element style set"
         )));
     }
     if !STYLE_ATTRIBUTE_WHITELIST.contains(&attr) {
         return Err(SlidraError::invalid(format!(
-            "樣式屬性 {attr} 不在樣式白名單內"
+            "style attribute {attr} not in style whitelist"
         )));
     }
     if attr == "opacity" {
         let n = value.parse::<f64>().unwrap_or(f64::NAN);
         if !(0.0..=1.0).contains(&n) {
-            return Err(SlidraError::invalid("opacity 必須是 0 到 1 之間的數字"));
+            return Err(SlidraError::invalid(
+                "opacity must be a number between 0 and 1",
+            ));
         }
     }
     if attr == "font-size" {
         let n = value.parse::<f64>().unwrap_or(f64::NAN);
         if !n.is_finite() || n <= 0.0 {
-            return Err(SlidraError::invalid("font-size 必須是大於 0 的數字"));
+            return Err(SlidraError::invalid(
+                "font-size must be a number greater than 0",
+            ));
         }
     }
     if attr == "stroke-width" {
         let n = value.parse::<f64>().unwrap_or(f64::NAN);
         if !n.is_finite() || n < 0.0 {
-            return Err(SlidraError::invalid("stroke-width 不可為負數"));
+            return Err(SlidraError::invalid("stroke-width cannot be negative"));
         }
     }
     if attr == "text-anchor" && !["start", "middle", "end"].contains(&value) {
         return Err(SlidraError::invalid(
-            "text-anchor 必須是 start、middle 或 end",
+            "text-anchor must be start, middle, or end",
         ));
     }
     Ok(())
@@ -1664,19 +1693,19 @@ fn set_style_on_container(
     let svg_root = require_svg_root(&roots)?;
     let (node, _parent) = require_container(svg_root, id)?;
     assert_not_locked(node, id, force)?;
-    assert_not_table_container(node, id, "樣式請用 table 命令族調整")?;
-    assert_not_chart_container(node, id, "樣式請用 chart 命令族調整")?;
+    assert_not_table_container(node, id, "use the table command family to adjust style")?;
+    assert_not_chart_container(node, id, "use the chart command family to adjust style")?;
 
     if is_group_container(node) {
         return Err(SlidraError::invalid(format!(
-            "元素 {id} 是群組，沒有可套用樣式的圖元"
+            "element {id} is a group, no element to apply style to"
         )));
     }
 
     let is_text_box = attribute_of(node, TEXT_WIDTH_ATTRIBUTE).is_some();
     if attr == "text-anchor" && is_text_box {
         return Err(SlidraError::invalid(format!(
-            "文字框不支援 text-anchor（換行引擎假設 start）：{id}"
+            "text box does not support text-anchor (the wrapping engine assumes start): {id}"
         )));
     }
     // A text box's font-size/font-family change re-wraps its content
@@ -1689,7 +1718,9 @@ fn set_style_on_container(
         let text_node = meaningful_children(node)
             .into_iter()
             .find(|primitive| primitive.tag == "text")
-            .ok_or_else(|| SlidraError::invalid(format!("元素不是合法的文字框：{id}")))?;
+            .ok_or_else(|| {
+                SlidraError::invalid(format!("element is not a valid text box: {id}"))
+            })?;
         let current_info = read_text_font_info(text_node, id)?;
         let with_attr = apply_splices(svg, &[set_attr_splice(text_node, attr, value)]);
         let refreshed_roots = scan_document(&with_attr)?;
@@ -1809,7 +1840,10 @@ mod tests {
             InsertElementKind::Rect,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "element insert 缺少或不合法的參數：--width");
+        assert_eq!(
+            err.message(),
+            "element insert missing or invalid argument: --width"
+        );
     }
 
     #[test]
@@ -1830,7 +1864,10 @@ mod tests {
             InsertElementKind::Image,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "element insert image 缺少參數：--href");
+        assert_eq!(
+            err.message(),
+            "element insert image missing argument: --href"
+        );
     }
 
     #[test]
@@ -1855,7 +1892,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "--embed 只能用在 --kind video（收到 --kind rect）"
+            "--embed can only be used with --kind video (received --kind rect)"
         );
     }
 
@@ -1880,7 +1917,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "--embed 必須搭配 --media（嵌入播放器的網址）"
+            "--embed must be paired with --media (the embedded player URL)"
         );
     }
 
@@ -1906,7 +1943,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "不支援的嵌入來源：vimeo（支援的來源：youtube）"
+            "unsupported embed source: vimeo (supported source: youtube)"
         );
     }
 
@@ -2026,7 +2063,7 @@ mod tests {
     fn delete_missing_id_errors() {
         let svg = slide(r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let err = delete_elements(&svg, "slides/001.svg", &["el-nope".to_string()]).unwrap_err();
-        assert_eq!(err.message(), "找不到元素：el-nope");
+        assert_eq!(err.message(), "element not found: el-nope");
     }
 
     // --- element move / rotate ---
@@ -2064,7 +2101,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "dx/dy 必須是有限數字");
+        assert_eq!(err.message(), "dx/dy must be finite numbers");
     }
 
     #[test]
@@ -2074,7 +2111,7 @@ mod tests {
         );
         let err =
             move_elements(&svg, "slides/001.svg", &["a".to_string()], 1.0, 1.0, false).unwrap_err();
-        assert!(err.message().contains("鎖定的版面骨架"));
+        assert!(err.message().contains("locked layout skeleton"));
         let updated =
             move_elements(&svg, "slides/001.svg", &["a".to_string()], 1.0, 1.0, true).unwrap();
         assert!(updated.contains(r#"data-slidra-lock="true""#));
@@ -2189,7 +2226,7 @@ mod tests {
     // accidentally landing on the right byte by coincidence.
     fn slide_with_cjk_title(children: &str) -> String {
         format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><title>投影片標題文字</title>{children}</svg>"#
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><title>slide title text</title>{children}</svg>"#
         )
     }
 
@@ -2320,10 +2357,10 @@ mod tests {
     fn validate_id_list_rejects_empty_and_duplicate() {
         let svg = slide(r#"<g id="a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let empty_err = lock_elements(&svg, "slides/001.svg", &[]).unwrap_err();
-        assert_eq!(empty_err.message(), "元素清單不可為空");
+        assert_eq!(empty_err.message(), "element list must not be empty");
         let dup_err =
             lock_elements(&svg, "slides/001.svg", &["a".to_string(), "a".to_string()]).unwrap_err();
-        assert_eq!(dup_err.message(), "元素清單重複：a");
+        assert_eq!(dup_err.message(), "element list has duplicates: a");
     }
 
     // --- element scale (P4) ---
@@ -2384,7 +2421,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("鎖定的版面骨架"));
+        assert!(err.message().contains("locked layout skeleton"));
         // Force bypasses it and the child's lock attribute is left untouched.
         let updated = scale_elements(
             &svg,
@@ -2410,7 +2447,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "factor 必須是大於 0 的數字");
+        assert_eq!(err.message(), "factor must be a number greater than 0");
     }
 
     #[test]
@@ -2444,7 +2481,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("圖表"));
+        assert!(err.message().contains("chart"));
         assert!(err.message().contains("NOOP-281"));
     }
 
@@ -2483,7 +2520,10 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "元素 tb 的文字框寬度縮放後不是大於 0 的數字");
+        assert_eq!(
+            err.message(),
+            "element tb\'s text box width after scaling is not a number greater than 0"
+        );
     }
 
     #[test]
@@ -2502,7 +2542,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "元素 tb 的 font-size 縮放後不是大於 0 的數字"
+            "element tb\'s font-size after scaling is not a number greater than 0"
         );
     }
 
@@ -2533,7 +2573,10 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "path 含有橢圓弧，尚不支援縮放");
+        assert_eq!(
+            err.message(),
+            "path contains elliptical arc, scaling not yet supported"
+        );
     }
 
     #[test]
@@ -2639,7 +2682,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "width 必須是大於 0 的數字");
+        assert_eq!(err.message(), "width must be a number greater than 0");
         let err = resize_elements(
             &svg,
             "slides/001.svg",
@@ -2651,7 +2694,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "height 必須是大於 0 的數字");
+        assert_eq!(err.message(), "height must be a number greater than 0");
     }
 
     #[test]
@@ -2668,7 +2711,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到元素：nope");
+        assert_eq!(err.message(), "element not found: nope");
     }
 
     #[test]
@@ -2730,7 +2773,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "元素 tb 含 <text>，font-size 無法非等比縮放，請改用 element scale"
+            "element tb contains <text>, font-size cannot be scaled non-uniformly, use element scale instead"
         );
     }
 
@@ -2787,7 +2830,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("保留屬性前綴"));
+        assert!(err.message().contains("reserved prefix"));
     }
 
     #[test]
@@ -2803,7 +2846,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "樣式屬性 rx 不在樣式白名單內");
+        assert_eq!(err.message(), "style attribute rx not in style whitelist");
     }
 
     #[test]
@@ -2819,7 +2862,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "opacity 必須是 0 到 1 之間的數字");
+        assert_eq!(err.message(), "opacity must be a number between 0 and 1");
         let err = set_element_style(
             &svg,
             "slides/001.svg",
@@ -2830,7 +2873,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "font-size 必須是大於 0 的數字");
+        assert_eq!(err.message(), "font-size must be a number greater than 0");
         let err = set_element_style(
             &svg,
             "slides/001.svg",
@@ -2841,7 +2884,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "stroke-width 不可為負數");
+        assert_eq!(err.message(), "stroke-width cannot be negative");
         let err = set_element_style(
             &svg,
             "slides/001.svg",
@@ -2852,7 +2895,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "text-anchor 必須是 start、middle 或 end");
+        assert_eq!(err.message(), "text-anchor must be start, middle, or end");
         // And the boundary values are accepted.
         assert!(
             set_element_style(
@@ -2894,7 +2937,10 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert_eq!(err.message(), "元素 grp 是群組，沒有可套用樣式的圖元");
+        assert_eq!(
+            err.message(),
+            "element grp is a group, no element to apply style to"
+        );
     }
 
     #[test]
@@ -2912,7 +2958,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("表格"));
+        assert!(err.message().contains("table"));
 
         let chart = slide(r#"<g id="c" data-slidra-type="chart"><slidra:chart/><svg/></g>"#);
         let err = set_element_style(
@@ -2925,7 +2971,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("圖表"));
+        assert!(err.message().contains("chart"));
     }
 
     #[test]
@@ -2943,7 +2989,10 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("文字框不支援 text-anchor"));
+        assert!(
+            err.message()
+                .contains("text box does not support text-anchor")
+        );
 
         // fill has no layout consequence, so it works without needing the
         // font-size/font-family rewrap machinery below.
@@ -3039,7 +3088,7 @@ mod tests {
             false,
         )
         .unwrap_err();
-        assert!(err.message().contains("鎖定的版面骨架"));
+        assert!(err.message().contains("locked layout skeleton"));
         let updated = set_element_style(
             &svg,
             "slides/001.svg",

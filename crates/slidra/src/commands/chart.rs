@@ -68,7 +68,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({ "elementId": element_id }),
-                format!("已在 {slide_path} 新增圖表 {element_id}"),
+                format!("added chart {element_id} in {slide_path}"),
             ))
         })()),
 
@@ -85,12 +85,12 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
 
             let (categories, series) = if let Some(csv_value) = csv {
                 let text = if csv_value == "-" {
-                    stdin_csv
-                        .clone()
-                        .ok_or_else(|| SlidraError::invalid("--csv - 只能從命令列使用"))?
+                    stdin_csv.clone().ok_or_else(|| {
+                        SlidraError::invalid("--csv - can only be used from the command line")
+                    })?
                 } else {
                     std::fs::read_to_string(&csv_value).map_err(|_| {
-                        SlidraError::not_found(format!("找不到 CSV 檔案：{csv_value}"))
+                        SlidraError::not_found(format!("CSV file not found: {csv_value}"))
                     })?
                 };
                 let parsed = parse_chart_csv(&text)?;
@@ -129,7 +129,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已更新 {slide_path} 圖表 {element_id} 的資料"),
+                format!("updated data of chart {element_id} in {slide_path}"),
             ))
         })()),
 
@@ -146,7 +146,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已將 {slide_path} 圖表 {element_id} 的類型改為 {chart_type}"),
+                format!("changed type of chart {element_id} in {slide_path} to {chart_type}"),
             ))
         })()),
 
@@ -165,7 +165,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已將 {slide_path} 圖表 {element_id} 的調色盤改為 {palette}"),
+                format!("changed color palette of chart {element_id} in {slide_path} to {palette}"),
             ))
         })()),
 
@@ -182,7 +182,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已更新 {slide_path} 圖表 {element_id} 的座標軸設定"),
+                format!("updated axis settings of chart {element_id} in {slide_path}"),
             ))
         })()),
 
@@ -199,7 +199,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已更新 {slide_path} 圖表 {element_id} 的堆疊設定"),
+                format!("updated stacking settings of chart {element_id} in {slide_path}"),
             ))
         })()),
 
@@ -216,7 +216,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已更新 {slide_path} 圖表 {element_id} 的圖例設定"),
+                format!("updated legend settings of chart {element_id} in {slide_path}"),
             ))
         })()),
 
@@ -235,7 +235,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
                 id.clone(),
                 slide_path.clone(),
                 serde_json::json!({}),
-                format!("已更新 {slide_path} 圖表 {element_id} 的 {key} 設定"),
+                format!("updated {key} setting of chart {element_id} in {slide_path}"),
             ))
         })()),
     }
@@ -399,7 +399,10 @@ mod tests {
             None,
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "--csv - 只能從命令列使用");
+        assert_eq!(
+            result.message,
+            "--csv - can only be used from the command line"
+        );
     }
 
     #[test]
@@ -454,7 +457,7 @@ mod tests {
         std::fs::write(
             fixture.work.join("slides/001.svg"),
             r#"<svg viewBox="0 0 1280 720">
-  <g id="el-title" data-slidra-name="標題">
+  <g id="el-title" data-slidra-name="title">
     <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">示範簡報</text>
   </g>
 </svg>"#,

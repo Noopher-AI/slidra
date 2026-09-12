@@ -27,7 +27,7 @@ const DEFAULT_DURATION: f64 = 0.6;
 
 /// Human-readable position, 1-based, for error messages.
 pub fn at(index: usize) -> String {
-    format!("第 {} 項", index + 1)
+    format!("item {}", index + 1)
 }
 
 /// The four required attributes of a `<slidra:effect>`, read as raw strings
@@ -86,7 +86,7 @@ pub fn validate_effect_item(
 ) -> SlidraResult<Effect> {
     let position = at(index);
     let label = match &raw.target {
-        Some(target) if !target.is_empty() => format!("{position}（target 為 {target}）"),
+        Some(target) if !target.is_empty() => format!("{position} (target is {target})"),
         _ => position,
     };
 
@@ -98,7 +98,7 @@ pub fn validate_effect_item(
     ] {
         if is_blank(value) {
             return Err(SlidraError::invalid(format!(
-                "{label} 缺少必要屬性 {name}。"
+                "{label} missing required attribute {name}."
             )));
         }
     }
@@ -110,29 +110,29 @@ pub fn validate_effect_item(
 
     let Some(allowed) = allowed_effects(&family) else {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 family 值「{family}」尚未實作。"
+            "{label}'s family value \"{family}\" not yet implemented."
         )));
     };
     if !allowed.contains(&effect.as_str()) {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 effect 值「{effect}」尚未實作。"
+            "{label}'s effect value \"{effect}\" not yet implemented."
         )));
     }
     if !SUPPORTED_STARTS.contains(&start.as_str()) {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 start 值「{start}」尚未實作。"
+            "{label}'s start value \"{start}\" not yet implemented."
         )));
     }
 
     if !target_exists {
         return Err(SlidraError::invalid(format!(
-            "{label} 指向的元素不存在於這張投影片，簡報已損毀。"
+            "{label} points to an element that does not exist on this slide, the presentation is corrupted."
         )));
     }
 
     if family == "path" && is_blank(&raw.d) {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 family 是 path，但沒有 d，簡報已損毀。"
+            "{label}'s family is path, but has no d, the presentation is corrupted."
         )));
     }
 
@@ -185,7 +185,7 @@ fn parse_seconds_attr(
     };
     if !value.is_finite() || value < 0.0 {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 {attr_name} 值「{raw}」不是合法的秒數。"
+            "{label}'s {attr_name} value \"{raw}\" is not a valid number of seconds."
         )));
     }
     Ok(value)
@@ -197,7 +197,7 @@ fn parse_seconds_attr(
 pub fn assert_legal_seconds(value: f64, label: &str, attr_name: &str) -> SlidraResult<()> {
     if !value.is_finite() || value < 0.0 {
         return Err(SlidraError::invalid(format!(
-            "{label} 的 {attr_name} 值「{}」不是合法的秒數。",
+            "{label}'s {attr_name} value \"{}\" is not a valid number of seconds.",
             format_number_for_message(value)
         )));
     }
@@ -234,7 +234,7 @@ pub fn derive_steps(effects: &[Effect]) -> SlidraResult<Vec<Step>> {
         }
         if steps.is_empty() {
             return Err(SlidraError::invalid(format!(
-                "{} 的 start 是「{}」，但前面沒有可以併入的步驟，效果清單已損毀。",
+                "{}\'s start is \"{}\", but there is no preceding step to merge into, the effect list is corrupted.",
                 at(index),
                 effect.start
             )));
@@ -307,7 +307,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 缺少必要屬性 effect。"
+            "item 1 (target is el1) missing required attribute effect."
         );
     }
 
@@ -318,7 +318,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 缺少必要屬性 effect。"
+            "item 1 (target is el1) missing required attribute effect."
         );
     }
 
@@ -328,7 +328,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 family 值「bogus」尚未實作。"
+            "item 1 (target is el1)'s family value \"bogus\" not yet implemented."
         );
     }
 
@@ -338,7 +338,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 effect 值「wipe」尚未實作。"
+            "item 1 (target is el1)'s effect value \"wipe\" not yet implemented."
         );
     }
 
@@ -348,7 +348,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 start 值「on-hover」尚未實作。"
+            "item 1 (target is el1)'s start value \"on-hover\" not yet implemented."
         );
     }
 
@@ -358,7 +358,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, false).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 指向的元素不存在於這張投影片，簡報已損毀。"
+            "item 1 (target is el1) points to an element that does not exist on this slide, the presentation is corrupted."
         );
     }
 
@@ -368,7 +368,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 family 是 path，但沒有 d，簡報已損毀。"
+            "item 1 (target is el1)'s family is path, but has no d, the presentation is corrupted."
         );
     }
 
@@ -404,7 +404,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 duration 值「」不是合法的秒數。"
+            "item 1 (target is el1)'s duration value \"\" is not a valid number of seconds."
         );
     }
 
@@ -415,7 +415,7 @@ mod tests {
         let err = validate_effect_item(&r, 0, true).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項（target 為 el1） 的 duration 值「-1」不是合法的秒數。"
+            "item 1 (target is el1)'s duration value \"-1\" is not a valid number of seconds."
         );
     }
 
@@ -506,7 +506,7 @@ mod tests {
         let err = derive_steps(&effects).unwrap_err();
         assert_eq!(
             err.message(),
-            "第 1 項 的 start 是「with-previous」，但前面沒有可以併入的步驟，效果清單已損毀。"
+            "item 1's start is \"with-previous\", but there is no preceding step to merge into, the effect list is corrupted."
         );
     }
 }

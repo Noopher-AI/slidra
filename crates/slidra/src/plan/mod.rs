@@ -75,12 +75,12 @@ pub const TYPE_ROLES: &[&str] = &[
 /// `template add --name` for each page type (contract §5).
 pub fn template_name_for(page_type: &str) -> &'static str {
     match page_type {
-        "cover" => "封面",
-        "section" => "章節頁",
-        "bullets" => "要點頁",
-        "compare" => "對照頁",
-        "number" => "大數字頁",
-        "closing" => "結語頁",
+        "cover" => "cover",
+        "section" => "section page",
+        "bullets" => "bullet point page",
+        "compare" => "comparison page",
+        "number" => "big-number page",
+        "closing" => "closing page",
         _ => "",
     }
 }
@@ -197,15 +197,20 @@ pub fn extract_json_fence(text: &str) -> SlidraResult<Value> {
     let trimmed = text.trim_start_matches(['\u{FEFF}', ' ', '\t', '\r', '\n']);
     let Some(rest) = trimmed.strip_prefix("```json") else {
         return Err(SlidraError::invalid(
-            "計畫檔必須以 ```json 圍欄開頭（機器可讀段）",
+            "plan file must start with a ```json fence (machine-readable section)",
         ));
     };
     let Some(end) = rest.find("\n```") else {
-        return Err(SlidraError::invalid("計畫檔的 ```json 圍欄沒有結尾的 ```"));
+        return Err(SlidraError::invalid(
+            "the ```json fence of the plan file has no closing ```",
+        ));
     };
     let body = &rest[..end];
-    serde_json::from_str(body)
-        .map_err(|err| SlidraError::invalid(format!("計畫檔的 JSON 段無法解析：{err}")))
+    serde_json::from_str(body).map_err(|err| {
+        SlidraError::invalid(format!(
+            "the JSON section of the plan file cannot be parsed: {err}"
+        ))
+    })
 }
 
 fn require_object<'a>(
@@ -214,7 +219,7 @@ fn require_object<'a>(
 ) -> SlidraResult<&'a serde_json::Map<String, Value>> {
     value
         .as_object()
-        .ok_or_else(|| SlidraError::invalid(format!("{what} 必須是 JSON 物件")))
+        .ok_or_else(|| SlidraError::invalid(format!("{what} must be a JSON object")))
 }
 
 fn require_str<'a>(
@@ -224,7 +229,7 @@ fn require_str<'a>(
 ) -> SlidraResult<&'a str> {
     obj.get(key)
         .and_then(Value::as_str)
-        .ok_or_else(|| SlidraError::invalid(format!("{what} 缺少字串欄位 {key}")))
+        .ok_or_else(|| SlidraError::invalid(format!("{what} is missing string field {key}")))
 }
 
 fn require_enum(value: &str, allowed: &[&str], what: &str) -> SlidraResult<()> {
@@ -232,8 +237,8 @@ fn require_enum(value: &str, allowed: &[&str], what: &str) -> SlidraResult<()> {
         Ok(())
     } else {
         Err(SlidraError::invalid(format!(
-            "{what} 的值 {value} 不合法，只能是：{}",
-            allowed.join("、")
+            "{what} has invalid value {value}, must be one of: {}",
+            allowed.join(", ")
         )))
     }
 }
@@ -251,7 +256,7 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
         Some(value) => {
             let animation = value
                 .as_str()
-                .ok_or_else(|| SlidraError::invalid("outline.animation 必須是字串"))?;
+                .ok_or_else(|| SlidraError::invalid("outline.animation must be a string"))?;
             require_enum(animation, ANIMATIONS, "outline.animation")?;
             animation
         }
@@ -261,7 +266,7 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
         Some(value) => {
             let background = value
                 .as_str()
-                .ok_or_else(|| SlidraError::invalid("outline.background 必須是字串"))?;
+                .ok_or_else(|| SlidraError::invalid("outline.background must be a string"))?;
             require_enum(background, BACKGROUNDS, "outline.background")?;
             background
         }
@@ -270,9 +275,9 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
     let pages_value = obj
         .get("pages")
         .and_then(Value::as_array)
-        .ok_or_else(|| SlidraError::invalid("outline 缺少 pages 陣列"))?;
+        .ok_or_else(|| SlidraError::invalid("outline missing pages array"))?;
     if pages_value.is_empty() {
-        return Err(SlidraError::invalid("outline.pages 不可為空"));
+        return Err(SlidraError::invalid("outline.pages cannot be empty"));
     }
     let mut pages = Vec::with_capacity(pages_value.len());
     for (index, page) in pages_value.iter().enumerate() {
@@ -281,10 +286,10 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
         let n = page
             .get("n")
             .and_then(Value::as_u64)
-            .ok_or_else(|| SlidraError::invalid(format!("{what} 缺少整數欄位 n")))?;
+            .ok_or_else(|| SlidraError::invalid(format!("{what} is missing integer field n")))?;
         if n as usize != index + 1 {
             return Err(SlidraError::invalid(format!(
-                "{what}.n 必須是 {}（從 1 連續遞增），實際是 {n}",
+                "{what}.n must be {} (increasing consecutively from 1), actual is {n}",
                 index + 1
             )));
         }
@@ -299,7 +304,7 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
             Some(value) => {
                 let page_type = value
                     .as_str()
-                    .ok_or_else(|| SlidraError::invalid(format!("{what}.type 必須是字串")))?;
+                    .ok_or_else(|| SlidraError::invalid(format!("{what}.type must be a string")))?;
                 require_enum(page_type, PAGE_TYPES, &format!("{what}.type"))?;
                 Some(page_type.to_string())
             }
@@ -322,7 +327,7 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
     if let Some(questions) = obj.get("questions") {
         let questions = questions
             .as_array()
-            .ok_or_else(|| SlidraError::invalid("outline.questions 必須是陣列"))?;
+            .ok_or_else(|| SlidraError::invalid("outline.questions must be an array"))?;
         let mut seen_ids: Vec<&str> = Vec::new();
         for (index, question) in questions.iter().enumerate() {
             let what = format!("outline.questions[{index}]");
@@ -334,27 +339,29 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
                     .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
             {
                 return Err(SlidraError::invalid(format!(
-                    "{what}.id 只能是英數字、- 與 _：{id}"
+                    "{what}.id can only contain alphanumerics, - and _: {id}"
                 )));
             }
             if seen_ids.contains(&id) {
-                return Err(SlidraError::invalid(format!("{what}.id 重複：{id}")));
+                return Err(SlidraError::invalid(format!("{what}.id duplicated: {id}")));
             }
             seen_ids.push(id);
             require_str(question, "question", &what)?;
             if let Some(note) = question.get("note") {
                 if !note.is_string() {
-                    return Err(SlidraError::invalid(format!("{what}.note 必須是字串")));
+                    return Err(SlidraError::invalid(format!(
+                        "{what}.note must be a string"
+                    )));
                 }
             }
             let recommended = require_str(question, "recommended", &what)?;
             let options = question
                 .get("options")
                 .and_then(Value::as_array)
-                .ok_or_else(|| SlidraError::invalid(format!("{what} 缺少 options 陣列")))?;
+                .ok_or_else(|| SlidraError::invalid(format!("{what} is missing options array")))?;
             if options.len() < 2 || options.len() > 4 {
                 return Err(SlidraError::invalid(format!(
-                    "{what}.options 必須有 2 到 4 個選項，實際 {}",
+                    "{what}.options must have 2 to 4 options, actual {}",
                     options.len()
                 )));
             }
@@ -368,13 +375,13 @@ pub fn parse_outline(text: &str) -> SlidraResult<OutlinePlan> {
             }
             if !values.contains(&recommended) {
                 return Err(SlidraError::invalid(format!(
-                    "{what}.recommended 必須是 options 之一的 value：{recommended}"
+                    "{what}.recommended must be one of options\' value: {recommended}"
                 )));
             }
             if let Some(free_text) = question.get("free_text") {
                 if !free_text.is_boolean() {
                     return Err(SlidraError::invalid(format!(
-                        "{what}.free_text 必須是布林值"
+                        "{what}.free_text must be a boolean"
                     )));
                 }
             }
@@ -411,7 +418,7 @@ pub fn parse_design_spec(text: &str) -> SlidraResult<DesignSpec> {
         Some(value) => {
             let visual = value
                 .as_str()
-                .ok_or_else(|| SlidraError::invalid("design-spec.visual 必須是字串"))?;
+                .ok_or_else(|| SlidraError::invalid("design-spec.visual must be a string"))?;
             require_enum(visual, VISUALS, "design-spec.visual")?;
             visual
         }
@@ -420,16 +427,16 @@ pub fn parse_design_spec(text: &str) -> SlidraResult<DesignSpec> {
     let palette_obj = obj
         .get("palette")
         .and_then(Value::as_object)
-        .ok_or_else(|| SlidraError::invalid("design-spec 缺少 palette 物件"))?;
+        .ok_or_else(|| SlidraError::invalid("design-spec missing palette object"))?;
     let mut palette = Vec::with_capacity(PALETTE_ROLES.len());
     for role in PALETTE_ROLES {
         let color = palette_obj
             .get(*role)
             .and_then(Value::as_str)
-            .ok_or_else(|| SlidraError::invalid(format!("design-spec.palette 缺少 {role}")))?;
+            .ok_or_else(|| SlidraError::invalid(format!("design-spec.palette missing {role}")))?;
         if !is_hex_color(color) {
             return Err(SlidraError::invalid(format!(
-                "design-spec.palette.{role} 必須是大寫的 #RRGGBB：{color}"
+                "design-spec.palette.{role} must be uppercase #RRGGBB: {color}"
             )));
         }
         palette.push((role.to_string(), color.to_string()));
@@ -438,16 +445,18 @@ pub fn parse_design_spec(text: &str) -> SlidraResult<DesignSpec> {
     let scale_obj = obj
         .get("type_scale")
         .and_then(Value::as_object)
-        .ok_or_else(|| SlidraError::invalid("design-spec 缺少 type_scale 物件"))?;
+        .ok_or_else(|| SlidraError::invalid("design-spec missing type_scale object"))?;
     let mut type_scale = Vec::with_capacity(TYPE_ROLES.len());
     for role in TYPE_ROLES {
         let size = scale_obj
             .get(*role)
             .and_then(Value::as_f64)
-            .ok_or_else(|| SlidraError::invalid(format!("design-spec.type_scale 缺少 {role}")))?;
+            .ok_or_else(|| {
+                SlidraError::invalid(format!("design-spec.type_scale missing {role}"))
+            })?;
         if !size.is_finite() || size <= 0.0 {
             return Err(SlidraError::invalid(format!(
-                "design-spec.type_scale.{role} 必須是大於 0 的數字"
+                "design-spec.type_scale.{role} must be a number greater than 0"
             )));
         }
         type_scale.push((role.to_string(), size));
@@ -457,9 +466,9 @@ pub fn parse_design_spec(text: &str) -> SlidraResult<DesignSpec> {
     let shape_language = match obj.get("shape_language") {
         None => "plain",
         Some(value) => {
-            let name = value
-                .as_str()
-                .ok_or_else(|| SlidraError::invalid("design-spec.shape_language 必須是字串"))?;
+            let name = value.as_str().ok_or_else(|| {
+                SlidraError::invalid("design-spec.shape_language must be a string")
+            })?;
             require_enum(name, SHAPE_LANGUAGES, "design-spec.shape_language")?;
             name
         }
@@ -487,19 +496,25 @@ fn parse_blueprint(
     };
     let obj = value
         .as_object()
-        .ok_or_else(|| SlidraError::invalid(format!("{what}.blueprint 必須是物件")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("{what}.blueprint must be an object")))?;
 
     let shape = obj
         .get("shape")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| SlidraError::invalid(format!("{what}.blueprint 缺少非空字串欄位 shape")))?;
+        .ok_or_else(|| {
+            SlidraError::invalid(format!(
+                "{what}.blueprint is missing non-empty string field shape"
+            ))
+        })?;
 
     let mut counts = [0usize; 2];
     for (index, key) in ["nodes", "steps"].iter().enumerate() {
         counts[index] = obj.get(*key).and_then(Value::as_u64).ok_or_else(|| {
-            SlidraError::invalid(format!("{what}.blueprint 缺少非負整數欄位 {key}"))
+            SlidraError::invalid(format!(
+                "{what}.blueprint is missing non-negative integer field {key}"
+            ))
         })? as usize;
     }
 
@@ -521,7 +536,7 @@ fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> SlidraResult<La
     };
     let layout = layout
         .as_object()
-        .ok_or_else(|| SlidraError::invalid("design-spec.layout 必須是物件"))?;
+        .ok_or_else(|| SlidraError::invalid("design-spec.layout must be an object"))?;
 
     for (key, slot) in [
         ("side_margin", &mut anchors.side_margin),
@@ -536,7 +551,7 @@ fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> SlidraResult<La
             .as_f64()
             .filter(|n| n.is_finite() && *n >= 0.0)
             .ok_or_else(|| {
-                SlidraError::invalid(format!("design-spec.layout.{key} 必須是 ≥ 0 的數字"))
+                SlidraError::invalid(format!("design-spec.layout.{key} must be a number ≥ 0"))
             })?;
         *slot = number;
     }
@@ -544,10 +559,10 @@ fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> SlidraResult<La
     if let Some(value) = layout.get("spacing") {
         let steps = value
             .as_array()
-            .ok_or_else(|| SlidraError::invalid("design-spec.layout.spacing 必須是陣列"))?;
+            .ok_or_else(|| SlidraError::invalid("design-spec.layout.spacing must be an array"))?;
         if steps.is_empty() {
             return Err(SlidraError::invalid(
-                "design-spec.layout.spacing 不能是空陣列",
+                "design-spec.layout.spacing cannot be an empty array",
             ));
         }
         let mut parsed = Vec::with_capacity(steps.len());
@@ -556,7 +571,9 @@ fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> SlidraResult<La
                 .as_f64()
                 .filter(|n| n.is_finite() && *n > 0.0)
                 .ok_or_else(|| {
-                    SlidraError::invalid("design-spec.layout.spacing 的每一項必須是大於 0 的數字")
+                    SlidraError::invalid(
+                        "design-spec.layout.spacing's every item must be a number greater than 0",
+                    )
                 })?;
             parsed.push(number);
         }
@@ -572,7 +589,7 @@ pub fn plan_path_for(name: &str) -> SlidraResult<&'static str> {
         "outline" => Ok(OUTLINE_PATH),
         "design-spec" => Ok(DESIGN_SPEC_PATH),
         other => Err(SlidraError::invalid(format!(
-            "計畫檔名稱只能是 outline 或 design-spec：{other}"
+            "plan file name can only be outline or design-spec: {other}"
         ))),
     }
 }
@@ -597,8 +614,8 @@ pub fn read_design_spec(work_dir: &Path) -> SlidraResult<Option<DesignSpec>> {
 
 fn describe_blueprint(blueprint: Option<&PageBlueprint>) -> String {
     match blueprint {
-        None => "（沒有）".to_string(),
-        Some(b) => format!("{} / {} 個 node / {} 步", b.shape, b.nodes, b.steps),
+        None => "(none)".to_string(),
+        Some(b) => format!("{} / {} nodes / {} steps", b.shape, b.nodes, b.steps),
     }
 }
 
@@ -629,7 +646,7 @@ pub fn assert_confirmed_outline_change_allowed(
     let mut violations: Vec<String> = Vec::new();
     if new.status != "confirmed" {
         violations.push(format!(
-            "status：{} → {}（退回 draft 會重開作者的確認閘門）",
+            "status: {} → {} (reverting to draft reopens the author's confirmation gate)",
             old.status, new.status
         ));
     }
@@ -639,12 +656,12 @@ pub fn assert_confirmed_outline_change_allowed(
         ("background", &old.background, &new.background),
     ] {
         if old_value != new_value {
-            violations.push(format!("{field}：{old_value} → {new_value}"));
+            violations.push(format!("{field}: {old_value} → {new_value}"));
         }
     }
     if new.pages.len() < old.pages.len() {
         violations.push(format!(
-            "頁數：{} 頁 → {} 頁（不能刪頁）",
+            "page count: {} pages → {} pages (cannot delete pages)",
             old.pages.len(),
             new.pages.len()
         ));
@@ -665,7 +682,7 @@ pub fn assert_confirmed_outline_change_allowed(
             ("title", &old_page.title, &new_page.title),
         ] {
             if old_value != new_value {
-                violations.push(format!("第 {n} 頁 {field}：{old_value} → {new_value}"));
+                violations.push(format!("page {n} {field}: {old_value} → {new_value}"));
             }
         }
         // Writing a blueprint for the first time is the composition-reasoning step doing
@@ -676,7 +693,7 @@ pub fn assert_confirmed_outline_change_allowed(
             && old_page.blueprint != new_page.blueprint
         {
             violations.push(format!(
-                "第 {n} 頁 blueprint（slides/{n:03}.svg 已經畫出來了）：{} → {}",
+                "page {n} blueprint (slides/{n:03}.svg is already drawn): {} → {}",
                 describe_blueprint(old_page.blueprint.as_ref()),
                 describe_blueprint(new_page.blueprint.as_ref()),
             ));
@@ -687,9 +704,9 @@ pub fn assert_confirmed_outline_change_allowed(
         return Ok(());
     }
     Err(SlidraError::invalid(format!(
-        "計畫已經確認過了，這些不能再改：\n  - {}\n\
-         構圖先於頁面：頁面畫錯就改頁面，不要改計畫去配合。\n\
-         作者答過的題目要改，先問作者。拆頁或中途換版面請在同一條命令最後加上 --force。",
+        "the plan has already been confirmed, these can no longer change:\n  - {}\n\
+         composition comes before pages: if a page is drawn wrong, fix the page, don't change the plan to match it.\n\
+         to change a question the author already answered, ask the author first. to split a page or switch layouts mid-stream, add --force at the end of the same command.",
         violations.join("\n  - ")
     )))
 }
@@ -718,12 +735,12 @@ pub fn set_plan(id: &str, name: &str, content: &str, force: bool) -> SlidraResul
     }
     let plan_dir = work_dir.join("plan");
     std::fs::create_dir_all(&plan_dir)
-        .map_err(|_| SlidraError::invalid(format!("寫入檔案時發生錯誤：{path}")))?;
+        .map_err(|_| SlidraError::invalid(format!("error writing file: {path}")))?;
     let file_name = path
         .strip_prefix("plan/")
         .expect("plan paths live under plan/");
     std::fs::write(plan_dir.join(file_name), content)
-        .map_err(|_| SlidraError::invalid(format!("寫入檔案時發生錯誤：{path}")))?;
+        .map_err(|_| SlidraError::invalid(format!("error writing file: {path}")))?;
     Ok(path.to_string())
 }
 
@@ -761,15 +778,15 @@ pub fn delete_plan(id: &str, name: Option<&str>) -> SlidraResult<String> {
             let path = plan_path_for(name)?;
             let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, path)?;
             std::fs::remove_file(&real_path)
-                .map_err(|_| SlidraError::invalid(format!("刪除檔案時發生錯誤：{path}")))?;
+                .map_err(|_| SlidraError::invalid(format!("error deleting file: {path}")))?;
             Ok(path.to_string())
         }
         None => {
             if virtual_fs::list_virtual_entries(&work_dir, "plan").is_err() {
-                return Err(SlidraError::not_found("找不到目錄：plan/"));
+                return Err(SlidraError::not_found("directory not found: plan/"));
             }
             std::fs::remove_dir_all(work_dir.join("plan"))
-                .map_err(|_| SlidraError::invalid("刪除檔案時發生錯誤：plan/"))?;
+                .map_err(|_| SlidraError::invalid("error deleting file: plan/"))?;
             Ok("plan/".to_string())
         }
     }
@@ -779,9 +796,9 @@ pub fn delete_plan(id: &str, name: Option<&str>) -> SlidraResult<String> {
 mod tests {
     use super::*;
 
-    pub(crate) const OUTLINE_OK: &str = "```json\n{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"封面\" }, { \"n\": 2, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"要點\" } ], \"questions\": [ { \"id\": \"mode\", \"question\": \"骨架\", \"note\": \"看法\", \"recommended\": \"pyramid\", \"options\": [ { \"value\": \"pyramid\", \"label\": \"結論先行\" }, { \"value\": \"narrative\", \"label\": \"故事線\" } ], \"free_text\": true } ] }\n```\n\n## 第 1 頁\n說明。\n";
+    pub(crate) const OUTLINE_OK: &str = "```json\n{ \"status\": \"draft\", \"mode\": \"pyramid\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"cover\", \"rhythm\": \"anchor\", \"title\": \"cover\" }, { \"n\": 2, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"bullet point\" } ], \"questions\": [ { \"id\": \"mode\", \"question\": \"skeleton\", \"note\": \"viewpoint\", \"recommended\": \"pyramid\", \"options\": [ { \"value\": \"pyramid\", \"label\": \"conclusion first\" }, { \"value\": \"narrative\", \"label\": \"storyline\" } ], \"free_text\": true } ] }\n```\n\n## Page 1\nDescription.\n";
 
-    pub(crate) const DESIGN_SPEC_OK: &str = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n正文。\n";
+    pub(crate) const DESIGN_SPEC_OK: &str = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\nBody.\n";
 
     #[test]
     fn parses_a_valid_outline() {
@@ -855,7 +872,7 @@ mod tests {
 
     #[test]
     fn rejects_a_file_without_a_json_fence() {
-        let err = parse_outline("# 只有正文\n").unwrap_err();
+        let err = parse_outline("# body only\n").unwrap_err();
         assert!(err.message().contains("```json"), "{}", err.message());
     }
 
@@ -863,7 +880,11 @@ mod tests {
     fn rejects_non_consecutive_page_numbers() {
         let text = OUTLINE_OK.replace("\"n\": 2", "\"n\": 3");
         let err = parse_outline(&text).unwrap_err();
-        assert!(err.message().contains("從 1 連續遞增"), "{}", err.message());
+        assert!(
+            err.message().contains("increasing consecutively from 1"),
+            "{}",
+            err.message()
+        );
     }
 
     #[test]
@@ -888,19 +909,26 @@ mod tests {
 
     #[test]
     fn rejects_too_few_options_and_duplicate_ids() {
-        let one_option =
-            OUTLINE_OK.replace(", { \"value\": \"narrative\", \"label\": \"故事線\" }", "");
+        let one_option = OUTLINE_OK.replace(
+            ", { \"value\": \"narrative\", \"label\": \"storyline\" }",
+            "",
+        );
         assert!(
             parse_outline(&one_option)
                 .unwrap_err()
                 .message()
-                .contains("2 到 4")
+                .contains("2 to 4")
         );
         let dup = OUTLINE_OK.replace(
             "\"questions\": [",
             "\"questions\": [ { \"id\": \"mode\", \"question\": \"x\", \"recommended\": \"a\", \"options\": [ { \"value\": \"a\", \"label\": \"a\" }, { \"value\": \"b\", \"label\": \"b\" } ] },",
         );
-        assert!(parse_outline(&dup).unwrap_err().message().contains("重複"));
+        assert!(
+            parse_outline(&dup)
+                .unwrap_err()
+                .message()
+                .contains("duplicate")
+        );
     }
 
     #[test]
@@ -924,7 +952,7 @@ mod tests {
             parse_design_spec(&zero)
                 .unwrap_err()
                 .message()
-                .contains("大於 0")
+                .contains("greater than 0")
         );
         let density = DESIGN_SPEC_OK.replace("\"presentation\"", "\"dense\"");
         assert!(parse_design_spec(&density).is_err());
@@ -980,7 +1008,7 @@ mod tests {
     }
 
     /// One page, `order`/`dense`, with the blueprint the build wrote.
-    const PAGE_WITH_BLUEPRINT: &str = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"第一頁\", \"blueprint\": { \"shape\": \"spine-path\", \"nodes\": 3, \"steps\": 4 } }";
+    const PAGE_WITH_BLUEPRINT: &str = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"first page\", \"blueprint\": { \"shape\": \"spine-path\", \"nodes\": 3, \"steps\": 4 } }";
 
     fn outline(status: &str, pages: &str) -> OutlinePlan {
         parse_outline(&format!(
@@ -1038,7 +1066,7 @@ mod tests {
 
     #[test]
     fn writing_a_blueprint_for_the_first_time_is_always_allowed() {
-        let without = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"第一頁\" }";
+        let without = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"first page\" }";
         let old = outline("confirmed", without);
         let new = outline("confirmed", PAGE_WITH_BLUEPRINT);
         assert!(guard(&old, &new, 1).is_ok());
@@ -1048,7 +1076,7 @@ mod tests {
     fn a_confirmed_plan_allows_appending_a_page_but_not_dropping_one() {
         let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
         let appended = format!(
-            "{PAGE_WITH_BLUEPRINT}, {{ \"n\": 2, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"新頁\" }}"
+            "{PAGE_WITH_BLUEPRINT}, {{ \"n\": 2, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"new page\" }}"
         );
         assert!(guard(&old, &outline("confirmed", &appended), 1).is_ok());
 
@@ -1057,7 +1085,7 @@ mod tests {
             guard(&old_two, &outline("confirmed", PAGE_WITH_BLUEPRINT), 2)
                 .unwrap_err()
                 .message()
-                .contains("不能刪頁")
+                .contains("cannot delete page")
         );
     }
 
@@ -1080,7 +1108,7 @@ mod tests {
             "confirmed",
             &PAGE_WITH_BLUEPRINT
                 .replace("\"nodes\": 3", "\"nodes\": 0")
-                .replace("第一頁", "改過的標題"),
+                .replace("first page", "edited title"),
         );
         new.mode = "pyramid".to_string();
         let message = guard(&old, &new, 1).unwrap_err().message().to_string();
@@ -1094,7 +1122,7 @@ mod tests {
         let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
         let new = outline(
             "draft",
-            "{ \"n\": 1, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"全都改了\" }",
+            "{ \"n\": 1, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"all changed\" }",
         );
         assert!(assert_confirmed_outline_change_allowed(&old, &new, 1, true).is_ok());
     }

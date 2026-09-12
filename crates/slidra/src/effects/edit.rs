@@ -56,7 +56,7 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// Depth-first search for *any* element (not just `<g>`) carrying `id` — an
@@ -96,7 +96,7 @@ fn locate_effects_list(svg_root: &ScannedNode) -> SlidraResult<LocatedList<'_>> 
         .collect();
     if lists.len() > 1 {
         return Err(SlidraError::invalid(format!(
-            "這張投影片的 metadata 裡有 {} 組效果清單，但一張投影片只能有一份效果清單，簡報已損毀。",
+            "the metadata of this slide has {} effect list(s), but a slide can only have one effect list, presentation is corrupted.",
             lists.len()
         )));
     }
@@ -110,7 +110,7 @@ fn require_effects_list(svg_root: &ScannedNode) -> SlidraResult<&ScannedNode> {
     let located = locate_effects_list(svg_root)?;
     located
         .list
-        .ok_or_else(|| SlidraError::not_found("這張投影片沒有效果清單"))
+        .ok_or_else(|| SlidraError::not_found("this slide has no effect list"))
 }
 
 fn effect_nodes_of(list: &ScannedNode) -> Vec<&ScannedNode> {
@@ -215,7 +215,7 @@ fn validate_insert_index(requested: Option<f64>, current_length: usize) -> Slidr
         return Ok(current_length + 1);
     };
     if requested.fract() != 0.0 || requested < 1.0 || requested > (current_length + 1) as f64 {
-        return Err(SlidraError::invalid("--index 超出範圍"));
+        return Err(SlidraError::invalid("--index out of range"));
     }
     Ok(requested as usize)
 }
@@ -273,18 +273,18 @@ pub fn add_effects(
 ) -> SlidraResult<String> {
     assert_slide_compliant(svg_content, slide_path)?;
     if element_ids.is_empty() {
-        return Err(SlidraError::invalid("元素清單不可為空"));
+        return Err(SlidraError::invalid("element list must not be empty"));
     }
 
     let family = &input.family;
     let Some(allowed) = allowed_effects(family) else {
         return Err(SlidraError::invalid(format!(
-            "family 值「{family}」尚未實作。"
+            "family value \"{family}\" not yet implemented."
         )));
     };
     if !allowed.contains(&input.effect.as_str()) {
         return Err(SlidraError::invalid(format!(
-            "effect 值「{}」尚未實作。",
+            "effect value \"{}\" not yet implemented.",
             input.effect
         )));
     }
@@ -294,27 +294,27 @@ pub fn add_effects(
         .unwrap_or_else(|| "on-click".to_string());
     if !crate::effects::SUPPORTED_STARTS.contains(&start.as_str()) {
         return Err(SlidraError::invalid(format!(
-            "start 值「{start}」尚未實作。"
+            "start value \"{start}\" not yet implemented."
         )));
     }
     let d_is_blank = input.d.is_none() || matches!(&input.d, Some(s) if s.is_empty());
     if family == "path" && d_is_blank {
         return Err(SlidraError::invalid(
-            "family 是 path，但沒有給 d，無法新增效果。",
+            "family is path, but no d given, cannot add effect.",
         ));
     }
     let duration = input
         .duration
         .unwrap_or_else(|| default_duration_for(family));
-    assert_legal_seconds(duration, "新增效果", "duration")?;
+    assert_legal_seconds(duration, "add effect", "duration")?;
     let delay = input.delay.unwrap_or(0.0);
-    assert_legal_seconds(delay, "新增效果", "delay")?;
+    assert_legal_seconds(delay, "add effect", "delay")?;
 
     let roots = scan_document(svg_content)?;
     let svg_root = require_svg_root(&roots)?;
     for id in element_ids {
         if find_element_by_id(svg_root, id).is_none() {
-            return Err(SlidraError::not_found(format!("找不到元素：{id}")));
+            return Err(SlidraError::not_found(format!("element not found: {id}")));
         }
     }
 
@@ -354,7 +354,9 @@ pub fn remove_effects(
 ) -> SlidraResult<String> {
     assert_slide_compliant(svg_content, slide_path)?;
     if indices.is_empty() {
-        return Err(SlidraError::invalid("必須指定至少一個要移除的效果項"));
+        return Err(SlidraError::invalid(
+            "must specify at least one effect item to remove",
+        ));
     }
 
     let roots = scan_document(svg_content)?;
@@ -363,7 +365,9 @@ pub fn remove_effects(
     let items = effect_nodes_of(list);
     for &index in indices {
         if index < 1 || index as usize > items.len() {
-            return Err(SlidraError::invalid(format!("效果項編號超出範圍：{index}")));
+            return Err(SlidraError::invalid(format!(
+                "effect item index out of range: {index}"
+            )));
         }
     }
 
@@ -410,7 +414,9 @@ pub fn move_effect(
     let list = require_effects_list(svg_root)?;
     let items = effect_nodes_of(list);
     if index < 1 || index as usize > items.len() {
-        return Err(SlidraError::invalid(format!("效果項編號超出範圍：{index}")));
+        return Err(SlidraError::invalid(format!(
+            "effect item index out of range: {index}"
+        )));
     }
 
     let other_index = if direction == "up" {
@@ -495,7 +501,9 @@ pub fn set_effect(
         && input.delay.is_none()
         && input.d.is_none()
     {
-        return Err(SlidraError::invalid("effect set 至少要指定一個要改的欄位"));
+        return Err(SlidraError::invalid(
+            "effect set must specify at least one field to change",
+        ));
     }
 
     let roots = scan_document(svg_content)?;
@@ -503,14 +511,18 @@ pub fn set_effect(
     let list = require_effects_list(svg_root)?;
     let items = effect_nodes_of(list);
     if index < 1 || index as usize > items.len() {
-        return Err(SlidraError::invalid(format!("效果項編號超出範圍：{index}")));
+        return Err(SlidraError::invalid(format!(
+            "effect item index out of range: {index}"
+        )));
     }
     let node = items[index as usize - 1];
     let family = attribute_value(node, "family");
     let family = match &family {
         Some(f) if allowed_effects(f).is_some() => f.as_str(),
         _ => {
-            return Err(SlidraError::invalid("這個效果項的 family 已損毀，無法修改"));
+            return Err(SlidraError::invalid(
+                "the family of this effect item is corrupted, cannot modify",
+            ));
         }
     };
 
@@ -520,20 +532,20 @@ pub fn set_effect(
             .contains(&effect.as_str())
         {
             return Err(SlidraError::invalid(format!(
-                "effect 值「{effect}」不屬於 family「{family}」，family 無法用 set 變更，請改用 remove + add。"
+                "effect value \"{effect}\" does not belong to family \"{family}\"; family cannot be changed with set, use remove + add instead."
             )));
         }
     }
     if let Some(start) = &input.start {
         if !crate::effects::SUPPORTED_STARTS.contains(&start.as_str()) {
             return Err(SlidraError::invalid(format!(
-                "start 值「{start}」尚未實作。"
+                "start value \"{start}\" not yet implemented."
             )));
         }
     }
     if input.d.is_some() && family != "path" {
         return Err(SlidraError::invalid(
-            "只有 family=\"path\" 的效果項可以設定 d",
+            "only family=\"path\" effect item can set d",
         ));
     }
     if let Some(duration) = input.duration {
@@ -641,7 +653,7 @@ mod tests {
     #[test]
     fn read_effect_list_no_list_is_not_found() {
         let err = read_effect_list(COMPLIANT, "slides/001.svg").unwrap_err();
-        assert_eq!(err.message(), "這張投影片沒有效果清單");
+        assert_eq!(err.message(), "this slide has no effect list");
         assert!(matches!(err, SlidraError::NotFound(_)));
     }
 
@@ -656,14 +668,14 @@ mod tests {
     fn read_effect_list_outside_metadata_is_not_adopted() {
         let svg = r#"<svg viewBox="0 0 100 100"><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/></slidra:effects><g id="el1"><rect width="1" height="1"/></g></svg>"#;
         let err = read_effect_list(svg, "slides/001.svg").unwrap_err();
-        assert_eq!(err.message(), "這張投影片沒有效果清單");
+        assert_eq!(err.message(), "this slide has no effect list");
     }
 
     #[test]
     fn read_effect_list_two_lists_is_damaged() {
         let svg = r#"<svg viewBox="0 0 100 100"><metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"></slidra:effects><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"></slidra:effects></metadata></svg>"#;
         let err = read_effect_list(svg, "slides/001.svg").unwrap_err();
-        assert!(err.message().contains("有 2 組效果清單"));
+        assert!(err.message().contains("has 2 effect list(s)"));
     }
 
     #[test]
@@ -728,7 +740,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到元素：nope");
+        assert_eq!(err.message(), "element not found: nope");
     }
 
     #[test]
@@ -745,7 +757,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(err.message(), "--index 超出範圍");
+        assert_eq!(err.message(), "--index out of range");
     }
 
     #[test]
@@ -765,7 +777,7 @@ mod tests {
             r#"<slidra:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>"#,
         );
         let err = remove_effects(&svg, "slides/001.svg", &[2]).unwrap_err();
-        assert_eq!(err.message(), "效果項編號超出範圍：2");
+        assert_eq!(err.message(), "effect item index out of range: 2");
     }
 
     #[test]
@@ -794,7 +806,10 @@ mod tests {
             r#"<slidra:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>"#,
         );
         let err = set_effect(&svg, "slides/001.svg", 1, &SetEffectInput::default()).unwrap_err();
-        assert_eq!(err.message(), "effect set 至少要指定一個要改的欄位");
+        assert_eq!(
+            err.message(),
+            "effect set must specify at least one field to change"
+        );
     }
 
     #[test]
@@ -831,7 +846,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(err.message().contains("family 無法用 set 變更"));
+        assert!(err.message().contains("family cannot be changed with set"));
     }
 
     #[test]
@@ -849,7 +864,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(err.message(), "只有 family=\"path\" 的效果項可以設定 d");
+        assert_eq!(err.message(), "only family=\"path\" effect item can set d");
     }
 
     #[test]
@@ -894,14 +909,14 @@ mod tests {
     /// `node.start`/`.end` as byte offsets would remove the wrong span here.
     #[test]
     fn remove_effects_targeting_removes_the_right_span_when_cjk_text_precedes_the_list() {
-        let svg = r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
+        let svg = r#"<svg viewBox="0 0 100 100"><title>slide title text</title><metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
         let mut targets = HashSet::new();
         targets.insert("el1".to_string());
         let (updated, removed) = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap();
         assert_eq!(removed, 1);
         assert_eq!(
             updated,
-            r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"></slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
+            r#"<svg viewBox="0 0 100 100"><title>slide title text</title><metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"></slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
         );
     }
 
@@ -920,7 +935,7 @@ mod tests {
     /// reachable from ordinary use, since every Chinese deck has them.
     fn with_cjk_notes(items: &str) -> String {
         format!(
-            r#"<svg viewBox="0 0 100 100"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">這是一段中文備忘稿，用來把效果清單往後推。</slidra:notes><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">{items}</slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g><g id="el2"><rect width="1" height="1"/></g></svg>"#
+            r#"<svg viewBox="0 0 100 100"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">This is a Chinese speaker-notes snippet, used to push the effect list further back.</slidra:notes><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">{items}</slidra:effects></metadata><g id="el1"><rect width="1" height="1"/></g><g id="el2"><rect width="1" height="1"/></g></svg>"#
         )
     }
 
@@ -1008,8 +1023,11 @@ mod tests {
             },
         )
         .unwrap();
-        let with_notes =
-            crate::slide::notes::set_slide_notes(&first, "這座島從此進入世界的視野。").unwrap();
+        let with_notes = crate::slide::notes::set_slide_notes(
+            &first,
+            "from this point on, this island entered global view.",
+        )
+        .unwrap();
         let second = add_effects(
             &with_notes,
             "slides/001.svg",
@@ -1036,6 +1054,6 @@ mod tests {
         let mut targets = HashSet::new();
         targets.insert("el1".to_string());
         let err = remove_effects_targeting(svg, "slides/001.svg", &targets).unwrap_err();
-        assert!(err.message().contains("2 組效果清單"));
+        assert!(err.message().contains("2 effect list(s)"));
     }
 }

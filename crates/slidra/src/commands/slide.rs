@@ -27,7 +27,7 @@ pub fn run(args: &[String], json_flag: bool) -> CommandResult {
         Some("style") => run_style(rest),
         Some("background") => run_background(rest),
         other => CommandResult::failure(
-            format!("未知的子命令：slide {}", other.unwrap_or("")),
+            format!("unknown subcommand: slide {}", other.unwrap_or("")),
             FailureKind::Failed,
         ),
     }
@@ -68,7 +68,7 @@ fn run_render(args: &[String], json_flag: bool) -> CommandResult {
                 serde_json::Value::String(content)
             };
             CommandResult::success(
-                format!("已渲染：{path}"),
+                format!("rendered: {path}"),
                 Some(serde_json::json!({ "content": content_value })),
             )
         }
@@ -81,7 +81,7 @@ fn render_slide_for_display(id: &str, slide_path: &str) -> Result<String, Slidra
     virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
     let project = read_project_json(&work_dir)?;
     if !project.slides.contains(&slide_path.to_string()) {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
     let original = virtual_fs::read_virtual_file(&work_dir, slide_path)?;
     let slide_number = project
@@ -116,7 +116,7 @@ fn run_add(args: &[String]) -> CommandResult {
             Ok(v) if v.is_finite() => Some(v),
             _ => {
                 return CommandResult::failure(
-                    format!("--at 不是合法數字：{raw}"),
+                    format!("--at is not a valid number: {raw}"),
                     FailureKind::Failed,
                 );
             }
@@ -130,7 +130,7 @@ fn run_add(args: &[String]) -> CommandResult {
     };
     if svg.is_some() && template_path.is_some() {
         return CommandResult::failure(
-            "--svg 與 --template 不能同時使用".to_string(),
+            "--svg and --template cannot be used together".to_string(),
             FailureKind::Failed,
         );
     }
@@ -167,7 +167,7 @@ fn run_add(args: &[String]) -> CommandResult {
         Ok(result) => match ingested {
             Some(ingested) => CommandResult::success(
                 format!(
-                    "已寫入 {}（{} 個元素）",
+                    "wrote {} ({} elements)",
                     result.slide_path,
                     ingested.element_ids.len()
                 ),
@@ -177,7 +177,7 @@ fn run_add(args: &[String]) -> CommandResult {
                 })),
             ),
             None => CommandResult::success(
-                format!("已新增投影片 {}", result.slide_path),
+                format!("added slide {}", result.slide_path),
                 Some(serde_json::json!({ "slidePath": result.slide_path })),
             ),
         },
@@ -241,7 +241,7 @@ fn describe_refusal(refused: &[validate::ValidationError]) -> String {
         .map(|error| format!("- {}（{}）", error.message, error.rule))
         .collect();
     format!(
-        "這一頁沒有寫入：還有 {} 條規則沒過，改好再送一次。\n{}\n（只驗這一頁自己的內容；轉場、進場效果、備忘稿、範本、blueprint 是寫入後補的命令，不在這裡擋。怎麼修見 reference/slide-design.md 第 9 節。）",
+        "this page was not written: {} rule(s) still fail, fix and resubmit.\n{}\n(only validates the content of this page itself; transition, entrance effect, speaker notes, template, blueprint are commands applied after writing and are not blocked here. see reference/slide-design.md section 9 for how to fix.)",
         refused.len(),
         lines.join("\n")
     )
@@ -264,7 +264,7 @@ fn run_set(args: &[String]) -> CommandResult {
         Ok(Some(v)) => v,
         Ok(None) => {
             return CommandResult::failure(
-                "命令 slide set 缺少參數：--svg".to_string(),
+                "command slide set missing argument: --svg".to_string(),
                 FailureKind::Failed,
             );
         }
@@ -283,7 +283,7 @@ fn run_set(args: &[String]) -> CommandResult {
     match result {
         Ok(ingested) => CommandResult::success(
             format!(
-                "已寫入 {slide_path}（{} 個元素）",
+                "wrote {slide_path} ({} elements)",
                 ingested.element_ids.len()
             ),
             Some(serde_json::json!({
@@ -306,7 +306,7 @@ fn run_delete(args: &[String]) -> CommandResult {
     };
     match ops::delete_slide(&id, &slide_path) {
         Ok(()) => CommandResult::success(
-            format!("已刪除投影片 {slide_path}"),
+            format!("deleted slide {slide_path}"),
             Some(serde_json::json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -324,7 +324,7 @@ fn run_duplicate(args: &[String]) -> CommandResult {
     };
     match ops::duplicate_slide(&id, &slide_path) {
         Ok(result) => CommandResult::success(
-            format!("已複製投影片為 {}", result.slide_path),
+            format!("duplicated slide as {}", result.slide_path),
             Some(serde_json::json!({ "slidePath": result.slide_path })),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -346,19 +346,19 @@ fn run_move(args: &[String]) -> CommandResult {
     };
     let Ok(new_index) = new_index_raw.parse::<f64>() else {
         return CommandResult::failure(
-            format!("命令 slide move 的 new-index 不是合法數字：{new_index_raw}"),
+            format!("command slide move\'s new-index is not a valid number: {new_index_raw}"),
             FailureKind::Failed,
         );
     };
     if !new_index.is_finite() {
         return CommandResult::failure(
-            format!("命令 slide move 的 new-index 不是合法數字：{new_index_raw}"),
+            format!("command slide move\'s new-index is not a valid number: {new_index_raw}"),
             FailureKind::Failed,
         );
     }
     match ops::move_slide(&id, &slide_path, new_index) {
         Ok(()) => CommandResult::success(
-            format!("已搬移投影片 {slide_path}"),
+            format!("moved slide {slide_path}"),
             Some(serde_json::json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -369,7 +369,7 @@ fn run_notes(args: &[String]) -> CommandResult {
     let subsub = args.first().map(String::as_str);
     if subsub != Some("set") {
         return CommandResult::failure(
-            format!("未知的子命令：slide notes {}", subsub.unwrap_or("")),
+            format!("unknown subcommand: slide notes {}", subsub.unwrap_or("")),
             FailureKind::Failed,
         );
     }
@@ -388,13 +388,13 @@ fn run_notes(args: &[String]) -> CommandResult {
     // for absence, not falsiness.
     let Some(text) = notes_args.get(2) else {
         return CommandResult::failure(
-            "命令 slide notes set 缺少參數：text".to_string(),
+            "command slide notes set missing argument: text".to_string(),
             FailureKind::Failed,
         );
     };
     match ops::set_notes(&id, &slide_path, text) {
         Ok(()) => CommandResult::success(
-            format!("已更新 {slide_path} 的備忘稿"),
+            format!("updated speaker notes of {slide_path}"),
             Some(serde_json::json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -405,7 +405,10 @@ fn run_transition(args: &[String]) -> CommandResult {
     let subsub = args.first().map(String::as_str);
     if subsub != Some("set") {
         return CommandResult::failure(
-            format!("未知的子命令：slide transition {}", subsub.unwrap_or("")),
+            format!(
+                "unknown subcommand: slide transition {}",
+                subsub.unwrap_or("")
+            ),
             FailureKind::Failed,
         );
     }
@@ -447,7 +450,7 @@ fn run_transition(args: &[String]) -> CommandResult {
         && !all
     {
         return CommandResult::failure(
-            "slide transition set 至少要指定一個要改的欄位".to_string(),
+            "slide transition set must specify at least one field to change".to_string(),
             FailureKind::Failed,
         );
     }
@@ -462,9 +465,9 @@ fn run_transition(args: &[String]) -> CommandResult {
     match ops::set_slide_transition_on(&id, &slide_path, input) {
         Ok(slide_count) => {
             let message = if all {
-                format!("已將頁面進出場套用到 {slide_count} 張投影片")
+                format!("applied page transitions to {slide_count} slides")
             } else {
-                format!("已設定 {slide_path} 的頁面進出場")
+                format!("set page transitions of {slide_path}")
             };
             CommandResult::success(message, Some(serde_json::json!({})))
         }
@@ -482,14 +485,14 @@ fn parse_effect_flag(
     };
     PageTransitionEffect::parse(&raw)
         .map(Some)
-        .ok_or_else(|| format!("slide transition set 不支援的 {label}：{raw}"))
+        .ok_or_else(|| format!("slide transition set unsupported {label}: {raw}"))
 }
 
 fn run_style(args: &[String]) -> CommandResult {
     let subsub = args.first().map(String::as_str);
     if subsub != Some("set") {
         return CommandResult::failure(
-            format!("未知的子命令：slide style {}", subsub.unwrap_or("")),
+            format!("unknown subcommand: slide style {}", subsub.unwrap_or("")),
             FailureKind::Failed,
         );
     }
@@ -514,14 +517,14 @@ fn run_style(args: &[String]) -> CommandResult {
     };
     if background.is_none() && accent.is_none() {
         return CommandResult::failure(
-            "命令 slide style set 至少要給 --background 或 --accent".to_string(),
+            "command slide style set requires at least --background or --accent".to_string(),
             FailureKind::Failed,
         );
     }
 
     match set_slide_page_style(&id, &slide_path, PageStyleUpdate { background, accent }) {
         Ok(()) => CommandResult::success(
-            format!("已設定 {slide_path} 的頁面樣式"),
+            format!("set page style of {slide_path}"),
             Some(serde_json::json!({})),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -535,7 +538,10 @@ fn run_background(args: &[String]) -> CommandResult {
     let subsub = args.first().map(String::as_str);
     if subsub != Some("set") {
         return CommandResult::failure(
-            format!("未知的子命令：slide background {}", subsub.unwrap_or("")),
+            format!(
+                "unknown subcommand: slide background {}",
+                subsub.unwrap_or("")
+            ),
             FailureKind::Failed,
         );
     }
@@ -561,7 +567,7 @@ fn run_background(args: &[String]) -> CommandResult {
     let none = argv::has_flag(bg_args, "--none");
     if asset.is_some() == none {
         return CommandResult::failure(
-            "命令 slide background set 要給 --asset 或 --none 其中一個".to_string(),
+            "command slide background set requires either --asset or --none".to_string(),
             FailureKind::Failed,
         );
     }
@@ -571,7 +577,7 @@ fn run_background(args: &[String]) -> CommandResult {
             Some(asset_path) => {
                 if !asset_path.starts_with("assets/") {
                     return Err(SlidraError::invalid(format!(
-                        "--asset 必須是 assets/ 底下的虛擬路徑：{asset_path}"
+                        "--asset must be a virtual path under assets/: {asset_path}"
                     )));
                 }
                 virtual_fs::resolve_virtual_file_path(&existing.work_dir, asset_path)?;
@@ -590,13 +596,13 @@ fn run_background(args: &[String]) -> CommandResult {
     })();
     match result {
         Ok(Some(element_id)) => CommandResult::success(
-            format!("已設定 {slide_path} 的背景圖"),
+            format!("set background image of {slide_path}"),
             Some(serde_json::json!({ "elementId": element_id })),
         ),
         Ok(None) => CommandResult {
             ok: true,
             data: None,
-            message: format!("已移除 {slide_path} 的背景圖"),
+            message: format!("removed background image of {slide_path}"),
             failure_kind: None,
         },
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -617,7 +623,7 @@ fn set_slide_page_style(
     if !project.slides.contains(&slide_path.to_string())
         && !templates.iter().any(|t| t.file == slide_path)
     {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
     let original = virtual_fs::read_virtual_file(&work_dir, slide_path)?;
     let updated = crate::slide::style::set_slide_page_style(&original, &update)?;
@@ -632,14 +638,14 @@ mod tests {
     fn unknown_subcommand_fails_with_trailing_space() {
         let result = run(&[], false);
         assert!(!result.ok);
-        assert_eq!(result.message, "未知的子命令：slide ");
+        assert_eq!(result.message, "unknown subcommand: slide ");
     }
 
     #[test]
     fn unknown_notes_subcommand_fails() {
         let result = run(&["notes".to_string(), "frobnicate".to_string()], false);
         assert!(!result.ok);
-        assert_eq!(result.message, "未知的子命令：slide notes frobnicate");
+        assert_eq!(result.message, "unknown subcommand: slide notes frobnicate");
     }
 
     #[test]
@@ -654,7 +660,10 @@ mod tests {
             false,
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 slide notes set 缺少參數：text");
+        assert_eq!(
+            result.message,
+            "command slide notes set missing argument: text"
+        );
     }
 
     #[test]
@@ -671,7 +680,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "slide transition set 至少要指定一個要改的欄位"
+            "slide transition set must specify at least one field to change"
         );
     }
 
@@ -689,7 +698,10 @@ mod tests {
             false,
         );
         assert!(!result.ok);
-        assert_eq!(result.message, "slide transition set 不支援的 enter：bogus");
+        assert_eq!(
+            result.message,
+            "slide transition set unsupported enter: bogus"
+        );
     }
 
     #[test]
@@ -706,7 +718,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 slide style set 至少要給 --background 或 --accent"
+            "command slide style set requires at least --background or --accent"
         );
     }
 }

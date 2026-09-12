@@ -228,7 +228,7 @@ mod tests {
     /// UTF-16-aware conversion.
     #[test]
     fn apply_splices_handles_a_target_after_leading_cjk_text() {
-        let svg = r#"<svg><text>投影片標題</text><g id="1"/></svg>"#;
+        let svg = r#"<svg><text>slide title</text><g id="1"/></svg>"#;
         let roots = scan_document(svg).unwrap();
         let svg_root = &roots[0];
         let target = &svg_root.children[1];
@@ -243,7 +243,7 @@ mod tests {
         );
         assert_eq!(
             updated,
-            r#"<svg><text>投影片標題</text><g id="REPLACED"/></svg>"#
+            r#"<svg><text>slide title</text><g id="REPLACED"/></svg>"#
         );
     }
 

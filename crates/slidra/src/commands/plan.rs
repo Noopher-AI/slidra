@@ -13,7 +13,7 @@ pub fn run(args: &[String]) -> CommandResult {
         Some("list") => run_list(rest),
         Some("delete") => run_delete(rest),
         other => CommandResult::failure(
-            format!("未知的子命令：plan {}", other.unwrap_or("")),
+            format!("unknown subcommand: plan {}", other.unwrap_or("")),
             FailureKind::Failed,
         ),
     }
@@ -41,7 +41,7 @@ fn run_set(args: &[String]) -> CommandResult {
     };
     match plan::set_plan(id, name, content, force) {
         Ok(path) => CommandResult::success(
-            format!("已寫入 {path}"),
+            format!("wrote {path}"),
             Some(serde_json::json!({ "path": path })),
         ),
         Err(err) => CommandResult::from_error(&err),
@@ -63,7 +63,7 @@ fn run_list(args: &[String]) -> CommandResult {
                 })
                 .collect();
             CommandResult::success(
-                format!("共 {} 個計畫檔", entries.len()),
+                format!("{} plan files total", entries.len()),
                 Some(serde_json::json!({ "plans": plans })),
             )
         }
@@ -81,7 +81,7 @@ fn run_delete(args: &[String]) -> CommandResult {
         Ok(path) => CommandResult {
             ok: true,
             data: None,
-            message: format!("已刪除 {path}"),
+            message: format!("deleted {path}"),
             failure_kind: None,
         },
         Err(err) => CommandResult::from_error(&err),
@@ -96,15 +96,15 @@ mod tests {
     fn unknown_subcommand_is_rejected() {
         let result = run(&["frobnicate".to_string()]);
         assert!(!result.ok);
-        assert_eq!(result.message, "未知的子命令：plan frobnicate");
+        assert_eq!(result.message, "unknown subcommand: plan frobnicate");
     }
 
     #[test]
     fn set_requires_name_and_content() {
         let result = run(&["set".to_string(), "id".to_string()]);
-        assert_eq!(result.message, "命令 plan set 缺少參數：name");
+        assert_eq!(result.message, "command plan set missing argument: name");
         let result = run(&["set".to_string(), "id".to_string(), "outline".to_string()]);
-        assert_eq!(result.message, "命令 plan set 缺少參數：content");
+        assert_eq!(result.message, "command plan set missing argument: content");
     }
 
     #[test]
@@ -117,7 +117,7 @@ mod tests {
         ]);
         assert!(!result.ok);
         assert!(
-            result.message.contains("outline 或 design-spec"),
+            result.message.contains("outline or design-spec"),
             "{}",
             result.message
         );

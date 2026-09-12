@@ -16,7 +16,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     write::write_presentation_file(&id, &slide_path, &updated)?;
 
     Ok(CommandResult::success(
-        format!("已刪除 {slide_path} 的 {} 個元素", element_ids.len()),
+        format!("deleted {} elements in {slide_path}", element_ids.len()),
         Some(serde_json::json!({})),
     ))
 }

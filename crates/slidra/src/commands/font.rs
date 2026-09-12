@@ -29,7 +29,7 @@ pub fn run(args: &[String]) -> CommandResult {
         Some(first) if first == "import" => import(&args[1..]),
         other => CommandResult::failure(
             format!(
-                "未知的子命令：font {}",
+                "unknown subcommand: font {}",
                 other.map(String::as_str).unwrap_or("")
             ),
             FailureKind::Failed,
@@ -59,7 +59,7 @@ fn parse_import(args: &[String]) -> SlidraResult<ImportArgs> {
         let take = |slot: &mut Option<String>, flag: &str| -> SlidraResult<()> {
             let value = args
                 .get(index + 1)
-                .ok_or_else(|| SlidraError::invalid(format!("{flag} 缺少值")))?;
+                .ok_or_else(|| SlidraError::invalid(format!("{flag} missing value")))?;
             *slot = Some(value.clone());
             Ok(())
         };
@@ -81,7 +81,7 @@ fn parse_import(args: &[String]) -> SlidraResult<ImportArgs> {
                 index += 2;
             }
             other if other.starts_with("--") => {
-                return Err(SlidraError::invalid(format!("未知的旗標：{other}")));
+                return Err(SlidraError::invalid(format!("unknown flag: {other}")));
             }
             other => {
                 positional.push(other.to_string());
@@ -92,14 +92,14 @@ fn parse_import(args: &[String]) -> SlidraResult<ImportArgs> {
 
     if positional.len() != 2 {
         return Err(SlidraError::invalid(
-            "用法：font import <presentation-id> <來源路徑或 URL> --family <家族名> --license <授權> --source <出處>",
+            "usage: font import <presentation-id> <source path or URL> --family <family name> --license <license> --source <source>",
         ));
     }
-    let family = family.ok_or_else(|| SlidraError::invalid("font import 缺少 --family"))?;
-    let license = license.ok_or_else(|| SlidraError::invalid("font import 缺少 --license"))?;
-    let origin = origin.ok_or_else(|| SlidraError::invalid("font import 缺少 --source"))?;
+    let family = family.ok_or_else(|| SlidraError::invalid("font import missing --family"))?;
+    let license = license.ok_or_else(|| SlidraError::invalid("font import missing --license"))?;
+    let origin = origin.ok_or_else(|| SlidraError::invalid("font import missing --source"))?;
     if family.trim().is_empty() {
-        return Err(SlidraError::invalid("--family 不可為空"));
+        return Err(SlidraError::invalid("--family cannot be empty"));
     }
 
     Ok(ImportArgs {
@@ -118,7 +118,8 @@ fn read_source(source: &str) -> SlidraResult<Vec<u8>> {
     if source.starts_with("http://") || source.starts_with("https://") {
         crate::http::download_source(source)
     } else {
-        std::fs::read(source).map_err(|_| SlidraError::not_found(format!("找不到來源檔：{source}")))
+        std::fs::read(source)
+            .map_err(|_| SlidraError::not_found(format!("source file not found: {source}")))
     }
 }
 
@@ -182,7 +183,7 @@ fn import(args: &[String]) -> CommandResult {
             entry.get("family").and_then(Value::as_str) == Some(parsed.family.as_str())
         }) {
             return CommandResult::failure(
-                format!("簡報已內嵌字型家族：{}", parsed.family),
+                format!("presentation already embeds font family: {}", parsed.family),
                 FailureKind::Failed,
             );
         }
@@ -213,7 +214,7 @@ fn import(args: &[String]) -> CommandResult {
             Ok(bytes) => bytes,
             Err(error) => return CommandResult::from_error(&error),
         },
-        None => format!("{}\n來源：{}\n", parsed.license, parsed.origin).into_bytes(),
+        None => format!("{}\nsource: {}\n", parsed.license, parsed.origin).into_bytes(),
     };
     if let Err(error) = create_presentation_file(&parsed.id, &license_path, &license_bytes) {
         return CommandResult::from_error(&error);
@@ -238,7 +239,7 @@ fn import(args: &[String]) -> CommandResult {
     }
 
     CommandResult::success(
-        format!("已內嵌字型 {}（{}）", parsed.family, font_path),
+        format!("embedded font {} ({})", parsed.family, font_path),
         Some(
             serde_json::json!({ "family": parsed.family, "file": font_path, "licenseFile": license_path }),
         ),

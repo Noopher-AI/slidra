@@ -50,7 +50,7 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 fn find_comments_list(svg_root: &ScannedNode) -> Option<&ScannedNode> {
@@ -65,7 +65,7 @@ fn read_comment(node: &ScannedNode, svg_content: &str) -> SlidraResult<SlideComm
     let created = attribute_value(node, "created");
     let (Some(id), Some(target), Some(author), Some(created)) = (id, target, author, created)
     else {
-        return Err(SlidraError::invalid("留言缺少必要屬性"));
+        return Err(SlidraError::invalid("comment missing required attribute"));
     };
     let raw = crate::text::runs::utf16_slice(svg_content, node.content_start, node.content_end);
     Ok(SlideComment {
@@ -160,7 +160,7 @@ fn find_comment<'a>(svg_root: &'a ScannedNode, comment_id: &str) -> SlidraResult
             c.tag == COMMENT_TAG && attribute_value(c, "id").as_deref() == Some(comment_id)
         })
     });
-    found.ok_or_else(|| SlidraError::not_found(format!("找不到留言：{comment_id}")))
+    found.ok_or_else(|| SlidraError::not_found(format!("comment not found: {comment_id}")))
 }
 
 /// Replaces `comment_id`'s content. `created` is left untouched. Unknown
@@ -308,7 +308,7 @@ mod tests {
     fn edit_unknown_comment_id_is_not_found() {
         let svg = slide("");
         let err = edit_slide_comment(&svg, "c-nope", "x").unwrap_err();
-        assert_eq!(err.message(), "找不到留言：c-nope");
+        assert_eq!(err.message(), "comment not found: c-nope");
         assert!(matches!(err, SlidraError::NotFound(_)));
     }
 
@@ -338,6 +338,6 @@ mod tests {
             r#"<metadata><slidra:comments xmlns:slidra="{COMMENTS_NS}"><slidra:comment id="c-1" target="page" author="agent">missing created</slidra:comment></slidra:comments></metadata>"#
         ));
         let err = read_slide_comments(&svg).unwrap_err();
-        assert_eq!(err.message(), "留言缺少必要屬性");
+        assert_eq!(err.message(), "comment missing required attribute");
     }
 }

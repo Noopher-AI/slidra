@@ -17,13 +17,16 @@ use crate::result::{CommandResult, FailureKind};
 /// would reject the extra argument instead.
 pub fn run(args: &[String]) -> CommandResult {
     let Some(id) = args.first() else {
-        return CommandResult::failure("命令 undo 缺少參數：presentation-id", FailureKind::Failed);
+        return CommandResult::failure(
+            "command undo missing argument: presentation-id",
+            FailureKind::Failed,
+        );
     };
 
     match history::undo(id) {
         Ok(result) => {
             let data = serde_json::json!({ "restoredPaths": result.restored_paths });
-            CommandResult::success("已復原上一步操作", Some(data))
+            CommandResult::success("undid the last operation", Some(data))
         }
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
@@ -50,7 +53,10 @@ mod tests {
     fn missing_id_argument_fails_without_falling_back_to_node() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 undo 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command undo missing argument: presentation-id"
+        );
     }
 
     #[test]

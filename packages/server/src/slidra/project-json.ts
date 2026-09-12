@@ -43,7 +43,7 @@ const CURRENT_FORMAT_VERSION = 4;
  */
 export function validateMinimalProjectJson(value: unknown): ProjectJson {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new SlidraError("project.json 格式錯誤：內容不是物件");
+    throw new SlidraError("project.json format error: content is not an object");
   }
   const record = value as Record<string, unknown>;
 
@@ -54,7 +54,7 @@ export function validateMinimalProjectJson(value: unknown): ProjectJson {
     throw new SlidraError(`此簡報由較新版本的 Slidra 建立（格式版本 ${record.formatVersion}），請升級後再開啟`);
   }
   if (typeof record.name !== "string") {
-    throw new SlidraError("project.json 格式錯誤：缺少或型別錯誤的 name");
+    throw new SlidraError("project.json format error: missing or wrong type for name");
   }
   const canvas = record.canvas;
   if (
@@ -63,10 +63,10 @@ export function validateMinimalProjectJson(value: unknown): ProjectJson {
     typeof (canvas as Record<string, unknown>).width !== "number" ||
     typeof (canvas as Record<string, unknown>).height !== "number"
   ) {
-    throw new SlidraError("project.json 格式錯誤：缺少或型別錯誤的 canvas");
+    throw new SlidraError("project.json format error: missing or wrong type for canvas");
   }
   if (!Array.isArray(record.slides) || !record.slides.every((slide) => typeof slide === "string")) {
-    throw new SlidraError("project.json 格式錯誤：slides 不是陣列");
+    throw new SlidraError("project.json format error: slides is not an array");
   }
 
   return record as unknown as ProjectJson;

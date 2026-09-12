@@ -69,7 +69,7 @@ fn root_svg(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     match (elements.next(), elements.next()) {
         (Some(root), None) if root.tag == "svg" => Ok(root),
         _ => Err(SlidraError::invalid(
-            "--svg 的內容必須是一份以 <svg> 為根節點的完整投影片",
+            "--svg content must be a complete slide rooted at <svg>",
         )),
     }
 }
@@ -110,7 +110,7 @@ fn viewbox_splice(
                 Ok(None)
             } else {
                 Err(SlidraError::invalid(format!(
-                    "--svg 的 viewBox 是「{raw}」，與畫布 {} × {} 不符，必須是「{expected}」或省略",
+                    "--svg viewBox is \"{raw}\", does not match canvas {} × {}, must be \"{expected}\" or omitted",
                     format_svg_number(canvas_width),
                     format_svg_number(canvas_height)
                 )))
@@ -129,7 +129,9 @@ fn number_attr(node: &ScannedNode, name: &str, what: &str) -> SlidraResult<Optio
             .filter(|n| n.is_finite())
             .map(Some)
             .ok_or_else(|| {
-                SlidraError::invalid(format!("文字框宣告 {what} 的 {name} 不是合法數字：{raw}"))
+                SlidraError::invalid(format!(
+                    "{name} of text box declaration {what} is not a valid number: {raw}"
+                ))
             }),
     }
 }
@@ -181,8 +183,8 @@ fn check_roles(node: &ScannedNode) -> SlidraResult<()> {
         if !ELEMENT_ROLES.contains(&role.as_str()) {
             let id = attribute_value(node, "id").unwrap_or_else(|| node.tag.clone());
             return Err(SlidraError::invalid(format!(
-                "{id} 的 {ROLE_ATTRIBUTE} 不是合法角色：{role}（可用：{}）",
-                ELEMENT_ROLES.join("、")
+                "{id}'s {ROLE_ATTRIBUTE} is not a valid role: {role} (available: {})",
+                ELEMENT_ROLES.join(", ")
             )));
         }
     }
@@ -218,9 +220,9 @@ fn check_text_is_boxed(node: &ScannedNode, boxed: bool, top_level: bool) -> Slid
             if boxed || garnish || (top_level && is_declaration(child)) {
                 continue;
             }
-            let id = attribute_value(node, "id").unwrap_or_else(|| "（無識別碼）".to_string());
+            let id = attribute_value(node, "id").unwrap_or_else(|| "(no id)".to_string());
             return Err(SlidraError::invalid(format!(
-                "{id} 裡的 <text> 不是文字框：投影片上的文字一律寫成文字框宣告——在根 <svg> 底下放 <text {TEXT_WIDTH_ATTRIBUTE}=\"<寬度>\" x=\"…\" y=\"…\">，Slidra 會替你換行、量測，作者也才編輯得到。真的是裝飾（例如章節頁的編號浮水印）就標 {ROLE_ATTRIBUTE}=\"garnish\""
+                "{id}'s <text> is not a text box: text on a slide must always be written as a text box declaration — place <text {TEXT_WIDTH_ATTRIBUTE}=\"<width>\" x=\"…\" y=\"…\"> directly under the root <svg>, and Slidra will wrap and measure it for you so authors can edit it too. If it's really decoration (e.g. a chapter page's number watermark), mark it {ROLE_ATTRIBUTE}=\"garnish\""
             )));
         }
         let boxed_here = attribute_of(child, TEXT_WIDTH_ATTRIBUTE).is_some()
@@ -253,20 +255,20 @@ fn declaration_markup(
     };
     let what = id.clone();
     if used_ids.contains(&id) {
-        return Err(SlidraError::invalid(format!("識別碼重複：{id}")));
+        return Err(SlidraError::invalid(format!("duplicate id: {id}")));
     }
     used_ids.push(id.clone());
 
     if node.children.iter().any(|c| !c.tag.starts_with('!')) {
         return Err(SlidraError::invalid(format!(
-            "文字框宣告 {what} 只能放純文字，不能含 <tspan> 等子元素；一行一段，用換行分段"
+            "text box declaration {what} can only contain plain text, not child elements like <tspan>; one paragraph per line, use line breaks to separate paragraphs"
         )));
     }
     let raw_text = utf16_slice(svg, node.content_start, node.content_end);
     let text = unescape_xml_text(&raw_text);
     let width = number_attr(node, TEXT_WIDTH_ATTRIBUTE, &what)?.ok_or_else(|| {
         SlidraError::invalid(format!(
-            "文字框宣告 {what} 的 {TEXT_WIDTH_ATTRIBUTE} 不是合法數字"
+            "{TEXT_WIDTH_ATTRIBUTE} of text box declaration {what} is not a valid number"
         ))
     })?;
     let x = number_attr(node, "x", &what)?.unwrap_or(0.0);
@@ -279,7 +281,7 @@ fn declaration_markup(
             "normal" => Some(400.0),
             other => Some(other.parse::<f64>().map_err(|_| {
                 SlidraError::invalid(format!(
-                    "文字框宣告 {what} 的 font-weight 不是合法數字：{raw}"
+                    "font-weight of text box declaration {what} is not a valid number: {raw}"
                 ))
             })?),
         },
@@ -293,7 +295,7 @@ fn declaration_markup(
         Some("right") => TextAlign::Right,
         Some(other) => {
             return Err(SlidraError::invalid(format!(
-                "文字框宣告 {what} 的 {TEXT_ALIGN_ATTRIBUTE} 必須是 left、center 或 right：{other}"
+                "{TEXT_ALIGN_ATTRIBUTE} of text box declaration {what} must be left, center or right: {other}"
             )));
         }
     };
@@ -312,8 +314,8 @@ fn declaration_markup(
         Some(role) if ELEMENT_ROLES.contains(&role.as_str()) => Some(role),
         Some(other) => {
             return Err(SlidraError::invalid(format!(
-                "文字框宣告 {what} 的 {ROLE_ATTRIBUTE} 不是合法角色：{other}（可用：{}）",
-                ELEMENT_ROLES.join("、")
+                "{ROLE_ATTRIBUTE} of text box declaration {what} is not a valid role: {other} (available: {})",
+                ELEMENT_ROLES.join(", ")
             )));
         }
     };
@@ -386,7 +388,7 @@ pub fn ingest_slide_svg(
             });
         } else if any_nested_declaration(child) {
             return Err(SlidraError::invalid(
-                "文字框宣告（帶 data-slidra-text-width 的 <text>）必須直接放在根 <svg> 底下，不能包在 <g> 裡",
+                "text box declaration (a <text> with data-slidra-text-width) must be placed directly under the root <svg>, not wrapped in a <g>",
             ));
         }
     }
@@ -538,12 +540,12 @@ mod tests {
 
     #[test]
     fn declaration_keeps_id_name_align_weight_fill_and_list_tokens() {
-        let out = ingest(r##"<svg viewBox="0 0 1280 720"><text id="el-bullets" data-slidra-name="要點" data-slidra-text-width="1120" x="80" y="176" font-size="24" font-weight="700" fill="#F4F6F8" data-slidra-text-align="center" data-slidra-list="bullet bullet">一
+        let out = ingest(r##"<svg viewBox="0 0 1280 720"><text id="el-bullets" data-slidra-name="bullet point" data-slidra-text-width="1120" x="80" y="176" font-size="24" font-weight="700" fill="#F4F6F8" data-slidra-text-align="center" data-slidra-list="bullet bullet">一
 二
 三</text></svg>"##).unwrap();
         assert!(
             out.svg.contains(
-                r##"<g id="el-bullets" data-slidra-name="要點" data-slidra-text-width="1120""##
+                r##"<g id="el-bullets" data-slidra-name="bullet point" data-slidra-text-width="1120""##
             ),
             "{}",
             out.svg
@@ -561,22 +563,26 @@ mod tests {
     #[test]
     fn declaration_with_child_elements_or_nested_placement_is_rejected() {
         let err = ingest(r##"<svg viewBox="0 0 1280 720"><text data-slidra-text-width="300" x="0" y="0"><tspan>a</tspan></text></svg>"##).unwrap_err();
-        assert!(err.message().contains("純文字"), "{}", err.message());
+        assert!(err.message().contains("plain text"), "{}", err.message());
         let err = ingest(r##"<svg viewBox="0 0 1280 720"><g><text data-slidra-text-width="300" x="0" y="0">a</text></g></svg>"##).unwrap_err();
-        assert!(err.message().contains("根 <svg> 底下"), "{}", err.message());
+        assert!(
+            err.message().contains("under the root <svg>"),
+            "{}",
+            err.message()
+        );
     }
 
     #[test]
     fn duplicate_ids_and_forbidden_tags_are_rejected() {
         let err = ingest(r##"<svg viewBox="0 0 1280 720"><text id="a" data-slidra-text-width="300" x="0" y="0">x</text><g id="a"><rect width="1" height="1"/></g></svg>"##).unwrap_err();
         assert!(
-            err.message().contains("重複") || err.message().contains("不合規"),
+            err.message().contains("duplicate") || err.message().contains("non-compliant"),
             "{}",
             err.message()
         );
         let err =
             ingest(r##"<svg viewBox="0 0 1280 720"><script>evil()</script></svg>"##).unwrap_err();
-        assert!(err.message().contains("不合規"), "{}", err.message());
+        assert!(err.message().contains("non-compliant"), "{}", err.message());
     }
 
     #[test]
@@ -589,7 +595,7 @@ mod tests {
 
     #[test]
     fn carry_metadata_only_when_the_new_page_has_none() {
-        let old = r##"<svg viewBox="0 0 1280 720"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">舊備忘</slidra:notes></metadata><g id="a"><rect width="1" height="1"/></g></svg>"##;
+        let old = r##"<svg viewBox="0 0 1280 720"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">old notes</slidra:notes></metadata><g id="a"><rect width="1" height="1"/></g></svg>"##;
         let fresh =
             r##"<svg viewBox="0 0 1280 720"><g id="b"><rect width="1" height="1"/></g></svg>"##;
         let carried = carry_metadata(fresh, old).unwrap();
@@ -597,7 +603,7 @@ mod tests {
             carried.starts_with(r##"<svg viewBox="0 0 1280 720"><metadata>"##),
             "{carried}"
         );
-        assert!(carried.contains("舊備忘"), "{carried}");
+        assert!(carried.contains("old notes"), "{carried}");
         let own = r##"<svg viewBox="0 0 1280 720"><metadata></metadata><g id="b"><rect width="1" height="1"/></g></svg>"##;
         assert_eq!(carry_metadata(own, old).unwrap(), own);
     }

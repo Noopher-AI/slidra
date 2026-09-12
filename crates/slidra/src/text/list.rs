@@ -53,7 +53,7 @@ pub fn parse_list_tokens(
     for token in &tokens {
         if ListKind::from_token(token).is_none() {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 的 data-slidra-list 含不合法的值：{token}"
+                "element {element_id}\'s data-slidra-list contains invalid value: {token}"
             )));
         }
     }
@@ -127,7 +127,7 @@ mod tests {
         let err = parse_list_tokens(Some("bullet garbage"), 2, "el42").unwrap_err();
         assert_eq!(
             err.message(),
-            "元素 el42 的 data-slidra-list 含不合法的值：garbage"
+            "element el42\'s data-slidra-list contains invalid value: garbage"
         );
     }
 

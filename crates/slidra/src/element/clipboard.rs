@@ -32,17 +32,19 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 fn validate_id_list(element_ids: &[String]) -> SlidraResult<()> {
     if element_ids.is_empty() {
-        return Err(SlidraError::invalid("元素清單不可為空"));
+        return Err(SlidraError::invalid("element list must not be empty"));
     }
     let mut seen = HashSet::with_capacity(element_ids.len());
     for id in element_ids {
         if !seen.insert(id) {
-            return Err(SlidraError::invalid(format!("元素清單重複：{id}")));
+            return Err(SlidraError::invalid(format!(
+                "element list has duplicates: {id}"
+            )));
         }
     }
     Ok(())
@@ -83,7 +85,7 @@ fn require_container_with_ancestors<'a>(
 ) -> SlidraResult<(&'a ScannedNode, Vec<Matrix>)> {
     let mut ancestors = Vec::new();
     let node = find_container_with_ancestors(svg_root, id, &mut ancestors)?
-        .ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))?;
     Ok((node, ancestors))
 }
 
@@ -112,7 +114,7 @@ fn rewrite_fragment_transform(
     let roots = scan_document(markup)?;
     let root = roots
         .first()
-        .ok_or_else(|| SlidraError::invalid("剪貼簿片段是空的"))?;
+        .ok_or_else(|| SlidraError::invalid("clipboard fragment is empty"))?;
     let splice = build_transform_splice(markup, root, mutate)?;
     Ok(apply_splices(markup, &[splice]))
 }
@@ -196,7 +198,7 @@ fn regenerate_ids(
     let roots = scan_document(markup)?;
     let root = roots
         .first()
-        .ok_or_else(|| SlidraError::invalid("剪貼簿片段是空的"))?;
+        .ok_or_else(|| SlidraError::invalid("clipboard fragment is empty"))?;
     let mut id_map = HashMap::new();
 
     fn collect(
@@ -242,12 +244,13 @@ fn rewrite_effect_target(
     let roots = scan_document(effect_markup)?;
     let node = roots
         .first()
-        .ok_or_else(|| SlidraError::invalid("剪貼簿片段是空的"))?;
-    let attr = attribute_of(node, "target")
-        .ok_or_else(|| SlidraError::invalid("剪貼簿資料損毀：effect 缺少 target 屬性"))?;
+        .ok_or_else(|| SlidraError::invalid("clipboard fragment is empty"))?;
+    let attr = attribute_of(node, "target").ok_or_else(|| {
+        SlidraError::invalid("clipboard data corrupted: effect is missing target attribute")
+    })?;
     let new_id = id_map.get(&attr.value).ok_or_else(|| {
         SlidraError::invalid(format!(
-            "剪貼簿資料不一致：effect 的 target 找不到對應的新元素（{}）",
+            "clipboard data inconsistent: effect\'s target cannot find corresponding new element ({})",
             attr.value
         ))
     })?;
@@ -530,17 +533,17 @@ fn strip_xml_reference_re_matches(s: &str) -> String {
 /// per-attribute grammar needs to reason about raw vs. decoded XML legality.
 fn has_illegal_raw_xml_text(raw: &str) -> Option<&'static str> {
     if raw.contains('<') {
-        return Some("含有未逸出的 <");
+        return Some("contains unescaped <");
     }
     if strip_xml_reference_re_matches(raw).contains('&') {
-        return Some("含有未開啟合法字元參照的 &");
+        return Some("contains & that does not open a valid character reference");
     }
     if has_illegal_numeric_character_reference(raw) {
-        return Some("含有非法的 XML 字元參照");
+        return Some("contains illegal XML character reference");
     }
     for ch in raw.chars() {
         if !is_legal_xml_code_point(ch as u32) {
-            return Some("含有 XML 1.0 不允許的字元");
+            return Some("contains characters not allowed by XML 1.0");
         }
     }
     None
@@ -1018,12 +1021,12 @@ fn check_attribute_value(
 ) -> SlidraResult<()> {
     if let Some(problem) = has_illegal_raw_xml_text(value) {
         return Err(SlidraError::invalid(format!(
-            "剪貼簿內容不可信：{label} 的 <{tag}> 屬性 {attr_name} 的原始文字不是合法的 XML（{problem}）"
+            "clipboard content untrusted: {label}\'s <{tag}> attribute {attr_name}\'s raw text is not valid XML ({problem})"
         )));
     }
     if has_illegal_numeric_character_reference(value) {
         return Err(SlidraError::invalid(format!(
-            "剪貼簿內容不可信：{label} 的 <{tag}> 屬性 {attr_name} 含有非法的 XML 字元參照（{value}）"
+            "clipboard content untrusted: {label}\'s <{tag}> attribute {attr_name} contains an illegal XML character reference ({value})"
         )));
     }
     let decoded = decode_xml_entities(value);
@@ -1040,7 +1043,7 @@ fn check_attribute_value(
     for form in forms {
         if !grammar(form) {
             return Err(SlidraError::invalid(format!(
-                "剪貼簿內容不可信：{label} 的 <{tag}> 屬性 {attr_name} 的值不符合允許的格式（{value}）"
+                "clipboard content untrusted: {label}\'s <{tag}> attribute {attr_name}\'s value does not match the allowed format ({value})"
             )));
         }
     }
@@ -1059,14 +1062,14 @@ fn check_node_attributes(node: &ScannedNode, label: &str, is_effect: bool) -> Sl
     };
     let Some(tag_grammar) = tag_grammar else {
         return Err(SlidraError::invalid(format!(
-            "剪貼簿內容不可信：{label} 含有不在允許清單內的標籤 <{}>",
+            "clipboard content untrusted: {label} contains tag not in allowlist <{}>",
             node.tag
         )));
     };
     for attribute in &node.attributes {
         let Some(attr_grammar) = tag_grammar.get(attribute.name.as_str()) else {
             return Err(SlidraError::invalid(format!(
-                "剪貼簿內容不可信：{label} 的 <{}> 屬性 {} 不在允許清單內",
+                "clipboard content untrusted: {label}\'s <{}> attribute {} is not in allowlist",
                 node.tag, attribute.name
             )));
         };
@@ -1101,7 +1104,7 @@ fn check_text_content(markup: &str, node: &ScannedNode, label: &str) -> SlidraRe
     for span in &spans {
         if let Some(problem) = has_illegal_raw_xml_text(span) {
             return Err(SlidraError::invalid(format!(
-                "剪貼簿內容不可信：{label} 的 <{}> 文字內容不是合法的 XML（{problem}）",
+                "clipboard content untrusted: {label}\'s <{}> text content is not valid XML ({problem})",
                 node.tag
             )));
         }
@@ -1130,13 +1133,13 @@ pub enum ClipboardMarkupKind {
 pub fn sanitize_clipboard_markup(markup: &str, kind: ClipboardMarkupKind) -> SlidraResult<()> {
     if contains_doctype_entity_cdata_or_comment(markup) {
         return Err(SlidraError::invalid(
-            "剪貼簿內容不可信：含有 DOCTYPE、ENTITY 宣告、CDATA 區塊或註解",
+            "clipboard content untrusted: contains DOCTYPE, ENTITY declaration, CDATA block or comment",
         ));
     }
 
     let label = match kind {
-        ClipboardMarkupKind::Element => "剪貼簿元素",
-        ClipboardMarkupKind::Effect => "剪貼簿效果項",
+        ClipboardMarkupKind::Element => "clipboard element",
+        ClipboardMarkupKind::Effect => "clipboard effect item",
     };
     let wrapped = match kind {
         ClipboardMarkupKind::Element => {
@@ -1157,7 +1160,7 @@ pub fn sanitize_clipboard_markup(markup: &str, kind: ClipboardMarkupKind) -> Sli
     };
     if roots.len() != 1 || roots[0].tag != expected_root_tag {
         return Err(SlidraError::invalid(format!(
-            "剪貼簿內容不可信：{label} 必須是恰好一個 <{expected_root_tag}> 根節點"
+            "clipboard content untrusted: {label} must be exactly one <{expected_root_tag}> root node"
         )));
     }
     for root in &roots {
@@ -1284,10 +1287,10 @@ pub fn paste_elements(
 ) -> SlidraResult<PasteResult> {
     assert_slide_compliant(svg_content, slide_path)?;
     if !dx.is_finite() || !dy.is_finite() {
-        return Err(SlidraError::invalid("dx/dy 必須是有限數字"));
+        return Err(SlidraError::invalid("dx/dy must be finite numbers"));
     }
     if payload.elements.is_empty() {
-        return Err(SlidraError::invalid("剪貼簿是空的"));
+        return Err(SlidraError::invalid("clipboard is empty"));
     }
     for element in &payload.elements {
         sanitize_clipboard_markup(element, ClipboardMarkupKind::Element)?;
@@ -1420,7 +1423,7 @@ mod tests {
      {
         assert!(is_relative_ref(""));
         assert!(is_relative_ref("#el-a1"));
-        assert!(is_relative_ref("assets/圖片.png")); // non-ASCII path is ordinary input
+        assert!(is_relative_ref("assets/image.png")); // non-ASCII path is ordinary input
         assert!(is_relative_ref("/assets/x.png")); // single leading slash stays on the same host
         // "#9invalid" fails the FRAGMENT-specific sub-check (fragments must
         // be XML names) but still satisfies the general PATH charset
@@ -1490,7 +1493,7 @@ mod tests {
 
     #[test]
     fn sanitize_accepts_a_well_formed_element_fragment() {
-        let markup = r##"<g id="el-a" transform="translate(10 20)" data-slidra-name="標題"><rect x="0" y="0" width="10" height="10" fill="#ff0000"/></g>"##;
+        let markup = r##"<g id="el-a" transform="translate(10 20)" data-slidra-name="title"><rect x="0" y="0" width="10" height="10" fill="#ff0000"/></g>"##;
         assert!(sanitize_clipboard_markup(markup, ClipboardMarkupKind::Element).is_ok());
     }
 
@@ -1507,7 +1510,7 @@ mod tests {
         let markup = r#"<slidra:effect target="el-a" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"><sometag/></slidra:effect>"#;
         let err = sanitize_clipboard_markup(markup, ClipboardMarkupKind::Effect).unwrap_err();
         assert!(
-            err.message().contains("不在允許清單內的標籤"),
+            err.message().contains("tag not in allowlist"),
             "{}",
             err.message()
         );
@@ -1519,7 +1522,7 @@ mod tests {
             r#"<g id="el-a"><rect x="0" y="0" width="10" height="10" onload="alert(1)"/></g>"#;
         let err = sanitize_clipboard_markup(markup, ClipboardMarkupKind::Element).unwrap_err();
         assert!(
-            err.message().contains("不在允許清單內"),
+            err.message().contains("not in allowlist"),
             "{}",
             err.message()
         );
@@ -1541,7 +1544,7 @@ mod tests {
     fn sanitize_rejects_more_than_one_root() {
         let two_roots = r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g><g id="el-b"><rect x="0" y="0" width="1" height="1"/></g>"#;
         let err = sanitize_clipboard_markup(two_roots, ClipboardMarkupKind::Element).unwrap_err();
-        assert!(err.message().contains("恰好一個"), "{}", err.message());
+        assert!(err.message().contains("exactly one"), "{}", err.message());
     }
 
     #[test]
@@ -1555,7 +1558,7 @@ mod tests {
         // top-level tag inside `<metadata>` passes the structural sweep.
         let wrong_tag = "<sometag/>";
         let err = sanitize_clipboard_markup(wrong_tag, ClipboardMarkupKind::Effect).unwrap_err();
-        assert!(err.message().contains("恰好一個"), "{}", err.message());
+        assert!(err.message().contains("exactly one"), "{}", err.message());
     }
 
     #[test]
@@ -1563,11 +1566,7 @@ mod tests {
         let markup =
             r#"<g id="el-a" data-slidra-name="x<y"><rect x="0" y="0" width="1" height="1"/></g>"#;
         let err = sanitize_clipboard_markup(markup, ClipboardMarkupKind::Element).unwrap_err();
-        assert!(
-            err.message().contains("不是合法的 XML"),
-            "{}",
-            err.message()
-        );
+        assert!(err.message().contains("not valid XML"), "{}", err.message());
     }
 
     #[test]
@@ -1578,7 +1577,7 @@ mod tests {
         let markup = r#"<g id="el-a"><image x="0" y="0" width="1" height="1" href="javascript&#58;alert(1)"/></g>"#;
         let err = sanitize_clipboard_markup(markup, ClipboardMarkupKind::Element).unwrap_err();
         assert!(
-            err.message().contains("不符合允許的格式"),
+            err.message().contains("does not match the allowed format"),
             "{}",
             err.message()
         );
@@ -1646,7 +1645,7 @@ mod tests {
         let svg = slide(r#"<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>"#);
         let err =
             extract_elements_for_copy(&svg, "slides/001.svg", &["nope".to_string()]).unwrap_err();
-        assert_eq!(err.message(), "找不到元素：nope");
+        assert_eq!(err.message(), "element not found: nope");
     }
 
     // --- serialize / parse round trip ---
@@ -1757,7 +1756,7 @@ mod tests {
         };
         let err =
             paste_elements(&target, "slides/001.svg", &payload, 0.0, 0.0, ids(&[])).unwrap_err();
-        assert_eq!(err.message(), "剪貼簿是空的");
+        assert_eq!(err.message(), "clipboard is empty");
     }
 
     #[test]
@@ -1780,7 +1779,7 @@ mod tests {
             ids(&["x"]),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "dx/dy 必須是有限數字");
+        assert_eq!(err.message(), "dx/dy must be finite numbers");
     }
 
     #[test]
@@ -1798,7 +1797,7 @@ mod tests {
         let err =
             paste_elements(&target, "slides/001.svg", &payload, 0.0, 0.0, ids(&["x"])).unwrap_err();
         assert!(
-            err.message().contains("不在允許清單內"),
+            err.message().contains("not in allowlist"),
             "{}",
             err.message()
         );

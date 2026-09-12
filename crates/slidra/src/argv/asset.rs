@@ -21,7 +21,7 @@
 //! extracts `{ id, source, as }` without validating `as`.
 //!
 //! Dispatching `rest[0] === "import"` vs. any other subcommand (TS's
-//! "未知的子命令：asset <x>") is one level above this module, in
+//! "unknown subcommand: asset <x>") is one level above this module, in
 //! `main.rs`'s dispatch — out of this file's and this ticket's scope
 //! (orchestrator-owned).
 
@@ -56,16 +56,18 @@ pub fn parse_import(args: &[String]) -> Result<AssetImportArgs, SlidraError> {
     if svg.is_some() {
         if has_source_positional {
             return Err(SlidraError::invalid(
-                "asset import 的 --svg 與 <source> 不能同時給",
+                "asset import's --svg and <source> cannot be given together",
             ));
         }
         if as_format.is_some() {
             return Err(SlidraError::invalid(
-                "asset import 的 --svg 不能與 --as 同時給",
+                "asset import's --svg cannot be given together with --as",
             ));
         }
         let Some(name) = name else {
-            return Err(SlidraError::invalid("asset import --svg 缺少參數：--name"));
+            return Err(SlidraError::invalid(
+                "asset import --svg missing argument: --name",
+            ));
         };
         return Ok(AssetImportArgs {
             id,
@@ -77,7 +79,7 @@ pub fn parse_import(args: &[String]) -> Result<AssetImportArgs, SlidraError> {
     }
     if name.is_some() {
         return Err(SlidraError::invalid(
-            "asset import 的 --name 只能與 --svg 一起用",
+            "asset import's --name can only be used with --svg",
         ));
     }
     let source = require_positional(args, 1, "asset import", "source")?;
@@ -133,14 +135,20 @@ mod tests {
     fn missing_source_positional_errors() {
         let args = vec!["pres-1".to_string()];
         let err = parse_import(&args).unwrap_err();
-        assert_eq!(err.message(), "命令 asset import 缺少參數：source");
+        assert_eq!(
+            err.message(),
+            "command asset import missing argument: source"
+        );
     }
 
     #[test]
     fn missing_id_positional_errors() {
         let args: Vec<String> = vec![];
         let err = parse_import(&args).unwrap_err();
-        assert_eq!(err.message(), "命令 asset import 缺少參數：presentation-id");
+        assert_eq!(
+            err.message(),
+            "command asset import missing argument: presentation-id"
+        );
     }
 
     #[test]
@@ -151,6 +159,6 @@ mod tests {
             "--as".to_string(),
         ];
         let err = parse_import(&args).unwrap_err();
-        assert_eq!(err.message(), "--as 缺少值");
+        assert_eq!(err.message(), "--as missing value");
     }
 }

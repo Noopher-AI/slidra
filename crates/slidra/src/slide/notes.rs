@@ -18,7 +18,7 @@ fn require_svg_root(roots: Vec<ScannedNode>) -> SlidraResult<ScannedNode> {
     roots
         .into_iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// Sets a slide's speaker notes to `text` (`slidra slide notes set`).
@@ -166,14 +166,17 @@ mod tests {
     #[test]
     fn missing_svg_root_errors() {
         let err = set_slide_notes("<g id=\"a\"/>", "x").unwrap_err();
-        assert!(err.message().contains("根節點不是 <svg>"));
+        assert!(
+            err.message()
+                .contains("root node of the slide is not <svg>")
+        );
     }
 
     #[test]
     fn cjk_content_before_insertion_point_uses_correct_offset() {
-        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text>中文標題</text></svg>\n";
+        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><text>Chinese title</text></svg>\n";
         let updated = set_slide_notes(svg, "note").unwrap();
-        assert!(updated.contains("<text>中文標題</text>"));
+        assert!(updated.contains("<text>Chinese title</text>"));
         assert!(updated.contains(
             "<slidra:notes xmlns:slidra=\"https://slidra.app/ns/2026\">note</slidra:notes>"
         ));

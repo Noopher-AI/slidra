@@ -11,7 +11,7 @@ pub fn run(args: &[String]) -> CommandResult {
     let sub = args.first().map(String::as_str);
     if sub != Some("canvas") {
         return CommandResult::failure(
-            format!("未知的子命令：presentation {}", sub.unwrap_or("")),
+            format!("unknown subcommand: presentation {}", sub.unwrap_or("")),
             FailureKind::Failed,
         );
     }
@@ -19,7 +19,10 @@ pub fn run(args: &[String]) -> CommandResult {
     let subsub = rest.first().map(String::as_str);
     if subsub != Some("set") {
         return CommandResult::failure(
-            format!("未知的子命令：presentation canvas {}", subsub.unwrap_or("")),
+            format!(
+                "unknown subcommand: presentation canvas {}",
+                subsub.unwrap_or("")
+            ),
             FailureKind::Failed,
         );
     }
@@ -47,7 +50,7 @@ pub fn run(args: &[String]) -> CommandResult {
     match set_presentation_canvas(&id, width, height) {
         Ok((w, h)) => CommandResult::success(
             format!(
-                "已設定頁面尺寸為 {}×{}",
+                "set page size to {}×{}",
                 crate::svgnum::format_svg_number(w),
                 crate::svgnum::format_svg_number(h)
             ),
@@ -164,7 +167,10 @@ mod tests {
     fn unknown_subcommand_fails() {
         let result = run(&["frobnicate".to_string()]);
         assert!(!result.ok);
-        assert_eq!(result.message, "未知的子命令：presentation frobnicate");
+        assert_eq!(
+            result.message,
+            "unknown subcommand: presentation frobnicate"
+        );
     }
 
     #[test]
@@ -180,7 +186,11 @@ mod tests {
             "720".to_string(),
         ]);
         assert!(!result.ok);
-        assert!(result.message.contains("必須是 320 到 4096"));
+        assert!(
+            result
+                .message
+                .contains("must be an integer between 320 and 4096")
+        );
     }
 
     #[test]
@@ -223,6 +233,6 @@ mod tests {
         assert!(slide.contains("viewBox=\"0 0 1920 1080\""));
 
         let err = crate::history::undo(&fixture.id).unwrap_err();
-        assert_eq!(err.message(), "沒有可復原的操作");
+        assert_eq!(err.message(), "no operation to undo");
     }
 }

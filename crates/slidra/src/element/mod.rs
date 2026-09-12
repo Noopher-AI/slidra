@@ -47,7 +47,7 @@ pub fn assert_not_locked(
     }
     if attribute_value(node, LOCK_ATTRIBUTE).as_deref() == Some("true") {
         return Err(crate::errors::SlidraError::invalid(format!(
-            "元素 {element_id} 是鎖定的版面骨架，一般命令不會改動它。確定要改請在同一條命令加上 --force。"
+            "element {element_id} is a locked layout skeleton, ordinary commands will not modify it. to modify it, add --force to the same command."
         )));
     }
     Ok(())

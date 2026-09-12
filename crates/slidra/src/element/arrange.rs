@@ -23,7 +23,7 @@ fn require_svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 fn find_container<'a>(
@@ -51,17 +51,20 @@ fn require_container<'a>(
     svg_root: &'a ScannedNode,
     id: &str,
 ) -> SlidraResult<(&'a ScannedNode, &'a ScannedNode)> {
-    find_container(svg_root, id).ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))
+    find_container(svg_root, id)
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))
 }
 
 fn validate_id_list(element_ids: &[String]) -> SlidraResult<()> {
     if element_ids.is_empty() {
-        return Err(SlidraError::invalid("元素清單不可為空"));
+        return Err(SlidraError::invalid("element list must not be empty"));
     }
     let mut seen = std::collections::HashSet::with_capacity(element_ids.len());
     for id in element_ids {
         if !seen.insert(id) {
-            return Err(SlidraError::invalid(format!("元素清單重複：{id}")));
+            return Err(SlidraError::invalid(format!(
+                "element list has duplicates: {id}"
+            )));
         }
     }
     Ok(())
@@ -118,7 +121,9 @@ fn resolve_targets(
         match shared_parent_start {
             None => shared_parent_start = Some(parent.start),
             Some(start) if start != parent.start => {
-                return Err(SlidraError::invalid("對齊的元素必須在同一層容器內"));
+                return Err(SlidraError::invalid(
+                    "aligned elements must be in the same container level",
+                ));
             }
             _ => {}
         }
@@ -129,7 +134,7 @@ fn resolve_targets(
         .iter()
         .map(|id| {
             let element = find_element_by_id(&model.elements, id)
-                .ok_or_else(|| SlidraError::invalid(format!("找不到元素：{id}")))?;
+                .ok_or_else(|| SlidraError::invalid(format!("element not found: {id}")))?;
             let bounds = element_bounds(
                 element,
                 &ElementBoundsOptions {
@@ -191,7 +196,9 @@ pub fn align_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if element_ids.len() < 2 {
-        return Err(SlidraError::invalid("對齊至少需要兩個元素"));
+        return Err(SlidraError::invalid(
+            "alignment requires at least two elements",
+        ));
     }
 
     let targets = resolve_targets(svg_content, slide_path, element_ids, fonts)?;
@@ -246,7 +253,9 @@ pub fn distribute_elements(
     assert_slide_compliant(svg_content, slide_path)?;
     validate_id_list(element_ids)?;
     if element_ids.len() < 3 {
-        return Err(SlidraError::invalid("分佈至少需要三個元素"));
+        return Err(SlidraError::invalid(
+            "distribute requires at least three elements",
+        ));
     }
 
     let mut targets = resolve_targets(svg_content, slide_path, element_ids, fonts)?;
@@ -365,7 +374,7 @@ mod tests {
             &no_fonts(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "對齊至少需要兩個元素");
+        assert_eq!(err.message(), "alignment requires at least two elements");
     }
 
     #[test]
@@ -381,7 +390,10 @@ mod tests {
             &no_fonts(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "對齊的元素必須在同一層容器內");
+        assert_eq!(
+            err.message(),
+            "aligned elements must be in the same container level"
+        );
     }
 
     #[test]
@@ -395,7 +407,7 @@ mod tests {
             &no_fonts(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到元素：nope");
+        assert_eq!(err.message(), "element not found: nope");
     }
 
     // --- element distribute ---
@@ -443,7 +455,7 @@ mod tests {
             &no_fonts(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "分佈至少需要三個元素");
+        assert_eq!(err.message(), "distribute requires at least three elements");
     }
 
     #[test]

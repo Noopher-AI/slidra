@@ -14,7 +14,7 @@ pub fn run(args: &[String]) -> CommandResult {
 
     match open_presentation(&path) {
         Ok(new_id) => CommandResult::success(
-            format!("已開啟簡報，識別碼：{new_id}"),
+            format!("opened presentation, id: {new_id}"),
             Some(serde_json::json!({ "id": new_id })),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), FailureKind::Failed),
@@ -74,7 +74,7 @@ mod tests {
     fn missing_path_argument_fails() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 open 缺少參數：path");
+        assert_eq!(result.message, "command open missing argument: path");
     }
 
     #[test]

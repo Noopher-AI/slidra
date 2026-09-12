@@ -73,7 +73,7 @@ fn require_svg_root(roots: Vec<ScannedNode>) -> SlidraResult<ScannedNode> {
     roots
         .into_iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 struct Located<'a> {
@@ -99,7 +99,7 @@ fn locate_transition(svg_root: &ScannedNode) -> SlidraResult<Located<'_>> {
         .collect();
     if nodes.len() > 1 {
         return Err(SlidraError::invalid(format!(
-            "這張投影片的 metadata 裡有 {} 組頁面進出場設定，但一張投影片只能有一份，簡報已損毀。",
+            "the metadata of this slide has {} set(s) of page entrance/exit settings, but a slide can only have one, presentation is corrupted.",
             nodes.len()
         )));
     }
@@ -113,8 +113,11 @@ fn parse_effect_attr(raw: Option<&str>, label: &str) -> SlidraResult<PageTransit
     let Some(raw) = raw else {
         return Ok(PageTransitionEffect::None);
     };
-    PageTransitionEffect::parse(raw)
-        .ok_or_else(|| SlidraError::invalid(format!("頁面進出場的 {label} 值「{raw}」尚未實作。")))
+    PageTransitionEffect::parse(raw).ok_or_else(|| {
+        SlidraError::invalid(format!(
+            "page entrance/exit {label} value \"{raw}\" is not implemented yet."
+        ))
+    })
 }
 
 fn parse_duration_attr(raw: Option<&str>, label: &str, fallback: f64) -> SlidraResult<f64> {
@@ -128,7 +131,7 @@ fn parse_duration_attr(raw: Option<&str>, label: &str, fallback: f64) -> SlidraR
     };
     if !value.is_finite() || value < 0.0 {
         return Err(SlidraError::invalid(format!(
-            "頁面進出場的 {label} 值「{raw}」不是合法的秒數。"
+            "page entrance/exit {label} value \"{raw}\" is not a valid number of seconds."
         )));
     }
     Ok(value)
@@ -298,14 +301,14 @@ mod tests {
     fn duplicate_transition_metadata_errors() {
         let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><slidra:transition xmlns:slidra=\"https://slidra.app/ns/2026\" enter=\"none\" enter-duration=\"0.6\" exit=\"none\" exit-duration=\"0.5\"/><slidra:transition xmlns:slidra=\"https://slidra.app/ns/2026\" enter=\"none\" enter-duration=\"0.6\" exit=\"none\" exit-duration=\"0.5\"/></metadata></svg>\n";
         let err = read_slide_transition(svg).unwrap_err();
-        assert!(err.message().contains("2 組"));
+        assert!(err.message().contains("2 set(s)"));
     }
 
     #[test]
     fn illegal_enter_value_errors() {
         let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><slidra:transition xmlns:slidra=\"https://slidra.app/ns/2026\" enter=\"bogus\" exit=\"none\"/></metadata></svg>\n";
         let err = read_slide_transition(svg).unwrap_err();
-        assert!(err.message().contains("尚未實作"));
+        assert!(err.message().contains("is not implemented yet"));
     }
 
     #[test]

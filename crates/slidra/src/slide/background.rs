@@ -19,7 +19,7 @@ fn svg_root(roots: &[ScannedNode]) -> SlidraResult<&ScannedNode> {
     roots
         .iter()
         .find(|n| n.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))
 }
 
 /// The top-level container carrying the background role, if any.
@@ -54,7 +54,7 @@ pub fn background_markup(
     // image --href` uses and the only one the stage's `/api/raw/slides/`
     // base resolves (a bare `assets/…` href renders as a broken image).
     format!(
-        "<g id=\"{BACKGROUND_ELEMENT_ID}\" data-slidra-name=\"背景圖\" {BACKGROUND_ROLE_ATTRIBUTE}=\"{BACKGROUND_ROLE}\" {LOCK_ATTRIBUTE}=\"true\"><image x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" href=\"../{}\"{opacity_attr}/></g>",
+        "<g id=\"{BACKGROUND_ELEMENT_ID}\" data-slidra-name=\"background image\" {BACKGROUND_ROLE_ATTRIBUTE}=\"{BACKGROUND_ROLE}\" {LOCK_ATTRIBUTE}=\"true\"><image x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" href=\"../{}\"{opacity_attr}/></g>",
         format_svg_number(width),
         format_svg_number(height),
         escape_xml_attr(asset_path)
@@ -71,7 +71,9 @@ pub fn set_background(
 ) -> SlidraResult<String> {
     if let Some(o) = opacity {
         if !(0.0..=1.0).contains(&o) {
-            return Err(SlidraError::invalid("--opacity 必須是 0 到 1 之間的數字"));
+            return Err(SlidraError::invalid(
+                "--opacity must be a number between 0 and 1",
+            ));
         }
     }
     let roots = scan_document(svg_content)?;
@@ -100,7 +102,7 @@ pub fn clear_background(svg_content: &str) -> SlidraResult<String> {
     let roots = scan_document(svg_content)?;
     let root = svg_root(&roots)?;
     let Some(existing) = find_background(root) else {
-        return Err(SlidraError::not_found("這一頁沒有背景圖"));
+        return Err(SlidraError::not_found("this page has no background image"));
     };
     let start = utf16_offset_to_byte_offset(svg_content, existing.start);
     let end = utf16_offset_to_byte_offset(svg_content, existing.end);
@@ -137,7 +139,7 @@ mod tests {
     #[test]
     fn set_inserts_a_locked_full_canvas_image_after_metadata() {
         let out = set_background(PAGE, "assets/bg.svg", 1280.0, 720.0, Some(0.8)).unwrap();
-        let expected = "</metadata><g id=\"el-background\" data-slidra-name=\"背景圖\" data-slidra-role=\"background\" data-slidra-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"../assets/bg.svg\" opacity=\"0.8\"/></g><g id=\"el-a\">";
+        let expected = "</metadata><g id=\"el-background\" data-slidra-name=\"background image\" data-slidra-role=\"background\" data-slidra-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"../assets/bg.svg\" opacity=\"0.8\"/></g><g id=\"el-a\">";
         assert!(out.contains(expected), "{out}");
     }
 

@@ -20,9 +20,13 @@ pub fn run(args: &[String]) -> CommandResult {
 }
 
 fn message_for(report: &ValidationReport) -> String {
-    let mut message = format!("共 {} 頁，{} 個錯誤", report.checked, report.errors.len());
+    let mut message = format!(
+        "{} pages total, {} errors",
+        report.checked,
+        report.errors.len()
+    );
     if report.without_plan {
-        message.push_str("（沒有 plan/ 計畫檔，只驗幾何與骨架）");
+        message.push_str("(no plan/ plan file, only validating geometry and skeleton)");
     }
     message
 }
@@ -64,7 +68,10 @@ mod tests {
     #[test]
     fn missing_id_is_rejected() {
         let result = run(&[]);
-        assert_eq!(result.message, "命令 validate 缺少參數：presentation-id");
+        assert_eq!(
+            result.message,
+            "command validate missing argument: presentation-id"
+        );
     }
 
     #[test]

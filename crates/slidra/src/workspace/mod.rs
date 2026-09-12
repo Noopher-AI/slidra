@@ -166,7 +166,8 @@ pub mod registry {
         home: &Path,
         body: impl FnOnce() -> SlidraResult<T>,
     ) -> SlidraResult<T> {
-        std::fs::create_dir_all(home).map_err(|_| SlidraError::invalid("無法寫入簡報登記資料"))?;
+        std::fs::create_dir_all(home)
+            .map_err(|_| SlidraError::invalid("failed to write presentation registry data"))?;
         let lock_path = registry_lock_path(home);
         let deadline = std::time::Instant::now() + LOCK_TIMEOUT;
         loop {
@@ -183,12 +184,16 @@ pub mod registry {
                     }
                     if std::time::Instant::now() >= deadline {
                         return Err(SlidraError::invalid(
-                            "另一個 slidra 正在寫入簡報登記資料，請稍後再試",
+                            "another slidra is writing presentation registry data, please try again later",
                         ));
                     }
                     std::thread::sleep(LOCK_RETRY_INTERVAL);
                 }
-                Err(_) => return Err(SlidraError::invalid("無法寫入簡報登記資料")),
+                Err(_) => {
+                    return Err(SlidraError::invalid(
+                        "failed to write presentation registry data",
+                    ));
+                }
             }
         }
         // Released on every path out of `body`, including a panic unwind —
@@ -219,16 +224,20 @@ pub mod registry {
             }
             // A genuine operational failure reading the registry itself, as
             // opposed to the file simply not existing yet (handled above).
-            Err(_) => return Err(SlidraError::invalid("無法讀取簡報登記資料")),
+            Err(_) => {
+                return Err(SlidraError::invalid(
+                    "failed to read presentation registry data",
+                ));
+            }
         };
 
-        let parsed: Value =
-            serde_json::from_str(&raw).map_err(|_| SlidraError::invalid("簡報登記資料已損毀"))?;
+        let parsed: Value = serde_json::from_str(&raw)
+            .map_err(|_| SlidraError::invalid("presentation registry data is corrupted"))?;
         // `Value::as_object()` returns `None` for a JSON array too, which
         // covers the TS original's separate `Array.isArray(parsed)` check.
         let obj = parsed
             .as_object()
-            .ok_or_else(|| SlidraError::invalid("簡報登記資料已損毀"))?;
+            .ok_or_else(|| SlidraError::invalid("presentation registry data is corrupted"))?;
 
         let mut registry = HashMap::with_capacity(obj.len());
         for (id, value) in obj {
@@ -239,7 +248,9 @@ pub mod registry {
             let work_dir = match work_dir {
                 Some(path) => path,
                 None => {
-                    return Err(SlidraError::invalid(format!("簡報登記資料已損毀：{id}")));
+                    return Err(SlidraError::invalid(format!(
+                        "presentation registry data is corrupted: {id}"
+                    )));
                 }
             };
             let source_path = entry_obj
@@ -272,7 +283,8 @@ pub mod registry {
         home: &Path,
         registry: &HashMap<String, RegistryEntry>,
     ) -> SlidraResult<()> {
-        std::fs::create_dir_all(home).map_err(|_| SlidraError::invalid("無法寫入簡報登記資料"))?;
+        std::fs::create_dir_all(home)
+            .map_err(|_| SlidraError::invalid("failed to write presentation registry data"))?;
         let mut ids: Vec<&String> = registry.keys().collect();
         ids.sort();
         let mut map = serde_json::Map::with_capacity(ids.len());
@@ -300,7 +312,7 @@ pub mod registry {
             map.insert(id.clone(), Value::Object(obj));
         }
         let mut json = serde_json::to_string_pretty(&map)
-            .map_err(|_| SlidraError::invalid("無法寫入簡報登記資料"))?;
+            .map_err(|_| SlidraError::invalid("failed to write presentation registry data"))?;
         json.push('\n');
 
         let final_path = registry_path(home);
@@ -315,7 +327,9 @@ pub mod registry {
         })();
         if write_result.is_err() {
             let _ = std::fs::remove_file(&temp_path);
-            return Err(SlidraError::invalid("無法寫入簡報登記資料"));
+            return Err(SlidraError::invalid(
+                "failed to write presentation registry data",
+            ));
         }
         Ok(())
     }
@@ -332,22 +346,25 @@ pub mod registry {
     /// directory's content is known to match `sourcePath` byte-for-byte"
     /// at `open`/`pack` time (`RegistryEntry.saved_at`).
     pub fn max_mtime_in_directory(dir: &Path) -> SlidraResult<f64> {
-        let metadata =
-            std::fs::metadata(dir).map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+        let metadata = std::fs::metadata(dir)
+            .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
         let mut max = mtime_millis(&metadata)?;
-        let entries =
-            std::fs::read_dir(dir).map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+        let entries = std::fs::read_dir(dir)
+            .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
         for entry in entries {
-            let entry = entry.map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
-            let file_type = entry
-                .file_type()
-                .map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+            let entry = entry.map_err(|_| {
+                SlidraError::invalid("failed to read presentation content timestamp")
+            })?;
+            let file_type = entry.file_type().map_err(|_| {
+                SlidraError::invalid("failed to read presentation content timestamp")
+            })?;
             let full_path = entry.path();
             if file_type.is_dir() {
                 max = max.max(max_mtime_in_directory(&full_path)?);
             } else if file_type.is_file() {
-                let file_metadata = std::fs::metadata(&full_path)
-                    .map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+                let file_metadata = std::fs::metadata(&full_path).map_err(|_| {
+                    SlidraError::invalid("failed to read presentation content timestamp")
+                })?;
                 max = max.max(mtime_millis(&file_metadata)?);
             }
         }
@@ -357,10 +374,10 @@ pub mod registry {
     fn mtime_millis(metadata: &std::fs::Metadata) -> SlidraResult<f64> {
         let modified = metadata
             .modified()
-            .map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+            .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
         let duration = modified
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| SlidraError::invalid("無法讀取簡報內容時間戳記"))?;
+            .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
         Ok(duration.as_secs_f64() * 1000.0)
     }
 
@@ -373,7 +390,7 @@ pub mod registry {
         let mut registry = read_registry(&home)?;
         registry
             .remove(id)
-            .ok_or_else(|| SlidraError::not_found(format!("找不到識別碼對應的簡報：{id}")))
+            .ok_or_else(|| SlidraError::not_found(format!("no presentation found for id: {id}")))
     }
 
     /// Test-only convenience: registers `id -> work_dir` with no
@@ -451,7 +468,7 @@ pub mod registry {
         fn registry_lock_is_released_when_the_body_fails() {
             let home = temp_dir("lock-release");
             let failed = with_registry_lock(&home, || {
-                Err::<(), _>(SlidraError::invalid("body 自己壞掉"))
+                Err::<(), _>(SlidraError::invalid("body itself is broken"))
             });
             assert!(failed.is_err());
             assert!(!registry_lock_path(&home).exists());
@@ -515,7 +532,7 @@ pub mod registry {
             // NotFound (not InvalidRequest) proves the missing file was
             // treated as an empty registry, not a corrupted one.
             assert!(matches!(err, SlidraError::NotFound(_)));
-            assert_eq!(err.message(), "找不到識別碼對應的簡報：whatever-id");
+            assert_eq!(err.message(), "no presentation found for id: whatever-id");
 
             unsafe {
                 std::env::remove_var("SLIDRA_HOME");
@@ -534,7 +551,7 @@ pub mod registry {
 
             let err = lookup("any-id").unwrap_err();
             assert!(matches!(err, SlidraError::InvalidRequest(_)));
-            assert_eq!(err.message(), "簡報登記資料已損毀");
+            assert_eq!(err.message(), "presentation registry data is corrupted");
 
             unsafe {
                 std::env::remove_var("SLIDRA_HOME");
@@ -552,7 +569,10 @@ pub mod registry {
             }
 
             let err = lookup("abc123").unwrap_err();
-            assert_eq!(err.message(), "簡報登記資料已損毀：abc123");
+            assert_eq!(
+                err.message(),
+                "presentation registry data is corrupted: abc123"
+            );
 
             unsafe {
                 std::env::remove_var("SLIDRA_HOME");
@@ -575,7 +595,7 @@ pub mod registry {
 
             let err = lookup("unknown-id").unwrap_err();
             assert!(matches!(err, SlidraError::NotFound(_)));
-            assert_eq!(err.message(), "找不到識別碼對應的簡報：unknown-id");
+            assert_eq!(err.message(), "no presentation found for id: unknown-id");
 
             unsafe {
                 std::env::remove_var("SLIDRA_HOME");

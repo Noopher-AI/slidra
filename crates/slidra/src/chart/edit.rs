@@ -30,9 +30,9 @@ fn read_view_box(svg_content: &str) -> SlidraResult<(f64, f64)> {
     let svg_root = roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
     let raw = attribute_value(svg_root, "viewBox")
-        .ok_or_else(|| SlidraError::invalid("投影片缺少 viewBox"))?;
+        .ok_or_else(|| SlidraError::invalid("slide is missing viewBox"))?;
     let parts: Vec<f64> = raw
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter(|token| !token.is_empty())
@@ -40,7 +40,7 @@ fn read_view_box(svg_content: &str) -> SlidraResult<(f64, f64)> {
         .collect();
     if parts.len() != 4 || parts.iter().any(|value| !value.is_finite()) {
         return Err(SlidraError::invalid(format!(
-            "投影片的 viewBox 不是四個數字：{raw}"
+            "viewBox of the slide is not four numbers: {raw}"
         )));
     }
     Ok((parts[2], parts[3]))
@@ -73,7 +73,7 @@ pub fn create_chart_element(
         None => ChartType::Bar,
         Some(raw) => ChartType::parse(raw)
             .filter(|t| CHART_TYPES.contains(t))
-            .ok_or_else(|| SlidraError::invalid(format!("chart create 不支援的 type：{raw}")))?,
+            .ok_or_else(|| SlidraError::invalid(format!("chart create unsupported type: {raw}")))?,
     };
 
     let series_count = input.series_count.unwrap_or(1.0);
@@ -82,7 +82,7 @@ pub fn create_chart_element(
         || series_count > CHART_CREATE_MAX_SERIES as f64
     {
         return Err(SlidraError::invalid(format!(
-            "chart create 的 --series 必須介於 1 到 {CHART_CREATE_MAX_SERIES} 之間（收到：{})",
+            "chart create's --series must be between 1 and {CHART_CREATE_MAX_SERIES} (received: {})",
             crate::chart::model::js_number_display(series_count)
         )));
     }
@@ -94,7 +94,7 @@ pub fn create_chart_element(
         || categories_count > CHART_CREATE_MAX_CATEGORIES as f64
     {
         return Err(SlidraError::invalid(format!(
-            "chart create 的 --categories 必須介於 2 到 {CHART_CREATE_MAX_CATEGORIES} 之間，超過請用 chart create 建立後再用 chart data set 給更多資料（收到：{}）",
+            "chart create's --categories must be between 2 and {CHART_CREATE_MAX_CATEGORIES}; for more, create with chart create then add more data with chart data set (received: {})",
             crate::chart::model::js_number_display(categories_count)
         )));
     }
@@ -104,7 +104,9 @@ pub fn create_chart_element(
         None => ChartPalette::Brand,
         Some(raw) => ChartPalette::parse(raw)
             .filter(|p| CHART_PALETTES.contains(p))
-            .ok_or_else(|| SlidraError::invalid(format!("chart create 不支援的 palette：{raw}")))?,
+            .ok_or_else(|| {
+                SlidraError::invalid(format!("chart create unsupported palette: {raw}"))
+            })?,
     };
 
     let x = input.x.unwrap_or(canvas_width * 0.54);
@@ -112,13 +114,17 @@ pub fn create_chart_element(
     let width = input.width.unwrap_or(canvas_width * 0.38);
     let height = input.height.unwrap_or(canvas_height * 0.66);
     if !x.is_finite() || !y.is_finite() {
-        return Err(SlidraError::invalid("--x/--y 必須是有限數字"));
+        return Err(SlidraError::invalid("--x/--y must be finite numbers"));
     }
     if !width.is_finite() || width <= 0.0 {
-        return Err(SlidraError::invalid("--width 必須是大於 0 的有限數字"));
+        return Err(SlidraError::invalid(
+            "--width must be a finite number greater than 0",
+        ));
     }
     if !height.is_finite() || height <= 0.0 {
-        return Err(SlidraError::invalid("--height 必須是大於 0 的有限數字"));
+        return Err(SlidraError::invalid(
+            "--height must be a finite number greater than 0",
+        ));
     }
 
     let categories: Vec<String> = (0..categories_count)
@@ -209,7 +215,9 @@ fn splice_chart_element(
         .children
         .iter()
         .find(|child| child.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid(format!("元素 {element_id} 缺少內嵌 <svg>")))?;
+        .ok_or_else(|| {
+            SlidraError::invalid(format!("element {element_id} is missing embedded <svg>"))
+        })?;
 
     // `chart_node`/`svg_node` offsets are UTF-16 code-unit offsets (see
     // `slide/scan.rs`'s module doc) — `crate::splice::Splice`'s offsets are
@@ -246,18 +254,20 @@ pub fn set_chart_data(
     input: SetChartDataInput,
 ) -> SlidraResult<String> {
     if input.categories.is_empty() {
-        return Err(SlidraError::invalid("類別清單不可為空"));
+        return Err(SlidraError::invalid("category list cannot be empty"));
     }
     if input.series.is_empty() {
-        return Err(SlidraError::invalid("圖表不能沒有系列"));
+        return Err(SlidraError::invalid("chart cannot have no series"));
     }
     for (name, values) in &input.series {
         if name.is_empty() {
-            return Err(SlidraError::invalid("系列名稱不可為空字串"));
+            return Err(SlidraError::invalid(
+                "series name cannot be an empty string",
+            ));
         }
         if values.is_empty() {
             return Err(SlidraError::invalid(format!(
-                "系列「{name}」不可沒有任何值"
+                "series \"{name}\" cannot have zero values"
             )));
         }
     }
@@ -300,7 +310,7 @@ pub fn set_chart_type(
     chart_type: &str,
 ) -> SlidraResult<String> {
     let chart_type = ChartType::parse(chart_type)
-        .ok_or_else(|| SlidraError::invalid(format!("不支援的 type：{chart_type}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("unsupported type: {chart_type}")))?;
     update_chart_element(svg_content, slide_path, element_id, |current| ChartModel {
         chart_type,
         ..current
@@ -317,7 +327,7 @@ pub fn set_chart_palette(
     color_overrides: &[(String, String)],
 ) -> SlidraResult<String> {
     let palette = ChartPalette::parse(palette)
-        .ok_or_else(|| SlidraError::invalid(format!("不支援的 palette：{palette}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("unsupported palette: {palette}")))?;
 
     // Name-existence check runs before the splice/validate pipeline (every
     // `update_chart_element` mutate closure is infallible by design — see
@@ -330,7 +340,7 @@ pub fn set_chart_palette(
         current.series.iter().map(|s| s.name.as_str()).collect();
     for (name, _) in color_overrides {
         if !names.contains(name.as_str()) {
-            return Err(SlidraError::invalid(format!("找不到系列：{name}")));
+            return Err(SlidraError::invalid(format!("series not found: {name}")));
         }
     }
 
@@ -370,14 +380,14 @@ pub fn set_chart_axis(
     input: SetChartAxisInput,
 ) -> SlidraResult<String> {
     let axes = ChartAxesMode::parse(&input.axes)
-        .ok_or_else(|| SlidraError::invalid(format!("不支援的 axes：{}", input.axes)))?;
+        .ok_or_else(|| SlidraError::invalid(format!("unsupported axes: {}", input.axes)))?;
     if axes == ChartAxesMode::Single {
         if !input.right_series_names.is_empty() {
-            return Err(SlidraError::invalid("axes=single 不可指定 --right"));
+            return Err(SlidraError::invalid("axes=single cannot specify --right"));
         }
     } else if input.right_series_names.is_empty() {
         return Err(SlidraError::invalid(
-            "axes=dual 必須用 --right 指定至少一個系列，否則等同 single",
+            "axes=dual must use --right to specify at least one series, otherwise it's the same as single",
         ));
     }
 
@@ -392,7 +402,7 @@ pub fn set_chart_axis(
             current.series.iter().map(|s| s.name.as_str()).collect();
         for name in &input.right_series_names {
             if !names.contains(name.as_str()) {
-                return Err(SlidraError::invalid(format!("找不到系列：{name}")));
+                return Err(SlidraError::invalid(format!("series not found: {name}")));
             }
         }
     }
@@ -461,7 +471,11 @@ pub fn set_chart_legend(
         "none" => ChartLegend::None,
         "bottom" => ChartLegend::Bottom,
         "right" => ChartLegend::Right,
-        _ => return Err(SlidraError::invalid(format!("不支援的 legend：{legend}"))),
+        _ => {
+            return Err(SlidraError::invalid(format!(
+                "unsupported legend: {legend}"
+            )));
+        }
     };
     update_chart_element(svg_content, slide_path, element_id, |current| ChartModel {
         legend,
@@ -482,12 +496,12 @@ pub fn set_chart_option(
         "grid" | "labels" => {
             if value != "true" && value != "false" {
                 return Err(SlidraError::invalid(format!(
-                    "{key} 的值只能是 true 或 false"
+                    "{key}'s value can only be true or false"
                 )));
             }
         }
         "x-title" | "y-title" => {}
-        _ => return Err(SlidraError::invalid(format!("不支援的 key：{key}"))),
+        _ => return Err(SlidraError::invalid(format!("unsupported key: {key}"))),
     }
     let key = key.to_string();
     let value = value.to_string();

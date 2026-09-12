@@ -86,7 +86,7 @@ fn parse_rows(text: &str) -> SlidraResult<Vec<Vec<String>>> {
     }
 
     if in_quotes {
-        return Err(SlidraError::invalid("CSV 語法錯誤：引號未封閉"));
+        return Err(SlidraError::invalid("CSV syntax error: unclosed quote"));
     }
     // A trailing newline leaves `field == "" && row.is_empty()`, meaning
     // there is no partial final row to flush — only push one when there is
@@ -110,16 +110,16 @@ pub fn parse_chart_csv(text: &str) -> SlidraResult<ParsedChartCsv> {
         .filter(|row| !(row.len() == 1 && row[0].is_empty()))
         .collect();
     if rows.is_empty() {
-        return Err(SlidraError::invalid("CSV 沒有任何資料列"));
+        return Err(SlidraError::invalid("CSV has no data rows"));
     }
     let header = &rows[0];
     let data_rows = &rows[1..];
     if data_rows.is_empty() {
-        return Err(SlidraError::invalid("CSV 沒有任何資料列"));
+        return Err(SlidraError::invalid("CSV has no data rows"));
     }
     let series_names: Vec<&String> = header.iter().skip(1).collect();
     if series_names.is_empty() {
-        return Err(SlidraError::invalid("CSV 標頭沒有任何系列欄位"));
+        return Err(SlidraError::invalid("CSV header has no series columns"));
     }
 
     let mut categories: Vec<String> = Vec::with_capacity(data_rows.len());
@@ -128,7 +128,7 @@ pub fn parse_chart_csv(text: &str) -> SlidraResult<ParsedChartCsv> {
     for (row_index, row) in data_rows.iter().enumerate() {
         if row.len() != header.len() {
             return Err(SlidraError::invalid(format!(
-                "CSV 第 {} 列的欄數（{}）與標頭（{}）不符",
+                "CSV row {}'s column count ({}) does not match header ({})",
                 row_index + 2,
                 row.len(),
                 header.len()
@@ -139,7 +139,7 @@ pub fn parse_chart_csv(text: &str) -> SlidraResult<ParsedChartCsv> {
             let value = crate::argv::parse_js_number(raw).unwrap_or(f64::NAN);
             if raw.trim().is_empty() || !value.is_finite() {
                 return Err(SlidraError::invalid(format!(
-                    "CSV 第 {} 列第 {} 欄不是合法的數字：{raw}",
+                    "CSV row {} column {} is not a valid number: {raw}",
                     row_index + 2,
                     col + 1
                 )));
@@ -222,41 +222,44 @@ mod tests {
     fn unclosed_quote_is_a_syntax_error() {
         let text = "Quarter,\"Revenue\nQ1,100\n";
         let err = parse_chart_csv(text).unwrap_err();
-        assert_eq!(err.message(), "CSV 語法錯誤：引號未封閉");
+        assert_eq!(err.message(), "CSV syntax error: unclosed quote");
     }
 
     #[test]
     fn header_only_with_no_data_rows_errors() {
         let text = "Quarter,Revenue\n";
         let err = parse_chart_csv(text).unwrap_err();
-        assert_eq!(err.message(), "CSV 沒有任何資料列");
+        assert_eq!(err.message(), "CSV has no data rows");
     }
 
     #[test]
     fn completely_empty_input_errors() {
         let err = parse_chart_csv("").unwrap_err();
-        assert_eq!(err.message(), "CSV 沒有任何資料列");
+        assert_eq!(err.message(), "CSV has no data rows");
     }
 
     #[test]
     fn header_with_no_series_columns_errors() {
         let text = "Quarter\nQ1\n";
         let err = parse_chart_csv(text).unwrap_err();
-        assert_eq!(err.message(), "CSV 標頭沒有任何系列欄位");
+        assert_eq!(err.message(), "CSV header has no series columns");
     }
 
     #[test]
     fn row_with_wrong_column_count_reports_one_based_row_number() {
         let text = "Quarter,Revenue\nQ1,100\nQ2\n";
         let err = parse_chart_csv(text).unwrap_err();
-        assert_eq!(err.message(), "CSV 第 3 列的欄數（1）與標頭（2）不符");
+        assert_eq!(
+            err.message(),
+            "CSV row 3's column count (1) does not match header (2)"
+        );
     }
 
     #[test]
     fn blank_numeric_cell_reports_row_and_one_based_column_number() {
         let text = "Quarter,Revenue,Cost\nQ1,100, \n";
         let err = parse_chart_csv(text).unwrap_err();
-        assert_eq!(err.message(), "CSV 第 2 列第 3 欄不是合法的數字： ");
+        assert_eq!(err.message(), "CSV row 2 column 3 is not a valid number:  ");
     }
 
     #[test]
@@ -265,7 +268,7 @@ mod tests {
         let err = parse_chart_csv(text).unwrap_err();
         assert_eq!(
             err.message(),
-            "CSV 第 2 列第 2 欄不是合法的數字：not-a-number"
+            "CSV row 2 column 2 is not a valid number: not-a-number"
         );
     }
 

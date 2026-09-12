@@ -71,14 +71,14 @@ mod tests {
 
     #[test]
     fn produces_formatversion_1_with_no_slides() {
-        let files = build_minimal_presentation("測試簡報");
+        let files = build_minimal_presentation("test presentation");
         let (_, project_bytes) = files
             .iter()
             .find(|(path, _)| path == "project.json")
             .unwrap();
         let project: serde_json::Value = serde_json::from_slice(project_bytes).unwrap();
         assert_eq!(project["formatVersion"], 1);
-        assert_eq!(project["name"], "測試簡報");
+        assert_eq!(project["name"], "test presentation");
         assert_eq!(project["slides"], serde_json::json!([]));
         assert_eq!(project["fonts"][0]["family"], "Noto Sans TC");
         assert!(files.iter().all(|(path, _)| !path.starts_with("slides/")));

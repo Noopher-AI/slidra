@@ -143,7 +143,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<TableCommand> {
             Some(raw) if raw == "false" => Some(false),
             Some(raw) => {
                 return Err(SlidraError::invalid(format!(
-                    "--header 只能是 true 或 false：{raw}"
+                    "--header can only be true or false: {raw}"
                 )));
             }
         };
@@ -201,7 +201,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<TableCommand> {
         let given = from.is_some() as u8 + markdown.is_some() as u8 + markdown_file.is_some() as u8;
         if given != 1 {
             return Err(SlidraError::invalid(
-                "table set 必須恰好提供一種資料來源：--from、--markdown 或 --markdown-file",
+                "table set must provide exactly one data source: --from, --markdown, or --markdown-file",
             ));
         }
         return Ok(TableCommand::Set {
@@ -328,7 +328,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<TableCommand> {
             }
             _ => {
                 return Err(SlidraError::invalid(
-                    "命令 table cell style set 缺少參數：attr/value",
+                    "command table cell style set missing argument: attr/value",
                 ));
             }
         };
@@ -450,7 +450,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<TableCommand> {
             "false" => false,
             _ => {
                 return Err(SlidraError::invalid(format!(
-                    "table header set 不支援的值：{value}"
+                    "table header set unsupported value: {value}"
                 )));
             }
         };
@@ -464,7 +464,7 @@ pub fn parse(rest: &[String]) -> SlidraResult<TableCommand> {
 
     let unknown = rest.iter().take(2).cloned().collect::<Vec<_>>().join(" ");
     Err(SlidraError::invalid(format!(
-        "未知的子命令：table {unknown}"
+        "unknown subcommand: table {unknown}"
     )))
 }
 
@@ -520,7 +520,7 @@ mod tests {
             "maybe",
         ]))
         .unwrap_err();
-        assert_eq!(err.message(), "--header 只能是 true 或 false：maybe");
+        assert_eq!(err.message(), "--header can only be true or false: maybe");
     }
 
     #[test]
@@ -528,7 +528,7 @@ mod tests {
         let err = parse(&s(&["set", "pres-1", "slides/001.svg", "el-a"])).unwrap_err();
         assert_eq!(
             err.message(),
-            "table set 必須恰好提供一種資料來源：--from、--markdown 或 --markdown-file"
+            "table set must provide exactly one data source: --from, --markdown, or --markdown-file"
         );
     }
 
@@ -575,7 +575,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "命令 table cell style set 缺少參數：attr/value"
+            "command table cell style set missing argument: attr/value"
         );
     }
 
@@ -652,12 +652,12 @@ mod tests {
             "yes",
         ]))
         .unwrap_err();
-        assert_eq!(err.message(), "table header set 不支援的值：yes");
+        assert_eq!(err.message(), "table header set unsupported value: yes");
     }
 
     #[test]
     fn unknown_subcommand_reports_the_first_two_tokens() {
         let err = parse(&s(&["frob", "extra"])).unwrap_err();
-        assert_eq!(err.message(), "未知的子命令：table frob extra");
+        assert_eq!(err.message(), "unknown subcommand: table frob extra");
     }
 }

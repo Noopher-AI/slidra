@@ -50,7 +50,7 @@ pub fn mint_element_ids(
     let svg_root = roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
 
     let mut used_ids: HashSet<String> = HashSet::new();
     collect_all_ids(&roots, &mut used_ids);
@@ -166,7 +166,7 @@ fn next_available_number(id: &str, dir_name: &str) -> SlidraResult<u32> {
 fn assert_valid_index(index: f64, max: usize, arg_name: &str) -> SlidraResult<usize> {
     if index.fract() != 0.0 || index < 0.0 || index > max as f64 {
         return Err(SlidraError::invalid(format!(
-            "{arg_name} 超出範圍：{}",
+            "{arg_name} out of range: {}",
             crate::svgnum::format_svg_number(index)
         )));
     }
@@ -195,7 +195,9 @@ pub fn add_slide(id: &str, input: AddSlideInput) -> SlidraResult<AddSlideResult>
 
     let content = match (&input.content, &input.template_path) {
         (Some(_), Some(_)) => {
-            return Err(SlidraError::invalid("--svg 與 --template 不能同時使用"));
+            return Err(SlidraError::invalid(
+                "--svg and --template cannot be used together",
+            ));
         }
         (Some(content), None) => content.clone(),
         (None, Some(template_path)) => {
@@ -207,10 +209,12 @@ pub fn add_slide(id: &str, input: AddSlideInput) -> SlidraResult<AddSlideResult>
                 )?;
                 mint_element_ids(&raw, &mut generate_element_id)?
             } else if project.slides.contains(template_path) {
-                return Err(SlidraError::invalid(format!("不是範本：{template_path}")));
+                return Err(SlidraError::invalid(format!(
+                    "not a template: {template_path}"
+                )));
             } else {
                 return Err(SlidraError::not_found(format!(
-                    "找不到範本：{template_path}"
+                    "template not found: {template_path}"
                 )));
             }
         }
@@ -248,7 +252,7 @@ pub fn add_slide(id: &str, input: AddSlideInput) -> SlidraResult<AddSlideResult>
 pub fn delete_slide(id: &str, slide_path: &str) -> SlidraResult<()> {
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
     if !project.slides.contains(&slide_path.to_string()) {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
     let next_slides: Vec<String> = project
         .slides
@@ -292,10 +296,10 @@ pub fn duplicate_slide(id: &str, slide_path: &str) -> SlidraResult<DuplicateSlid
             .any(|t| t.file == slide_path)
         {
             return Err(SlidraError::invalid(format!(
-                "不是投影片：{slide_path}（複製範本請用 template add --from）"
+                "not a slide: {slide_path} (to copy a template use template add --from)"
             )));
         }
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     };
 
     let raw_svg = virtual_fs::read_virtual_file(&workspace::resolve_work_dir(id)?, slide_path)?;
@@ -335,7 +339,7 @@ pub fn move_slide(id: &str, slide_path: &str, new_index: f64) -> SlidraResult<()
         .iter()
         .position(|entry| entry.as_str() == slide_path)
     else {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     };
     let max = if project.slides.is_empty() {
         0
@@ -373,7 +377,7 @@ pub fn add_template(id: &str, input: AddTemplateInput) -> SlidraResult<AddTempla
     let trimmed_name = input.name.as_deref().map(str::trim);
     if let Some(trimmed) = trimmed_name {
         if trimmed.is_empty() {
-            return Err(SlidraError::invalid("範本名稱不可為空"));
+            return Err(SlidraError::invalid("template name cannot be empty"));
         }
     }
 
@@ -382,7 +386,7 @@ pub fn add_template(id: &str, input: AddTemplateInput) -> SlidraResult<AddTempla
     let content = match &input.from {
         Some(from) => {
             if !project.slides.contains(from) {
-                return Err(SlidraError::not_found(format!("找不到投影片：{from}")));
+                return Err(SlidraError::not_found(format!("slide not found: {from}")));
             }
             let raw = virtual_fs::read_virtual_file(&workspace::resolve_work_dir(id)?, from)?;
             mint_element_ids(&raw, &mut generate_element_id)?
@@ -437,17 +441,19 @@ pub fn list_templates(id: &str) -> SlidraResult<Vec<TemplateEntry>> {
 pub fn rename_template(id: &str, template_path: &str, new_name: &str) -> SlidraResult<()> {
     let trimmed = new_name.trim();
     if trimmed.is_empty() {
-        return Err(SlidraError::invalid("範本名稱不可為空"));
+        return Err(SlidraError::invalid("template name cannot be empty"));
     }
 
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
     let entries = read_template_entries(&project);
     let Some(index) = entries.iter().position(|e| e.file == template_path) else {
         if project.slides.contains(&template_path.to_string()) {
-            return Err(SlidraError::invalid(format!("不是範本：{template_path}")));
+            return Err(SlidraError::invalid(format!(
+                "not a template: {template_path}"
+            )));
         }
         return Err(SlidraError::not_found(format!(
-            "找不到範本：{template_path}"
+            "template not found: {template_path}"
         )));
     };
     let mut next_entries = entries;
@@ -475,11 +481,11 @@ pub fn delete_template(id: &str, template_path: &str) -> SlidraResult<()> {
     if !entries.iter().any(|e| e.file == template_path) {
         if project.slides.contains(&template_path.to_string()) {
             return Err(SlidraError::invalid(format!(
-                "不是範本：{template_path}（刪除投影片請用 slide delete）"
+                "not a template: {template_path} (to delete a slide use slide delete)"
             )));
         }
         return Err(SlidraError::not_found(format!(
-            "找不到範本：{template_path}"
+            "template not found: {template_path}"
         )));
     }
     let next_entries: Vec<TemplateEntry> = entries
@@ -512,7 +518,7 @@ pub fn delete_template(id: &str, template_path: &str) -> SlidraResult<()> {
 pub fn set_notes(id: &str, slide_path: &str, text: &str) -> SlidraResult<()> {
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
     if !project.slides.contains(&slide_path.to_string()) {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
     let original = virtual_fs::read_virtual_file(&workspace::resolve_work_dir(id)?, slide_path)?;
     let updated = crate::slide::notes::set_slide_notes(&original, text)?;
@@ -538,7 +544,7 @@ pub fn set_slide_transition_on(
 ) -> SlidraResult<usize> {
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
     if !project.slides.contains(&slide_path.to_string()) {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
 
     let source_raw = virtual_fs::read_virtual_file(&workspace::resolve_work_dir(id)?, slide_path)?;
@@ -745,7 +751,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(err.message().contains("超出範圍"));
+        assert!(err.message().contains("out of range"));
     }
 
     /// Regression: `assert_valid_index` rejects a non-integer float
@@ -808,7 +814,7 @@ mod tests {
     fn delete_slide_not_a_slide_errors() {
         let fixture = Fixture::new("delete-slide-notfound");
         let err = delete_slide(&fixture.id, "slides/999.svg").unwrap_err();
-        assert_eq!(err.message(), "不是投影片：slides/999.svg");
+        assert_eq!(err.message(), "not a slide: slides/999.svg");
     }
 
     #[test]
@@ -888,7 +894,7 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert_eq!(err.message(), "範本名稱不可為空");
+        assert_eq!(err.message(), "template name cannot be empty");
         assert!(!fixture.work.join("templates").exists());
     }
 
@@ -923,7 +929,7 @@ mod tests {
     fn rename_template_targeting_a_slide_errors() {
         let fixture = Fixture::new("rename-template-is-slide");
         let err = rename_template(&fixture.id, "slides/001.svg", "New").unwrap_err();
-        assert_eq!(err.message(), "不是範本：slides/001.svg");
+        assert_eq!(err.message(), "not a template: slides/001.svg");
     }
 
     #[test]
@@ -961,7 +967,7 @@ mod tests {
     fn set_notes_on_non_slide_errors() {
         let fixture = Fixture::new("set-notes-not-a-slide");
         let err = set_notes(&fixture.id, "slides/999.svg", "x").unwrap_err();
-        assert_eq!(err.message(), "不是投影片：slides/999.svg");
+        assert_eq!(err.message(), "not a slide: slides/999.svg");
     }
 
     #[test]

@@ -71,7 +71,7 @@ pub fn run(args: &[String]) -> CommandResult {
         let name = parsed.name.as_deref().unwrap_or_default();
         return match import_svg_asset(&parsed.id, name, svg) {
             Ok(path) => CommandResult::success(
-                format!("已建立 SVG 資產：{path}"),
+                format!("created SVG asset: {path}"),
                 Some(
                     serde_json::json!({ "path": path, "mimeType": "image/svg+xml", "kind": "image" }),
                 ),
@@ -95,7 +95,7 @@ pub fn run(args: &[String]) -> CommandResult {
                 // the hidden work directory ADR-0004 forbids naming), so
                 // echoing it back is fine.
                 return CommandResult::failure(
-                    format!("找不到來源檔案：{}", parsed.source),
+                    format!("source file not found: {}", parsed.source),
                     FailureKind::NotFound,
                 );
             }
@@ -105,7 +105,7 @@ pub fn run(args: &[String]) -> CommandResult {
     if let Some(format) = parsed.as_format.as_deref() {
         if format != "csv" {
             return CommandResult::failure(
-                format!("不支援的資料格式：{format}"),
+                format!("unsupported data format: {format}"),
                 FailureKind::Failed,
             );
         }
@@ -122,9 +122,9 @@ pub fn run(args: &[String]) -> CommandResult {
     match outcome {
         Ok(data) => {
             let message = if data.kind == "data" {
-                format!("已匯入資料：{}", data.path)
+                format!("imported data: {}", data.path)
             } else {
-                format!("已匯入媒體：{}", data.path)
+                format!("imported media: {}", data.path)
             };
             let json_data = serde_json::json!({
                 "path": data.path,
@@ -196,12 +196,12 @@ fn import_svg_asset(id: &str, name: &str, svg: &str) -> Result<String, SlidraErr
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !valid_name {
         return Err(SlidraError::invalid(format!(
-            "--name 只能是英數字、底線、連字號組成的 .svg 檔名：{name}"
+            "--name must be a .svg filename made of alphanumerics, underscores, and hyphens: {name}"
         )));
     }
     let roots = crate::slide::scan::scan_document(svg)?;
     if !roots.iter().any(|n| n.tag == "svg") {
-        return Err(SlidraError::invalid("--svg 的根節點必須是 <svg>"));
+        return Err(SlidraError::invalid("--svg root node must be <svg>"));
     }
     fn has_forbidden(nodes: &[crate::slide::scan::ScannedNode]) -> Option<String> {
         for node in nodes {
@@ -215,12 +215,14 @@ fn import_svg_asset(id: &str, name: &str, svg: &str) -> Result<String, SlidraErr
         None
     }
     if let Some(tag) = has_forbidden(&roots) {
-        return Err(SlidraError::invalid(format!("--svg 不允許 <{tag}> 元素")));
+        return Err(SlidraError::invalid(format!(
+            "--svg does not allow <{tag}> elements"
+        )));
     }
     let existing = list_presentation_entries(id, "assets")?;
     if existing.iter().any(|e| e == name) {
         return Err(SlidraError::invalid(format!(
-            "資產已存在：assets/{name}；請換一個 --name，或先刪除既有的資產"
+            "asset already exists: assets/{name}; use a different --name, or delete the existing asset first"
         )));
     }
     let virtual_path = format!("assets/{name}");
@@ -447,7 +449,7 @@ mod tests {
         let result = run(&args);
         assert!(!result.ok);
         assert_eq!(result.failure_kind, Some(FailureKind::Failed));
-        assert_eq!(result.message, "不支援的資料格式：yaml");
+        assert_eq!(result.message, "unsupported data format: yaml");
 
         std::fs::remove_dir_all(&src_dir).ok();
         drop(fixture);

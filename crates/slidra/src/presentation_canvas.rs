@@ -19,7 +19,7 @@ pub fn assert_valid_canvas_dimension(value: f64, label: &str) -> SlidraResult<()
     let is_integer = value.fract() == 0.0 && value.is_finite();
     if !is_integer || !(MIN_CANVAS_DIMENSION..=MAX_CANVAS_DIMENSION).contains(&value) {
         return Err(SlidraError::invalid(format!(
-            "{label} 必須是 {} 到 {} 之間的整數：{}",
+            "{label} must be an integer between {} and {}: {}",
             MIN_CANVAS_DIMENSION as i64,
             MAX_CANVAS_DIMENSION as i64,
             format_svg_number(value)
@@ -71,9 +71,15 @@ mod tests {
     #[test]
     fn rejects_out_of_range() {
         let err = assert_valid_canvas_dimension(319.0, "width").unwrap_err();
-        assert_eq!(err.message(), "width 必須是 320 到 4096 之間的整數：319");
+        assert_eq!(
+            err.message(),
+            "width must be an integer between 320 and 4096: 319"
+        );
         let err = assert_valid_canvas_dimension(4097.0, "height").unwrap_err();
-        assert_eq!(err.message(), "height 必須是 320 到 4096 之間的整數：4097");
+        assert_eq!(
+            err.message(),
+            "height must be an integer between 320 and 4096: 4097"
+        );
     }
 
     #[test]

@@ -168,7 +168,7 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
     return;
   }
 
-  sendJson(res, 200, { ok: true, data, message: `已匯入媒體：${data.path}` });
+  sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
 }
 
 /** `sourceNameOf` for a URL (mirrors the old `packages/cli` asset-import command's own helper): the URL path's basename, percent-decoded. */
@@ -236,5 +236,5 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
     return;
   }
 
-  sendJson(res, 200, { ok: true, data, message: `已匯入媒體：${data.path}` });
+  sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
 }

@@ -29,9 +29,9 @@ fn read_view_box_exists(svg_content: &str) -> SlidraResult<()> {
     let svg_root = roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
     let raw = attribute_value(svg_root, "viewBox")
-        .ok_or_else(|| SlidraError::invalid("投影片缺少 viewBox"))?;
+        .ok_or_else(|| SlidraError::invalid("slide is missing viewBox"))?;
     let parts: Vec<f64> = raw
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter(|token| !token.is_empty())
@@ -39,7 +39,7 @@ fn read_view_box_exists(svg_content: &str) -> SlidraResult<()> {
         .collect();
     if parts.len() != 4 || parts.iter().any(|value| !value.is_finite()) {
         return Err(SlidraError::invalid(format!(
-            "投影片的 viewBox 不是四個數字：{raw}"
+            "viewBox of the slide is not four numbers: {raw}"
         )));
     }
     Ok(())
@@ -149,23 +149,23 @@ pub fn create_table_element(
 
     if input.rows.fract() != 0.0 || input.rows < 1.0 {
         return Err(SlidraError::invalid(format!(
-            "--rows 必須是大於 0 的整數：{}",
+            "--rows must be an integer greater than 0: {}",
             super::model::js_number_string(input.rows)
         )));
     }
     if input.cols.fract() != 0.0 || input.cols < 1.0 {
         return Err(SlidraError::invalid(format!(
-            "--cols 必須是大於 0 的整數：{}",
+            "--cols must be an integer greater than 0: {}",
             super::model::js_number_string(input.cols)
         )));
     }
     if !input.x.is_finite() || !input.y.is_finite() {
-        return Err(SlidraError::invalid("--x/--y 必須是有限數字"));
+        return Err(SlidraError::invalid("--x/--y must be finite numbers"));
     }
     let col_width = input.col_width.unwrap_or(DEFAULT_COL_WIDTH);
     if !col_width.is_finite() || col_width <= 0.0 {
         return Err(SlidraError::invalid(format!(
-            "--col-width 必須是大於 0 的有限數字：{}",
+            "--col-width must be a finite number greater than 0: {}",
             super::model::js_number_string(col_width)
         )));
     }
@@ -173,8 +173,8 @@ pub fn create_table_element(
         None => TableTheme::Dark,
         Some(raw) => TableTheme::parse(raw).ok_or_else(|| {
             SlidraError::invalid(format!(
-                "不支援的主題，合法值為：{}（收到：{raw}）",
-                TableTheme::DOMAIN.join("、")
+                "unsupported theme, valid values are: {} (received: {raw})",
+                TableTheme::DOMAIN.join(", ")
             ))
         })?,
     };
@@ -225,7 +225,7 @@ pub fn create_table_element(
 /// equality (`model.cells.findIndex((cell) => cell.row === row && cell.col
 /// === col)`), so a fractional or negative value simply matches no real
 /// cell (which always has an integer, non-negative `row`/`col`) and falls
-/// through to "找不到儲存格", exactly like an out-of-range integer would.
+/// through to "cell not found", exactly like an out-of-range integer would.
 /// Converting to `usize` before this lookup (via `as usize`, which
 /// saturates/truncates rather than erroring) would make `--row -1` alias
 /// row 0 and `--row 1.5` alias row 1 — silently matching a real cell TS
@@ -247,7 +247,7 @@ pub fn set_table_cell_text(
             .position(|cell| cell.row as f64 == row && cell.col as f64 == col)
             .ok_or_else(|| {
                 SlidraError::invalid(format!(
-                    "找不到儲存格 ({},{})",
+                    "cell not found: ({},{})",
                     super::model::js_number_string(row),
                     super::model::js_number_string(col)
                 ))
@@ -276,7 +276,7 @@ pub fn set_table_cell_texts(
             let index = cells
                 .iter()
                 .position(|cell| cell.row == *row && cell.col == *col)
-                .ok_or_else(|| SlidraError::invalid(format!("找不到儲存格 ({row},{col})")))?;
+                .ok_or_else(|| SlidraError::invalid(format!("cell not found: ({row},{col})")))?;
             cells[index] = TableCell {
                 text: text.clone(),
                 ..cells[index].clone()
@@ -311,8 +311,8 @@ fn patch_cell_style(cell: TableCell, attr: &str, value: &str) -> SlidraResult<Ta
         "align" => {
             let align = CellAlign::parse(value).ok_or_else(|| {
                 SlidraError::invalid(format!(
-                    "align 必須是下列其中之一：{}（收到：{value}）",
-                    CellAlign::DOMAIN.join("、")
+                    "align must be one of the following: {} (received: {value})",
+                    CellAlign::DOMAIN.join(", ")
                 ))
             })?;
             Ok(TableCell { align, ..cell })
@@ -321,7 +321,7 @@ fn patch_cell_style(cell: TableCell, attr: &str, value: &str) -> SlidraResult<Ta
             let weight = crate::argv::parse_js_number(value).unwrap_or(f64::NAN);
             if !CELL_FONT_WEIGHTS.contains(&weight) {
                 return Err(SlidraError::invalid(format!(
-                    "font-weight 必須是 100 到 900 的整百：{value}"
+                    "font-weight must be a multiple of 100 between 100 and 900: {value}"
                 )));
             }
             Ok(TableCell {
@@ -332,7 +332,7 @@ fn patch_cell_style(cell: TableCell, attr: &str, value: &str) -> SlidraResult<Ta
         "fill" => {
             if value != "none" && is_hex_6_strict(value).is_err() {
                 return Err(SlidraError::invalid(format!(
-                    "fill 必須是 none 或 #RRGGBB：{value}"
+                    "fill must be none or #RRGGBB: {value}"
                 )));
             }
             Ok(TableCell {
@@ -348,7 +348,9 @@ fn patch_cell_style(cell: TableCell, attr: &str, value: &str) -> SlidraResult<Ta
                 ..cell
             })
         }
-        other => Err(SlidraError::invalid(format!("不支援的樣式屬性：{other}"))),
+        other => Err(SlidraError::invalid(format!(
+            "unsupported style attribute: {other}"
+        ))),
     }
 }
 
@@ -393,7 +395,7 @@ pub fn set_table_cell_style(
             }
         }
         if !matched {
-            return Err(SlidraError::invalid("指定範圍內沒有任何儲存格"));
+            return Err(SlidraError::invalid("no cells in the specified range"));
         }
         Ok(TableModel { cells, ..model })
     })
@@ -469,7 +471,7 @@ pub fn merge_table_cells(
             .cloned()
             .ok_or_else(|| {
                 SlidraError::invalid(format!(
-                    "找不到儲存格 ({},{})",
+                    "cell not found: ({},{})",
                     super::model::js_number_string(input.row),
                     super::model::js_number_string(input.col)
                 ))
@@ -479,7 +481,7 @@ pub fn merge_table_cells(
         if input.unmerge {
             if target.row_span == 1 && target.col_span == 1 {
                 return Err(SlidraError::invalid(format!(
-                    "儲存格 ({row},{col}) 未合併，無法取消合併"
+                    "cell ({row},{col}) is not merged, cannot unmerge"
                 )));
             }
             // Borrow (never `into_iter`) so `model`'s other fields stay
@@ -502,12 +504,14 @@ pub fn merge_table_cells(
             || row_span_raw < 1.0
             || col_span_raw < 1.0
         {
-            return Err(SlidraError::invalid("合併範圍必須是正整數"));
+            return Err(SlidraError::invalid(
+                "merge range must be a positive integer",
+            ));
         }
         let row_span = row_span_raw as usize;
         let col_span = col_span_raw as usize;
         if row + row_span > model.rows.len() || col + col_span > model.cols.len() {
-            return Err(SlidraError::invalid("合併範圍超出表格"));
+            return Err(SlidraError::invalid("merge range out of table"));
         }
 
         if row_span == 1 && col_span == 1 {
@@ -534,7 +538,9 @@ pub fn merge_table_cells(
             let within_row = cell.row >= row && cell.row + cell.row_span <= row + row_span;
             let within_col = cell.col >= col && cell.col + cell.col_span <= col + col_span;
             if !within_row || !within_col {
-                return Err(SlidraError::invalid("合併範圍與既有合併重疊"));
+                return Err(SlidraError::invalid(
+                    "merge range overlaps with an existing merge",
+                ));
             }
         }
 
@@ -581,14 +587,14 @@ pub fn set_table_col_width(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if col.fract() != 0.0 || col < 0.0 || col >= model.cols.len() as f64 {
             return Err(SlidraError::invalid(format!(
-                "--col 超出範圍：{}",
+                "--col out of range: {}",
                 super::model::js_number_string(col)
             )));
         }
         let col = col as usize;
         if !width.is_finite() || width <= 0.0 {
             return Err(SlidraError::invalid(format!(
-                "--width 必須是大於 0 的有限數字：{}",
+                "--width must be a finite number greater than 0: {}",
                 super::model::js_number_string(width)
             )));
         }
@@ -596,13 +602,13 @@ pub fn set_table_col_width(
         if keep_total {
             if col == cols.len() - 1 {
                 return Err(SlidraError::invalid(
-                    "--keep-total 需要右邊還有一欄可以吸收差值：最後一欄不適用",
+                    "--keep-total requires a column to the right to absorb the difference: last column not applicable",
                 ));
             }
             let next = cols[col + 1] - (width - cols[col]);
             if next < MIN_COL_WIDTH {
                 return Err(SlidraError::invalid(format!(
-                    "右邊那欄會小於最小欄寬 {MIN_COL_WIDTH}：{}",
+                    "the right column would be smaller than the minimum column width {MIN_COL_WIDTH}: {}",
                     super::model::js_number_string(next)
                 )));
             }
@@ -623,7 +629,7 @@ pub fn insert_table_column(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if at.fract() != 0.0 || at < 0.0 || at > model.cols.len() as f64 {
             return Err(SlidraError::invalid(format!(
-                "--at 超出範圍：{}",
+                "--at out of range: {}",
                 super::model::js_number_string(at)
             )));
         }
@@ -703,13 +709,13 @@ pub fn delete_table_column(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if at.fract() != 0.0 || at < 0.0 || at >= model.cols.len() as f64 {
             return Err(SlidraError::invalid(format!(
-                "--at 超出範圍：{}",
+                "--at out of range: {}",
                 super::model::js_number_string(at)
             )));
         }
         let at = at as usize;
         if model.cols.len() == 1 {
-            return Err(SlidraError::invalid("表格至少要有一欄"));
+            return Err(SlidraError::invalid("table must have at least one column"));
         }
         let mut cols = model.cols.clone();
         cols.remove(at);
@@ -756,7 +762,7 @@ pub fn insert_table_row(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if at.fract() != 0.0 || at < 0.0 || at > model.rows.len() as f64 {
             return Err(SlidraError::invalid(format!(
-                "--at 超出範圍：{}",
+                "--at out of range: {}",
                 super::model::js_number_string(at)
             )));
         }
@@ -828,17 +834,19 @@ pub fn delete_table_row(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if at.fract() != 0.0 || at < 0.0 || at >= model.rows.len() as f64 {
             return Err(SlidraError::invalid(format!(
-                "--at 超出範圍：{}",
+                "--at out of range: {}",
                 super::model::js_number_string(at)
             )));
         }
         let at = at as usize;
         if model.rows.len() == 1 {
-            return Err(SlidraError::invalid("表格至少要有一列"));
+            return Err(SlidraError::invalid("table must have at least one row"));
         }
         let is_template_row = model.cells.iter().any(|cell| cell.row == at && cell.repeat);
         if is_template_row {
-            return Err(SlidraError::invalid("模板列不可刪除，請先解除綁定"));
+            return Err(SlidraError::invalid(
+                "template row cannot be deleted, unbind first",
+            ));
         }
 
         let mut cells = Vec::with_capacity(model.cells.len());
@@ -886,8 +894,8 @@ pub fn set_table_theme(
 ) -> SlidraResult<String> {
     let theme = TableTheme::parse(theme).ok_or_else(|| {
         SlidraError::invalid(format!(
-            "不支援的主題，合法值為：{}（收到：{theme}）",
-            TableTheme::DOMAIN.join("、")
+            "unsupported theme, valid values are: {} (received: {theme})",
+            TableTheme::DOMAIN.join(", ")
         ))
     })?;
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
@@ -945,12 +953,14 @@ fn substitute_template(text: &str, headers: &[String], values: &[String]) -> Sli
         out.push_str(before);
         let name = raw_name.trim();
         if name.is_empty() {
-            return Err(SlidraError::invalid("模板格的 {{ }} 不可為空名稱"));
+            return Err(SlidraError::invalid(
+                "{{ }} in a template cell cannot be an empty name",
+            ));
         }
         let index = headers.iter().position(|h| h == name).ok_or_else(|| {
             SlidraError::invalid(format!(
-                "找不到欄名 {{{{ {name} }}}}，可用欄名：{}",
-                headers.join("、")
+                "column name not found: {{{{ {name} }}}}, available column names: {}",
+                headers.join(", ")
             ))
         })?;
         out.push_str(&values[index]);
@@ -1060,19 +1070,23 @@ pub fn bind_table_source(
                     || requested >= row_count_after_strip as f64
                 {
                     return Err(SlidraError::invalid(format!(
-                        "--template-row 超出範圍：{}",
+                        "--template-row out of range: {}",
                         super::model::js_number_string(requested)
                     )));
                 }
                 let requested = requested as usize;
                 if model.header && requested == 0 {
-                    return Err(SlidraError::invalid("表頭列不能當模板列"));
+                    return Err(SlidraError::invalid(
+                        "header row cannot serve as a template row",
+                    ));
                 }
                 requested
             }
             None => {
                 if model.header && row_count_after_strip == 1 {
-                    return Err(SlidraError::invalid("表格只有表頭列，沒有可當模板的列"));
+                    return Err(SlidraError::invalid(
+                        "table only has a header row, no row can serve as a template",
+                    ));
                 }
                 let mut placeholder_rows: Vec<usize> = stripped
                     .iter()
@@ -1123,7 +1137,7 @@ pub fn refresh_table_source(
     update_table(svg_content, slide_path, element_id, fonts, move |model| {
         if model.source.is_none() {
             return Err(SlidraError::invalid(format!(
-                "表格 {element_id_for_error} 沒有資料來源"
+                "table {element_id_for_error} has no data source"
             )));
         }
         let stripped = strip_generated_rows(&model.cells);
@@ -1132,7 +1146,7 @@ pub fn refresh_table_source(
             .find(|cell| cell.repeat)
             .map(|cell| cell.row)
             .ok_or_else(|| {
-                SlidraError::invalid(format!("表格 {element_id_for_error} 沒有模板列"))
+                SlidraError::invalid(format!("table {element_id_for_error} has no template row"))
             })?;
         let (cells, row_count) = expand_template_row(&stripped, template_row, &csv)?;
         Ok(TableModel {
@@ -1309,7 +1323,10 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert!(err.message().contains("--rows 必須是大於 0 的整數"));
+        assert!(
+            err.message()
+                .contains("--rows must be an integer greater than 0")
+        );
     }
 
     #[test]
@@ -1347,14 +1364,14 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到儲存格 (5,5)");
+        assert_eq!(err.message(), "cell not found: (5,5)");
     }
 
     /// Regression for the `f64`/`usize` fix `set_table_cell_text`'s own doc
     /// comment describes: `--row -1` must NOT truncate/saturate to row 0
     /// (an `as usize` cast would do exactly that) — a negative row matches
     /// no real cell (rows are always non-negative), so this must report
-    /// "找不到儲存格", never silently edit row 0.
+    /// "cell not found", never silently edit row 0.
     #[test]
     fn set_table_cell_text_negative_row_does_not_alias_row_zero() {
         let svg = create_2x2(&slide_with_viewbox());
@@ -1368,13 +1385,13 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到儲存格 (-1,0)");
+        assert_eq!(err.message(), "cell not found: (-1,0)");
     }
 
     /// Same regression, the fractional half: `--row 1.5` must NOT truncate
     /// to row 1 (an `as usize` cast would do exactly that) — a fractional
     /// row matches no real cell (rows are always integers), so this must
-    /// report "找不到儲存格", never silently edit row 1.
+    /// report "cell not found", never silently edit row 1.
     #[test]
     fn set_table_cell_text_fractional_row_does_not_alias_row_one() {
         let svg = create_2x2(&slide_with_viewbox());
@@ -1388,7 +1405,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "找不到儲存格 (1.5,0)");
+        assert_eq!(err.message(), "cell not found: (1.5,0)");
     }
 
     #[test]
@@ -1468,7 +1485,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "合併範圍與既有合併重疊");
+        assert_eq!(err.message(), "merge range overlaps with an existing merge");
     }
 
     #[test]
@@ -1501,7 +1518,7 @@ mod tests {
         .unwrap();
         let err = delete_table_column(&svg, "slides/001.svg", "t1", 0.0, &fonts_with_default())
             .unwrap_err();
-        assert_eq!(err.message(), "表格至少要有一欄");
+        assert_eq!(err.message(), "table must have at least one column");
     }
 
     #[test]
@@ -1539,7 +1556,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.message(),
-            "--keep-total 需要右邊還有一欄可以吸收差值：最後一欄不適用"
+            "--keep-total requires a column to the right to absorb the difference: last column not applicable"
         );
     }
 
@@ -1558,7 +1575,10 @@ mod tests {
             true,
         )
         .unwrap_err();
-        assert!(err.message().contains("右邊那欄會小於最小欄寬"));
+        assert!(
+            err.message()
+                .contains("the right column would be smaller than the minimum column width")
+        );
     }
 
     #[test]
@@ -1629,7 +1649,10 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert!(err.message().contains("找不到欄名 {{ missing }}"));
+        assert!(
+            err.message()
+                .contains("column name not found: {{ missing }}")
+        );
     }
 
     #[test]
@@ -1646,7 +1669,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "表格 t1 沒有資料來源");
+        assert_eq!(err.message(), "table t1 has no data source");
     }
 
     #[test]
@@ -1741,7 +1764,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "fill 必須是 none 或 #RRGGBB：red");
+        assert_eq!(err.message(), "fill must be none or #RRGGBB: red");
     }
 
     #[test]
@@ -1762,7 +1785,7 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "text-fill 必須是 #RRGGBB：none");
+        assert_eq!(err.message(), "text-fill must be #RRGGBB: none");
     }
 
     #[test]
@@ -1783,6 +1806,6 @@ mod tests {
             &fonts_with_default(),
         )
         .unwrap_err();
-        assert_eq!(err.message(), "指定範圍內沒有任何儲存格");
+        assert_eq!(err.message(), "no cells in the specified range");
     }
 }

@@ -376,7 +376,7 @@ export const ARGV_ENCODERS: Record<string, ArgvEncoder> = {
 export async function encodeCommandArgv(name: string, input: Record<string, unknown>): Promise<EncodedCommand> {
   const encoder = ARGV_ENCODERS[name];
   if (!encoder) {
-    throw new SlidraError(`未知的命令：${name}`);
+    throw new SlidraError(`unknown command: ${name}`);
   }
   return encoder(input);
 }

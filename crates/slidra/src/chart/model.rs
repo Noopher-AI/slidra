@@ -297,9 +297,9 @@ fn require_enum<T: Copy>(
                 .iter()
                 .map(|(_, name)| *name)
                 .collect::<Vec<_>>()
-                .join("、");
+                .join(", ");
             SlidraError::invalid(format!(
-                "{label} 必須是下列其中之一：{joined}（收到：{value}）"
+                "{label} must be one of the following: {joined} (received: {value})"
             ))
         })
 }
@@ -309,7 +309,7 @@ fn join_types(types: &[ChartType]) -> String {
         .iter()
         .map(|t| t.as_str())
         .collect::<Vec<_>>()
-        .join("、")
+        .join(", ")
 }
 
 /// Every invariant a `<slidra:chart>` must hold for `render_chart_svg` to
@@ -322,13 +322,13 @@ fn join_types(types: &[ChartType]) -> String {
 pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
     if !(model.width.is_finite() && model.width > 0.0) {
         return Err(SlidraError::invalid(format!(
-            "width 必須是大於 0 的有限數字：{}",
+            "width must be a finite number greater than 0: {}",
             js_number_display(model.width)
         )));
     }
     if !(model.height.is_finite() && model.height > 0.0) {
         return Err(SlidraError::invalid(format!(
-            "height 必須是大於 0 的有限數字：{}",
+            "height must be a finite number greater than 0: {}",
             js_number_display(model.height)
         )));
     }
@@ -336,11 +336,13 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
     let category_count = model.categories.len();
     if !(CHART_MIN_CATEGORIES..=CHART_MAX_CATEGORIES).contains(&category_count) {
         return Err(SlidraError::invalid(format!(
-            "類別數必須介於 {CHART_MIN_CATEGORIES} 到 {CHART_MAX_CATEGORIES} 之間（收到：{category_count}）"
+            "category count must be between {CHART_MIN_CATEGORIES} and {CHART_MAX_CATEGORIES} (received: {category_count})"
         )));
     }
     if model.categories.iter().any(|category| category.is_empty()) {
-        return Err(SlidraError::invalid("類別名稱不可為空字串"));
+        return Err(SlidraError::invalid(
+            "category name cannot be an empty string",
+        ));
     }
     // `serialize_chart_data` joins categories with "," into
     // <slidra:categories values="…">; a category name that itself contains
@@ -354,38 +356,40 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
         .find(|category| category.contains(','))
     {
         return Err(SlidraError::invalid(format!(
-            "類別名稱不可包含逗號（會被誤判為分隔符）：{comma_category}"
+            "category name cannot contain a comma (would be misread as a separator): {comma_category}"
         )));
     }
 
     let series_count = model.series.len();
     if !(CHART_MIN_SERIES..=CHART_MAX_SERIES).contains(&series_count) {
         return Err(SlidraError::invalid(format!(
-            "系列數必須介於 {CHART_MIN_SERIES} 到 {CHART_MAX_SERIES} 之間（收到：{series_count}）"
+            "series count must be between {CHART_MIN_SERIES} and {CHART_MAX_SERIES} (received: {series_count})"
         )));
     }
 
     let mut seen_names: HashSet<&str> = HashSet::new();
     for series in &model.series {
         if series.name.is_empty() {
-            return Err(SlidraError::invalid("系列名稱不可為空字串"));
+            return Err(SlidraError::invalid(
+                "series name cannot be an empty string",
+            ));
         }
         if series.name.contains(',') {
             return Err(SlidraError::invalid(format!(
-                "系列名稱不可包含逗號：{}",
+                "series name cannot contain a comma: {}",
                 series.name
             )));
         }
         if !seen_names.insert(series.name.as_str()) {
             return Err(SlidraError::invalid(format!(
-                "系列名稱重複：{}",
+                "duplicate series name: {}",
                 series.name
             )));
         }
 
         if series.values.len() != category_count {
             return Err(SlidraError::invalid(format!(
-                "系列「{}」的值數（{}）與類別數（{}）不符",
+                "series \"{}\" value count ({}) does not match category count ({})",
                 series.name,
                 series.values.len(),
                 category_count
@@ -394,7 +398,7 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
         for (index, value) in series.values.iter().enumerate() {
             if !value.is_finite() {
                 return Err(SlidraError::invalid(format!(
-                    "系列「{}」的第 {} 個值不是有限數字：{}",
+                    "series \"{}\": the {}th value is not a finite number: {}",
                     series.name,
                     index + 1,
                     js_number_display(*value)
@@ -404,14 +408,14 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
 
         if series.axis == ChartSeriesAxis::Right && model.axes == ChartAxesMode::Single {
             return Err(SlidraError::invalid(format!(
-                "系列「{}」指定 axis=\"right\"，但圖表 axes 是 single",
+                "series \"{}\" specifies axis=\"right\", but chart axes is single",
                 series.name
             )));
         }
         if let Some(color) = &series.color {
             if !is_valid_hex_color(color) {
                 return Err(SlidraError::invalid(format!(
-                    "系列「{}」的顏色不是合法的 #RGB 或 #RRGGBB：{}",
+                    "series \"{}\" color is not a valid #RGB or #RRGGBB: {}",
                     series.name, color
                 )));
             }
@@ -421,13 +425,13 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
     if model.stacked {
         if !CHART_STACKABLE_TYPES.contains(&model.chart_type) {
             return Err(SlidraError::invalid(format!(
-                "type={} 不支援堆疊，只有 {} 可以",
+                "type={} does not support stacking, only {} can",
                 model.chart_type.as_str(),
                 join_types(CHART_STACKABLE_TYPES)
             )));
         }
         if model.axes != ChartAxesMode::Single {
-            return Err(SlidraError::invalid("堆疊圖表必須是 axes=single"));
+            return Err(SlidraError::invalid("stacked chart must be axes=single"));
         }
     }
 
@@ -435,7 +439,7 @@ pub fn validate_chart_model(model: &ChartModel) -> SlidraResult<()> {
         && model.axes != ChartAxesMode::Single
     {
         return Err(SlidraError::invalid(format!(
-            "type={} 必須是 axes=single",
+            "type={} must be axes=single",
             model.chart_type.as_str()
         )));
     }
@@ -454,11 +458,13 @@ pub fn require_chart_container<'a>(
     let svg_root = roots
         .iter()
         .find(|node| node.tag == "svg")
-        .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))?;
+        .ok_or_else(|| SlidraError::invalid("root node of the slide is not <svg>"))?;
     let found = find_chart_container(svg_root, element_id)
-        .ok_or_else(|| SlidraError::invalid(format!("找不到元素：{element_id}")))?;
+        .ok_or_else(|| SlidraError::invalid(format!("element not found: {element_id}")))?;
     if attribute_value(found, "data-slidra-type").as_deref() != Some(CHART_CONTAINER_TYPE) {
-        return Err(SlidraError::invalid(format!("元素 {element_id} 不是圖表")));
+        return Err(SlidraError::invalid(format!(
+            "element {element_id} is not a chart"
+        )));
     }
     Ok(found)
 }
@@ -486,19 +492,21 @@ fn require_data_node<'a>(
         .children
         .iter()
         .find(|child| child.tag == "slidra:chart")
-        .ok_or_else(|| SlidraError::invalid(format!("元素 {element_id} 缺少 <slidra:chart>")))
+        .ok_or_else(|| {
+            SlidraError::invalid(format!("element {element_id} is missing <slidra:chart>"))
+        })
 }
 
 fn read_number_attr(node: &ScannedNode, name: &str, element_id: &str) -> SlidraResult<f64> {
     let raw = attribute_of(node, name).ok_or_else(|| {
         SlidraError::invalid(format!(
-            "元素 {element_id} 的 <slidra:chart> 缺少屬性：{name}"
+            "element {element_id}\'s <slidra:chart> is missing attribute: {name}"
         ))
     })?;
     let value = crate::argv::parse_js_number(&raw.value).unwrap_or(f64::NAN);
     if !value.is_finite() {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的 <slidra:chart> 屬性 {name} 不是有限數字：{}",
+            "element {element_id}\'s <slidra:chart> attribute {name} is not a finite number: {}",
             raw.value
         )));
     }
@@ -510,7 +518,7 @@ fn read_required_attr(node: &ScannedNode, name: &str, element_id: &str) -> Slidr
         .map(|attribute| attribute.value.clone())
         .ok_or_else(|| {
             SlidraError::invalid(format!(
-                "元素 {element_id} 的 <slidra:chart> 缺少屬性：{name}"
+                "element {element_id}\'s <slidra:chart> is missing attribute: {name}"
             ))
         })
 }
@@ -522,7 +530,7 @@ fn parse_values(raw: &str, element_id: &str, series_name: &str) -> SlidraResult<
             let value = crate::argv::parse_js_number(token).unwrap_or(f64::NAN);
             if token.trim().is_empty() || !value.is_finite() {
                 return Err(SlidraError::invalid(format!(
-                    "元素 {element_id} 的系列「{series_name}」第 {} 個值不是有限數字：{token}",
+                    "element {element_id}\'s series \"{series_name}\" value #{} is not a finite number: {token}",
                     index + 1
                 )));
             }
@@ -555,14 +563,14 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         "false" => false,
         _ => {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 的 stacked 必須是 true 或 false：{stacked_raw}"
+                "element {element_id}\'s stacked must be true or false: {stacked_raw}"
             )));
         }
     };
     let axes_raw = read_required_attr(chart_node, "axes", element_id)?;
     let axes = ChartAxesMode::parse(&axes_raw).ok_or_else(|| {
         SlidraError::invalid(format!(
-            "axes 必須是下列其中之一：single、dual（收到：{axes_raw}）"
+            "axes must be one of the following: single, dual (received: {axes_raw})"
         ))
     })?;
     let palette = require_enum(
@@ -582,7 +590,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         "false" => false,
         _ => {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 的 grid 必須是 true 或 false：{grid_raw}"
+                "element {element_id}\'s grid must be true or false: {grid_raw}"
             )));
         }
     };
@@ -591,7 +599,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         "false" => false,
         _ => {
             return Err(SlidraError::invalid(format!(
-                "元素 {element_id} 的 labels 必須是 true 或 false：{labels_raw}"
+                "element {element_id}\'s labels must be true or false: {labels_raw}"
             )));
         }
     };
@@ -616,12 +624,12 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         .collect();
     if series_nodes.is_empty() {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的圖表沒有任何 <slidra:series>"
+            "element {element_id}\'s chart has no <slidra:series>"
         )));
     }
     if categories_nodes.len() != 1 {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的圖表必須恰好有一個 <slidra:categories>"
+            "element {element_id}\'s chart must have exactly one <slidra:categories>"
         )));
     }
     if let Some(other) = chart_node
@@ -630,7 +638,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         .find(|child| child.tag != "slidra:series" && child.tag != "slidra:categories")
     {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的 <slidra:chart> 含有未知子元素：<{}>",
+            "element {element_id}\'s <slidra:chart> contains unknown child element: <{}>",
             other.tag
         )));
     }
@@ -641,7 +649,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
         .collect();
     if categories.iter().any(|category| category.is_empty()) {
         return Err(SlidraError::invalid(format!(
-            "元素 {element_id} 的類別清單不可含空字串"
+            "element {element_id}\'s category list must not contain empty strings"
         )));
     }
 
@@ -658,7 +666,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> SlidraResult<Cha
             .unwrap_or_else(|| "left".to_string());
         let axis = ChartSeriesAxis::parse(&axis_raw).ok_or_else(|| {
             SlidraError::invalid(format!(
-                "系列「{name}」的 axis 必須是下列其中之一：left、right（收到：{axis_raw}）"
+                "series \"{name}\": axis must be one of: left, right (received: {axis_raw})"
             ))
         })?;
         let color = attribute_of(node, "color").map(|a| a.value.clone());
@@ -801,7 +809,10 @@ mod tests {
         let mut model = valid_model();
         model.width = f64::NAN;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "width 必須是大於 0 的有限數字：NaN");
+        assert_eq!(
+            err.message(),
+            "width must be a finite number greater than 0: NaN"
+        );
     }
 
     #[test]
@@ -809,7 +820,10 @@ mod tests {
         let mut model = valid_model();
         model.width = 0.0;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "width 必須是大於 0 的有限數字：0");
+        assert_eq!(
+            err.message(),
+            "width must be a finite number greater than 0: 0"
+        );
     }
 
     #[test]
@@ -817,7 +831,10 @@ mod tests {
         let mut model = valid_model();
         model.height = f64::INFINITY;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "height 必須是大於 0 的有限數字：Infinity");
+        assert_eq!(
+            err.message(),
+            "height must be a finite number greater than 0: Infinity"
+        );
     }
 
     #[test]
@@ -826,7 +843,10 @@ mod tests {
         model.categories = vec!["only-one".to_string()];
         model.series[0].values = vec![1.0];
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "類別數必須介於 2 到 60 之間（收到：1）");
+        assert_eq!(
+            err.message(),
+            "category count must be between 2 and 60 (received: 1)"
+        );
     }
 
     #[test]
@@ -835,7 +855,10 @@ mod tests {
         model.categories = (0..61).map(|i| format!("C{i}")).collect();
         model.series[0].values = (0..61).map(|i| i as f64).collect();
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "類別數必須介於 2 到 60 之間（收到：61）");
+        assert_eq!(
+            err.message(),
+            "category count must be between 2 and 60 (received: 61)"
+        );
     }
 
     #[test]
@@ -843,7 +866,7 @@ mod tests {
         let mut model = valid_model();
         model.categories[0] = String::new();
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "類別名稱不可為空字串");
+        assert_eq!(err.message(), "category name cannot be an empty string");
     }
 
     #[test]
@@ -853,7 +876,7 @@ mod tests {
         let err = validate_chart_model(&model).unwrap_err();
         assert_eq!(
             err.message(),
-            "類別名稱不可包含逗號（會被誤判為分隔符）：Taipei, TW"
+            "category name cannot contain a comma (would be misread as a separator): Taipei, TW"
         );
     }
 
@@ -862,7 +885,10 @@ mod tests {
         let mut model = valid_model();
         model.series = vec![];
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列數必須介於 1 到 12 之間（收到：0）");
+        assert_eq!(
+            err.message(),
+            "series count must be between 1 and 12 (received: 0)"
+        );
     }
 
     #[test]
@@ -877,7 +903,10 @@ mod tests {
             })
             .collect();
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列數必須介於 1 到 12 之間（收到：13）");
+        assert_eq!(
+            err.message(),
+            "series count must be between 1 and 12 (received: 13)"
+        );
     }
 
     #[test]
@@ -885,7 +914,7 @@ mod tests {
         let mut model = valid_model();
         model.series[0].name = String::new();
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列名稱不可為空字串");
+        assert_eq!(err.message(), "series name cannot be an empty string");
     }
 
     #[test]
@@ -893,7 +922,7 @@ mod tests {
         let mut model = valid_model();
         model.series[0].name = "a,b".to_string();
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列名稱不可包含逗號：a,b");
+        assert_eq!(err.message(), "series name cannot contain a comma: a,b");
     }
 
     #[test]
@@ -903,7 +932,7 @@ mod tests {
         second.name = model.series[0].name.clone();
         model.series.push(second);
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列名稱重複：S1");
+        assert_eq!(err.message(), "duplicate series name: S1");
     }
 
     #[test]
@@ -911,7 +940,10 @@ mod tests {
         let mut model = valid_model();
         model.series[0].values = vec![1.0];
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列「S1」的值數（1）與類別數（2）不符");
+        assert_eq!(
+            err.message(),
+            "series \"S1\" value count (1) does not match category count (2)"
+        );
     }
 
     #[test]
@@ -919,7 +951,10 @@ mod tests {
         let mut model = valid_model();
         model.series[0].values = vec![1.0, f64::NAN];
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "系列「S1」的第 2 個值不是有限數字：NaN");
+        assert_eq!(
+            err.message(),
+            "series \"S1\": the 2th value is not a finite number: NaN"
+        );
     }
 
     #[test]
@@ -929,7 +964,7 @@ mod tests {
         let err = validate_chart_model(&model).unwrap_err();
         assert_eq!(
             err.message(),
-            "系列「S1」指定 axis=\"right\"，但圖表 axes 是 single"
+            "series \"S1\" specifies axis=\"right\", but chart axes is single"
         );
     }
 
@@ -940,7 +975,7 @@ mod tests {
         let err = validate_chart_model(&model).unwrap_err();
         assert_eq!(
             err.message(),
-            "系列「S1」的顏色不是合法的 #RGB 或 #RRGGBB：blue"
+            "series \"S1\" color is not a valid #RGB or #RRGGBB: blue"
         );
     }
 
@@ -959,7 +994,7 @@ mod tests {
         let err = validate_chart_model(&model).unwrap_err();
         assert_eq!(
             err.message(),
-            "type=line 不支援堆疊，只有 bar、hbar、area 可以"
+            "type=line does not support stacking, only bar, hbar, area can"
         );
     }
 
@@ -969,7 +1004,7 @@ mod tests {
         model.stacked = true;
         model.axes = ChartAxesMode::Dual;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "堆疊圖表必須是 axes=single");
+        assert_eq!(err.message(), "stacked chart must be axes=single");
     }
 
     #[test]
@@ -978,7 +1013,7 @@ mod tests {
         model.chart_type = ChartType::Pie;
         model.axes = ChartAxesMode::Dual;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "type=pie 必須是 axes=single");
+        assert_eq!(err.message(), "type=pie must be axes=single");
     }
 
     #[test]
@@ -987,7 +1022,7 @@ mod tests {
         model.chart_type = ChartType::Donut;
         model.axes = ChartAxesMode::Dual;
         let err = validate_chart_model(&model).unwrap_err();
-        assert_eq!(err.message(), "type=donut 必須是 axes=single");
+        assert_eq!(err.message(), "type=donut must be axes=single");
     }
 
     #[test]
@@ -1021,7 +1056,7 @@ mod tests {
         let svg = r#"<svg viewBox="0 0 10 10"><g id="other" data-slidra-type="chart"/></svg>"#;
         let roots = scan_document(svg).unwrap();
         let err = require_chart_container(&roots, "missing").unwrap_err();
-        assert_eq!(err.message(), "找不到元素：missing");
+        assert_eq!(err.message(), "element not found: missing");
     }
 
     #[test]
@@ -1029,7 +1064,7 @@ mod tests {
         let svg = r#"<svg viewBox="0 0 10 10"><g id="e1"><rect/></g></svg>"#;
         let roots = scan_document(svg).unwrap();
         let err = require_chart_container(&roots, "e1").unwrap_err();
-        assert_eq!(err.message(), "元素 e1 不是圖表");
+        assert_eq!(err.message(), "element e1 is not a chart");
     }
 
     #[test]
@@ -1059,7 +1094,7 @@ mod tests {
         let err = validate_chart_model(&model).unwrap_err();
         assert_eq!(
             err.message(),
-            "系列「S1」指定 axis=\"right\"，但圖表 axes 是 single"
+            "series \"S1\" specifies axis=\"right\", but chart axes is single"
         );
     }
 }

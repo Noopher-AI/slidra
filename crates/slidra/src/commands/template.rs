@@ -15,7 +15,7 @@ pub fn run(args: &[String]) -> CommandResult {
         Some("rename") => run_rename(rest),
         Some("delete") => run_delete(rest),
         other => CommandResult::failure(
-            format!("未知的子命令：template {}", other.unwrap_or("")),
+            format!("unknown subcommand: template {}", other.unwrap_or("")),
             FailureKind::Failed,
         ),
     }
@@ -36,7 +36,7 @@ fn run_add(args: &[String]) -> CommandResult {
     };
     match ops::add_template(&id, AddTemplateInput { from, name }) {
         Ok(result) => CommandResult::success(
-            format!("已建立範本 {}", result.template_path),
+            format!("created template {}", result.template_path),
             Some(serde_json::json!({ "templatePath": result.template_path })),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -50,7 +50,7 @@ fn run_list(args: &[String]) -> CommandResult {
     };
     match ops::list_templates(&id) {
         Ok(templates) => {
-            let message = format!("共 {} 個範本", templates.len());
+            let message = format!("{} templates total", templates.len());
             let data = serde_json::json!({
                 "templates": templates.iter().map(|t| serde_json::json!({ "file": t.file, "name": t.name })).collect::<Vec<_>>(),
             });
@@ -72,7 +72,7 @@ fn run_rename(args: &[String]) -> CommandResult {
     };
     let Some(new_name) = args.get(2) else {
         return CommandResult::failure(
-            "命令 template rename 缺少參數：new-name".to_string(),
+            "command template rename missing argument: new-name".to_string(),
             FailureKind::Failed,
         );
     };
@@ -81,7 +81,7 @@ fn run_rename(args: &[String]) -> CommandResult {
         Ok(()) => CommandResult {
             ok: true,
             data: None,
-            message: format!("已將範本改名為 {}", new_name.trim()),
+            message: format!("renamed template to {}", new_name.trim()),
             failure_kind: None,
         },
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -102,7 +102,7 @@ fn run_delete(args: &[String]) -> CommandResult {
         Ok(()) => CommandResult {
             ok: true,
             data: None,
-            message: format!("已刪除範本 {template_path}"),
+            message: format!("deleted template {template_path}"),
             failure_kind: None,
         },
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
@@ -124,7 +124,7 @@ mod tests {
     fn unknown_subcommand_fails() {
         let result = run(&["frobnicate".to_string()]);
         assert!(!result.ok);
-        assert_eq!(result.message, "未知的子命令：template frobnicate");
+        assert_eq!(result.message, "unknown subcommand: template frobnicate");
     }
 
     #[test]
@@ -135,7 +135,10 @@ mod tests {
             "templates/001.svg".to_string(),
         ]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 template rename 缺少參數：new-name");
+        assert_eq!(
+            result.message,
+            "command template rename missing argument: new-name"
+        );
     }
 
     #[test]
@@ -144,7 +147,7 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.message,
-            "命令 template list 缺少參數：presentation-id"
+            "command template list missing argument: presentation-id"
         );
     }
 }

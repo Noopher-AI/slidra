@@ -34,7 +34,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
 
     Ok(CommandResult::success(
         format!(
-            "已在 {slide_path} 複製出 {} 個新元素",
+            "duplicated {} new elements in {slide_path}",
             result.element_ids.len()
         ),
         Some(serde_json::json!({ "elementIds": result.element_ids })),

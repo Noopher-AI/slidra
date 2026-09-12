@@ -49,7 +49,7 @@ fn require_listed_slide(id: &str, slide_path: &str) -> SlidraResult<PathBuf> {
     let work_dir = workspace::resolve_work_dir(id)?;
     let proj = project::read_project_json(&work_dir)?;
     if !proj.slides.iter().any(|s| s == slide_path) {
-        return Err(SlidraError::invalid(format!("不是投影片：{slide_path}")));
+        return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
     }
     Ok(work_dir)
 }
@@ -131,10 +131,10 @@ mod add {
 
         let work_dir = require_listed_slide(&id, &slide_path)?;
         if author.trim().is_empty() {
-            return Err(SlidraError::invalid("author 不可為空"));
+            return Err(SlidraError::invalid("author cannot be empty"));
         }
         if text.trim().is_empty() {
-            return Err(SlidraError::invalid("留言內容不可為空"));
+            return Err(SlidraError::invalid("comment content cannot be empty"));
         }
         let content = virtual_fs::read_virtual_file(&work_dir, &slide_path)?;
         assert_slide_compliant(&content, &slide_path)?;
@@ -142,7 +142,7 @@ mod add {
             let model = parse_slide(&content, Some(&slide_path))?;
             if find_element_by_id(&model.elements, &target).is_none() {
                 return Err(SlidraError::invalid(format!(
-                    "投影片 {slide_path} 裡沒有元素 {target}"
+                    "slide {slide_path} has no element {target}"
                 )));
             }
         }
@@ -159,7 +159,7 @@ mod add {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已在 {slide_path} 新增留言 {comment_id}"),
+            format!("added comment {comment_id} in {slide_path}"),
             Some(serde_json::json!({ "commentId": comment_id })),
         ))
     }
@@ -181,14 +181,14 @@ mod edit {
 
         let work_dir = require_listed_slide(&id, &slide_path)?;
         if text.trim().is_empty() {
-            return Err(SlidraError::invalid("留言內容不可為空"));
+            return Err(SlidraError::invalid("comment content cannot be empty"));
         }
         let content = virtual_fs::read_virtual_file(&work_dir, &slide_path)?;
         let updated = comments::edit_slide_comment(&content, &comment_id, &text)?;
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已更新留言 {comment_id}"),
+            format!("updated comment {comment_id}"),
             Some(serde_json::json!({})),
         ))
     }
@@ -213,7 +213,7 @@ mod delete {
         write::write_presentation_file(&id, &slide_path, &updated)?;
 
         Ok(CommandResult::success(
-            format!("已刪除留言 {comment_id}"),
+            format!("deleted comment {comment_id}"),
             Some(serde_json::json!({})),
         ))
     }
@@ -256,7 +256,7 @@ mod list {
         }
 
         Ok(CommandResult::success(
-            format!("共 {} 則留言", all_comments.len()),
+            format!("{} comments total", all_comments.len()),
             Some(serde_json::json!({ "comments": all_comments })),
         ))
     }
@@ -453,7 +453,7 @@ mod tests {
             assert!(!missing_target.ok);
             assert_eq!(
                 missing_target.message,
-                "投影片 slides/001.svg 裡沒有元素 el-nope"
+                "slide slides/001.svg has no element el-nope"
             );
 
             let empty_text = dispatch(
@@ -466,7 +466,7 @@ mod tests {
                 ],
             );
             assert!(!empty_text.ok);
-            assert_eq!(empty_text.message, "留言內容不可為空");
+            assert_eq!(empty_text.message, "comment content cannot be empty");
 
             let empty_author = dispatch(
                 &["comment", "add"],
@@ -480,7 +480,7 @@ mod tests {
                 ],
             );
             assert!(!empty_author.ok);
-            assert_eq!(empty_author.message, "author 不可為空");
+            assert_eq!(empty_author.message, "author cannot be empty");
         }
 
         #[test]
@@ -500,7 +500,7 @@ mod tests {
                 ],
             );
             assert!(!result.ok);
-            assert_eq!(result.message, "不是投影片：templates/001.svg");
+            assert_eq!(result.message, "not a slide: templates/001.svg");
         }
 
         #[test]
@@ -644,7 +644,7 @@ mod tests {
             // pushed a second one on top of it.
             history::undo(&fixture.id).unwrap();
             let undo_err = history::undo(&fixture.id).unwrap_err();
-            assert_eq!(undo_err.message(), "沒有可復原的操作");
+            assert_eq!(undo_err.message(), "no operation to undo");
         }
     }
 

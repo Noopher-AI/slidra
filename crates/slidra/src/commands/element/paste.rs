@@ -27,7 +27,7 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     let svg_from_file = match svg_file {
         Some(path) => Some(
             std::fs::read_to_string(path)
-                .map_err(|_| SlidraError::invalid(format!("找不到來源檔案：{path}")))?,
+                .map_err(|_| SlidraError::invalid(format!("source file not found: {path}")))?,
         ),
         None => None,
     };
@@ -35,11 +35,13 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     let slide = write::require_slide(&id, &slide_path)?;
 
     let payload = match svg_from_file {
-        Some(svg) => clipboard::parse_clipboard_svg(&svg)
-            .ok_or_else(|| SlidraError::invalid("剪貼簿內容不是合法的 slidra 元素剪貼簿格式"))?,
+        Some(svg) => clipboard::parse_clipboard_svg(&svg).ok_or_else(|| {
+            SlidraError::invalid("clipboard content is not a valid slidra element clipboard format")
+        })?,
         None => {
             let raw = write::read_clipboard_file(&id)?;
-            serde_json::from_str(&raw).map_err(|_| SlidraError::invalid("剪貼簿資料已損毀"))?
+            serde_json::from_str(&raw)
+                .map_err(|_| SlidraError::invalid("clipboard data is corrupted"))?
         }
     };
 
@@ -54,7 +56,10 @@ fn try_run(args: &[String]) -> SlidraResult<CommandResult> {
     write::write_presentation_file(&id, &slide_path, &result.updated)?;
 
     Ok(CommandResult::success(
-        format!("已貼上 {} 個元素到 {slide_path}", result.element_ids.len()),
+        format!(
+            "pasted {} elements into {slide_path}",
+            result.element_ids.len()
+        ),
         Some(serde_json::json!({ "elementIds": result.element_ids })),
     ))
 }

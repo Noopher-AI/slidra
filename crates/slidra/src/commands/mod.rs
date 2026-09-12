@@ -2,7 +2,7 @@
 //! dispatches itself. `serve`/`export` are the two names `main.rs` execs
 //! Node for instead (`node_entry.rs` — a normative entry point per spec,
 //! not a fallback); everything else that matches neither is rejected by
-//! `main.rs` as "未知的命令" — there is no longer a second engine to defer
+//! `main.rs` as "unknown command" — there is no longer a second engine to defer
 //! to.
 //!
 //! Two matching mechanisms coexist here, one per generation of families:

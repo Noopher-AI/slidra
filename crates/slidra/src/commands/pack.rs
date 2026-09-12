@@ -17,7 +17,7 @@ pub fn run(args: &[String]) -> CommandResult {
     };
 
     match pack_presentation(&id, &path) {
-        Ok(()) => CommandResult::success("已完成打包", Some(serde_json::json!({}))),
+        Ok(()) => CommandResult::success("packaging complete", Some(serde_json::json!({}))),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
 }
@@ -27,7 +27,7 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
     let registry = workspace::registry::read_registry(&home)?;
     let Some(entry) = registry.get(id).cloned() else {
         return Err(SlidraError::not_found(format!(
-            "找不到識別碼對應的簡報：{id}"
+            "no presentation found for id: {id}"
         )));
     };
 
@@ -111,7 +111,7 @@ mod tests {
     fn missing_arguments_fail() {
         let result = run(&[]);
         assert!(!result.ok);
-        assert_eq!(result.message, "命令 pack 缺少參數：id");
+        assert_eq!(result.message, "command pack missing argument: id");
     }
 
     #[test]

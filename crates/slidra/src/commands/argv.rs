@@ -35,7 +35,7 @@ pub fn require_positional<'a>(
     match args.get(index) {
         Some(value) if !is_flag_like(value) => Ok(value.as_str()),
         _ => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
+            "command {command} missing argument: {arg_name}"
         ))),
     }
 }
@@ -55,7 +55,7 @@ pub fn require_id_positional<'a>(
     match args.get(index) {
         Some(value) => Ok(value.as_str()),
         None => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
+            "command {command} missing argument: {arg_name}"
         ))),
     }
 }
@@ -81,7 +81,7 @@ pub fn require_raw_positional<'a>(
     match args.get(index) {
         Some(value) => Ok(value.as_str()),
         None => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{arg_name}"
+            "command {command} missing argument: {arg_name}"
         ))),
     }
 }
@@ -101,7 +101,7 @@ pub fn require_trailing_force_flag(
         None => Ok(false),
         Some(value) if value == "--force" => Ok(true),
         Some(value) => Err(SlidraError::invalid(format!(
-            "命令 {command} 未知的參數：{value}"
+            "command {command} unknown argument: {value}"
         ))),
     }
 }
@@ -115,7 +115,7 @@ pub fn optional_flag<'a>(args: &'a [String], flag: &str) -> SlidraResult<Option<
     };
     match args.get(index + 1) {
         Some(value) if !is_flag_like(value) => Ok(Some(value.as_str())),
-        _ => Err(SlidraError::invalid(format!("{flag} 缺少值"))),
+        _ => Err(SlidraError::invalid(format!("{flag} missing value"))),
     }
 }
 
@@ -124,7 +124,7 @@ pub fn require_flag<'a>(args: &'a [String], flag: &str, command: &str) -> Slidra
     match optional_flag(args, flag)? {
         Some(value) => Ok(value),
         None => Err(SlidraError::invalid(format!(
-            "命令 {command} 缺少參數：{flag}"
+            "command {command} missing argument: {flag}"
         ))),
     }
 }
@@ -149,7 +149,9 @@ pub fn require_number_flag(args: &[String], flag: &str, command: &str) -> Slidra
     let raw = require_flag(args, flag, command)?;
     match parse_number_like_js(raw) {
         Some(value) if value.is_finite() => Ok(value),
-        _ => Err(SlidraError::invalid(format!("{flag} 不是合法數字：{raw}"))),
+        _ => Err(SlidraError::invalid(format!(
+            "{flag} is not a valid number: {raw}"
+        ))),
     }
 }
 
@@ -163,7 +165,9 @@ pub fn optional_number_flag(
     };
     match parse_number_like_js(raw) {
         Some(value) if value.is_finite() => Ok(Some(value)),
-        _ => Err(SlidraError::invalid(format!("{flag} 不是合法數字：{raw}"))),
+        _ => Err(SlidraError::invalid(format!(
+            "{flag} is not a valid number: {raw}"
+        ))),
     }
 }
 
@@ -184,7 +188,7 @@ pub fn require_id_list(args: &[String], index: usize, command: &str) -> SlidraRe
         .collect();
     if ids.iter().any(|token| token.is_empty()) {
         return Err(SlidraError::invalid(format!(
-            "命令 {command} 的元素清單格式錯誤：{raw}"
+            "command {command}\'s element list has invalid format: {raw}"
         )));
     }
     Ok(ids)
@@ -198,7 +202,10 @@ mod tests {
     fn require_positional_rejects_a_flag_shaped_value_as_missing() {
         let args = vec!["--dx".to_string(), "10".to_string()];
         let err = require_positional(&args, 0, "element move", "element-ids").unwrap_err();
-        assert_eq!(err.message(), "命令 element move 缺少參數：element-ids");
+        assert_eq!(
+            err.message(),
+            "command element move missing argument: element-ids"
+        );
     }
 
     #[test]
@@ -214,7 +221,7 @@ mod tests {
     fn require_id_positional_still_rejects_a_missing_positional() {
         let args: Vec<String> = vec![];
         let err = require_id_positional(&args, 0, "element insert", "id").unwrap_err();
-        assert_eq!(err.message(), "命令 element insert 缺少參數：id");
+        assert_eq!(err.message(), "command element insert missing argument: id");
     }
 
     #[test]
@@ -222,14 +229,14 @@ mod tests {
         let args = vec!["--force".to_string()];
         assert_eq!(optional_flag(&args, "--dx").unwrap(), None);
         let err = optional_flag(&args, "--force").unwrap_err();
-        assert_eq!(err.message(), "--force 缺少值");
+        assert_eq!(err.message(), "--force missing value");
     }
 
     #[test]
     fn require_number_flag_rejects_non_finite_and_non_numeric() {
         let args = vec!["--dx".to_string(), "abc".to_string()];
         let err = require_number_flag(&args, "--dx", "element move").unwrap_err();
-        assert_eq!(err.message(), "--dx 不是合法數字：abc");
+        assert_eq!(err.message(), "--dx is not a valid number: abc");
     }
 
     #[test]
@@ -260,7 +267,7 @@ mod tests {
         let err = require_id_list(&bad, 1, "element move").unwrap_err();
         assert_eq!(
             err.message(),
-            "命令 element move 的元素清單格式錯誤：el-1,,el-2"
+            "command element move\'s element list has invalid format: el-1,,el-2"
         );
     }
 

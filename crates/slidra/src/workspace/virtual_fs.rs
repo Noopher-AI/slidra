@@ -47,13 +47,14 @@ fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> SlidraR
     // A failing read here is an operational failure, not evidence that
     // anything is absent — stays a plain `SlidraError::invalid`, matching
     // the "only SlidraNotFoundError is granted a 404" discipline.
-    let entries =
-        std::fs::read_dir(real_dir).map_err(|_| SlidraError::invalid("讀取簡報內容時發生錯誤"))?;
+    let entries = std::fs::read_dir(real_dir)
+        .map_err(|_| SlidraError::invalid("error reading presentation content"))?;
     for entry in entries {
-        let entry = entry.map_err(|_| SlidraError::invalid("讀取簡報內容時發生錯誤"))?;
+        let entry =
+            entry.map_err(|_| SlidraError::invalid("error reading presentation content"))?;
         let file_type = entry
             .file_type()
-            .map_err(|_| SlidraError::invalid("讀取簡報內容時發生錯誤"))?;
+            .map_err(|_| SlidraError::invalid("error reading presentation content"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
         if name == crate::workspace::lock::LOCK_FILE_NAME {
             // The CLI's own per-presentation lock — never part of the
@@ -118,7 +119,9 @@ pub fn list_virtual_entries(work_dir: &Path, virtual_path: &str) -> SlidraResult
             } else {
                 virtual_path
             };
-            Err(SlidraError::not_found(format!("找不到目錄：{display}")))
+            Err(SlidraError::not_found(format!(
+                "directory not found: {display}"
+            )))
         }
     }
 }
@@ -160,11 +163,11 @@ pub fn resolve_virtual_file_path(work_dir: &Path, virtual_path: &str) -> SlidraR
     let segments = split_virtual_path(virtual_path);
     match navigate(&root, &segments) {
         None => Err(SlidraError::not_found(format!(
-            "找不到檔案：{virtual_path}"
+            "file not found: {virtual_path}"
         ))),
-        Some(VirtualNode::Directory { .. }) => {
-            Err(SlidraError::not_found(format!("不是檔案：{virtual_path}")))
-        }
+        Some(VirtualNode::Directory { .. }) => Err(SlidraError::not_found(format!(
+            "not a file: {virtual_path}"
+        ))),
         Some(VirtualNode::File { real_path }) => Ok(real_path.clone()),
     }
 }
@@ -181,9 +184,12 @@ pub fn resolve_virtual_file_path(work_dir: &Path, virtual_path: &str) -> SlidraR
 pub fn read_virtual_file(work_dir: &Path, virtual_path: &str) -> SlidraResult<String> {
     let real_path = resolve_virtual_file_path(work_dir, virtual_path)?;
     let bytes = std::fs::read(&real_path)
-        .map_err(|_| SlidraError::invalid(format!("讀取檔案時發生錯誤：{virtual_path}")))?;
-    String::from_utf8(bytes)
-        .map_err(|_| SlidraError::invalid(format!("{virtual_path} 是二進位資產，無法以文字讀取")))
+        .map_err(|_| SlidraError::invalid(format!("error reading file: {virtual_path}")))?;
+    String::from_utf8(bytes).map_err(|_| {
+        SlidraError::invalid(format!(
+            "{virtual_path} is a binary asset, cannot be read as text"
+        ))
+    })
 }
 
 /// Reads the raw bytes of the file at `virtual_path`, exactly as stored on
@@ -192,7 +198,7 @@ pub fn read_virtual_file(work_dir: &Path, virtual_path: &str) -> SlidraResult<St
 pub fn read_virtual_file_bytes(work_dir: &Path, virtual_path: &str) -> SlidraResult<Vec<u8>> {
     let real_path = resolve_virtual_file_path(work_dir, virtual_path)?;
     std::fs::read(&real_path)
-        .map_err(|_| SlidraError::invalid(format!("讀取檔案時發生錯誤：{virtual_path}")))
+        .map_err(|_| SlidraError::invalid(format!("error reading file: {virtual_path}")))
 }
 
 #[cfg(test)]
@@ -262,7 +268,7 @@ mod tests {
             let result = resolve_virtual_file_path(&work, hostile);
             assert!(result.is_err(), "expected {hostile:?} to fail to resolve");
             if let Err(err) = result {
-                assert_eq!(err.message(), format!("找不到檔案：{hostile}"));
+                assert_eq!(err.message(), format!("file not found: {hostile}"));
             }
         }
 
@@ -273,7 +279,7 @@ mod tests {
     fn missing_file_is_not_found_error() {
         let work = temp_dir("missing-file");
         let err = resolve_virtual_file_path(&work, "nope.svg").unwrap_err();
-        assert_eq!(err.message(), "找不到檔案：nope.svg");
+        assert_eq!(err.message(), "file not found: nope.svg");
         std::fs::remove_dir_all(&work).ok();
     }
 }
