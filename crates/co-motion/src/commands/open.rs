@@ -33,16 +33,20 @@ fn open_presentation(path: &str) -> Result<String, CoMotionError> {
     let registration = (|| -> Result<(), CoMotionError> {
         workspace::migrate::migrate_to_v4(&work_dir)?;
         let saved_at = workspace::registry::max_mtime_in_directory(&work_dir)?;
-        let mut registry = workspace::registry::read_registry(&home)?;
-        registry.insert(
-            new_id.clone(),
-            RegistryEntry {
-                work_dir: work_dir.clone(),
-                source_path: Some(Path::new(path).to_path_buf()),
-                saved_at: Some(saved_at),
-            },
-        );
-        workspace::registry::write_registry(&home, &registry)
+        // Read-modify-write under the lock: a concurrent `open` reading the
+        // same map and writing after us would drop this brand-new entry.
+        workspace::registry::with_registry_lock(&home, || {
+            let mut registry = workspace::registry::read_registry(&home)?;
+            registry.insert(
+                new_id.clone(),
+                RegistryEntry {
+                    work_dir: work_dir.clone(),
+                    source_path: Some(Path::new(path).to_path_buf()),
+                    saved_at: Some(saved_at),
+                },
+            );
+            workspace::registry::write_registry(&home, &registry)
+        })
     })();
 
     if let Err(err) = registration {

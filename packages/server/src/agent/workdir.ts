@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
-import { resolveCoMotionHome } from "../comotion/home.js";
+import { isEnoent, resolveCoMotionHome } from "../comotion/home.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -162,9 +162,64 @@ export function resolveAgentWorkdirSource(): string {
   return path.join(here, "../../agent-workdir");
 }
 
-/** Where the work directory is deployed to on the user's machine — inside `CO_MOTION_HOME`, never cleaned up when `serve` exits. */
-export function agentWorkdirTarget(): string {
-  return path.join(resolveCoMotionHome(), "agent");
+/**
+ * Where one presentation's work directory is deployed to on the user's
+ * machine — `<CO_MOTION_HOME>/agent/<presentationId>`, never cleaned up
+ * when `serve` exits.
+ *
+ * Keyed by presentation id rather than one shared `agent/` directory
+ * because two `co-motion serve` processes can run on the same machine at
+ * the same time, and `deployAgentWorkdir()` replaces its target wholesale
+ * on every startup. A shared path means the second `serve` to start pulls
+ * the directory out from under the first one's already-spawned ACP agent,
+ * whose session `cwd` is this path — and once that directory is unlinked
+ * the agent gets ENOENT for every relative-path read, every write, and
+ * even `getcwd`, silently, with nothing surfaced to the author. Per-id
+ * targets also give each session its own Claude Code project slug (which
+ * is derived from `cwd`), so two presentations' transcripts stop landing
+ * in one directory.
+ */
+export function agentWorkdirTarget(presentationId: string): string {
+  return path.join(resolveCoMotionHome(), "agent", presentationId);
+}
+
+/**
+ * Names of the previous generations of `presentationId`'s work directory —
+ * siblings of the target, so the retiring `rename` stays within one
+ * filesystem. Scoped by id (rather than one shared `agent.old-` prefix)
+ * because the sweep below must never reach into another presentation's
+ * retired directory: that one may still be some other `serve`'s live agent
+ * `cwd`.
+ */
+function retiredPrefixFor(presentationId: string): string {
+  return `${presentationId}.old-`;
+}
+
+/**
+ * Removes the retired generations of `presentationId`'s work directory, and
+ * only those. Deliberately called at the *start* of a deploy rather than at
+ * the end of the one that created them: a retired directory is the inode a
+ * still-running agent may be sitting in, and it stays readable for exactly
+ * as long as it is not unlinked. Deferring the delete by one deploy is what
+ * turns "the older agent breaks instantly" into "the older agent keeps
+ * reading the previous generation's files".
+ *
+ * Failures are swallowed per entry — a leftover directory is litter, never
+ * a reason to refuse to start.
+ */
+async function sweepRetiredWorkdirs(parent: string, presentationId: string): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(parent, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const prefix = retiredPrefixFor(presentationId);
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+      .map((entry) => rm(path.join(parent, entry.name), { recursive: true, force: true }).catch(() => {})),
+  );
 }
 
 /**
@@ -177,9 +232,16 @@ export function agentWorkdirTarget(): string {
  * (disk full, a permissions error) never leaves the target half-written:
  * everything happens in a sibling directory first, and only a clean copy
  * ever gets renamed over the real target. The staging directory shares
- * `agentWorkdirTarget()`'s parent (`CO_MOTION_HOME`), and therefore its
- * filesystem, which is what makes the final `rename` atomic rather than a
- * copy-then-delete.
+ * `CO_MOTION_HOME` with the target, and therefore its filesystem, which is
+ * what makes the final `rename` atomic rather than a copy-then-delete.
+ *
+ * The previous generation is *retired* (renamed aside), never deleted here
+ * — deleting it would unlink the very inode an agent spawned by an earlier
+ * `serve` of this same presentation is sitting in, which is exactly the
+ * failure `agentWorkdirTarget`'s docstring describes. The retired copy is
+ * swept at the start of the *next* deploy instead, by
+ * `sweepRetiredWorkdirs`, so that agent keeps reading real files for the
+ * rest of its life.
  *
  * `.claude/skills/` is never committed to the repo — `.agents/skills/` is
  * the only source of truth (so a skill is never written twice and cannot
@@ -190,19 +252,39 @@ export function agentWorkdirTarget(): string {
  * `mkdtemp`-based cwd) an agent that resolves symlinks before echoing a
  * path back must be compared against the same resolved form.
  */
-export async function deployAgentWorkdir(): Promise<string> {
+export async function deployAgentWorkdir(presentationId: string): Promise<string> {
   const home = resolveCoMotionHome();
   const source = resolveAgentWorkdirSource();
-  const target = agentWorkdirTarget();
+  const target = agentWorkdirTarget(presentationId);
+  const parent = path.dirname(target);
   const staging = path.join(home, `agent.tmp-${randomUUID()}`);
+  const retired = path.join(parent, `${retiredPrefixFor(presentationId)}${randomUUID()}`);
 
-  await mkdir(home, { recursive: true });
+  await mkdir(parent, { recursive: true });
+  await sweepRetiredWorkdirs(parent, presentationId);
   await rm(staging, { recursive: true, force: true });
   try {
     await cp(source, staging, { recursive: true });
     await cp(path.join(staging, ".agents", "skills"), path.join(staging, ".claude", "skills"), { recursive: true });
-    await rm(target, { recursive: true, force: true });
-    await rename(staging, target);
+    // Retire whatever is already there instead of deleting it (see the
+    // docstring). ENOENT just means this presentation has never been
+    // served on this machine — every other failure is real.
+    const retiredPrevious = await rename(target, retired).then(
+      () => true,
+      (error: unknown) => {
+        if (isEnoent(error)) return false;
+        throw error;
+      },
+    );
+    try {
+      await rename(staging, target);
+    } catch (error) {
+      // The target slot is empty and the new copy did not land. Put the
+      // previous generation back rather than leaving no work directory at
+      // all — a stale one still runs, a missing one cannot.
+      if (retiredPrevious) await rename(retired, target).catch(() => {});
+      throw error;
+    }
   } catch {
     await rm(staging, { recursive: true, force: true }).catch(() => {});
     // Never echo the underlying fs error's own message here — it embeds a

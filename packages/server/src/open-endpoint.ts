@@ -4,7 +4,13 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CoMotionError } from "./comotion/errors.js";
 import { runJsonCommand } from "./comotion/command.js";
-import { maxMtimeInDirectory, readProjectsRegistry, resolveCoMotionHome, writeProjectsRegistry } from "./comotion/home.js";
+import {
+  maxMtimeInDirectory,
+  readProjectsRegistry,
+  resolveCoMotionHome,
+  withProjectsRegistryLock,
+  writeProjectsRegistry,
+} from "./comotion/home.js";
 import { readSaveState } from "./comotion/save-state.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { broadcastSaveState } from "./save-state.js";
@@ -120,10 +126,17 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
     stagedChildren.map((name) => rename(path.join(stagedEntry.workDir, name), path.join(entry.workDir, name))),
   );
 
-  const finalRegistry = await readProjectsRegistry();
-  finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt: await maxMtimeInDirectory(entry.workDir) });
-  finalRegistry.delete(id2);
-  await writeProjectsRegistry(finalRegistry);
+  // Read-modify-write under the lock, so a `co-motion` process registering
+  // its own presentation at the same moment does not lose its entry to this
+  // write (or vice versa). Deliberately narrower than this whole function:
+  // the `open` above shells out to the CLI, which takes this same lock.
+  const savedAt = await maxMtimeInDirectory(entry.workDir);
+  await withProjectsRegistryLock(async () => {
+    const finalRegistry = await readProjectsRegistry();
+    finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt });
+    finalRegistry.delete(id2);
+    await writeProjectsRegistry(finalRegistry);
+  });
 
   await rm(stagedEntry.workDir, { recursive: true, force: true }).catch(() => {});
   await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});

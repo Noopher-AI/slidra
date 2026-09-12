@@ -128,7 +128,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   if (project.slides.length === 0) {
     throw new CoMotionError("簡報沒有投影片");
   }
-  const agentWorkdir = await deployAgentWorkdir();
+  const agentWorkdir = await deployAgentWorkdir(presentationId);
 
   const staticDir = options.staticDir ?? resolveWebDist();
 

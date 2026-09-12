@@ -24,7 +24,7 @@ pub fn run(args: &[String]) -> CommandResult {
 
 fn pack_presentation(id: &str, output_path: &str) -> Result<(), CoMotionError> {
     let home = workspace::resolve_home();
-    let mut registry = workspace::registry::read_registry(&home)?;
+    let registry = workspace::registry::read_registry(&home)?;
     let Some(entry) = registry.get(id).cloned() else {
         return Err(CoMotionError::not_found(format!(
             "找不到識別碼對應的簡報：{id}"
@@ -42,14 +42,20 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), CoMotionError> {
         .unwrap_or(false);
     if is_same_as_source {
         let saved_at = workspace::registry::max_mtime_in_directory(&entry.work_dir)?;
-        registry.insert(
-            id.to_string(),
-            RegistryEntry {
-                saved_at: Some(saved_at),
-                ..entry
-            },
-        );
-        workspace::registry::write_registry(&home, &registry)?;
+        // Re-read inside the lock rather than reusing the map read above:
+        // packing runs between the two, and anything another process
+        // registered meanwhile must survive this write.
+        workspace::registry::with_registry_lock(&home, || {
+            let mut registry = workspace::registry::read_registry(&home)?;
+            registry.insert(
+                id.to_string(),
+                RegistryEntry {
+                    saved_at: Some(saved_at),
+                    ..entry
+                },
+            );
+            workspace::registry::write_registry(&home, &registry)
+        })?;
     }
     Ok(())
 }
