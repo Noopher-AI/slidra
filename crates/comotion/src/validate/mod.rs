@@ -665,7 +665,7 @@ pub fn check_slide(
 
     // --- structure (partly plan-free) ---
     match &facts.background {
-        None => push(
+        None if !facts.has_background => push(
             errors,
             slide,
             None,
@@ -674,6 +674,7 @@ pub fn check_slide(
             "已設定 background-color",
             format!("第 {n} 頁沒有設定背景色"),
         ),
+        None => {}
         Some(color) => {
             if let Some(spec) = ctx.spec {
                 // A closing page may sit on a full primary field.
@@ -2212,6 +2213,22 @@ mod tests {
         assert!(!rules(&run(&format!("{bg}{claim}"), "on")).contains(&"structure.background-image"));
         // `background: off` means the page is meant to have none.
         assert!(!rules(&run(&claim, "off")).contains(&"structure.background-image"));
+    }
+
+    #[test]
+    fn a_page_with_a_background_image_but_no_background_color_does_not_trip_structure_background() {
+        // A page that only uses an image as its background has no
+        // `background-color` to check, and that's fine — `structure.background`
+        // exists to catch pages with neither, not to force a color on top of
+        // an image.
+        let bg = "<g id=\"el-background\" data-comot-role=\"background\" data-comot-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
+        let claim = textbox("el-claim", 80.0, 248.0, 1000.0, 48.0, "#F4F6F8", &[("主張", false)]);
+        let svg = slide(None, "n", &format!("{bg}{claim}"));
+        let facts = read_slide_facts(&svg).unwrap();
+        assert!(facts.has_background);
+        assert!(facts.background.is_none());
+        let r = rules(&run_one(&svg, "section", "anchor"));
+        assert!(!r.contains(&"structure.background"), "{r:?}");
     }
 
     #[test]

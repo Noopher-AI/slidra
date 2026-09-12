@@ -77,6 +77,7 @@ import {
 } from "./geometry.js";
 import {
   parseSlide,
+  type BackgroundImage,
   type PageStyle,
   type SlideElement,
   type SlideModel,
@@ -231,6 +232,14 @@ export interface CanvasState {
    * null}` for that case (Style › Page is disabled entirely then, §4.6).
    */
   pageStyle: PageStyle | null;
+  /**
+   * #303 手動控制面板：the current slide's background image, straight off
+   * `currentSlideModel.backgroundImage` — `null` both when there is no
+   * current slide and when the current slide has no background image;
+   * callers distinguish the two the same way they already do for
+   * `pageStyle` (`currentIndex === -1`).
+   */
+  backgroundImage: BackgroundImage | null;
 }
 
 /**
@@ -363,6 +372,14 @@ export interface CanvasController {
    * `setStyle`. No-op (returns `false`) when there is no current slide.
    */
   setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
+  /**
+   * 樣式面板 (#303)：Style › Page 的背景圖片區塊。送出 `slide background
+   * set`：給 `asset` 設定/替換背景圖，給 `none: true` 清除，`opacity` 調整
+   * 透明度（CLI 要求 `--asset`／`--none` 二選一，所以單獨調透明度時呼叫端
+   * 要一併帶上目前的 asset）。失敗時的行為與 `setStyle` 相同；沒有目前的
+   * slide 時回傳 `false`，不送出命令。
+   */
+  setBackgroundImage: (update: { asset?: string; none?: boolean; opacity?: number }) => Promise<boolean>;
   /**
    * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
    * Sends `presentation canvas set` — never occupies an undo step (the
@@ -1126,6 +1143,25 @@ function cornerPoint(corner: "nw" | "ne" | "sw" | "se", box: Rect): { x: number;
     x: corner === "ne" || corner === "se" ? box.x + box.width : box.x,
     y: corner === "sw" || corner === "se" ? box.y + box.height : box.y,
   };
+}
+
+/**
+ * #303 背景圖片面板："選現有檔案" 下拉選單的資料來源 — `GET /api/assets`
+ * 回傳 `assets/` 底下目前有的檔案，供直接選用（不需要重新上傳）。與
+ * `CanvasController` 無關，不隨某個 slide 的載入/reload 生命週期走，所以
+ * 是獨立的頂層函式而非控制器方法。失敗時回傳空陣列而非拋出——下拉選單
+ * 空著仍可用（比如上傳新檔），不值得讓整個面板因此壞掉。
+ */
+export async function fetchAssetList(): Promise<string[]> {
+  try {
+    const response = await fetch("/api/assets");
+    if (!response.ok) return [];
+    const body = (await response.json().catch(() => null)) as { entries?: unknown } | null;
+    const entries = body?.entries;
+    return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export function mountCanvas(container: HTMLElement): CanvasController {
@@ -4105,6 +4141,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return true;
   }
 
+  async function setBackgroundImage(update: {
+    asset?: string;
+    none?: boolean;
+    opacity?: number;
+  }): Promise<boolean> {
+    if (currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("slide background set", {
+      slidePath: slides[currentIndex],
+      ...update,
+    });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
+    return true;
+  }
+
   async function setCanvasSize(width: number, height: number): Promise<boolean> {
     const thisGeneration = generation;
     const result = await postCommand("presentation canvas set", { width, height });
@@ -4136,6 +4193,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       },
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
+      backgroundImage: currentSlideModel?.backgroundImage ?? null,
     };
     for (const listener of listeners) listener(state);
   }
@@ -4156,6 +4214,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       },
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
+      backgroundImage: currentSlideModel?.backgroundImage ?? null,
     });
     return () => {
       listeners.delete(listener);
@@ -4187,6 +4246,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     setStyle,
     setTextAlign,
     setPageStyle,
+    setBackgroundImage,
     setCanvasSize,
     get frameElement() {
       return frame;

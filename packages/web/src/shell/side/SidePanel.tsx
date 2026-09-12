@@ -139,7 +139,12 @@ export function SidePanel({ state, controller, canvasSize, chat, side, sub, onSi
         {side === "chat" && chat}
         {side === "style" &&
           (sub === "page" ? (
-            <StylePagePanel pageStyle={state.pageStyle} canvasSize={canvasSize} controller={controller} />
+            <StylePagePanel
+              pageStyle={state.pageStyle}
+              backgroundImage={state.backgroundImage}
+              canvasSize={canvasSize}
+              controller={controller}
+            />
           ) : (
             <StyleObjectPanel state={state} controller={controller} />
           ))}

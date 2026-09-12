@@ -72,10 +72,24 @@ export interface PageStyle {
   accent: string | null;
 }
 
+/**
+ * The page's background image (#303 §13), kept separate from `PageStyle`
+ * on purpose — a background COLOR and a background IMAGE are independent
+ * mechanisms (a page can have either, both, or neither), mirroring the
+ * Rust side's own split between `facts.background` and
+ * `facts.has_background` (`crates/comotion/src/validate/mod.rs`).
+ */
+export interface BackgroundImage {
+  /** Virtual path from the presentation root, e.g. "assets/bg.svg" — the slide-relative "../" prefix stripped. */
+  asset: string;
+  opacity: number | null;
+}
+
 export interface SlideModel {
   viewBox: { x: number; y: number; width: number; height: number };
   elements: SlideElement[];
   pageStyle: PageStyle;
+  backgroundImage: BackgroundImage | null;
 }
 
 export type TableTheme = "dark" | "light" | "zebra";
@@ -410,6 +424,32 @@ function readPageStyle(svgRoot: Element): PageStyle {
   };
 }
 
+const BACKGROUND_ROLE_ATTRIBUTE = "data-comot-role";
+const BACKGROUND_ROLE = "background";
+
+/**
+ * Finds the page's locked background `<g data-comot-role="background">`
+ * and reads its `<image>`'s `href`/`opacity`, mirroring the Rust side's
+ * `find_background` (`crates/comotion/src/slide/background.rs`). The href
+ * is always written as `../assets/x.svg` (slides live in `slides/`) — the
+ * `../` is stripped so callers get the same presentation-root-relative
+ * path `slide background set --asset` and `/api/assets` both use.
+ */
+export function readBackgroundImage(svgRoot: Element): BackgroundImage | null {
+  const g = childElements(svgRoot).find(
+    (child) => localName(child) === "g" && child.getAttribute(BACKGROUND_ROLE_ATTRIBUTE) === BACKGROUND_ROLE,
+  );
+  if (!g) return null;
+  const image = childElements(g).find((child) => localName(child) === "image");
+  if (!image) return null;
+  const href = image.getAttribute("href") ?? image.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+  if (!href) return null;
+  const asset = href.startsWith("../") ? href.slice(3) : href;
+  const opacityRaw = image.getAttribute("opacity");
+  const opacity = opacityRaw !== null ? Number(opacityRaw) : null;
+  return { asset, opacity: opacity !== null && Number.isFinite(opacity) ? opacity : null };
+}
+
 /**
  * Parses slide markup into a `SlideModel`. Throws (never returns a partial
  * model) when the markup does not even parse as XML, has no `<svg>` root,
@@ -443,5 +483,10 @@ export function parseSlide(svgMarkup: string): SlideModel {
     .filter((child) => localName(child) === "g")
     .map(toElement);
 
-  return { viewBox: { x, y, width, height }, elements, pageStyle: readPageStyle(svgRoot) };
+  return {
+    viewBox: { x, y, width, height },
+    elements,
+    pageStyle: readPageStyle(svgRoot),
+    backgroundImage: readBackgroundImage(svgRoot),
+  };
 }

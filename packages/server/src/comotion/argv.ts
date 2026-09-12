@@ -362,6 +362,12 @@ export const ARGV_ENCODERS: Record<string, ArgvEncoder> = {
   "slide style set": (i) =>
     plain(["slide", "style", "set", str(i.id), str(i.slidePath), ...optFlag("--background", i.background), ...optFlag("--accent", i.accent)]),
 
+  "slide background set": (i) =>
+    plain([
+      "slide", "background", "set", str(i.id), str(i.slidePath),
+      ...optFlag("--asset", i.asset), ...boolFlag("--none", i.none), ...optFlag("--opacity", i.opacity),
+    ]),
+
   "presentation canvas set": (i) =>
     plain(["presentation", "canvas", "set", str(i.id), ...optFlag("--width", i.width), ...optFlag("--height", i.height)]),
 };

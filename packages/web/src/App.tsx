@@ -136,6 +136,7 @@ export function App() {
     selection: { ids: [], names: [], groupPath: [], elements: [] },
     dragSignal: 0,
     pageStyle: null,
+    backgroundImage: null,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would

@@ -137,6 +137,8 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "textbox align",
   "slide style set",
   "presentation canvas set",
+  // #303 背景圖片手動控制面板：上傳/選擇/清除背景圖片、調整透明度。
+  "slide background set",
 ];
 
 /**

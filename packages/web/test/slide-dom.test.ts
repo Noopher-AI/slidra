@@ -69,4 +69,20 @@ describe("parseSlide（F8, NOOP-289）", () => {
     expect(model.elements.find((e) => e.id === "el-a")!.textWidth).toBeNull();
     expect(model.elements.find((e) => e.id === "el-b")!.textWidth).toBeNull();
   });
+
+  it("#303：有背景圖片時 backgroundImage 讀出 asset（去掉 ../）與 opacity", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
+      '<g id="el-background" data-comot-role="background" data-comot-lock="true">' +
+      '<image x="0" y="0" width="1280" height="720" href="../assets/bg.svg" opacity="0.5"/>' +
+      "</g>" +
+      "</svg>";
+    const model = parseSlide(svg);
+    expect(model.backgroundImage).toEqual({ asset: "assets/bg.svg", opacity: 0.5 });
+  });
+
+  it("#303：沒有背景圖片時 backgroundImage 是 null", () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
+    expect(parseSlide(svg).backgroundImage).toBeNull();
+  });
 });

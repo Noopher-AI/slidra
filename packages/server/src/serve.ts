@@ -22,6 +22,7 @@ import { handleNewPost, handleOpenPost } from "./open-endpoint.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
+  handleAssetsRoute,
   handleEffectsRoute,
   handleFilesRoute,
   handlePresentationRoute,
@@ -546,6 +547,11 @@ async function handleRequest(
 
     if (url.pathname === "/api/presentation") {
       await handlePresentationRoute(presentationId, res);
+      return;
+    }
+
+    if (url.pathname === "/api/assets") {
+      await handleAssetsRoute(presentationId, res);
       return;
     }
 

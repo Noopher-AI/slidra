@@ -475,6 +475,34 @@ it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片"
   expect(slide).toContain("--comot-accent:#00ff00");
 });
 
+it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("slide-background-set.comot");
+  const imported = await runCli<{ path: string }>([
+    "asset", "import", id, "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>', "--name", "bg.svg",
+  ]);
+  expect(imported.ok).toBe(true);
+  const server = await serve(id);
+
+  const set = await postCommand(server, {
+    name: "slide background set",
+    input: { slidePath: "slides/001.svg", asset: "assets/bg.svg", opacity: 0.5 },
+  });
+  expect(set.status).toBe(200);
+  expect(set.json.ok).toBe(true);
+  const slide = await readSlide(id);
+  expect(slide).toContain('data-comot-role="background"');
+  expect(slide).toContain('href="../assets/bg.svg"');
+  expect(slide).toContain('opacity="0.5"');
+
+  const cleared = await postCommand(server, {
+    name: "slide background set",
+    input: { slidePath: "slides/001.svg", none: true },
+  });
+  expect(cleared.status).toBe(200);
+  expect(cleared.json.ok).toBe(true);
+  expect(await readSlide(id)).not.toContain('data-comot-role="background"');
+});
+
 it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {
   const id = await openDeck("presentation-canvas-set.comot");
   const server = await serve(id);

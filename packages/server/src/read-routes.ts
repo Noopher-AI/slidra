@@ -42,6 +42,24 @@ export async function handlePresentationRoute(presentationId: string, res: Serve
   sendJson(res, 200, project);
 }
 
+/**
+ * `GET /api/assets` (#303 背景圖片面板): the `assets/` folder's entries, for
+ * the "選現有檔案" dropdown. A brand-new presentation has no `assets/`
+ * directory at all yet — that is not an error here, just an empty list.
+ */
+export async function handleAssetsRoute(presentationId: string, res: ServerResponse): Promise<void> {
+  try {
+    const entries = await listCommandEntries(presentationId, "assets");
+    sendJson(res, 200, { entries });
+  } catch (error) {
+    if (error instanceof CoMotionNotFoundError) {
+      sendJson(res, 200, { entries: [] });
+      return;
+    }
+    throw error;
+  }
+}
+
 /** `GET /api/files/<virtual path>`. `virtualPath` is already percent-decoded by the caller. */
 export async function handleFilesRoute(presentationId: string, virtualPath: string, res: ServerResponse): Promise<void> {
   // The virtual path space is the only path space (ADR-0004): whatever the
