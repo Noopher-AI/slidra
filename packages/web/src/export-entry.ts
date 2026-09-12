@@ -16,7 +16,7 @@
  * `window.__COMOT_EXPORT_DONE__` / `window.__COMOT_EXPORT_ERROR__`.
  */
 import { computePlayerPlan, renderHideStyle, renderPlanScript, type PlayerPlan } from "./player-plan.js";
-import { slideDirectory, wrapPlayDocument } from "./canvas.js";
+import { setPresentationFonts, slideDirectory, wrapPlayDocument } from "./canvas.js";
 
 export type ExportFormat = "pdf" | "pdf-frames";
 
@@ -111,9 +111,16 @@ async function main(): Promise<void> {
     throw new Error(`format 必須是 pdf 或 pdf-frames，收到：${format}`);
   }
 
-  const presentation = await fetchJson<{ slides: string[]; canvas: { width: number; height: number } }>(
-    "/api/presentation",
-  );
+  const presentation = await fetchJson<{
+    slides: string[];
+    canvas: { width: number; height: number };
+    fonts?: { file: string; family: string }[];
+  }>("/api/presentation");
+  // #305: every frame's own `@font-face` comes from here, so this must be
+  // set before the first `wrapPlayDocument` call below — a deck's second
+  // font (its title face, typically) is otherwise never declared and the
+  // PDF prints it in a host system font.
+  setPresentationFonts(presentation.fonts);
   if (presentation.slides.length === 0) {
     throw new Error("簡報沒有投影片");
   }

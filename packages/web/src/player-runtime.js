@@ -813,7 +813,24 @@
   buildStageMedia();
   reportEmbedBoxes();
 
-  post({ event: "ready" });
+  // #305: wait for this document's OWN fonts before saying ready. The
+  // presentation's `@font-face` is injected into every play document, but
+  // each one is an opaque origin (sandbox="allow-scripts", ADR-0010), so
+  // the host awaiting `document.fonts.ready` on its own document only
+  // warms the HTTP cache — it cannot know whether the face has been
+  // applied *in here*. Saying ready before it is lets the PDF export print
+  // a page whose text has fallen back to a system font (observed: pages
+  // 2-5 rendered in STSongti while page 1 got the embedded face).
+  // `fonts.ready` settles even when a face fails to load, so this delays
+  // the message but can never withhold it; jsdom (which has no
+  // `document.fonts`) takes the immediate path.
+  if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === "function") {
+    document.fonts.ready.then(function () {
+      post({ event: "ready" });
+    });
+  } else {
+    post({ event: "ready" });
+  }
 
   if (plan && plan.preview) {
     runPreview(plan.preview.effectIndices);

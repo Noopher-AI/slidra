@@ -3429,6 +3429,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const project = await fetchJson<ProjectJson>("/api/presentation");
     if (destroyed || thisGeneration !== generation) return;
 
+    // Before any slide document is built from this load: the deck's own
+    // embedded faces (#305).
+    setPresentationFonts(project.fonts);
     slides = project.slides;
     // Live reload calls reload() on every external edit. Staying on the
     // slide the author is looking at is the whole point — jumping back to
@@ -4402,8 +4405,50 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
  * `Access-Control-Allow-Origin` header serve.ts adds to every `/api/raw/`
  * response for why that still works.
  */
-const PRESENTATION_FONT_FACE_STYLE =
+const DEFAULT_PRESENTATION_FONT_FACE_STYLE =
   '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
+
+/**
+ * The faces actually injected, rebuilt from `project.json` whenever the
+ * presentation loads (#305). This used to be the constant above, naming
+ * one family — so a deck that imported a second font (`comotion font
+ * import`, e.g. `Noto Serif TC` for its titles) rendered that font from
+ * whatever the host OS happened to have, on screen and in the PDF alike.
+ * The container ships the bytes; every document that shows a slide must
+ * declare them.
+ *
+ * Module-level rather than a parameter threaded through four wrap
+ * functions and their callers: it is one fact about the open
+ * presentation, exactly as the constant it replaces was one fact about
+ * every presentation.
+ */
+let presentationFontFaceStyle = DEFAULT_PRESENTATION_FONT_FACE_STYLE;
+
+/**
+ * Declares the presentation's own embedded fonts for every slide document
+ * created from here on. Callers that build slide documents outside this
+ * module's own load path (overview, export) call this after reading
+ * `/api/presentation`. An empty or missing list keeps the default face, so
+ * a deck whose `project.json` predates the `fonts` field still renders.
+ */
+/** The `<style>` block every slide document injects — see `setPresentationFonts`. */
+export function presentationFontFaces(): string {
+  return presentationFontFaceStyle;
+}
+
+export function setPresentationFonts(fonts: { file: string; family: string }[] | undefined): void {
+  if (fonts === undefined || fonts.length === 0) {
+    presentationFontFaceStyle = DEFAULT_PRESENTATION_FONT_FACE_STYLE;
+    return;
+  }
+  const faces = fonts
+    .map(
+      (font) =>
+        `@font-face{font-family:"${font.family.replace(/["\\]/g, "")}";src:url("/api/raw/${encodeURI(font.file)}") format("truetype");font-weight:400;font-style:normal;}`,
+    )
+    .join("");
+  presentationFontFaceStyle = `<style>${faces}</style>`;
+}
 
 /**
  * (F-01, NOOP-355 #287) An inline `<svg>` is a replacement element with a
@@ -4460,7 +4505,7 @@ const EMPTY_DECK_DOCUMENT =
 
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4541,7 +4586,7 @@ export function wrapSelectionDocument(
   // selection, so no qa/cases script or e2e test can catch a regression here.
   // Applied to this wrapper only: play mode is a separate document where
   // letting a viewer select text is a different decision.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4580,7 +4625,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */
