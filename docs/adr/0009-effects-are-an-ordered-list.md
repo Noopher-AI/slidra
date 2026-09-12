@@ -1,24 +1,24 @@
-# 動態是一份有序的效果清單，不是元素身上的屬性
+# Motion is an ordered list of effects, not element attributes
 
-ADR-0005 原本把動態表達成元素身上的屬性（`data-slidra-step`、`data-slidra-enter`）。屬性設計的部分現在撤銷，改為每張投影片持有一份有序的效果清單，每項指向一個元素。
+ADR-0005 originally expressed motion data as element attributes (`data-slidra-step`, `data-slidra-enter`). That part of the attribute design is now retired, in favor of each slide holding an ordered list of effects, each entry pointing at an element.
 
-PowerPoint 與 Keynote 都是這個形狀。PowerPoint 把動畫存在 `<p:timing>`，那是一棵與形狀樹 `<p:spTree>` 完全分開的樹，透過 `<p:spTgt spid="…">` 指向形狀；Keynote 的建構清單同構。兩者的效果都分家族（進場、強調、退場、路徑），媒體的播放與暫停也是清單裡的效果項，不是另一套機制；每項各自帶起始方式（按一下／與前項同時／前項之後）。
+Both PowerPoint and Keynote take this shape. PowerPoint stores animation in `<p:timing>`, a tree entirely separate from the shape tree `<p:spTree>`, pointing at shapes through `<p:spTgt spid="…">`; Keynote's build lists are isomorphic. Both organize effects into families (enter, emphasis, exit, path), and media play/pause is itself an effect item in the list rather than a separate mechanism; every item carries its own start trigger (on click / with previous / after previous).
 
-屬性設計有一個結構性的天花板：一個元素只能有一個效果。「第 2 步出現、第 5 步強調、第 7 步退場」無法表達，除非在屬性值裡發明一套迷你語法，那比兩個方案都糟。清單另外讓「在中間插入一個效果」變成 splice，而不是把後續元素的編號重編一遍——與 ADR-0003 選擇明確的 `slides` 陣列、ADR-0008 選擇投影片自成一體，是同一條理由的第三次應用。
+The attribute-based design had a structural ceiling: an element could only carry one effect. "Appear at step 2, get emphasized at step 5, exit at step 7" can't be expressed without inventing a mini-syntax inside an attribute value, which is worse than either alternative. A list also makes "insert an effect in the middle" a simple splice, rather than renumbering every subsequent element — the same reasoning ADR-0003 applied when choosing an explicit `slides` array, and ADR-0008 applied when choosing a self-contained slide, applied here a third time.
 
-清單寫在投影片 SVG 的 `<metadata>` 中，使用自訂命名空間的 XML 元素而非內嵌 JSON：整份檔案維持單一語法，讀它的人或 agent 不必在中途切換剖析器，也不必處理 CDATA 與引號逃脫。未知命名空間會被其他向量工具忽略，ADR-0001 的靜態相容性不受影響。
+The list is written into the slide SVG's `<metadata>` as custom-namespaced XML elements rather than inline JSON: the whole file keeps a single syntax, so anyone or any agent reading it never has to switch parsers mid-file, or deal with CDATA and quote-escaping. An unknown namespace is ignored by other vector tools, so ADR-0001's static compatibility is unaffected.
 
 ## Consequences
 
-- 「步驟」不再被儲存，而是推導出來的：runtime 依每項的起始方式，把清單切成一組一組，以「按一下」起始的那一組就是一個步驟。
-- 每個效果項都指向一個元素，這是模型的不變式。音訊因此也必須掛在一個可見元素上（它同時是未來視覺編輯的選取握把），而不是成為一個不指向元素的特例項。
-- 刪除元素時，清單裡指向它的效果項會變成懸空引用，必須一併清除。這是本決定唯一的新失敗模式，由刪除元素的命令負責。
-- XML 屬性值皆為字串，未來的 duration、delay 需自行轉型。這是選擇單一語法付出的代價。
-- ADR-0005 的其餘決定不受影響：仍然不用 SMIL 與 CSS animation，仍然不用 `<foreignObject>`，影音仍以可見的佔位元素搭 `data-slidra-media` 表達。
+- A "step" is no longer stored — it's derived: the runtime groups the list into clusters based on each item's start trigger, and each cluster starting with "on click" is one step.
+- Every effect item points at an element; that's an invariant of the model. Audio therefore also has to attach to a visible element (which doubles as a future selection handle for visual editing) rather than existing as a special case that points at nothing.
+- Deleting an element leaves any effect items pointing at it dangling, and they must be cleaned up — this is the one new failure mode introduced by this decision, and it's the responsibility of the element-delete command.
+- XML attribute values are all strings, so future `duration`/`delay` values need their own type coercion. That's the cost of choosing a single syntax.
+- Everything else in ADR-0005 is unaffected: still no SMIL or CSS animation, still no `<foreignObject>`, audio/video still expressed as a visible placeholder element with `data-slidra-media`.
 
-## 修訂（[E2.T7]：四個家族、時間參數、群組動畫、路徑）
+## Revision: four families, timing parameters, group animation, and paths
 
-原始版本只落地了 `enter`／`media` 兩個家族，且沒有 `duration`／`delay`。這一輪把 ADR 描述的完整模型補齊：
+The original version only implemented the `enter`/`media` families, and had no `duration`/`delay`. A later pass filled in the complete model this ADR describes:
 
 ```xml
 <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
@@ -29,10 +29,10 @@ PowerPoint 與 Keynote 都是這個形狀。PowerPoint 把動畫存在 `<p:timin
 </slidra:effects>
 ```
 
-- `family` ∈ `enter`／`emphasis`／`exit`／`path`／`media`（值集固定，見 `@slidra/core/effects`），`start` 三種全開（`on-click`／`with-previous`／`after-previous`）。
-- `duration`／`delay` 為選填屬性，秒為單位；缺席時依家族取預設值（`media` 為 0，其餘 0.6）。合法值是「有限、非負的數字」——格式錯誤或負數一律拋錯，絕不回傳修補後的值。
-- `family="path"` 的效果項多一個 `d` 屬性，語法是投影片座標系下的 SVG path data；`d` 出現在其他家族上是合法但未使用的屬性，原樣保留。
-- **群組動畫**：一筆效果項的 `target` 可以指向一個群組 `<g>`，而不僅是葉節點元素——這與「多個散落元素各自一筆項目」是同一份 schema 的兩種自然結果，不是額外分支。
-- 效果項的清單順序即身分：`slidra effect` 命令族用 1-based 位置定址（D6），沒有另外發明 id。`effect list` 的輸出同樣是 1-based，讓 `list` 讀到的 `index` 可以直接餵給 `move`／`set`／`remove`——core 內部的 `Effect.index`（陣列位置）仍是 0-based，只有 CLI 的 `effect list` 命令在輸出前轉換一次。
-- 命名空間常數收斂到 `@slidra/core/effects` 一處（`https://slidra.app/ns/2026`）；`element-clipboard.ts` 先前誤用了 `https://slidra.app/ns/2026`，導致貼上後的效果在播放時被靜默當成不存在——已修正，現在整個 repo 只有一個命名空間字面值的來源。
-- 效果清單第一次有了真正的寫入端（`slidra effect add/remove/move/set`）；先前只有讀取（`apps/web/src/effects.ts`）與旁路清理（`element delete` 的懸空項清除）。
+- `family` is one of `enter`/`emphasis`/`exit`/`path`/`media` (a fixed set, defined in `@slidra/core/effects`); `start` supports all three triggers (`on-click`/`with-previous`/`after-previous`).
+- `duration`/`delay` are optional, in seconds, defaulting per family when absent (`media` defaults to 0, everything else to 0.6). Valid values are "finite, non-negative numbers" — a malformed or negative value always throws, and is never silently clamped to something valid.
+- A `family="path"` effect item carries an additional `d` attribute, whose syntax is SVG path data in the slide's coordinate space; `d` is a valid but unused attribute on other families, and is preserved as-is.
+- **Group animation**: an effect item's `target` can point at a group `<g>` rather than only a leaf element — this falls out naturally from the same schema as "several separate elements, each with its own item," not as an extra branch.
+- Order in the effect list is identity: the `slidra effect` command family addresses items by 1-based position, with no separate id invented for them. `effect list`'s output is likewise 1-based, so the `index` it reports can be fed straight into `move`/`set`/`remove` — internally, `Effect.index` (the array position) in the core library remains 0-based; only the CLI's `effect list` output converts it once before printing.
+- The namespace constant is consolidated to a single source in `@slidra/core/effects` (`https://slidra.app/ns/2026`); an earlier bug in the clipboard code used a different, incorrect namespace, which caused pasted effects to be silently treated as nonexistent during playback — this has been fixed, and the whole codebase now has exactly one source for the namespace literal.
+- The effect list got its first real write path (`slidra effect add/remove/move/set`); previously there was only a read path and incidental cleanup of dangling items on element delete.

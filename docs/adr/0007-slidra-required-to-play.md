@@ -1,15 +1,15 @@
-# 播放 `.slidra` 需要安裝 Slidra
+# Playing a `.slidra` requires the app to be installed
 
-ADR-0005 曾要求動畫 runtime 不得依賴 server，理由是讓 `slidra export --html` 幾乎免費，並讓上台簡報時不必在每台電腦安裝 Slidra。這個要求現在撤銷。
+ADR-0005 originally required that the animation runtime not depend on the server, reasoning that this would keep `slidra export --html` nearly free and avoid needing the app installed on every computer used to present. That requirement is now retired.
 
-Slidra 是一個 server：`slidra serve` 啟動後用瀏覽器操作，未來包成 Mac app 也只是把同一個 server 藏進去。播放與編輯是同一個 web app 的兩個模式，因此 runtime 可以、也應該取用 server。
+The app is a server: `slidra serve` starts it and it's used through a browser; if it's ever packaged as a desktop app, that's just the same server hidden inside a wrapper. Playback and editing are two modes of the same web app, so the runtime can — and should — draw on the server.
 
-代價不是「簡報無法分享」。分享的途徑是**匯出成別的格式**（HTML、PDF 等），那是 Slidra server 端的功能，要做的時候再做。`.slidra` 本身是工作格式，只在 Slidra 裡跑。
+The trade-off is not "presentations can no longer be shared." Sharing happens through **exporting to another format** (HTML, PDF, etc.), which is a server-side feature to be built when it's needed. `.slidra` itself is a working format, meant to run only inside this app.
 
 ## Consequences
 
-- 動畫 runtime 可以取用 server：影音走 `/api/raw` 串流與 HTTP Range，資產不必整包塞進瀏覽器。
-- 播放器不是獨立產物，而是編輯器同一個 web app 的一個模式。不維護兩套 SVG 解讀邏輯。
-- `.slidra` 交到沒有安裝 Slidra 的人手上不會動。要給別人看，走匯出。
-- ADR-0001 的驗收標準從品味升級為最後的相容性保證：單張 `slides/00N.svg` 用瀏覽器或向量繪圖工具開啟時，靜態畫面必須正常。那是未安裝 Slidra 的人唯一還能看到內容的途徑，此後不得再被侵蝕。
-- 只取代 ADR-0005 中「runtime 不得依賴 server」一段。ADR-0005 的其餘決定（`data-slidra-*` 屬性、不用 SMIL 與 CSS animation、不用 `<foreignObject>`）不受影響。
+- The animation runtime can draw on the server: audio/video streams through `/api/raw` with HTTP Range support, so assets don't need to be bundled whole into the browser.
+- The player isn't a separate artifact — it's one mode of the same web app as the editor. There's no second SVG-interpretation codebase to maintain.
+- A `.slidra` handed to someone without the app installed won't play. To show it to someone else, export it.
+- ADR-0001's acceptance criterion goes from being a matter of taste to the last remaining compatibility guarantee: a single `slides/00N.svg` opened in a browser or vector drawing tool must still render a correct static view. That's the only way someone without the app installed can see the content at all, and it must never be eroded further.
+- This only replaces the "the runtime must not depend on the server" clause of ADR-0005. The rest of ADR-0005's decisions (the `data-slidra-*` attributes, no SMIL or CSS animation, no `<foreignObject>`) are unaffected.

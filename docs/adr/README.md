@@ -1,38 +1,38 @@
-# 架構決策紀錄
+# Architecture Decision Records
 
-一份 ADR 記錄一個難以反轉、脫離脈絡會讓人困惑、且來自真實權衡的決定。**ADR 不會被刪除或改寫**——被推翻的決定留在原地，因為它記錄的是當初的判斷，那本身就是有價值的資訊。
+An ADR records one decision that is hard to reverse, confusing without context, and the product of a real trade-off. **ADRs are never deleted or rewritten** — a superseded decision stays in place, because the record of what was judged at the time is itself valuable information.
 
-## 檔名慣例
+## File naming convention
 
-| 檔名 | 意思 |
+| Filename | Meaning |
 | --- | --- |
-| `NNNN-slug.md` | 完全成立 |
-| `NNNN-slug.amended.md` | **有條款已失效**，檔案開頭的橫幅列出哪些死了、由哪一份取代、哪些仍然成立 |
+| `NNNN-slug.md` | Fully in force |
+| `NNNN-slug.amended.md` | **Some clauses no longer apply.** A banner at the top of the file lists what died, what replaced it, and what still stands |
 
-被修訂的 ADR 一律做兩件事：檔名加上 `.amended`，並在標題下方加一則橫幅。細節的修訂另外以引言註記留在原文對應的位置。
+An amended ADR always does two things: the filename gets `.amended` appended, and a banner goes under the title. Finer-grained amendments are additionally noted inline, right where the original text they touch appears.
 
-引用 ADR 一律用編號（`ADR-0002`），不要用檔名——檔名會因為修訂而變。
+Always cite an ADR by number (`ADR-0002`), never by filename — filenames change when a document is amended.
 
-## 目前的清單
+## Current list
 
-| | 決定 | 狀態 |
+| | Decision | Status |
 | --- | --- | --- |
-| 0001 | SVG 是本體 | 部分失效 → 0016 |
-| 0002 | CLI 是唯一的操作語彙 | 部分失效 → 0014；S7/#255 改為「同一支二進位」 |
-| 0003 | `.slidra` 容器 | 部分失效 → 0016；E2.T11 廢除 `transition` 欄位、`formatVersion` 2→3；S7/#255 `formatVersion` 3→4，格式細節移至 `docs/spec/slidra-format.md` |
-| 0004 | 簡報內容對 agent 唯讀 | 部分失效 → 0015、NOOP-238；第二層被 0019 推翻 |
-| 0005 | 步驟驅動的動畫 | 大幅修訂 → 0007、0009 |
-| 0006 | 以 ACP 接上外部 agent | 部分失效 → NOOP-230、NOOP-238 |
-| 0007 | 播放 `.slidra` 需要 Slidra | |
-| 0008 | 一張投影片自成一體 | |
-| 0009 | 動態是一份有序的效果清單 | |
-| 0010 | 投影片內容不可信 | 部分失效 → `#29` |
-| 0011 | 檢視模式跑一支命中回報 script | 部分失效 → NOOP-90/T2 |
-| 0012 | 每個元素包在一層 `<g transform>` 裡 | 追加例外 → E2.T12/#204（圖表容器） |
-| 0013 | 用範本與鎖定取代母片 | |
-| 0014 | 樣式命令用 SVG 屬性名，走白名單 | 追加一節 → E2.T14/#203（表格白名單）；撤銷 ADR-0002 一個條款 |
-| 0015 | agent 可以匯入資產 | 追加護欄例外 → E2.T14/#203（`--as csv` 資料資產） |
-| 0016 | 字型隨 `.slidra` 打包，單獨開啟的投影片降級成系統字型 | |
-| 0017 | 就地編輯的游標與選取：`textarea.selectionStart/End` 是唯一事實來源，索引空間與 SVG 字元索引零偏移 | |
-| 0018 | 新簡報零頁；計畫落地成簡報裡的 `plan/` 檔案，三個角色經擋住式閘門交接，驗證是 `validate` 命令 | |
-| 0019 | 命令閘門改成「簡報檔案只能走 CLI」，其餘 shell 命令放行 | 撤銷 ADR-0004 的第二層 |
+| 0001 | SVG is the artifact | Partially superseded → 0016 |
+| 0002 | CLI is the only vocabulary | Partially superseded → 0014; later revised to "a single binary" |
+| 0003 | The `.slidra` container | Partially superseded → 0016; the `transition` field was retired and `formatVersion` moved 2→3, then 3→4, with format details moved to `docs/spec/slidra-format.md` |
+| 0004 | Presentation content is read-only to agents | Partially superseded → 0015; its second layer was overturned by 0019 |
+| 0005 | Step-driven animation | Substantially revised → 0007, 0009 |
+| 0006 | Connecting external agents via ACP | Partially superseded |
+| 0007 | Playing a `.slidra` requires the app | |
+| 0008 | A slide is self-contained | |
+| 0009 | Motion is an ordered list of effects | |
+| 0010 | Slide content is untrusted | Partially superseded |
+| 0011 | View mode runs a hit-reporting script | Partially superseded |
+| 0012 | Every element is framed in a `<g transform>` | Extended with an exception (chart containers) |
+| 0013 | Templates and locking replace masters | |
+| 0014 | The style command uses SVG attribute names, gated by an allowlist | Extended with a section (table allowlist); revokes one clause of ADR-0002 |
+| 0015 | Agents may import assets | Extended with a guardrail exception (`--as csv` data assets) |
+| 0016 | Fonts are packaged with the `.slidra`; a standalone slide degrades to system fonts | |
+| 0017 | In-place editing caret and selection: `textarea.selectionStart/End` is the single source of truth, with zero offset against SVG character indices | |
+| 0018 | A new presentation starts empty; a plan is materialized as files inside the presentation, three roles hand off through a blocking gate, and validation is a CLI command | |
+| 0019 | The command gate now protects "presentation files must go through the CLI," everything else is allowed | Overturns the second layer of ADR-0004 |

@@ -1,21 +1,20 @@
-# 一張投影片自成一體
+# A slide is self-contained
 
-> 一張投影片自成一體是**決策**，不因規格化而改變；投影片 `<metadata>` 內 `slidra:*` 元素（`<slidra:effects>`／
-> `<slidra:notes>`／`<slidra:comments>`／`<slidra:transition>`）的完整屬性表、命名空間、與圖表／表格容器各自的例外
-> 結構，細節見 [`docs/spec/slidra-format.md`](../spec/slidra-format.md)。
+> A slide being self-contained is a **decision**, unaffected by formalizing the spec; the full attribute table, namespace, and container-specific exception structures for the `slidra:*` elements inside a slide's `<metadata>` (`<slidra:effects>`/`<slidra:notes>`/`<slidra:comments>`/`<slidra:transition>`) live in
+> [`docs/spec/slidra-format.md`](../spec/slidra-format.md).
 
-一張投影片需要的一切——圖形、元素識別碼、顯示名稱、效果清單——都寫在那張 SVG 裡。`project.json` 只保留跨投影片才有意義的東西：`formatVersion`、`name`、`canvas`、`slides` 順序陣列。
+Everything a single slide needs — graphics, element identifiers, display names, its list of effects — is written into that slide's own SVG. `project.json` retains only what only makes sense across slides: `formatVersion`, `name`, `canvas`, and the `slides` order array.
 
-驅動這個決定的是**對調兩頁**這個動作。若效果清單放在 `project.json`，或步驟編號跨投影片連號，調換順序就得同時改動第三個檔案、或重編一整段編號。投影片自成一體時，對調兩頁只是動 `slides` 陣列裡的兩個字串，投影片本身一個位元組都不必變。
+What drives this decision is the action of **swapping two pages**. If the effect list lived in `project.json`, or if step numbers ran continuously across slides, reordering pages would mean editing a second file, or renumbering an entire stretch of steps. With a slide that's self-contained, swapping two pages is just swapping two strings in the `slides` array — not a single byte of either slide itself needs to change.
 
-這是 ADR-0003 拒絕把共用樣式放進 `project.json` 的同一條理由（單獨開啟一張投影片會缺色，違反 ADR-0001）逐字延伸到動態資訊：單獨開啟一張投影片不該缺動畫。
+This is the same reasoning ADR-0003 used to reject putting shared styles in `project.json` (opening a single slide on its own would be missing colors, violating ADR-0001), extended verbatim to motion data: opening a single slide on its own shouldn't be missing its animation either.
 
 ## Consequences
 
-- 效果清單住在該張投影片 SVG 的 `<metadata>` 裡，不在 `project.json`。
-- 步驟編號的作用域是一頁之內。第 3 頁的第 1 步與第 5 頁的第 1 步互不相干。
-- 「整份簡報總共幾步」不存在於任何單一檔案，由 runtime 掃過所有投影片推導。進度指示是算出來的，不是存起來的——存起來就是快取，快取就會不同步。
-- 投影片可以被複製到另一份簡報而不失去動態。這不是這個決定追求的目標，是它的副產品。
-- 代價：跨投影片才成立的效果（例如貫穿全簡報的轉場序列）在這個結構下沒有位置。真的需要時，那會是一個新的決定，不是把清單搬去 `project.json`。
-- **[E2.T8]**：作者釘在簡報上的留言（對元素，或對整頁）也住在該張投影片 SVG 的 `<metadata>` 裡，`<slidra:comments>` 底下的 `<slidra:comment>` 清單，與 `<slidra:effects>` 同一個位置、同一條理由。複製一頁時留言隨之複製（`slide duplicate`），`target` 重新指向新元素 id；`element delete` 一併清掉指向被刪元素的留言。
-- **[E2.T11]**：頁面進出場動畫（Enter／Exit）同樣住在該張投影片 SVG 的 `<metadata>` 裡，`<slidra:transition>`，取代原本活在 `project.json`（`transition` 欄位，T3）的簡報層級單一轉場——那個欄位從沒被播放過，只是存著；現在每一頁各自的 Enter／Exit 效果與時長才是真正驅動播放模式換頁動畫的資料。對調兩頁、複製一頁時，進出場設定跟著投影片本身走，不需要另外搬動或重新映射一份跨檔案的對照表。
+- The effect list lives in that slide SVG's own `<metadata>`, not in `project.json`.
+- Step numbering is scoped to a single page. Page 3's step 1 has nothing to do with page 5's step 1.
+- "How many steps in the whole deck" doesn't exist in any single file — it's derived by the runtime scanning every slide. Progress indicators are computed, not stored — storing them would make them a cache, and caches drift out of sync.
+- A slide can be copied into another presentation without losing its motion. That isn't a goal of this decision, but a side effect of it.
+- Trade-off: an effect that only makes sense across slides (say, a transition sequence spanning the whole deck) has nowhere to live under this structure. If that's genuinely needed, that will be a new decision, not a reason to move the list back into `project.json`.
+- Author comments pinned to the presentation (on an element, or on a whole page) also live in that slide SVG's `<metadata>`, as a `<slidra:comment>` list under `<slidra:comments>` — same location, same reasoning as `<slidra:effects>`. Comments travel with a page when it's duplicated (`slide duplicate`), with `target` re-pointed at the new element ids; `element delete` cleans up any comments pointing at a deleted element.
+- Page enter/exit transitions likewise live in that slide SVG's `<metadata>`, as `<slidra:transition>`, replacing what used to be a single presentation-level transition living in `project.json` (the retired `transition` field) — a field that was never actually played, just stored. Now each page's own enter/exit effect and duration are what actually drive the transition animation between pages during playback. When pages are swapped or duplicated, the enter/exit settings travel with the slide itself, with no separate cross-file lookup table to move or remap.

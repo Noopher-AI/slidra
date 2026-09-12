@@ -1,48 +1,48 @@
-# agent 可以匯入資產，來源可為絕對路徑或 URL，但只收真實媒體
+# Agents may import assets from an absolute path or a URL, but only genuine media is accepted
 
-> **本 ADR 由 E2.T14（表格，#203）在「只收真實媒體」的護欄上鑿了第二個明確的洞。** 下方原有內容（含「只收真實媒體」這條核心規則本身）在不帶 `--as` 時完全不變——見文末「`--as csv`：資料資產（E2.T14）」。
+> **This ADR opens an explicit hole in the "only genuine media" guardrail, for tables.** Everything below (including the "only genuine media" rule itself) is completely unchanged when `--as` isn't passed — see "`--as csv`: data assets" at the end.
 
-> **本 ADR 在 ADR-0004 的隔離上開了一個明確的洞。** 那份 ADR 的整個立論是「不讓 agent 接觸真實檔案系統」，三層防護裡的第二層是「權限鉤子只放行 `slidra *`」。一條吃絕對路徑的 `slidra` 命令會被那個鉤子放行，所以它繞過的正是 ADR-0004 想擋的東西。ADR-0004 的其餘部分（虛擬檔案結構、`fs/write_text_file` 一律拒絕、不洩漏真實路徑、SVG 必須精簡）完全不受影響。
+> **This ADR opens an explicit hole in the isolation established by ADR-0004.** That ADR's entire argument was "don't let an agent touch the real filesystem," and the second of its three layers of protection was "the permission hook only allows `slidra *`." A `slidra` command that accepts an absolute path is exactly the thing that hook was meant to block, and this bypasses it. The rest of ADR-0004 (the virtual file structure, `fs/write_text_file` always refused, real paths never leaked, SVG must stay lean) is completely unaffected.
 
-使用者說「幫我在這頁放一張公司大樓的照片」，如果 agent 沒有任何方式把檔案弄進來，它只能回答「請你自己拖進來」。對一個主打人與 agent 共同編輯的工具，這個回答太弱。
+If a user says "put a photo of our office building on this page" and the agent has no way to bring in a file at all, the only answer it can give is "please drag it in yourself." For a tool built around people and agents editing together, that's too weak an answer.
 
-因此新增資產匯入命令，**來源可以是本機絕對路徑，也可以是 URL**，一律複製或下載進 `.slidra` 的 `assets/`——那是資產唯一的存放處，所以簡報離線也能播，不會有壞掉的外部連結。
+So an asset-import command is added, whose **source can be a local absolute path or a URL**, always copied or downloaded into the `.slidra`'s `assets/` — the only place assets live, so a presentation still plays offline with no broken external links.
 
-## 護欄：匯入時驗證真實媒體格式
+## Guardrail: validate genuine media on import
 
-讀檔案開頭的位元組確認它真的是圖片或影音，**不看副檔名**。不是支援的媒體格式就拋錯。
+The file's leading bytes are read to confirm it's actually an image or audio/video file — **the extension is never trusted**. Anything that isn't a supported media format is rejected.
 
-這關掉了最糟的那個情況：`asset import ~/.ssh/id_rsa` 會直接失敗，文字檔、金鑰、設定檔全部進不來。正常使用完全不受影響——要放的本來就是圖片影音。
+This shuts down the worst case: `asset import ~/.ssh/id_rsa` fails outright. Text files, keys, and config files can't get in this way. Normal usage is completely unaffected — what's being added was always going to be an image or a video anyway.
 
-這個檢查對人同樣有用：拖了一個不支援的格式進來，當場看到「這個格式不支援」，而不是投影片上出現一個破圖。寧可拋錯，不要 fallback。
+This check is useful for people too: dragging in an unsupported format gets an immediate "this format isn't supported," instead of a broken image appearing on the slide. Throw an error, never fall back to something else.
 
 ## Considered Options
 
-- **agent 不能帶新資產進來**，只能用 `assets/` 裡已有的，或自己畫向量圖形：ADR-0004 的隔離完好無缺，一個洞都不用開。代價是「幫我找張圖放上去」做不到。
-- **只能從一個約定的收件匣資料夾匯入**：agent 有能力、範圍受限，使用者放什麼進去就是授權了什麼。但使用者還是得自己搬檔案，跟直接拖進編輯器比只省了一步，卻多一個要解釋的概念。
+- **Agents can't bring in new assets at all**, limited to what's already in `assets/` or vector graphics it draws itself: ADR-0004's isolation stays completely intact, no hole needed. The cost is that "find me a photo and put it on the slide" simply can't be done.
+- **Import only from a designated inbox folder**: the agent gets a capability with a bounded scope, and whatever the user puts there is implicitly authorized. But the user still has to move the file themselves — compared to just dragging it into the editor, this saves one step at the cost of introducing a whole new concept to explain.
 
 ## Consequences
 
-- **這條命令會被權限鉤子放行**，因為它是 `slidra` 命令。格式驗證是這條路徑上唯一的守衛，它必須擋在寫入 `assets/` 之前。
-- **需要一份支援格式的清單**，且它與播放器認得的格式是同一份——播放器本來就得知道自己認得什麼。
-- **URL 匯入會讓 Slidra 對外發出網路請求**，來源由簡報內容或對話決定。ADR-0010 已認定投影片內容不可信，所以這條路徑不得用來讀取任何回應內容以外的東西，也不得跟隨非媒體的回應。
-- 檔名衝突要有明確規則，而不是靜默覆蓋既有資產。
-- 人這一邊的路徑不變：拖檔案進編輯器、從系統剪貼簿貼上圖片，走的是同一條匯入與驗證。
+- **This command passes the permission hook**, because it's a `slidra` command. Format validation is the only guard left on this path, and it must sit in front of any write into `assets/`.
+- **A list of supported formats is required**, and it needs to be the same list the player recognizes — the player already has to know what it can play.
+- **Importing from a URL means the app makes an outbound network request**, with the source determined by presentation content or the conversation. ADR-0010 already treats slide content as untrusted, so this path must never be used to read anything beyond the response's media content, and must not follow a non-media response.
+- Filename collisions need an explicit rule, rather than silently overwriting an existing asset.
+- The path for a person stays the same: drag a file into the editor, or paste an image from the system clipboard — both go through the same import and validation.
 
-## `--as csv`：資料資產（E2.T14）
+## `--as csv`: data assets
 
-表格的資料綁定（`table bind`）需要把一個 CSV 檔案帶進簡報，而 CSV 是文字檔——正是這份 ADR「只收真實媒體」要擋的東西。與其在既有的媒體匯入路徑上開一個隱性的洞，這裡是一個**顯式、需要主動宣告**的旁路：
+Table data binding (`table bind`) needs to bring a CSV file into the presentation, and CSV is a text file — exactly what "only genuine media" is meant to block. Rather than opening a quiet hole in the existing media-import path, this is an **explicit, opt-in** bypass:
 
 ```
 slidra asset import <presentation-id> ./sales.csv --as csv
 ```
 
-不帶 `--as` 時，`asset import` 的行為與這份 ADR 原本描述的**位元組級不變**——`resolveAssetImport` 完全不受影響，仍然「讀檔頭位元組確認是圖片/影音，不是就拋錯」。`--as csv` 是另一條完全獨立的驗證與寫入路徑（`resolveDataAssetImport`），三道護欄缺一不可：
+Without `--as`, `asset import`'s behavior is unchanged from what this ADR originally describes at the byte level — `resolveAssetImport` is completely unaffected, still "read the leading bytes to confirm it's image/audio/video, error if not." `--as csv` is an entirely separate validation-and-write path (`resolveDataAssetImport`), gated by three guardrails, all required:
 
-1. **來源檔名必須是 `.csv`**（大小寫不分），不看內容猜測。
-2. **內容必須是合法 UTF-8**，且不含 NUL 或除 `\t`/`\r`/`\n` 外的控制字元——CSV 仍然是文字，不是任意位元組。
-3. **內容必須解析成合法的表格 CSV**（RFC 4180、標頭非空且不重複、每列欄數一致），且標頭不得與 `{{ }}` 動態文字保留字（`slide_number`／`slide_total`／`presentation_name`）衝突。
+1. **The source filename must end in `.csv`** (case-insensitive) — content isn't sniffed to guess this.
+2. **Content must be valid UTF-8**, and must not contain a NUL byte or any control character other than `\t`/`\r`/`\n` — CSV is still text, not arbitrary bytes.
+3. **Content must parse as valid tabular CSV** (RFC 4180, headers non-empty and non-duplicated, consistent column count per row), and headers must not collide with the reserved dynamic-text placeholders (`slide_number`/`slide_total`/`presentation_name`).
 
-三道有任一項不過，**不寫入任何檔案**——與媒體匯入「寧可拋錯，不要 fallback」的姿態一致。寫入路徑固定在 `assets/data/`，與 `assets/` 的一般媒體分屬不同子目錄，衝突檔名規則各自獨立（`sales.csv` 衝突時是 `sales-1.csv`，不會跟 `assets/` 底下同名的媒體檔互相干擾）。
+If any of the three fails, **nothing is written** — consistent with the media-import posture of "throw an error, never fall back." The write path is fixed at `assets/data/`, in a separate subdirectory from general media in `assets/`, with its own independent filename-collision rule (`sales.csv` colliding becomes `sales-1.csv`, and never collides with a same-named media file elsewhere under `assets/`).
 
-`~/.ssh/id_rsa --as csv` 依然會在第 2 道（合法 UTF-8）或第 3 道（合法 CSV 結構）被擋下——這個洞只放行「看起來真的是一份資料表」的文字，不是放行任意文字檔。
+`~/.ssh/id_rsa --as csv` still gets blocked at guardrail 2 (valid UTF-8) or guardrail 3 (valid CSV structure) — this hole only lets through text that genuinely looks like tabular data, not arbitrary text files.

@@ -1,44 +1,44 @@
-# 樣式走一條通用命令，屬性名就是 SVG 屬性名，但走白名單
+# Styling uses one generic command, with SVG attribute names, gated by an allowlist
 
-> **本 ADR 由 E2.T14（表格，#203）追加一節，白名單本身不新增任何條目。** 見文末「表格與樣式白名單（E2.T14）」。
+> **This ADR has been extended with a section for tables; the allowlist itself gains no new entries.** See "Tables and the style allowlist" at the end.
 
-> **本 ADR 撤銷 ADR-0002 的一個條款。** 那份 ADR 寫著「命令必須是語意化的（`text set`、`element move`），不能是通用的低階屬性操作——否則 agent 得先精通 SVG 才能下命令，違背產品前提」。這裡明確放棄後半句的前提。ADR-0002 的其餘決定（CLI 是唯一的操作語彙、`serve` 是它的常駐模式、前端不得擁有 CLI 沒有的操作）完全不受影響，那才是它的核心。
+> **This ADR revokes one clause of ADR-0002.** That ADR wrote: "commands must be semantic (`text set`, `element move`), not generic low-level attribute operations — otherwise an agent would need to be fluent in SVG before it could issue a command, which defeats the product's premise." The second half of that premise is explicitly abandoned here. The rest of ADR-0002's decisions (the CLI is the only vocabulary, `serve` is its resident mode, the frontend must never have a capability the CLI lacks) are completely unaffected — that's still its core.
 
-樣式的項目非常多：填色、框線顏色與粗細、透明度、圓角、字型、字級、字重、文字顏色、對齊、行距。一個屬性一條命令的話，光樣式就佔掉一、二十條，整份命令集會被淹沒——而「命令集合本身就是 Slidra 的產品規格」這句話要讀得下去，清單就不能長到沒人看得完。
+There are a lot of style properties: fill, stroke color and width, opacity, corner radius, font, size, weight, text color, alignment, line height. One command per property would mean twenty-odd commands for styling alone, and the command set would drown — "the command set itself is the product spec" only holds up if the list stays short enough for someone to actually read.
 
-因此樣式走**一條通用命令**，屬性名**直接用 SVG 的名字**：
+So styling goes through **one generic command**, with attribute names taken **directly from SVG**:
 
 ```
 element style set el-box   fill "#c43e1c"
 element style set el-title font-size 40
 ```
 
-代價是誠實的：ADR-0002 的立論是「agent 不該需要先精通 SVG」，而這等於說「其實可以，反正一個 coding agent 認得 `fill` 和 `stroke`」。這個判斷改變了，記錄在此。
+The trade-off is stated honestly: ADR-0002's whole argument was "an agent shouldn't need to be fluent in SVG" — this amounts to saying "actually, it's fine, since a coding agent already knows what `fill` and `stroke` are." That judgment changed, and it's recorded here.
 
-## 屬性走白名單
+## Properties go through an allowlist
 
-可設的屬性明列成一張表，不在表上的一律拋錯。**幾何屬性（`transform`、`x`、`y`、`width`、`height`）與所有 `data-slidra-*` 明確排除**——它們各自有專屬的命令。
+Settable properties are enumerated in a table; anything not on it errors. **Geometric properties (`transform`, `x`, `y`, `width`, `height`) and every `data-slidra-*` attribute are explicitly excluded** — each has its own dedicated command.
 
-**白名單擋的不是攻擊者，是命令之間互相打架。** ADR-0010 已經認定投影片內容一律不可信、防線是 sandbox iframe，而且它明確拒絕了伺服器端消毒的路線；一個 `filter` 屬性能不能寫進去，不改變安全姿態。
+**The allowlist isn't there to stop an attacker — it's there to stop commands from fighting each other.** ADR-0010 already established that slide content is always untrusted, with the sandboxed iframe as the actual line of defense, and explicitly rejected server-side sanitization; whether a `filter` attribute can be set doesn't change the security posture at all.
 
-真正的理由是 ADR-0012：位置與旋轉只寫在容器的 `transform` 上。若樣式命令什麼屬性都能設，agent 可以繞過 `element move` 把座標寫死在圖元身上，畫面上看起來還是對的，直到有人拖動它或把它加進群組，位置突然跳掉——因為現在有兩個地方在講位置。同一類的還有 `width`／`height`（繞過縮放規則）與 `data-slidra-*`（繞過鎖定標記、繞過動態文字）。
+The real reason is ADR-0012: position and rotation are only ever written on the container's `transform`. If the style command could set any attribute at all, an agent could bypass `element move` and hard-code coordinates onto a primitive itself — the picture would look right until someone drags it or adds it to a group, at which point the position suddenly jumps, because now two places disagree about where it is. The same applies to `width`/`height` (bypassing the scaling rules) and `data-slidra-*` (bypassing lock markers and dynamic text).
 
-ADR-0002 有一句話正好在講這個：不變式應該是結構保證，不是人為紀律。白名單就是那個結構。
+ADR-0002 has a line that speaks to exactly this: invariants should be structural guarantees, not discipline. The allowlist is that structure.
 
 ## Considered Options
 
-- **一個屬性一條命令**（`element fill`、`text size`、`text align`⋯）：最符合原本的 ADR-0002，每條命令能驗證自己的值域，`--help` 就是完整的能力清單。代價是命令數量。
-- **通用命令，但屬性名用 Slidra 自己的領域詞**，配一條列舉命令（`color`、`border-width`、`font-size`⋯）：命令少，且「agent 不必精通 SVG」的前提保得住。代價是要維護一份 Slidra 屬性名與 SVG 屬性的對照表，每加一種樣式都要同時更新表與列舉命令的輸出。
+- **One command per property** (`element fill`, `text size`, `text align`…): closest to the original ADR-0002, each command can validate its own value range, and `--help` is a complete capability list. The cost is the sheer number of commands.
+- **One generic command, but with the product's own domain vocabulary for property names**, paired with an enumeration command (`color`, `border-width`, `font-size`…): fewer commands, and "an agent doesn't need to be fluent in SVG" stays intact. The cost is maintaining a mapping table between the product's property names and SVG attributes, updated in two places every time a new style is added.
 
 ## Consequences
 
-- **編輯規約要教 agent 這條命令的存在與白名單的邊界**，而不是靠它逐條讀 `--help` 發現能力。
-- **白名單就是樣式能力的規格**。新增一種樣式＝在表上加一列，這很輕，但也代表沒有人會被 `--help` 提醒有這回事。
-- 樣式面板顯示的東西與白名單一一對應。表上沒有的屬性，即使檔案裡有（來自匯入的 SVG），面板也不呈現。
-- 值域驗證仍然要做，只是驗證邏輯掛在白名單那張表上，不是掛在各自的命令上。
+- **The editing contract has to teach the agent that this command exists and where the allowlist's boundaries are**, rather than relying on it to discover capabilities by reading `--help` command by command.
+- **The allowlist is now the spec for styling capability.** Adding a new style means adding one row to the table — that's lightweight, but it also means nobody gets nudged by `--help` that it exists.
+- What the style panel displays matches the allowlist one-to-one. A property not on the table is never shown in the panel, even if it's present in the file (say, from an imported SVG).
+- Value-range validation still happens, just hung off the allowlist table rather than off individual commands.
 
-## 表格與樣式白名單（E2.T14）
+## Tables and the style allowlist
 
-`element style set` 對錶格容器一律拋錯（`元素 <id> 是表格，樣式請用 table 命令族調整`）——與 ADR-0012 對錶格的縮放/群組限制同理：表格的可設樣式只在「表格容器層級」（主題、表頭）與「儲存格層級」（`table cell style set` 的 align/fill/text-fill/font-weight）分開定義，兩者都由 `table` 命令族擁有，`element style set` 完全不碰。
+`element style set` always errors on a table container ("element <id> is a table; use the `table` command family to adjust its style") — for the same reason as ADR-0012's scaling/grouping restrictions on tables: a table's settable style is split between the container level (theme, header) and the cell level (`table cell style set`'s align/fill/text-fill/font-weight), both owned by the `table` command family; `element style set` never touches either.
 
-`STYLE_ATTRIBUTE_WHITELIST`（`packages/core/src/element-edit.ts`）與前端鏡像清單 `apps/web/src/style-attrs.ts` **都不新增任何條目**——白名單仍然只回答「一般元素的樣式能力清單」這個問題；表格的能力清單是 `table --help`，不寄生在這張表上。儲存格層級的 `data-slidra-` 前綴屬性一樣被拒絕（沿用既有的 `data-slidra-` 前綴禁令精神），但驗證邏輯獨立寫在 `table/edit.ts` 的 `table cell style set` 裡，不查這張共用白名單。
+`STYLE_ATTRIBUTE_WHITELIST` (in `packages/core/src/element-edit.ts`) and its frontend mirror `packages/web/src/style-attrs.ts` **gain no new entries** — the allowlist still only answers "what's the style capability of a general element"; a table's capability list is `table --help`, and doesn't piggyback on this table. Cell-level `data-slidra-`-prefixed attributes are rejected the same way (following the existing `data-slidra-` prefix ban), but the validation for that is written separately, in `table cell style set` inside `table/edit.ts`, and never consults this shared allowlist.

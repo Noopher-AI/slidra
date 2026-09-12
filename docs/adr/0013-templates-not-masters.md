@@ -1,39 +1,39 @@
-# 用範本與鎖定取代母片，範本是死的
+# Templates and locking replace masters; a template is dead once used
 
-PowerPoint 與 Keynote 用兩層階級解決「全簡報長得一致」：版面配置決定框擺哪，母片決定背景與配色，改母片全部投影片一起變。那個模型要求投影片**不擁有**自己的背景——它引用母片，顯示時才合成。這與 ADR-0001（SVG 是本體）、ADR-0003、ADR-0008（投影片自成一體）正面衝突：單獨打開一張投影片會缺背景缺色。
+PowerPoint and Keynote use a two-level hierarchy to keep a whole deck looking consistent: a layout decides where placeholders sit, and a master decides background and color scheme — change the master and every slide changes with it. That model requires that a slide **not own** its own background — it references the master, and the two are composited at display time. This directly conflicts with ADR-0001 (SVG is the artifact), ADR-0003, and ADR-0008 (a slide is self-contained): opening a single slide on its own would be missing its background and colors.
 
-Slidra 改用一層，叫**範本**。
+This project uses a single layer instead, called a **template**.
 
-範本就是一張 SVG，住在 `.slidra` 裡，一份簡報可以有好幾份（封面一份、內頁一份、章節頁一份）。新增投影片時挑一份，**整份複製貼上**成為新投影片——從那一刻起，這張投影片自己擁有一切，與範本再無關係。**範本是死的。**
+A template is just an SVG, living inside the `.slidra`; a presentation can have several (one for a cover, one for content pages, one for section dividers). Creating a new slide picks one and **copies it wholesale** to become the new slide — from that moment on, the slide owns everything itself and has no further relationship to the template. **A template is dead.**
 
-範本裡每個元素帶一個**鎖定**標記，隨複製一起帶到投影片上並持續生效。背景、色塊橫條、logo、頁尾、頁碼是鎖定的；標題與內文不是。鎖定的目的**不是同步，是保護版面骨架**不被人或 agent 不小心拖歪。
+Every element in a template carries a **lock** marker that travels with it into the copy and stays in effect. Backgrounds, color bars, logos, footers, and page numbers are locked; titles and body text are not. The point of locking **isn't synchronization — it's protecting the layout skeleton** from being accidentally dragged out of shape by a person or an agent.
 
-## 為什麼不做母片式的繼承
+## Why not inheritance, master-style
 
-母片模型真正難的不是合成，是**覆寫**：使用者手動把第 5 頁的底色改成純黑之後，改母片要不要蓋掉他？要回答它，就得逐屬性記錄「這是母片給的、還是使用者改的」，那是一整套繼承與覆寫機制，也是這個功能區裡最難測試、bug 最難重現的部分——而它做壞的症狀是「使用者的修改偶爾莫名其妙消失」，最傷信任的那一種。
+The genuinely hard part of a master model isn't compositing — it's **overrides**. If a user manually changes page 5's background to solid black, should updating the master overwrite that? Answering that requires tracking, attribute by attribute, "did this come from the master, or did the user change it" — a whole inheritance-and-override mechanism, and the hardest part of this feature area to test and the hardest bugs to reproduce — and when it goes wrong, the symptom is "the user's edit mysteriously disappeared," which is the most trust-damaging kind of bug there is.
 
-範本＋鎖定把這個問題**從根上消滅**：鎖定元素從來沒有任何人能修改，所以永遠不存在需要裁決的分歧。
+Templates plus locking eliminate this problem **at the root**: a locked element can never be modified by anyone, so there is never a conflict that needs adjudicating.
 
-而母片提供的價值，在 Slidra 裡大部分由 agent 承擔。PowerPoint 非得有母片不可，因為它的使用者只有滑鼠，改 30 頁底色是 30 次重複勞動；Slidra 的使用者有 agent，那是一句話、30 條命令、一格復原。**用一整套繼承機制去買 agent 已經免費給你的東西，是很差的交易。**
+And the value a master provides is, in this product, mostly carried by the agent instead. PowerPoint has to have masters because its users only have a mouse — changing the background on 30 pages by hand is 30 repetitions of the same work. This product's users have an agent — that's one sentence, thirty commands, one undo step. **Buying, with a whole inheritance mechanism, something the agent already gives you for free is a bad trade.**
 
-## 鎖定擋誰，擋到什麼程度
+## What locking blocks, and how far
 
-- **人**：編輯器裡完全碰不到鎖定元素——選不起來、拖不動、刪不掉。前端永遠不送出破鎖的旗標。
-- **agent**：一般命令碰到鎖定元素會被拒絕，錯誤訊息說明它是範本的固定元素並指引怎麼做；確定要改就加 `--force`。
+- **People**: locked elements are completely untouchable in the editor — can't be selected, dragged, or deleted. The frontend never sends a flag that would break the lock.
+- **Agents**: a normal command touching a locked element is refused, with an error explaining that it's a fixed element from the template and pointing to how to proceed; adding `--force` if the change is genuinely intended.
 
-這是 ADR-0004「拒絕並指引」那套做法的第三次應用。它讓「我正在改一個本來鎖住的東西」被明確表達，而不是含糊繞過。
+This is the third application of ADR-0004's "refuse, and point the way" pattern. It makes "I'm intentionally changing something that was locked" explicit, rather than something that happens ambiguously.
 
 ## Considered Options
 
-- **真正的母片，顯示時合成**：最像 PowerPoint、檔案最小。但單獨打開一張投影片缺背景，推翻 ADR-0001 這個專案的第一個決定。
-- **母片存在，改時烘焙進每一頁**：體驗等同 PowerPoint，檔案依然自足。代價是上面那套逐屬性的繼承與覆寫機制。
-- **碰過就脫離**（元素被動到就自動脫離範本）：規則一句話講得完，但顆粒度粗且是隱式的——使用者只是挪了兩公分，那個元素從此不再跟著範本走，而且沒有任何提示。
-- **母片模式＋半唯讀的預留框**（內容可改、外觀位置唯讀）：這是本決定的直接前身。它與最終方案的差別只在「範本是活的還是死的」——一旦範本是死的，預留框、烘焙、脫離、逃生門這一整串配套問題就全部不存在了。
+- **A real master, composited at display time**: closest to PowerPoint, smallest files. But opening a single slide on its own would be missing its background — overturning ADR-0001, this project's very first decision.
+- **A master exists, but changes are baked into every page**: same experience as PowerPoint, files stay self-contained. The cost is the attribute-by-attribute inheritance-and-override mechanism described above.
+- **Detach on touch** (an element that's been moved auto-detaches from the template): a one-sentence rule, but coarse-grained and implicit — the user just nudged something two centimeters, and from then on it no longer follows the template, with no indication that happened.
+- **Master mode plus semi-read-only placeholders** (content editable, appearance and position locked): this was the direct predecessor to the final decision. The only difference from the final approach is "is the template alive or dead" — once the template is dead, the whole tangle of placeholders, baking, detaching, and escape hatches disappears with it.
 
 ## Consequences
 
-- **改了範本，已經做好的投影片不會變。** 換 logo、改頁尾年份，是叫 agent 掃過每一頁用 `--force` 改，綁成一格復原。**不另設同步機制**——那個做法唯一的缺點（動作很多）正好是 agent 專門消滅的那種缺點。
-- **不提供換範本。** 新增投影片時選定就是選定，要換就叫 agent 搬內容。完整的換範本需要一整套「槽位」概念讓新舊範本對得上，那是另一個決定。
-- **範本本身用一般的編輯命令就能改**，因為它就是一張投影片。不必為範本發明第二套格式或第二套命令。
-- **鎖定是一個布林標記，不是一套機制**。實作只有兩處守衛：前端的互動層，與命令的入口。
-- 一張投影片上的鎖定元素可以被刪除（它是這一頁的東西），刪掉不影響範本，也不影響其他投影片。
+- **Changing a template doesn't change slides already made from it.** Swapping a logo or updating a footer year means asking the agent to sweep every page with `--force`, bundled as one undo step. **No sync mechanism is provided** — the one drawback of that approach (lots of repeated actions) is exactly the kind of drawback an agent is built to eliminate.
+- **No template-switching is provided.** Choosing a template when a slide is created is final; switching means asking the agent to move the content over. A full template-swap feature needs a "slot" concept to map old placeholders to new ones, which is a separate decision.
+- **A template can be edited with the ordinary editing commands**, because it's just a slide. No second format or second command set is needed for templates.
+- **Locking is a single boolean flag, not a mechanism.** The implementation only has two guard points: the frontend's interaction layer, and the command entry point.
+- A locked element on a slide can be deleted (it belongs to that page now) — deleting it doesn't affect the template, and doesn't affect any other slide.

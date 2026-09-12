@@ -1,37 +1,31 @@
-# 簡報內容對 agent 唯讀，透過虛擬檔案系統存取
+# Presentation content is read-only to agents, accessed through a virtual filesystem
 
-> **⚠️ 部分條款已失效。** 三層防護的第二層（「權限鉤子只放行 `slidra *`」）由 **ADR-0015** 開了一個明確的洞：
-> 資產匯入命令吃絕對路徑與 URL，而它是 `slidra` 命令，會被鉤子放行。該路徑上唯一的守衛是媒體格式驗證。
+> **⚠️ Partially superseded.** The second of the three layers of protection (the permission hook only allows `slidra *`) has an explicit hole opened in it by **ADR-0015**: the asset-import command accepts absolute paths and URLs, and since it's a `slidra` command it passes the hook. Media-format validation is the only guard left on that path.
 >
-> **仍然成立的**：虛擬檔案結構、`fs/write_text_file` 一律拒絕、不洩漏真實路徑、
-> 元素用不透明穩定識別碼定址、SVG 必須保持精簡（檔案大小＝每輪對話的 token 成本）。
+> **What still stands**: the virtual file structure, `fs/write_text_file` is always refused, real paths are never leaked, elements are addressed by opaque stable identifiers, and SVG must stay lean (file size is the token cost of every conversation turn).
 
-> **NOOP-238（GitHub #235）在第三層開了另一個明確的洞：agent session 的 cwd 不再是每次連線都重新產生的空白暫存目錄，而是套件內建、`slidra serve` 每次啟動都整個重鋪的產品工作目錄（`<SLIDRA_HOME>/agent`——與簡報自己的真實工作目錄 `work/<id>` 是兩個不同的東西，後者仍然完全不可讀）。`fs/read_text_file` 的讀取範圍相應放寬為「簡報虛擬路徑（相對路徑第一段是 `project.json`、`slides`、`assets` 或 `fonts` 的其中之一）＋這個工作目錄本身的真實檔案（唯讀）」。
+> A further hole was opened in the third layer: the agent session's working directory is no longer a blank scratch directory regenerated on every connection, but a product-owned working directory bundled with the app and re-laid-out on every `slidra serve` start (`<SLIDRA_HOME>/agent` — a different thing from the presentation's own real working directory `work/<id>`, which remains completely unreadable). The scope of `fs/read_text_file` widens accordingly to "presentation virtual paths (whose relative path's first segment is one of `project.json`, `slides`, `assets`, or `fonts`) plus this working directory's own real files (read-only)."
 >
-> 工作目錄的讀取重用 `readVirtualFile` 既有的結構性容納，**不做**這份 ADR 原本設想的「`realpath` 之後再檢查一次仍在目錄內」：`buildVirtualTree` 只收 `isDirectory()`/`isFile()` 的項目，一個指向目錄外的 symlink 從未被記進虛擬樹，因此結構上就查不到，不需要再疊一層 guard 式檢查。
+> Reading the working directory reuses the existing structural containment of `readVirtualFile`; it does **not** add the "re-check that the resolved `realpath` is still inside the directory" guard this ADR originally envisioned: `buildVirtualTree` only admits entries that satisfy `isDirectory()`/`isFile()`, so a symlink pointing outside the directory was never recorded in the virtual tree in the first place — it's structurally unreachable, and no extra guard-style check is needed.
 >
-> **仍然成立的**：`fs/write_text_file` 一律拒絕、不洩漏真實路徑、命令白名單不變、`work/<id>` 不可讀、元素用不透明穩定識別碼定址。
+> **What still stands**: `fs/write_text_file` is always refused, real paths are never leaked, the command allowlist is unchanged, `work/<id>` remains unreadable, and elements are addressed by opaque stable identifiers.
 
-> **ADR-0019 推翻了第二層。** 命令閘門不再是「只放行 `slidra *`」的白名單：現在只有指向
-> `<SLIDRA_HOME>`（`agent/` 子樹除外）或任何 `.slidra` 容器的命令會被擋下，其餘 shell 命令
-> 一律放行，`slidra` 命令本身也不再受那組字元文法約束。被擋下時 Slidra 會回一句「請改用
-> 哪個命令」的建議，並在 adapter 把拒絕變成中止時把回合接回來。理由與代價見 ADR-0019。
+> **ADR-0019 overturns the second layer.** The command gate is no longer an allowlist of "only `slidra *` passes." Now, only a command that names a path under `<SLIDRA_HOME>` (excluding the `agent/` subtree) or any `.slidra` container is blocked; every other shell command is allowed, and the `slidra` command itself is no longer constrained by that character grammar either. When a command is blocked, the app responds with a suggestion for what to use instead, and the adapter's cancellation of the turn is recovered. See ADR-0019 for the reasoning and the trade-offs.
 >
-> **仍然成立的**：`fs/write_text_file` 一律拒絕、不洩漏真實路徑、虛擬檔案結構、`work/<id>`
-> 不經由 CLI 不可讀、元素用不透明穩定識別碼定址、SVG 必須保持精簡。
+> **What still stands**: `fs/write_text_file` is always refused, real paths are never leaked, the virtual file structure, `work/<id>` remains unreadable outside the CLI, and elements are addressed by opaque stable identifiers.
 
-ADR-0002 要求所有修改都經由語意化命令。但只要 agent 看得到真實檔案路徑，它就會用 `cat`、`sed`、`grep`——讀寫是綁在一起的，紀律擋不住。
+ADR-0002 requires every change to go through a semantic command. But as soon as an agent can see real file paths, it will reach for `cat`, `sed`, `grep` — reading and writing are inseparable, and discipline can't stop that.
 
-因此 Slidra 不讓 agent 接觸真實檔案系統，改為透過 CLI 提供一個虛擬檔案結構：agent 看得到完整內容，但沒有任何寫入入口。
+So the app never exposes the real filesystem to an agent. Instead, the CLI provides a virtual file structure: the agent can see the full content, but has no write path at all.
 
-## 三層防護
+## Three layers of protection
 
-1. **ACP 檔案方法**：`fs/read_text_file` 回傳虛擬路徑下的內容；`fs/write_text_file` 一律拒絕，錯誤訊息直接指引改用語意化命令。
-2. **權限鉤子**：`session/request_permission` 只放行 `slidra *`，其他 shell 命令全擋。這順帶讓使用者不會被權限對話框打斷。
-3. **不洩漏真實路徑**：成功訊息不出現任何檔案系統路徑。錯誤訊息可以原樣回述呼叫者傳入的字串，但絕不解析成絕對路徑、不展開、不正規化。系統原生的檔案錯誤一律轉譯，不得直接冒出。工作目錄的真實位置永遠不出現在任何輸出。真實路徑一旦出現一次，agent 就會去試。
+1. **ACP file methods**: `fs/read_text_file` returns content under a virtual path; `fs/write_text_file` is always refused, with an error message that points directly to the semantic command to use instead.
+2. **Permission hook**: `session/request_permission` only allows `slidra *`; every other shell command is blocked. As a side effect, this also keeps the user from being interrupted by permission dialogs.
+3. **No real-path leakage**: success messages never contain a filesystem path. Error messages may echo back the caller's own input string verbatim, but must never resolve it to an absolute path, expand it, or normalize it. Native filesystem errors are always translated, never surfaced directly. The real location of the working directory never appears in any output. Once a real path is exposed even once, an agent will try it.
 
 ## Consequences
 
-- 必須把被擋掉的讀取能力補回來：`ls`、`tree`、`cat`、`cat --lines`、`grep`。輸出格式刻意模仿對應的 Unix 工具，讓 agent 不需要學。`grep` 是必要的，否則 agent 只能逐頁 `cat`，token 成本無法接受。
-- 擋的是 agent，不是人。`slidra extract` 讓使用者隨時取回自己的檔案，`.slidra` 是容器而非牢籠。
-- 元素用不透明穩定識別碼定址，顯示名稱另存。因此 agent 動手前必須先讀 SVG 建立對照表——SVG 檔案大小直接等於每輪對話的 token 成本，所以產生的 SVG 必須保持精簡：不內嵌 base64、不產生冗長 path、重複樣式用 class 而非 inline style。
+- The read capability that gets blocked has to be restored some other way: `ls`, `tree`, `cat`, `cat --lines`, `grep`. The output format deliberately mirrors the corresponding Unix tool so an agent doesn't need to learn anything new. `grep` is essential — without it an agent would have to `cat` page by page, and the token cost would be unacceptable.
+- What's blocked is the agent, not the person. `slidra extract` lets a user retrieve their own files at any time — `.slidra` is a container, not a cage.
+- Elements are addressed by opaque stable identifiers, with display names stored separately. So before an agent can act, it must read the SVG to build a lookup table — SVG file size directly becomes the token cost of every conversation turn, which is why the SVG produced must stay lean: no embedded base64, no bloated path data, shared styles via classes rather than inline styles.

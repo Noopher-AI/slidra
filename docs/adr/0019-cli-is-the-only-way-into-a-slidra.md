@@ -1,69 +1,87 @@
-# 命令閘門改成「簡報檔案只能走 CLI」，其餘 shell 命令放行
+# The command gate now protects "presentation files must go through the CLI," everything else is allowed
 
-ADR-0004 的第二層是一份白名單：`session/request_permission` 只放行 `slidra` 開頭、
-且參數符合一組嚴格字元文法的命令，其餘一律擋下。這份 ADR 把那條線重畫。
+ADR-0004's second layer was an allowlist: `session/request_permission` only allowed commands
+starting with `slidra` whose arguments matched a strict character grammar, blocking everything
+else. This ADR redraws that line.
 
-## 為什麼改
+## Why change it
 
-白名單本身沒有壞掉——它擋得住的東西照樣擋得住。壞掉的是它周圍的三件事：
+The allowlist itself wasn't broken — it still blocks what it was meant to block. What broke was
+three things around it:
 
-1. **它擋掉的比它需要擋的多，而 agent 不知道界線在哪。** `reference/modes.md` 這種
-   工作目錄裡的檔案，走 ACP 的讀檔方法是允許的（NOOP-238 把工作目錄納入可讀範圍），
-   走 `cat` 則被擋。同一份檔案、同樣是唯讀、兩條路兩種結果。
-2. **ADR-0004 的第三層已經漏了。** 原本的設計是「不洩漏真實路徑，agent 就不會想去
-   `cat`」；但 NOOP-238 之後 ACP session 的 cwd 就是真實的工作目錄，絕對路徑等於白送。
-   「真實路徑一旦出現一次，agent 就會去試」現在是每一輪都成立的常態。
-3. **拒絕的成本被 adapter 放大成整輪陣亡。** `claude-code-acp` 把任何 deny 寫死成
-   `interrupt: true`，`codex-acp` 的 `cancel` 亦然。白名單假設「被拒的只是一條命令」，
-   實際上被拒的是整個回合，而作者只看到一句 `Internal error`。
+1. **It blocks more than it needs to, and the agent doesn't know where the boundary is.** A file
+   like `reference/modes.md`, sitting in the working directory, is readable via the ACP file
+   methods (the working directory was brought into readable scope in an earlier revision), but
+   blocked via `cat`. Same file, same read-only intent, two different outcomes depending on the path taken.
+2. **ADR-0004's third layer has already sprung a leak.** The original design was "don't leak real
+   paths, and the agent won't be tempted to `cat` them"; but once the ACP session's working
+   directory became the real working directory, the absolute path is handed over for free. "Once a
+   real path is exposed even once, an agent will try it" is now true on every single turn.
+3. **The cost of a refusal gets amplified by the adapter into losing the entire turn.** One adapter
+   hard-codes any denial into `interrupt: true`; another's cancellation behaves the same way. The
+   allowlist assumed "only one command gets rejected," but in practice what actually gets rejected
+   is the whole turn, and the author just sees a generic internal error.
 
-另一件實測發現的事：在作者自己的 Claude Code 設定下（`defaultMode: auto`），部分唯讀
-的 Bash 命令根本不會來問 `session/request_permission`，直接就執行了。白名單對那一類
-命令從來沒有生效過——它的涵蓋範圍本來就取決於作者這台機器上的設定。
+One more thing testing turned up: under the author's own Claude Code settings (an automatic
+default mode), some read-only Bash commands never even reach `session/request_permission` — they
+just run. The allowlist never took effect for that class of command at all; its actual coverage
+always depended on the settings on the machine it happened to run on.
 
-## 決定
+## Decision
 
-**一份簡報的內容只能透過 `slidra` 命令改動；其餘 shell 命令不受限制。**
+**A presentation's content can only be changed through `slidra` commands; every other shell
+command is unrestricted.**
 
-具體地說，`session/request_permission` 拒絕一條命令，當且僅當它指名了下列路徑之一：
+Concretely: `session/request_permission` refuses a command if and only if it names one of these
+paths:
 
-- `<SLIDRA_HOME>` 底下的任何東西——所有簡報的工作目錄、復原歷史、`projects.json`、
-  存檔狀態——**除了** `<SLIDRA_HOME>/agent/<id>`，那是 agent 自己的工作目錄，必須保持
-  可用；
-- 任何 `.slidra` 容器檔，不論它在磁碟上的哪裡。
+- anything under `<SLIDRA_HOME>` — every presentation's working directory, undo history,
+  `projects.json`, save state — **except** `<SLIDRA_HOME>/agent/<id>`, which is the agent's own
+  working directory and must stay usable;
+- any `.slidra` container file, wherever it lives on disk.
 
-其他一切放行：管線、重導向、串接、別的程式、雙引號、反斜線。`slidra` 命令自己也不再
-受那組字元文法約束——`slidra text set … "第三季 財報"` 現在可以直接寫。
+Everything else is allowed: pipes, redirects, chaining, other programs, double quotes, backslashes.
+The `slidra` command itself is no longer constrained by that character grammar either —
+`slidra text set … "Q3 Earnings"` can now be written directly.
 
-三件配套：
+Three things go with this:
 
-- **被擋下時回一句建議，不是一個錯誤。** 拒絕傳到 agent 那裡是「使用者拒絕了」，它會
-  當成人類說不要而停手。Slidra 改成告訴它該用哪個命令（`command-hints.ts`），並在
-  回合被 adapter 中斷時把回合接回來、把建議當成下一個 prompt 送出去，最多兩次。
-- **凍結／復原群組的判斷與文法脫鉤。** 開啟 history group 的條件改成「第一個字是
-  `slidra`」，不再是「通過那組字元文法」，否則 `slidra undo X | head` 這種寫法會
-  悄悄不進復原群組。
-- **規約同步改寫。** 編輯規約與 `AGENTS.md` 原本教的是「只能跑 `slidra`、不能接重導向、
-  參數只有兩種寫法」，不改的話 agent 會繼續自我審查，這次放寬等於沒放。
+- **A refusal now comes back as a suggestion, not an error.** A refusal reaching the agent as "the
+  user declined" makes it stop, treating it like a person saying no. This is changed to tell it
+  which command to use instead (via a command-hints helper), and when the adapter turns that
+  refusal into a canceled turn, the suggestion is fed back as the next prompt, up to two retries.
+- **The freeze/undo grouping check is decoupled from the grammar.** The condition for opening an
+  undo-history group is now "the first word is `slidra`," rather than "passes that character
+  grammar" — otherwise something like `slidra undo X | head` would quietly fail to enter the undo group.
+- **The editing contract is rewritten to match.** The contract and the agent-facing guide used to
+  teach "only run `slidra`, never redirect, arguments only take two forms" — if that isn't
+  updated, the agent will keep self-censoring, and this relaxation would have no effect.
 
-## 仍然成立的（ADR-0004）
+## What still stands (from ADR-0004)
 
-`fs/write_text_file` 一律拒絕；輸出不洩漏真實路徑；簡報內容以虛擬路徑表示；元素用不透明
-穩定識別碼定址；`work/<id>` 不經由 CLI 不可讀。
+`fs/write_text_file` is always refused; output never leaks real paths; presentation content is
+represented by virtual paths; elements are addressed by opaque stable identifiers; `work/<id>` is
+unreadable outside the CLI.
 
-## 代價
+## Cost
 
-這是一個把安全邊界換掉、而不是加強的決定，代價要寫清楚：
+This is a decision that replaces a security boundary rather than strengthening it, and the cost
+needs to be stated plainly:
 
-- **爆炸半徑從一份簡報變成整台機器。** Claude Code 的 Bash 以作者本人的權限執行，
-  白名單原本是那條路上唯一的牆。Codex 那邊還有它自己的唯讀沙箱，但那是第三方的預設值，
-  不是 Slidra 控制的東西。
-- **prompt injection 的鏈是通的。** 網頁搜尋結果、匯入的 URL、作者貼進來的外部文章都會
-  進 agent 的 context；白名單在時，藏在裡面的一句指示最多變成一條被擋下的命令。
-- **路徑檢查不是圍籬，是路標。** `protected-paths.ts` 用字串層的路徑比對，變數、glob、
-  `find`、從 stdin 取路徑的程式都繞得過去。它擋的是「agent 順手拿 `sed` 改投影片」這個
-  真的會發生的行為，不是一個下定決心要繞過它的對手。真正不依賴猜測的保護仍然是：
-  `.slidra` 由 CLI 自己的視角重新打包、`validate` 對內容有最後裁量、復原快照只認命令。
+- **The blast radius grows from one presentation to the whole machine.** Claude Code's Bash runs
+  with the author's own permissions; the allowlist used to be the only wall on that path. Codex
+  still has its own read-only sandbox, but that's a third party's default, not something this
+  project controls.
+- **The prompt-injection chain is now open.** Web search results, imported URLs, and external
+  articles the author pastes in all end up in the agent's context; with the allowlist in place, an
+  instruction hidden inside one of those was, at worst, a blocked command.
+- **The path check is a signpost, not a fence.** `protected-paths.ts` does string-level path
+  comparison, which variables, globs, `find`, or a program that reads a path from stdin can all get
+  around. What it blocks is the realistic case of "an agent reaches for `sed` to edit a slide out of
+  convenience," not a determined adversary set on bypassing it. The protections that don't depend on
+  guessing are elsewhere: `.slidra` is always repacked from the CLI's own view of the world,
+  `validate` has final say over content, and undo snapshots only recognize commands.
 
-想同時要「命令自由」與「爆炸半徑受限」，唯一的做法是把執行權拿回來（ACP 的 terminal
-capability）並把子行程關進 OS 層的沙箱。那是這份決定的後續，不是它的替代品。
+Getting both "commands are unrestricted" and "the blast radius stays bounded" at the same time
+requires taking execution back under control (an ACP terminal capability) and putting subprocesses
+inside an OS-level sandbox. That's a follow-up to this decision, not a substitute for it.

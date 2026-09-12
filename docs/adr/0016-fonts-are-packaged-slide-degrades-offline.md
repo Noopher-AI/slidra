@@ -1,53 +1,52 @@
-# 字型隨 `.slidra` 打包在 `fonts/`；單獨開啟的投影片，字型只在 Slidra 裡才保證正確
+# Fonts are packaged with the `.slidra` in `fonts/`; a standalone slide only degrades to system fonts when opened elsewhere
 
-> **本 ADR 在兩份既有 ADR 上各開了一個明確的洞。** ADR-0003 的容器結構原本只有三個目錄（`project.json` + `slides/` + `assets/`），本 ADR 加上第四個：`fonts/`。ADR-0001 原本要求任何工具開啟單張投影片時「靜態畫面必須正常」，本 ADR 在**字型**這一項上明確承認例外：單獨開啟的投影片會降級成系統字型。兩份 ADR 其餘部分不受影響。
+> **This ADR opens an explicit hole in two existing ADRs.** ADR-0003's container structure originally had three directories (`project.json` + `slides/` + `assets/`); this ADR adds a fourth: `fonts/`. ADR-0001 originally required "a static view must render correctly" whenever a single slide is opened in any tool; this ADR carves out an explicit exception for **fonts**: a slide opened on its own degrades to a system font. The rest of both ADRs is unaffected.
 >
-> 字型隨 `.slidra` 打包、單獨開啟時降級成系統字型的**決策**不變；`project.json.fonts` 的 `FontEntry` 完整欄位表，以及
-> `formatVersion` 4 起「`fonts` 必填（`[]` 合法）」的精確規則與 3→4 遷移規則，細節見
-> [`docs/spec/slidra-format.md`](../spec/slidra-format.md)。
+> The **decision** that fonts are packaged with the `.slidra`, and degrade to system fonts when opened standalone, is unchanged; the complete `FontEntry` field table for `project.json.fonts`, and the precise rule that `fonts` becomes required (`[]` is valid) starting at `formatVersion` 4, along with the 3→4 migration rules, are detailed in
+> [`docs/spec/slidra-format.md`](../spec/slidra-format.md).
 
-CJK 簡報需要一顆字型才能量測與畫出穩定、跨環境一致的文字（#71）：Node 端在沒有瀏覽器的情況下算版面要用它，瀏覽器渲染也要用同一顆，兩邊量出的寬度必須一致，否則排版在編輯與播放之間會跳動。這顆字型不能依賴使用者電腦上「剛好裝了 Noto Sans TC」——所以它必須跟著 `.slidra`走。
+A CJK presentation needs a font to measure and render stable, cross-environment-consistent text: the Node side needs it to compute layout without a browser, and the browser needs to render with the exact same font — the widths measured on both sides must agree, or layout will jump between editing and playback. This font can't depend on the user's machine happening to have the right CJK font already installed — so it has to travel with the `.slidra`.
 
-## 決定一：字型是容器的內容之一，登記在 `project.json.fonts`
+## Decision one: fonts are part of the container's content, registered in `project.json.fonts`
 
-`.slidra` 內部新增 `fonts/` 目錄存放字型檔本體（sfnt／`.ttf`）與授權全文。`project.json` 新增 optional 欄位 `fonts: FontEntry[]`：
+The `.slidra` gets a new `fonts/` directory holding the font file itself (an sfnt/`.ttf`) and the full license text. `project.json` gets a new optional field, `fonts: FontEntry[]`:
 
 ```ts
 interface FontEntry {
-  /** 容器內的相對路徑，例如 "fonts/NotoSansTC-Presentation.ttf"。 */
+  /** Path relative to the container root, e.g. "fonts/NotoSansTC-Presentation.ttf". */
   file: string;
-  /** SVG font-family 屬性引用的值，同時是這份簡報裡字型的唯一鍵。 */
+  /** The value referenced by the SVG font-family attribute; also this font's unique key within the presentation. */
   family: string;
-  /** 人類可讀的授權名稱，例如 "SIL Open Font License 1.1"。 */
+  /** Human-readable license name, e.g. "SIL Open Font License 1.1". */
   license: string;
-  /** 授權全文在容器內的相對路徑。 */
+  /** Path to the full license text, relative to the container root. */
   licenseFile: string;
-  /** 字型取得來源。 */
+  /** Where the font came from. */
   source: string;
 }
 ```
 
-**路徑規則**：`file` 與 `licenseFile` 必須是容器內的相對路徑，不得以 `/` 開頭、不得含 `..` 路徑片段（與 ADR-0004 對真實路徑的防範同一個理由——容器裡不該有能跳出容器根目錄的路徑）。字型檔實務上放在 `fonts/` 之下，但欄位本身不強制目錄名稱，只驗證路徑合法。
+**Path rules**: `file` and `licenseFile` must be paths relative to the container root, must not start with `/`, and must not contain a `..` path segment (the same reasoning as ADR-0004's guard against real paths — a container should never contain a path that can escape its own root). In practice, font files live under `fonts/`, but the field itself doesn't enforce a directory name, only that the path is well-formed.
 
-**去重策略**：`family` 是這份簡報裡字型的唯一鍵——`fonts` 陣列裡不得出現重複的 `family`。同一顆字型被多張投影片引用時，共用同一筆 `FontEntry`（同一個 `file`），不重複打包字型檔本身；SVG 只存 `font-family` 這個字串引用，不存字型資料。沒有 `fonts` 欄位的簡報（`#71` 之前建立的所有 `.slidra`）仍然結構合法——這是 optional 欄位存在的原因，呼應 ADR-0003「forward-compatibility」的既有慣例。
+**Deduplication**: `family` is the unique key for a font within a presentation — the `fonts` array must not contain duplicate `family` values. When multiple slides reference the same font, they share a single `FontEntry` (and the same `file`), so the font file itself is never packaged more than once; the SVG only ever stores the `font-family` string reference, never the font data. A presentation created before this ADR, with no `fonts` field at all, is still structurally valid — that's exactly why the field is optional, following ADR-0003's existing forward-compatibility convention.
 
-## 決定二：單張 SVG 離線開啟時，字型降級成系統字型；只有 Slidra wrapper 保證正確
+## Decision two: a standalone SVG opened offline degrades to a system font; only the app's own wrapper guarantees the correct font
 
-**選擇**：`@font-face` 只在 Slidra 的三個 wrapper 文件（`wrapSlideDocument`／`wrapSelectionDocument`／`wrapPlayDocument`）裡透過 `/api/raw/fonts/...` 注入。單張 SVG 被外部工具（瀏覽器直接開檔、Illustrator、Figma）開啟時，找不到 `@font-face` 來源，`font-family` 依 CSS 字型堆疊規則降級成該環境的系統字型——畫面不會壞，但不保證與 Slidra 內看到的逐像素一致。
+**Choice**: `@font-face` is only injected inside the app's three wrapper documents (`wrapSlideDocument`/`wrapSelectionDocument`/`wrapPlayDocument`), via `/api/raw/fonts/...`. When a single SVG is opened by an external tool (a browser opening the file directly, Illustrator, Figma), there's no `@font-face` source to be found, and `font-family` falls back to that environment's system font per the CSS font-stack rules — the view won't break, but it isn't guaranteed to be pixel-identical to what's seen inside the app.
 
-**放棄的選項：把字型 base64 內嵌進每張 SVG 的 `@font-face`。**
+**Option rejected: base64-embed the font inside every SVG's own `@font-face`.**
 
-放棄理由：
+Reasons for rejecting it:
 
-- **檔案大小不可行。** 目前這顆簡報用 CJK 子集字型本體約 5.6MB（sfnt），base64 編碼後再漲約三分之一。一份 N 頁簡報若每張 SVG 各自內嵌一份，字型的儲存成本是 N 倍——十頁簡報就是五十幾 MB 字型資料，且逐頁重複。這對「簡報要能複製、寄送」的 ADR-0002 前提（`.slidra` 是一個檔案）是嚴重的體積負擔。
-- **與既有原則衝突。** ADR-0015 已經為 `assets/` 底下的圖片影音立下規則：「SVG 必須保持精簡：不內嵌 base64」，理由是 SVG 檔案大小直接等於 agent 每輪對話的 token 成本。字型 base64 是同一種傷害，且量級更大（字型檔比多數素材圖片大得多）。
-- **不會讓單張 SVG 真正自足。** 即使 base64 內嵌，被開啟的環境仍需支援 `@font-face` + `data:` URL 的 sfnt 解碼——多數情況下能用，但這不是「本體不需要任何外部條件」的實質差異，只是把外部條件從「一個 HTTP route」換成「瀏覽器的字型解碼器」，換不到 ADR-0001 真正想要的東西，卻付出上面兩條的代價。
+- **File size isn't viable.** The CJK subset font currently in use is roughly 5.6MB (sfnt); base64 encoding adds roughly another third on top of that. If every SVG in an N-page deck embedded its own copy, the storage cost of the font scales N times over — a ten-page deck would mean fifty-plus MB of font data, repeated page after page. That's a serious size burden against ADR-0002's premise that a `.slidra` is one file.
+- **It conflicts with an existing principle.** ADR-0015 already established a rule for media under `assets/`: "SVG must stay lean: no embedded base64," because SVG file size directly equals an agent's token cost per conversation turn. Base64-embedding a font is the same kind of harm, at a much larger scale (font files are far bigger than most media assets).
+- **It wouldn't actually make a single SVG self-contained anyway.** Even base64-embedded, the environment opening it still needs to support `@font-face` plus `data:` URL sfnt decoding — this usually works, but it isn't a meaningful difference from "the artifact needs nothing external." It just swaps one external dependency (an HTTP route) for another (the browser's font decoder), buying none of what ADR-0001 actually wants while paying both of the costs above.
 
-**這不是動畫或效果清單那種「單張投影片自成一體」的例外（ADR-0008 處理的是那個問題，不受本 ADR 影響）**——效果清單一定得放在該投影片的 SVG 裡才能對調頁面不動到別的檔案；字型不同，字型是全域共用資源，重複才是問題，不重複才是本 ADR 的目的。
+**This isn't the same kind of exception as "a slide is self-contained" for animation or effect lists (that's what ADR-0008 addresses, and it's unaffected by this ADR)** — an effect list has to live inside that slide's own SVG, or swapping page order would touch other files. Fonts are different: a font is a shared global resource, where duplication is the problem, and avoiding duplication is exactly what this ADR is for.
 
 ## Consequences
 
-- `.slidra` 容器新增 `fonts/` 目錄；`project.json` 新增 optional `fonts` 欄位，形狀見上。
-- SVG 只透過 `font-family` 字串引用字型，不內嵌字型資料。
-- Node 端文字量測（`measurePresentationText` 一類的 API）必須能從 `project.json.fonts` 找到 `family` 對應的字型檔並解析，找不到時明確拋錯（不得 fallback 成猜測寬度）——這條沿用專案「不做 fallback」的一貫原則，不是本 ADR 新增的規則，但值得在此點名，因為量測結果一旦是猜的，排版計算全部不可信。
-- 驗收標準：Slidra 裡（`serve`／播放／編輯）看到的字型必須是簡報實際指定的那顆；單獨開啟一張投影片 SVG 時允許系統字型降級，但畫面本身仍必須合法可讀（不得空白、不得報錯）——這是 ADR-0001 尚未失效的那半句「靜態畫面必須正常」在字型議題上的具體標準。
+- The `.slidra` container gets a new `fonts/` directory; `project.json` gets a new optional `fonts` field, shaped as above.
+- SVG only ever references a font through the `font-family` string — font data is never embedded.
+- Node-side text measurement (APIs like `measurePresentationText`) must be able to look up a `family` in `project.json.fonts`, locate and parse the corresponding font file, and error explicitly if it can't be found (never fall back to a guessed width) — this follows the project's existing "no fallbacks" principle rather than introducing a new one, but it's worth calling out here, since a guessed measurement would make every downstream layout calculation untrustworthy.
+- Acceptance criterion: the font seen inside the app (`serve`/playback/editing) must be the font the presentation actually specifies; opening a single slide SVG on its own is allowed to fall back to a system font, but the view itself must still be valid and legible (never blank, never erroring) — this is the concrete standard for the still-standing half of ADR-0001's "a static view must render correctly," as it applies to fonts.

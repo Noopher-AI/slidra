@@ -1,28 +1,22 @@
-# CLI 是唯一的操作語彙，`slidra serve` 是它的常駐模式
+# The CLI is the only vocabulary; `slidra serve` is its resident mode
 
-> **⚠️ 部分條款已失效。** 「命令必須是語意化的，不能是通用的低階屬性操作」這一條由 **ADR-0014** 撤銷：
-> 樣式改走一條通用的 `element style set`，屬性名直接用 SVG 屬性名，邊界由白名單守。
-> 連帶放棄的是「agent 不必精通 SVG」這個前提。
+> **⚠️ Partially superseded.** The clause "commands must be semantic, not generic low-level attribute operations" is revoked by **ADR-0014**: styling now goes through a single generic `element style set` command whose attribute names are SVG attribute names directly, guarded by an allowlist. What goes with it is the premise that "agents shouldn't need to be fluent in SVG."
 >
-> **仍然成立的**：CLI 是唯一的操作語彙、`slidra serve` 是它的常駐模式、前端不得擁有 CLI 沒有的操作、
-> 一次操作＝一條命令＝一步 undo、不變式要靠結構而非紀律。那才是本 ADR 的核心。
+> **What still stands**: the CLI is the only vocabulary, `slidra serve` is its resident mode, the frontend must never have a capability the CLI lacks, one operation equals one command equals one undo step, and invariants must be enforced structurally rather than by discipline. That is the core of this ADR.
 >
-> **第二則修訂（S7/#255）**：「Considered Options」列出的否決理由——server fork subprocess 呼叫 CLI，每條命令要付
-> 100–300ms 的 process 啟動成本——**不再成立**。取代它的條款是「**同一支二進位**」：`slidra` 是唯一入口與唯一
-> 寫入者；`serve`／`export` 由它 `exec` Node；Node 端需要再 spawn 命令時，一律用同一支二進位（見
-> `SLIDRA_BIN`），不從 PATH 找。命令集的規範性定義見 `docs/spec/cli.md`。
+> **Second amendment**: the reasons for rejecting "server forks a subprocess to call the CLI" in the Considered Options section below — a 100–300ms process-startup cost per command — **no longer hold**. They are replaced by "**a single binary**": `slidra` is the sole entry point and sole writer; `serve`/`export` `exec` into Node from it; when the Node side needs to spawn further commands, it always uses that same binary (see `SLIDRA_BIN`) rather than resolving one from `PATH`. The normative definition of the command set now lives in `docs/spec/cli.md`.
 
-Slidra 要同時服務兩種編輯者：透過視覺編輯器操作的人，與透過 shell 操作的 agent。若兩者各有一套介面，能力會漂移，人與 agent 就無法真正在同一份簡報上協作。
+The app has to serve two kinds of editors at once: a person working through a visual editor, and an agent working through a shell. If each had its own interface, their capabilities would drift apart, and people and agents could never truly collaborate on the same presentation.
 
-因此所有能對簡報做的操作都由 CLI 命令定義，前端不得擁有 CLI 沒有的操作。Web 編輯器不是獨立的後端，而是 CLI 的一個子命令 `slidra serve`——它與 one-shot 命令共用同一份 dispatch，所以「前端只能做 CLI 做得到的事」是結構保證，不是人為紀律。
+So every operation a presentation supports is defined by a CLI command, and the frontend must never have a capability the CLI lacks. The web editor isn't an independent backend — it's a subcommand, `slidra serve`, sharing the same dispatch as the one-shot commands. That makes "the frontend can only do what the CLI can do" a structural guarantee, not a matter of discipline.
 
 ## Considered Options
 
-- **Server fork subprocess 呼叫 CLI**：最誠實，但每條命令要付 100–300ms 的 process 啟動成本，拖曳編輯不可用。
-- **Server in-process 呼叫共用核心，靠測試保證對應**：夠快，但把不變式從結構降級成紀律，會漂移。
+- **Server forks a subprocess to call the CLI**: the most honest option, but paying a 100–300ms process-startup cost per command makes drag-to-edit unusable.
+- **Server calls a shared core in-process, with tests enforcing correspondence**: fast enough, but it downgrades the invariant from structural to disciplinary, and it will drift.
 
 ## Consequences
 
-- 前端的拖曳是本地即時預覽，放開滑鼠才送出一條命令。一次操作＝一條命令＝一步 undo。
-- 命令集合本身就是 Slidra 的產品規格，新增命令等於新增使用者能力，應慎重設計。
-- 命令必須是語意化的（`text set`、`element move`），不能是通用的低階屬性操作——否則 agent 得先精通 SVG 才能下命令，違背產品前提。
+- Dragging in the frontend is a local, real-time preview; releasing the mouse is what dispatches a single command. One operation equals one command equals one undo step.
+- The command set itself is the product spec for the app; adding a command means adding a user-facing capability, so it deserves careful design.
+- Commands must be semantic (`text set`, `element move`), not generic low-level attribute operations — otherwise an agent would need to be fluent in SVG before it could issue a command, which defeats the product's premise.

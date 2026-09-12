@@ -1,58 +1,58 @@
-# 就地編輯的游標與選取：`textarea.selectionStart/End` 是唯一事實來源，索引空間與 SVG 字元索引零偏移
+# In-place editing caret and selection: `textarea.selectionStart/End` is the single source of truth, with zero offset against SVG character indices
 
-## 作廢的舊決定
+## The old decision this retires
 
-就地編輯原本的模型（selection-runtime.js 舊註解「§7 決定 6」，只存在於程式註解與舊 issue 的計畫留言，`docs/` 下沒有任何記錄）是：**游標永遠畫在最後一個字元之後，沒有游標移動、沒有選取**。任何一次編輯只能在字串結尾追加或刪除。這條決定在本 ADR 作廢：就地編輯現在支援方向鍵移動游標、點擊定位、拖曳選取、IME 組字，理由見下方「決定」。
+The original model for in-place editing (documented only in a code comment in `selection-runtime.js` and in old issue-planning notes, with nothing under `docs/`) was: **the caret is always drawn after the last character; there is no caret movement and no selection.** Any edit could only append or delete at the end of the string. This ADR retires that decision: in-place editing now supports moving the caret with arrow keys, click-to-position, drag-to-select, IME composition, and more — see "Decision" below for why.
 
-## 背景
+## Background
 
-NOOP-272（#155）要求就地編輯支援游標移動與文字選取（A1–A9）：方向鍵移動、點擊定位、拖曳選取後打字取代、跨行選取的視覺、Backspace 整段刪除、IME 組字期間不亂跳、Esc 仍然 commit。這些全部要在 `apps/web/src/selection-runtime.js`——沙盒 iframe 裡那支無 import、無 export、不能引用 `@slidra/core` 的 runtime（ADR-0011）——的既有編輯模型上加上去。
+A later requirement asked for in-place editing to support caret movement and text selection: arrow-key movement, click-to-position, drag-select-then-type-to-replace, visual handling of cross-line selection, whole-selection deletion with Backspace, no caret jumping mid-IME-composition, and Esc still committing. All of this had to be layered onto the existing editing model inside `packages/web/src/selection-runtime.js` — the runtime that lives in the sandboxed iframe, has no imports or exports, and cannot reference the core library (ADR-0011).
 
-## 決定一：`textarea.selectionStart`/`selectionEnd` 是游標與選取的唯一事實來源
+## Decision one: `textarea.selectionStart`/`selectionEnd` is the single source of truth for caret and selection
 
-runtime 早已有一個隱藏的 `<textarea>` 捕捉鍵盤輸入（`ensureTextarea()`）。與其在 runtime 裡另外維護一份游標/選取索引（兩份狀態，兩份要同步的邏輯），本 ADR 選擇讓 `<textarea>` 原生的 `selectionStart`/`selectionEnd` 直接就是唯一事實來源：方向鍵移動、輸入取代選取、Backspace 刪除選取、IME 組字，全部沿用 `<textarea>` 的原生行為，runtime 只需要做兩件事——把 `selectionStart/End` 換算成螢幕矩形畫出來（`indexAtPoint`/`updateEditDecoration`），以及把滑鼠點擊/拖曳換算成索引寫回 `selectionStart/End`。
+The runtime already had a hidden `<textarea>` capturing keyboard input (`ensureTextarea()`). Rather than maintain a second, separate caret/selection index inside the runtime — two pieces of state that would need to be kept in sync — this ADR makes the native `<textarea>` `selectionStart`/`selectionEnd` the single source of truth directly: arrow-key movement, typing-over-a-selection, Backspace-deletes-selection, and IME composition all just use `<textarea>`'s native behavior as-is. The runtime only has to do two things — convert `selectionStart/End` into an on-screen rectangle to draw (`indexAtPoint`/`updateEditDecoration`), and convert a mouse click/drag into an index written back into `selectionStart/End`.
 
-放棄的選項：runtime 自己維護一份游標索引，鍵盤事件時手動更新。放棄理由是這等於重新實作 `<textarea>` 免費附贈的整套鍵盤導覽（方向鍵、Home/End、Shift+方向鍵擴選、Ctrl/Cmd+A），且兩份狀態一旦不同步，bug 沒有機械證明方式抓得到。
+Option rejected: have the runtime maintain its own caret index, updated manually on keyboard events. Rejected because that amounts to reimplementing the entire keyboard-navigation behavior `<textarea>` already provides for free (arrow keys, Home/End, Shift+arrow extend-selection, Ctrl/Cmd+A), and once two pieces of state can drift apart, there's no mechanical way to catch the resulting bugs.
 
-## 決定二：SVG 字元索引空間與 `textarea.value` 的索引空間零偏移，不做任何空白補償
+## Decision two: the SVG character-index space and the `textarea.value` index space have zero offset — no whitespace compensation of any kind
 
-這是 A6「西文含空白斷行的文字方塊，游標索引與實際字元位置一致」得以只用 `<textarea>` 索引直接定位、不用另外查表的前提，必須先證明成立：
+This is the precondition that has to hold before "a Western-language text box with word-wrapped whitespace has a caret index matching its actual character position" can rely on `<textarea>` indices directly, with no lookup table needed:
 
-- `packages/core/src/text/wrap.ts` 的字元保存不變式（該檔 header 明寫）：`wrapText` 永不刪字元，換行處的空白留在前一行行尾，`lines.map(l => l.text).join("")` 逐位元組還原輸入。`packages/core/test/text-wrap.test.ts:71` 是這條斷言的測試。
-- `<text>` 一律帶 `xml:space="preserve"`（`packages/core/src/workspace.ts:477`），`renderTextBoxContent` 產生的 tspan 之間沒有任何額外空白字元，瀏覽器不做空白摺疊。
+- The character-preservation invariant in `packages/core/src/text/wrap.ts` (documented at the top of that file): `wrapText` never drops a character; whitespace at a line break stays at the end of the preceding line; `lines.map(l => l.text).join("")` reconstructs the input byte-for-byte. This assertion is tested in `packages/core/test/text-wrap.test.ts:71`.
+- Every `<text>` always carries `xml:space="preserve"` (`packages/core/src/workspace.ts:477`), and `renderTextBoxContent`'s generated tspans have no extra whitespace between them — the browser never collapses whitespace.
 
-因此每個 `<tspan>` 的 textContent 依序串接 === 原始字串，`SVGTextContentElement.getStartPositionOfChar(i)`/`getEndPositionOfChar(i)`（跨越同一個 `<text>` 底下所有 `<tspan>` 連續編號，已用 Playwright 對 Chromium 實測驗證）的索引空間與 `textarea.value` 的字元索引空間完全相同，偏移恆為 0。換行處的空白只是視覺上落在框外／不可見，索引照算，仍然可以被點到、可以被選取。
+So each `<tspan>`'s concatenated textContent is identical to the original string, and `SVGTextContentElement.getStartPositionOfChar(i)`/`getEndPositionOfChar(i)` — whose index space runs continuously across all the tspans under one `<text>` (verified with real Playwright tests against Chromium) — sits in exactly the same index space as `textarea.value`'s character index, with a constant offset of zero. Whitespace at a line break is only visually placed outside the box (or invisible); it's still indexed normally, still clickable, still selectable.
 
-放棄的選項：在 `indexAtPoint()`／`caretRectForIndex()` 裡加一層「跳過換行處被吃掉的空白」的位移補償。放棄理由是這個補償要修正的問題根本不存在（空白從未被吃掉），寫這段程式碼只會凴空造出一個 off-by-one 來源。
+Option rejected: add a layer of compensation inside `indexAtPoint()`/`caretRectForIndex()` to "skip whitespace swallowed at line breaks." Rejected because the problem this would fix doesn't exist (whitespace is never swallowed) — writing that code would only manufacture a new off-by-one bug out of nothing.
 
-## 決定三：本票是純 runtime 改動，`canvas.ts` 零改動
+## Decision three: this change is a pure runtime change; `canvas.ts` is untouched
 
-host（`canvas.ts`）在 `begin-text-edit` 時已把整段字串送進 runtime，隱藏的 `<textarea>` 從那一刻起就是字串的持有者；游標與選取是純粹的 runtime 內部繪製狀態，host 不需要知道，也不需要新的 postMessage 訊息種類。`SELECT_AFTER_COMMAND`（`canvas.ts:957`/`971`）是另一票（T9/#156）的地盤，本票未觸碰。
+The host (`canvas.ts`) already sends the whole string into the runtime at `begin-text-edit`, and the hidden `<textarea>` becomes the owner of that string from that moment on; caret and selection are purely internal rendering state to the runtime — the host doesn't need to know about it, and no new `postMessage` message type is needed. `SELECT_AFTER_COMMAND` (`canvas.ts:957`/`971`) belongs to a separate piece of work and is untouched here.
 
-**範圍澄清（NOOP-65 補述）**：這條決定的範圍僅限本 ADR 原本涵蓋的 NOOP-272（#155）。NOOP-65（多行富文字框）確實改了 `canvas.ts`——四角把手在文字框上改送 `textbox width`（純前端把手映射，見決定五之後的說明）——但輸入元件本身**沒有**搬到父文件：`<textarea>` 仍在 runtime 的 shadow root 內，「決定一」在本票下原封不動成立。NOOP-65 的計畫曾拍板要把輸入元件搬到父文件（讓未來的父文件富文字控制項不必在點擊時打斷編輯），但本輪判斷：搬遷是最高風險的一步，且本票本身不新增任何父文件層級的富文字控制項（Text 插入面板只在「未編輯」狀態下出現，插入與編輯是兩個不重疊的時刻），沒有東西會在編輯中被點到而搶走 iframe 焦點——因此這一步延後，留給下一張需要父文件控制項的票再做，不在本票勉強推進。
+**Scope note (later addendum)**: this decision's scope is limited to the requirement originally covered by this ADR. A later change (multi-line rich text boxes) did touch `canvas.ts` — corner handles on a text box now send `textbox width` (a pure frontend handle-mapping change) — but the input widget itself was **not** moved to the parent document: the `<textarea>` still lives in the runtime's shadow root, and "decision one" holds unchanged under that later change. Moving the input widget to the parent document was floated as a plan at one point (so a future parent-document rich-text control wouldn't need to interrupt editing on click), but the judgment at the time was: that move is the highest-risk step, and the later change doesn't introduce any parent-document-level rich-text control to begin with (the text-insertion panel only appears in the "not editing" state, so insertion and editing never overlap in time) — nothing would be at risk of being clicked mid-edit and stealing the iframe's focus. So that move was deferred to whichever future piece of work actually needs a parent-document control, rather than being forced through here.
 
-## 決定四：跨行選取每行各自一塊，不做行間插值
+## Decision four: each line of a cross-line selection is its own block; no interpolation between lines
 
-`.edit-selection` 的每一塊 top/height 一律取該行自己 `<tspan>` 的 `getBoundingClientRect()`，绝不用「上一行 bottom 到下一行 top」插值推算——那正是接縫處破洞或重疊的來源。中間整行被完整選取時，左右邊界取該行第一/最後一個字元的 start/end x，不是 tspan 的完整 client rect（換行處不可見的行尾空白不畫出突出的反白）。
+Each block of `.edit-selection` always takes its top/height from that line's own `<tspan>` `getBoundingClientRect()`, and never interpolates "from the previous line's bottom to the next line's top" — that's exactly where gaps or overlaps at the seam come from. When a middle line is fully selected, its left/right edges come from the first/last character's start/end x, not the tspan's full client rect (so invisible trailing whitespace at a line break doesn't draw an overhanging highlight).
 
-## 決定五：多行與片段之後，索引空間仍然零偏移——但 DOM 索引與 `textarea.value` 索引不再永遠相等（NOOP-65 補述）
+## Decision five: after multi-line and rich-text spans, indices still have zero offset — but DOM index and `textarea.value` index are no longer always equal (later addendum)
 
-「決定二」證明的是 SVG 字元索引（`getStartPositionOfChar`/`getEndPositionOfChar`）與 DOM 字元序列零偏移——這件事在硬換行、富文字、列表符號都加進來之後**依然成立**，三者都不改變任何一個字元在 DOM 裡的順序或存在與否。但「決定二」原本額外斷言「DOM 索引空間 = `textarea.value` 索引空間」，這一條在硬換行出現後**不再成立**，理由分三點：
+"Decision two" establishes that SVG character indices (`getStartPositionOfChar`/`getEndPositionOfChar`) and the DOM character sequence have zero offset — this **still holds** once hard line breaks, rich text, and list markers are added, since none of the three changes a character's order or presence in the DOM. But "decision two" also asserted, additionally, that "the DOM index space equals the `textarea.value` index space" — and that stopped holding once hard line breaks were introduced, for three reasons:
 
-1. **硬換行字元 `\n` 不進任何 tspan 內容**（NOOP-65 決定 A）：由 `data-slidra-break="1"` 標記行尾，`\n` 本身沒有 DOM 位置。`textarea.value` 的索引空間 = Σ(每行內容長度 + 該行是否硬換行)；DOM 索引空間 = 單純的字元計數，不含硬換行。兩者從第一個硬換行之後就永久錯開一位，且每多一個硬換行多錯一位。
-2. **富文字的 run 切段是巢狀 tspan**（NOOP-65 決定 B）：不改變字元順序、不插入任何字元，因此對兩個索引空間都是零影響——巢狀本身不是索引空間分歧的原因，只有硬換行才是。
-3. **列表符號是同一個 `<g>` 內另一個帶 `data-slidra-list-marker` 的 `<text>`**（NOOP-65 決定 E）：符號本身在另一個完全獨立的 `<text>` 元素裡，既不進內容 `<text>` 的 DOM 字元序列，也不進 `textarea.value`；`selection-runtime.js` 每一處「找內容 `<text>`」都經 `contentTextElement()` 排除這個 marker，避免它的存在干擾任何一個索引空間的計算。
+1. **A hard line-break character `\n` doesn't enter any tspan's content**: the end of that line is instead marked with `data-slidra-break="1"`, and `\n` itself has no DOM position. `textarea.value`'s index space is Σ(each line's content length + whether that line is a hard break); the DOM index space is a plain character count that excludes hard breaks. The two permanently diverge by one position starting at the first hard break, and diverge by one more with each additional hard break.
+2. **Rich-text run splitting is nested tspans**: this doesn't reorder characters or insert any, so it has zero effect on either index space — nesting itself isn't the source of index-space divergence; only hard breaks are.
+3. **A list marker is a separate `<text>` element carrying `data-slidra-list-marker`, inside the same `<g>`**: the marker itself lives in a completely separate `<text>` element, so it enters neither the content `<text>`'s DOM character sequence nor `textarea.value`; every place in `selection-runtime.js` that looks for "the content `<text>`" excludes this marker via `contentTextElement()`, so its presence never perturbs either index-space calculation.
 
-因此 `selection-runtime.js` 的 `textLineRanges()` 現在對每一行回報兩組計數，`domStart/domEnd`（餵給 `getStartPositionOfChar`/`getEndPositionOfChar`）與 `valueStart/valueEnd`（`textarea.selectionStart/End` 所在的空間），只在行尾差一位（該行是否 `hardBreak`）；`indexAtPoint()` 對外仍然只回傳 value 索引（`textarea.selectionStart` 要的那個），`caretRectForIndex()`/`selectionRectsForRange()` 收的參數也維持 value 索引，內部才轉成 domIndex 去查詢 SVG 幾何——呼叫端完全不需要知道這個轉換存在。
+So `selection-runtime.js`'s `textLineRanges()` now reports two counts per line, `domStart/domEnd` (fed to `getStartPositionOfChar`/`getEndPositionOfChar`) and `valueStart/valueEnd` (the space `textarea.selectionStart/End` lives in), differing only at line end (by whether that line is a `hardBreak`); `indexAtPoint()` still only ever returns a value-space index externally (what `textarea.selectionStart` wants), and `caretRectForIndex()`/`selectionRectsForRange()` still take value-space indices as parameters, converting internally to a DOM index before querying SVG geometry — callers never need to know this conversion exists.
 
-放棄的選項：在硬換行處往 DOM 裡插入一個不可見字元（例如零寬空白）撐住索引，讓兩個空間繼續相等。放棄理由與 NOOP-65 計畫 §7-A 相同：這個字元會被 `measureTextWidth` 量進行寬，對齊時每段最後一行的位置會偏掉，而且瀏覽器對這類字元的 `getNumberOfChars()` 計數行為未經驗證，換一個問題不是解決問題。
+Option rejected: insert an invisible character (e.g. a zero-width space) into the DOM at each hard break to keep the two index spaces equal. Rejected for the same reason noted in the original planning notes: such a character would get measured into line width by `measureTextWidth`, throwing off the position of the last line of every paragraph during alignment, and browser behavior for `getNumberOfChars()` on such characters is unverified — swapping in a new problem isn't solving this one.
 
 ## Consequences
 
-- `selection-runtime.js` 新增 `indexAtPoint()`、`textLineRanges()`、`caretRectForIndex()`、`selectionRectsForRange()` 等純幾何 helper，`updateEditDecoration()` 改為讀 `textarea.selectionStart/End` 決定畫 caret 還是畫選取塊。
-- 新增文字選取拖曳狀態機（`textSelectDrag`）：`pointerdown` 落在被編輯元素內部時，若非 IME 組字中，改為用 `indexAtPoint()` 設定 `selectionStart/End` 並呼叫 `event.preventDefault()`（避免瀏覽器預設的 mousedown 行為把焦點從隱藏 `<textarea>` 移走），而不是像舊版一樣單純忽略。
-- IME 組字期間（`isComposing === true`）：`Escape` 不再攔截 commit（讓 IME 自己處理候選字的取消），`pointerdown` 落在被編輯元素內部一律忽略，不改變 `selectionStart/End`。
-- `getScreenCTM()`／`getNumberOfChars()` 在 jsdom（本 repo 用於非 layout 的單元測試）完全未實作——每個讀取它們的路徑都先過 `getTextCTM()` 這唯一守門點，缺 API 時回傳 `null` 而不是丟例外，讓涉及 `editingId !== null` 的狀態機測試仍能在 jsdom 跑，幾何相關的斷言則專屬 e2e（`e2e/text-edit.test.ts`）。
-- 不支援 surrogate pair（emoji、CJK 擴充 B 平面）的逐字定位：SVG 字元索引以 UTF-16 code unit 編號，定位可能落在 pair 中間。這是已知限制，不加特例。
-- 不做上/下方向鍵的視覺行導覽、不做雙擊選字/三擊選行、不做游標水平捲動——這些沿用 `<textarea>` 原生行為或明確排除在本票範圍外。
-- NOOP-65：編輯中按 `Enter`（無修飾鍵）不再 `preventDefault()`——`<textarea>` 原生行為直接在游標處插入 `\n`，核心的 `wrapText` 現在認得這個字元（決定五）；`⌘Enter`/`Ctrl+Enter` 是唯一的例外，`preventDefault()` 且不冒泡，不插入、不 commit、不離開編輯。未編輯、選取恰好一個文字元素時按 `Enter`（無修飾鍵）進入編輯，重用既有的 `dblclick-textbox` 訊息與 `begin-text-edit` 迴路（含它自己的鎖定拒絕），不在這個新入口重新判斷一次鎖定規則。
+- `selection-runtime.js` gains pure-geometry helpers: `indexAtPoint()`, `textLineRanges()`, `caretRectForIndex()`, `selectionRectsForRange()`; `updateEditDecoration()` now reads `textarea.selectionStart/End` to decide whether to draw a caret or a selection block.
+- A new text-selection drag state machine (`textSelectDrag`): when `pointerdown` lands inside the element being edited, and IME composition isn't in progress, it now sets `selectionStart/End` via `indexAtPoint()` and calls `event.preventDefault()` (to stop the browser's default mousedown behavior from moving focus away from the hidden `<textarea>`), rather than simply being ignored as before.
+- During IME composition (`isComposing === true`): `Escape` no longer intercepts commit (letting the IME handle candidate cancellation itself); `pointerdown` inside the element being edited is always ignored, and never changes `selectionStart/End`.
+- `getScreenCTM()`/`getNumberOfChars()` are entirely unimplemented in jsdom (used in this repo for non-layout unit tests) — every code path that reads them goes through the single gatekeeper `getTextCTM()`, which returns `null` rather than throwing when the API is missing, so state-machine tests involving `editingId !== null` still run under jsdom, while geometry-dependent assertions are reserved for e2e tests.
+- Surrogate pairs (emoji, CJK Extension B) are not supported for character-precise positioning: SVG character indices are numbered in UTF-16 code units, so positioning can land in the middle of a pair. This is a known limitation, with no special-casing added.
+- No visual up/down-arrow line navigation, no double-click-select-word or triple-click-select-line, no horizontal caret scrolling — these either rely on `<textarea>`'s native behavior or are explicitly out of scope here.
+- Pressing `Enter` (no modifier) while editing no longer calls `preventDefault()` — `<textarea>`'s native behavior inserts a `\n` at the caret directly, and the core `wrapText` now understands that character (decision five); `⌘Enter`/`Ctrl+Enter` is the sole exception, calling `preventDefault()` and not propagating, inserting nothing, not committing, and not leaving edit mode. Pressing `Enter` (no modifier) while not editing, with exactly one text element selected, enters edit mode, reusing the existing `dblclick-textbox` message and `begin-text-edit` flow (including its own lock-rejection handling) — this new entry point doesn't re-derive the lock rule itself.

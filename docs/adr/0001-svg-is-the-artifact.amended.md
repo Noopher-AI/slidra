@@ -1,14 +1,14 @@
-# SVG 是投影片本體，不是中間產物
+# SVG is the slide artifact, not an intermediate product
 
-> **⚠️ 部分條款已失效。** 「用其他工具開啟單一投影片時，靜態畫面必須正常」這條驗收標準，在**字型**上被 **ADR-0016** 開了一個明確的洞：CJK 簡報字型是單一約 5.6MB 的 sfnt 檔案，內嵌進每張 SVG（base64、無壓縮）不可行，見 ADR-0016 的權衡。單獨開啟的投影片會降級成瀏覽器的系統字型，只有透過 Slidra（`slidra serve`／wrapper）播放或編輯時才保證使用簡報實際指定的字型。
+> **⚠️ Partially superseded.** The acceptance criterion "a static view must render correctly when a single slide is opened in another tool" has been given an explicit exception for **fonts** by **ADR-0016**: a CJK presentation font is a single sfnt file of roughly 5.6MB, and embedding it into every SVG (base64, uncompressed) is not viable — see the trade-off discussion in ADR-0016. A slide opened on its own degrades to the browser's system font; the presentation's actual specified font is only guaranteed when played or edited through the app itself (`serve` or its wrapper).
 >
-> **其餘部分**（投影片必須是合法 SVG、非字型的圖形與色彩不得依賴外部資源）不受影響。
+> **Everything else** — a slide must be valid SVG, and non-font graphics and colors must not depend on external resources — is unaffected.
 
-ppt-master 一類的工具用 SVG 當作通往 PPTX 的中繼站，SVG 產生完就被丟棄。Slidra 反過來：一份 SVG 就是一張投影片，它是被持續編輯、被儲存、被播放的東西，沒有更權威的表示法在它背後。
+Tools like typical presentation generators use SVG as a waypoint on the way to PPTX, discarding the SVG once it has served its purpose. This project inverts that: an SVG *is* a slide. It is the thing that gets edited, saved, and played — there is no more authoritative representation behind it.
 
-這個選擇放棄了 PowerPoint 生態的相容性——Slidra 不匯入也不匯出 PPTX。換到的是一個人、agent 與瀏覽器都能直接理解的本體，不需要任何私有格式的中介。
+This choice gives up compatibility with the PowerPoint ecosystem — the app neither imports nor exports PPTX. In exchange, it gets an artifact that a person, an agent, and a browser can all understand directly, with no proprietary format acting as an intermediary.
 
 ## Consequences
 
-- 任何存進投影片的東西都必須是合法 SVG，否則本體就分裂成兩半。
-- 用其他工具（瀏覽器、Illustrator、Figma）開啟單一投影片時，靜態畫面必須正常。這是判斷一個設計有沒有違反本決定的驗收標準。**字型除外，見上方橫幅與 ADR-0016**——`font-family` 找不到對應字型時，瀏覽器會照 CSS 字型堆疊規則降級成系統字型，畫面不會壞，但不保證與原始字型逐像素一致。
+- Anything saved into a slide must be valid SVG, or the artifact splits into two disagreeing representations.
+- Opening a single slide in another tool (a browser, Illustrator, Figma) must render a correct static view. This is the acceptance test for whether a design violates this decision. **Fonts are the exception, see the banner above and ADR-0016** — when `font-family` can't find a matching font, the browser falls back to a system font per the CSS font-stack rules; the view won't break, but it's not guaranteed to match the original font pixel for pixel.
