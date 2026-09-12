@@ -43,9 +43,10 @@ export async function handlePresentationRoute(presentationId: string, res: Serve
 }
 
 /**
- * `GET /api/assets` (#303 背景圖片面板): the `assets/` folder's entries, for
- * the "選現有檔案" dropdown. A brand-new presentation has no `assets/`
- * directory at all yet — that is not an error here, just an empty list.
+ * `GET /api/assets`: the `assets/` folder's entries, for the background-image
+ * panel's "choose an existing file" dropdown. A brand-new presentation has
+ * no `assets/` directory at all yet — that is not an error here, just an
+ * empty list.
  */
 export async function handleAssetsRoute(presentationId: string, res: ServerResponse): Promise<void> {
   try {
@@ -137,9 +138,9 @@ export async function handleEffectsRoute(presentationId: string, virtualPath: st
   if (!result.ok) {
     if (result.failureKind === "not-found") {
       // A declared slide that has never had `<slidra:effects>` written to
-      // it — the command reports "沒有效果清單" (not-found); the route
-      // normalizes that into a legal empty plan (D3) rather than
-      // forwarding a 404 for a path that IS a real slide.
+      // it — the command reports "no effect list" (not-found); the route
+      // normalizes that into a legal empty plan rather than forwarding a
+      // 404 for a path that IS a real slide.
       sendJson(res, 200, EMPTY_EFFECT_PLAN);
       return;
     }

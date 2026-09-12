@@ -57,16 +57,15 @@ export function classifyAgentReadPath(rawPath: string, workdirReal: string): Age
 }
 
 /**
- * A minimal private copy of `packages/core`'s `virtual-fs.ts` structural
- * containment ([E4.T9]/F7 — the server no longer imports that package),
- * scoped to exactly what `readAgentWorkdirFile` below needs: build a tree
- * by enumerating real directories/files only (never following symlinks —
- * `readdir(withFileTypes:true)`'s `Dirent` only reports `isDirectory()`/
+ * Structural containment for the work directory, scoped to exactly what
+ * `readAgentWorkdirFile` below needs: build a tree by enumerating real
+ * directories/files only (never following symlinks — `readdir({
+ * withFileTypes: true })`'s `Dirent` only reports `isDirectory()`/
  * `isFile()` for the entry itself, so a symlink is neither and is silently
  * excluded), then resolve a caller-supplied relative path by exact segment
  * lookup. A path with a segment like ".." is just a literal name that was
  * never discovered on disk — it structurally cannot resolve to anything,
- * the same guarantee core's own virtual filesystem gives a presentation's
+ * the same guarantee a presentation's own virtual filesystem gives its
  * content.
  */
 type WorkdirNode = { type: "file"; realPath: string } | { type: "directory"; children: Map<string, WorkdirNode> };

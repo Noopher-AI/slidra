@@ -30,7 +30,7 @@ const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，�
 const WRITE_REFUSED_MESSAGE =
   "Slidra 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `slidra text set` 命令。";
 
-/** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape, mirroring `packages/core`'s former `SlideCommentWithPath` ([E4.T9]/F7). */
+/** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape. */
 interface SlideCommentWithPath {
   id: string;
   target: string;
@@ -53,12 +53,12 @@ async function listAllComments(presentationId: string): Promise<SlideCommentWith
 }
 
 /**
- * [E2.T8]: builds the `/api/chat` prompt's comment-context prefix, or
- * `null` when there are no comments — a message with nothing pinned to it
- * must go out byte-identical to what the author typed (AC13, guarded by
- * `chat.test.ts`'s existing "編輯規約" assertion). A standalone pure
- * function, not a private method, so a unit test can verify the exact
- * format without spinning up an ACP session.
+ * Builds the `/api/chat` prompt's comment-context prefix, or `null` when
+ * there are no comments — a message with nothing pinned to it must go out
+ * byte-identical to what the author typed, guarded by `chat.test.ts`'s
+ * existing "editorial brief" assertion. A standalone pure function, not a
+ * private method, so a unit test can verify the exact format without
+ * spinning up an ACP session.
  */
 export function buildCommentContext(comments: readonly SlideCommentWithPath[]): string | null {
   if (comments.length === 0) return null;
@@ -253,7 +253,7 @@ export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
  * Drives one ACP adapter subprocess for the lifetime of `slidra serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
- * messages (§4 of the ticket), and the 編輯規約 is sent as its own, separate
+ * messages, and the editorial brief is sent as its own, separate
  * `session/prompt` before the author's first message ever goes out — that
  * ordering is `ensureSession()`'s entire job.
  */
@@ -299,7 +299,7 @@ export class AgentChatSession extends EventEmitter {
   private readonly pendingTurns: string[] = [];
   /** True from the first `sendMessage` until the adapter handshake settles — the window where a turn is coming but `session/prompt` has not been sent yet. */
   private settingUp = false;
-  /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
+  /** True only while relaying updates for a turn the author actually asked for — not for the editorial brief turn. */
   private relayingCurrentTurn = false;
   /**
    * #303: set by `cancel()`, cleared when the next author turn starts. A
@@ -323,7 +323,7 @@ export class AgentChatSession extends EventEmitter {
    * The most recent `available_commands_update` the agent has sent, or `[]`
    * if it has never sent one. Unlike the turn-scoped events above, this
    * arrives outside any turn (typically right after `session/new`, before
-   * the 編輯規約 prompt) and is a standing fact about the session, not
+   * the editorial brief prompt) and is a standing fact about the session, not
    * something to relay once and forget — `serve.ts` reads it back via
    * `getReportedCommands()` whenever it needs to recompute the `/` list
    * (e.g. serving `GET /api/agent/commands`), not only at the moment it was
@@ -438,7 +438,7 @@ export class AgentChatSession extends EventEmitter {
   /**
    * Establishes the ACP session without sending an author message, so the
    * model list (a `session/new` fact) exists before the first message. The
-   * 編輯規約 goes out exactly as it would on the first message; a later
+   * editorial brief goes out exactly as it would on the first message; a later
    * message reuses this session. No-op when a session is already live.
    */
   async warm(): Promise<void> {
@@ -721,7 +721,7 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * Closes the history group and releases the editing lock this turn
-   * opened, if it opened one — the "共用同一條界線" half of the contract
+   * opened, if it opened one — the "shared boundary" half of the contract
    * (opening happens in `requestPermission`, below). A turn that never ran
    * a command never opened either, and this is a no-op for it.
    *
@@ -768,7 +768,7 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * Spawns the adapter, initializes it, opens a session and sends the
-   * 編輯規約 as the very first `session/prompt` — idempotent and shared by
+   * editorial brief as the very first `session/prompt` — idempotent and shared by
    * every caller so the sequence runs exactly once per `serve` process.
    */
   private ensureSession(): Promise<void> {
@@ -883,7 +883,7 @@ export class AgentChatSession extends EventEmitter {
     await this.withInterrupt(this.performHandshake(connection));
   }
 
-  /** The actual initialize/newSession/編輯規約-prompt sequence, wrapped by `establishSession` with `withInterrupt`. */
+  /** The actual initialize/newSession/editorial-brief-prompt sequence, wrapped by `establishSession` with `withInterrupt`. */
   private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
     await connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
@@ -937,7 +937,7 @@ export class AgentChatSession extends EventEmitter {
       if (preferred) await this.applyModel(connection, session.sessionId, this.modelMechanism, preferred);
     }
 
-    // The 編輯規約 is the first user message the agent ever sees — its own
+    // The editorial brief is the first user message the agent ever sees — its own
     // `session/prompt` call, never folded into the author's first message.
     // `relayingCurrentTurn` stays false so any reply to it never reaches
     // the browser as if it were a response to something the author typed.
@@ -1027,8 +1027,8 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * A `tool_call` update announcing that the agent is about to run
-   * something (ticket #17). Only tool calls that actually name a shell
-   * command are relayed — the command text comes straight out of ACP's
+   * something. Only tool calls that actually name a shell command are
+   * relayed — the command text comes straight out of ACP's
    * `rawInput.command`, exactly as `decidePermission` reads it, and is
    * never reassembled from anything else. Tool calls with no command (a
    * file read, an agent-internal tool) are the agent's own business and
@@ -1037,7 +1037,7 @@ export class AgentChatSession extends EventEmitter {
    * The command string is shown to the author verbatim, real paths and
    * all. ADR-0004's third layer governs what the *agent* is allowed to
    * see; this event travels the other way, to the person who owns the
-   * machine ("擋的是 agent，不是人").
+   * machine ("it's the agent being blocked, not the human").
    */
   private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
@@ -1045,7 +1045,7 @@ export class AgentChatSession extends EventEmitter {
     // Every command the agent runs is shown — since ADR-0019 that includes
     // its own shell work (reading its references, grepping, temp files),
     // and the author is entitled to see what is happening on their
-    // machine. What only the CLI gets is a *status*: 執行中／完成／失敗 is
+    // machine. What only the CLI gets is a *status*: running/complete/failed is
     // a claim about the presentation, and a failed `grep` of the agent's
     // own notes is the agent's problem to solve, not an outcome the author
     // is being asked to read. So a non-CLI command is relayed once, as the
@@ -1105,9 +1105,9 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
-   * The freeze/undo-group boundary's entry point (T5, NOOP-93/#110): the
-   * author's turn's first `session/request_permission` call — never the
-   * 編輯規約 turn (`relayingCurrentTurn` is false for it) — waits for
+   * The freeze/undo-group boundary's entry point: the author's turn's
+   * first `session/request_permission` call — never the editorial brief
+   * turn (`relayingCurrentTurn` is false for it) — waits for
    * `editingLock.acquireAgent()` (which itself waits out any in-progress
    * human edit rather than throwing) and opens the history group. Every
    * later command in the same turn sees `turnHasEditLock` already true and

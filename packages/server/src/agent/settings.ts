@@ -6,15 +6,15 @@ import { resolveSlidraHome } from "../slidra/home.js";
 import type { AgentKind } from "./adapters.js";
 
 /**
- * User-level agent selection, persisted at `<SLIDRA_HOME>/settings.json`
- * (F2/F1 — NOOP-230 §4.1). This is the only file this module touches;
- * `resolveSlidraHome()` (never `homedir()` built by hand here) is the
- * single source of truth for where `SLIDRA_HOME` actually is, shared
- * with every other module that reads/writes under it.
+ * User-level agent selection, persisted at `<SLIDRA_HOME>/settings.json`.
+ * This is the only file this module touches; `resolveSlidraHome()`
+ * (never `homedir()` built by hand here) is the single source of truth for
+ * where `SLIDRA_HOME` actually is, shared with every other module that
+ * reads/writes under it.
  *
- * The file may carry other keys in the future (F3/F4) — this module only
- * ever reads/writes the `agent` key, and `writeAgentSelection` preserves
- * everything else byte-for-byte (`## `未知 keys 一節`).
+ * The file may carry other keys in the future — this module only ever
+ * reads/writes the `agent` key, and `writeAgentSelection` preserves
+ * everything else byte-for-byte (see the "unknown keys" section below).
  */
 export interface AgentSettings {
   agent: AgentKind | null;

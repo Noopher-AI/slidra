@@ -78,7 +78,7 @@ export class ExportJobManager {
 
   /**
    * Starts a new job: broadcasts `queued` synchronously, before returning
-   * — §4.4's "queued 在 202 回應之前廣播" — then runs `run` in the
+   * — "queued is broadcast before the 202 response" — then runs `run` in the
    * background, broadcasting `running`/`progress`/`done`/`error` as it
    * reports back. Throws synchronously (before anything is broadcast or
    * recorded) if a job is already active; the caller is expected to have

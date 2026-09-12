@@ -85,7 +85,7 @@ export class EditingLock extends EventEmitter {
    * the agent lock. Idempotent for the *same* turn: a second, third, ...
    * command in one turn that is already holding the lock resolves
    * immediately without re-emitting `frozen`. Never throws and never
-   * refuses — this is the "agent 等待、不拋錯" contract.
+   * refuses — this is the "agent waits, never throws" contract.
    */
   async acquireAgent(): Promise<void> {
     while (this.state === "human") {
