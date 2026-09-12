@@ -76,7 +76,7 @@ const STAGE_CLICK_THRESHOLD_PX = 3;
  * 舞台 (New v3 skeleton)：深色 well → 縮放/平移 transform frame → 既有的
  * `.canvas` div（身分不變）→ 疊層堆疊（空容器，見 stage-overlays/）。縮放/
  * 平移/抓取模式狀態全部委派給 stage-view.ts 的純函式（見該檔案與
- * packages/web/test/stage-view.test.ts）——這個元件只負責接 DOM 事件、換算
+ * apps/web/test/stage-view.test.ts）——這個元件只負責接 DOM 事件、換算
  * 一次座標、呼叫那些函式。
  *
  * `canvasRef` 的 div 在這裡的 JSX 位置與條件完全沒變（還是 `.stage` 底下唯

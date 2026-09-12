@@ -32,9 +32,9 @@ def _stage_iframe_target_id(attempts: int = 20, interval: float = 0.25) -> str:
     Target.getTargets() targetId), not iframe_target("srcdoc") — that core
     primitive matches every srcdoc iframe in the browser, including the
     overview thumbnails (each one is its own srcdoc document,
-    packages/web/src/overview.ts), which would make target selection
+    apps/web/src/overview.ts), which would make target selection
     ambiguous. `iframe.slide-frame` is a class unique to the main stage
-    (thumbnails use `.overview-frame` — packages/web/src/overview.ts:197).
+    (thumbnails use `.overview-frame` — apps/web/src/overview.ts:197).
     """
     import time
 

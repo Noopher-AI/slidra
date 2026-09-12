@@ -137,7 +137,7 @@ fn raw_attributes_of(node: &ScannedNode) -> RawEffectAttributes {
 // ---------------------------------------------------------------------------
 
 /// Reads a slide's effect list (`effect list` and every other `effect`
-/// command's own lookup). Unlike `packages/web/src/effects.ts`'s
+/// command's own lookup). Unlike `apps/web/src/effects.ts`'s
 /// `parseEffects`, every `effect` command except `add` requires the list to
 /// already exist: there being nothing to list, remove, move, or set is
 /// reported as not-found, not a quiet empty result.

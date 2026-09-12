@@ -116,7 +116,7 @@ export const EMPTY_EFFECT_PLAN = {
 /**
  * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
  * player and step-by-step export now fetch instead of computing themselves
- * in the browser (`packages/web/src/player-plan.ts`'s former `deriveSteps`/
+ * in the browser (`apps/web/src/player-plan.ts`'s former `deriveSteps`/
  * `parseEffects`). Spawns the Rust `comotion effect list` command
  * ([E4.T9]/F7) rather than dispatching against an in-process registry.
  *

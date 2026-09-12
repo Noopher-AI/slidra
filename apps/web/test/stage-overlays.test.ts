@@ -13,7 +13,7 @@ import { TableCellMenu } from "../src/shell/stage-overlays/TableCellMenu.js";
  * NOOP-91 round-2 FAIL #4: `SelectionOverlay`/`ContextBar`'s coordinate math
  * (name label position, context-bar below/above flip) and `OverlayLayer`'s
  * parent-client-px -> well-relative-px conversion had zero test coverage —
- * everything under `packages/web/src/shell/stage-overlays/` was reviewed by
+ * everything under `apps/web/src/shell/stage-overlays/` was reviewed by
  * eye only. Same `renderToStaticMarkup` convention `icons.test.ts` already
  * uses for a small presentational component: render with given props,
  * inspect the resulting markup string.

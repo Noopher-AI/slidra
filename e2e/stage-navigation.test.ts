@@ -8,7 +8,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
  * NOOP-60/#197 驗收條件第 3 條：docs/design/docs/05-INTERACTIONS.feature
  * 「舞台導航」的 5 個場景 e2e 化。這裡只驗「這些狀態確實接到了 DOM 上」
  * （transform、cursor、百分比文字）——縮放/平移/抓取的狀態轉換本身已經在
- * packages/web/test/stage-view.test.ts 窮舉邊界，不在這裡重測一次夾取
+ * apps/web/test/stage-view.test.ts 窮舉邊界，不在這裡重測一次夾取
  * 邏輯（Plan §6.4）。
  *
  * NOOP-83 §2/§4：投影片本體（`.stage`／iframe 範圍內，畫面絕大部分面積）

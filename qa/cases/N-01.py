@@ -172,7 +172,7 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
     n += 1
 
     # agent_helpers.py 沒有 undo 或通用 POST 原語：直接打 /api/undo，跟
-    # UI 的 Undo 按鈕、⌘Z 走的是同一個端點（packages/web/src/App.tsx 的
+    # UI 的 Undo 按鈕、⌘Z 走的是同一個端點（apps/web/src/App.tsx 的
     # runUndoRedo），只用 Python 標準庫，不算新增原語。base 上第 1 項本
     # 來就會 FAIL（拖曳從未寫檔）時，這裡沒有任何歷史可 undo，`/api/undo`
     # 因此回 400（實測），不是 200——用 try/except 接住讓腳本能繼續往下

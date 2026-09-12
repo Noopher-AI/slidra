@@ -2382,7 +2382,7 @@ comotion effect add <presentation-id> <slide-path> <element-id>[,<element-id>...
 | `--duration` 或 `--delay` 是負數或非有限數 | `failed` |
 | `--index` 超出 `1`..`目前效果項數+1` 的範圍 | `failed` |
 
-**不確定與保留事項（非本表格式化項目，附加說明）**：核心寫入邏輯（`addEffects`/`insertEffectItems`）並不檢查「一份效果清單的第一項 `start` 必須是 `on-click`」這條結構性不變量——若在既有清單第 1 項之前插入一個 `--start with-previous` 的新項（或用 `--index 1` 搭配非 `on-click` 值），指令會成功寫入,不報任何錯，直到之後有人呼叫 `deriveSteps`（`packages/web/src/player-plan.ts` 等播放/匯出路徑才會用到）時才會炸开。CLI 這一層本身沒有這個檢查，因此本規格不把它列進上面的錯誤情境表。
+**不確定與保留事項（非本表格式化項目，附加說明）**：核心寫入邏輯（`addEffects`/`insertEffectItems`）並不檢查「一份效果清單的第一項 `start` 必須是 `on-click`」這條結構性不變量——若在既有清單第 1 項之前插入一個 `--start with-previous` 的新項（或用 `--index 1` 搭配非 `on-click` 值），指令會成功寫入,不報任何錯，直到之後有人呼叫 `deriveSteps`（`apps/web/src/player-plan.ts` 等播放/匯出路徑才會用到）時才會炸开。CLI 這一層本身沒有這個檢查，因此本規格不把它列進上面的錯誤情境表。
 
 **範例**
 

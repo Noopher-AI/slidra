@@ -132,7 +132,7 @@ def _parse_hex(value: str) -> tuple[int, int, int]:
 
 
 def _relative_luminance(r: int, g: int, b: int) -> float:
-    """WCAG 2.x relative luminance——獨立於 packages/web/src/contrast-
+    """WCAG 2.x relative luminance——獨立於 apps/web/src/contrast-
     fill.ts 依同一個公開公式重新實作，不是抄實作的輸出當標準答案。"""
 
     def lin(c: int) -> float:

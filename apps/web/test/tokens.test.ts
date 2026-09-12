@@ -388,7 +388,7 @@ describe("tokens.css — 區域 CSS 消費的每個 var(--x) 都要有定義", (
     expect([...missing]).toEqual([]);
   });
 
-  it("packages/web/src 下 JS 端 getPropertyValue(\"--x\") 讀的每個字面 token 名稱也都在 :root 有定義", () => {
+  it("apps/web/src 下 JS 端 getPropertyValue(\"--x\") 讀的每個字面 token 名稱也都在 :root 有定義", () => {
     const declared = declaredRootTokenNames();
     const missing = new Set<string>();
     const srcFiles: string[] = [];

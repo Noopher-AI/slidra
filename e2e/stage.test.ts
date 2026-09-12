@@ -21,7 +21,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -33,7 +33,7 @@ const CANVAS_RATIO = 1280 / 720;
 // New v3 shell rebuild: `.canvas-area`'s padding is no longer uniform on
 // every side. `--space-gutter` (28px 上下/左右) is overridden on the
 // bottom edge by `--space-gutter-bottom` (76px) to reserve room for the
-// floating Dock (packages/web/src/styles/shell.css's `.canvas-area` rule) —
+// floating Dock (apps/web/src/styles/shell.css's `.canvas-area` rule) —
 // 01-DESIGN_TOKENS.md's own token, not a value invented here. The stage is
 // therefore centred left/right but pushed 76-28=48px above true vertical
 // centre; the two "仍置中" assertions below check for exactly that offset
@@ -47,7 +47,7 @@ let coMotionHome: string;
 let comotDir: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 

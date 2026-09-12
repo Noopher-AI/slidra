@@ -117,7 +117,7 @@
   /* E2.T12: `accent.palette.*` — each doc cell packs six hex colours into
      one token path, split six ways the same way `ok`/`info` split above.
      The GUI (Chart 插入面板、資料視窗調色盤) reads these as `var(--…)`
-     (design-contract.test.ts forbids literal hex in packages/web/src);
+     (design-contract.test.ts forbids literal hex in apps/web/src);
      `packages/core/src/chart/render.ts` is OUTSIDE that scan and must
      write the same six values as literal hex — the rendered SVG has to be
      self-contained, it cannot depend on this stylesheet. */

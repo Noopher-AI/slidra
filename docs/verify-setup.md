@@ -6,8 +6,8 @@
 
 ## 為什麼每次改前端都要重建
 
-`comotion serve` 只吃 `packages/web/dist` 的靜態檔，沒有 dev server proxy
-（ADR-0002）。改了 `packages/web` 的原始碼卻用 `--skip-build` 重跑，畫面上看到的
+`comotion serve` 只吃 `apps/web/dist` 的靜態檔，沒有 dev server proxy
+（ADR-0002）。改了 `apps/web` 的原始碼卻用 `--skip-build` 重跑，畫面上看到的
 會是舊的建置產物。`--skip-build` 只在完全沒動前端原始碼時可用。
 
 ## PATH 的作用範圍到哪為止

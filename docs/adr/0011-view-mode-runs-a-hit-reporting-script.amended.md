@@ -31,7 +31,7 @@ YouTube 這類第三方播放器**不能**放進投影片的 iframe，本票實�
 
 而 `allow-same-origin` 正是本 ADR 明文禁止的那一項：投影片文件是 `srcdoc`，加上這個 token 就與父文件同源，不受信任的投影片內容可以把自己 script 出沙盒。巢狀 iframe 的 sandbox flags 又是與父層取交集，所以「只放寬那個嵌入」在規格上做不到。
 
-決定：**第三方嵌入的 `<iframe>` 畫在父文件**（`packages/web/src/shell/stage-overlays/EmbedLayer.tsx`），疊在投影片的佔位元素上。它載入的是真正的 https 文件，不是 `srcdoc`，因此本來就不受本 ADR 的沙盒條款約束，**投影片 iframe 的 sandbox token 一個字都沒有改**。
+決定：**第三方嵌入的 `<iframe>` 畫在父文件**（`apps/web/src/shell/stage-overlays/EmbedLayer.tsx`），疊在投影片的佔位元素上。它載入的是真正的 https 文件，不是 `srcdoc`，因此本來就不受本 ADR 的沙盒條款約束，**投影片 iframe 的 sandbox token 一個字都沒有改**。
 
 幾何一律由 runtime 用 `getBoundingClientRect()` 回報（`embed-boxes` 事件，兩支 runtime 各有一份），父文件只做座標系換算——與上方 NOOP-90/T2 修訂對 `bounds` 的處理是同一條規則的再一次套用，父文件不自己算 SVG 的框。
 

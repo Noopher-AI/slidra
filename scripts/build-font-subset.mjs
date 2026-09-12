@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds the three static Noto Sans TC subsets (400/500/700) the web app
-// ships under packages/web/src/assets/fonts/ — the only fonts it uses, so
+// ships under apps/web/src/assets/fonts/ — the only fonts it uses, so
 // its UI never falls back to system-ui (ticket #49) and 700 doesn't fall
 // back to the browser's synthesized bold (NOOP-376). `system-ui` resolves to
 // 蘋方 on macOS and 微軟正黑 on Windows, which would make the screenshot
@@ -20,10 +20,10 @@
 //      sentences (e.g. "CoMotion", "1280 × 720", slide numbers) never
 //      depend on what happens to appear in the scanned files below.
 //   2. Every CJK Unified Ideograph found by scanning the UTF-8 text of:
-//        packages/web/index.html
-//        packages/web/src/**/*.ts
-//        packages/web/src/**/*.tsx
-//        packages/web/src/**/*.js
+//        apps/web/index.html
+//        apps/web/src/**/*.ts
+//        apps/web/src/**/*.tsx
+//        apps/web/src/**/*.js
 //      This is a source-text scan, not a scan of what actually reaches
 //      the DOM — it also picks up characters that only ever appear in code
 //      comments (this repo's source comments are supposed to be English
@@ -44,9 +44,9 @@ import { createHash } from "node:crypto";
 import subsetFont from "subset-font";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const webSrcDir = path.join(rootDir, "packages/web/src");
-const indexHtmlPath = path.join(rootDir, "packages/web/index.html");
-const fontsDir = path.join(rootDir, "packages/web/src/assets/fonts");
+const webSrcDir = path.join(rootDir, "apps/web/src");
+const indexHtmlPath = path.join(rootDir, "apps/web/index.html");
+const fontsDir = path.join(rootDir, "apps/web/src/assets/fonts");
 
 // 400 keeps its pre-existing filename (README.md's OFL notice and this
 // ticket's own PR both only add the two new ones); 500/700 are new.

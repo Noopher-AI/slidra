@@ -172,7 +172,7 @@
     button.style.cursor = "pointer";
     button.style.font = "20px/1 sans-serif";
     // CSS keywords + color-mix, not a hex/rgba literal: design-contract.test.ts
-    // forbids literal colour values under packages/web/src, and this
+    // forbids literal colour values under apps/web/src, and this
     // runtime has no injected palette to read from the way
     // selection-runtime.js's `colors` gives it one.
     button.style.color = "white";
@@ -807,7 +807,7 @@
 
   // "ready" must stay the last message this runtime posts ON BOOT, and its
   // shape must stay exactly `{ source: "comot-player", event: "ready" }` —
-  // packages/web/test/canvas.test.ts:851 asserts on that literal substring
+  // apps/web/test/canvas.test.ts:851 asserts on that literal substring
   // to prove the runtime was injected. Preview's own `preview-done` is a
   // later, separate message (D8) — it does not change this contract.
   buildStageMedia();

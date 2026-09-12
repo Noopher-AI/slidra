@@ -291,7 +291,7 @@ describe("Shape 選單（05-INTERACTIONS.feature「Shape / Arrange 選單」）"
   });
 });
 
-describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 packages/web/test/dock.test.ts 沒有涵蓋的可從 UI 到達的三種狀態）", () => {
+describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 apps/web/test/dock.test.ts 沒有涵蓋的可從 UI 到達的三種狀態）", () => {
   it("無選取時 Animate/Arrange/Group 停用，選 2 個元素後 Group 變成可按（Insert 群組不受影響）", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-disabled-state" });
     try {

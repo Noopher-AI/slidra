@@ -13,7 +13,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 /**
  * NOOP-91's real Chromium acceptance tests, modelled on
  * e2e/selection.test.ts and e2e/stage.test.ts's startServerFor/openApp
- * shape: a real server, a real built `packages/web/dist`, and the
+ * shape: a real server, a real built `apps/web/dist`, and the
  * `e2e/fixtures/direct-manipulation-deck` fixture (`demo/` has no second
  * element close enough to exercise snapping without bending its layout,
  * per the plan's own assumption note).
@@ -53,7 +53,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 // Dedicated single-element fixture for the "rect at a non-zero local origin"
@@ -72,7 +72,7 @@ let openPages: Page[] = [];
 let fontDataUrl: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
   const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));

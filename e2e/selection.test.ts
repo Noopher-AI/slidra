@@ -36,7 +36,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  *   - "離開播放後仍可重新選取：..."
  *   - 情境列「空間不足翻到上方」分支：本檔未 e2e 化，理由見「選取後簡報檔案
  *     位元組完全未變」測項之前的說明區塊——精確覆蓋在
- *     packages/web/test/stage-overlays.test.ts（純邏輯單元測試）。
+ *     apps/web/test/stage-overlays.test.ts（純邏輯單元測試）。
  * - 功能「選取」› 場景「多選」「全選 / 取消」: ⇧點/框選/⌘A 是舞台直接操作，
  *   在 e2e/direct-manipulation.test.ts 測（"Shift 點兩個元素後一起拖曳"、
  *   "從空白處拖出框選矩形"、"⌘A 全選本頁頂層元素..."）；本檔只測「點空白處
@@ -51,7 +51,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  *   - "基準截圖：群組編輯中的虛線框"／"基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）"
  * - 功能「群組（含巢狀）」› 場景「成組」「巢狀」「解組」（[E2.T15]/#205，Dock
  *   的 Group/Ungroup 按鈕；「停用態」矩陣本身測在
- *   packages/web/test/dock.test.ts，這裡只測按鈕真的接到命令、檔案真的變了）:
+ *   apps/web/test/dock.test.ts，這裡只測按鈕真的接到命令、檔案真的變了）:
  *   - "成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並顯示 toast"
  *     （含基準截圖 group-toast）
  *   - "巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再包一層，既有群組原封不動"
@@ -64,7 +64,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const hostileDeckDir = path.join(e2eDir, "fixtures/hostile-selection-deck");
@@ -77,7 +77,7 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 });
@@ -341,7 +341,7 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
 // NOOP-91 round-2 FAIL #4: 05-INTERACTIONS.feature「選取 › 單選」的
 // 「出現…左上名稱標籤」「情境列出現在選取框正下方（空間不足則翻到上方）」
 // 兩句「而且」句子此前完全沒有 e2e 覆蓋（座標換算邏輯的單元測試見
-// packages/web/test/stage-overlays.test.ts；這裡驗證真實瀏覽器的最終定位）。
+// apps/web/test/stage-overlays.test.ts；這裡驗證真實瀏覽器的最終定位）。
 it("單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
@@ -391,7 +391,7 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
 // ghost (半透明、`pointer-events:none`) until the pointer actually hovers it
 // for `HOVER_SOLIDIFY_MS`, and reverting to ghost after it leaves for
 // `HOVER_GHOST_MS` (`OverlayLayer`'s `createHoverSolidifier`,
-// `packages/web/test/stage-overlays.test.ts` unit-tests the delay logic
+// `apps/web/test/stage-overlays.test.ts` unit-tests the delay logic
 // itself directly). This is the one e2e case that crosses the parent
 // document/iframe boundary the unit tests cannot reach: a real click must
 // pass through the bar's on-screen position into the iframe underneath it.
@@ -452,7 +452,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
 // The above-flip branch (`ContextBar`'s `fitsBelow === false`) is NOT
 // e2e'd here — measured directly (see this PR's delivery notes): `.canvas-
 // area`'s CSS reserves a FIXED `--space-gutter-bottom: 76px` below the
-// rendered slide (packages/web/src/styles/tokens.css), and the flip
+// rendered slide (apps/web/src/styles/tokens.css), and the flip
 // threshold is GAP(8) + BAR_HEIGHT(40) = 48px < 76px. Any element placed
 // anywhere within the slide's own bounds therefore always leaves at least
 // 76px below it — `fitsBelow` is mathematically guaranteed true for every
@@ -460,7 +460,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
 // (probed at well heights from ~150px to ~700px). The flip branch is only
 // reachable through zoom+pan pushing a selection's on-screen box past the
 // visible well's edge, which this suite does not attempt to orchestrate
-// precisely — `packages/web/test/stage-overlays.test.ts` unit-tests both
+// precisely — `apps/web/test/stage-overlays.test.ts` unit-tests both
 // branches of `ContextBar`'s `fitsBelow` decision directly against its own
 // props instead, including the exact boundary case, which is the more
 // precise place to pin this particular piece of logic down.

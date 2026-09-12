@@ -77,7 +77,7 @@ describe("mountCanvas", () => {
   // carries `user-select:none` on its own `<body>` (NOOP-349/#294) so a
   // native double-click can never spread a text selection across the whole
   // slide — this regression previously had zero test coverage at all
-  // (`grep -rn "user-select" packages/web/test/ e2e/` found nothing), so a
+  // (`grep -rn "user-select" apps/web/test/ e2e/` found nothing), so a
   // future edit to this wrapper could silently drop it.
   it("view-mode srcdoc 的 <body> 帶 user-select:none（N-03，防止雙擊擴散成原生選字）", async () => {
     controller = mountCanvas(container);

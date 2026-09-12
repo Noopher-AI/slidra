@@ -111,7 +111,7 @@ const isRunningAsRoot = typeof process.getuid === "function" && process.getuid()
 let coMotionHome: string;
 let comotDir: string;
 // Where this test's server serves static files from — a throwaway stand-in
-// for packages/web/dist, injected via ServeOptions.staticDir. Deliberately
+// for apps/web/dist, injected via ServeOptions.staticDir. Deliberately
 // NOT created here: the "frontend was never built" test needs it absent,
 // and every other static test creates it itself.
 let webDist: string;
@@ -184,7 +184,7 @@ async function openPresentationWithRampAsset(): Promise<string> {
 
 async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
   // staticDir is passed unconditionally, before ...overrides: no test in
-  // this file can reach the real packages/web/dist by forgetting to opt out.
+  // this file can reach the real apps/web/dist by forgetting to opt out.
   const server = await startServe({
     presentationId,
     port: 0,
@@ -732,9 +732,9 @@ describe("static frontend serving", () => {
 // Ticket #20: declared last, so it runs after every test above. This is
 // what makes "tests never touch the real build output" a checked property
 // instead of a convention — point the static tests back at the real
-// packages/web/dist and this goes red.
+// apps/web/dist and this goes red.
 describe("real build output isolation", () => {
-  it("leaves packages/web/dist exactly as the suite found it", async () => {
+  it("leaves apps/web/dist exactly as the suite found it", async () => {
     expect(await fingerprintRealWebDist()).toBe(realWebDistFingerprint);
   });
 });

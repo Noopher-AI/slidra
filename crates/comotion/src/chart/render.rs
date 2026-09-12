@@ -18,7 +18,7 @@ use crate::text::DEFAULT_FONT_FAMILY;
 use crate::text::escape_xml_text;
 
 /// The six hex swatches per palette — MUST stay byte-for-byte identical to
-/// `packages/web/src/styles/tokens.css`'s `--accent-palette-{brand,cool,warm}-{1..6}`.
+/// `apps/web/src/styles/tokens.css`'s `--accent-palette-{brand,cool,warm}-{1..6}`.
 /// See `chart/render.ts`'s identical constant for the full provenance note;
 /// not re-derived here to avoid drifting from the TS source of truth.
 pub const CHART_PALETTE_HEX_BRAND: [&str; 6] = [

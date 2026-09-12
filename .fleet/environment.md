@@ -6,9 +6,9 @@
 ## 工具與指令
 
 - **測試**：`npm test`（vitest，unit）；`npm run test:e2e`（`vitest run --config e2e/vitest.config.ts`，Playwright）。
-  `npm run typecheck` 會跑 `tsc -b` 加 `tsc -p packages/web --noEmit`。
+  `npm run typecheck` 會跑 `tsc -b` 加 `tsc -p apps/web --noEmit`。
   觀察者：指揮官 2026-08-25，讀 `package.json`。
-- **e2e 服務的是預先建好的 `packages/web/dist`**，`requireBuilt` 只檢查存在、不重建也不比對新舊。
+- **e2e 服務的是預先建好的 `apps/web/dist`**，`requireBuilt` 只檢查存在、不重建也不比對新舊。
   **改任何前端外觀後，跑 e2e 前必須先 `npm run build`**，否則會綠燈通過一個根本沒被測到的變更。
   觀察者：#48 戰役 wave 1 指揮官 2026-08-25（見 `.fleet/plans/plan-20260825-0003-82f26890.md` 02:27）。
 - **全新 worktree 沒有 `node_modules`**。波指揮官要在派出執行者前，於該 worktree 先跑一次 `npm install`。

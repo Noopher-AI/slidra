@@ -41,4 +41,4 @@ ADR-0002 有一句話正好在講這個：不變式應該是結構保證，不�
 
 `element style set` 對錶格容器一律拋錯（`元素 <id> 是表格，樣式請用 table 命令族調整`）——與 ADR-0012 對錶格的縮放/群組限制同理：表格的可設樣式只在「表格容器層級」（主題、表頭）與「儲存格層級」（`table cell style set` 的 align/fill/text-fill/font-weight）分開定義，兩者都由 `table` 命令族擁有，`element style set` 完全不碰。
 
-`STYLE_ATTRIBUTE_WHITELIST`（`packages/core/src/element-edit.ts`）與前端鏡像清單 `packages/web/src/style-attrs.ts` **都不新增任何條目**——白名單仍然只回答「一般元素的樣式能力清單」這個問題；表格的能力清單是 `table --help`，不寄生在這張表上。儲存格層級的 `data-comot-` 前綴屬性一樣被拒絕（沿用既有的 `data-comot-` 前綴禁令精神），但驗證邏輯獨立寫在 `table/edit.ts` 的 `table cell style set` 裡，不查這張共用白名單。
+`STYLE_ATTRIBUTE_WHITELIST`（`packages/core/src/element-edit.ts`）與前端鏡像清單 `apps/web/src/style-attrs.ts` **都不新增任何條目**——白名單仍然只回答「一般元素的樣式能力清單」這個問題；表格的能力清單是 `table --help`，不寄生在這張表上。儲存格層級的 `data-comot-` 前綴屬性一樣被拒絕（沿用既有的 `data-comot-` 前綴禁令精神），但驗證邏輯獨立寫在 `table/edit.ts` 的 `table cell style set` 裡，不查這張共用白名單。

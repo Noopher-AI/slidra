@@ -8,7 +8,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 import { loadPdf } from "./helpers/pdf.js";
-import type { ExportSseEvent } from "../packages/web/src/live-reload.js";
+import type { ExportSseEvent } from "../apps/web/src/live-reload.js";
 
 interface ExportRecording {
   sse: ExportSseEvent[];

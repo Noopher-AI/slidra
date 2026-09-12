@@ -138,7 +138,7 @@ impl InsertElementKind {
 /// from `element-edit.ts`'s own constants (themselves carried over from the
 /// front end's pre-existing colours). A literal hex value is fine here:
 /// the constraint that forbids one (`design-contract.test.ts`) only
-/// applies under `packages/web`.
+/// applies under `apps/web`.
 const DEFAULT_VIDEO_FILL: &str = "#889";
 const DEFAULT_AUDIO_FILL: &str = "#c66";
 

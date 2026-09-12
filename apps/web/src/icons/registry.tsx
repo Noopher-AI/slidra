@@ -9,7 +9,7 @@ import type { ReactElement } from "react";
  */
 export type IconName =
   // 17 ribbon command icons — paths traced verbatim from
-  // packages/web/src/shell/Ribbon.tsx's `ICON` map (already 0 0 20 20).
+  // apps/web/src/shell/Ribbon.tsx's `ICON` map (already 0 0 20 20).
   | "plus"
   | "template"
   | "paste"
@@ -27,11 +27,11 @@ export type IconName =
   | "fromstart"
   | "fromhere"
   | "fullscr"
-  // 2 play-nav icons — packages/web/src/shell/PlayChrome.tsx, originally
+  // 2 play-nav icons — apps/web/src/shell/PlayChrome.tsx, originally
   // viewBox 0 0 16 16, coordinates below are ×1.25 onto the 20×20 canonical grid.
   | "prev"
   | "next"
-  // 3 status-bar view icons — packages/web/src/shell/StatusBar.tsx, originally
+  // 3 status-bar view icons — apps/web/src/shell/StatusBar.tsx, originally
   // viewBox 0 0 16 16, coordinates below are ×1.25 onto the 20×20 canonical grid.
   | "view-normal"
   | "view-grid"

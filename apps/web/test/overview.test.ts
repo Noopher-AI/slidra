@@ -39,7 +39,7 @@ function fakeCanvas(
     // already holds is enough). The rest of `CanvasController`'s surface
     // (play/exitPlay/focusPlayer/stepPlayer/beginTextEdit/importAsset/
     // reportError) stays unimplemented here, matching this file's existing
-    // convention — packages/web/tsconfig.json excludes `test/` from
+    // convention — apps/web/tsconfig.json excludes `test/` from
     // type-checking, and nothing above this ticket ever needed them either.
     runCommand: vi.fn(async (name: string, input: Record<string, unknown>) => {
       runCommandCalls.push({ name, input });

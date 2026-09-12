@@ -22,15 +22,15 @@ const coMotionBin = path.join(rootDir, "target/release/comotion");
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 /**
- * Checks that `packages/web/dist/index.html` and `target/release/comotion`
+ * Checks that `apps/web/dist/index.html` and `target/release/comotion`
  * (`comotion serve`'s own read/write path, and this file's own
  * `createDefaultRegistry()`/`registry.dispatch` calls below, both go
  * through the same compiled binary now — [E4.T9]/F7, [E4.T12]) exist under
  * `rootDir` — callers must build before running these tests.
  */
 export async function requireBuilt(rootDir: string): Promise<void> {
-  const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-  await requireExists(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+  await requireExists(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   await requireExists(path.join(rootDir, "target/release/comotion"), "target/release/comotion 不存在，請先執行 npm run build");
 }
 

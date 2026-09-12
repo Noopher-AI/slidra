@@ -364,12 +364,12 @@ describe("rawContentTypeFor", () => {
   });
 
   // Ticket #30, review round 2: these extensions are the player's own
-  // media-effect allow-list (packages/web/src/player-plan.ts's
+  // media-effect allow-list (apps/web/src/player-plan.ts's
   // VIDEO_EXTENSIONS/AUDIO_EXTENSIONS) — they must resolve to a real
   // Content-Type here, or the player accepts a file the server serves as
   // application/octet-stream, which some browsers refuse to decode as
   // media (the exact "green on one machine, red on another" failure #23
-  // named #13 to prevent for .mp4/Safari). packages/web/test/player-plan.test.ts
+  // named #13 to prevent for .mp4/Safari). apps/web/test/player-plan.test.ts
   // asserts this from the other direction, reading both allow-lists live.
   it("derives a Content-Type for every extension the player's media allow-list accepts", () => {
     expect(rawContentTypeFor("assets/a.m4v")).toBe("video/mp4");

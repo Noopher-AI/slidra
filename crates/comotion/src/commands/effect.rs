@@ -6,7 +6,7 @@
 //!
 //! `effect list` additionally builds `steps`/`transition` (plan 4.1/4.3) —
 //! the "step plan" computation this ticket moves out of the browser
-//! (`packages/web/src/player-plan.ts`'s former `deriveSteps`/`parseEffects`
+//! (`apps/web/src/player-plan.ts`'s former `deriveSteps`/`parseEffects`
 //! call) and into the CLI/server.
 
 use crate::effects::edit::{

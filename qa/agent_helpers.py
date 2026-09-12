@@ -719,7 +719,7 @@ def selection():
 
 # [E5.T7]/F-17 決定 8: the selection context bar is ghost (pointer-events:
 # none, half-opaque) until the pointer hovers it continuously for
-# HOVER_SOLIDIFY_MS (packages/web/src/shell/stage-overlays/OverlayLayer.tsx)
+# HOVER_SOLIDIFY_MS (apps/web/src/shell/stage-overlays/OverlayLayer.tsx)
 # — long enough that this constant, and the sleep below, are pinned to it by
 # name rather than guessed at independently.
 _CONTEXT_BAR_HOVER_SETTLE = 0.4

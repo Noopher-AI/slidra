@@ -3,7 +3,7 @@ import { mountCanvas } from "../src/canvas.js";
 import type { CanvasController } from "../src/canvas.js";
 
 // AC: after a live-reload push, scroll position (and, if one ever exists,
-// zoom) must survive without a refresh. reload() (packages/web/src/canvas.ts)
+// zoom) must survive without a refresh. reload() (apps/web/src/canvas.ts)
 // reassigns the existing iframe's `srcdoc` — it does not replace the
 // element or touch its parent — so the scrollable element (this container,
 // the one App.tsx's `.canvas` div hands to mountCanvas) is never touched by

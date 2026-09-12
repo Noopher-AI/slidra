@@ -16,11 +16,11 @@ import { MEDIA_MIME_TYPES } from "./media-types.js";
 // [E4.T9]/F7) — a literal expansion of `packages/core`'s `MEDIA_FORMATS`
 // table (the server no longer imports that package at all). This table
 // must stay in lockstep with the player's own extension allow-list
-// (packages/web/src/player-plan.ts's VIDEO_EXTENSIONS/AUDIO_EXTENSIONS,
+// (apps/web/src/player-plan.ts's VIDEO_EXTENSIONS/AUDIO_EXTENSIONS,
 // ticket #30) — an extension the player accepts but this table does not
 // falls back to application/octet-stream below, which some browsers refuse
 // to decode as media even though the bytes are fine. A web test
-// (packages/web/test/player-plan.test.ts) asserts every entry in the
+// (apps/web/test/player-plan.test.ts) asserts every entry in the
 // player's allow-list resolves to a non-octet-stream type here,
 // specifically to keep the two lists from drifting apart again.
 

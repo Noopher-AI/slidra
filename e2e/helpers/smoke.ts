@@ -115,7 +115,7 @@ export async function runSmoke(browser: Browser, server: RunningServer, viewport
 
     // ── 6. Not a light-mode break: .app's own painted background is dark ──
     // (not document.body — body itself carries no background rule; .app is
-    // the themed root that paints --surface-1, see packages/web/src/styles/
+    // the themed root that paints --surface-1, see apps/web/src/styles/
     // shell.css.) Pushed onto the same `violations` array as §4/5 instead of
     // asserting here directly, so an overflow/clipping violation earlier in
     // the run doesn't short-circuit this check (NOOP-52).

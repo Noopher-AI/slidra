@@ -118,7 +118,7 @@ function enterTargets(effects: readonly Effect[]): string[] {
 /**
  * Unambiguous allow-list (settled decision, not guessed from MIME
  * sniffing): anything else, including `.ogg`, throws. Exported so
- * packages/web/test/player-plan.test.ts can assert every entry here also
+ * apps/web/test/player-plan.test.ts can assert every entry here also
  * resolves to a real Content-Type in packages/server/src/raw.ts's
  * MIME_TYPES — the two lists must stay in lockstep, or an extension this
  * player accepts gets served as application/octet-stream, which some

@@ -28,7 +28,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/text-edit-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
@@ -44,7 +44,7 @@ let openPages: Page[] = [];
 let fontDataUrl: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));
   fontDataUrl = `data:font/ttf;base64,${fontBytes.toString("base64")}`;

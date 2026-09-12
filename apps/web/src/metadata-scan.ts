@@ -7,7 +7,7 @@
  * a bound namespace prefix, and `DOMParser().parseFromString(...,
  * "image/svg+xml")` treats an unbound prefix as a fatal parse error. A
  * byte-offset scanner has no notion of namespace binding at all, so it
- * reads old and new files identically — `packages/web/test/notes.test.ts`
+ * reads old and new files identically — `apps/web/test/notes.test.ts`
  * pins this down for `<comot:notes>`. Only what `notes.ts`/`comments.ts`
  * actually need (element tree with byte offsets, first-wins attribute
  * lookup) is kept — no splicing helpers, since the browser never writes

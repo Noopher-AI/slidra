@@ -22,7 +22,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/play-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -35,7 +35,7 @@ let server: RunningServer;
 let presentationId: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
 
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);

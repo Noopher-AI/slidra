@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // 全域設計契約掃描（NOOP-9 Plan §4.1/§4.2）：所有產品 UI CSS（tokens.css 除
-// 外，它是宣告入口，由 tokens.test.ts 用另一組規則守）＋ packages/web/src
+// 外，它是宣告入口，由 tokens.test.ts 用另一組規則守）＋ apps/web/src
 // 下的 TS/TSX/JS inline style，都不得直接寫死色值／duration／easing——一律
 // 透過 var(--x) 消費 tokens.css。這是對*原始碼文字*的約束（用瀏覽器讀
 // computed style 驗不出「值是不是寫成 var(--x)」，var() 解析後和字面值一模
@@ -39,7 +39,7 @@ function lineAt(text: string, index: number): number {
  * is only an offense if what's left contains a token that ISN'T one of these strings. */
 const CSS_LITERAL_ALLOWLIST: ReadonlySet<string> = new Set(["1px", "50%", "100%", "0", "none"]);
 
-/** Same patterns as packages/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts used
+/** Same patterns as apps/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts used
  * (hex/rgb/duration/easing/cubic-bezier) — this file supersedes their generic sweep across every
  * regional CSS file, not just the six they used to cover individually — plus three more forbidden
  * shapes added here: literal px/rem lengths, literal border-radius values, and literal box-shadow
@@ -75,7 +75,7 @@ function isAllowedLiteral(patternName: string, matchedText: string): boolean {
   return CSS_LITERAL_ALLOWLIST.has(matchedText);
 }
 
-/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors packages/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required.
+/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors apps/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required.
  *
  * `play.css` is also excluded: it is playback-mode chrome, explicitly out of scope for the New v3
  * shell rebuild (a separate future ticket owns it) and untouched by that work — it still runs on
@@ -125,14 +125,14 @@ describe("design-contract.test.ts — CSS 不得寫死色值／duration／easing
 
 // ─────────────────────────────────────────────────────────────────────────
 
-/** `file` is a single relative path (from packages/web/src), not a glob — every entry names exactly one file. `allowed` is the closed list of literal values that file may contain; `reason` is why. All three fields are required (checked below at runtime, since packages/web/test/** is outside tsconfig's `include` — see NOOP-9 Plan §3.1 — so a missing field here would not be caught by `npm run typecheck`). */
+/** `file` is a single relative path (from apps/web/src), not a glob — every entry names exactly one file. `allowed` is the closed list of literal values that file may contain; `reason` is why. All three fields are required (checked below at runtime, since apps/web/test/** is outside tsconfig's `include` — see NOOP-9 Plan §3.1 — so a missing field here would not be caught by `npm run typecheck`). */
 interface InlineStyleException {
   file: string;
   allowed: string[];
   reason: string;
 }
 
-/** The only hits in packages/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. [E2.T17]: App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
+/** The only hits in apps/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. [E2.T17]: App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
@@ -219,7 +219,7 @@ describe("design-contract.test.ts — inline style 不得寫死色值／duration
     }
   });
 
-  it("packages/web/src/**/*.{ts,tsx,js}（排除 assets/）只在例外清單涵蓋的地方出現直接色值／duration／easing", () => {
+  it("apps/web/src/**/*.{ts,tsx,js}（排除 assets/）只在例外清單涵蓋的地方出現直接色值／duration／easing", () => {
     const allOffenses = walkSourceFiles(webSrcDir).flatMap(scanCode);
     const byFile = new Map<string, Offense[]>();
     for (const offense of allOffenses) {

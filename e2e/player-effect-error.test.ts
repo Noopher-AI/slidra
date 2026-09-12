@@ -12,7 +12,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 /**
  * Issue #23 quotes the spec verbatim: "遇到未實作的家族、效果或起始方式，
  * 拋錯並在畫面上說明，不要靜默忽略." Nothing in the repo tested the DOM
- * side of that sentence — packages/web/src/canvas.ts throws and surfaces
+ * side of that sentence — apps/web/src/canvas.ts throws and surfaces
  * `error` (unit-tested indirectly through effects.ts/player-plan.ts), but
  * whether an author actually SEES a message, with enough detail to find
  * the broken line, was never checked end to end. This file closes that
@@ -87,7 +87,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -95,7 +95,7 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 let browser: Browser;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
 
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);

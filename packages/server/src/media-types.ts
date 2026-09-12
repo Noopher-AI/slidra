@@ -8,7 +8,7 @@
  * extension/MIME/alias mapping raw.ts already merges with its own
  * `.svg`/`.json`/`.ttf`/`.otf`/`.txt` entries). Must stay in lockstep with
  * that source list and with the player's own extension allow-list
- * (`packages/web/src/player-plan.ts`) — `packages/web/test/player-plan.test.ts`
+ * (`apps/web/src/player-plan.ts`) — `apps/web/test/player-plan.test.ts`
  * asserts every entry in the player's allow-list resolves to a
  * non-octet-stream type here, specifically to keep the two lists from
  * drifting apart.

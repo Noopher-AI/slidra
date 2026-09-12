@@ -150,15 +150,15 @@ step "同步相依套件"
 npm install
 
 # 2. 建置 -------------------------------------------------------------------
-# serve 只吃 packages/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
+# serve 只吃 apps/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
 # 所以前端每次改動都必須重新 build 才看得到。
 if [ "$SKIP_BUILD" -eq 0 ]; then
   step "建置 server / web / Rust CLI"
   npm run build
 fi
 
-if [ ! -f "$ROOT/packages/web/dist/index.html" ]; then
-  echo "packages/web/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
+if [ ! -f "$ROOT/apps/web/dist/index.html" ]; then
+  echo "apps/web/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
   exit 1
 fi
 

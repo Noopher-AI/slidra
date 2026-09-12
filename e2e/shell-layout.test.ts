@@ -8,7 +8,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
  * NOOP-60/#197 驗收條件第 2 條：「1280×720 與 2560×1440 下版面尺寸與原型
  * 一致」。原型與書面規格（01-DESIGN_TOKENS.md 的「間距與尺寸」、
  * 02-DESIGN_DOC.md §3）都沒有跑起來或量測，本檔直接核對 tokens.css 落地
- * 的字面數值——這些數值本身已由 packages/web/test/tokens.test.ts 機械核
+ * 的字面數值——這些數值本身已由 apps/web/test/tokens.test.ts 機械核
  * 對回 01-DESIGN_TOKENS.md，這裡驗證的是「CSS 數值有沒有真的在瀏覽器裡
  * 生效成對應的版面尺寸」，兩者互補、不重複。
  *

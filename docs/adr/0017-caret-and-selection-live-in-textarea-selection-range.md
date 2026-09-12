@@ -6,7 +6,7 @@
 
 ## 背景
 
-NOOP-272（#155）要求就地編輯支援游標移動與文字選取（A1–A9）：方向鍵移動、點擊定位、拖曳選取後打字取代、跨行選取的視覺、Backspace 整段刪除、IME 組字期間不亂跳、Esc 仍然 commit。這些全部要在 `packages/web/src/selection-runtime.js`——沙盒 iframe 裡那支無 import、無 export、不能引用 `@comotion/core` 的 runtime（ADR-0011）——的既有編輯模型上加上去。
+NOOP-272（#155）要求就地編輯支援游標移動與文字選取（A1–A9）：方向鍵移動、點擊定位、拖曳選取後打字取代、跨行選取的視覺、Backspace 整段刪除、IME 組字期間不亂跳、Esc 仍然 commit。這些全部要在 `apps/web/src/selection-runtime.js`——沙盒 iframe 裡那支無 import、無 export、不能引用 `@comotion/core` 的 runtime（ADR-0011）——的既有編輯模型上加上去。
 
 ## 決定一：`textarea.selectionStart`/`selectionEnd` 是游標與選取的唯一事實來源
 

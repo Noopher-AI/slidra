@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { contrastRatio, parseColor } from "../../../e2e/helpers/contrast.js";
 
 // token-level WCAG contrast matrix. Reads tokens.css's raw text — the same
-// public boundary packages/web/test/tokens.test.ts already uses — and
+// public boundary apps/web/test/tokens.test.ts already uses — and
 // resolves var(--x) chains to literal values itself, rather than mounting a
 // stylesheet in jsdom (jsdom's CSS engine, not this file's contents, would be
 // under test otherwise).
