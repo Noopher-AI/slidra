@@ -6,10 +6,10 @@ import { resolveCoMotionHome } from "../comotion/home.js";
 import type { AgentKind } from "./adapters.js";
 
 /**
- * User-level agent selection, persisted at `<CO_MOTION_HOME>/settings.json`
+ * User-level agent selection, persisted at `<COMOTION_HOME>/settings.json`
  * (F2/F1 — NOOP-230 §4.1). This is the only file this module touches;
  * `resolveCoMotionHome()` (never `homedir()` built by hand here) is the
- * single source of truth for where `CO_MOTION_HOME` actually is, shared
+ * single source of truth for where `COMOTION_HOME` actually is, shared
  * with every other module that reads/writes under it.
  *
  * The file may carry other keys in the future (F3/F4) — this module only
@@ -94,7 +94,7 @@ function readModels(value: unknown, filePath: string): Partial<Record<AgentKind,
 /**
  * Persists the user's agent selection. Preserves every other top-level key
  * already in the file (future F3/F4 settings) — only `agent` is overwritten.
- * `mkdir`s `CO_MOTION_HOME` if it does not exist yet, and writes through a
+ * `mkdir`s `COMOTION_HOME` if it does not exist yet, and writes through a
  * temp file + `rename` in the same directory so a crash or full disk
  * mid-write can never leave `settings.json` truncated or half-written —
  * the same discipline `workspace.ts`'s `writeRegistry` uses for

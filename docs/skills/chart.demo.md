@@ -11,10 +11,10 @@
 
 ## 預期結果
 
-- `co-motion chart create <id> slides/002.svg --type bar ...` 成功並回傳一個 `elementId`。
-- `co-motion chart data set <id> slides/002.svg <elementId> --categories Q1,Q2,Q3 --series '營收=100,120,140' --series '毛利=40,55,60'` 成功。
-- `co-motion chart axis set <id> slides/002.svg <elementId> dual --right 毛利` 成功。
-- `co-motion cat <id> slides/002.svg` 可看到 `<comot:chart type="bar" ... axes="dual" legend="bottom" ...>`，以及兩個 `<comot:series>`，`毛利` 的 `axis="right"`。
+- `comotion chart create <id> slides/002.svg --type bar ...` 成功並回傳一個 `elementId`。
+- `comotion chart data set <id> slides/002.svg <elementId> --categories Q1,Q2,Q3 --series '營收=100,120,140' --series '毛利=40,55,60'` 成功。
+- `comotion chart axis set <id> slides/002.svg <elementId> dual --right 毛利` 成功。
+- `comotion cat <id> slides/002.svg` 可看到 `<comot:chart type="bar" ... axes="dual" legend="bottom" ...>`，以及兩個 `<comot:series>`，`毛利` 的 `axis="right"`。
 - agent 的回報裡列出圖表 element id、類型、類別與數列、以及軸／圖例設定。
 
 ## 不該發生的事

@@ -6,7 +6,7 @@ import type { ProjectJson } from "./comotion/project-json.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
- * The three read-only routes every co-motion HTTP server needs to render a
+ * The three read-only routes every comotion HTTP server needs to render a
  * presentation, extracted out of `serve.ts` (NOOP-93, §3.6) so the export
  * server (`export/server.ts`) can share them verbatim instead of keeping a
  * second, independently-drifting copy. In particular `/api/files/`'s "a
@@ -14,7 +14,7 @@ import { handleRawRequest } from "./raw.js";
  * kind of thing that silently stops doing `{{ slide_number }}` substitution
  * if it ever forks into two copies.
  *
- * [E4.T9]/F7: every read here now spawns the Rust `co-motion` binary
+ * [E4.T9]/F7: every read here now spawns the Rust `comotion` binary
  * (`comotion/reads.ts`) instead of dispatching against an in-process
  * `CommandRegistry` — the HTTP-facing behaviour is unchanged.
  */
@@ -99,7 +99,7 @@ export const EMPTY_EFFECT_PLAN = {
  * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
  * player and step-by-step export now fetch instead of computing themselves
  * in the browser (`packages/web/src/player-plan.ts`'s former `deriveSteps`/
- * `parseEffects`). Spawns the Rust `co-motion effect list` command
+ * `parseEffects`). Spawns the Rust `comotion effect list` command
  * ([E4.T9]/F7) rather than dispatching against an in-process registry.
  *
  * Deliberately narrower than `effect list`'s own command-layer contract

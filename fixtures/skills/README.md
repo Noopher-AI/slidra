@@ -5,12 +5,12 @@
 ## 怎麼把 deck 打包並開啟
 
 ```bash
-mkdir -p .scratch && export CO_MOTION_HOME="$PWD/.scratch/home"
+mkdir -p .scratch && export COMOTION_HOME="$PWD/.scratch/home"
 node -e "import('./packages/core/dist/index.js').then(m=>m.packDirectory('fixtures/skills/check-deck','.scratch/check.comot'))"
-node packages/cli/bin/co-motion.js open ./.scratch/check.comot     # 記下回傳的識別碼
-node packages/cli/bin/co-motion.js ls <識別碼> slides
-node packages/cli/bin/co-motion.js comment list <識別碼>
-node packages/cli/bin/co-motion.js cat <識別碼> slides/001.svg
+node packages/cli/bin/comotion.js open ./.scratch/check.comot     # 記下回傳的識別碼
+node packages/cli/bin/comotion.js ls <識別碼> slides
+node packages/cli/bin/comotion.js comment list <識別碼>
+node packages/cli/bin/comotion.js cat <識別碼> slides/001.svg
 ```
 
 把 `check-deck` 換成 `outline-deck` 或 `reshape-deck` 就能打包開啟其他兩份。

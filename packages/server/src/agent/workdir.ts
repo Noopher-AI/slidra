@@ -164,11 +164,11 @@ export function resolveAgentWorkdirSource(): string {
 
 /**
  * Where one presentation's work directory is deployed to on the user's
- * machine — `<CO_MOTION_HOME>/agent/<presentationId>`, never cleaned up
+ * machine — `<COMOTION_HOME>/agent/<presentationId>`, never cleaned up
  * when `serve` exits.
  *
  * Keyed by presentation id rather than one shared `agent/` directory
- * because two `co-motion serve` processes can run on the same machine at
+ * because two `comotion serve` processes can run on the same machine at
  * the same time, and `deployAgentWorkdir()` replaces its target wholesale
  * on every startup. A shared path means the second `serve` to start pulls
  * the directory out from under the first one's already-spawned ACP agent,
@@ -232,7 +232,7 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * (disk full, a permissions error) never leaves the target half-written:
  * everything happens in a sibling directory first, and only a clean copy
  * ever gets renamed over the real target. The staging directory shares
- * `CO_MOTION_HOME` with the target, and therefore its filesystem, which is
+ * `COMOTION_HOME` with the target, and therefore its filesystem, which is
  * what makes the final `rename` atomic rather than a copy-then-delete.
  *
  * The previous generation is *retired* (renamed aside), never deleted here

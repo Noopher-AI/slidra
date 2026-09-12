@@ -28,7 +28,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/page-management-deck");
@@ -69,11 +69,11 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -101,8 +101,8 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -119,11 +119,11 @@ async function startRegistryFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pm-cli-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-cli-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-cli-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -135,8 +135,8 @@ async function startRegistryFor(): Promise<{
     registry,
     presentationId,
     cleanup: async () => {
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -646,7 +646,7 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
   // 經在單元測試裡覆蓋過的東西，這裡重複沒有增加驗證力道。「各做一次」照
   // 字面：同一個操作，兩條路徑，同一份起始位元組。
   //
-  // GUI 與 CLI 兩側絕不能同時開著：`CO_MOTION_HOME` 是行程層級的環境變數
+  // GUI 與 CLI 兩側絕不能同時開著：`COMOTION_HOME` 是行程層級的環境變數
   // （`workspace.ts` 每次呼叫都重新讀一次，見它自己的說明），`startServerFor`
   // 與 `startRegistryFor` 都會覆寫它。GUI 側必須先跑完、`cleanup()` 收尾之
   // 後，CLI 側才能開始，否則兩邊的檔案操作會打到同一個暫存目錄。

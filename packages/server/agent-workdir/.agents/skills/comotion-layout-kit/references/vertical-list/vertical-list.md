@@ -33,7 +33,7 @@
 ## 怎麼設定畫布
 
 ```
-co-motion presentation canvas set <presentation-id> --width 1242 --height 1660
+comotion presentation canvas set <presentation-id> --width 1242 --height 1660
 ```
 
 畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。

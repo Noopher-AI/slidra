@@ -7,7 +7,7 @@
  * like it could chain, pipe, substitute, or redirect. Each round found one
  * more shell construct the tokenizer had not modelled — quoting, then
  * command substitution, then backslash escapes changing where a quoted
- * region actually closes (`co-motion "foo\"bar"; printf PWNED \"` passed
+ * region actually closes (`comotion "foo\"bar"; printf PWNED \"` passed
  * the old tokenizer while bash treats the `;` as unquoted). That is not a
  * sequence of bugs to patch; it is proof that matching a POSIX shell's
  * grammar exactly is not a winnable game. The shell's grammar is large and
@@ -26,9 +26,9 @@
  * The accepted shape:
  *   1. The command is a sequence of arguments separated by plain spaces or
  *      tabs. The first argument must be exactly the literal word
- *      `co-motion` — the program being executed, not a prefix match
- *      (`co-motion-something-else` is refused) and not merely present
- *      somewhere in the string (`sh -c 'co-motion ls'` is refused, because
+ *      `comotion` — the program being executed, not a prefix match
+ *      (`comotion-something-else` is refused) and not merely present
+ *      somewhere in the string (`sh -c 'comotion ls'` is refused, because
  *      its first argument is `sh`).
  *   2. Every argument is *either*:
  *        - a bare token made only of ASCII letters, digits, and
@@ -62,9 +62,9 @@
  *      a command sends stderr where stdout already goes and can start no
  *      new command, name no new program, and expand nothing. Whatever
  *      remains after stripping it still has to pass rules 1–4 unchanged,
- *      so `co-motion cat X 'abc 2>&1` (unterminated quote) and
- *      `co-motion cat X$(id) 2>&1` are still refused. Only one occurrence
- *      is stripped — `co-motion ls X 2>&1 2>&1` is refused. It is allowed
+ *      so `comotion cat X 'abc 2>&1` (unterminated quote) and
+ *      `comotion cat X$(id) 2>&1` are still refused. Only one occurrence
+ *      is stripped — `comotion ls X 2>&1 2>&1` is refused. It is allowed
  *      because agents append it by reflex to see stderr, and a refusal
  *      reaches them as an opaque "the user rejected this", which they read
  *      as a human saying no and stop on.
@@ -77,7 +77,7 @@
  */
 export function isCoMotionCommand(command: string): boolean {
   const tokens = tokenize(stripTrailingStderrRedirect(command));
-  return tokens !== undefined && tokens.length > 0 && tokens[0] === "co-motion";
+  return tokens !== undefined && tokens.length > 0 && tokens[0] === "comotion";
 }
 
 /**

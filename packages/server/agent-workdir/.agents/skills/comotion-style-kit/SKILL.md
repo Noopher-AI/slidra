@@ -22,10 +22,10 @@ description: 從 25 種配色組與 10 種形狀語言裡各挑一種寫進 plan
 
 1. **讀索引**（下面兩張表），用作者的描述對「第一秒的感覺」那一欄做模糊匹配，挑出 1 個最合的、外加 2 個備選。
 2. **讀中選的那一個檔**：`references/<編號>-<名字>.md`。一次只讀一個。
-3. **確認畫布**：`co-motion cat <presentation-id> project.json`。不是 1280×720 時，字級與 `layout` 錨點全部乘以 `k = width ÷ 1280`。
-4. **字型**：風格的 `typography` 指定 heading／body 兩個家族。不在簡報裡（`project.json` 的 `fonts`）時，照 `reference/fonts.md` 的清單用 `co-motion font import` 匯入——`--family`、`--license`、`--source` 逐字照抄清單。匯不到就退回內建的 `Noto Sans TC`，回報裡說明少了什麼。中文家族最多 2 種。
+3. **確認畫布**：`comotion cat <presentation-id> project.json`。不是 1280×720 時，字級與 `layout` 錨點全部乘以 `k = width ÷ 1280`。
+4. **字型**：風格的 `typography` 指定 heading／body 兩個家族。不在簡報裡（`project.json` 的 `fonts`）時，照 `reference/fonts.md` 的清單用 `comotion font import` 匯入——`--family`、`--license`、`--source` 逐字照抄清單。匯不到就退回內建的 `Noto Sans TC`，回報裡說明少了什麼。中文家族最多 2 種。
 5. **挑形狀語言**：作者的描述提到形狀、材質或手感時（「圓一點」「像手繪」「像水墨」「更克制」），去 `shapes/` 讀對應的那一個檔換掉預設值；一份簡報只有一種形狀語言。
-6. **寫入**：`co-motion plan set <presentation-id> design-spec '<全文>'`（JSON 段的欄位見 `comotion-plan`）。正文寫一句為什麼選這個配色組與這個形狀語言。
+6. **寫入**：`comotion plan set <presentation-id> design-spec '<全文>'`（JSON 段的欄位見 `comotion-plan`）。正文寫一句為什麼選這個配色組與這個形狀語言。
 7. **回報**：照下面的格式，附上另外兩個備選。
 
 ## 10 種形狀語言

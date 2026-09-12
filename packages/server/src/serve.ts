@@ -33,14 +33,14 @@ import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 
 /**
- * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
- * every read of presentation content spawns the real `co-motion` binary
+ * `comotion serve` is a mode of the CLI, not a second backend (ADR-0002):
+ * every read of presentation content spawns the real `comotion` binary
  * ([E4.T9]/F7 — `comotion/`), the exact same program one-shot
- * `co-motion cat`/`ls` runs. This module never opens a presentation file
+ * `comotion cat`/`ls` runs. This module never opens a presentation file
  * directly.
  */
 export interface ServeOptions {
-  /** Opaque id of an already-opened presentation (see `co-motion open`). */
+  /** Opaque id of an already-opened presentation (see `comotion open`). */
   presentationId: string;
   /**
    * Port to bind. Defaults to 5173. Tests must always pass 0 (let the OS
@@ -423,7 +423,7 @@ async function handleRequest(
         // T3/NOOP-142: the same "agent holds the floor" 409 gate as
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
-        // lock just because it does not spawn the co-motion binary.
+        // lock just because it does not spawn the comotion binary.
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
@@ -577,7 +577,7 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/raw/")) {
       // Deliberately NOT `POST /api/command`'s whitelist, unlike every
       // other read in this file. Every whitelisted command is reachable by
-      // the agent (ADR-0004's permission hook allows `co-motion *`). A
+      // the agent (ADR-0004's permission hook allows `comotion *`). A
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,
@@ -667,7 +667,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
  * way; 409 when nothing is running (no agent selected, or the agent is
  * idle) — the author pressed Stop on a turn that had already ended.
  *
- * What stopping does NOT do: a `co-motion` command the agent had already
+ * What stopping does NOT do: a `comotion` command the agent had already
  * launched keeps running to completion (each command is atomic), and
  * nothing already written to the presentation is rolled back — the
  * author's undo is the tool for that.
@@ -911,7 +911,7 @@ async function savePresentation(presentationId: string): Promise<{ fileName: str
     throw new CoMotionError(`找不到識別碼對應的簡報：${presentationId}`);
   }
   if (entry.sourcePath === undefined) {
-    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 co-motion pack 指定路徑");
+    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 comotion pack 指定路徑");
   }
   const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
   if (!result.ok) {
@@ -1064,7 +1064,7 @@ function resolveWebDist(): string {
  * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
  * longer imports that package). Repo-root `assets/fonts/` is the same
  * physical file the Rust binary's own `include_bytes!` embeds
- * (`crates/co-motion/src/presentation.rs`) — both moved together off
+ * (`crates/comotion/src/presentation.rs`) — both moved together off
  * `packages/core/src/assets/fonts/` when that package was deleted
  * ([E4.T12]).
  */

@@ -49,7 +49,7 @@ function idsToken(ids: unknown): string {
 
 /** Writes `content` to a fresh temp file, for the two commands whose argv only accepts a file path (§3.9). */
 async function stageTempFile(basename: string, content: string): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-argv-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-argv-"));
   const filePath = path.join(dir, basename);
   await writeFile(filePath, content, "utf-8");
   return { filePath, cleanup: () => rm(dir, { recursive: true, force: true }) };

@@ -29,7 +29,7 @@
 ## 怎麼放進去
 
 ```
-co-motion table cell style set <id> slides/00N.svg <element-id> --row 0 --col 2 --fill '<secondary_bg>'
+comotion table cell style set <id> slides/00N.svg <element-id> --row 0 --col 2 --fill '<secondary_bg>'
 ```
 
 ## 變體

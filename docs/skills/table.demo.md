@@ -17,9 +17,9 @@
 
 ## 預期結果
 
-- `co-motion table create <id> slides/002.svg --rows 3 --cols 2 --x 140 --y 200` 成功並回傳一個 `elementId`。
-- `co-motion table set <id> slides/002.svg <elementId> --markdown '...'` 成功，訊息為「已重寫 … 表格 … 的內容」。
-- `co-motion cat <id> slides/002.svg` 可看到 `data-comot-type="table"`、`data-comot-theme="zebra"`、`data-comot-header="1"`，兩個資料列的儲存格文字為「蘋果／3」「香蕉／5」。
+- `comotion table create <id> slides/002.svg --rows 3 --cols 2 --x 140 --y 200` 成功並回傳一個 `elementId`。
+- `comotion table set <id> slides/002.svg <elementId> --markdown '...'` 成功，訊息為「已重寫 … 表格 … 的內容」。
+- `comotion cat <id> slides/002.svg` 可看到 `data-comot-type="table"`、`data-comot-theme="zebra"`、`data-comot-header="1"`，兩個資料列的儲存格文字為「蘋果／3」「香蕉／5」。
 - agent 的回報裡列出建立的 element id、欄列數與主題。
 
 ## 不該發生的事

@@ -30,8 +30,8 @@
 ## 怎麼放進去
 
 ```
-co-motion asset import <id> <音檔路徑>
-co-motion element insert audio <id> slides/00N.svg --x 80 --y 230 --width 1120 --height 120 --media assets/<檔名>
+comotion asset import <id> <音檔路徑>
+comotion element insert audio <id> slides/00N.svg --x 80 --y 230 --width 1120 --height 120 --media assets/<檔名>
 ```
 
 ## 變體

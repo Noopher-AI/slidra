@@ -494,7 +494,7 @@ const PRESENTATION_FONT_FACE_STYLE =
  * aspect ratio correct and the whole slide visible instead of cropped.
  *
  * `html,body{background:#fff}` (#120): a slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document fully transparent, so `.overview-thumb`'s `#000` loading
  * placeholder (rail.css) never gets painted over — the thumbnail reads as
  * solid black instead of an empty page. A presentation's mental model is a

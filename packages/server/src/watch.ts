@@ -22,7 +22,7 @@ export interface PresentationWatcher {
 }
 
 /**
- * The CLI's per-presentation file lock (`.co-motion.lock`, #303) lives
+ * The CLI's per-presentation file lock (`.comotion.lock`, #303) lives
  * inside the watched work directory and is created and removed around
  * every command — reads included. It is coordination, never content, so a
  * change to it must not reach `onChange`: `serve` answers a live-reload
@@ -31,7 +31,7 @@ export interface PresentationWatcher {
  * Its visible symptom is the editor reloading constantly, which drops the
  * author's selection the instant they click an element.
  */
-const LOCK_FILE_NAME = ".co-motion.lock";
+const LOCK_FILE_NAME = ".comotion.lock";
 
 function isCoordinationFile(filename: string | Buffer | null): boolean {
   if (filename === null) return false;
@@ -75,7 +75,7 @@ export async function watchPresentation(
       onChange();
     }, DEBOUNCE_MS);
     // Must be unref'd: a live setTimeout keeps the Node event loop alive,
-    // which would hang the test suite and stop `co-motion serve` from ever
+    // which would hang the test suite and stop `comotion serve` from ever
     // exiting on Ctrl-C.
     debounceTimer.unref();
   };

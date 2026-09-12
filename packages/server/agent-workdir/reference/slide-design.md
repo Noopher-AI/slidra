@@ -1,10 +1,10 @@
 # SVG 作者指南
 
-這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色角色、元素角色、一份語法示範、動畫腳本、關係與密度規則，以及最後用 `co-motion validate` 驗收。`comotion-plan` 用第 6、7 節寫計畫；`comotion-build` 與 `comotion-new-slide` 用第 0～5 節做頁面。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
+這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色角色、元素角色、一份語法示範、動畫腳本、關係與密度規則，以及最後用 `comotion validate` 驗收。`comotion-plan` 用第 6、7 節寫計畫；`comotion-build` 與 `comotion-new-slide` 用第 0～5 節做頁面。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
 
 三個素材庫各管一段：配色與字級表在 `comotion-style-kit`、背景配方在 `comotion-background-kit`、版面與槽位在 `comotion-layout-kit`。這份指南只寫它們之間共用的規則。
 
-所有數字以 **1280×720** 畫布為準（`co-motion new` 的預設）。
+所有數字以 **1280×720** 畫布為準（`comotion new` 的預設）。
 
 **同比例的畫布（16:9）**：先 `cat project.json` 讀出 `canvas.width`，算出 `k = width ÷ 1280`，把所有座標、寬度、半徑、字級都乘以 k（1920×1080 就是 ×1.5），`viewBox` 寫成畫布尺寸。
 
@@ -19,15 +19,15 @@
 | 9:16 | 1080×1920 | 限時動態、短影音封面 |
 | A4 | 1240×1754 | 列印海報、單張文件 |
 
-畫布用 `co-motion presentation canvas set <id> --width <w> --height <h>` 設定，而且要在**建第一頁之前**設好。
+畫布用 `comotion presentation canvas set <id> --width <w> --height <h>` 設定，而且要在**建第一頁之前**設好。
 
 ## 0. 怎麼把一頁 SVG 寫進簡報
 
-- 新頁：`co-motion slide add <presentation-id> --svg '<整頁 SVG>'`；要插在第 n 頁之後就加 `--at n`。整頁覆寫：`co-motion slide set <presentation-id> slides/00N.svg --svg '<整頁 SVG>'`。
+- 新頁：`comotion slide add <presentation-id> --svg '<整頁 SVG>'`；要插在第 n 頁之後就加 `--at n`。整頁覆寫：`comotion slide set <presentation-id> slides/00N.svg --svg '<整頁 SVG>'`。
 - **引號規則**：整段 SVG 用單引號包住，裡面**只能用雙引號**當屬性引號，整段**不能出現任何半形單引號** `'`（命令列打不進去）；文字裡的 `&` 寫成 `&amp;`、`<` 寫成 `&lt;`。
 - 寫入時 CoMotion 會：檢查根節點是 `<svg>`、補或核對 `viewBox`；把裸圖元包進 `<g>`、補 id、把 `transform` 搬上容器；拒絕 `<script>`／`<foreignObject>`；把**文字框宣告**轉成真正的文字框（下一段）。`<defs>`、漸層、濾鏡、clipPath、`path` 都可以用。
 - 成功回傳 `data.elementIds`（文件順序的所有元素 id）。**自己給 id**（`el-<語意>`，同一頁內不重複），動畫腳本才對得上；`data-comot-name` 給人看，照給。
-- 頁面底色不寫在 SVG 裡，寫完後 `co-motion slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
+- 頁面底色不寫在 SVG 裡，寫完後 `comotion slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
 
 ### 文字框宣告
 
@@ -157,9 +157,9 @@ scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg`
 
 ### 命令順序
 
-1. 同配方同色系只做一次：`co-motion asset import <presentation-id> --svg '<配方 SVG，角色換成色碼>' --name bg-<配方>-<色系>.svg`（檔名只能用英數、`-`、`_`；同名已存在會被拒絕）。回傳 `data.path` 是 `assets/bg-….svg`。
-2. 寫該頁：`co-motion slide add <presentation-id> --svg '<整頁 SVG>'`（含 scrim rect）。
-3. `co-motion slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；要拿掉就 `--none`。
+1. 同配方同色系只做一次：`comotion asset import <presentation-id> --svg '<配方 SVG，角色換成色碼>' --name bg-<配方>-<色系>.svg`（檔名只能用英數、`-`、`_`；同名已存在會被拒絕）。回傳 `data.path` 是 `assets/bg-….svg`。
+2. 寫該頁：`comotion slide add <presentation-id> --svg '<整頁 SVG>'`（含 scrim rect）。
+3. `comotion slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；要拿掉就 `--none`。
 4. 動畫照第 5 節；背景圖從第一格就在。
 
 ## 5. 動畫腳本
@@ -173,11 +173,11 @@ scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg`
 先把同一段話裡的元素 `element group` 成一個群組，**再對群組 id 下一個效果**。群組就是動畫的錨點——一段一個錨點，一個錨點一個效果。
 
 ```
-co-motion effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
+comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
 ```
 
 - `element group` 會清掉成員既有的效果，所以**一定先 group 再套動畫**。
-- 整份做完只下一次轉場：`co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+- 整份做完只下一次轉場：`comotion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
 
 ### 5.2 哪些東西進動畫（靠角色判斷）
 
@@ -270,9 +270,9 @@ co-motion effect add <presentation-id> slides/00N.svg <群組 id> --family enter
 - 不做「謝謝」頁、不做只有聯絡方式的頁、不重複封面。
 - 文字太多就縮短或拆頁，字級不動。
 
-## 9. 自我檢查：跑 `co-motion validate`
+## 9. 自我檢查：跑 `comotion validate`
 
-規則與門檻寫在 CLI 裡，不要自己心算：`co-motion validate <presentation-id> [slides/00N.svg]`。結束碼非零代表有錯誤，`data.errors[]` 每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`。有 `plan/design-spec.md` 時字數門檻依它的 `density`；沒有計畫檔時只驗幾何與骨架（message 尾巴會帶「沒有 plan/ 計畫檔，只驗幾何與骨架」）。
+規則與門檻寫在 CLI 裡，不要自己心算：`comotion validate <presentation-id> [slides/00N.svg]`。結束碼非零代表有錯誤，`data.errors[]` 每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`。有 `plan/design-spec.md` 時字數門檻依它的 `density`；沒有計畫檔時只驗幾何與骨架（message 尾巴會帶「沒有 plan/ 計畫檔，只驗幾何與骨架」）。
 
 **第一頁閘門**：封面與第一張內容頁做完各跑一次 `validate`；有錯誤先改做法，確認都是 0 錯誤才做第 3 頁起，不要每頁各修各的。
 

@@ -44,7 +44,7 @@ function extractBareSpecifiers(source: string): string[] {
     if (specifier.startsWith("node:")) continue;
     // Workspace packages: resolved by e2e/vitest.config.ts's `resolve.alias`
     // straight to TypeScript source, never through node_modules.
-    if (specifier.startsWith("@co-motion/")) continue;
+    if (specifier.startsWith("@comotion/")) continue;
     specifiers.push(specifier);
   }
   return specifiers;

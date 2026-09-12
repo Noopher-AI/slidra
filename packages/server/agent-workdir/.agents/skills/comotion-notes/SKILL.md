@@ -9,17 +9,17 @@ description: 依每頁內容補上口語化、可直接念出來的簡報者備�
 
 ## 輸入
 
-- 目標：某一頁或全部頁。沒指定時先 `co-motion ls <presentation-id> slides` 看現況，問使用者是哪一頁或全部，問清楚前不下任何寫入命令。
+- 目標：某一頁或全部頁。沒指定時先 `comotion ls <presentation-id> slides` 看現況，問使用者是哪一頁或全部，問清楚前不下任何寫入命令。
 - 選填：總時長（例如「全場 10 分鐘」）或單頁時長。
 
 ## 步驟
 
 1. **指定的頁不存在**：回報「這份簡報只有 N 頁」，不執行。
-2. **讀取內容**：逐頁 `co-motion cat <presentation-id> slides/00N.svg`，讀出標題與要點。
+2. **讀取內容**：逐頁 `comotion cat <presentation-id> slides/00N.svg`，讀出標題與要點。
 3. **該頁已有備忘稿**（`cat` 輸出裡的 `<comot:notes>` 非空）：先把現有內容給使用者看，問要覆蓋還是保留——`slide notes set` 是整份覆寫，沒有 append。
-4. **寫入備忘稿**：`co-motion slide notes set <presentation-id> slides/00N.svg '<口語化講稿>'`。一頁一個命令，做完一頁確認一頁再做下一頁。講稿裡避開半形單引號（例如英文所有格改寫措辭）。
+4. **寫入備忘稿**：`comotion slide notes set <presentation-id> slides/00N.svg '<口語化講稿>'`。一頁一個命令，做完一頁確認一頁再做下一頁。講稿裡避開半形單引號（例如英文所有格改寫措辭）。
 5. **指定時長**：總秒數 ÷ 頁數估每頁秒數（單頁時長就只算該頁），講稿長度依中文口語約每分鐘 240 字換算，回報裡列出每頁的預估秒數。
-6. **要求清空**：`co-motion slide notes set <presentation-id> slides/00N.svg ''`（空字串合法）。
+6. **要求清空**：`comotion slide notes set <presentation-id> slides/00N.svg ''`（空字串合法）。
 7. **驗證**：`cat` 讀回確認 `<comot:notes>` 有內容。
 
 ## 回報格式

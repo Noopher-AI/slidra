@@ -29,8 +29,8 @@
 ## 怎麼放進去
 
 ```
-co-motion asset import <id> <圖片路徑或 URL>
-co-motion element insert image <id> slides/00N.svg --x 80 --y 160 --width 1120 --height 380 --media assets/<檔名>
+comotion asset import <id> <圖片路徑或 URL>
+comotion element insert image <id> slides/00N.svg --x 80 --y 160 --width 1120 --height 380 --media assets/<檔名>
 ```
 
 ## 變體

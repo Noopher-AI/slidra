@@ -13,8 +13,8 @@ import { requireBuilt } from "./helpers/launch.js";
 import { loadPdf } from "./helpers/pdf.js";
 
 /**
- * `co-motion export` (#210 條件 2/4, NOOP-93 §4.3/§4.5). Spawns the real
- * compiled `co-motion` binary (§6.2's "公開邊界二" — never `runExportCli`
+ * `comotion export` (#210 條件 2/4, NOOP-93 §4.3/§4.5). Spawns the real
+ * compiled `comotion` binary (§6.2's "公開邊界二" — never `runExportCli`
  * called in-process, that would skip the exact bin-dispatch branch this
  * ticket had to get right; [E4.T12]: this is now the strongest form of that
  * boundary — the Rust binary itself execs Node for `export`, closer to a
@@ -24,7 +24,7 @@ import { loadPdf } from "./helpers/pdf.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const coMotionBinPath = path.join(rootDir, "target/release/co-motion");
+const coMotionBinPath = path.join(rootDir, "target/release/comotion");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const brokenEffectsDeckDir = path.join(rootDir, "e2e/fixtures/broken-effects-deck");
 const backdropFilterDeckDir = path.join(rootDir, "e2e/fixtures/backdrop-filter-deck");
@@ -69,8 +69,8 @@ let comotDir: string;
 let registry: CommandRegistry;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-export-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-export-files-"));
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-export-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-export-files-"));
   registry = createDefaultRegistry();
   // openFixture() below dispatches "open"/"new" through `registry`, which
   // ([E4.T12]: the deleted TypeScript engine's in-process registry is gone)
@@ -80,26 +80,26 @@ beforeEach(async () => {
   // only covers the separately-spawned `runCli` child), so both variables
   // must be set here too, or `registry.dispatch` fails before `runCli` is
   // ever reached.
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
 });
 
 afterEach(async () => {
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function env(): NodeJS.ProcessEnv {
-  // [E4.T9]/F7/[E4.T12]: `co-motion export`'s `runExportCli` spawns the
+  // [E4.T9]/F7/[E4.T12]: `comotion export`'s `runExportCli` spawns the
   // Rust binary itself (`loadProject`) for CLI-driven exports — in
-  // production `CO_MOTION_BIN` is always set by the Rust launcher before it
-  // execs into the Node entry point (`crates/co-motion/src/node_entry.rs`);
+  // production `COMOTION_BIN` is always set by the Rust launcher before it
+  // execs into the Node entry point (`crates/comotion/src/node_entry.rs`);
   // this test now goes through that exact launcher too (`runCli` spawns
   // `coMotionBinPath` directly), so setting it here mirrors a real
   // invocation rather than working around one.
-  return { ...process.env, CO_MOTION_HOME: coMotionHome, CO_MOTION_BIN: coMotionBinPath };
+  return { ...process.env, COMOTION_HOME: coMotionHome, COMOTION_BIN: coMotionBinPath };
 }
 
 async function openFixture(deckDir: string): Promise<string> {
@@ -201,7 +201,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
     const id = await openFixture(exportDeckDir);
     // realpath: macOS's tmpdir is a symlink (/var → /private/var) and the
     // CLI prints the resolved path.
-    const workDir = await realpath(await mkdtemp(path.join(tmpdir(), "co-motion-export-cwd-")));
+    const workDir = await realpath(await mkdtemp(path.join(tmpdir(), "comotion-export-cwd-")));
     try {
       const result = await runCli(["export", id, "--format", "pdf"], { env: env(), cwd: workDir });
       expect(result.code).toBe(0);
@@ -235,7 +235,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
 
 describe("失敗時不產生半份 PDF（#210 條件 2）", () => {
   it("簡報沒有投影片", async () => {
-    const emptyDeckDir = await mkdtemp(path.join(tmpdir(), "co-motion-export-empty-"));
+    const emptyDeckDir = await mkdtemp(path.join(tmpdir(), "comotion-export-empty-"));
     try {
       await mkdir(path.join(emptyDeckDir, "slides"), { recursive: true });
       await mkdir(path.join(emptyDeckDir, "assets"), { recursive: true });

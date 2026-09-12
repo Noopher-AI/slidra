@@ -21,7 +21,7 @@ import { broadcastSaveState } from "./save-state.js";
  * path (§2 point 6, §7 decision 6), so this is the same "raw body + a
  * filename header" shape `POST /api/asset` already established.
  *
- * The uploaded bytes are staged under `<CO_MOTION_HOME>/opened/<opaque>/`
+ * The uploaded bytes are staged under `<COMOTION_HOME>/opened/<opaque>/`
  * and become the presentation's new `sourcePath` — Save from here on
  * writes back to that staged copy, never to wherever the file actually
  * lives on the author's own machine, because this server was never told
@@ -30,14 +30,14 @@ import { broadcastSaveState } from "./save-state.js";
  * [E4.T9]/F7: there is no CLI command that swaps an existing id's content
  * while keeping the id itself (every route, the change broadcaster, and
  * the agent chat session are all bound to the id `serve` started on).
- * `co-motion open <staged-file> --json` always mints a *new* id, so this
+ * `comotion open <staged-file> --json` always mints a *new* id, so this
  * module implements "reopen in place" itself (plan §3.8): open into a
  * throwaway id, then move that id's on-disk content into the real id's
  * work directory, then discard the throwaway id and the old undo history.
  */
 
-const FILE_NAME_HEADER = "x-co-motion-file-name";
-const DISCARD_UNSAVED_HEADER = "x-co-motion-discard-unsaved";
+const FILE_NAME_HEADER = "x-comotion-file-name";
+const DISCARD_UNSAVED_HEADER = "x-comotion-discard-unsaved";
 const UNNAMED_FALLBACK = "未命名.comot";
 /** The deck `POST /api/new` creates: no slides, and a name the author is meant to replace. */
 const NEW_DECK_NAME = "未命名";
@@ -87,7 +87,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * Replaces presentation `id`'s work directory content in place with
  * `stagedPath`'s, without changing `id` itself — plan §3.8, ported from
  * `packages/core`'s `reopenPresentationInPlace`, with the actual unpack
- * moved into the Rust binary: `co-motion open <stagedPath> --json` does the
+ * moved into the Rust binary: `comotion open <stagedPath> --json` does the
  * zip decompression, `project.json` validation and formatVersion migration
  * (a fresh, throwaway id `id2`); this function only moves files around
  * afterwards.
@@ -129,7 +129,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
     stagedChildren.map((name) => rename(path.join(stagedEntry.workDir, name), path.join(entry.workDir, name))),
   );
 
-  // Read-modify-write under the lock, so a `co-motion` process registering
+  // Read-modify-write under the lock, so a `comotion` process registering
   // its own presentation at the same moment does not lose its entry to this
   // write (or vice versa). Deliberately narrower than this whole function:
   // the `open` above shells out to the CLI, which takes this same lock.
@@ -147,7 +147,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
 
 /**
  * `POST /api/new` — the GUI's New action, the sibling of Open. Makes a
- * brand-new presentation with no slides at all (`co-motion new` writes
+ * brand-new presentation with no slides at all (`comotion new` writes
  * `"slides": []`) and swaps it into this server's own id through the very
  * same `reopenPresentationInPlace` Open uses: `serve` is bound to one id
  * for its whole lifetime (routes, change broadcaster, agent session), so
@@ -254,7 +254,7 @@ export async function handleOpenPost(
     // Validates the uploaded bytes (a real zip, a valid project.json, a
     // supported formatVersion) before touching the live work directory —
     // see reopenPresentationInPlace's own comment. Its CoMotionError
-    // messages (relayed from `co-motion open`'s own JSON message) are
+    // messages (relayed from `comotion open`'s own JSON message) are
     // relayed verbatim, matching §4.1's table.
     await reopenPresentationInPlace(presentationId, stagedPath);
   } catch (error) {

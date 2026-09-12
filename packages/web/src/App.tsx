@@ -1017,7 +1017,7 @@ export function App() {
 
   /**
    * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
-   * same file with `x-co-motion-discard-unsaved: 1` after the author
+   * same file with `x-comotion-discard-unsaved: 1` after the author
    * confirms losing the current unsaved changes — the one round-trip the
    * table's 409 row describes.
    */
@@ -1030,8 +1030,8 @@ export function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-co-motion-file-name": encodeURIComponent(file.name),
-          ...(discardUnsaved ? { "x-co-motion-discard-unsaved": "1" } : {}),
+          "x-comotion-file-name": encodeURIComponent(file.name),
+          ...(discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {}),
         },
         body: bytes,
       });
@@ -1066,7 +1066,7 @@ export function App() {
     try {
       response = await fetch("/api/new", {
         method: "POST",
-        headers: discardUnsaved ? { "x-co-motion-discard-unsaved": "1" } : {},
+        headers: discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {},
       });
     } catch {
       setOpenError("建立新簡報失敗：連線已中斷");

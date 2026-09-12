@@ -7,7 +7,7 @@
 #   2. 建置 server（tsc -b）與 web（vite build），以及 Rust 二進位
 #   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
 #   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
-#   5. 執行 co-motion serve，開瀏覽器看畫面
+#   5. 執行 comotion serve，開瀏覽器看畫面
 #
 # 兩種簡報準備方式：
 #   - 預設（不加旗標）：把 demo/ 打包成示範簡報，四頁投影片、三個資產（圖、
@@ -64,7 +64,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-CLI="$ROOT/node_modules/.bin/co-motion"
+CLI="$ROOT/node_modules/.bin/comotion"
 DEMO_SOURCE="$ROOT/demo"
 DEMO_DIR="$ROOT/.quickstart"
 DEMO_COMOT="$DEMO_DIR/demo.comot"
@@ -83,10 +83,10 @@ QA_SERVE_PGID_FILE="$QA_DIR/serve.pgid"
 QA_CHROMIUM_PGID_FILE="$QA_DIR/chromium.pgid"
 QA_ENV_FILE="$QA_DIR/qa.env"
 QA_SERVE_LOG="$QA_DIR/serve.log"
-QA_CDP_PORT="${CO_MOTION_QA_CDP_PORT:-9222}"
+QA_CDP_PORT="${COMOTION_QA_CDP_PORT:-9222}"
 
 # 收掉一個 pgid 檔記錄的行程群組：TERM，等最多 5 秒，還活著就 KILL。
-# co-motion serve 是 spawn 出一個獨立的 node 子行程（不是 exec），所以
+# comotion serve 是 spawn 出一個獨立的 node 子行程（不是 exec），所以
 # 只殺 wrapper 收不掉 server；--qa 用 setsid 起、記整個行程群組的 PGID，
 # 這裡對整組送信號才收得乾淨。
 qa_kill_pgid_file() {
@@ -163,16 +163,16 @@ if [ ! -f "$ROOT/packages/web/dist/index.html" ]; then
 fi
 
 # 3. 前置檢查 -----------------------------------------------------------------
-# NOOP-278：node_modules/.bin/co-motion 是 npm run build 最後一步
-# （scripts/link-cli.mjs）指到 Rust 產物（target/release/co-motion）的連結，
+# NOOP-278：node_modules/.bin/comotion 是 npm run build 最後一步
+# （scripts/link-cli.mjs）指到 Rust 產物（target/release/comotion）的連結，
 # 現在只由 scripts/link-cli.mjs 建立。
 if [ ! -x "$CLI" ]; then
-  echo "找不到可執行的 node_modules/.bin/co-motion（應指向 cargo build 產出的 target/release/co-motion）。請執行 npm run build 後重試。" >&2
+  echo "找不到可執行的 node_modules/.bin/comotion（應指向 cargo build 產出的 target/release/comotion）。請執行 npm run build 後重試。" >&2
   exit 1
 fi
 
 step "檢查 agent"
-# NOOP-230：兩個 adapter（claude-code-acp／codex-acp）現在是 @co-motion/server
+# NOOP-230：兩個 adapter（claude-code-acp／codex-acp）現在是 @comotion/server
 # 的一般 npm 相依，隨第 1 步的 npm install 一起裝好，不用再另外全域安裝、也
 # 不用探測 PATH。「要用哪一個」改成使用者層級設定（settings.json）或
 # --agent 這次覆蓋一次，沒選時 serve 照常啟動，只是聊天功能要等選定才能用。
@@ -212,7 +212,7 @@ else
   # 都作廢。
   #
   # NOOP-349：--qa 沒有這個顧慮（每次都重寫 QA 環境變數檔裡的
-  # CO_MOTION_QA_PRESENTATION_ID，沒有人手上握著舊網址），而過期的 deck 在
+  # COMOTION_QA_PRESENTATION_ID，沒有人手上握著舊網址），而過期的 deck 在
   # QA 路徑上是災難：agent 會對著舊素材跑案例腳本，拿到的 PASS/FAIL 全部
   # 對應到錯的簡報內容，而唯一的線索只有下面這行 stderr 提醒。#294 就是這樣
   # 連續五輪對著一份含滿版背景 rect 的舊 demo 跑 F-15，把「拖曳空白」永遠
@@ -256,27 +256,27 @@ if [ -n "$AGENT" ]; then
   SERVE_ARGS+=("--agent" "$AGENT")
 fi
 
-# agent 執行的是 `co-motion ...`（編輯規約裡就是這樣寫的），它的 shell 從
+# agent 執行的是 `comotion ...`（編輯規約裡就是這樣寫的），它的 shell 從
 # serve 行程繼承環境變數。專案沒有全域安裝 CLI，所以必須把 workspace 的
 # node_modules/.bin 掛進 PATH——少了這一步，agent 會拿到
-# 「command not found: co-motion」而完全改不動簡報。
+# 「command not found: comotion」而完全改不動簡報。
 export PATH="$ROOT/node_modules/.bin:$PATH"
 
 step "驗證 PATH"
-RESOLVED="$(command -v co-motion || true)"
+RESOLVED="$(command -v comotion || true)"
 if [ "$RESOLVED" != "$CLI" ]; then
-  echo "PATH 修正失敗：co-motion 解析到「${RESOLVED:-（找不到）}」，預期是 ${CLI}。" >&2
+  echo "PATH 修正失敗：comotion 解析到「${RESOLVED:-（找不到）}」，預期是 ${CLI}。" >&2
   exit 1
 fi
-# co-motion 沒有 --help；用不帶參數呼叫來確認它真的執行了（Rust 二進位自己印出
+# comotion 沒有 --help；用不帶參數呼叫來確認它真的執行了（Rust 二進位自己印出
 # 「缺少命令名稱」並以非 0 結束，不再回退給 Node），而不是被 shell 當成
 # command not found。
-INVOKE_OUTPUT="$(co-motion 2>&1 || true)"
+INVOKE_OUTPUT="$(comotion 2>&1 || true)"
 if printf '%s' "$INVOKE_OUTPUT" | grep -qi "command not found"; then
-  echo "co-motion 執行失敗，agent 會拿到 command not found。" >&2
+  echo "comotion 執行失敗，agent 會拿到 command not found。" >&2
   exit 1
 fi
-echo "co-motion 已可用：$RESOLVED"
+echo "comotion 已可用：$RESOLVED"
 
 URL="http://127.0.0.1:$PORT"
 
@@ -294,11 +294,11 @@ elif [ "$BLANK" -eq 1 ]; then
   - 按 New → From outline… 貼一份大綱送出：訊息以 /comotion-plan 開頭，agent 寫出
     plan/outline.md 與 plan/design-spec.md 後，編輯器彈出擋住式的計畫確認視窗。
   - 視窗裡每題預設是 agent 的建議，可切換或自由填寫；按「確認並建置」後 agent 走
-    /comotion-build 從第 1 頁建出整份、登記範本、用 co-motion validate 修到 0 錯誤。
+    /comotion-build 從第 1 頁建出整份、登記範本、用 comotion validate 修到 0 錯誤。
   - 在聊天框輸入一道建立元素的指令（例如「加一個標題文字」），agent 會經 CLI
     改檔，畫面自動更新出現這個元素——這是這份簡報第一次被下命令。
   - 從終端機看同一份內容：
-      node_modules/.bin/co-motion cat $PRESENTATION_ID project.json
+      node_modules/.bin/comotion cat $PRESENTATION_ID project.json
 
 其他：
   - 按 Ctrl+C 結束。
@@ -324,7 +324,7 @@ cat <<INFO
         curl -si -H 'Range: bytes=99999999-' $URL/api/raw/assets/photo.svg | head -3
   即時預覽 #5
     - 另開一個終端機改內容，畫面應該不重整就更新，且停在你正在看的那一頁：
-        node_modules/.bin/co-motion text set $PRESENTATION_ID slides/001.svg el-title "Q3 財報"
+        node_modules/.bin/comotion text set $PRESENTATION_ID slides/001.svg el-title "Q3 財報"
   agent 對話 #6
     - 在聊天框輸入「把第一頁標題改成 Q3 財報」，agent 會經 CLI 改檔，畫面自動更新。
     - agent 執行命令時畫面不會顯示工具進度，看起來像停住是正常的，等它回話即可。
@@ -369,7 +369,7 @@ cat <<INFO
 
 其他：
   - 從終端機看同一份內容：
-      node_modules/.bin/co-motion cat $PRESENTATION_ID slides/001.svg
+      node_modules/.bin/comotion cat $PRESENTATION_ID slides/001.svg
   - 按 Ctrl+C 結束。
 
 INFO
@@ -382,14 +382,14 @@ fi
 
 # 5. 啟動 ---------------------------------------------------------------------
 if [ "$QA" -eq 0 ]; then
-  step "啟動 co-motion serve"
+  step "啟動 comotion serve"
   exec "$CLI" "${SERVE_ARGS[@]}"
 fi
 
 # --qa：背景起 serve，輪詢直到有回應，再起 headless Chromium，最後寫 env 檔並
 # 跑 browser-use --doctor 冒煙測試。與不帶 --qa 的路徑不同，這裡必須讓腳本
 # 自己結束（父票驗收條件 1：「一個指令跑完」），所以不能用 exec。
-step "啟動 co-motion serve（QA，背景）"
+step "啟動 comotion serve（QA，背景）"
 
 qa_wait_http() {
   local url="$1" timeout_s="$2" waited=0
@@ -411,7 +411,7 @@ setsid bash -c '
 disown
 
 if ! qa_wait_http "$URL/" 60; then
-  echo "co-motion serve 在 60 秒內沒有回應 $URL/。serve.log 最後 20 行：" >&2
+  echo "comotion serve 在 60 秒內沒有回應 $URL/。serve.log 最後 20 行：" >&2
   tail -n 20 "$QA_SERVE_LOG" >&2 || true
   exit 1
 fi
@@ -427,7 +427,7 @@ echo "Chromium：$CHROMIUM"
 
 step "啟動 headless Chromium（QA，背景）"
 if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$QA_CDP_PORT/json/version" 2>/dev/null | grep -q '^200$'; then
-  echo "CDP port $QA_CDP_PORT 已被佔用。改用 CO_MOTION_QA_CDP_PORT 環境變數指定別的 port。" >&2
+  echo "CDP port $QA_CDP_PORT 已被佔用。改用 COMOTION_QA_CDP_PORT 環境變數指定別的 port。" >&2
   exit 1
 fi
 
@@ -462,11 +462,11 @@ step "寫出 QA env 檔"
 cat > "$QA_ENV_FILE" <<ENV
 export BU_CDP_URL="http://127.0.0.1:$QA_CDP_PORT"
 export BH_AGENT_WORKSPACE="$ROOT/qa"
-export CO_MOTION_QA_URL="$URL"
-export CO_MOTION_QA_PRESENTATION_ID="$PRESENTATION_ID"
-export BH_RUNTIME_DIR="/tmp/co-motion-qa-$(id -u)"
+export COMOTION_QA_URL="$URL"
+export COMOTION_QA_PRESENTATION_ID="$PRESENTATION_ID"
+export BH_RUNTIME_DIR="/tmp/comotion-qa-$(id -u)"
 export BH_TMP_DIR="$QA_DIR/tmp"
-export CO_MOTION_QA_CDP_PORT="$QA_CDP_PORT"
+export COMOTION_QA_CDP_PORT="$QA_CDP_PORT"
 ENV
 mkdir -p "$QA_DIR/tmp"
 echo "已寫出：$QA_ENV_FILE"
@@ -474,7 +474,7 @@ echo "已寫出：$QA_ENV_FILE"
 step "開啟 CoMotion（透過 qa/agent_helpers.py 的 open_deck()）"
 # `browser-use --doctor` 是唯讀診斷，本身不會啟動 daemon（daemon 只在跑一般腳本時
 # 由 ensure_daemon() 啟動，見 browser_harness/run.py）。父票驗收條件要求 doctor
-# 印出「active page 是 CoMotion」，所以這裡先跑一段會導覽到 CO_MOTION_QA_URL 的腳本
+# 印出「active page 是 CoMotion」，所以這裡先跑一段會導覽到 COMOTION_QA_URL 的腳本
 # ——同時完成「啟動 daemon」與「開到 CoMotion」兩件事，再進 doctor 檢查。
 set +e
 DOCTOR_OPEN_OUTPUT="$( set -a; source "$QA_ENV_FILE"; set +a; browser-use <<'PY' 2>&1

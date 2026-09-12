@@ -89,9 +89,9 @@ async function catSlide(registry: Awaited<ReturnType<typeof newTableDeck>>["regi
   return result.data!.content;
 }
 
-/** `<CO_MOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses, for "single history entry" assertions without depending on the Undo button's own UI state. */
+/** `<COMOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses, for "single history entry" assertions without depending on the Undo button's own UI state. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.CO_MOTION_HOME!;
+  const home = process.env.COMOTION_HOME!;
   try {
     const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
     return (JSON.parse(raw).undo ?? []).length;
@@ -116,7 +116,7 @@ it("B1: 單獨用 file:// 開啟 workdir 的 slides/001.svg，無 parsererror，
     const expectedCells = (svgContent.match(/data-comot-cell="/g) ?? []).length;
     expect(expectedCells).toBeGreaterThan(0);
 
-    const workDir = path.join(process.env.CO_MOTION_HOME!, "work", presentationId);
+    const workDir = path.join(process.env.COMOTION_HOME!, "work", presentationId);
     const page = await browser.newPage();
     openPages.push(page);
     await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);
@@ -133,7 +133,7 @@ it("B2: 模板列的儲存格 display:none，generated 儲存格不是 none", as
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
 
-    const workDir = path.join(process.env.CO_MOTION_HOME!, "work", presentationId);
+    const workDir = path.join(process.env.COMOTION_HOME!, "work", presentationId);
     const page = await browser.newPage();
     openPages.push(page);
     await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);

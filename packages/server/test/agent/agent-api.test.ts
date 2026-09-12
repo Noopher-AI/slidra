@@ -17,7 +17,7 @@ import { agentSettingsPath } from "../../src/agent/settings.js";
 import { requireCliBuilt } from "./require-cli-built.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -63,12 +63,12 @@ let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-agentapi-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-agentapi-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "co-motion-agentapi-log-"));
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
   streams = [];
 });
@@ -76,8 +76,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -479,7 +479,7 @@ describe("GET /api/agent", () => {
 describe("POST /api/agent/select", () => {
   beforeAll(requireCliBuilt);
 
-  it("A5: persists across a restart — select codex, close, reopen with the same CO_MOTION_HOME, GET /api/agent still reports codex/settings", async () => {
+  it("A5: persists across a restart — select codex, close, reopen with the same COMOTION_HOME, GET /api/agent still reports codex/settings", async () => {
     const id = await openFreshPresentation();
     const server1 = await serve({
       presentationId: id,
@@ -568,7 +568,7 @@ describe("POST /api/agent/select", () => {
   it("A9: refused (409, reason 'editing') while the agent holds the floor; session unswapped", async () => {
     const id = await openFreshPresentation();
     const comotPath = path.join(comotDir, "extra.comot");
-    // A separate presentation so `co-motion text set` has a real target
+    // A separate presentation so `comotion text set` has a real target
     // for the multi-command fixture's shell command.
     const created = await runCli(["new", comotPath, "--name", "測試簡報二"]);
     expect(created.ok).toBe(true);
@@ -582,7 +582,7 @@ describe("POST /api/agent/select", () => {
     ]);
     expect(added.ok).toBe(true);
     const elementId = added.data!.elementId;
-    const command = `co-motion text set ${lockId} slides/001.svg ${elementId} '改一次'`;
+    const command = `comotion text set ${lockId} slides/001.svg ${elementId} '改一次'`;
 
     const server = await serve({
       presentationId: lockId,

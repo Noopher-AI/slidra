@@ -29,8 +29,8 @@
 ## 怎麼放進去
 
 ```
-co-motion element insert image <id> slides/00N.svg --x 80 --y 176 --width 540 --height 340 --media assets/<前.jpg>
-co-motion element insert image <id> slides/00N.svg --x 660 --y 176 --width 540 --height 340 --media assets/<後.jpg>
+comotion element insert image <id> slides/00N.svg --x 80 --y 176 --width 540 --height 340 --media assets/<前.jpg>
+comotion element insert image <id> slides/00N.svg --x 660 --y 176 --width 540 --height 340 --media assets/<後.jpg>
 ```
 
 ## 變體

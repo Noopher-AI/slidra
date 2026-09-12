@@ -29,8 +29,8 @@
 ## 怎麼放進去
 
 ```
-co-motion table create <id> slides/00N.svg --rows 5 --cols 4 --x 80 --y 176 --header true
-co-motion table cell set <id> slides/00N.svg <element-id> --row 0 --col 0 --text '表頭一'
+comotion table create <id> slides/00N.svg --rows 5 --cols 4 --x 80 --y 176 --header true
+comotion table cell set <id> slides/00N.svg <element-id> --row 0 --col 0 --text '表頭一'
 ```
 
 ## 變體

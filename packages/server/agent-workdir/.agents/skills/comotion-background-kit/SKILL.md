@@ -25,14 +25,14 @@ description: 從 47 種背景配方裡挑一種建成 SVG 資產並套到頁面�
 
 ## 步驟
 
-1. **讀風格**：`co-motion cat <presentation-id> plan/design-spec.md`。背景必須跟風格同一組顏色。看 `background` 色碼分明暗：25 種風格裡有 17 種是淺底。
+1. **讀風格**：`comotion cat <presentation-id> plan/design-spec.md`。背景必須跟風格同一組顏色。看 `background` 色碼分明暗：25 種風格裡有 17 種是淺底。
 2. **讀索引**挑配方；作者沒給描述時，依風格檔的「建議背景」與每頁的 `rhythm` 決定。`anchor` 的頁面字少留白多，經得起有個性的背景；`dense` 的頁面已經有卡片與面板，背景只能是質地。有方向的配方（`19 dashed-path`、`38 perspective-floor`）只給 `order` 關係的頁面。
 3. **讀中選的那一個檔**：`references/<名字>/<名字>.md`。一次只讀一個。
 4. **確認畫布**：不是 1280×720 時所有座標乘以 `k = width ÷ 1280`，`viewBox` 寫成實際畫布尺寸。
 5. **挑色系**：每個配方檔列出 `base` 之外的兩種角色對應。色系是角色對應表而不是色碼——同一張圖換一組角色去填，顏色仍然全部來自這份簡報的配色。內容頁用 `base`，定錨頁想跟內容頁區隔時用另一種；一份簡報最多兩種配方、最多兩種色系。
-6. **建資產**：把 `var(--role, …)` 換成對應後的角色色碼，`co-motion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>[-<色系>].svg`。同一種配方＋同一種色系整份只建一次，記下回傳的 `data.path`。
-7. **套用**：逐頁 `co-motion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（各配方檔有建議值）。背景圖從第一格就在，不加動畫。
-8. **檢查**：`co-motion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照 `reference/slide-design.md` 第 4b 節補 scrim；調降 opacity 不是修法。
+6. **建資產**：把 `var(--role, …)` 換成對應後的角色色碼，`comotion asset import <presentation-id> --svg '<配方 SVG>' --name bg-<名字>-<配色代號>[-<色系>].svg`。同一種配方＋同一種色系整份只建一次，記下回傳的 `data.path`。
+7. **套用**：逐頁 `comotion slide background set <presentation-id> slides/00N.svg --asset <path> --opacity <建議值>`。opacity 依頁面的 `rhythm` 調（各配方檔有建議值）。背景圖從第一格就在，不加動畫。
+8. **檢查**：`comotion validate <presentation-id>`。背景圖會讓 `structure.scrim` 開始要求文字有底——有錯就照 `reference/slide-design.md` 第 4b 節補 scrim；調降 opacity 不是修法。
 
 ## 47 種配方
 

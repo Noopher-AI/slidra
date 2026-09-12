@@ -13,7 +13,7 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 const execFileAsync = promisify(execFile);
 
 /** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,7 +22,7 @@ interface CliEnvelope<T = unknown> {
   failureKind?: string;
 }
 
-/** Runs the real `co-motion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
+/** Runs the real `comotion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
     const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
@@ -104,7 +104,7 @@ const fakeAgent: AgentAdapterConfig = {
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
-// Every test points CO_MOTION_HOME at its own temp directory (ADR-0004
+// Every test points COMOTION_HOME at its own temp directory (ADR-0004
 // testing convention) and always binds port 0, reading the assigned port
 // back — a fixed port would collide with ticket #6's own server tests.
 
@@ -119,12 +119,12 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-serve-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-static-"));
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-static-"));
   webDist = path.join(staticRoot, "dist");
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
@@ -132,8 +132,8 @@ afterEach(async () => {
   // Always shut every server started in the test down, including on
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -311,7 +311,7 @@ describe("startServe", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  it("serves the presentation's metadata reached only through the co-motion binary", async () => {
+  it("serves the presentation's metadata reached only through the comotion binary", async () => {
     const id = await openFreshPresentation("我的簡報");
 
     const server = await serve(id);
@@ -339,14 +339,14 @@ describe("startServe", () => {
   });
 
   // Validation standard 8 (plan §5): the structural proof that `serve` no
-  // longer reads any presentation file itself now points `CO_MOTION_BIN` at
+  // longer reads any presentation file itself now points `COMOTION_BIN` at
   // a fake, hand-written `.mjs` binary — never touching a real filesystem —
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
   // injection point: it proves the server goes through `runCoMotion`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
-  it("serves fabricated content from a stub CO_MOTION_BIN, never touching the real filesystem", async () => {
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
+  it("serves fabricated content from a stub COMOTION_BIN, never touching the real filesystem", async () => {
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -369,9 +369,9 @@ describe("startServe", () => {
       { mode: 0o755 },
     );
 
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
     try {
-      // CO_MOTION_HOME is this test's own fresh, empty temp directory —
+      // COMOTION_HOME is this test's own fresh, empty temp directory —
       // "unregistered-stub-id" names nothing on the real filesystem at all.
       const server = await serve("unregistered-stub-id");
 
@@ -381,7 +381,7 @@ describe("startServe", () => {
       const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
       expect(slide).toBe("<svg>STUB</svg>");
     } finally {
-      process.env.CO_MOTION_BIN = coMotionBinPath;
+      process.env.COMOTION_BIN = coMotionBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });
@@ -630,7 +630,7 @@ describe("startServe", () => {
   it("never leaks the hidden work directory's path in project.json validation errors", async () => {
     // Echoing back the .comot path the caller supplied is legitimate
     // (ADR-0004) — it's the user's own argument, not the work directory.
-    // What must never appear is CO_MOTION_HOME's hidden work directory.
+    // What must never appear is COMOTION_HOME's hidden work directory.
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );

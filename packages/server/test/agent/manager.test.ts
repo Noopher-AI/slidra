@@ -20,12 +20,12 @@ import { readAgentSettings } from "../../src/agent/settings.js";
 let home: string;
 
 beforeEach(async () => {
-  home = await mkdtemp(path.join(tmpdir(), "co-motion-manager-home-"));
-  process.env.CO_MOTION_HOME = home;
+  home = await mkdtemp(path.join(tmpdir(), "comotion-manager-home-"));
+  process.env.COMOTION_HOME = home;
 });
 
 afterEach(async () => {
-  delete process.env.CO_MOTION_HOME;
+  delete process.env.COMOTION_HOME;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -212,7 +212,7 @@ describe("AgentManager", () => {
   });
 
   it("select() propagates a settings-write failure and leaves the session unswapped", async () => {
-    // Point CO_MOTION_HOME at a regular file so writeAgentSelection's mkdir fails.
+    // Point COMOTION_HOME at a regular file so writeAgentSelection's mkdir fails.
     await rm(home, { recursive: true, force: true });
     await writeFile(home, "not a directory");
     const { resolveAdapter, calls } = trackingResolveAdapter();

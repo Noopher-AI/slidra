@@ -32,8 +32,8 @@
 ## 怎麼放進去
 
 ```
-co-motion asset import <id> <影片路徑或 URL>
-co-motion element insert video <id> slides/00N.svg --x 240 --y 170 --width 800 --height 450 --media assets/<檔名>
+comotion asset import <id> <影片路徑或 URL>
+comotion element insert video <id> slides/00N.svg --x 240 --y 170 --width 800 --height 450 --media assets/<檔名>
 ```
 
 外部平台的影片用 `--embed <provider>` 加 `--href`，不要下載再匯入。

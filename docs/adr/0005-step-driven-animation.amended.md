@@ -24,7 +24,7 @@
 
 - `data-*` 是合法 SVG 屬性，用其他工具開啟時靜態畫面正常，只是不會動。
 - 代價是 `.comot` 離開 CoMotion 就不會動。換到的是完全貼合簡報心智模型的動畫模型，以及 agent 一眼看懂、改一個屬性就完成的操作方式。
-- runtime 不得依賴 server：它只需要讀 SVG 與屬性、處理按鍵與影音。保持這份無知，未來 `co-motion export --html` 幾乎免費，而真正上台簡報時不必在每台電腦安裝 CoMotion。
+- runtime 不得依賴 server：它只需要讀 SVG 與屬性、處理按鍵與影音。保持這份無知，未來 `comotion export --html` 幾乎免費，而真正上台簡報時不必在每台電腦安裝 CoMotion。
 
 > **上一條已由 ADR-0007 取代。** runtime 現在可以依賴 server：播放與編輯是同一個 web app 的兩個模式，播放 `.comot` 需要安裝 CoMotion，分享改走匯出。上面的理由留在原地，記錄當初的權衡。本 ADR 的其餘決定不受影響。
 

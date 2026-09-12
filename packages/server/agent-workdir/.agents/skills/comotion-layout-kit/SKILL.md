@@ -23,14 +23,14 @@ description: 從 55 種版面裡挑一種來排某一頁，每種都附線框 SV
 
 ## 步驟
 
-1. **讀關係**：`co-motion cat <presentation-id> plan/outline.md`，取這一頁的 `relationship`。沒有計畫時依內容自己判斷（`reference/slide-design.md` 第 6.1 節）。
-2. **讀風格**：`co-motion cat <presentation-id> plan/design-spec.md`，取配色、字級表與 `layout` 錨點。版面的座標一律由錨點推導並乘以 `k`；檔案裡的示意數字是用 `side_margin: 80` 的 1280×720 算的。
+1. **讀關係**：`comotion cat <presentation-id> plan/outline.md`，取這一頁的 `relationship`。沒有計畫時依內容自己判斷（`reference/slide-design.md` 第 6.1 節）。
+2. **讀風格**：`comotion cat <presentation-id> plan/design-spec.md`，取配色、字級表與 `layout` 錨點。版面的座標一律由錨點推導並乘以 `k`；檔案裡的示意數字是用 `side_margin: 80` 的 1280×720 算的。
 3. **看上一頁用了什麼**：相鄰兩頁關係相同時必須換一個版面（`rhythm.repeated-shape`）。
 4. **讀索引**挑一個，只讀中選的那一個檔：`references/<名字>/<名字>.md`。
 5. **對槽位**：把內容塞進槽位表，超過字數預算就改短或減少單位；塞不下就減少單位或拆頁，字級不動。
 6. **寫頁面**：依骨架寫整頁 SVG（`slide add --svg` 或 `slide set --svg`），每個語意單位標 `data-comot-role`。線框的**比例可以照抄**（它用真實字級畫，內容填滿安全區 y 176～616）；線框的**顏色與文字不抄**——顏色一律取自 `design-spec` 的配色角色，「圖片」「node 1」這類示意文字換成這一頁真正的內容，灰色與 `#CCCCCC` 邊框不進投影片。背景類型的裝飾（大圓、光暈、格線）是背景圖的事，版面裡不放。
 7. **寫回 blueprint**：`shape` 填這個版面的名字，`nodes`／`steps` 填實際值。
-8. **檢查**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。
+8. **檢查**：`comotion validate <presentation-id> slides/00N.svg` 要 0 錯誤。
 
 ## 55 種版面
 

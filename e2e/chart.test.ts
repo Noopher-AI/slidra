@@ -24,7 +24,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/chart-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/chart");
@@ -67,11 +67,11 @@ interface TestServer {
 }
 
 async function startServerFor(): Promise<TestServer> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -99,8 +99,8 @@ async function startServerFor(): Promise<TestServer> {
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
@@ -430,7 +430,7 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
 
 it("AC-9: 內嵌 svg 切出來單獨開啟，畫面與投影片內的圖表區域一致", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
-  const tmpDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-chart-standalone-"));
+  const tmpDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-standalone-"));
   try {
     await createChartViaCli(registry, presentationId, { width: 400, height: 250 });
     const svg = await readSlide(registry, presentationId);

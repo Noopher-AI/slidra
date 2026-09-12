@@ -8,20 +8,20 @@
 // 編輯規約) depends on the message text:
 //   - contains "【從大綱規劃】" (the position line Plan with agent puts
 //     after `/comotion-plan`, #303 contract §4): requests permission for,
-//     then actually runs, `co-motion plan set <id> outline '…'` and
+//     then actually runs, `comotion plan set <id> outline '…'` and
 //     `plan set <id> design-spec '…'` — a minimal but valid draft plan
 //     with one page and one question (contract §1) — and replies
 //     「計畫已寫好」. The editor's plan gate opens off that file write
 //     (ai-collab.test.ts asserts on `.plan-gate`), not off this reply.
 //   - contains "【計畫確認】" (what the gate's 確認並建置 sends, any author
 //     message index — it is always the *second* author turn): requests
-//     permission for `co-motion slide add <id>` (append), holds for
+//     permission for `comotion slide add <id>` (append), holds for
 //     E2E_DRAFT_HOLD_MS, then actually runs it and replies 「已建置」 —
 //     reports `completed` only if the command succeeds, `failed` (with
 //     stdout/stderr) if it doesn't. This fixture never reports success it
 //     didn't observe.
 //   - contains "寫留言": requests permission for, then actually runs,
-//     `co-motion comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
+//     `comotion comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
 //     write, unaffected by the defect above) — AC8(b) needs the write to
 //     really land, not just a UI event.
 //   - contains "持鎖": reads slides/001.svg to find its `<text id=…>`, then
@@ -141,8 +141,8 @@ class CommentFakeAgent {
         palette: { background: "#FFFFFF", secondary_bg: "#F3F4F6", primary: "#1F3A93", accent: "#E4572E", secondary_accent: "#2A9D8F", text: "#1F1A1A", muted: "#6B7280" },
         type_scale: { cover: 64, section: 56, number: 140, claim: 48, title: 40, subtitle: 28, body: 24, column: 22, caption: 18 },
       }) + "\n```\n";
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "寫入計畫", `co-motion plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "寫入設計規格", `co-motion plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "寫入計畫", `comotion plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "寫入設計規格", `comotion plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "計畫已寫好" } },
@@ -151,7 +151,7 @@ class CommentFakeAgent {
     }
 
     if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("【計畫確認】")) {
-      const command = `co-motion slide add ${presentationId}`;
+      const command = `comotion slide add ${presentationId}`;
       const toolCallId = "e2e-slide-add";
 
       await requestPermissionFor(this.connection, sessionId, toolCallId, "依計畫建置", command);
@@ -200,7 +200,7 @@ class CommentFakeAgent {
     }
 
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("寫留言")) {
-      const command = `co-motion comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
+      const command = `comotion comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
       await requestAndRun(this.connection, sessionId, "e2e-comment-add", "新增留言", command, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
@@ -212,7 +212,7 @@ class CommentFakeAgent {
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("持鎖")) {
       const slide = await this.connection.readTextFile({ sessionId, path: SLIDE_PATH, line: null, limit: null });
       const elementId = extractTextElementId(slide.content);
-      const command = `co-motion text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
+      const command = `comotion text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
       const ran = await requestAndRun(this.connection, sessionId, "e2e-text-set", "修改標題文字", command, this.sessionCwd, freezeHoldMs);
       if (!ran) return { stopReason: "cancelled" };
       await this.connection.sessionUpdate({

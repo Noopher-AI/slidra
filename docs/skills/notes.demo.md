@@ -10,8 +10,8 @@
 
 ## 預期結果
 
-- 四頁各跑一次 `co-motion slide notes set <id> slides/00N.svg '<講稿>'`，各自成功。
-- `co-motion cat <id> slides/00N.svg` 每頁都能看到非空的 `<comot:notes>...</comot:notes>`。
+- 四頁各跑一次 `comotion slide notes set <id> slides/00N.svg '<講稿>'`，各自成功。
+- `comotion cat <id> slides/00N.svg` 每頁都能看到非空的 `<comot:notes>...</comot:notes>`。
 - 講稿內容是口語、第一人稱，不是投影片文字的重抄。
 - agent 的回報裡逐頁列出備忘稿內容或摘要。
 

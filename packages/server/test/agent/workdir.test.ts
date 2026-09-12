@@ -10,8 +10,8 @@ import {
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
 
-// NOOP-238: the product work directory `co-motion serve` deploys on every
-// startup (`packages/server/agent-workdir/` -> `<CO_MOTION_HOME>/agent`) and
+// NOOP-238: the product work directory `comotion serve` deploys on every
+// startup (`packages/server/agent-workdir/` -> `<COMOTION_HOME>/agent`) and
 // the agent session reads real files from, alongside the presentation's own
 // virtual tree. No server, no ACP subprocess — everything here is a plain
 // filesystem check.
@@ -19,12 +19,12 @@ import {
 let coMotionHome: string;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-home-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-workdir-home-"));
+  process.env.COMOTION_HOME = coMotionHome;
 });
 
 afterEach(async () => {
-  delete process.env.CO_MOTION_HOME;
+  delete process.env.COMOTION_HOME;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -59,7 +59,7 @@ describe("resolveAgentWorkdirSource", () => {
 const PRESENTATION = "pres-1";
 
 describe("deployAgentWorkdir", () => {
-  it("deploys the source's files to <CO_MOTION_HOME>/agent/<id>, byte-for-byte (A1)", async () => {
+  it("deploys the source's files to <COMOTION_HOME>/agent/<id>, byte-for-byte (A1)", async () => {
     const target = await deployAgentWorkdir(PRESENTATION);
     expect(target).toBe(await realpath(agentWorkdirTarget(PRESENTATION)));
     expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(coMotionHome, "agent", PRESENTATION));
@@ -116,7 +116,7 @@ describe("deployAgentWorkdir", () => {
     expect(secondFiles).toEqual(firstFiles);
   });
 
-  // The concurrency regressions (two `co-motion serve` on one machine).
+  // The concurrency regressions (two `comotion serve` on one machine).
   // `deployAgentWorkdir` used to `rm -rf` one shared `<HOME>/agent`, which
   // unlinked the directory a running agent had as its `cwd`.
 
@@ -224,7 +224,7 @@ describe("readAgentWorkdirFile", () => {
   let workdirReal: string;
 
   beforeEach(async () => {
-    workdirReal = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-read-"));
+    workdirReal = await mkdtemp(path.join(tmpdir(), "comotion-workdir-read-"));
     await writeFile(path.join(workdirReal, "CLAUDE.md"), "@AGENTS.md\n");
     await mkdir(path.join(workdirReal, "reference"));
     await writeFile(path.join(workdirReal, "reference", "commands.md"), "# 命令參考\n");
@@ -252,7 +252,7 @@ describe("readAgentWorkdirFile", () => {
   });
 
   it("refuses a symlink that points outside the work directory — excluded structurally, never followed (A12)", async () => {
-    const outsideDir = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-outside-"));
+    const outsideDir = await mkdtemp(path.join(tmpdir(), "comotion-workdir-outside-"));
     try {
       await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
       await symlink(path.join(outsideDir, "secret.txt"), path.join(workdirReal, "link.txt"));

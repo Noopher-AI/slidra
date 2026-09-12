@@ -11,7 +11,7 @@ import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -66,18 +66,18 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-asset-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-asset-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-asset-static-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-asset-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-asset-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-asset-static-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -127,7 +127,7 @@ async function postAsset(
 ): Promise<{ status: number; json: any }> {
   const response = await fetch(`${server.url}/api/asset`, {
     method: "POST",
-    headers: { "X-Co-Motion-Asset-Name": encodeURIComponent(sourceName) },
+    headers: { "X-Comotion-Asset-Name": encodeURIComponent(sourceName) },
     body,
   });
   const text = await response.text();
@@ -210,7 +210,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
   async function postAssetUrl(server: RunningServer, url: string): Promise<{ status: number; json: any }> {
     const response = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Co-Motion-Asset-Url": encodeURIComponent(url) },
+      headers: { "X-Comotion-Asset-Url": encodeURIComponent(url) },
     });
     const text = await response.text();
     let json: any = null;
@@ -252,8 +252,8 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     const response = await fetch(`${server.url}/api/asset`, {
       method: "POST",
       headers: {
-        "X-Co-Motion-Asset-Name": encodeURIComponent("photo.png"),
-        "X-Co-Motion-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
+        "X-Comotion-Asset-Name": encodeURIComponent("photo.png"),
+        "X-Comotion-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
       },
       body: PNG_BYTES,
     });

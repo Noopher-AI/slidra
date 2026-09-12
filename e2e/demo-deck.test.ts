@@ -46,7 +46,7 @@ const execFileAsync = promisify(execFile);
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -65,11 +65,11 @@ beforeAll(async () => {
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-demo-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-demo-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-demo-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-demo-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   registry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "demo.comot");
@@ -95,8 +95,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
   if (comotDir) await rm(comotDir, { recursive: true, force: true });
 });
@@ -519,14 +519,14 @@ it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", a
     '  </g>\n' +
     "</svg>\n";
 
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-pixel-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pixel-"));
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
     // `normaliseSlideSvg`/`generateElementId` (the TypeScript engine's own
     // conversion functions) no longer exist ([E4.T12]) — the only public
-    // door to the same conversion is now `co-motion convert`, which acts on
+    // door to the same conversion is now `comotion convert`, which acts on
     // an already-open presentation's slide file on disk, not a raw string.
-    // A throwaway presentation under the same `registry`/`CO_MOTION_HOME`
+    // A throwaway presentation under the same `registry`/`COMOTION_HOME`
     // this file's `beforeAll` already set up (never the shared 4-page demo
     // presentation the walkthrough tests below depend on) gives `convert`
     // something to act on: write `bare` as its `slides/001.svg`, run
@@ -633,7 +633,7 @@ it("demo 四頁的頁面底色由根 <svg> 的 background-color 決定：編輯�
 
   const outPath = path.join(comotDir, "background-check.pdf");
   await execFileAsync(coMotionBin, ["export", presentationId, "--format", "pdf", "--out", outPath], {
-    env: { ...process.env, CO_MOTION_HOME: coMotionHome, CO_MOTION_BIN: coMotionBin },
+    env: { ...process.env, COMOTION_HOME: coMotionHome, COMOTION_BIN: coMotionBin },
   });
   const pdfBytes = await readFile(outPath);
   const info = await loadPdf(browser, pdfBytes);

@@ -52,7 +52,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
@@ -137,12 +137,12 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-dm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-dm-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-dm-deck-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-deck-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   // Copy the checked-in fixture into a throwaway staging dir, then inject
   // the real embedded-font bytes (see this file's header comment) — the
@@ -180,8 +180,8 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
@@ -213,9 +213,9 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-/** `<CO_MOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — 驗收條件第四條「拖曳 100 次不產生 100 筆歷史；一次拖曳一筆」的直接讀法。`startServerFor` sets `process.env.CO_MOTION_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
+/** `<COMOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — 驗收條件第四條「拖曳 100 次不產生 100 筆歷史；一次拖曳一筆」的直接讀法。`startServerFor` sets `process.env.COMOTION_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.CO_MOTION_HOME!;
+  const home = process.env.COMOTION_HOME!;
   try {
     const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
     return (JSON.parse(raw).undo ?? []).length;

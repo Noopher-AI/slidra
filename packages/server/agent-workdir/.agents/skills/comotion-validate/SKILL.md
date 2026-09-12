@@ -1,11 +1,11 @@
 ---
 name: comotion-validate
-description: 審閱整份或指定頁：跑 co-motion validate，再通讀補抓命令驗不到的錯字與動畫順序，把每個問題釘成留言並解讀給作者；只留言不動手。作者的訊息以 /comotion-validate 開頭、或要你「檢查」「體檢」「驗證」簡報時用
+description: 審閱整份或指定頁：跑 comotion validate，再通讀補抓命令驗不到的錯字與動畫順序，把每個問題釘成留言並解讀給作者；只留言不動手。作者的訊息以 /comotion-validate 開頭、或要你「檢查」「體檢」「驗證」簡報時用
 ---
 
 # 審閱投影片
 
-你是**審閱者**。真正算規則的是 `co-motion validate` 命令（門檻與規則寫在 CLI 裡，不靠你目測）；你的工作是跑它、把 `errors[]` 翻成作者看得懂的話、釘成留言，再通讀一次補抓命令看不到的兩類問題。**只回報與留言，不修改任何內容**——要修由作者決定，或由 `comotion-build` 自己修。
+你是**審閱者**。真正算規則的是 `comotion validate` 命令（門檻與規則寫在 CLI 裡，不靠你目測）；你的工作是跑它、把 `errors[]` 翻成作者看得懂的話、釘成留言，再通讀一次補抓命令看不到的兩類問題。**只回報與留言，不修改任何內容**——要修由作者決定，或由 `comotion-build` 自己修。
 
 ## 輸入
 
@@ -14,19 +14,19 @@ description: 審閱整份或指定頁：跑 co-motion validate，再通讀補抓
 
 ## 步驟
 
-1. `co-motion ls <presentation-id> slides` 確認目標頁存在；不存在就回「這份簡報只有 N 頁」並停下。
-2. **跑驗證**：整份 `co-motion validate <presentation-id>`；指定頁就逐頁 `co-motion validate <presentation-id> slides/00N.svg`。結束碼非零代表**有錯誤**，不是命令壞了；`data` 長這樣：
+1. `comotion ls <presentation-id> slides` 確認目標頁存在；不存在就回「這份簡報只有 N 頁」並停下。
+2. **跑驗證**：整份 `comotion validate <presentation-id>`；指定頁就逐頁 `comotion validate <presentation-id> slides/00N.svg`。結束碼非零代表**有錯誤**，不是命令壞了；`data` 長這樣：
 
    ```json
    { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "37 字", "limit": "≤ 32 字", "message": "第 2 頁要點第 3 條 37 字，上限 32 字" } ] }
    ```
 
    message 尾巴帶「（沒有 plan/ 計畫檔，只驗幾何與骨架）」時，文字量與字級配色沒有驗到，在回報裡說明作者要完整驗證得先跑 `/comotion-plan`。
-3. **通讀**：逐頁 `co-motion cat <presentation-id> slides/00N.svg` 與 `co-motion effect list <presentation-id> slides/00N.svg`（結束碼非零代表這頁沒有動畫，不是錯誤），只抓命令驗不到的兩類：
+3. **通讀**：逐頁 `comotion cat <presentation-id> slides/00N.svg` 與 `comotion effect list <presentation-id> slides/00N.svg`（結束碼非零代表這頁沒有動畫，不是錯誤），只抓命令驗不到的兩類：
    - **錯字**：文字內容裡明顯的錯別字或漏字。
    - **動畫順序與版面順序不合**：效果的播放順序與元素在畫面上由上到下、由左到右的視覺順序不一致。
    規則類的判斷一律以 `errors[]` 為準；命令沒報的不算違規。
-4. **留言**：每一筆 `co-motion comment add <presentation-id> <slide> <element 或 page> '<rule>：<actual> vs 門檻 <limit>'`（通讀抓到的寫 `錯字：…`／`動畫順序：…`）；`element` 是 `null` 或抓不到特定元素就用 `page`。作者說「不留言」時跳過。留言文字不能含半形單引號。既有留言一律不動。
+4. **留言**：每一筆 `comotion comment add <presentation-id> <slide> <element 或 page> '<rule>：<actual> vs 門檻 <limit>'`（通讀抓到的寫 `錯字：…`／`動畫順序：…`）；`element` 是 `null` 或抓不到特定元素就用 `page`。作者說「不留言」時跳過。留言文字不能含半形單引號。既有留言一律不動。
 5. **回報**：照下面的格式。每個 `rule` 在驗什麼、作者通常該怎麼修，見 `reference/slide-design.md` 第 9 節那張表；依 `rule` 的前綴分類指出最該先修哪一類——通常是 `text.`。
 
 ## 回報格式

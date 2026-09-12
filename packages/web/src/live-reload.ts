@@ -4,7 +4,7 @@ import type { SlashCommandOption } from "./slash-commands.js";
 export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
 
 /**
- * NOOP-93 §4.4 — restated here rather than imported: `@co-motion/server`'s
+ * NOOP-93 §4.4 — restated here rather than imported: `@comotion/server`'s
  * `export/job.ts` owns the canonical shape, but it is a Node-only package
  * (Playwright, `node:*`) the browser bundle must never depend on. Same
  * pattern `presentation.ts`'s `TemplateInfo` already uses for core's
@@ -12,7 +12,7 @@ export type SaveState = { known: true; dirty: boolean; fileName: string } | { kn
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@co-motion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
+/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@comotion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
 export type AgentKind = "claude" | "codex";
 
 /** [E3.T5] NOOP-230 §4.4: the `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */

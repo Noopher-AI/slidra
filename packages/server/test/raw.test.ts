@@ -12,7 +12,7 @@ import type { AddressInfo } from "node:net";
 import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -36,7 +36,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 // Ticket #11: agents read text through `cat` (strict UTF-8, rejects
 // binary); browsers need the byte-preserving `/api/raw/` route instead.
-// These tests hit the real HTTP server (Seam B), never CO_MOTION_HOME's
+// These tests hit the real HTTP server (Seam B), never COMOTION_HOME's
 // real path, and always bind port 0.
 
 // root ignores permission bits, so the chmod(0o000)-based I/O-failure test
@@ -66,10 +66,10 @@ let servers: RunningServer[];
 let rawServers: Server[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-raw-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-raw-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-raw-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-raw-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
   rawServers = [];
 });
@@ -79,8 +79,8 @@ afterEach(async () => {
   await Promise.all(
     rawServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });

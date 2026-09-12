@@ -2,12 +2,12 @@
 
 風格的性格有一半來自字型。這份清單是**策展過的開源字型**：授權都允許嵌入與商用（SIL OFL 1.1 或 Apache 2.0），中文的覆蓋率都足以做一份完整的繁體簡報。
 
-**字型檔不在 repo 裡**，用 `co-motion font import` 從下面的網址匯入；匯入後那份 `.comot` 就自帶這個字型，換一台機器打開仍然正確。
+**字型檔不在 repo 裡**，用 `comotion font import` 從下面的網址匯入；匯入後那份 `.comot` 就自帶這個字型，換一台機器打開仍然正確。
 
 ## 匯入怎麼下
 
 ```
-co-motion font import <presentation-id> <URL> --family '<家族名>' --license '<授權>' --source '<出處>'
+comotion font import <presentation-id> <URL> --family '<家族名>' --license '<授權>' --source '<出處>'
 ```
 
 `--family` 要**逐字**用下表的家族名——那是之後寫進 SVG `font-family` 的字串，打錯會在排版時直接失敗。

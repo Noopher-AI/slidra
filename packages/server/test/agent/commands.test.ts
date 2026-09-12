@@ -24,7 +24,7 @@ import {
 // fake ACP agent, the same posture chat.test.ts uses.
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-acp-agent.mjs");
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
 const execFileAsync = promisify(execFile);
 
 interface CliEnvelope<T = unknown> {
@@ -75,7 +75,7 @@ describe("readSkillCommands", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "co-motion-skills-"));
+    dir = await mkdtemp(path.join(tmpdir(), "comotion-skills-"));
   });
 
   afterEach(async () => {
@@ -105,7 +105,7 @@ describe("readSkillCommands", () => {
   });
 
   it("a skill installed as a symlink to a directory elsewhere is picked up (how skillshare installs them)", async () => {
-    const elsewhere = await mkdtemp(path.join(tmpdir(), "co-motion-skill-src-"));
+    const elsewhere = await mkdtemp(path.join(tmpdir(), "comotion-skill-src-"));
     await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: 透過 symlink 安裝\n---\n");
     await symlink(path.join(elsewhere, "linked"), path.join(dir, "linked"));
 
@@ -160,8 +160,8 @@ describe("collectSlashCommands", () => {
   let userDir: string;
 
   beforeEach(async () => {
-    bundledDir = await mkdtemp(path.join(tmpdir(), "co-motion-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "co-motion-user-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "comotion-user-"));
   });
 
   afterEach(async () => {
@@ -237,19 +237,19 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   let servers: RunningServer[];
 
   beforeEach(async () => {
-    coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-home-"));
-    comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-files-"));
-    bundledDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-user-"));
-    process.env.CO_MOTION_HOME = coMotionHome;
-    process.env.CO_MOTION_BIN = coMotionBinPath;
+    coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-cmd-home-"));
+    comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-files-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-user-"));
+    process.env.COMOTION_HOME = coMotionHome;
+    process.env.COMOTION_BIN = coMotionBinPath;
     servers = [];
   });
 
   afterEach(async () => {
     await Promise.all(servers.map((server) => server.close()));
-    delete process.env.CO_MOTION_HOME;
-    delete process.env.CO_MOTION_BIN;
+    delete process.env.COMOTION_HOME;
+    delete process.env.COMOTION_BIN;
     await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(bundledDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

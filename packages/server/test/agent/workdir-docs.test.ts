@@ -37,7 +37,7 @@ describe("[NOOP-236] shipped work directory documentation", () => {
       }
     }
 
-    const emptyUserDir = await mkdtemp(path.join(tmpdir(), "co-motion-user-skills-"));
+    const emptyUserDir = await mkdtemp(path.join(tmpdir(), "comotion-user-skills-"));
     try {
       const commands = await collectSlashCommands([], { bundled: bundledSkillDir, user: emptyUserDir });
       expect(commands.map((c) => c.name)).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);

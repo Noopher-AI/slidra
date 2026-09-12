@@ -25,7 +25,7 @@ import { requireBuilt } from "./helpers/launch.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const fontPath = path.join(rootDir, "assets/fonts/NotoSansTC-Presentation.ttf");
 
 const FAMILY = "Noto Sans TC";
@@ -63,11 +63,11 @@ beforeAll(async () => {
   page = await browser.newPage();
   await page.setContent("<!doctype html><html><body></body></html>");
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-text-metrics-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-text-metrics-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-text-metrics-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-text-metrics-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   registry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -81,8 +81,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await page?.close();
   await browser?.close();
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
   if (comotDir) await rm(comotDir, { recursive: true, force: true });
 });

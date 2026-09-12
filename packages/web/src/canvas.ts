@@ -513,7 +513,7 @@ export interface CanvasController {
   copySelection: () => Promise<string | null>;
   /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
   cutSelection: () => Promise<string | null>;
-  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a co-motion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
+  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a comotion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
   pasteFromText: (text: string) => Promise<void>;
   /**
    * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
@@ -2265,7 +2265,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const bytes = await file.arrayBuffer();
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Co-Motion-Asset-Name": encodeURIComponent(file.name) },
+        headers: { "X-Comotion-Asset-Name": encodeURIComponent(file.name) },
         body: bytes,
       });
       return parseAssetResponse(response);
@@ -2278,7 +2278,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     try {
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Co-Motion-Asset-Url": encodeURIComponent(url) },
+        headers: { "X-Comotion-Asset-Url": encodeURIComponent(url) },
       });
       return parseAssetResponse(response);
     } catch (err) {
@@ -3359,7 +3359,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
-    // [E4.T7]: an external change (an agent's command, another tab, `co-motion
+    // [E4.T7]: an external change (an agent's command, another tab, `comotion
     // effect *` from the CLI) may have touched any slide's effect list —
     // reload() has no way to know which, so invalidate every cached plan
     // rather than one. render()/renderPlay() below re-fetch as needed.
@@ -4379,7 +4379,7 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
  * this and wrapPlayDocument/slideDirectory are exported.
  *
  * `background:#fff` on `<body>` (#120): a slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document fully transparent. This function's own callers only ever render
  * inside a black loading/error placeholder (the empty-deck message and
  * renderPlay()'s parse-error fallback, both painted over play.css's `.canvas`
@@ -4495,7 +4495,7 @@ export function wrapSelectionDocument(
  * `background:#fff` on `<body>` (#120): this is play mode's normal
  * rendering path (renderPlay()'s non-error branch), painted over play.css's
  * `.canvas` `#000` loading placeholder. A slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document transparent, so the black placeholder never gets covered — the
  * whole point of #000 there (avoid a flash of white before content paints)
  * regresses into the opposite failure: a flash of black that never clears.

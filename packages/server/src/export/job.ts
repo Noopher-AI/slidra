@@ -32,7 +32,7 @@ export interface ExportRunResult {
 }
 
 export type ExportRunner = (
-  /** The freshly-generated job id — `run` needs it to place its output under `<CO_MOTION_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
+  /** The freshly-generated job id — `run` needs it to place its output under `<COMOTION_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
   jobId: string,
   format: ExportFormat,
   onRunning: (totalFrames: number) => void,

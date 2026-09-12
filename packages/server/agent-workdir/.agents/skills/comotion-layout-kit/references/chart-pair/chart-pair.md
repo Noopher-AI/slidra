@@ -29,8 +29,8 @@
 ## 怎麼放進去
 
 ```
-co-motion chart add <id> slides/00N.svg --type bar --x 80 --y 176 --width 540 --height 340
-co-motion chart data set <id> slides/00N.svg <element-id> --categories 'Q1,Q2,Q3' --series '對象A=12,18,24'
+comotion chart add <id> slides/00N.svg --type bar --x 80 --y 176 --width 540 --height 340
+comotion chart data set <id> slides/00N.svg <element-id> --categories 'Q1,Q2,Q3' --series '對象A=12,18,24'
 ```
 
 ## 變體

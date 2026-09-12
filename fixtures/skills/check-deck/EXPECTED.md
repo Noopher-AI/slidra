@@ -1,6 +1,6 @@
 頁數：5，沒有 `plan/` 計畫檔。
 
-`/comotion-validate` 對這份 deck 跑完之後：`co-motion validate` 只驗幾何與骨架（沒有計畫檔時字數、字級、配色、頁型都不驗），所以下表第 2～5 列由命令報什麼就釘什麼，不強制；**第 1 與第 6 列是 skill 的通讀步驟負責的，`comment list <presentation-id>` 一定要涵蓋這兩組 (頁, target) 配對**：
+`/comotion-validate` 對這份 deck 跑完之後：`comotion validate` 只驗幾何與骨架（沒有計畫檔時字數、字級、配色、頁型都不驗），所以下表第 2～5 列由命令報什麼就釘什麼，不強制；**第 1 與第 6 列是 skill 的通讀步驟負責的，`comment list <presentation-id>` 一定要涵蓋這兩組 (頁, target) 配對**：
 
 | # | 類別 | 頁 | target | 埋的問題 | 必須釘到 |
 |---|---|---|---|---|---|

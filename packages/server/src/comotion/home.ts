@@ -5,12 +5,12 @@ import { randomBytes } from "node:crypto";
 import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
 
 /**
- * `packages/server`'s own reader for `<CO_MOTION_HOME>/projects.json` —
- * the one file this server and the Rust `co-motion` binary both read and
+ * `packages/server`'s own reader for `<COMOTION_HOME>/projects.json` —
+ * the one file this server and the Rust `comotion` binary both read and
  * write ([E4.T9]/F7, plan §7 decision 10). Every other piece of a
  * presentation's content goes through the binary; this file (and
  * `history/<id>/stack.json`, see `history-group.ts`) is the one place the
- * server still touches `CO_MOTION_HOME` directly, because there is no CLI
+ * server still touches `COMOTION_HOME` directly, because there is no CLI
  * command that exposes an id's real work directory or the save-state bookkeeping.
  *
  * The shape mirrors `packages/core/src/workspace.ts`'s `RegistryEntry`
@@ -19,7 +19,7 @@ import { CoMotionError, CoMotionNotFoundError } from "./errors.js";
  */
 export interface CoMotionRegistryEntry {
   workDir: string;
-  /** The `.comot` path `open`/`co-motion open` last read from. */
+  /** The `.comot` path `open`/`comotion open` last read from. */
   sourcePath?: string;
   /** `maxMtimeInDirectory`'s reading at the last moment the work directory is known to match `sourcePath` byte-for-byte — see `readSaveState`. */
   savedAt?: number;
@@ -27,9 +27,9 @@ export interface CoMotionRegistryEntry {
 
 export type CoMotionRegistry = Map<string, CoMotionRegistryEntry>;
 
-/** Resolves CO_MOTION_HOME, defaulting to ~/.comotion. Read fresh on every call (not cached) so tests can point it at a temp directory per test. */
+/** Resolves COMOTION_HOME, defaulting to ~/.comotion. Read fresh on every call (not cached) so tests can point it at a temp directory per test. */
 export function resolveCoMotionHome(): string {
-  return process.env.CO_MOTION_HOME ?? path.join(homedir(), ".comotion");
+  return process.env.COMOTION_HOME ?? path.join(homedir(), ".comotion");
 }
 
 function registryPath(home: string): string {
@@ -106,7 +106,7 @@ export async function readProjectsRegistry(): Promise<CoMotionRegistry> {
 /**
  * The advisory lock guarding a `projects.json` read-modify-write. Its name
  * is shared verbatim with the Rust crate's `registry_lock_path`
- * (`crates/co-motion/src/workspace/mod.rs`) — the two must never drift,
+ * (`crates/comotion/src/workspace/mod.rs`) — the two must never drift,
  * since a lock only excludes anybody at all if every writer agrees on the
  * path.
  */
@@ -140,7 +140,7 @@ async function lockIsStale(lockPath: string): Promise<boolean> {
  * read-modify-write of the registry cannot interleave with another
  * process's.
  *
- * `projects.json` is the one file this server and the Rust `co-motion`
+ * `projects.json` is the one file this server and the Rust `comotion`
  * binary both write, and every writer reads the whole map, changes one
  * entry and writes the whole map back. Both sides write through a temp
  * file + `rename`, so the file is never *torn* — but that says nothing
@@ -148,7 +148,7 @@ async function lockIsStale(lockPath: string): Promise<boolean> {
  * back in turn leave only the second one's change, silently dropping a
  * work directory that no id reaches any more.
  *
- * `body` must never shell out to a `co-motion` command — the CLI takes
+ * `body` must never shell out to a `comotion` command — the CLI takes
  * this same lock for its own registry writes, and would deadlock against
  * this one.
  *
@@ -174,7 +174,7 @@ export async function withProjectsRegistryLock<T>(body: () => Promise<T>): Promi
         continue;
       }
       if (Date.now() >= deadline) {
-        throw new CoMotionError("另一個 co-motion 正在寫入簡報登記資料，請稍後再試");
+        throw new CoMotionError("另一個 comotion 正在寫入簡報登記資料，請稍後再試");
       }
       await sleep(LOCK_RETRY_INTERVAL_MS);
       continue;
@@ -215,7 +215,7 @@ export async function writeProjectsRegistry(registry: CoMotionRegistry): Promise
 /**
  * Resolves an opaque presentation id to its real work directory — the one
  * id-to-path lookup this module offers. An unknown id throws
- * `CoMotionNotFoundError`, the same wording `co-motion`'s own commands use.
+ * `CoMotionNotFoundError`, the same wording `comotion`'s own commands use.
  */
 export async function workDirFor(id: string): Promise<string> {
   const registry = await readProjectsRegistry();

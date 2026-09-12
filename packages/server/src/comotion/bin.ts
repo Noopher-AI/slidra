@@ -14,18 +14,18 @@ const execFileAsync = promisify(execFile);
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 /**
- * Resolves the Rust `co-motion` binary's path from `CO_MOTION_BIN`. Never
+ * Resolves the Rust `comotion` binary's path from `COMOTION_BIN`. Never
  * falls back to searching `PATH` — `docs/spec/cli.md`'s environment
- * variables section is explicit that an unset `CO_MOTION_BIN` is a hard
- * error, not a "try to find one" opportunity. On the real `co-motion serve`
+ * variables section is explicit that an unset `COMOTION_BIN` is a hard
+ * error, not a "try to find one" opportunity. On the real `comotion serve`
  * startup path this is always set (the Rust launcher sets it via
  * `current_exe` before exec'ing Node); tests set it themselves to point at
  * a fake binary.
  */
 export function resolveCoMotionBin(): string {
-  const bin = process.env.CO_MOTION_BIN;
+  const bin = process.env.COMOTION_BIN;
   if (!bin) {
-    throw new CoMotionError("未設定 CO_MOTION_BIN，無法執行 co-motion 命令");
+    throw new CoMotionError("未設定 COMOTION_BIN，無法執行 comotion 命令");
   }
   return bin;
 }
@@ -36,7 +36,7 @@ export interface CoMotionProcessResult {
 }
 
 /**
- * Runs the `co-motion` binary and returns its raw stdout/stderr —
+ * Runs the `comotion` binary and returns its raw stdout/stderr —
  * regardless of exit code (§3.3: `--json` failures currently exit 0, so
  * exit code carries no information `runJsonCommand` can trust either way).
  * Only a genuine failure to even start the process (the binary path does
@@ -62,9 +62,9 @@ export async function runCoMotion(args: string[]): Promise<CoMotionProcessResult
     if (typeof err.stdout === "string" || typeof err.stderr === "string") {
       return { stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
     }
-    // CO_MOTION_BIN's value is never echoed here (ADR-0004): it may be a
+    // COMOTION_BIN's value is never echoed here (ADR-0004): it may be a
     // real filesystem path a test or a misconfigured environment pointed
     // somewhere that leaks host layout.
-    throw new CoMotionError("無法執行 co-motion");
+    throw new CoMotionError("無法執行 comotion");
   }
 }

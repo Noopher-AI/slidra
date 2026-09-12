@@ -5,12 +5,12 @@ import { CoMotionError } from "./errors.js";
 import { resolveCoMotionHome, workDirFor } from "./home.js";
 
 /**
- * `<CO_MOTION_HOME>/history/<id>/stack.json`'s open-group bookkeeping,
+ * `<COMOTION_HOME>/history/<id>/stack.json`'s open-group bookkeeping,
  * ported from `packages/core`'s `history.ts` (`beginHistoryGroup`/
  * `endHistoryGroup` only — every other history operation now goes through
- * the `co-motion` binary's own `undo`/`redo` commands).
+ * the `comotion` binary's own `undo`/`redo` commands).
  *
- * `crates/co-motion/src/history.rs:629`'s own comment documents this
+ * `crates/comotion/src/history.rs:629`'s own comment documents this
  * exact co-existence: the Rust binary's own commands append onto whatever
  * group this module leaves open in `stack.json`, and close it themselves
  * only when there is none — the two are deliberately reading and writing

@@ -16,7 +16,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
 
 ## 步驟
 
-1. **看現況**：`co-motion cat <presentation-id> project.json`（畫布尺寸、頁數）、`co-motion plan list <presentation-id>`、`co-motion template list <presentation-id>`。
+1. **看現況**：`comotion cat <presentation-id> project.json`（畫布尺寸、頁數）、`comotion plan list <presentation-id>`、`comotion template list <presentation-id>`。
    - 已有 `status` 為 `confirmed` 的計畫，且輸入不是【重做】：先不要寫，問作者「已有一份確認過的計畫，要重做還是沿用」，等他回答。
    - 輸入完全空白、或只是一句閒聊：回一句話問作者要用哪份大綱。
 2. **讀規範**：`reference/modes.md` 與 `reference/slide-design.md` 第 6、7 節。
@@ -27,7 +27,7 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
    完成標準：每一頁都有 `relationship` 與 `rhythm`，關係分布過得了上面兩條。
 5. **寫逐頁計畫**：每一頁列出主張（一句話，15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句。主張、關鍵詞、備忘稿只能來自作者的大綱；缺的資料在第 6 步開 `free_text` 題問，不替作者發明數據、名稱、日期。
 6. **出題**：3～7 題。第一題固定問敘事模式；最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`／`off`；`note` 寫第 8 步挑到的配方）；中間每一題對應一個你拿不準的判斷。每題都要有 `recommended`（必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
-7. **寫入 `plan/outline.md`**：`co-motion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號。
+7. **寫入 `plan/outline.md`**：`comotion plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號。
 8. **適配風格與背景**：照 `comotion-style-kit` 的步驟挑一種風格（含形狀語言、字型匯入、畫布 `k`）寫進 `plan/design-spec.md`；再依風格檔的「建議背景」與 `comotion-background-kit` 的索引挑一種配方，把編號、名字與一句用途寫進背景題的 `note`。風格檔建議 `off` 時，背景題的 `recommended` 就給 `off`。作者要的是社群貼文、直式或方形的單張時，先問清楚畫布，並在回報裡說明要用 `presentation canvas set` 設定。
 9. **停下來**：不下任何 `slide`、`textbox`、`element` 命令。回報時說明「計畫已寫好，編輯器會彈出確認視窗；按確認並建置就會開工」。沒有視窗的環境（作者直接在終端機對話）就把計畫表貼在對話裡，請作者回覆 `/comotion-build 【計畫確認】` 加上每題的答案。
 

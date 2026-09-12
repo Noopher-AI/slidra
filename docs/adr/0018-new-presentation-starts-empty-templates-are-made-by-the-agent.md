@@ -1,22 +1,22 @@
 # 新簡報零頁；計畫落地成簡報裡的檔案，三個角色經一道擋住式閘門交接，驗證是一條 CLI 命令
 
-`co-motion new` 過去會附一張未經設計的佔位頁（白底、48px 置中的簡報名稱），而 `comotion-outline` skill 把大綱直接長成投影片：字級、配色、座標全部要求「照抄第一步讀到的範本頁」，新簡報裡卻沒有任何值得抄的東西。#303 的症狀就是這樣來的：從大綱長出來的投影片看不出設計過，第一次改良後又變成每頁都是完整句子的講稿——因為沒有任何一步逼 agent 在動手前決定「每頁講什麼、放多少、長什麼樣」，也沒有任何一步能客觀地說「這樣不行」。
+`comotion new` 過去會附一張未經設計的佔位頁（白底、48px 置中的簡報名稱），而 `comotion-outline` skill 把大綱直接長成投影片：字級、配色、座標全部要求「照抄第一步讀到的範本頁」，新簡報裡卻沒有任何值得抄的東西。#303 的症狀就是這樣來的：從大綱長出來的投影片看不出設計過，第一次改良後又變成每頁都是完整句子的講稿——因為沒有任何一步逼 agent 在動手前決定「每頁講什麼、放多少、長什麼樣」，也沒有任何一步能客觀地說「這樣不行」。
 
 對照 ppt-master（本專案參考的簡報生成 skill），它的品質來自三層：**規則**（字級比例、色彩角色、密度、節奏）、**流程閘門**（大綱 → 作者確認 → 設計規格鎖定 → 第一頁閘門 → 逐頁產出 → 驗到 0 錯誤才交付）、**角色與中間文件**（strategist／executor／reviewer 各讀各的規範，靠 `outline.md`、`design_spec.md` 交接）。這份 ADR 把三層都搬進 CoMotion，但用 CoMotion 自己的材料：中間文件住在簡報裡，閘門是編輯器的一個視窗，驗證是一條命令。
 
 決定五件事：
 
-1. **新簡報不附任何投影片。** `co-motion new` 只寫 `project.json`（`slides: []`）、內嵌字型與授權文字。零頁簡報在編輯器裡不畫白底投影片，只在舞台中央顯示一行白字「No slides now」，`serve` 不再拒絕零頁；第一頁由作者或 agent 產生。
+1. **新簡報不附任何投影片。** `comotion new` 只寫 `project.json`（`slides: []`）、內嵌字型與授權文字。零頁簡報在編輯器裡不畫白底投影片，只在舞台中央顯示一行白字「No slides now」，`serve` 不再拒絕零頁；第一頁由作者或 agent 產生。
 2. **計畫落地成 `.comot` 裡的 `plan/` 目錄，固定兩份檔案。** `plan/outline.md`（狀態、敘事模式、逐頁的頁型／節奏／主張、要問作者的題目）與 `plan/design-spec.md`（密度、六角色配色、字級表）。每份檔案開頭一個 JSON 圍欄區塊是機器可讀段，其後是給人與 agent 看的 markdown。只能經 `plan set|list|delete` 寫，經 `cat` 讀；`plan set` 寫入前驗欄位，錯就拒絕。計畫不進 undo 歷史。
 3. **三個角色，三個 skill，各自獨立。** `comotion-plan`（讀大綱、挑模式、逐頁計畫、出題、選配色與字級，寫兩份計畫檔後停下）、`comotion-build`（只在計畫為 `confirmed` 時動手：第一頁閘門、逐頁做、每種頁型第一次出現就登記成範本、`validate` 修到 0 錯誤）、`comotion-validate`（只驗只留言）。沒有入口 skill 串它們；`From outline…` 直接送 `/comotion-plan`。`comotion-outline` 刪除。
 4. **閘門是編輯器的擋住式視窗。** 計畫檔為 `draft` 且帶題目時，編輯器彈出視窗擋住一切操作：唯讀的逐頁計畫表、每題以 agent 的建議為預設值、可切換的選項與自由填寫。三個出口：「確認並建置」把答案組成一則 `/comotion-build 【計畫確認】` 訊息送回 agent；「重新規劃」必填一段話送 `/comotion-plan 【重做】`；「放棄」不經 agent、直接 `plan delete`。
-5. **驗證是 Rust 的 `co-motion validate <id> [slide-path]`。** 規則與三組密度門檻寫死在 Rust；配色、字級表、密度、逐頁頁型從計畫檔的 JSON 段讀；沒有計畫檔只驗幾何與骨架。輸出逐條 `{ slide, element, rule, actual, limit, message }`，有錯 exit 1。skill 只負責解讀與修正，不再自己算字數與座標。
+5. **驗證是 Rust 的 `comotion validate <id> [slide-path]`。** 規則與三組密度門檻寫死在 Rust；配色、字級表、密度、逐頁頁型從計畫檔的 JSON 段讀；沒有計畫檔只驗幾何與骨架。輸出逐條 `{ slide, element, rule, actual, limit, message }`，有錯 exit 1。skill 只負責解讀與修正，不再自己算字數與座標。
 
 6. **一頁一份 SVG。** `slide add --svg`／`slide set --svg` 接受整頁 SVG，寫入時跑正規化與合規檢查（拒絕 `<script>`／`<foreignObject>`，允許 `<defs>`、漸層、濾鏡、path），並把帶 `data-comot-text-width` 的裸 `<text>` 宣告轉成真正的文字框（換行、清單、可就地編輯，`validate` 看得到）。build 的主要動作是「照 SVG 作者指南寫一頁、寫入、驗證」，逐元素命令退為微調工具。這正是 ppt-master 的 executor 模型，也是「炫砲」得以發生的前提：命令集能拼出的版面有限，SVG 能寫出的沒有。
 7. **一種視覺語言＋動畫預設開。** `reference/slide-design.md` 改寫成「編輯／科技」語言的 SVG 作者指南：固定舞台（出血的大圓、頁尾與動態頁碼）、六種頁型各一份完整 SVG、每種頁型的進場腳本；build 依計畫的 `animation`（full／minimal／none，計畫視窗多一題）套 `effect add` 與整份 fade 轉場。動畫是 CoMotion 相對於匯出型工具的差異化能力，所以預設開。
 
 8. **背景圖是資產＋鎖定的滿版圖片元素。** `asset import --svg` 讓 agent 從命令列內容建立 SVG 資產（它不能寫檔），`slide background set --asset` 把它以鎖定、`data-comot-role="background"` 的滿版 `<image>` 放在該頁最底層。走既有的資產、圖片、鎖定、排序機制，編輯器裡是一個物件，同一張圖可被多頁共用。指南提供四種背景配方，`validate` 以 `structure.scrim` 保證有背景圖的頁面上文字仍坐在半透明面板上。否決：頁面屬性 `--background-image`（三條渲染路徑要各自處理）、把背景畫成整頁 SVG 最底層的幾十個原件（誤選、不能共用、不能一鍵換掉）。
-9. **同一份簡報的命令由 CLI 互斥。** agent 會平行送出多條命令；兩個行程同時讀改寫同一個 SVG 會寫壞 `<comot:effects>`。每個 `co-motion` 命令在解析出簡報後取得該簡報的檔案鎖，直到行程結束；平行呼叫因此安全但改為排隊。
+9. **同一份簡報的命令由 CLI 互斥。** agent 會平行送出多條命令；兩個行程同時讀改寫同一個 SVG 會寫壞 `<comot:effects>`。每個 `comotion` 命令在解析出簡報後取得該簡報的檔案鎖，直到行程結束；平行呼叫因此安全但改為排隊。
 
 ## 為什麼範本要現做而不是出貨一套
 

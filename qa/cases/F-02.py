@@ -2,7 +2,7 @@
 
 依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供固定原
 語——見 qa/README.md 與 qa/cases/F-15.py 的說明）。本檔額外用到的
-`press_key(key)` 不是 co-motion 專屬原語，是 browser-use 核心本來就有的全域
+`press_key(key)` 不是 comotion 專屬原語，是 browser-use 核心本來就有的全域
 （agent_helpers.py 檔頭docstring 自己說「every top-level name not starting
 with '_' becomes a global... the same way core helpers like js()/cdp() are」
 ——press_key 與 js/cdp 同一批，qa/agent_helpers.py 不需要為此改動）：

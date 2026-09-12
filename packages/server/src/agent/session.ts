@@ -25,7 +25,7 @@ const NO_MESSAGE_INSTRUCTION = "作者沒有輸入訊息，只送出上面這些
 const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，也沒有釘選的留言）";
 
 const WRITE_REFUSED_MESSAGE =
-  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
+  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `comotion text set` 命令。";
 
 /** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape, mirroring `packages/core`'s former `SlideCommentWithPath` ([E4.T9]/F7). */
 interface SlideCommentWithPath {
@@ -137,7 +137,7 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * This says what actually happened, on the author's side of the screen.
  */
 const BLOCKED_COMMAND_MESSAGE =
-  "CoMotion 擋下了這條命令（不是作者拒絕的）。只有 co-motion 開頭、參數為裸 token 或單引號字串的命令可以執行；管線、`&&`、`;`、寫入檔案的重導向、雙引號與反斜線一律擋下。";
+  "CoMotion 擋下了這條命令（不是作者拒絕的）。只有 comotion 開頭、參數為裸 token 或單引號字串的命令可以執行；管線、`&&`、`;`、寫入檔案的重導向、雙引號與反斜線一律擋下。";
 
 const MAX_COMMAND_OUTPUT_CHARS = 2000;
 const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
@@ -203,7 +203,7 @@ interface ChatEvents {
 export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
 
 /**
- * Drives one ACP adapter subprocess for the lifetime of `co-motion serve`.
+ * Drives one ACP adapter subprocess for the lifetime of `comotion serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
  * messages (§4 of the ticket), and the 編輯規約 is sent as its own, separate
@@ -221,7 +221,7 @@ export class AgentChatSession extends EventEmitter {
    * The deployed product work directory (`deployAgentWorkdir()`'s result),
    * already resolved to its real (symlink-free) form — handed to the agent
    * as its session `cwd` on every attempt, and never removed by this
-   * session (its lifetime is `CO_MOTION_HOME`'s, not the session's). A
+   * session (its lifetime is `COMOTION_HOME`'s, not the session's). A
    * conforming ACP agent echoes back an *absolute* path rooted at the cwd
    * it was given — but resolved, not verbatim (confirmed against a real
    * `claude-code-acp` 0.12.6: the cwd sent to `session/new` was
@@ -506,7 +506,7 @@ export class AgentChatSession extends EventEmitter {
    * still controls, flushes pending updates, and answers the original
    * `session/prompt` with `stopReason: "cancelled"` — so the turn ends
    * through `runTurn`'s normal path (`chat-done` carrying that stopReason,
-   * history group closed, editing lock released). A `co-motion` command
+   * history group closed, editing lock released). A `comotion` command
    * the agent had already launched runs to completion on its own (each
    * command is atomic); nothing written so far is rolled back — undo is
    * the author's tool for that, not this.
@@ -695,7 +695,7 @@ export class AgentChatSession extends EventEmitter {
    * more than once for the same attempt.
    *
    * Does **not** touch `workdirReal` — the product work directory belongs
-   * to `CO_MOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
+   * to `COMOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
    * session is ever constructed, and outlives every session teardown,
    * including the process's own shutdown.
    */
@@ -819,7 +819,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     const brief = buildEditorialBrief(this.presentationId);
     const executionGuidance = this.config.kind === "codex"
-      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 co-motion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；co-motion cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
+      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 comotion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；comotion cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
       : "";
     await connection.prompt({
       sessionId: this.sessionId,
@@ -989,7 +989,7 @@ export class AgentChatSession extends EventEmitter {
   /**
    * `session/request_permission` — the second layer of ADR-0004. Allows a
    * request only when the command it names is structurally guaranteed to
-   * invoke the `co-motion` program and nothing else (see
+   * invoke the `comotion` program and nothing else (see
    * `command-allowlist.ts`); refuses everything else, including any request
    * the command cannot be extracted from at all. The rule is hard-coded —
    * the author is never asked (user story 12).
@@ -998,7 +998,7 @@ export class AgentChatSession extends EventEmitter {
    * `allow_always`. Some adapters stop calling `session/request_permission`
    * for a tool entirely once a persistent grant has been given, which would
    * silently disable this whole gate for every later command in the
-   * session, including ones that are not `co-motion` at all. If the
+   * session, including ones that are not `comotion` at all. If the
    * adapter does not offer `allow_once`, the request is refused rather than
    * falling back to a permanent grant — a visible, recoverable refusal
    * beats a permission layer that quietly stops running. (The real
@@ -1131,7 +1131,7 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
   const rawInput = toolCall.rawInput;
   if (typeof rawInput !== "object" || rawInput === null) return undefined;
   const command = (rawInput as Record<string, unknown>).command;
-  if (typeof command === "string") return command;
+  if (typeof command === "string") return unwrapDoubleQuotedScript(command) ?? command;
   // Codex sends the actual exec argv, including its shell wrapper. Only
   // unwrap a known shell with exactly one script; the existing allowlist
   // still validates that entire script (never the display title/parsed_cmd).

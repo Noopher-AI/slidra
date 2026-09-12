@@ -13,7 +13,7 @@ export type SaveState = { known: true; dirty: boolean; fileName: string } | { kn
  * milliseconds first.
  *
  * `savedAt` is written by the Rust binary's `pack` command
- * (`crates/co-motion/src/workspace/mod.rs`'s `mtime_millis`, via
+ * (`crates/comotion/src/workspace/mod.rs`'s `mtime_millis`, via
  * `duration.as_secs_f64() * 1000.0`) and read back here as a JS `number`;
  * `maxMtimeInDirectory` below computes the comparison side from the same
  * underlying filesystem mtime through Node's `fs.stat().mtimeMs`. Both

@@ -20,8 +20,8 @@ describe("classifyClipboardText", () => {
     expect(classifyClipboardText("   \n\t")).toEqual({ kind: "empty" });
   });
 
-  it("classifies a co-motion clipboard SVG as co-motion-elements", () => {
-    expect(classifyClipboardText(elementsSvg)).toEqual({ kind: "co-motion-elements", svg: elementsSvg });
+  it("classifies a comotion clipboard SVG as comotion-elements", () => {
+    expect(classifyClipboardText(elementsSvg)).toEqual({ kind: "comotion-elements", svg: elementsSvg });
   });
 
   it("classifies plain text and foreign SVG (no clipboard marker) as plain", () => {
@@ -79,13 +79,13 @@ describe("pasteCommandFor", () => {
     expect(pasteCommandFor(cellsTarget, { kind: "empty" }, "slides/001.svg", { dx: 0, dy: 0 })).toBeNull();
   });
 
-  it("a co-motion elements payload always routes to element paste, even with a cell range selected", () => {
+  it("a comotion elements payload always routes to element paste, even with a cell range selected", () => {
     const cellsTarget: ClipboardTarget = {
       kind: "cells",
       slidePath: "slides/001.svg",
       range: { tableElementId: "tbl-1", top: 0, left: 0, bottom: 0, right: 0 },
     };
-    const result = pasteCommandFor(cellsTarget, { kind: "co-motion-elements", svg: elementsSvg }, "slides/002.svg", { dx: 20, dy: 20 });
+    const result = pasteCommandFor(cellsTarget, { kind: "comotion-elements", svg: elementsSvg }, "slides/002.svg", { dx: 20, dy: 20 });
     expect(result).toEqual({
       name: "element paste",
       input: { slidePath: "slides/002.svg", svg: elementsSvg, dx: 20, dy: 20 },

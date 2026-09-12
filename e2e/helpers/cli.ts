@@ -1,5 +1,5 @@
 // Replaces the deleted TypeScript engine's in-process `CommandRegistry`
-// with a same-shaped object backed by the real compiled `co-motion` binary
+// with a same-shaped object backed by the real compiled `comotion` binary
 // — via `packages/server/src/comotion/`'s argv encoder and `--json` runner
 // (F7's bridge, the same one `POST /api/command` uses). This is what lets
 // the ~200 `registry.dispatch(...)` call sites across the e2e suite stay

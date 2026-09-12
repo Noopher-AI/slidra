@@ -27,7 +27,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -55,11 +55,11 @@ async function startServerFor(
   deckDir: string,
   prefix: string,
 ): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-home-`));
-  const comotDir = await mkdtemp(path.join(tmpdir(), `co-motion-e2e-${prefix}-files-`));
-  process.env["CO_MOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env["CO_MOTION_BIN"] = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-home-`));
+  const comotDir = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-files-`));
+  process.env["COMOTION_HOME"] = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env["COMOTION_BIN"] = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, `${prefix}.comot`);
@@ -85,8 +85,8 @@ async function startServerFor(
     server,
     cleanup: async () => {
       await server.close();
-      delete process.env["CO_MOTION_HOME"];
-      delete process.env["CO_MOTION_BIN"];
+      delete process.env["COMOTION_HOME"];
+      delete process.env["COMOTION_BIN"];
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },
@@ -519,16 +519,16 @@ it("基準截圖：控制列隱藏態", async () => {
 it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
   // `.canvas`（play.css，data-mode="play"）的 #000 黑幕是進場前/載入前的
   // 佔位色，本該被投影片文件蓋掉。但 `slide add` 的空白頁沒有背景矩形
-  // （crates/co-motion/src/slide/ops.rs 的 build_blank_slide_svg），播放
+  // （crates/comotion/src/slide/ops.rs 的 build_blank_slide_svg），播放
   // 模式走的是 renderPlay() 的正常路徑（canvas.ts's wrapPlayDocument），不
   // 是票面文字點名的 wrapSlideDocument——這裡直接量播放中 iframe 自己的
   // html/body 背景，量的是實際播放路徑用到的那個 wrap 函式，不是名字對得
   // 上但實際沒被這條路徑呼叫到的那個。
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-play-nobg-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-play-nobg-files-"));
-  process.env["CO_MOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env["CO_MOTION_BIN"] = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-files-"));
+  process.env["COMOTION_HOME"] = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env["COMOTION_BIN"] = coMotionBin;
   try {
     const registry: CommandRegistry = createDefaultRegistry();
     const comotPath = path.join(comotDir, "deck.comot");
@@ -573,8 +573,8 @@ it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放�
       await server.close();
     }
   } finally {
-    delete process.env["CO_MOTION_HOME"];
-    delete process.env["CO_MOTION_BIN"];
+    delete process.env["COMOTION_HOME"];
+    delete process.env["COMOTION_BIN"];
     await rm(coMotionHome, { recursive: true, force: true });
     await rm(comotDir, { recursive: true, force: true });
   }

@@ -9,7 +9,7 @@ import { runServeCli } from "../../src/cli.js";
 import { agentSettingsPath } from "../../src/agent/settings.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -60,7 +60,7 @@ let originalPath: string | undefined;
 
 /** Writes fake `claude`/`codex` scripts, both reporting "not logged in", into a fresh temp dir. */
 async function writeFakeCli(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-fake-cli-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-fake-cli-"));
   const claudePath = path.join(dir, "claude");
   const codexPath = path.join(dir, "codex");
   await writeFile(claudePath, FAKE_CLAUDE_NOT_LOGGED_IN);
@@ -71,10 +71,10 @@ async function writeFakeCli(): Promise<string> {
 }
 
 beforeEach(async () => {
-  home = await mkdtemp(path.join(tmpdir(), "co-motion-cli-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cli-files-"));
-  process.env.CO_MOTION_HOME = home;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  home = await mkdtemp(path.join(tmpdir(), "comotion-cli-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cli-files-"));
+  process.env.COMOTION_HOME = home;
+  process.env.COMOTION_BIN = coMotionBinPath;
 
   fakeCliDir = await writeFakeCli();
   originalPath = process.env.PATH;
@@ -82,8 +82,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   process.env.PATH = originalPath;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

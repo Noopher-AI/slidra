@@ -29,7 +29,7 @@ import { waitForAgentConnected } from "./helpers/launch.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
@@ -92,17 +92,17 @@ async function startServerFor(
   comotPath: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-deck-"));
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-deck-"));
   // [E3.T3] #232/#236: never resolve against the real machine's
   // `~/.claude/skills` — a real skill directory happening to exist on
   // whatever machine runs this suite would silently leak into `/` list
   // assertions (Plan §6.3). Always temp dirs, populated per-test via
   // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
   // skill directory name) when a test needs a deterministic entry.
-  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-bundled-"));
-  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-user-"));
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-user-"));
   for (const [dir, entries] of [
     [bundledSkillsDir, skills.bundled] as const,
     [userSkillsDir, skills.user] as const,
@@ -113,9 +113,9 @@ async function startServerFor(
       await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
     }
   }
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -152,8 +152,8 @@ async function startServerFor(
     comotPath,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });

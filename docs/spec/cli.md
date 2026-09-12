@@ -1,6 +1,6 @@
-# co-motion CLI 規格
+# comotion CLI 規格
 
-這份文件是 `co-motion` 命令列工具的唯一規範性文件。TypeScript 引擎（`packages/core`／`packages/cli`）已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據。並存期曾對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，這三處已由 Rust 依本規格實作。
+這份文件是 `comotion` 命令列工具的唯一規範性文件。TypeScript 引擎（`packages/core`／`packages/cli`）已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據。並存期曾對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，這三處已由 Rust 依本規格實作。
 
 `docs/adr/` 記錄的是決策史，本文件記錄的是命令集目前與未來的規範性事實；兩者衝突時以本文件為準。
 
@@ -46,7 +46,7 @@ interface CommandResult<Data = unknown> {
 
 有 renderer 的三條命令（`cat`、`ls`、`slide render`）：輸出規則見下一節。
 
-**下游 pipe 提早關閉**（例如 `co-motion cat <id> <path> | head`）：這類 one-shot 命令把 EPIPE 視為正常結束，`process.exit(0)`，不視為錯誤。`export`／`serve` **不適用**這條規則——`export` 若在寫出過程中遇到 EPIPE 就 `process.exit(0)`，會把一次沒寫完的匯出謊報成功，所以刻意不裝這個處理。
+**下游 pipe 提早關閉**（例如 `comotion cat <id> <path> | head`）：這類 one-shot 命令把 EPIPE 視為正常結束，`process.exit(0)`，不視為錯誤。`export`／`serve` **不適用**這條規則——`export` 若在寫出過程中遇到 EPIPE 就 `process.exit(0)`，會把一次沒寫完的匯出謊報成功，所以刻意不裝這個處理。
 
 ## Renderer 命令：`cat`、`ls`、`slide render`
 
@@ -64,24 +64,24 @@ interface CommandResult<Data = unknown> {
 
 `--json` 是新規格定案的全域旗標，由 Rust 入口實作。
 
-- 位置：只能出現在命令名之後（例如 `co-motion cat <id> <path> --json`），不影響任何命令自己的位置參數與旗標解析順序。
+- 位置：只能出現在命令名之後（例如 `comotion cat <id> <path> --json`），不影響任何命令自己的位置參數與旗標解析順序。
 - 輸出：單行 compact（無縮排）JSON 加一個換行，欄位順序固定為 `ok, data, message, failureKind`。
 - 有 renderer 的命令在 `--json` 下也一律回 JSON，不再走 renderer 的原始位元組輸出；`data.content` 這類原本是原始文字/位元組的欄位，在 `--json` 底下編碼成**原始位元組的 base64**（因為 JSON 字串無法安全承載任意二進位內容）。
 - `cat --json` 是唯一允許接受**多個** `<path>` 的形式：`data` 變成 `[{ path, content }]` 陣列，順序與 argv 給的路徑順序相同；**沒有** `--json` 時 `cat` 仍然只接受單一路徑，直出原始 bytes（相容性等級 2 凍結範圍，不因為多路徑需求而改變單路徑行為）。
 - 失敗時仍然印 JSON（`ok: false`，含 `failureKind`，不含 `data`），exit code 仍然是 `1`。
-- `co-motion serve` 一律視為帶了 `--json`（它的呼叫端是程式，不是終端機使用者，不需要人類可讀的狀態行/renderer 輸出）。
+- `comotion serve` 一律視為帶了 `--json`（它的呼叫端是程式，不是終端機使用者，不需要人類可讀的狀態行/renderer 輸出）。
 
 ## 「`-`」代表標準輸入
 
 規格定義一組「可代換 stdin」的旗標。入口層（`bin.ts` 的 `main`，Rust 版是 `main.rs` 的對應位置）在呼叫 `dispatch` **之前**檢查：若某個可代換旗標的值恰好是字面字串 `"-"`，就讀取 stdin 的完整內容（UTF-8），把該欄位從「路徑欄位」改寫成同名但不同型別的 `*Text` 欄位，再交給 `dispatch`。`parseArgv` 本身是純函式，不讀 stdin、不做這個代換——代換必須發生在入口層，因為 `serve` 直接呼叫 `registry.dispatch`，完全繞過 `parseArgv`，若代換邏輯放在 argv 層，`serve` 這條路徑就永遠不會做代換。
 
-目前**唯一**的可代換旗標：`chart data set` 的 `--csv`。`co-motion serve` 沒有終端機的 stdin 可讀——handler 若收到未被代換的字面值 `"-"`（也就是透過 `serve` 直接呼叫，繞過了入口層的代換），必須明確回傳失敗，不得把 `"-"` 當成一個檔名去讀。
+目前**唯一**的可代換旗標：`chart data set` 的 `--csv`。`comotion serve` 沒有終端機的 stdin 可讀——handler 若收到未被代換的字面值 `"-"`（也就是透過 `serve` 直接呼叫，繞過了入口層的代換），必須明確回傳失敗，不得把 `"-"` 當成一個檔名去讀。
 
 ## 環境變數
 
-- **`CO_MOTION_HOME`**：`.comot` 之外的工作區根目錄，預設 `~/.comotion`。每次呼叫都重新讀取這個環境變數，不快取——同一個行程存活期間改變這個環境變數，下一次呼叫就會生效。佈局細節見 `docs/spec/comot-format.md`。
-- **`CO_MOTION_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `co-motion` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `co-motion`**（架構原則「一個二進位、一個真理」：絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `co-motion`）。
-- **`CO_MOTION_ID_SEED`**：設定時，id 產生器（`<presentation-id>`／`<element-id>`）改為確定性輸出，僅供測試使用；id 的字面格式（`el-` 前綴 + 12 字元 base64url）不因此改變。**確定性序列的實際演算法不是本規格的契約**，由實作 crate 自行決定——只要求「設定這個環境變數時輸出變成確定性，且格式不變」這一條外顯行為。
+- **`COMOTION_HOME`**：`.comot` 之外的工作區根目錄，預設 `~/.comotion`。每次呼叫都重新讀取這個環境變數，不快取——同一個行程存活期間改變這個環境變數，下一次呼叫就會生效。佈局細節見 `docs/spec/comot-format.md`。
+- **`COMOTION_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `comotion` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `comotion`**（架構原則「一個二進位、一個真理」：絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `comotion`）。
+- **`COMOTION_ID_SEED`**：設定時，id 產生器（`<presentation-id>`／`<element-id>`）改為確定性輸出，僅供測試使用；id 的字面格式（`el-` 前綴 + 12 字元 base64url）不因此改變。**確定性序列的實際演算法不是本規格的契約**，由實作 crate 自行決定——只要求「設定這個環境變數時輸出變成確定性，且格式不變」這一條外顯行為。
 
 ## Undo 語意
 
@@ -92,13 +92,13 @@ interface CommandResult<Data = unknown> {
 
 ## 不經 registry 的入口：`serve` 與 `export`
 
-`serve`／`export` 這兩個子命令**不算在 88 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/co-motion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@co-motion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
+`serve`／`export` 這兩個子命令**不算在 88 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/comotion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@comotion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
 
-Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `CO_MOTION_BIN`，再 `exec` Node 執行 `@co-motion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
+Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `COMOTION_BIN`，再 `exec` Node 執行 `@comotion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
 
 ## 命令條目格式說明
 
-下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/co-motion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_88_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 90，與 Rust 註冊的 88 條命令對不上。
+下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/comotion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_88_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 90，與 Rust 註冊的 88 條命令對不上。
 
 每個命令條目固定五個小節，順序不變：
 
@@ -114,7 +114,7 @@ Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對�
 **語法**
 
 ```
-co-motion new <path> [--name <名稱>]
+comotion new <path> [--name <名稱>]
 ```
 
 **參數**
@@ -139,7 +139,7 @@ co-motion new <path> [--name <名稱>]
 **範例**
 
 ```
-co-motion new ./deck.comot --name '我的簡報'
+comotion new ./deck.comot --name '我的簡報'
 ```
 
 ## `open`
@@ -147,7 +147,7 @@ co-motion new ./deck.comot --name '我的簡報'
 **語法**
 
 ```
-co-motion open <path>
+comotion open <path>
 ```
 
 **參數**
@@ -178,7 +178,7 @@ co-motion open <path>
 **範例**
 
 ```
-co-motion open ./deck.comot
+comotion open ./deck.comot
 ```
 
 ## `pack`
@@ -186,7 +186,7 @@ co-motion open ./deck.comot
 **語法**
 
 ```
-co-motion pack <presentation-id> <path>
+comotion pack <presentation-id> <path>
 ```
 
 **參數**
@@ -210,7 +210,7 @@ co-motion pack <presentation-id> <path>
 **範例**
 
 ```
-co-motion pack pres-abc123 ./deck.comot
+comotion pack pres-abc123 ./deck.comot
 ```
 
 ## `cat`
@@ -218,7 +218,7 @@ co-motion pack pres-abc123 ./deck.comot
 **語法**
 
 ```
-co-motion cat <presentation-id> <path>
+comotion cat <presentation-id> <path>
 ```
 
 **參數**
@@ -245,7 +245,7 @@ co-motion cat <presentation-id> <path>
 **範例**
 
 ```
-co-motion cat pres-abc123 slides/001.svg
+comotion cat pres-abc123 slides/001.svg
 ```
 
 ## `ls`
@@ -253,7 +253,7 @@ co-motion cat pres-abc123 slides/001.svg
 **語法**
 
 ```
-co-motion ls <presentation-id> [path]
+comotion ls <presentation-id> [path]
 ```
 
 **參數**
@@ -279,15 +279,15 @@ co-motion ls <presentation-id> [path]
 **範例**
 
 ```
-co-motion ls pres-abc123
-co-motion ls pres-abc123 slides
+comotion ls pres-abc123
+comotion ls pres-abc123 slides
 ```
 ## `text set`
 
 **語法**
 
 ```
-co-motion text set <presentation-id> <slide-path> <element-id> <new-text> [--force]
+comotion text set <presentation-id> <slide-path> <element-id> <new-text> [--force]
 ```
 
 **參數**
@@ -320,8 +320,8 @@ co-motion text set <presentation-id> <slide-path> <element-id> <new-text> [--for
 **範例**
 
 ```
-co-motion text set pres-abc123 slides/001.svg el-title '新的標題文字'
-co-motion text set pres-abc123 slides/001.svg el-locked '' --force
+comotion text set pres-abc123 slides/001.svg el-title '新的標題文字'
+comotion text set pres-abc123 slides/001.svg el-locked '' --force
 ```
 
 ## `text style set`
@@ -329,7 +329,7 @@ co-motion text set pres-abc123 slides/001.svg el-locked '' --force
 **語法**
 
 ```
-co-motion text style set <presentation-id> <slide-path> <element-id> --range <start>:<end> [--font-weight <value>] [--font-style <value>] [--force]
+comotion text style set <presentation-id> <slide-path> <element-id> --range <start>:<end> [--font-weight <value>] [--font-style <value>] [--force]
 ```
 
 **參數**
@@ -369,8 +369,8 @@ co-motion text style set <presentation-id> <slide-path> <element-id> --range <st
 **範例**
 
 ```
-co-motion text style set pres-abc123 slides/001.svg el-body --range 0:5 --font-weight bold
-co-motion text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-style italic --force
+comotion text style set pres-abc123 slides/001.svg el-body --range 0:5 --font-weight bold
+comotion text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-style italic --force
 ```
 
 ## `text list set`
@@ -378,7 +378,7 @@ co-motion text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-
 **語法**
 
 ```
-co-motion text list set <presentation-id> <slide-path> <element-id> --paragraph <n> --kind bullet|number|none [--force]
+comotion text list set <presentation-id> <slide-path> <element-id> --paragraph <n> --kind bullet|number|none [--force]
 ```
 
 **參數**
@@ -414,8 +414,8 @@ co-motion text list set <presentation-id> <slide-path> <element-id> --paragraph 
 **範例**
 
 ```
-co-motion text list set pres-abc123 slides/001.svg el-body --paragraph 0 --kind bullet
-co-motion text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind none --force
+comotion text list set pres-abc123 slides/001.svg el-body --paragraph 0 --kind bullet
+comotion text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind none --force
 ```
 
 ## `textbox add`
@@ -423,7 +423,7 @@ co-motion text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind 
 **語法**
 
 ```
-co-motion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width <num> --text <string> [--font-size <num>] [--font-family <string>] [--font-weight <num>] [--fill <string>] [--align left|center|right]
+comotion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width <num> --text <string> [--font-size <num>] [--font-family <string>] [--font-weight <num>] [--fill <string>] [--align left|center|right]
 ```
 
 **參數**
@@ -461,8 +461,8 @@ co-motion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width
 **範例**
 
 ```
-co-motion textbox add pres-abc123 slides/002.svg --x 100 --y 200 --width 400 --text '第一行\n第二行'
-co-motion textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text '置中標題' --align center --font-size 32
+comotion textbox add pres-abc123 slides/002.svg --x 100 --y 200 --width 400 --text '第一行\n第二行'
+comotion textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text '置中標題' --align center --font-size 32
 ```
 
 ## `textbox width`
@@ -470,7 +470,7 @@ co-motion textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text 
 **語法**
 
 ```
-co-motion textbox width <presentation-id> <slide-path> <element-id> <width> [--force]
+comotion textbox width <presentation-id> <slide-path> <element-id> <width> [--force]
 ```
 
 **參數**
@@ -504,8 +504,8 @@ co-motion textbox width <presentation-id> <slide-path> <element-id> <width> [--f
 **範例**
 
 ```
-co-motion textbox width pres-abc123 slides/002.svg el-a1b2c3 500
-co-motion textbox width pres-abc123 slides/002.svg el-locked 250 --force
+comotion textbox width pres-abc123 slides/002.svg el-a1b2c3 500
+comotion textbox width pres-abc123 slides/002.svg el-locked 250 --force
 ```
 
 ## `textbox align`
@@ -513,7 +513,7 @@ co-motion textbox width pres-abc123 slides/002.svg el-locked 250 --force
 **語法**
 
 ```
-co-motion textbox align <presentation-id> <slide-path> <element-id> <left|center|right> [--force]
+comotion textbox align <presentation-id> <slide-path> <element-id> <left|center|right> [--force]
 ```
 
 **參數**
@@ -546,8 +546,8 @@ co-motion textbox align <presentation-id> <slide-path> <element-id> <left|center
 **範例**
 
 ```
-co-motion textbox align pres-abc123 slides/002.svg el-a1b2c3 center
-co-motion textbox align pres-abc123 slides/002.svg el-locked right --force
+comotion textbox align pres-abc123 slides/002.svg el-a1b2c3 center
+comotion textbox align pres-abc123 slides/002.svg el-locked right --force
 ```
 
 ## `convert`
@@ -555,7 +555,7 @@ co-motion textbox align pres-abc123 slides/002.svg el-locked right --force
 **語法**
 
 ```
-co-motion convert <presentation-id>
+comotion convert <presentation-id>
 ```
 
 **參數**
@@ -587,7 +587,7 @@ co-motion convert <presentation-id>
 **範例**
 
 ```
-co-motion convert pres-abc123
+comotion convert pres-abc123
 ```
 
 ## `undo`
@@ -595,7 +595,7 @@ co-motion convert pres-abc123
 **語法**
 
 ```
-co-motion undo <presentation-id>
+comotion undo <presentation-id>
 ```
 
 **參數**
@@ -621,7 +621,7 @@ co-motion undo <presentation-id>
 **範例**
 
 ```
-co-motion undo pres-abc123
+comotion undo pres-abc123
 ```
 
 ## `redo`
@@ -629,7 +629,7 @@ co-motion undo pres-abc123
 **語法**
 
 ```
-co-motion redo <presentation-id>
+comotion redo <presentation-id>
 ```
 
 **參數**
@@ -655,14 +655,14 @@ co-motion redo <presentation-id>
 **範例**
 
 ```
-co-motion redo pres-abc123
+comotion redo pres-abc123
 ```
 ## `element insert`
 
 **語法**
 
 ```
-co-motion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [--width n] [--height n] [--x1 n] [--y1 n] [--x2 n] [--y2 n] [--d path-data] [--fill value] [--stroke value] [--stroke-width n] [--href value] [--media value] [--embed provider]
+comotion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [--width n] [--height n] [--x1 n] [--y1 n] [--x2 n] [--y2 n] [--d path-data] [--fill value] [--stroke value] [--stroke-width n] [--href value] [--media value] [--embed provider]
 ```
 
 **參數**
@@ -705,7 +705,7 @@ co-motion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [
 **範例**
 
 ```
-co-motion element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 --height 150 --fill '#3366ff'
+comotion element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 --height 150 --fill '#3366ff'
 ```
 
 ---
@@ -715,7 +715,7 @@ co-motion element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 
 **語法**
 
 ```
-co-motion element delete <presentation-id> <slide-path> <element-ids>
+comotion element delete <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -742,7 +742,7 @@ co-motion element delete <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element delete pres-123 slides/1.svg el-1,el-2
+comotion element delete pres-123 slides/1.svg el-1,el-2
 ```
 
 （刪除一個群組時，其內部所有子元素連帶被刪除，不需個別列出；已被祖先涵蓋的目標不會被重複判定為「找不到」。）
@@ -754,7 +754,7 @@ co-motion element delete pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-co-motion element move <presentation-id> <slide-path> <element-ids> --dx n --dy n [--force]
+comotion element move <presentation-id> <slide-path> <element-ids> --dx n --dy n [--force]
 ```
 
 **參數**
@@ -786,7 +786,7 @@ co-motion element move <presentation-id> <slide-path> <element-ids> --dx n --dy 
 **範例**
 
 ```
-co-motion element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
+comotion element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
 ```
 
 ---
@@ -796,7 +796,7 @@ co-motion element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
 **語法**
 
 ```
-co-motion element scale <presentation-id> <slide-path> <element-ids> --factor n [--force]
+comotion element scale <presentation-id> <slide-path> <element-ids> --factor n [--force]
 ```
 
 **參數**
@@ -832,7 +832,7 @@ co-motion element scale <presentation-id> <slide-path> <element-ids> --factor n 
 **範例**
 
 ```
-co-motion element scale pres-123 slides/1.svg el-1 --factor 1.5
+comotion element scale pres-123 slides/1.svg el-1 --factor 1.5
 ```
 
 （目標若為群組，會遞迴縮放所有子孫容器的位移與圖元幾何；文字框則同時縮放 font-size 並重新換行。）
@@ -844,7 +844,7 @@ co-motion element scale pres-123 slides/1.svg el-1 --factor 1.5
 **語法**
 
 ```
-co-motion element resize <presentation-id> <slide-path> <element-ids> --width n --height n [--anchor nw|ne|sw|se] [--force]
+comotion element resize <presentation-id> <slide-path> <element-ids> --width n --height n [--anchor nw|ne|sw|se] [--force]
 ```
 
 **參數**
@@ -881,7 +881,7 @@ co-motion element resize <presentation-id> <slide-path> <element-ids> --width n 
 **範例**
 
 ```
-co-motion element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --anchor nw
+comotion element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --anchor nw
 ```
 
 （`--width`/`--height` 是調整後的目標尺寸，非位移量；`--anchor` 指定的角落座標在調整前後保持不動。）
@@ -893,7 +893,7 @@ co-motion element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --a
 **語法**
 
 ```
-co-motion element rotate <presentation-id> <slide-path> <element-ids> --degrees n [--force]
+comotion element rotate <presentation-id> <slide-path> <element-ids> --degrees n [--force]
 ```
 
 **參數**
@@ -924,7 +924,7 @@ co-motion element rotate <presentation-id> <slide-path> <element-ids> --degrees 
 **範例**
 
 ```
-co-motion element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
+comotion element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
 ```
 
 ---
@@ -934,7 +934,7 @@ co-motion element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
 **語法**
 
 ```
-co-motion element style set <presentation-id> <slide-path> <element-ids> <attr> <value> [--force]
+comotion element style set <presentation-id> <slide-path> <element-ids> <attr> <value> [--force]
 ```
 
 **參數**
@@ -976,7 +976,7 @@ co-motion element style set <presentation-id> <slide-path> <element-ids> <attr> 
 **範例**
 
 ```
-co-motion element style set pres-123 slides/1.svg el-1 fill '#ff0000'
+comotion element style set pres-123 slides/1.svg el-1 fill '#ff0000'
 ```
 
 ---
@@ -986,7 +986,7 @@ co-motion element style set pres-123 slides/1.svg el-1 fill '#ff0000'
 **語法**
 
 ```
-co-motion element order <presentation-id> <slide-path> <element-ids> <direction> [--force]
+comotion element order <presentation-id> <slide-path> <element-ids> <direction> [--force]
 ```
 
 **參數**
@@ -1016,7 +1016,7 @@ co-motion element order <presentation-id> <slide-path> <element-ids> <direction>
 **範例**
 
 ```
-co-motion element order pres-123 slides/1.svg el-1 front
+comotion element order pres-123 slides/1.svg el-1 front
 ```
 
 （若目標已在同層容器中的最上/最下層，或該層只有這一個子元素，此命令為無操作，仍視為成功。不同父容器下的目標互不影響彼此的順序。）
@@ -1028,7 +1028,7 @@ co-motion element order pres-123 slides/1.svg el-1 front
 **語法**
 
 ```
-co-motion element group <presentation-id> <slide-path> <element-ids>
+comotion element group <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1060,7 +1060,7 @@ co-motion element group <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element group pres-123 slides/1.svg el-1,el-2,el-3
+comotion element group pres-123 slides/1.svg el-1,el-2,el-3
 ```
 
 （本命令不檢查鎖定狀態，也沒有 `--force`；新群組容器本身不帶 `transform`，落在清單中文件順序最後（最上層）目標原本的位置，其餘目標的原始 z-order 不受影響。）
@@ -1072,7 +1072,7 @@ co-motion element group pres-123 slides/1.svg el-1,el-2,el-3
 **語法**
 
 ```
-co-motion element ungroup <presentation-id> <slide-path> <element-ids>
+comotion element ungroup <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1104,7 +1104,7 @@ co-motion element ungroup <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element ungroup pres-123 slides/1.svg el-group1
+comotion element ungroup pres-123 slides/1.svg el-group1
 ```
 
 （解散時群組自身的 `transform` 會被摺疊進每個子元素各自的 `transform`，使子元素的絕對位置不變；本命令不檢查鎖定狀態，也沒有 `--force`。）
@@ -1116,7 +1116,7 @@ co-motion element ungroup pres-123 slides/1.svg el-group1
 **語法**
 
 ```
-co-motion element align <presentation-id> <slide-path> <element-ids> <direction>
+comotion element align <presentation-id> <slide-path> <element-ids> <direction>
 ```
 
 **參數**
@@ -1147,7 +1147,7 @@ co-motion element align <presentation-id> <slide-path> <element-ids> <direction>
 **範例**
 
 ```
-co-motion element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
+comotion element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
 ```
 
 （對齊基準是所有目標邊界框的聯集（union），每個目標只移動自己容器的位移；本命令沒有 `--force`，不檢查鎖定狀態。）
@@ -1159,7 +1159,7 @@ co-motion element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
 **語法**
 
 ```
-co-motion element distribute <presentation-id> <slide-path> <element-ids> <axis>
+comotion element distribute <presentation-id> <slide-path> <element-ids> <axis>
 ```
 
 **參數**
@@ -1190,7 +1190,7 @@ co-motion element distribute <presentation-id> <slide-path> <element-ids> <axis>
 **範例**
 
 ```
-co-motion element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizontal
+comotion element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizontal
 ```
 
 （依邊界框「中心點」在指定軸上排序，取第一個與最後一個中心點固定不動，中間的目標被重新等距分佈；本命令沒有 `--force`。）
@@ -1202,7 +1202,7 @@ co-motion element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizonta
 **語法**
 
 ```
-co-motion element name set <presentation-id> <slide-path> <element-ids> <name>
+comotion element name set <presentation-id> <slide-path> <element-ids> <name>
 ```
 
 **參數**
@@ -1230,7 +1230,7 @@ co-motion element name set <presentation-id> <slide-path> <element-ids> <name>
 **範例**
 
 ```
-co-motion element name set pres-123 slides/1.svg el-1 '標題文字'
+comotion element name set pres-123 slides/1.svg el-1 '標題文字'
 ```
 
 （多個 id 之間名稱不要求唯一；本命令沒有 `--force`，不檢查鎖定狀態。）
@@ -1242,7 +1242,7 @@ co-motion element name set pres-123 slides/1.svg el-1 '標題文字'
 **語法**
 
 ```
-co-motion element copy <presentation-id> <slide-path> <element-ids>
+comotion element copy <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1257,7 +1257,7 @@ co-motion element copy <presentation-id> <slide-path> <element-ids>
 { "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" ...>...</svg>" }
 ```
 
-`svg` 是與系統剪貼簿交換格式相同的獨立 `<svg>` 字串（等同 GUI 按下 ⌘C 寫入 `navigator.clipboard` 的內容），同時也會寫入該簡報專屬的內部剪貼簿檔案（`<CO_MOTION_HOME>/clipboard/<presentation-id>.json`），供同一簡報之後的 `element paste`（未帶 `--svg-file`）讀取。
+`svg` 是與系統剪貼簿交換格式相同的獨立 `<svg>` 字串（等同 GUI 按下 ⌘C 寫入 `navigator.clipboard` 的內容），同時也會寫入該簡報專屬的內部剪貼簿檔案（`<COMOTION_HOME>/clipboard/<presentation-id>.json`），供同一簡報之後的 `element paste`（未帶 `--svg-file`）讀取。
 
 **錯誤情境**
 
@@ -1271,7 +1271,7 @@ co-motion element copy <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element copy pres-123 slides/1.svg el-1,el-2
+comotion element copy pres-123 slides/1.svg el-1,el-2
 ```
 
 （不修改簡報內容，不佔用復原/重做步驟；複製的元素若原本在群組內，其祖先鏈的 transform 會被摺疊進自身的 transform，確保貼到其他簡報的根層級時視覺位置不變。）
@@ -1283,7 +1283,7 @@ co-motion element copy pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-co-motion element cut <presentation-id> <slide-path> <element-ids>
+comotion element cut <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1312,7 +1312,7 @@ co-motion element cut <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element cut pres-123 slides/1.svg el-1
+comotion element cut pres-123 slides/1.svg el-1
 ```
 
 （不檢查鎖定狀態——ADR-0013 明訂刪除鎖定元素不需要 `--force`；復原（undo）會還原被刪除的元素，但不會還原剪貼簿內容，與一般編輯器行為一致。）
@@ -1324,7 +1324,7 @@ co-motion element cut pres-123 slides/1.svg el-1
 **語法**
 
 ```
-co-motion element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-file path]
+comotion element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-file path]
 ```
 
 **參數**
@@ -1354,14 +1354,14 @@ co-motion element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-
 | 未給 `--svg-file` 且該簡報的內部剪貼簿檔案不存在（尚未複製/剪下過，或已被其他方式清除） | `failed` |
 | 內部剪貼簿檔案存在但讀取失敗（非「找不到檔案」的 I/O 錯誤） | `failed` |
 | 內部剪貼簿檔案內容不是合法 JSON | `failed` |
-| `--svg-file` 給的內容不是合法的 co-motion 元素剪貼簿格式（缺少辨識標記或無法解析） | `failed` |
+| `--svg-file` 給的內容不是合法的 comotion 元素剪貼簿格式（缺少辨識標記或無法解析） | `failed` |
 | 剪貼簿內容為空（沒有任何元素可貼上） | `failed` |
 | 剪貼簿內容未通過三層驗證（結構、單一根節點、屬性/值白名單——ADR-0010，見 `sanitizeClipboardMarkup`） | `failed` |
 
 **範例**
 
 ```
-co-motion element paste pres-123 slides/2.svg --dx 20 --dy 20
+comotion element paste pres-123 slides/2.svg --dx 20 --dy 20
 ```
 
 （`--svg` 這個系統剪貼簿字串輸入在 `ElementPasteInput` 型別中存在，但 CLI 的 argv 層目前只曝露 `--svg-file`，未曝露對應的 `--svg` 旗標；`--svg-file` 讀出的內容會作為該欄位的值。）
@@ -1373,7 +1373,7 @@ co-motion element paste pres-123 slides/2.svg --dx 20 --dy 20
 **語法**
 
 ```
-co-motion element duplicate <presentation-id> <slide-path> <element-ids> [--dx n] [--dy n]
+comotion element duplicate <presentation-id> <slide-path> <element-ids> [--dx n] [--dy n]
 ```
 
 **參數**
@@ -1404,7 +1404,7 @@ co-motion element duplicate <presentation-id> <slide-path> <element-ids> [--dx n
 **範例**
 
 ```
-co-motion element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
+comotion element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
 ```
 
 （內部走與 `copy`＋`paste` 相同的抽取/貼上邏輯，但完全繞過剪貼簿檔案，不會覆寫使用者實際的剪貼簿內容；不檢查鎖定狀態，沒有 `--force`。）
@@ -1416,7 +1416,7 @@ co-motion element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
 **語法**
 
 ```
-co-motion element lock <presentation-id> <slide-path> <element-ids>
+comotion element lock <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1443,7 +1443,7 @@ co-motion element lock <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element lock pres-123 slides/1.svg el-1,el-2
+comotion element lock pres-123 slides/1.svg el-1,el-2
 ```
 
 （在每個目標容器上設定 `data-comot-lock="true"`；具幂等性——鎖定一個已鎖定的元素不會報錯。）
@@ -1455,7 +1455,7 @@ co-motion element lock pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-co-motion element unlock <presentation-id> <slide-path> <element-ids>
+comotion element unlock <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1482,7 +1482,7 @@ co-motion element unlock <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-co-motion element unlock pres-123 slides/1.svg el-1,el-2
+comotion element unlock pres-123 slides/1.svg el-1,el-2
 ```
 
 （移除目標容器上的 `data-comot-lock` 屬性——一律整個屬性移除，絕不寫入 `data-comot-lock="false"`；具幂等性——解鎖一個已解鎖的元素不會報錯。）
@@ -1491,7 +1491,7 @@ co-motion element unlock pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-co-motion table create <presentation-id> <slide-path> --rows <n> --cols <n> --x <x> --y <y> [--col-width <width>] [--theme dark|light|zebra] [--header true|false]
+comotion table create <presentation-id> <slide-path> --rows <n> --cols <n> --x <x> --y <y> [--col-width <width>] [--theme dark|light|zebra] [--header true|false]
 ```
 
 **參數**
@@ -1528,7 +1528,7 @@ co-motion table create <presentation-id> <slide-path> --rows <n> --cols <n> --x 
 **範例**
 
 ```
-co-motion table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --theme light --header true
+comotion table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --theme light --header true
 ```
 
 ## `table cell set`
@@ -1536,7 +1536,7 @@ co-motion table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --the
 **語法**
 
 ```
-co-motion table cell set <presentation-id> <slide-path> <element-id> --row <row> --col <col> --text <text>
+comotion table cell set <presentation-id> <slide-path> <element-id> --row <row> --col <col> --text <text>
 ```
 
 **參數**
@@ -1569,7 +1569,7 @@ co-motion table cell set <presentation-id> <slide-path> <element-id> --row <row>
 **範例**
 
 ```
-co-motion table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '營收'
+comotion table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '營收'
 ```
 
 ## `table cell style set`
@@ -1577,7 +1577,7 @@ co-motion table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '�
 **語法**
 
 ```
-co-motion table cell style set <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-end <row>] [--col-end <col>] <attr> <value>
+comotion table cell style set <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-end <row>] [--col-end <col>] <attr> <value>
 ```
 
 **參數**
@@ -1616,7 +1616,7 @@ co-motion table cell style set <presentation-id> <slide-path> <element-id> --row
 **範例**
 
 ```
-co-motion table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-end 0 --col-end 3 align center
+comotion table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-end 0 --col-end 3 align center
 ```
 
 ## `table merge`
@@ -1624,7 +1624,7 @@ co-motion table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --r
 **語法**
 
 ```
-co-motion table merge <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-span <n>] [--col-span <n>] [--unmerge]
+comotion table merge <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-span <n>] [--col-span <n>] [--unmerge]
 ```
 
 **參數**
@@ -1663,7 +1663,7 @@ co-motion table merge <presentation-id> <slide-path> <element-id> --row <row> --
 **範例**
 
 ```
-co-motion table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1 --col-span 2
+comotion table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1 --col-span 2
 ```
 
 ## `table col width`
@@ -1671,7 +1671,7 @@ co-motion table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1
 **語法**
 
 ```
-co-motion table col width <presentation-id> <slide-path> <element-id> --col <col> --width <width> [--keep-total]
+comotion table col width <presentation-id> <slide-path> <element-id> --col <col> --width <width> [--keep-total]
 ```
 
 **參數**
@@ -1705,7 +1705,7 @@ co-motion table col width <presentation-id> <slide-path> <element-id> --col <col
 **範例**
 
 ```
-co-motion table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --keep-total
+comotion table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --keep-total
 ```
 
 ## `table col insert`
@@ -1713,7 +1713,7 @@ co-motion table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --ke
 **語法**
 
 ```
-co-motion table col insert <presentation-id> <slide-path> <element-id> --at <index>
+comotion table col insert <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1742,7 +1742,7 @@ co-motion table col insert <presentation-id> <slide-path> <element-id> --at <ind
 **範例**
 
 ```
-co-motion table col insert pres-1 slides/1.svg el-table1 --at 2
+comotion table col insert pres-1 slides/1.svg el-table1 --at 2
 ```
 
 ## `table col delete`
@@ -1750,7 +1750,7 @@ co-motion table col insert pres-1 slides/1.svg el-table1 --at 2
 **語法**
 
 ```
-co-motion table col delete <presentation-id> <slide-path> <element-id> --at <index>
+comotion table col delete <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1780,7 +1780,7 @@ co-motion table col delete <presentation-id> <slide-path> <element-id> --at <ind
 **範例**
 
 ```
-co-motion table col delete pres-1 slides/1.svg el-table1 --at 2
+comotion table col delete pres-1 slides/1.svg el-table1 --at 2
 ```
 
 ## `table row insert`
@@ -1788,7 +1788,7 @@ co-motion table col delete pres-1 slides/1.svg el-table1 --at 2
 **語法**
 
 ```
-co-motion table row insert <presentation-id> <slide-path> <element-id> --at <index>
+comotion table row insert <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1817,7 +1817,7 @@ co-motion table row insert <presentation-id> <slide-path> <element-id> --at <ind
 **範例**
 
 ```
-co-motion table row insert pres-1 slides/1.svg el-table1 --at 1
+comotion table row insert pres-1 slides/1.svg el-table1 --at 1
 ```
 
 ## `table row delete`
@@ -1825,7 +1825,7 @@ co-motion table row insert pres-1 slides/1.svg el-table1 --at 1
 **語法**
 
 ```
-co-motion table row delete <presentation-id> <slide-path> <element-id> --at <index>
+comotion table row delete <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1856,7 +1856,7 @@ co-motion table row delete <presentation-id> <slide-path> <element-id> --at <ind
 **範例**
 
 ```
-co-motion table row delete pres-1 slides/1.svg el-table1 --at 1
+comotion table row delete pres-1 slides/1.svg el-table1 --at 1
 ```
 
 ## `table theme set`
@@ -1864,7 +1864,7 @@ co-motion table row delete pres-1 slides/1.svg el-table1 --at 1
 **語法**
 
 ```
-co-motion table theme set <presentation-id> <slide-path> <element-id> <theme>
+comotion table theme set <presentation-id> <slide-path> <element-id> <theme>
 ```
 
 **參數**
@@ -1893,7 +1893,7 @@ co-motion table theme set <presentation-id> <slide-path> <element-id> <theme>
 **範例**
 
 ```
-co-motion table theme set pres-1 slides/1.svg el-table1 zebra
+comotion table theme set pres-1 slides/1.svg el-table1 zebra
 ```
 
 ## `table header set`
@@ -1901,7 +1901,7 @@ co-motion table theme set pres-1 slides/1.svg el-table1 zebra
 **語法**
 
 ```
-co-motion table header set <presentation-id> <slide-path> <element-id> <true|false>
+comotion table header set <presentation-id> <slide-path> <element-id> <true|false>
 ```
 
 **參數**
@@ -1929,7 +1929,7 @@ co-motion table header set <presentation-id> <slide-path> <element-id> <true|fal
 **範例**
 
 ```
-co-motion table header set pres-1 slides/1.svg el-table1 false
+comotion table header set pres-1 slides/1.svg el-table1 false
 ```
 
 ## `table bind`
@@ -1937,7 +1937,7 @@ co-motion table header set pres-1 slides/1.svg el-table1 false
 **語法**
 
 ```
-co-motion table bind <presentation-id> <slide-path> <element-id> --source <virtual-csv-path> [--template-row <row>]
+comotion table bind <presentation-id> <slide-path> <element-id> --source <virtual-csv-path> [--template-row <row>]
 ```
 
 **參數**
@@ -1972,7 +1972,7 @@ co-motion table bind <presentation-id> <slide-path> <element-id> --source <virtu
 **範例**
 
 ```
-co-motion table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.csv --template-row 1
+comotion table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.csv --template-row 1
 ```
 
 ## `table refresh`
@@ -1980,7 +1980,7 @@ co-motion table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.cs
 **語法**
 
 ```
-co-motion table refresh <presentation-id> <slide-path> <element-id>
+comotion table refresh <presentation-id> <slide-path> <element-id>
 ```
 
 **參數**
@@ -2012,7 +2012,7 @@ co-motion table refresh <presentation-id> <slide-path> <element-id>
 **範例**
 
 ```
-co-motion table refresh pres-1 slides/1.svg el-table1
+comotion table refresh pres-1 slides/1.svg el-table1
 ```
 
 ## `table set`
@@ -2020,7 +2020,7 @@ co-motion table refresh pres-1 slides/1.svg el-table1
 **語法**
 
 ```
-co-motion table set <presentation-id> <slide-path> <element-id> (--from <virtual-csv-path> | --markdown <text> | --markdown-file <path>)
+comotion table set <presentation-id> <slide-path> <element-id> (--from <virtual-csv-path> | --markdown <text> | --markdown-file <path>)
 ```
 
 **參數**
@@ -2055,7 +2055,7 @@ co-motion table set <presentation-id> <slide-path> <element-id> (--from <virtual
 **範例**
 
 ```
-co-motion table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
+comotion table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
 ```
 
 ## `table cell copy`
@@ -2063,7 +2063,7 @@ co-motion table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
 **語法**
 
 ```
-co-motion table cell copy <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
+comotion table cell copy <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
 ```
 
 **參數**
@@ -2095,7 +2095,7 @@ co-motion table cell copy <presentation-id> <slide-path> <element-id> --range <r
 **範例**
 
 ```
-co-motion table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
+comotion table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
 ```
 
 ## `table cell cut`
@@ -2103,7 +2103,7 @@ co-motion table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
 **語法**
 
 ```
-co-motion table cell cut <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
+comotion table cell cut <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
 ```
 
 **參數**
@@ -2135,7 +2135,7 @@ co-motion table cell cut <presentation-id> <slide-path> <element-id> --range <r,
 **範例**
 
 ```
-co-motion table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
+comotion table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
 ```
 
 ## `table cell paste`
@@ -2143,7 +2143,7 @@ co-motion table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
 **語法**
 
 ```
-co-motion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c> --tsv-file <path>
+comotion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c> --tsv-file <path>
 ```
 
 **參數**
@@ -2178,14 +2178,14 @@ co-motion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c
 **範例**
 
 ```
-co-motion table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./cells.tsv
+comotion table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./cells.tsv
 ```
 ## `plan set`
 
 **語法**
 
 ```
-co-motion plan set <presentation-id> <name> <content> [--force]
+comotion plan set <presentation-id> <name> <content> [--force]
 ```
 
 **參數**
@@ -2227,7 +2227,7 @@ co-motion plan set <presentation-id> <name> <content> [--force]
 **範例**
 
 ```
-co-motion plan set pres-1 outline '```json
+comotion plan set pres-1 outline '```json
 { "status": "draft", "mode": "pyramid", "pages": [ { "n": 1, "type": "cover", "rhythm": "anchor", "title": "封面" } ] }
 ```
 
@@ -2240,7 +2240,7 @@ co-motion plan set pres-1 outline '```json
 **語法**
 
 ```
-co-motion plan list <presentation-id>
+comotion plan list <presentation-id>
 ```
 
 **參數**
@@ -2265,7 +2265,7 @@ co-motion plan list <presentation-id>
 **範例**
 
 ```
-co-motion plan list pres-1
+comotion plan list pres-1
 ```
 
 ## `plan delete`
@@ -2273,7 +2273,7 @@ co-motion plan list pres-1
 **語法**
 
 ```
-co-motion plan delete <presentation-id> [name]
+comotion plan delete <presentation-id> [name]
 ```
 
 **參數**
@@ -2300,8 +2300,8 @@ co-motion plan delete <presentation-id> [name]
 **範例**
 
 ```
-co-motion plan delete pres-1
-co-motion plan delete pres-1 outline
+comotion plan delete pres-1
+comotion plan delete pres-1 outline
 ```
 
 ## `validate`
@@ -2309,7 +2309,7 @@ co-motion plan delete pres-1 outline
 **語法**
 
 ```
-co-motion validate <presentation-id> [slide-path]
+comotion validate <presentation-id> [slide-path]
 ```
 
 **參數**
@@ -2338,8 +2338,8 @@ co-motion validate <presentation-id> [slide-path]
 **範例**
 
 ```
-co-motion validate pres-1
-co-motion validate pres-1 slides/003.svg
+comotion validate pres-1
+comotion validate pres-1 slides/003.svg
 ```
 
 ## `effect add`
@@ -2347,7 +2347,7 @@ co-motion validate pres-1 slides/003.svg
 **語法**
 
 ```
-co-motion effect add <presentation-id> <slide-path> <element-id>[,<element-id>...] --family <enter|emphasis|exit|path|media> --effect <effect-name> [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>] [--index <n>]
+comotion effect add <presentation-id> <slide-path> <element-id>[,<element-id>...] --family <enter|emphasis|exit|path|media> --effect <effect-name> [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>] [--index <n>]
 ```
 
 **參數**
@@ -2387,7 +2387,7 @@ co-motion effect add <presentation-id> <slide-path> <element-id>[,<element-id>..
 **範例**
 
 ```
-co-motion effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fade --duration 0.8
+comotion effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fade --duration 0.8
 ```
 
 ## `effect remove`
@@ -2395,7 +2395,7 @@ co-motion effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fad
 **語法**
 
 ```
-co-motion effect remove <presentation-id> <slide-path> <index>[,<index>...]
+comotion effect remove <presentation-id> <slide-path> <index>[,<index>...]
 ```
 
 **參數**
@@ -2423,7 +2423,7 @@ co-motion effect remove <presentation-id> <slide-path> <index>[,<index>...]
 **範例**
 
 ```
-co-motion effect remove pres-1 slides/001.svg 2,3
+comotion effect remove pres-1 slides/001.svg 2,3
 ```
 
 ## `effect move`
@@ -2431,7 +2431,7 @@ co-motion effect remove pres-1 slides/001.svg 2,3
 **語法**
 
 ```
-co-motion effect move <presentation-id> <slide-path> <index> <up|down>
+comotion effect move <presentation-id> <slide-path> <index> <up|down>
 ```
 
 **參數**
@@ -2462,7 +2462,7 @@ co-motion effect move <presentation-id> <slide-path> <index> <up|down>
 **範例**
 
 ```
-co-motion effect move pres-1 slides/001.svg 2 up
+comotion effect move pres-1 slides/001.svg 2 up
 ```
 
 ## `effect set`
@@ -2470,7 +2470,7 @@ co-motion effect move pres-1 slides/001.svg 2 up
 **語法**
 
 ```
-co-motion effect set <presentation-id> <slide-path> <index> [--effect <effect-name>] [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>]
+comotion effect set <presentation-id> <slide-path> <index> [--effect <effect-name>] [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>]
 ```
 
 **參數**
@@ -2511,7 +2511,7 @@ co-motion effect set <presentation-id> <slide-path> <index> [--effect <effect-na
 **範例**
 
 ```
-co-motion effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previous
+comotion effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previous
 ```
 
 ## `effect list`
@@ -2519,7 +2519,7 @@ co-motion effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previo
 **語法**
 
 ```
-co-motion effect list <presentation-id> <slide-path>
+comotion effect list <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -2573,14 +2573,14 @@ co-motion effect list <presentation-id> <slide-path>
 **範例**
 
 ```
-co-motion effect list pres-abc123 slides/001.svg
+comotion effect list pres-abc123 slides/001.svg
 ```
 ## `chart create`
 
 **語法**
 
 ```
-co-motion chart create <presentation-id> <slide-path> [--type <bar|hbar|line|area|pie|donut>] [--series <n>] [--categories <n>] [--palette <brand|cool|warm>] [--x <n>] [--y <n>] [--width <n>] [--height <n>]
+comotion chart create <presentation-id> <slide-path> [--type <bar|hbar|line|area|pie|donut>] [--series <n>] [--categories <n>] [--palette <brand|cool|warm>] [--x <n>] [--y <n>] [--width <n>] [--height <n>]
 ```
 
 **參數**
@@ -2619,7 +2619,7 @@ co-motion chart create <presentation-id> <slide-path> [--type <bar|hbar|line|are
 **範例**
 
 ```
-co-motion chart create pres-1 slides/002.svg --type line --series 2 --categories 5
+comotion chart create pres-1 slides/002.svg --type line --series 2 --categories 5
 ```
 
 ## `chart data set`
@@ -2627,7 +2627,7 @@ co-motion chart create pres-1 slides/002.svg --type line --series 2 --categories
 **語法**
 
 ```
-co-motion chart data set <presentation-id> <slide-path> <element-id> (--categories <c1,c2,...> --series 'name=v1,v2,...' (可重複) | --csv <path|-> | --csv-asset <虛擬路徑>)
+comotion chart data set <presentation-id> <slide-path> <element-id> (--categories <c1,c2,...> --series 'name=v1,v2,...' (可重複) | --csv <path|-> | --csv-asset <虛擬路徑>)
 ```
 
 **參數**
@@ -2637,8 +2637,8 @@ co-motion chart data set <presentation-id> <slide-path> <element-id> (--categori
   - `--categories <c1,c2,...>` 搭配一或多個 `--series 'name=v1,v2,...'`（可重複，每個系列一個旗標）；`values` 是逗號分隔數字列。
   - `--csv <path|->`：`path` 是本機檔案系統路徑，或字面字串 `-` 代表從標準輸入讀取（見通則「`-` 代表標準輸入」）。內容須是 RFC 4180 引號規則的 CSV（系列名可含逗號）、可有可無 BOM（會被去除）、`\r\n` 與 `\n` 皆可、忽略結尾空行；第一欄是類別名稱，其餘欄是各系列名稱與數值。
   - `--csv-asset <虛擬路徑>`：容器內 `assets/` 下某個 CSV 檔案的虛擬路徑；內容走同一支 CSV 剖析邏輯。
-  - 三選一是**驗證過的不變式**，不是三個各自獨立、恰巧只會給一個的旗標：命令列呼叫時，給 0 種或 2 種以上會在解析階段就直接失敗（見下方說明）；透過 `co-motion serve` 直接以結構化輸入呼叫時，同樣必須恰好給一種，違反時回傳失敗。
-- `--csv -`：CLI 入口層會在 `dispatch` 之前把 `-` 代換成讀出的 stdin 全文，走內部欄位 `csvText`（不是 `csv`）。`co-motion serve` 沒有終端機 stdin 可讀——若 handler 收到未被代換、字面值恰為 `"-"` 的 `csv`，必須直接失敗，訊息意義為「`--csv -` 只能從命令列使用」。
+  - 三選一是**驗證過的不變式**，不是三個各自獨立、恰巧只會給一個的旗標：命令列呼叫時，給 0 種或 2 種以上會在解析階段就直接失敗（見下方說明）；透過 `comotion serve` 直接以結構化輸入呼叫時，同樣必須恰好給一種，違反時回傳失敗。
+- `--csv -`：CLI 入口層會在 `dispatch` 之前把 `-` 代換成讀出的 stdin 全文，走內部欄位 `csvText`（不是 `csv`）。`comotion serve` 沒有終端機 stdin 可讀——若 handler 收到未被代換、字面值恰為 `"-"` 的 `csv`，必須直接失敗，訊息意義為「`--csv -` 只能從命令列使用」。
 
 **成功 `data`**
 
@@ -2668,15 +2668,15 @@ co-motion chart data set <presentation-id> <slide-path> <element-id> (--categori
 **範例**
 
 ```
-co-motion chart data set pres-1 slides/001.svg el-1 --categories Q1,Q2,Q3 --series '營收=100,120,140'
-cat sales.csv | co-motion chart data set pres-1 slides/001.svg el-1 --csv -
+comotion chart data set pres-1 slides/001.svg el-1 --categories Q1,Q2,Q3 --series '營收=100,120,140'
+cat sales.csv | comotion chart data set pres-1 slides/001.svg el-1 --csv -
 ```
 ## `chart type set`
 
 **語法**
 
 ```
-co-motion chart type set <presentation-id> <slide-path> <element-id> <type>
+comotion chart type set <presentation-id> <slide-path> <element-id> <type>
 ```
 
 **參數**
@@ -2710,7 +2710,7 @@ co-motion chart type set <presentation-id> <slide-path> <element-id> <type>
 **範例**
 
 ```
-co-motion chart type set pres-1 slides/002.svg chart-1 area
+comotion chart type set pres-1 slides/002.svg chart-1 area
 ```
 
 ## `chart palette set`
@@ -2718,7 +2718,7 @@ co-motion chart type set pres-1 slides/002.svg chart-1 area
 **語法**
 
 ```
-co-motion chart palette set <presentation-id> <slide-path> <element-id> <palette> [--color 'name=#hex'] (可重複)
+comotion chart palette set <presentation-id> <slide-path> <element-id> <palette> [--color 'name=#hex'] (可重複)
 ```
 
 **參數**
@@ -2751,7 +2751,7 @@ co-motion chart palette set <presentation-id> <slide-path> <element-id> <palette
 **範例**
 
 ```
-co-motion chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1=#3366ff'
+comotion chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1=#3366ff'
 ```
 
 ## `chart axis set`
@@ -2759,7 +2759,7 @@ co-motion chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1
 **語法**
 
 ```
-co-motion chart axis set <presentation-id> <slide-path> <element-id> <single|dual> [--right <系列名>] (可重複)
+comotion chart axis set <presentation-id> <slide-path> <element-id> <single|dual> [--right <系列名>] (可重複)
 ```
 
 **參數**
@@ -2795,7 +2795,7 @@ co-motion chart axis set <presentation-id> <slide-path> <element-id> <single|dua
 **範例**
 
 ```
-co-motion chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
+comotion chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
 ```
 
 ## `chart stack set`
@@ -2803,7 +2803,7 @@ co-motion chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
 **語法**
 
 ```
-co-motion chart stack set <presentation-id> <slide-path> <element-id> <on|off>
+comotion chart stack set <presentation-id> <slide-path> <element-id> <on|off>
 ```
 
 **參數**
@@ -2836,7 +2836,7 @@ co-motion chart stack set <presentation-id> <slide-path> <element-id> <on|off>
 **範例**
 
 ```
-co-motion chart stack set pres-1 slides/002.svg chart-1 on
+comotion chart stack set pres-1 slides/002.svg chart-1 on
 ```
 
 ## `chart legend set`
@@ -2844,7 +2844,7 @@ co-motion chart stack set pres-1 slides/002.svg chart-1 on
 **語法**
 
 ```
-co-motion chart legend set <presentation-id> <slide-path> <element-id> <legend>
+comotion chart legend set <presentation-id> <slide-path> <element-id> <legend>
 ```
 
 **參數**
@@ -2874,7 +2874,7 @@ co-motion chart legend set <presentation-id> <slide-path> <element-id> <legend>
 **範例**
 
 ```
-co-motion chart legend set pres-1 slides/002.svg chart-1 right
+comotion chart legend set pres-1 slides/002.svg chart-1 right
 ```
 
 ## `chart option set`
@@ -2882,7 +2882,7 @@ co-motion chart legend set pres-1 slides/002.svg chart-1 right
 **語法**
 
 ```
-co-motion chart option set <presentation-id> <slide-path> <element-id> <key> <value>
+comotion chart option set <presentation-id> <slide-path> <element-id> <key> <value>
 ```
 
 **參數**
@@ -2916,7 +2916,7 @@ co-motion chart option set <presentation-id> <slide-path> <element-id> <key> <va
 **範例**
 
 ```
-co-motion chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
+comotion chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
 ```
 
 ## `slide render`
@@ -2924,7 +2924,7 @@ co-motion chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
 **語法**
 
 ```
-co-motion slide render <presentation-id> <slide-path>
+comotion slide render <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -2951,7 +2951,7 @@ co-motion slide render <presentation-id> <slide-path>
 **範例**
 
 ```
-co-motion slide render pres-abc123 slides/001.svg
+comotion slide render pres-abc123 slides/001.svg
 ```
 
 ## `font import`
@@ -2959,7 +2959,7 @@ co-motion slide render pres-abc123 slides/001.svg
 **語法**
 
 ```
-co-motion font import <presentation-id> <source> --family <家族名> --license <授權> --source <出處> [--license-file <路徑或 URL>]
+comotion font import <presentation-id> <source> --family <家族名> --license <授權> --source <出處> [--license-file <路徑或 URL>]
 ```
 
 **參數**
@@ -2995,7 +2995,7 @@ co-motion font import <presentation-id> <source> --family <家族名> --license 
 **範例**
 
 ```
-co-motion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'
+comotion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'
 ```
 
 ## `asset import`
@@ -3003,8 +3003,8 @@ co-motion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular
 **語法**
 
 ```
-co-motion asset import <presentation-id> <source> [--as csv]
-co-motion asset import <presentation-id> --svg <markup> --name <檔名.svg>
+comotion asset import <presentation-id> <source> [--as csv]
+comotion asset import <presentation-id> --svg <markup> --name <檔名.svg>
 ```
 
 **參數**
@@ -3048,15 +3048,15 @@ co-motion asset import <presentation-id> --svg <markup> --name <檔名.svg>
 **範例**
 
 ```
-co-motion asset import pres-abc123 https://example.com/photo.png
-co-motion asset import pres-abc123 ./sales.csv --as csv
+comotion asset import pres-abc123 https://example.com/photo.png
+comotion asset import pres-abc123 ./sales.csv --as csv
 ```
 ## `slide add`
 
 **語法**
 
 ```
-co-motion slide add <presentation-id> [--template <template-path>] [--svg <markup>] [--at <index>]
+comotion slide add <presentation-id> [--template <template-path>] [--svg <markup>] [--at <index>]
 ```
 
 **參數**
@@ -3092,9 +3092,9 @@ co-motion slide add <presentation-id> [--template <template-path>] [--svg <marku
 **範例**
 
 ```
-co-motion slide add pres-abc123
-co-motion slide add pres-abc123 --template templates/001.svg --at 0
-co-motion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'
+comotion slide add pres-abc123
+comotion slide add pres-abc123 --template templates/001.svg --at 0
+comotion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'
 ```
 
 ## `slide set`
@@ -3102,7 +3102,7 @@ co-motion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="backgr
 **語法**
 
 ```
-co-motion slide set <presentation-id> <slide-path> --svg <markup>
+comotion slide set <presentation-id> <slide-path> --svg <markup>
 ```
 
 **參數**
@@ -3131,7 +3131,7 @@ co-motion slide set <presentation-id> <slide-path> --svg <markup>
 **範例**
 
 ```
-co-motion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-comot-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'
+comotion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-comot-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'
 ```
 
 ## `slide background set`
@@ -3139,8 +3139,8 @@ co-motion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720
 **語法**
 
 ```
-co-motion slide background set <presentation-id> <slide-path> --asset <assets/檔名> [--opacity <0～1>]
-co-motion slide background set <presentation-id> <slide-path> --none
+comotion slide background set <presentation-id> <slide-path> --asset <assets/檔名> [--opacity <0～1>]
+comotion slide background set <presentation-id> <slide-path> --none
 ```
 
 **參數**
@@ -3168,8 +3168,8 @@ co-motion slide background set <presentation-id> <slide-path> --none
 **範例**
 
 ```
-co-motion slide background set pres-abc123 slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8
-co-motion slide background set pres-abc123 slides/002.svg --none
+comotion slide background set pres-abc123 slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8
+comotion slide background set pres-abc123 slides/002.svg --none
 ```
 
 ## `slide delete`
@@ -3177,7 +3177,7 @@ co-motion slide background set pres-abc123 slides/002.svg --none
 **語法**
 
 ```
-co-motion slide delete <presentation-id> <slide-path>
+comotion slide delete <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -3201,7 +3201,7 @@ co-motion slide delete <presentation-id> <slide-path>
 **範例**
 
 ```
-co-motion slide delete pres-abc123 slides/003.svg
+comotion slide delete pres-abc123 slides/003.svg
 ```
 
 ## `slide duplicate`
@@ -3209,7 +3209,7 @@ co-motion slide delete pres-abc123 slides/003.svg
 **語法**
 
 ```
-co-motion slide duplicate <presentation-id> <slide-path>
+comotion slide duplicate <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -3234,7 +3234,7 @@ co-motion slide duplicate <presentation-id> <slide-path>
 **範例**
 
 ```
-co-motion slide duplicate pres-abc123 slides/001.svg
+comotion slide duplicate pres-abc123 slides/001.svg
 ```
 
 ## `slide move`
@@ -3242,7 +3242,7 @@ co-motion slide duplicate pres-abc123 slides/001.svg
 **語法**
 
 ```
-co-motion slide move <presentation-id> <slide-path> <new-index>
+comotion slide move <presentation-id> <slide-path> <new-index>
 ```
 
 **參數**
@@ -3268,7 +3268,7 @@ co-motion slide move <presentation-id> <slide-path> <new-index>
 **範例**
 
 ```
-co-motion slide move pres-abc123 slides/003.svg 0
+comotion slide move pres-abc123 slides/003.svg 0
 ```
 
 ## `slide notes set`
@@ -3276,7 +3276,7 @@ co-motion slide move pres-abc123 slides/003.svg 0
 **語法**
 
 ```
-co-motion slide notes set <presentation-id> <slide-path> <text>
+comotion slide notes set <presentation-id> <slide-path> <text>
 ```
 
 **參數**
@@ -3301,8 +3301,8 @@ co-motion slide notes set <presentation-id> <slide-path> <text>
 **範例**
 
 ```
-co-motion slide notes set pres-abc123 slides/001.svg '記得先講開場故事'
-co-motion slide notes set pres-abc123 slides/001.svg ''
+comotion slide notes set pres-abc123 slides/001.svg '記得先講開場故事'
+comotion slide notes set pres-abc123 slides/001.svg ''
 ```
 
 ## `slide transition set`
@@ -3310,7 +3310,7 @@ co-motion slide notes set pres-abc123 slides/001.svg ''
 **語法**
 
 ```
-co-motion slide transition set <presentation-id> <slide-path> [--enter none|fade|slide|zoom] [--enter-duration <seconds>] [--exit none|fade|slide|zoom] [--exit-duration <seconds>] [--all]
+comotion slide transition set <presentation-id> <slide-path> [--enter none|fade|slide|zoom] [--enter-duration <seconds>] [--exit none|fade|slide|zoom] [--exit-duration <seconds>] [--all]
 ```
 
 **參數**
@@ -3341,8 +3341,8 @@ co-motion slide transition set <presentation-id> <slide-path> [--enter none|fade
 **範例**
 
 ```
-co-motion slide transition set pres-abc123 slides/001.svg --enter fade --enter-duration 0.4
-co-motion slide transition set pres-abc123 slides/001.svg --exit zoom --all
+comotion slide transition set pres-abc123 slides/001.svg --enter fade --enter-duration 0.4
+comotion slide transition set pres-abc123 slides/001.svg --exit zoom --all
 ```
 
 ## `slide style set`
@@ -3350,7 +3350,7 @@ co-motion slide transition set pres-abc123 slides/001.svg --exit zoom --all
 **語法**
 
 ```
-co-motion slide style set <presentation-id> <slide-path> [--background <color>] [--accent <color>]
+comotion slide style set <presentation-id> <slide-path> [--background <color>] [--accent <color>]
 ```
 
 **參數**
@@ -3378,8 +3378,8 @@ co-motion slide style set <presentation-id> <slide-path> [--background <color>] 
 **範例**
 
 ```
-co-motion slide style set pres-abc123 slides/001.svg --background '#1a1a2e' --accent '#e94560'
-co-motion slide style set pres-abc123 slides/001.svg --background ''
+comotion slide style set pres-abc123 slides/001.svg --background '#1a1a2e' --accent '#e94560'
+comotion slide style set pres-abc123 slides/001.svg --background ''
 ```
 
 ## `presentation canvas set`
@@ -3387,7 +3387,7 @@ co-motion slide style set pres-abc123 slides/001.svg --background ''
 **語法**
 
 ```
-co-motion presentation canvas set <presentation-id> --width <數值> --height <數值>
+comotion presentation canvas set <presentation-id> --width <數值> --height <數值>
 ```
 
 **參數**
@@ -3415,14 +3415,14 @@ co-motion presentation canvas set <presentation-id> --width <數值> --height <�
 **範例**
 
 ```
-co-motion presentation canvas set pres-abc123 --width 1920 --height 1080
+comotion presentation canvas set pres-abc123 --width 1920 --height 1080
 ```
 ## `template add`
 
 **語法**
 
 ```
-co-motion template add <presentation-id> [--from <slide-path>] [--name <name>]
+comotion template add <presentation-id> [--from <slide-path>] [--name <name>]
 ```
 
 **參數**
@@ -3449,7 +3449,7 @@ co-motion template add <presentation-id> [--from <slide-path>] [--name <name>]
 **範例**
 
 ```
-co-motion template add pres-1 --from slides/001.svg --name '標題頁範本'
+comotion template add pres-1 --from slides/001.svg --name '標題頁範本'
 ```
 
 ## `template list`
@@ -3457,7 +3457,7 @@ co-motion template add pres-1 --from slides/001.svg --name '標題頁範本'
 **語法**
 
 ```
-co-motion template list <presentation-id>
+comotion template list <presentation-id>
 ```
 
 **參數**
@@ -3481,7 +3481,7 @@ co-motion template list <presentation-id>
 **範例**
 
 ```
-co-motion template list pres-1
+comotion template list pres-1
 ```
 
 ## `template rename`
@@ -3489,7 +3489,7 @@ co-motion template list pres-1
 **語法**
 
 ```
-co-motion template rename <presentation-id> <template-path> <new-name>
+comotion template rename <presentation-id> <template-path> <new-name>
 ```
 
 **參數**
@@ -3504,7 +3504,7 @@ co-motion template rename <presentation-id> <template-path> <new-name>
 {}
 ```
 
-實際上這個指令的 handler 回傳 `{ ok: true, message }`，完全沒有設定 `data` 欄位（型別是 `void`，不是「空物件 `{}`」）；`co-motion` bin 只有在 `result.data !== undefined` 時才印出 JSON 區塊，因此這個指令的終端輸出只有 `message` 那一行文字，不會印出任何 JSON。
+實際上這個指令的 handler 回傳 `{ ok: true, message }`，完全沒有設定 `data` 欄位（型別是 `void`，不是「空物件 `{}`」）；`comotion` bin 只有在 `result.data !== undefined` 時才印出 JSON 區塊，因此這個指令的終端輸出只有 `message` 那一行文字，不會印出任何 JSON。
 
 **錯誤情境**
 
@@ -3518,7 +3518,7 @@ co-motion template rename <presentation-id> <template-path> <new-name>
 **範例**
 
 ```
-co-motion template rename pres-1 templates/001.svg '新標題頁'
+comotion template rename pres-1 templates/001.svg '新標題頁'
 ```
 
 ## `template delete`
@@ -3526,7 +3526,7 @@ co-motion template rename pres-1 templates/001.svg '新標題頁'
 **語法**
 
 ```
-co-motion template delete <presentation-id> <template-path>
+comotion template delete <presentation-id> <template-path>
 ```
 
 **參數**
@@ -3553,14 +3553,14 @@ co-motion template delete <presentation-id> <template-path>
 **範例**
 
 ```
-co-motion template delete pres-1 templates/001.svg
+comotion template delete pres-1 templates/001.svg
 ```
 ## `comment add`
 
 **語法**
 
 ```
-co-motion comment add <presentation-id> <slide-path> <target> <text> [--author <name>]
+comotion comment add <presentation-id> <slide-path> <target> <text> [--author <name>]
 ```
 
 **參數**
@@ -3591,8 +3591,8 @@ co-motion comment add <presentation-id> <slide-path> <target> <text> [--author <
 **範例**
 
 ```
-co-motion comment add pres-abc123 slides/001.svg page '整體配色可以再深一點'
-co-motion comment add pres-abc123 slides/001.svg el-title '標題字體太小' --author reviewer1
+comotion comment add pres-abc123 slides/001.svg page '整體配色可以再深一點'
+comotion comment add pres-abc123 slides/001.svg el-title '標題字體太小' --author reviewer1
 ```
 
 ## `comment edit`
@@ -3600,7 +3600,7 @@ co-motion comment add pres-abc123 slides/001.svg el-title '標題字體太小' -
 **語法**
 
 ```
-co-motion comment edit <presentation-id> <slide-path> <comment-id> <text>
+comotion comment edit <presentation-id> <slide-path> <comment-id> <text>
 ```
 
 **參數**
@@ -3628,7 +3628,7 @@ co-motion comment edit <presentation-id> <slide-path> <comment-id> <text>
 **範例**
 
 ```
-co-motion comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內容'
+comotion comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內容'
 ```
 
 ## `comment delete`
@@ -3636,7 +3636,7 @@ co-motion comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內
 **語法**
 
 ```
-co-motion comment delete <presentation-id> <slide-path> <comment-id>
+comotion comment delete <presentation-id> <slide-path> <comment-id>
 ```
 
 **參數**
@@ -3662,7 +3662,7 @@ co-motion comment delete <presentation-id> <slide-path> <comment-id>
 **範例**
 
 ```
-co-motion comment delete pres-abc123 slides/001.svg c-a1b2c3d4
+comotion comment delete pres-abc123 slides/001.svg c-a1b2c3d4
 ```
 
 ## `comment list`
@@ -3670,7 +3670,7 @@ co-motion comment delete pres-abc123 slides/001.svg c-a1b2c3d4
 **語法**
 
 ```
-co-motion comment list <presentation-id> [slide-path]
+comotion comment list <presentation-id> [slide-path]
 ```
 
 **參數**
@@ -3707,6 +3707,6 @@ co-motion comment list <presentation-id> [slide-path]
 **範例**
 
 ```
-co-motion comment list pres-abc123
-co-motion comment list pres-abc123 slides/001.svg
+comotion comment list pres-abc123
+comotion comment list pres-abc123 slides/001.svg
 ```

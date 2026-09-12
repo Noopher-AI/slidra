@@ -1,6 +1,6 @@
 /**
  * #303: reads the machine-readable head of `plan/outline.md` — the plan
- * file `comotion-plan` writes through `co-motion plan set` (contract §1: a
+ * file `comotion-plan` writes through `comotion plan set` (contract §1: a
  * leading ```json fence, then free markdown). Only the fence is parsed;
  * the markdown body is for people and the agent.
  *

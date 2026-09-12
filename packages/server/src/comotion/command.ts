@@ -8,7 +8,7 @@ import { runCoMotion } from "./bin.js";
  */
 export type CommandFailureKind = "not-found" | "failed";
 
-/** The outcome of running one `co-motion` command, in the same shape the old in-process `CommandRegistry.dispatch` returned. */
+/** The outcome of running one `comotion` command, in the same shape the old in-process `CommandRegistry.dispatch` returned. */
 export interface CommandResult<Data = unknown> {
   ok: boolean;
   data?: Data;
@@ -24,7 +24,7 @@ interface JsonEnvelope {
 }
 
 /**
- * Parses stdout as `crates/co-motion/src/result.rs`'s `JsonEnvelope`: one
+ * Parses stdout as `crates/comotion/src/result.rs`'s `JsonEnvelope`: one
  * line of compact JSON (§3.2). Anything else — empty output, multiple
  * lines (a panic dumped extra text, or a stray print), invalid JSON, or
  * valid JSON missing the required `ok`/`message` fields — is not a legal
@@ -52,7 +52,7 @@ function parseEnvelope(stdout: string): JsonEnvelope | null {
 }
 
 /**
- * Runs one `co-motion` command with `--json` (always appended as the very
+ * Runs one `comotion` command with `--json` (always appended as the very
  * last argv token — §3.4's "the last `--json` wins" legacy-takeover rule)
  * and turns its stdout into a `CommandResult`.
  *

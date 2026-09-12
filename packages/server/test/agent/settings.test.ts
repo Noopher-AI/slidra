@@ -6,19 +6,19 @@ import { CoMotionError } from "../../src/comotion/errors.js";
 import { agentSettingsPath, readAgentSettings, writeAgentModel, writeAgentSelection } from "../../src/agent/settings.js";
 
 // Pure filesystem behaviour (no subprocess): every row of NOOP-230 §4.1's
-// settings.ts behaviour table, driven purely through CO_MOTION_HOME pointed
+// settings.ts behaviour table, driven purely through COMOTION_HOME pointed
 // at a fresh mkdtemp dir per test — the same isolation pattern chat.test.ts
-// already uses for other CO_MOTION_HOME-scoped state.
+// already uses for other COMOTION_HOME-scoped state.
 describe("agent settings", () => {
   let home: string;
 
   beforeEach(async () => {
-    home = await mkdtemp(path.join(tmpdir(), "co-motion-settings-"));
-    process.env.CO_MOTION_HOME = home;
+    home = await mkdtemp(path.join(tmpdir(), "comotion-settings-"));
+    process.env.COMOTION_HOME = home;
   });
 
   afterEach(async () => {
-    delete process.env.CO_MOTION_HOME;
+    delete process.env.COMOTION_HOME;
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
@@ -72,7 +72,7 @@ describe("agent settings", () => {
     await expect(readAgentSettings()).rejects.toThrow(/codex/);
   });
 
-  it("writeAgentSelection creates CO_MOTION_HOME and the file when neither exists yet", async () => {
+  it("writeAgentSelection creates COMOTION_HOME and the file when neither exists yet", async () => {
     await writeAgentSelection("claude");
     const raw = await readFile(agentSettingsPath(), "utf8");
     expect(JSON.parse(raw)).toEqual({ agent: "claude" });

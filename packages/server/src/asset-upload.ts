@@ -15,7 +15,7 @@ import { runJsonCommand } from "./comotion/command.js";
  * base64-encoded into JSON anyway. This route exists so the transport
  * matches what a browser actually has: raw bytes in the body, a filename
  * in a header. [E4.T9]/F7: the format decision itself now lives entirely
- * in the Rust `co-motion asset import <staged-file> --json` command — this
+ * in the Rust `comotion asset import <staged-file> --json` command — this
  * module writes the uploaded bytes to a temp file and spawns it, then
  * cleans the temp file up; it owns no format logic of its own (ADR-0015:
  * one place decides, never a second copy).
@@ -24,7 +24,7 @@ import { runJsonCommand } from "./comotion/command.js";
 /** Same order of magnitude headroom over a real screenshot/photo as the CLI's own import allows; large enough for real media, small enough to bound memory while reading. */
 export const MAX_ASSET_BODY_BYTES = 32 * 1024 * 1024;
 
-const ASSET_NAME_HEADER = "x-co-motion-asset-name";
+const ASSET_NAME_HEADER = "x-comotion-asset-name";
 /**
  * [E2.T17] plan §4.3/D5: the URL-import counterpart of `ASSET_NAME_HEADER`
  * — GUI panels send the source as a URL instead of raw bytes. Only
@@ -35,7 +35,7 @@ const ASSET_NAME_HEADER = "x-co-motion-asset-name";
  * "anything this server process can open a file descriptor on" — `file:`,
  * a relative path, and an absolute path are all rejected the same way.
  */
-const ASSET_URL_HEADER = "x-co-motion-asset-url";
+const ASSET_URL_HEADER = "x-comotion-asset-url";
 const URL_SCHEME_PATTERN = /^https?:\/\//i;
 
 interface AssetImportData {
@@ -83,7 +83,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * Writes `bytes` to a fresh temp file (named after `sourceBasename`'s own
  * basename — `asset import` derives the imported file's name from its
  * source's basename, so the staged file's name must match what the caller
- * asked to import) and runs `co-motion asset import <staged-file> --json`
+ * asked to import) and runs `comotion asset import <staged-file> --json`
  * against it, cleaning the temp directory up either way.
  *
  * A missing/unreadable source file (`failureKind === "not-found"`) can only
@@ -94,7 +94,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * virtual paths and is relayed verbatim.
  */
 async function runAssetImport(presentationId: string, sourceBasename: string, bytes: Uint8Array): Promise<AssetImportData> {
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-asset-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-asset-"));
   const safeName = path.basename(sourceBasename) || "asset";
   const filePath = path.join(dir, safeName);
   try {
@@ -180,7 +180,7 @@ function sourceBasenameOfUrl(url: string): string {
  * Downloads `url`'s bytes, bounded by `maxBytes` — checked against
  * `Content-Length` first (fails fast without buffering when the server is
  * honest about size), then again after buffering (a missing or lying
- * header does not get a pass). `crates/co-motion/src/http.rs`'s own module
+ * header does not get a pass). `crates/comotion/src/http.rs`'s own module
  * comment documents that the Rust binary's `asset import <url>` takes NO
  * size limit at all, so the URL must never be handed to it directly (plan
  * §4.5, decision #8) — this Node-side download is what keeps
@@ -208,7 +208,7 @@ async function downloadAssetSource(url: string, maxBytes: number): Promise<Uint8
 }
 
 /**
- * [E2.T17] plan §4.3/D5: `POST /api/asset`'s URL mode — `X-Co-Motion-Asset-Url`
+ * [E2.T17] plan §4.3/D5: `POST /api/asset`'s URL mode — `X-Comotion-Asset-Url`
  * (URL-encoded) instead of a raw-bytes body. Downloads server-side (bounded
  * by `MAX_ASSET_BODY_BYTES`) and stages the result the same way the
  * raw-bytes path does, then runs the same `asset import` spawn.
