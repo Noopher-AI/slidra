@@ -33,7 +33,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   }
 }
 
-// Ticket #37: startServe()'s close() used to hang whenever any connection was
+// startServe()'s close() used to hang whenever any connection was
 // still active on the socket, because http.Server.close() closes *idle*
 // connections on its own (Node >=18.19) but still waits indefinitely for any
 // connection that is genuinely active — a request still arriving, or a

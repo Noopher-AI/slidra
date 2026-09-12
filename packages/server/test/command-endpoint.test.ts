@@ -32,7 +32,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 }
 
 /**
- * `POST /api/command` (NOOP-91 §4.9). Seam B: the real server over real
+ * `POST /api/command`. Seam B: the real server over real
  * HTTP, no browser and no mocks. The endpoint is the front end's ONLY way
  * to write, and its whole security posture is here — a fixed name whitelist
  * checked before dispatch, and a server-owned presentation id.
@@ -137,7 +137,7 @@ async function readProjectJson(presentationId: string): Promise<Record<string, u
   return JSON.parse(Buffer.from(result.data![0]!.content, "base64").toString("utf-8"));
 }
 
-it("白名單內的 element move 會實際改到投影片，並回 200 與 CommandResult", async () => {
+it("a whitelisted element move actually changes the slide and returns 200 with a CommandResult", async () => {
   const id = await openDeck("move.slidra");
   const server = await serve(id);
 
@@ -152,7 +152,7 @@ it("白名單內的 element move 會實際改到投影片，並回 200 與 Comma
   expect(await readSlide(id)).toContain("translate(110 195)");
 });
 
-it("白名單外的命令回 403，而且根本不會進 dispatch：投影片位元組不變", async () => {
+it("a command outside the whitelist returns 403 and never reaches dispatch: the slide bytes are unchanged", async () => {
   const id = await openDeck("blacklist.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
@@ -167,7 +167,7 @@ it("白名單外的命令回 403，而且根本不會進 dispatch：投影片位
   expect(await readSlide(id)).toBe(before);
 });
 
-it("[E2.T3] slide delete／duplicate／move／notes set 四條新命令不再回 403", async () => {
+it("the four new commands slide delete/duplicate/move/notes set no longer return 403", async () => {
   const id = await openDeck("whitelist-page-management.slidra");
   const server = await serve(id);
 
@@ -200,7 +200,7 @@ it("[E2.T3] slide delete／duplicate／move／notes set 四條新命令不再回
   expect(del.status).toBe(200);
 });
 
-it("input 帶了自己的 id 也沒用：server 一律覆寫成自己啟動時的 presentationId", async () => {
+it("an id inside input is ignored: the server always overwrites it with its own startup presentationId", async () => {
   const idA = await openDeck("a.slidra");
   const idB = await openDeck("b.slidra");
   expect(idA).not.toBe(idB);
@@ -218,7 +218,7 @@ it("input 帶了自己的 id 也沒用：server 一律覆寫成自己啟動時�
   expect(await readSlide(idB)).toBe(bBefore);
 });
 
-it("body 不是 JSON、input 不是物件、name 不是字串 → 400", async () => {
+it("body not JSON, input not an object, or name not a string → 400", async () => {
   const id = await openDeck("bad.slidra");
   const server = await serve(id);
 
@@ -228,7 +228,7 @@ it("body 不是 JSON、input 不是物件、name 不是字串 → 400", async ()
   expect((await postCommand(server, { input: {} })).status).toBe(400);
 });
 
-it("body 超過上限 → 400，且不會進 dispatch", async () => {
+it("an oversized body → 400, and it never reaches dispatch", async () => {
   const id = await openDeck("big.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
@@ -239,7 +239,7 @@ it("body 超過上限 → 400，且不會進 dispatch", async () => {
   expect(await readSlide(id)).toBe(before);
 });
 
-it("dispatch 回 not-found → 404；其餘失敗 → 500", async () => {
+it("dispatch returning not-found → 404; any other failure → 500", async () => {
   const id = await openDeck("notfound.slidra");
   const server = await serve(id);
 
@@ -258,7 +258,7 @@ it("dispatch 回 not-found → 404；其餘失敗 → 500", async () => {
   expect(missingElement.status).toBe(500);
 });
 
-it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", async () => {
+it("Origin: null is still blocked by the existing global gate — this route has no exception", async () => {
   const id = await openDeck("origin.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
@@ -275,13 +275,13 @@ it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", 
 
 // The three "every whitelisted name is not 403" loop tests that used to
 // live here (this one, plus the 14-command table loop and the 8-command
-// chart loop below) are deleted (plan §6.1) — merged into
-// `slidra.test.ts`'s "COMMAND_WHITELIST ⇔ 編碼器鍵集合完全相等" test,
-// which asserts the same fact (every whitelisted name has an encoder, so
-// none of them can 403) as a pure unit test that also proves each name
-// encodes to a real argv, without spawning 43 subprocesses.
+// chart loop below) have been deleted — merged into `slidra.test.ts`'s
+// "COMMAND_WHITELIST ⇔ encoder key set are exactly equal" test, which
+// asserts the same fact (every whitelisted name has an encoder, so none of
+// them can 403) as a pure unit test that also proves each name encodes to
+// a real argv, without spawning 43 subprocesses.
 
-it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("element resize is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("resize.slidra");
   const server = await serve(id);
 
@@ -295,7 +295,7 @@ it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('width="100" height="100"');
 });
 
-it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("element delete and element duplicate are in COMMAND_WHITELIST and actually change the slide", async () => {
   const id = await openDeck("delete-duplicate.slidra");
   const server = await serve(id);
 
@@ -317,7 +317,7 @@ it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內�
   expect(await readSlide(id)).not.toContain('id="el-a"');
 });
 
-it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投影片（D4：面板 caption 落地成 data-slidra-name）", async () => {
+it("element name set is in COMMAND_WHITELIST and actually changes the slide (the panel caption lands as data-slidra-name)", async () => {
   const id = await openDeck("element-name-set.slidra");
   const server = await serve(id);
 
@@ -331,7 +331,7 @@ it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('data-slidra-name="封面影片"');
 });
 
-it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實際改到 project.json", async () => {
+it("template add/list/rename/delete are in COMMAND_WHITELIST and actually change project.json", async () => {
   const id = await openDeck("template-commands.slidra");
   const server = await serve(id);
 
@@ -359,7 +359,7 @@ it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實
   expect((await readProjectJson(id)).templates).toEqual([]);
 });
 
-it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("element style set is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("style-set.slidra");
   const server = await serve(id);
 
@@ -373,7 +373,7 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).toContain('fill="#c43e1c"');
 });
 
-it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("table create is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("table-create.slidra");
   const server = await serve(id);
 
@@ -387,7 +387,7 @@ it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片",
   expect(await readSlide(id)).toContain('data-slidra-type="table"');
 });
 
-it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("chart create is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("chart-create.slidra");
   const server = await serve(id);
 
@@ -401,7 +401,7 @@ it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片",
   expect(await readSlide(id)).toContain('data-slidra-type="chart"');
 });
 
-it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投影片位元組不變（transform／data-slidra-name）", async () => {
+it("element style set given an attribute outside the whitelist is still rejected, slide bytes unchanged (transform/data-slidra-name)", async () => {
   const id = await openDeck("style-set-forbidden.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
@@ -445,7 +445,7 @@ async function openTextBoxDeck(fileName: string): Promise<string> {
   return opened.data!.id;
 }
 
-it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("textbox align is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openTextBoxDeck("textbox-align.slidra");
   const server = await serve(id);
 
@@ -459,7 +459,7 @@ it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", 
   expect(await readSlide(id)).toContain('data-slidra-text-align="center"');
 });
 
-it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("slide style set is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("slide-style-set.slidra");
   const server = await serve(id);
 
@@ -475,7 +475,7 @@ it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片"
   expect(slide).toContain("--slidra-accent:#00ff00");
 });
 
-it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+it("slide background set is in COMMAND_WHITELIST and actually changes the slide", async () => {
   const id = await openDeck("slide-background-set.slidra");
   const imported = await runCli<{ path: string }>([
     "asset", "import", id, "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>', "--name", "bg.svg",
@@ -503,7 +503,7 @@ it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(await readSlide(id)).not.toContain('data-slidra-role="background"');
 });
 
-it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {
+it("presentation canvas set is in COMMAND_WHITELIST and actually changes project.json and the slide", async () => {
   const id = await openDeck("presentation-canvas-set.slidra");
   const server = await serve(id);
 
@@ -518,7 +518,7 @@ it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 p
   expect(await readSlide(id)).toContain('viewBox="0 0 1024 768"');
 });
 
-it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投影片 SVG（取代 presentation transition set 寫 project.json）", async () => {
+it("slide transition set: a whitelisted value returns 2xx and is written into the slide SVG (replacing presentation transition set writing to project.json)", async () => {
   const id = await openDeck("transition-fade.slidra");
   const server = await serve(id);
 
@@ -533,7 +533,7 @@ it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投�
   expect(await readSlide(id)).toContain('enter="fade" enter-duration="0.6"');
 });
 
-it("slide transition set：白名單外的 enter 值被命令層拒絕，SVG 不變", async () => {
+it("slide transition set: an enter value outside the whitelist is rejected by the command layer, SVG unchanged", async () => {
   const id = await openDeck("transition-bad.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
@@ -547,7 +547,7 @@ it("slide transition set：白名單外的 enter 值被命令層拒絕，SVG 不
   expect(await readSlide(id)).toBe(before);
 });
 
-it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
+it("a single human action that changes multiple properties at once (dx and dy) still counts as one undo step: one undo reverts it all, a second undo does nothing", async () => {
   const id = await openDeck("undo-group.slidra");
   const server = await serve(id);
   const before = await readSlide(id);

@@ -12,7 +12,7 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
 
-/** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
+/** The real Rust binary this whole suite drives — `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
@@ -38,7 +38,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 // The real build output `resolveWebDist()` defaults to. `npm run test:e2e`
 // runs a browser against exactly these bytes, so this suite must never
-// write to or delete from here (ticket #20). Referenced only by the
+// write to or delete from here. Referenced only by the
 // isolation guard at the bottom of this file, never by a test's fixtures.
 const realWebDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 
@@ -85,7 +85,7 @@ beforeAll(async () => {
 // None of the tests in this file touch /api/chat*, and spawning is lazy
 // (first sendMessage), so this fixture is never actually spawned here —
 // it exists only to satisfy the now-required `agent` field on ServeOptions
-// (ticket #6, fix 6: "serve without an agent" is unrepresentable).
+// ("serve without an agent" is unrepresentable).
 const fakeAgentFixture = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "agent/fixtures/fake-acp-agent.mjs",
@@ -98,20 +98,20 @@ const fakeAgent: AgentAdapterConfig = {
 };
 
 // root ignores permission bits, so the chmod(0o000)-based I/O-failure test
-// below can never observe a real EACCES there. Same detection ticket #10's
-// and #11's tests already established (packages/cli/test/commands.test.ts,
-// packages/server/test/raw.test.ts) — reused rather than reinvented.
+// below can never observe a real EACCES there. The same detection is
+// already established by tests in packages/cli/test/commands.test.ts and
+// packages/server/test/raw.test.ts — reused rather than reinvented.
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
 // Every test points SLIDRA_HOME at its own temp directory (ADR-0004
 // testing convention) and always binds port 0, reading the assigned port
-// back — a fixed port would collide with ticket #6's own server tests.
+// back — a fixed port would collide with this file's own server tests.
 
 let slidraHome: string;
 let slidraDir: string;
 // Where this test's server serves static files from — a throwaway stand-in
-// for apps/web/dist, injected via ServeOptions.staticDir. Deliberately
+// for packages/web/dist, injected via ServeOptions.staticDir. Deliberately
 // NOT created here: the "frontend was never built" test needs it absent,
 // and every other static test creates it itself.
 let webDist: string;
@@ -184,7 +184,7 @@ async function openPresentationWithRampAsset(): Promise<string> {
 
 async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
   // staticDir is passed unconditionally, before ...overrides: no test in
-  // this file can reach the real apps/web/dist by forgetting to opt out.
+  // this file can reach the real packages/web/dist by forgetting to opt out.
   const server = await startServe({
     presentationId,
     port: 0,
@@ -200,7 +200,7 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
 // server's own JSON.stringify) so the malformed-container tests exercise
 // the exact bytes the review found unhandled — real fflate zips, no mocks.
 //
-// Ticket #12: `open` now runs the same structural validation `serve` used
+// `open` now runs the same structural validation `serve` used
 // to run on its own, so a structurally invalid project.json is rejected
 // right here, before any id or work directory exists for it — it never
 // reaches `serve()` at all. This returns `open`'s own rejection message
@@ -221,11 +221,11 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
 
 describe("startServe", () => {
   // The `/api/raw/` route reads the request's Range header and hands it to
-  // handleRawRequest (ticket #13). raw.test.ts calls that function directly,
-  // which deliberately proves the range logic without serve.ts — so nothing
+  // handleRawRequest. raw.test.ts calls that function directly, which
+  // deliberately proves the range logic without serve.ts — so nothing
   // there would notice if this route stopped passing the header along. These
   // two tests cover exactly that wiring, over a real socket.
-  it("/api/raw/ 把請求的 Range 標頭一路帶到位元組切片，回 206 與確切的區間", async () => {
+  it("/api/raw/ carries the request's Range header all the way through to the byte slice, returning 206 with the exact range", async () => {
     const id = await openPresentationWithRampAsset();
 
     const server = await serve(id);
@@ -239,7 +239,7 @@ describe("startServe", () => {
     expect(body.equals(RAMP_BYTES.subarray(10, 20))).toBe(true);
   });
 
-  it("/api/raw/ 沒有 Range 標頭時仍回 200 完整檔案，並宣告 Accept-Ranges", async () => {
+  it("/api/raw/ still returns 200 with the full file and announces Accept-Ranges when there is no Range header", async () => {
     const id = await openPresentationWithRampAsset();
 
     const server = await serve(id);
@@ -260,7 +260,7 @@ describe("startServe", () => {
     expect(server.url).toBe(`http://127.0.0.1:${server.port}`);
   });
 
-  // ADR-0010 / ticket #28: an opaque-origin document (the play iframe, once
+  // ADR-0010: an opaque-origin document (the play iframe, once
   // it has `allow-scripts`) sends the literal header value "Origin: null"
   // on a cross-origin request. Rejecting it closes the write-blind gap that
   // opening `allow-scripts` creates — the two are one gate, checked ahead
@@ -282,7 +282,7 @@ describe("startServe", () => {
     expect(postResponse.status).toBe(403);
   });
 
-  // ADR-0011 / #56: view mode's iframe now also carries allow-scripts, so
+  // ADR-0011: view mode's iframe now also carries allow-scripts, so
   // it is opaque-origin too and can send the same "Origin: null" writes
   // ADR-0010 already worried about for play mode. The gate above
   // (`req.headers.origin === "null"`, serve.ts:203) is checked ahead of
@@ -449,11 +449,11 @@ describe("startServe", () => {
     expect(body.error).not.toContain("root:");
   });
 
-  // Ticket #14: `/api/files/` used to turn every dispatch failure into a
+  // `/api/files/` used to turn every dispatch failure into a
   // 404, so a permission problem, a failing disk or a corrupt registry all
   // told the author "your file is missing" and sent them looking in
-  // completely the wrong place. Same classification as `/api/raw/`
-  // (ticket #11): only a positively proven absence is a 404.
+  // completely the wrong place. Same classification as `/api/raw/`:
+  // only a positively proven absence is a 404.
   it.skipIf(isRunningAsRoot)("responds 500, not 404, when the slide exists but the underlying read fails", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
@@ -497,7 +497,7 @@ describe("startServe", () => {
     expect(body.error).not.toContain(slidraHome);
   });
 
-  // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
+  // `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
   // the browser. Builds its fixture through the real Rust binary rather
   // than a hand-built container, since these tests exercise the route
@@ -638,7 +638,7 @@ describe("startServe", () => {
     expect(message).not.toContain(slidraHome);
   });
 
-  // The exact ticket #12 scenario: a container whose project.json is only
+  // The exact scenario: a container whose project.json is only
   // `{"formatVersion":1}` used to pass `open`'s formatVersion-only check
   // and then explode inside `serve` as a raw TypeError on `slides` being
   // undefined. It must now be rejected by `open` itself, with a named
@@ -729,12 +729,12 @@ describe("static frontend serving", () => {
   });
 });
 
-// Ticket #20: declared last, so it runs after every test above. This is
+// Declared last, so it runs after every test above. This is
 // what makes "tests never touch the real build output" a checked property
 // instead of a convention — point the static tests back at the real
-// apps/web/dist and this goes red.
+// packages/web/dist and this goes red.
 describe("real build output isolation", () => {
-  it("leaves apps/web/dist exactly as the suite found it", async () => {
+  it("leaves packages/web/dist exactly as the suite found it", async () => {
     expect(await fingerprintRealWebDist()).toBe(realWebDistFingerprint);
   });
 });

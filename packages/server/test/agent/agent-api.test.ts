@@ -92,7 +92,7 @@ async function openFreshPresentation(): Promise<string> {
   return opened.data!.id;
 }
 
-/** A single-command fake ACP adapter config, shared log across kinds so A8/A9 can observe spawn order across a switch. */
+/** A single-command fake ACP adapter config, shared log across kinds so spawn order across a switch can be observed. */
 function fixtureAdapter(kind: AgentKind, fixture: string, scenario: Record<string, unknown> = {}): AgentAdapterConfig {
   return {
     kind,
@@ -300,7 +300,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, modelId: "sonnet", model: { name: "Sonnet" } });
     await waitForLog((line) => line.setModel === "sonnet");
-    // The 編輯規約 still went out as the session's first prompt.
+    // The editorial brief still went out as the session's first prompt.
     await waitForPromptCount(1);
 
     expect(await getAgent(server)).toMatchObject({
@@ -379,7 +379,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
     expect(JSON.parse(await readFile(agentSettingsPath(), "utf8"))).toMatchObject({ models: { codex: "gpt-5.5" } });
   });
 
-  it("POST /api/agent/session brings the session up ahead of the first message: models listed, only the 編輯規約 sent", async () => {
+  it("POST /api/agent/session brings the session up ahead of the first message: models listed, only the editorial brief sent", async () => {
     const id = await openFreshPresentation();
     const server = await serve({
       presentationId: id,
@@ -416,7 +416,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
 });
 
 describe("GET /api/agent", () => {
-  it("A7/A10: reports both cards, each correctly available/unauthenticated, with their static login commands", async () => {
+  it("reports both cards, each correctly available/unauthenticated, with their static login commands", async () => {
     const id = await openFreshPresentation();
     const server = await serve({
       presentationId: id,
@@ -445,7 +445,7 @@ describe("GET /api/agent", () => {
     expect(codexCard.loginCommand).toBe("codex login");
   });
 
-  it("A7: a genuine probe failure (spawn error) surfaces as unauthenticated with a detail string", async () => {
+  it("a genuine probe failure (spawn error) surfaces as unauthenticated with a detail string", async () => {
     const id = await openFreshPresentation();
     const server = await serve({
       presentationId: id,
@@ -479,7 +479,7 @@ describe("GET /api/agent", () => {
 describe("POST /api/agent/select", () => {
   beforeAll(requireCliBuilt);
 
-  it("A5: persists across a restart — select codex, close, reopen with the same SLIDRA_HOME, GET /api/agent still reports codex/settings", async () => {
+  it("persists across a restart — select codex, close, reopen with the same SLIDRA_HOME, GET /api/agent still reports codex/settings", async () => {
     const id = await openFreshPresentation();
     const server1 = await serve({
       presentationId: id,
@@ -522,7 +522,7 @@ describe("POST /api/agent/select", () => {
     expect((await badKind.json()).error).toContain("claude");
   });
 
-  it("A8: switching agents ends the old session's process and starts a new one whose first prompt is the 編輯規約", async () => {
+  it("switching agents ends the old session's process and starts a new one whose first prompt is the editorial brief", async () => {
     const id = await openFreshPresentation();
     const server = await serve({
       presentationId: id,
@@ -533,7 +533,7 @@ describe("POST /api/agent/select", () => {
 
     expect((await postChat(server, "第一則訊息")).status).toBe(202);
     const [firstPid] = await waitForPidCount(1);
-    // Two session/prompt calls land for the first session: index 0 (編輯規約), index 1 (author's message).
+    // Two session/prompt calls land for the first session: index 0 (editorial brief), index 1 (author's message).
     await waitForPromptCount(2);
 
     const selectResponse = await selectAgent(server, "codex");
@@ -545,14 +545,14 @@ describe("POST /api/agent/select", () => {
     const pids = await waitForPidCount(2);
     const secondPid = pids[1];
     expect(secondPid).not.toBe(firstPid);
-    // The new session's own handshake (its 編輯規約 prompt) happens after
+    // The new session's own handshake (its editorial brief prompt) happens after
     // its pid is logged — wait for it to actually land, or the read below
     // races the still-in-flight ACP handshake.
     await waitForPromptCount(3);
 
     expect(() => process.kill(firstPid, 0)).toThrow();
 
-    // The new session's own first session/prompt call (its 編輯規約) is the
+    // The new session's own first session/prompt call (its editorial brief) is the
     // first `prompt` log entry logged *after* the second pid line.
     const lines = await readLog();
     const secondPidIndex = lines.findIndex((line) => line.pid === secondPid);
@@ -565,7 +565,7 @@ describe("POST /api/agent/select", () => {
     }]);
   });
 
-  it("A9: refused (409, reason 'editing') while the agent holds the floor; session unswapped", async () => {
+  it("refused (409, reason 'editing') while the agent holds the floor; session unswapped", async () => {
     const id = await openFreshPresentation();
     const slidraPath = path.join(slidraDir, "extra.slidra");
     // A separate presentation so `slidra text set` has a real target
@@ -610,7 +610,7 @@ describe("POST /api/agent/select", () => {
   });
 });
 
-describe("POST /api/chat — agent gate (A11)", () => {
+describe("POST /api/chat — agent gate", () => {
   it("current: null → 409 reason 'unset', kind null", async () => {
     const id = await openFreshPresentation();
     const server = await serve({ presentationId: id, initialAgent: { kind: null, source: "none" }, runCommand: bothAvailable });
@@ -641,7 +641,7 @@ describe("POST /api/chat — agent gate (A11)", () => {
   });
 });
 
-describe("agent-changed event (A12)", () => {
+describe("agent-changed event", () => {
   it("fires only when select() actually changes the kind, carrying { kind, label }", async () => {
     const id = await openFreshPresentation();
     const server = await serve({

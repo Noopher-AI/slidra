@@ -5,7 +5,7 @@ import { SlidraError } from "../src/slidra/errors.js";
 import { createChatStreamRegistry } from "../src/serve.js";
 import type { AgentChatSession } from "../src/agent/session.js";
 
-// Ticket #40: `/api/chat/stream` used to open a stream no matter what, so a
+// `/api/chat/stream` used to open a stream no matter what, so a
 // browser's EventSource — which reconnects by design the moment a stream is
 // cut — could get a brand new, never-ending stream out of a server that had
 // already started shutting down, after the shutdown had finished closing
@@ -50,7 +50,7 @@ async function serveRegistry(registry: ReturnType<typeof createChatStreamRegistr
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-it("關機前，/api/chat/stream 照常開出 SSE 串流", async () => {
+it("before shutdown, /api/chat/stream opens an SSE stream as usual", async () => {
   const registry = createChatStreamRegistry();
   const url = await serveRegistry(registry);
 
@@ -61,12 +61,13 @@ it("關機前，/api/chat/stream 照常開出 SSE 串流", async () => {
   await response.body?.cancel();
 });
 
-it("關機開始後，/api/chat/stream 明確回錯誤，而不是開出一條沒人會關的串流", async () => {
+it("once shutdown has begun, /api/chat/stream returns an explicit error instead of opening a stream nobody will close", async () => {
   const registry = createChatStreamRegistry();
   const url = await serveRegistry(registry);
 
-  // 這正是 close() 的 disposer 做的事——關掉當下所有串流。之後才輪到
-  // server.close()，而 EventSource 會在這中間自動重連進來。
+  // This is exactly what close()'s disposer does — it closes every stream
+  // that currently exists. server.close() only comes after that, and
+  // EventSource will auto-reconnect in between.
   registry.closeAll();
 
   const response = await fetch(url);

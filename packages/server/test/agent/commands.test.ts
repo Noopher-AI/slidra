@@ -16,12 +16,12 @@ import {
   type SlashCommand,
 } from "../../src/agent/commands.js";
 
-// [E3.T3] #232/#236 — the `/` list's architecture decision is "three
-// standing sources, unioned" (agent report ∪ bundled skills ∪ user
-// skills), not a fallback. Pure-function tests below cover the frontmatter
-// parser, the directory scan, and the merge/priority rules directly; the
-// Seam B tests at the bottom drive a real server over HTTP with a scripted
-// fake ACP agent, the same posture chat.test.ts uses.
+// The `/` list's architecture decision is "three standing sources, unioned"
+// (agent report ∪ bundled skills ∪ user skills), not a fallback. Pure-function
+// tests below cover the frontmatter parser, the directory scan, and the
+// merge/priority rules directly; the Seam B tests at the bottom drive a real
+// server over HTTP with a scripted fake ACP agent, the same posture
+// chat.test.ts uses.
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-acp-agent.mjs");
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
@@ -288,7 +288,7 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     );
     // The agent subprocess is spawned lazily on the first chat message
     // (session.ts's ensureSession) — before that, it has reported nothing.
-    // The 編輯規約 turn (prompt index 0) is what actually triggers
+    // The editorial-brief turn (prompt index 0) is what actually triggers
     // `session/new`, so waiting for its own chat-done is enough to know
     // `newSession` (and the available_commands_update sent inside it) has
     // already completed.
@@ -313,8 +313,9 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   });
 
   it("before any message is sent, GET returns only what the skill directories contribute (agent has reported nothing yet)", async () => {
-    // 出貨 skill 的目錄名本身就帶 `slidra-` 前綴（#248：名字要跟 agent
-    // 註冊的一致），和 agent／使用者自己的 skill 區隔開來。
+    // A shipped skill's directory name itself carries the `slidra-` prefix
+    // (the name must match what the agent registers), keeping it separate
+    // from the agent's own or the user's own skills.
     await mkSkill(bundledDir, "slidra-plan", "---\nname: slidra-plan\ndescription: 出貨版\n---\n");
     const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent 版" }] }));
 

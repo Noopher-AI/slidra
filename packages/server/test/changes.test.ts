@@ -53,8 +53,8 @@ class FakeResponse extends EventEmitter {
 
 // Seam B: start the real server, drive /api/events over HTTP with a real
 // fetch(), never open a browser. Always bind port 0 and read the assigned
-// port back — a hardcoded port collides with ticket #6's concurrently
-// running suite. Presentation state is only ever read through the real
+// port back — a hardcoded port collides with another concurrently running
+// suite. Presentation state is only ever read through the real
 // `slidra cat` binary — never a direct poke at the work directory's
 // real path.
 
@@ -96,7 +96,7 @@ async function openFreshPresentation(name = "測試簡報"): Promise<{ id: strin
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018, #303): the tests below edit
+  // `new` creates no slides (ADR-0018): the tests below edit
   // slides/001.svg, so mint one page with one title text box.
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
@@ -196,11 +196,11 @@ describe("GET /api/events", () => {
   });
 
   it("ignores the CLI's .slidra.lock, so a read command does not look like a change", async () => {
-    // #303 regression: the lock is created and removed around every CLI
-    // command, reads included, inside the watched work directory. Treating
-    // it as content made every live-reload trigger a re-read that took the
-    // lock again — an endless reload loop that dropped the author's
-    // selection the moment they clicked an element.
+    // The lock is created and removed around every CLI command, reads
+    // included, inside the watched work directory. Treating it as content
+    // made every live-reload trigger a re-read that took the lock again —
+    // an endless reload loop that dropped the author's selection the
+    // moment they clicked an element.
     const { id, elementId } = await openFreshPresentation();
     const server = await serve(id);
     const frameReader = await connectEvents(server);
@@ -240,7 +240,7 @@ describe("GET /api/events", () => {
   });
 
   it("dispose() concludes a connection that resumes from the lazy watcher start after shutdown already began", async () => {
-    // Ticket #5 fix 3: if shutdown starts while a /api/events request is
+    // If shutdown starts while a /api/events request is
     // still awaiting the lazy watcher start, dispose() must not tear the
     // watcher down and then let that same request open a stream anyway —
     // server.close() waits for established connections, so a late stream
@@ -267,7 +267,7 @@ describe("GET /api/events", () => {
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
-    // [E4.T9]/F7: a fake SLIDRA_BIN that answers `cat <id> project.json`
+    // A fake SLIDRA_BIN that answers `cat <id> project.json`
     // for ANY id, real or not (the equivalent stub-registry test in
     // serve.test.ts uses the same technique) — loadProject succeeds
     // through it, but `watchPresentation`'s `workDirFor` reads the REAL
@@ -313,7 +313,7 @@ describe("GET /api/events", () => {
   });
 
   it("registers stream cleanup at connection time, so a disconnect is pruned immediately rather than waiting on the next file change", async () => {
-    // Ticket #5 fix round, fix 3: a long-running server whose clients
+    // A long-running server whose clients
     // reconnect repeatedly (EventSource does this by design on any network
     // blip) must not accumulate dead EventStream objects until something
     // unrelated happens to prune them. The cleanup listener must be

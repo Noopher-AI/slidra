@@ -10,11 +10,11 @@ import {
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
 
-// NOOP-238: the product work directory `slidra serve` deploys on every
-// startup (`packages/server/agent-workdir/` -> `<SLIDRA_HOME>/agent`) and
-// the agent session reads real files from, alongside the presentation's own
-// virtual tree. No server, no ACP subprocess — everything here is a plain
-// filesystem check.
+// The product work directory `slidra serve` deploys on every startup
+// (`packages/server/agent-workdir/` -> `<SLIDRA_HOME>/agent`) and the agent
+// session reads real files from, alongside the presentation's own virtual
+// tree. No server, no ACP subprocess — everything here is a plain filesystem
+// check.
 
 let slidraHome: string;
 
@@ -59,7 +59,7 @@ describe("resolveAgentWorkdirSource", () => {
 const PRESENTATION = "pres-1";
 
 describe("deployAgentWorkdir", () => {
-  it("deploys the source's files to <SLIDRA_HOME>/agent/<id>, byte-for-byte (A1)", async () => {
+  it("deploys the source's files to <SLIDRA_HOME>/agent/<id>, byte-for-byte", async () => {
     const target = await deployAgentWorkdir(PRESENTATION);
     expect(target).toBe(await realpath(agentWorkdirTarget(PRESENTATION)));
     expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(slidraHome, "agent", PRESENTATION));
@@ -77,7 +77,7 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("copies .agents/skills into .claude/skills, relative paths and bytes identical (A2)", async () => {
+  it("copies .agents/skills into .claude/skills, relative paths and bytes identical", async () => {
     const target = await deployAgentWorkdir(PRESENTATION);
     const agentsSkills = await listFilesRecursively(path.join(target, ".agents", "skills"));
     const claudeSkills = await listFilesRecursively(path.join(target, ".claude", "skills"));
@@ -91,7 +91,7 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge (A3)", async () => {
+  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
     await deployAgentWorkdir(PRESENTATION);
     const target = agentWorkdirTarget(PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "使用者亂改的內容");
@@ -135,7 +135,7 @@ describe("deployAgentWorkdir", () => {
     expect(await realpath(a)).toBe(a);
   });
 
-  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading (B2)", async () => {
+  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading", async () => {
     const first = await deployAgentWorkdir(PRESENTATION);
     const firstInode = (await stat(first)).ino;
 
@@ -239,19 +239,19 @@ describe("readAgentWorkdirFile", () => {
     expect(await readAgentWorkdirFile(workdirReal, "reference/commands.md")).toBe("# 命令參考\n");
   });
 
-  it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file' (A12)", async () => {
+  it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file'", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "")).rejects.toMatchObject({ message: "找不到檔案：" });
     await expect(readAgentWorkdirFile(workdirReal, "/")).rejects.toMatchObject({ message: "找不到檔案：/" });
     await expect(readAgentWorkdirFile(workdirReal, ".")).rejects.toMatchObject({ message: "找不到檔案：." });
   });
 
-  it("refuses a '..' escape as not-found — '..' is just a name the real directory tree never contains (A12)", async () => {
+  it("refuses a '..' escape as not-found — '..' is just a name the real directory tree never contains", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "../outside.txt")).rejects.toMatchObject({
       message: "找不到檔案：../outside.txt",
     });
   });
 
-  it("refuses a symlink that points outside the work directory — excluded structurally, never followed (A12)", async () => {
+  it("refuses a symlink that points outside the work directory — excluded structurally, never followed", async () => {
     const outsideDir = await mkdtemp(path.join(tmpdir(), "slidra-workdir-outside-"));
     try {
       await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
@@ -270,13 +270,13 @@ describe("readAgentWorkdirFile", () => {
     });
   });
 
-  it("reports a directory as 'not a file', not as absent (A12)", async () => {
+  it("reports a directory as 'not a file', not as absent", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "reference")).rejects.toMatchObject({
       message: "不是檔案：reference",
     });
   });
 
-  it("reports a non-UTF-8 file as a binary asset, not as decoded (possibly corrupted) text (A12)", async () => {
+  it("reports a non-UTF-8 file as a binary asset, not as decoded (possibly corrupted) text", async () => {
     await writeFile(path.join(workdirReal, "binary.dat"), Buffer.from([0xff, 0x00, 0x01]));
     await expect(readAgentWorkdirFile(workdirReal, "binary.dat")).rejects.toMatchObject({
       message: "binary.dat 是二進位資產，無法以文字讀取",

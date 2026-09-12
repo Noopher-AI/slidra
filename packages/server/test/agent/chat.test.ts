@@ -41,7 +41,7 @@ async function readPresentationTextViaCli(id: string, virtualPath: string): Prom
   return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
 }
 
-// Seam B (issue #1): start the real server, drive it over HTTP, with a
+// Seam B: start the real server, drive it over HTTP, with a
 // scripted fake ACP agent — a real subprocess speaking ACP over stdio,
 // never the real Claude Code or Codex — as the counterparty.
 
@@ -243,8 +243,8 @@ class SseReader {
   }
 }
 
-describe("[E2.T8] buildCommentContext", () => {
-  it("no comments: null (so runTurn sends the author's text with no prefix at all — AC13)", () => {
+describe("buildCommentContext", () => {
+  it("no comments: null (so runTurn sends the author's text with no prefix at all)", () => {
     expect(buildCommentContext([])).toBeNull();
   });
 
@@ -262,8 +262,8 @@ describe("[E2.T8] buildCommentContext", () => {
   });
 });
 
-describe("chat: the 編輯規約 and prompt shape", () => {
-  it("sends the 編輯規約 as the very first session/prompt, as a one-text-block content array", async () => {
+describe("chat: the editorial brief and prompt shape", () => {
+  it("sends the editorial brief as the very first session/prompt, as a one-text-block content array", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -281,7 +281,7 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     expect(prompts[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
   });
 
-  it("[E2.T8] AC14: with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
+  it("with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
     const id = await openFreshPresentation();
     // The fresh presentation's default `slides/001.svg` carries a bare
     // `<text>` title — not `assertSlideCompliant` until `convert` runs
@@ -334,7 +334,7 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     await sse.close();
 
     const prompts = promptEntries(await readFakeAgentLog());
-    expect(prompts).toHaveLength(3); // 編輯規約 + 2 user messages
+    expect(prompts).toHaveLength(3); // editorial brief + 2 user messages
     const sessionIds = new Set(prompts.map((entry) => entry.sessionId));
     expect(sessionIds.size).toBe(1);
   });
@@ -363,7 +363,7 @@ describe("chat: reply streaming", () => {
   });
 });
 
-describe("chat: cancel (#303)", () => {
+describe("chat: cancel", () => {
   it("POST /api/chat/cancel ends the running turn with chat-done stopReason=cancelled", async () => {
     const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -491,7 +491,7 @@ describe("chat: not logged in", () => {
   });
 });
 
-describe("chat: session/request_permission — 簡報檔案只能走 CLI，其餘放行", () => {
+describe("chat: session/request_permission — presentation files must go through the CLI, everything else is allowed", () => {
   /** Runs one permission scenario and returns the outcome the fake agent logged. */
   async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
     const server = await serve(
@@ -555,9 +555,10 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect(outcome).toEqual({ outcome: "selected", optionId: "decline" });
   });
 
-  // 直接讀簡報檔案被擋之後，整輪本來會死在 adapter 的 `interrupt: true` 上，
-  // agent 只收到「使用者拒絕」。現在 Slidra 把回合接回來，告訴它該用什麼。
-  it("被擋下的命令會換成一句建議送回 agent，回合繼續", async () => {
+  // Once a direct read of a presentation file is refused, the whole turn used to
+  // die on the adapter's `interrupt: true`, with the agent only ever hearing
+  // "user rejected". Now Slidra picks the turn back up and tells it what to use instead.
+  it("turns a refused command into a suggestion sent back to the agent, and the turn continues", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"], ["知道了，改用讀檔工具"]],
@@ -578,17 +579,18 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     const collected = await untilDone;
     await sse.close();
 
-    // 回合沒有死在 cancelled 上
+    // The turn does not die on cancelled.
     expect((collected.at(-1)!.data as { stopReason: string }).stopReason).toBe("end_turn");
-    // agent 收到的第二個 prompt 就是那句建議
+    // The second prompt the agent receives is exactly that suggestion.
     const prompts = (await readFakeAgentLog()).filter((entry) => entry.prompt !== undefined);
     expect(JSON.stringify(prompts.at(-1)!.prompt)).toContain("slidra cat");
-    // 作者看得到這件事發生過
+    // The author can see that this happened.
     expect(collected.some((e) => e.event === "chat-notice")).toBe(true);
   });
 
-  // 命令字串根本讀不出來（只有受保護路徑躺在 rawInput 裡）時沒有建議可給，
-  // 才走這條：回合真的結束，至少講清楚不是作者按的停止。
+  // This path is only hit when the command string can't be recovered at all
+  // (only a protected path sits in rawInput), so there's no suggestion to give:
+  // the turn genuinely ends, but at least it's made clear the author didn't stop it.
   it("says so when a refused command took the whole turn down with it", async () => {
     const server = await serve(
       fakeAgent({
@@ -631,9 +633,10 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     }
   });
 
-  // 政策改版：Slidra 只保護簡報自己的檔案，其餘 shell 命令一律放行。
-  // 以下這組守的是新的那條線——`<SLIDRA_HOME>`（除了 agent 自己的工作目錄）
-  // 與任何 `.slidra` 容器，只能透過 CLI 動。
+  // Policy update: Slidra now only protects the presentation's own files;
+  // every other shell command is allowed. The group below guards the new
+  // line — `<SLIDRA_HOME>` (aside from the agent's own work directory)
+  // and any `.slidra` container may only be touched through the CLI.
 
   it("refuses a command that writes straight into the presentation's work directory", async () => {
     const outcome = await permissionOutcomeFor({
@@ -666,7 +669,8 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  // 另一半：不碰簡報檔案的命令不再被擋——這是這次改版真正的重點。
+  // The other half: commands that don't touch presentation files are no longer
+  // blocked — that's the actual point of this policy update.
 
   it("allows an ordinary shell command that has nothing to do with the presentation", async () => {
     const outcome = await permissionOutcomeFor({ permissionCommand: "grep -rn pyramid reference/" });
@@ -726,7 +730,7 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
   }
 
-  // Fix 2 (ticket #7): some adapters stop calling session/request_permission
+  // Some adapters stop calling session/request_permission
   // for a tool once a persistent grant (allow_always) has been given —
   // accepting it once would silently disable this gate for every later
   // command in the session, including non-slidra ones. Only allow_once
@@ -805,7 +809,7 @@ describe("chat: shutdown does not hang on an open stream", () => {
 });
 
 describe("chat: session cwd", () => {
-  it("hands the agent the deployed product work directory as its cwd, never the real process cwd (NOOP-238)", async () => {
+  it("hands the agent the deployed product work directory as its cwd, never the real process cwd", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -826,7 +830,7 @@ describe("chat: session cwd", () => {
     // Exactly `<SLIDRA_HOME>/agent/<presentationId>`, resolved — the
     // product work directory `deployAgentWorkdir()` deploys before
     // `startServe` ever
-    // constructs the session (NOOP-238). The escape-hatch this test used to
+    // constructs the session. The escape-hatch this test used to
     // assert ("never under SLIDRA_HOME") is inverted by design: `../work/<id>`
     // is no longer reachable from here, because `fs/read_text_file`'s
     // containment is the deployed directory's own real tree
@@ -836,7 +840,7 @@ describe("chat: session cwd", () => {
     expect(sentCwd).toBe(expectedWorkdir);
   });
 
-  it("lets the agent read the deployed CLAUDE.md via a relative path (NOOP-238)", async () => {
+  it("lets the agent read the deployed CLAUDE.md via a relative path", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
@@ -860,7 +864,7 @@ describe("chat: session cwd", () => {
     expect(result?.readTextFileResult).toBe(await readFile(sourceClaudeMd, "utf8"));
   });
 
-  it("lets the agent read a file under the deployed .claude/skills tree via a relative path (NOOP-238)", async () => {
+  it("lets the agent read a file under the deployed .claude/skills tree via a relative path", async () => {
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
@@ -875,7 +879,7 @@ describe("chat: session cwd", () => {
     // `agent-workdir/` source, which this test must never touch, and which
     // a second deploy would overwrite anyway. This only proves the read
     // wiring reaches the real, already-deployed `.claude/skills` tree; skill
-    // *content* is out of this ticket's scope (T6/T7).
+    // *content* is out of scope here.
     const skillDir = path.join(slidraHome, "agent", id, ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
     await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
@@ -893,7 +897,7 @@ describe("chat: session cwd", () => {
   });
 });
 
-describe("chat: serve close does not delete the deployed work directory (NOOP-238)", () => {
+describe("chat: serve close does not delete the deployed work directory", () => {
   it("leaves the work directory's AGENTS.md readable and unchanged after close()", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
@@ -959,7 +963,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
       const markerPath = path.join(markerDir, "exited-once");
       try {
         // exitDuringPromptIndex: 1 is the author's first message (index 0 is
-        // the 編輯規約) — the fake agent exits instead of replying, exactly
+        // the editorial brief) — the fake agent exits instead of replying, exactly
         // once (exitOnceMarkerPath), simulating the adapter dying mid-turn.
         const server = await serve(
           fakeAgent({
@@ -1120,7 +1124,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
   it("honours line (1-based) and limit (max line count) per ACP semantics", async () => {
     const id = await openFixturePresentation({
       "project.json": fixtureProjectJson(["slides/001.svg"]),
-      // [E2.T8]: every chat turn now reads this file's comments (`<svg>`-rooted,
+      // Every chat turn now reads this file's comments (`<svg>`-rooted,
       // per `readSlideComments`) before relaying the prompt, so "line1" is
       // wrapped in a self-contained `<svg>` root to stay parseable — line 2/3/4
       // are untouched plain text, preserving the exact line/limit semantics
@@ -1150,7 +1154,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     expect(result?.readTextFileResult).toBe("line2\nline3");
   });
 
-  // Fix 3 (ticket #7): a real, conforming ACP agent sends `path` as an
+  // A real, conforming ACP agent sends `path` as an
   // *absolute* path rooted at the session cwd it was handed — never the
   // bare relative virtual path the brief names (confirmed against a real
   // `claude-code-acp` 0.12.6 probe). The test below drives the fake agent
@@ -1310,12 +1314,11 @@ describe("chat: the whole loop — read via the file method, request permission,
   it("lets the agent read the slide, get permission for slidra text set, and see the edit afterwards only through another read", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
 
-    // Fix 2 (ticket #7): the id used to build the permission command below
-    // must be one a real agent could actually have read out of the 編輯規約
+    // The id used to build the permission command below
+    // must be one a real agent could actually have read out of the editorial brief
     // itself — never the test's own `id` variable spliced in directly, which
     // would prove nothing about whether the brief actually hands the agent
-    // a usable id (this is exactly the gap that would have failed ticket
-    // #8 outright). Parsing it out of the exact text `buildEditorialBrief`
+    // a usable id. Parsing it out of the exact text `buildEditorialBrief`
     // produces — the same text `session.ts` sends as the very first
     // prompt — is what makes "the agent could have constructed this
     // command from the brief alone" true instead of merely assumed.
@@ -1330,7 +1333,7 @@ describe("chat: the whole loop — read via the file method, request permission,
         readTextFileEveryPromptFrom: 1,
         readTextFilePath: "slides/001.svg",
         requestPermissionOnPromptIndex: 1,
-        // Single-quoted, per the 編輯規約's quoting rule (ticket #7 fix 1):
+        // Single-quoted, per the editorial brief's quoting rule:
         // double quotes are refused outright by the new allowlist grammar,
         // so a real agent following the brief would quote this way.
         permissionCommand: `slidra text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
@@ -1379,7 +1382,7 @@ describe("chat: the whole loop — read via the file method, request permission,
   });
 });
 
-describe("chat: the author can see the command run (ticket #17)", () => {
+describe("chat: the author can see the command run", () => {
   /** Runs one scripted command life cycle and returns every SSE event seen up to chat-done. */
   async function commandEventsFor(
     scenario: Record<string, unknown>,
@@ -1438,8 +1441,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
   });
 
   it("shows a refused non-CLI command untagged, and tells the author in one line", async () => {
-    // 命令照樣出現在時間軸上（作者看得到機器上發生什麼事），但沒有狀態標記
-    // ——它不是 CLI 操作。被擋這件事由一句通知負責。
+    // The command still shows up on the timeline (the author can see what
+    // happened on the machine), but with no status tag — it isn't a CLI
+    // operation. Being refused is communicated by a single notice instead.
     const events = await commandEventsFor({
       toolCallCommand: `sed -i s/a/b/ ${slidraHome}/work/p1/slides/001.svg`,
       permissionForToolCall: true,
@@ -1449,7 +1453,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
 
     const started = events.find((event) => event.event === "chat-command");
     expect((started!.data as { cli: boolean }).cli).toBe(false);
-    // 沒有標記就不會有後續狀態更新
+    // With no tag, there's no follow-up status update.
     expect(events.filter((event) => event.event === "chat-command-update")).toEqual([]);
     const notice = events.find((event) => event.event === "chat-notice");
     expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
@@ -1488,7 +1492,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     expect(events.filter((e) => e.event.startsWith("chat-command"))).toEqual([]);
   });
 
-  it("never relays commands from the 編輯規約 turn", async () => {
+  it("never relays commands from the editorial brief turn", async () => {
     const server = await serve(
       fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "slidra ls p1" }),
     );

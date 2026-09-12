@@ -31,19 +31,19 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   }
 }
 
-// NOOP-230: serve must always start, whether or not an agent is selected —
-// "no agent" (or "selected but not logged in") is a supported state, never
-// a startup failure (inverting the old detect/select-driven exit(1) this
-// file used to guard). Driven through the real `runServeCli` entry point —
-// `cli.ts` exposes no injection seam for `AgentManager`'s `CommandRunner`
-// (that seam is `serve.ts`'s `ServeOptions.agentManager`, test-only and
-// never reached from `runServeCli`) — this file puts fake `claude`/`codex`
-// executables ahead of the real ones on `PATH` instead (see `beforeEach`
-// below), so every test here reports "not logged in" deterministically,
-// regardless of whether this pod's real CLIs happen to be logged in.
-// `AgentAvailability` collapses "not installed" and "not logged in" into
-// the same `unauthenticated` state (decision §7.3), so this is a faithful
-// exercise of the same path a real not-logged-in CLI would take.
+// serve must always start, whether or not an agent is selected — "no agent"
+// (or "selected but not logged in") is a supported state, never a startup
+// failure (inverting the old detect/select-driven exit(1) this file used to
+// guard). Driven through the real `runServeCli` entry point — `cli.ts`
+// exposes no injection seam for `AgentManager`'s `CommandRunner` (that seam
+// is `serve.ts`'s `ServeOptions.agentManager`, test-only and never reached
+// from `runServeCli`) — this file puts fake `claude`/`codex` executables
+// ahead of the real ones on `PATH` instead (see `beforeEach` below), so
+// every test here reports "not logged in" deterministically, regardless of
+// whether this pod's real CLIs happen to be logged in. `AgentAvailability`
+// collapses "not installed" and "not logged in" into the same
+// `unauthenticated` state (decision §7.3), so this is a faithful exercise of
+// the same path a real not-logged-in CLI would take.
 //
 // `runServeCli` blocks until SIGINT/SIGTERM (real CLI usage) — tests start
 // it, wait for its one "已啟動" console.log line, then synthesize SIGINT via
@@ -150,7 +150,7 @@ async function startCli(argv: string[]): Promise<StartedCli> {
 }
 
 describe("runServeCli", () => {
-  it("A3: an agent selected via --agent but not logged in — serve starts, exits 0, prints exactly one (parenthesized) agent status line", async () => {
+  it("an agent selected via --agent but not logged in — serve starts, exits 0, prints exactly one (parenthesized) agent status line", async () => {
     const id = await openFreshPresentation();
 
     const cli = await startCli([id, "--port", "0", "--agent", "claude"]);
@@ -177,7 +177,7 @@ describe("runServeCli", () => {
     expect(await cli.shutdown()).toBe(0);
   });
 
-  it("A6: --agent overrides settings.json for this run only — source is 'cli', settings.json is left untouched", async () => {
+  it("--agent overrides settings.json for this run only — source is 'cli', settings.json is left untouched", async () => {
     const id = await openFreshPresentation();
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "claude" }));
@@ -223,7 +223,7 @@ describe("runServeCli", () => {
     expect(await cli.shutdown()).toBe(0);
   });
 
-  it("still returns 1, before ever printing 已啟動, for a failure unrelated to agent selection (unknown presentation id)", async () => {
+  it("still returns 1, before ever printing \"已啟動\", for a failure unrelated to agent selection (unknown presentation id)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 

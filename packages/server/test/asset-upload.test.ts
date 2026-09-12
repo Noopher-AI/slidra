@@ -34,7 +34,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 }
 
 /**
- * `POST /api/asset` (T3/NOOP-142). Seam B: the real server over real HTTP.
+ * `POST /api/asset`. Seam B: the real server over real HTTP.
  * This is the front end's byte-upload path for drag/drop and clipboard
  * paste — `/api/command` cannot carry raw bytes (see asset-upload.ts's
  * module comment), so this is a second, narrower write route with the same
@@ -140,7 +140,7 @@ async function postAsset(
   return { status: response.status, json };
 }
 
-it("合法 PNG 上傳落地到 assets/ 並回 200 與匯入資料", async () => {
+it("a valid PNG upload lands in assets/ and returns 200 with import data", async () => {
   const id = await openDeck("upload.slidra");
   const server = await serve(id);
 
@@ -153,7 +153,7 @@ it("合法 PNG 上傳落地到 assets/ 並回 200 與匯入資料", async () => 
   expect(await listAssets(id)).toEqual(["photo.png"]);
 });
 
-it("副檔名偽裝成 .png 的純文字內容回 400，assets/ 不變", async () => {
+it("plain text disguised with a .png extension returns 400, assets/ unchanged", async () => {
   const id = await openDeck("fake.slidra");
   const server = await serve(id);
 
@@ -164,7 +164,7 @@ it("副檔名偽裝成 .png 的純文字內容回 400，assets/ 不變", async (
   expect(await listAssets(id)).toEqual([]);
 });
 
-it("缺少檔名標頭回 400", async () => {
+it("returns 400 when the filename header is missing", async () => {
   const id = await openDeck("noname.slidra");
   const server = await serve(id);
 
@@ -173,7 +173,7 @@ it("缺少檔名標頭回 400", async () => {
   expect(response.status).toBe(400);
 });
 
-it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
+it("an oversized body returns 400 and is never written to assets/", async () => {
   const id = await openDeck("big.slidra");
   const server = await serve(id);
   const oversized = Buffer.concat([PNG_BYTES, Buffer.alloc(32 * 1024 * 1024)]);
@@ -184,7 +184,7 @@ it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
   expect(await listAssets(id)).toEqual([]);
 });
 
-describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
+describe("POST /api/asset — URL mode", () => {
   let sourceServer: http.Server;
   let sourceBaseUrl: string;
 
@@ -222,7 +222,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     return { status: response.status, json };
   }
 
-  it("下載一張真實圖片並匯入，走與 asset import <url> 相同的格式偵測", async () => {
+  it("downloads a real image and imports it, using the same format detection as asset import <url>", async () => {
     const id = await openDeck("url-upload.slidra");
     const server = await serve(id);
 
@@ -234,7 +234,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(await listAssets(id)).toEqual(["photo.png"]);
   });
 
-  it("拒絕非 http(s) 的 scheme（file:／相對路徑），不落地任何檔案", async () => {
+  it("rejects a non-http(s) scheme (file:/relative path), landing no file", async () => {
     const id = await openDeck("url-scheme.slidra");
     const server = await serve(id);
 
@@ -245,7 +245,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(await listAssets(id)).toEqual([]);
   });
 
-  it("同時提供檔名與 URL 兩個標頭時回 400，不猜哪個優先", async () => {
+  it("returns 400 when both filename and URL headers are given, without guessing which one wins", async () => {
     const id = await openDeck("url-both-headers.slidra");
     const server = await serve(id);
 
@@ -261,7 +261,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(response.status).toBe(400);
   });
 
-  it("下載失敗（404）回 400，不落地任何檔案", async () => {
+  it("a failed download (404) returns 400, landing no file", async () => {
     const id = await openDeck("url-404.slidra");
     const server = await serve(id);
 

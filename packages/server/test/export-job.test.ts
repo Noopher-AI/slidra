@@ -12,7 +12,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
   return { promise, resolve, reject };
 }
 
-describe("ExportJobManager (NOOP-93 §4.4)", () => {
+describe("ExportJobManager (§4.4)", () => {
   it("runs the full queued -> running -> progress* -> done sequence with the right payloads", async () => {
     const events: ExportEvent[] = [];
     const manager = new ExportJobManager();
@@ -33,7 +33,7 @@ describe("ExportJobManager (NOOP-93 §4.4)", () => {
 
     const jobId = manager.start("pdf-frames", (event) => events.push(event), run);
     // start() only returns once the synchronous "queued" broadcast already
-    // happened — §4.4's "queued 在 202 回應之前廣播".
+    // happened — §4.4's guarantee that "queued" is broadcast before the 202 response.
     expect(events).toEqual([{ jobId, format: "pdf-frames", state: "queued" }]);
 
     // Let the fire-and-forget async work inside start() run to completion.

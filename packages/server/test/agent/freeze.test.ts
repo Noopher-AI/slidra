@@ -34,7 +34,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   }
 }
 
-// T5 (NOOP-93/#110): the agent-turn/undo-group/freeze contract, driven over
+// T5: the agent-turn/undo-group/freeze contract, driven over
 // HTTP with a real subprocess fake ACP agent — same Seam B discipline as
 // chat.test.ts, never the real Claude Code/Codex, never a mock of
 // AgentChatSession or history.ts itself.
@@ -75,7 +75,7 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018, #303): mint one page with one text
+  // `new` creates no slides (ADR-0018): mint one page with one text
   // box, and take the element id straight from `textbox add`'s own result.
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
@@ -181,7 +181,7 @@ async function listAssets(id: string): Promise<string[]> {
 /**
  * Extracts the `<g id="elementId">...</g>` block for one element, so a
  * "did this element change" check doesn't depend on any other element in
- * the slide staying byte-identical (NOOP-325: the agent's own in-flight
+ * the slide staying byte-identical (the agent's own in-flight
  * `text set` targets a different element and can legitimately land inside
  * the same window, which a whole-document diff can't tell apart from one
  * of the rejected commands actually running).
@@ -202,7 +202,7 @@ interface CommandExecutionFixture {
 }
 
 /**
- * Round 3 (NOOP-93): `openFreshPresentationWithElement`'s lone `<text>`
+ * `openFreshPresentationWithElement`'s lone `<text>`
  * title is a bare primitive outside any `<g>` — `element insert`/`requireContainer`
  * refuse to touch a slide in that shape at all (ADR-0012 compliance), and
  * move/scale/rotate only ever match a `<g>` besides. `convert` repairs the

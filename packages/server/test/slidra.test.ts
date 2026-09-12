@@ -366,14 +366,14 @@ describe("slidra/reads.ts: read decoding", () => {
 });
 
 /**
- * NOOP-334r2 債 1: `readSaveState`'s `Math.floor(maxMtimeMs) >
- * Math.floor(entry.savedAt)` comparison (see that function's own doc
- * comment for why it floors both sides) shipped with no test pinning the
- * one input it exists for — a same-integer-millisecond `maxMtime`/`savedAt`
- * pair whose fractional parts differ. Round 1's M3 mutation check (revert
- * to a plain `>`) survived every existing test green.
+ * `readSaveState`'s `Math.floor(maxMtimeMs) > Math.floor(entry.savedAt)`
+ * comparison (see that function's own doc comment for why it floors both
+ * sides) shipped with no test pinning the one input it exists for — a
+ * same-integer-millisecond `maxMtime`/`savedAt` pair whose fractional parts
+ * differ. A mutation check reverting the comparison to a plain `>` survived
+ * every existing test.
  */
-describe("slidra/save-state.ts: readSaveState 的整數毫秒比較", () => {
+describe("slidra/save-state.ts: readSaveState's whole-millisecond comparison", () => {
   let home: string;
   let workDir: string;
   let previousHome: string | undefined;

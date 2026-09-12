@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { collectSlashCommands, parseSkillFrontmatter } from "../../src/agent/commands.js";
 import { resolveAgentWorkdirSource } from "../../src/agent/workdir.js";
 
-// [E3.T6] #236/#237: the shipped skills and the AGENTS.md
+// The shipped skills and the AGENTS.md
 // prose that indexes them are hand-written content, not generated — what
 // keeps them honest is reading the real shipped directory (the same one
 // `deployAgentWorkdir` copies verbatim) rather than a fixture standing in
@@ -19,12 +19,12 @@ const agentsMdPath = path.join(resolveAgentWorkdirSource(), "AGENTS.md");
 // before a skill fires), so the body only has to carry the ordered steps.
 const REQUIRED_SKILL_SECTIONS = ["## 步驟"];
 
-describe("[NOOP-236] shipped work directory documentation", () => {
-  it("has exactly the thirteen shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
+describe("shipped work directory documentation", () => {
+  it("has exactly the thirteen shipped skills, each well-formed, and reported by collectSlashCommands", async () => {
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     // The `slidra-` namespace lives in the directory name itself, so the
-    // name an author types is the name the agent registered (#248).
+    // name an author types is the name the agent registered.
     expect(dirNames.sort()).toEqual(["slidra-animate", "slidra-background-kit", "slidra-build", "slidra-chart", "slidra-layout-kit", "slidra-new-slide", "slidra-notes", "slidra-plan", "slidra-reshape", "slidra-style", "slidra-style-kit", "slidra-table", "slidra-validate"]);
 
     for (const dirName of dirNames) {
@@ -50,7 +50,7 @@ describe("[NOOP-236] shipped work directory documentation", () => {
     }
   });
 
-  it("AGENTS.md has all seven H2 sections in order, no leftover placeholder, and one Skills-table row per skill directory (A1/A5)", async () => {
+  it("AGENTS.md has all seven H2 sections in order, no leftover placeholder, and one Skills-table row per skill directory", async () => {
     const text = await readFile(agentsMdPath, "utf8");
     expect(text).not.toContain("<!-- T6");
 
