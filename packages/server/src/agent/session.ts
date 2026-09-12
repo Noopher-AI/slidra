@@ -169,16 +169,19 @@ function refusalCorrectionPrompt(hints: string[]): string {
   ].join("\n");
 }
 
-/** The same thing, said to the author, so the take-back is visible rather than mysterious. */
-function refusalCorrectionNotice(hints: string[]): string {
-  return `CoMotion 擋下了 agent 直接改簡報檔案的命令並告訴它該用什麼（${hints.length} 則建議），對話繼續。`;
+/**
+ * The author's one line about a refusal. The command itself is not shown —
+ * it is the agent's own shell work, which the timeline deliberately leaves
+ * out (`relayCommandStart`) — so this says what CoMotion did and what it
+ * told the agent to do instead.
+ */
+function refusalNotice(hint: string | undefined): string {
+  const head = "CoMotion 擋下了 agent 直接動簡報檔案的命令（簡報只能透過 comotion 命令改）";
+  return hint === undefined ? `${head}。` : `${head}，並告訴它：${hint}`;
 }
 
 const TURN_ABORTED_BY_REFUSAL_MESSAGE =
   "這一輪到此為止：CoMotion 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 comotion 命令重新發送即可。";
-
-const MAX_COMMAND_OUTPUT_CHARS = 2000;
-const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
 
 /** The model a live session runs on, as its adapter reports it at `session/new`. */
 export interface AgentModel {
@@ -679,7 +682,8 @@ export class AgentChatSession extends EventEmitter {
           (failure !== undefined || response?.stopReason === "cancelled");
 
         if (endedOnRefusal && hints.length > 0 && correction < MAX_REFUSAL_CORRECTIONS && !this.disposed) {
-          this.emitTyped("chat-notice", { text: refusalCorrectionNotice(hints) });
+          // No notice here: the author was already told at the moment of
+          // the refusal. Taking the turn back is plumbing.
           prompt = refusalCorrectionPrompt(hints);
           this.relayedToolCalls.clear();
           this.refusedToolCalls.clear();
@@ -1032,6 +1036,14 @@ export class AgentChatSession extends EventEmitter {
   private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
     if (command === undefined) return;
+    // Only the CLI reaches the author's timeline. Since ADR-0019 the agent
+    // runs ordinary shell work of its own — reading its own references,
+    // grepping, poking at temp files — and none of that is the author's
+    // business: a row of Done/Failed cards for it is noise, and a failure
+    // in it is the agent's problem to solve, not a status the author is
+    // being asked to read. What changes the presentation is a `comotion`
+    // command, and that is what shows.
+    if (!namesCoMotionProgram(command)) return;
     this.relayedToolCalls.add(update.toolCallId);
     this.emitTyped("chat-command", {
       toolCallId: update.toolCallId,
@@ -1161,6 +1173,7 @@ export class AgentChatSession extends EventEmitter {
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
     const allow = this.isPermittedCommand(params);
     if (!allow) {
+      const first = this.refusedToolCalls.size === 0;
       this.refusedToolCalls.add(params.toolCall.toolCallId);
       // What to use instead, decided here (where the refused command
       // string is still in hand) and delivered in two directions: to the
@@ -1169,6 +1182,12 @@ export class AgentChatSession extends EventEmitter {
       const command = extractCommand(params.toolCall);
       const hint = command === undefined ? undefined : hintForBlockedCommand(command, this.presentationId);
       if (hint !== undefined) this.refusalHints.set(params.toolCall.toolCallId, hint);
+      // The refused command itself never reaches the timeline (it is not a
+      // `comotion` command, and `relayCommandStart` shows only those), so
+      // this one line is the whole of what the author sees: CoMotion acted,
+      // here is what it said. Once per turn — an agent that tries three
+      // spellings of the same forbidden thing is not three events.
+      if (first) this.emitTyped("chat-notice", { text: refusalNotice(hint) });
     }
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
@@ -1463,9 +1482,12 @@ function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined,
     if (typeof formatted === "string" && formatted !== "") texts.push(formatted);
   }
   if (texts.length === 0) return undefined;
-  const joined = texts.join("\n");
-  if (joined.length <= MAX_COMMAND_OUTPUT_CHARS) return joined;
-  return joined.slice(0, MAX_COMMAND_OUTPUT_CHARS) + COMMAND_OUTPUT_TRUNCATED_SUFFIX;
+  // Whole output, never a prefix. A truncated failure is the one kind of
+  // output that is useless: the part that says what went wrong is as
+  // likely to be at the end as at the start, and an author who cannot see
+  // it has to go and re-run the command in a terminal — which is the
+  // problem this relay exists to remove.
+  return texts.join("\n");
 }
 
 /**

@@ -611,8 +611,8 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     const collected = await untilDone;
     await sse.close();
 
-    const notice = collected.find((e) => e.event === "chat-notice");
-    expect((notice!.data as { text: string }).text).toContain("不是作者按了停止");
+    const texts = collected.filter((e) => e.event === "chat-notice").map((e) => (e.data as { text: string }).text);
+    expect(texts.some((text) => text.includes("不是作者按了停止"))).toBe(true);
   });
 
   it("forwards the adapter's own stderr to serve's log, tagged with its name", async () => {
@@ -1436,10 +1436,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     });
   });
 
-  it("marks a command the allowlist refused as blocked, in CoMotion's words rather than the adapter's", async () => {
-    // ACP's permission answer carries no reason, so claude-code-acp
-    // reports a refusal as "The user doesn't want to proceed…" — which the
-    // author never did. The card says who actually blocked it.
+  it("keeps a refused command out of the timeline and tells the author in one line instead", async () => {
+    // 被擋的命令一定不是 `comotion` 命令，而時間軸只放 CLI 命令——所以作者
+    // 看到的不是一張 Failed 卡片，而是一句「CoMotion 擋下了…」。
     const events = await commandEventsFor({
       toolCallCommand: `sed -i s/a/b/ ${coMotionHome}/work/p1/slides/001.svg`,
       permissionForToolCall: true,
@@ -1447,13 +1446,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
       toolCallOutput: "The user doesn't want to proceed with this tool use.",
     });
 
-    const failure = events
-      .filter((event) => event.event === "chat-command-update")
-      .map((event) => event.data as { status: string; output?: string; blocked?: true })
-      .find((data) => data.status === "failed");
-    expect(failure?.blocked).toBe(true);
-    expect(failure?.output).toContain("CoMotion 擋下了這條命令");
-    expect(failure?.output).not.toContain("The user doesn't want to proceed");
+    expect(events.filter((event) => event.event === "chat-command")).toEqual([]);
+    const notice = events.find((event) => event.event === "chat-notice");
+    expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
   });
 
   it("leaves a command's own failure alone — only a refused one gets CoMotion's wording", async () => {
