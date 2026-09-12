@@ -22,6 +22,10 @@ description: 依每頁內容補上口語化、可直接念出來的簡報者備�
 6. **要求清空**：`comotion slide notes set <presentation-id> slides/00N.svg ''`（空字串合法）。
 7. **驗證**：`cat` 讀回確認 `<comot:notes>` 有內容。
 
+## 收尾
+
+動完之後、回覆之前跑一次 `comotion validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+
 ## 回報格式
 
 逐頁列出：頁面路徑、備忘稿內容（或摘要）、若有指定時長則附上估算秒數。某頁因既有備忘稿而暫停時，說明目前內容並等待使用者確認。

@@ -28,6 +28,10 @@ description: 用一組貼在對話裡的數列資料在指定頁做出圖表，�
 6. **圖例**：`comotion chart legend set <presentation-id> slides/00N.svg <el> none|bottom|right`。
 7. **驗證**：以命令自己的成功訊息為主。`cat` 圖表頁的輸出很長（內嵌整張 render 過的 SVG），只有需要確認資料細節時才 `cat`，並先跟使用者說輸出會很長。
 
+## 收尾
+
+動完之後、回覆之前跑一次 `comotion validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+
 ## 回報格式
 
 列出建立的圖表 element id、所在頁、類型、資料的類別與數列、以及是否設定了雙軸／堆疊／配色／圖例。使用者要求了不支援的組合時，說明原因與可行替代方案。

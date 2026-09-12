@@ -40,7 +40,7 @@ description: 依作者確認過的 plan/ 計畫與設計規格逐頁建置投影
 
       挑到的 shape 剛好是第 6.3 節某個已知解時才順手寫 `"type"`；自己組的構圖不寫 `type`。**每一頁的 `blueprint` 都是必填**（`blueprint.required`）。
    2. **背景**：`background` 是 `on` 時用步驟 3 建好的資產；`off` 就跳過。
-   3. **前景**：照版面參考檔的槽位表排——座標與比例由這一頁的內容與 `design-spec.layout` 推導，線框裡的數字是示意；字級與顏色取自字級表與配色；間距取自 `layout.gutter` 與 `layout.spacing`。每個元素標 `data-comot-role`（第 3b 節），所有文字用文字框宣告（第 0 節），`<role>` 換成色碼，範例文字換成計畫裡的關鍵詞（標題＝主張）。`background` 是 `on` 時把 scrim rect 一起寫進去（第 4b 節）。第一頁 `comotion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁 `comotion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著：
+   3. **前景**：照版面參考檔的槽位表排——座標與比例由這一頁的內容與 `design-spec.layout` 推導，線框裡的數字是示意；字級與顏色取自字級表與配色；間距取自 `layout.gutter` 與 `layout.spacing`。每個元素標 `data-comot-role`（第 3b 節），所有文字用文字框宣告（第 0 節），`<role>` 換成色碼，範例文字換成計畫裡的關鍵詞（標題＝主張）。`background` 是 `on` 時把 scrim rect 一起寫進去（第 4b 節）。第一頁 `comotion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁 `comotion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。**送出前照第 0 節的自檢清單算一遍**（尤其是每個文字框折幾行、下一個元素的 `y` 有沒有被壓到）——沒過的頁面會被整頁拒收，回傳列出哪幾條沒過，改好再送。接著：
       - `comotion slide style set <presentation-id> slides/00N.svg --background <角色色碼>`：多數頁面用 `background`；結語頁用 `primary`。同一份簡報裡底色的變化本身就是一種訊號，只在刻意時才換。
       - `background` 是 `on`：`comotion slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；重做某頁而它已有背景、計畫卻是 `off` 時，`--none` 拿掉。
    4. **群組**：把同一段裡的元素（通常是一個 `node` 連同它的 `field`、`label`、`garnish`）`comotion element group <presentation-id> slides/00N.svg <元素 id,逗號分隔>`，記下回傳的 `data.elementId`。標題自成一段時不必開群組；背景圖與頁尾三件不進任何群組。
@@ -52,9 +52,9 @@ description: 依作者確認過的 plan/ 計畫與設計規格逐頁建置投影
    **中途發現內容需要別的版面時**（臨時多了影片、圖、一組數據，或內容其實是循環、漏斗、金字塔）：回版面庫依「依素材找版面」重挑，並同步改 `blueprint.shape`、`nodes`、`steps`（已畫出來的頁要 `--force`，回報裡說明）。素材還不存在時先用不需要素材的版面，素材到了再 `slide set --svg` 換掉。
 
 5. **第一頁閘門**：先做封面與第一張內容頁，各 `validate`。有錯誤就先改做法（關鍵詞太長就改短、字級或顏色改回表上的值、少了動畫就補），確認兩頁都 0 錯誤，才做第 3 頁起。
-6. **逐頁建置**：依 `pages` 的順序，一頁做完再做下一頁。頁面只放計畫裡的「頁面關鍵詞」，完整的句子進備忘稿；第 7 節的上限是底線不是目標。大數字頁的數字、任何名稱與日期只能來自計畫。
+6. **逐頁建置**：依 `pages` 的順序，一頁做完**接著**做下一頁——**頁與頁之間不結束回合**。整份建置是一輪要做完的一件事，不是一頁一輪；做到一半回頭報進度，這份簡報就停在那裡等作者回來打「繼續」（`AGENTS.md`「一輪做到哪裡才算完」）。頁面只放計畫裡的「頁面關鍵詞」，完整的句子進備忘稿；第 7 節的上限是底線不是目標。大數字頁的數字、任何名稱與日期只能來自計畫。
 7. **整份轉場**：`animation` 不是 `none` 時，第 1 頁一做完就先下一次 `comotion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（不然第一頁閘門一定報 `motion.transition`），全部頁面做完再下一次，讓後加的頁也有轉場。
-8. **全份驗證，修到 0 錯誤**：`comotion validate <presentation-id>`，每一筆錯誤照第 9 節那張表的「怎麼修」處理。`text.*` 的條數超過要拆頁時，用 `plan set outline` 補一頁進計畫——接在最後面加頁不受限，插在中間會讓後面每一頁往後移，要加 `--force`。改完再跑一次，直到 `errors` 為空。**有錯誤不得回報完成。**
+8. **全份驗證，修到 0 錯誤**：`comotion validate <presentation-id>`，每一筆錯誤照第 9 節那張表的「怎麼修」處理。`text.*` 的條數超過要拆頁時，用 `plan set outline` 補一頁進計畫——接在最後面加頁不受限，插在中間會讓後面每一頁往後移，要加 `--force`。改完再跑一次，直到 `errors` 為空。**有錯誤不得回報完成**，也不得把「還有 N 個錯誤待修」當成回報送出去——修到 0 錯誤都還是同一輪的事。
 9. **回報**：照下面的格式。
 
 ## 計畫的保護欄位
@@ -63,4 +63,7 @@ description: 依作者確認過的 plan/ 計畫與設計規格逐頁建置投影
 
 ## 回報格式
 
-先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」（或做到第幾頁停下的原因）。逐頁一行：`第 N 頁（slides/00N.svg）：<shape>／<關係>：<標題>——新增 / 覆寫，<node 數> 個單位、<on-click 步驟數> 步`。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁你用 `--force` 改了什麼。驗證失敗是自己修，不留言。
+先一行：「依計畫建置完成，validate 0 錯誤，動畫 <full／minimal／none>，背景圖 <on／off>」。
+真的被擋住而必須停在第 N 頁（只有 `AGENTS.md` 列的第 2、3 種情形算數），第一行改成 `未完成：已建 N／M 頁，卡在 <哪裡>`，再寫需要作者做什麼決定——不要用完成句式收尾一件沒做完的事。
+
+逐頁一行：`第 N 頁（slides/00N.svg）：<shape>／<關係>：<標題>——新增 / 覆寫，<node 數> 個單位、<on-click 步驟數> 步`。最後列出給作者的問題，一則一行：哪幾頁建議配圖、哪幾頁內容偏薄、哪幾頁你用 `--force` 改了什麼。驗證失敗是自己修，不留言。

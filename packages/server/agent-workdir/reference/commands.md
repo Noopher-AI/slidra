@@ -307,7 +307,7 @@
 ## slide add
 
 **參數**：`<presentation-id>`、`--template <範本虛擬路徑>`（選填）、`--svg <整頁 SVG>`（選填，與 `--template` 互斥）、`--at <索引>`（選填，省略則加到最後）。
-**用途**：新增一張投影片：空白頁、範本複製，或用 `--svg` 一次寫完整頁（帶 `data-comot-text-width` 的裸 `<text>` 會被轉成真正的文字框；`<defs>`、漸層、`path` 都可以寫；`<script>` 或重複 id 會被拒絕）。`--svg` 成功時 `data.elementIds` 列出每個頂層元素的識別碼。
+**用途**：新增一張投影片：空白頁、範本複製，或用 `--svg` 一次寫完整頁（帶 `data-comot-text-width` 的裸 `<text>` 會被轉成真正的文字框；`<defs>`、漸層、`path` 都可以寫；`<script>` 或重複 id 會被拒絕）。`--svg` 成功時 `data.elementIds` 列出每個頂層元素的識別碼。**`--svg` 有寫入閘門**：這一頁的幾何重疊／溢出、文字量、字級與配色、角色自洽、資產路徑、scrim 任何一條沒過就整頁拒收（回傳列出每一條），什麼都不會被寫進去；動畫、備忘稿、範本、`blueprint` 不在這裡擋。清單見 `slide-design.md` 第 0 節。
 **範例**：`comotion slide add <presentation-id> --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'`
 
 ## slide set

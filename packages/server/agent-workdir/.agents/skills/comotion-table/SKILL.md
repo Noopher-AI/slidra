@@ -26,6 +26,10 @@ description: 把貼在對話裡的 Markdown 或 CSV 表格在指定頁做成表�
 6. **綁定既有資料**：使用者指名一個簡報內的虛擬路徑時，先 `comotion ls <presentation-id> assets` 確認看得到，再 `comotion table bind <presentation-id> slides/00N.svg <el> --source <虛擬路徑>`，之後可用 `comotion table refresh <presentation-id> slides/00N.svg <el>` 同步。路徑不存在就直接說「這份簡報裡沒有這個資料檔，目前無法從對話匯入 CSV」。
 7. **驗證**：`cat` 讀回確認儲存格文字。
 
+## 收尾
+
+動完之後、回覆之前跑一次 `comotion validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+
 ## 回報格式
 
 列出建立的表格 element id、所在頁、欄列數、套用的主題，以及是否有標題列。若補了對齊列，說明補了什麼。

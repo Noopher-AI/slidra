@@ -29,6 +29,23 @@
 - 成功回傳 `data.elementIds`（文件順序的所有元素 id）。**自己給 id**（`el-<語意>`，同一頁內不重複），動畫腳本才對得上；`data-comot-name` 給人看，照給。
 - 頁面底色不寫在 SVG 裡，寫完後 `comotion slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
 
+### 寫入閘門：送出前自己先過這一遍
+
+`slide add --svg`／`slide set --svg` **會先驗這一頁，沒過就整頁拒收**（回傳列出每一條沒過的規則，什麼都不會被寫進去）。擋的都是「只能整頁重寫才修得好」的東西——與其讓它寫進去、待會兒再整頁重寫一次，不如現在就對。**這不是作者按了拒絕**，是這一頁還沒達標。
+
+送出前照著算一遍：
+
+1. **文字框會不會撞在一起**：文字框高度 ＝ 行數 × 1.45 × 字級，`y + 高度` 就是底。**行數要自己估**——寬度除以字級估得出一行放幾個字，中文字寬約等於字級、英數約 0.5 倍。下一個文字框的 `y` 必須大於上一個的底。（這次最常犯的錯：標題以為一行、實際折成兩行，副標就被壓住了。）
+2. **會不會出界**：文字框右緣 `x + 寬度` ≤ 1200（×k）、底 ≤ 648（×k）；頁尾那兩個 18 級的例外，可到 700（×k）。
+3. **字級與顏色**：字級只能是字級表上的值，文字色只有 text／muted（大數字與粗體標籤可 accent、結語頁可 background），色塊只用配色角色、`none` 或 `url(#…)`。
+4. **一頁一個標題**：只有一個文字框用標題級字級。
+5. **文字量**：標題、每條要點的長度與條數、整頁總字數都在第 7 節的表上。
+6. **角色要自洽**：`relationship` 不是 `none` 的頁至少一個 `node`；`label` 要有歸屬、`spine` 一頁一條、`edge` 兩端要接到 node、`garnish` 不承載意義（第 3b 節）。
+7. **圖片指得到**：`href` 寫 `../assets/<檔名>`，檔名照 `ls <presentation-id> assets` 或 `asset import` 的回傳；資產不存在就先匯入。
+8. **有背景圖時**：每個文字框（頁尾與 ≥ claim 的大字除外）都要落在一塊 scrim 面板上（第 4b 節）。
+
+**不在這裡擋**、寫進去之後再補命令即可的：轉場與進場效果、頁面底色、背景圖、備忘稿、範本登記、`blueprint`。這些缺了 `validate` 會報，但不影響這一頁寫得進去。
+
 ### 文字框宣告
 
 **所有會被讀的文字**都用文字框宣告寫，才會自動換行、能加清單、可被就地編輯、被 `validate` 驗到：
@@ -45,7 +62,7 @@
 - 內容以換行分段，一段一條要點；`data-comot-list` 每段一個 token（`bullet`／`number`／`none`）。
 - `font-family` 只能寫簡報已內嵌的家族（`Noto Sans TC` 內建；其他照 `reference/fonts.md` 匯入）；字重只用 400 與 700；`data-comot-text-align` ∈ left／center／right。
 - 內容只能是純文字，`<tspan>` 由 CoMotion 自己產生。
-- 沒有 `data-comot-text-width` 的裸 `<text>` 只有一個用途：章節頁的浮水印大字，那是裝飾不是內容。
+- 沒有 `data-comot-text-width` 的裸 `<text>` 只有一個用途：章節頁的浮水印大字，那是裝飾不是內容——而且要標 `data-comot-role="garnish"` 說明它是裝飾，否則寫入會被拒（沒標的裸 `<text>` 一律當成「文字掉了文字框」）。
 
 ## 1. 舞台骨架
 
@@ -276,25 +293,28 @@ comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter 
 
 **第一頁閘門**：封面與第一張內容頁做完各跑一次 `validate`；有錯誤先改做法，確認都是 0 錯誤才做第 3 頁起，不要每頁各修各的。
 
+**標 ⛔ 的規則在 `slide add --svg`／`slide set --svg` 寫入時就會擋下整頁**（第 0 節的自檢清單），其餘的是寫入後補命令就能修的。
+
 | rule | 在驗什麼 | 怎麼修 |
 |---|---|---|
-| `text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total` | 第 7 節的文字量上限 | 改短、把句子搬進備忘稿；條數超過就拆頁（並用 `plan set outline` 補一頁進計畫） |
-| `focus.single-title` | 一頁只有一個標題角色 | 合併或拆頁 |
-| `geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap` | 文字框右緣 ≤ 1200、下緣 `y + 行數 × 1.45 × 字級 ≤ 648`、同欄文字框不重疊（裝飾幾何可以出血，不驗） | 縮短文字或減少條數；字級與座標不動 |
-| `style.font-size`、`style.text-fill`、`style.shape-fill` | 字級在第 2 節的表上；文字色只有 text／muted（大數字與粗體標籤可 accent、結語頁可 background）；色塊色只用配色角色、`none` 或 `url(#…)` | 改回 `type_scale`／`palette` 的值（`element style set`） |
+| ⛔ `text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total` | 第 7 節的文字量上限 | 改短、把句子搬進備忘稿；條數超過就拆頁（並用 `plan set outline` 補一頁進計畫） |
+| ⛔ `focus.single-title` | 一頁只有一個標題角色 | 合併或拆頁 |
+| ⛔ `geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap` | 文字框右緣 ≤ 1200、下緣 `y + 行數 × 1.45 × 字級 ≤ 648`、同欄文字框不重疊（裝飾幾何可以出血，不驗） | 縮短文字或減少條數；字級與座標不動 |
+| ⛔ `style.font-size`、`style.text-fill`、`style.shape-fill` | 字級在第 2 節的表上；文字色只有 text／muted（大數字與粗體標籤可 accent、結語頁可 background）；色塊色只用配色角色、`none` 或 `url(#…)` | 改回 `type_scale`／`palette` 的值（`element style set`） |
 | `structure.background`、`structure.notes`、`structure.template` | 背景已設、備忘稿非空、出現過的頁型都登記了範本 | 補 `slide style set`／`slide notes set`／`template add` |
-| `structure.scrim` | 有背景圖的頁，每個文字框（頁尾與 ≥ claim 的大字除外）都落在一塊 scrim 面板上（第 4b 節） | 先看那段文字能不能歸進某個 `field`，不能才加一塊 scrim rect，整頁 `slide set --svg` 重寫，再重下背景圖與動畫 |
+| ⛔ `structure.scrim` | 有背景圖的頁，每個文字框（頁尾與 ≥ claim 的大字除外）都落在一塊 scrim 面板上（第 4b 節） | 先看那段文字能不能歸進某個 `field`，不能才加一塊 scrim rect，整頁 `slide set --svg` 重寫，再重下背景圖與動畫 |
 | `structure.background-image` | 計畫 `background` 是 `on` 時每一頁都有背景圖 | 補 `slide background set --asset`，或把計畫的 `background` 改成 `off` |
 | `blueprint.required` | 計畫 `confirmed` 之後每一頁都必須寫下 `blueprint` | 補 `blueprint`（`shape`／`nodes`／`steps`），`plan set outline` 寫回 |
 | `blueprint.nodes`、`blueprint.steps` | 畫出來的 node 數與 on-click 步數要跟構圖時寫的一致 | 頁面畫錯就改頁面；構圖想錯就 `plan set outline --force` 改 blueprint 並在回報裡說明 |
 | `rhythm.repeated-shape` | 相鄰兩頁不得用同一個 `blueprint.shape` 解同一種 `relationship`、又是同樣的單位數 | 換一種構圖（版面庫同一組有別的解），或把兩頁合併 |
 | `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 | 刪面板 |
-| `role.required` | `relationship` 不是 `none` 的頁面至少要標出一個 `node` | 替每個語意單位加 `data-comot-role="node"` |
+| ⛔ `role.required` | `relationship` 不是 `none` 的頁面至少要標出一個 `node` | 替每個語意單位加 `data-comot-role="node"` |
 | `role.garnish-animated` | `garnish` 不得有任何進場效果 | 拿掉那個效果，或這個元素其實是 `node`／`label` |
-| `role.*` | 第 3b 節的四條自洽規則 | 改角色或補標籤 |
+| ⛔ `role.*` | 第 3b 節的四條自洽規則 | 改角色或補標籤 |
 | `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的簽名字級） | 以計畫為準修頁面；計畫本身錯了才改計畫 |
 | `roster.relationship-variety` | 4 頁以上時，同一種 `relationship` 不得超過半數 | 回去看內容，找出其實是順序／對比／一個數字的那幾節，改它們的 `relationship` |
 | `motion.transition`、`motion.enter` | `animation` 不是 `none` 時每頁有轉場；`full` 每頁至少一個進場效果、`minimal` 封面／要點／對照頁至少一個 | 補 `effect add`／`slide transition set --all` |
+| ⛔ `asset.missing` | 頁面引用的圖片／影音在這份簡報裡不存在 | 用 `ls <presentation-id> assets` 對出真正的檔名；資產還沒匯入就先 `asset import` |
 | `taboo.thank-you`、`taboo.duplicate-cover`、`taboo.stroke` | 謝謝頁、重複封面、rect 的框線 | 刪掉 |
 
 **整份做完**：`validate` 整份 0 錯誤，`template list` 列得出「封面」「要點頁」等名稱。
