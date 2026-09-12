@@ -15,7 +15,7 @@
 //! Declarations are an accepted *input* form only; the stored file never
 //! contains one.
 
-use crate::element::splice::{Splice, apply_splices};
+use crate::element::splice::{Splice, apply_splices, set_attr_splice};
 use crate::element::text::{AddTextBoxInput, build_text_box_markup};
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::id::generate_element_id;
@@ -132,6 +132,102 @@ fn number_attr(node: &ScannedNode, name: &str, what: &str) -> CoMotionResult<Opt
                 CoMotionError::invalid(format!("文字框宣告 {what} 的 {name} 不是合法數字：{raw}"))
             }),
     }
+}
+
+/// The attributes an element points at an asset with. `href` is the image
+/// form, `data-comot-media` the video/audio one; `xlink:href` is the legacy
+/// spelling a pasted-in SVG may still carry.
+const ASSET_REFERENCE_ATTRIBUTES: &[&str] = &["href", "xlink:href", "data-comot-media"];
+
+/// Rewrites a bare `assets/x.jpg` reference into `../assets/x.jpg`.
+///
+/// Slides live in `slides/`, so an asset reference inside a page is written
+/// relative to that directory — the only form the stage's `/api/raw/slides/`
+/// base resolves (#303). But every command that hands an asset path back
+/// (`asset import`, `ls`) speaks *virtual* paths, which are rooted at the
+/// presentation: `assets/x.jpg`. An agent that pastes what it was just given
+/// therefore writes a href that resolves to `slides/assets/x.jpg` and renders
+/// as a broken image — with nothing on screen saying why. Ingest closes that
+/// gap the same way `slide background set` does, by prepending `../` on the
+/// way in; `validate`'s `asset.missing` rule still catches everything else
+/// (a typo, a deleted asset, a path that was never right).
+fn asset_reference_splices(node: &ScannedNode, into: &mut Vec<Splice>) {
+    for name in ASSET_REFERENCE_ATTRIBUTES {
+        let Some(attribute) = attribute_of(node, name) else {
+            continue;
+        };
+        if attribute.value.starts_with("assets/") {
+            into.push(set_attr_splice(
+                node,
+                name,
+                &format!("../{}", attribute.value),
+            ));
+        }
+    }
+    for child in &node.children {
+        asset_reference_splices(child, into);
+    }
+}
+
+/// Refuses a `data-comot-role` the grammar does not define, anywhere on the
+/// page. A misspelled role is not a small thing: `validate`'s role rules
+/// (`role.required`, `role.node-label`, …) read the page through these
+/// values, so an element carrying `headline` instead of `label` is simply
+/// not seen by them — the page passes for a reason that is not true.
+/// Declarations check their own role in `declaration_markup`, before they
+/// are replaced; this covers every other element.
+fn check_roles(node: &ScannedNode) -> CoMotionResult<()> {
+    if let Some(role) = attribute_value(node, ROLE_ATTRIBUTE) {
+        if !ELEMENT_ROLES.contains(&role.as_str()) {
+            let id = attribute_value(node, "id").unwrap_or_else(|| node.tag.clone());
+            return Err(CoMotionError::invalid(format!(
+                "{id} 的 {ROLE_ATTRIBUTE} 不是合法角色：{role}（可用：{}）",
+                ELEMENT_ROLES.join("、")
+            )));
+        }
+    }
+    for child in &node.children {
+        check_roles(child)?;
+    }
+    Ok(())
+}
+
+/// Refuses a `<text>` that is not part of a text box.
+///
+/// Text on a CoMotion slide is always a *text box*: it has a width, it wraps
+/// by itself, and `validate`'s text rules can measure it. A raw `<text>`
+/// renders — which is exactly why it is worth refusing — but it never wraps,
+/// the author cannot edit it in the editor, and every text rule looks
+/// straight through it, so a page full of raw text validates clean and is
+/// still wrong. Legal shapes are the authored declaration (a top-level
+/// `<text data-comot-text-width>`) and a built text box (a `<text>` inside a
+/// container carrying that attribute); a table or chart container
+/// (`data-comot-type`) keeps its own internal text.
+///
+/// The one documented raw `<text>` — a chapter page's oversized number
+/// watermark — stays legal by saying what it is: `data-comot-role="garnish"`
+/// on the text or its container. That is the same word the design language
+/// already uses for it, and it is the difference between decoration the
+/// author meant and content that lost its text box by accident.
+fn check_text_is_boxed(node: &ScannedNode, boxed: bool, top_level: bool) -> CoMotionResult<()> {
+    let garnish_here = attribute_value(node, ROLE_ATTRIBUTE).as_deref() == Some("garnish");
+    for child in &node.children {
+        if child.tag == "text" {
+            let garnish =
+                garnish_here || attribute_value(child, ROLE_ATTRIBUTE).as_deref() == Some("garnish");
+            if boxed || garnish || (top_level && is_declaration(child)) {
+                continue;
+            }
+            let id = attribute_value(node, "id").unwrap_or_else(|| "（無識別碼）".to_string());
+            return Err(CoMotionError::invalid(format!(
+                "{id} 裡的 <text> 不是文字框：投影片上的文字一律寫成文字框宣告——在根 <svg> 底下放 <text {TEXT_WIDTH_ATTRIBUTE}=\"<寬度>\" x=\"…\" y=\"…\">，CoMotion 會替你換行、量測，作者也才編輯得到。真的是裝飾（例如章節頁的編號浮水印）就標 {ROLE_ATTRIBUTE}=\"garnish\""
+            )));
+        }
+        let boxed_here = attribute_of(child, TEXT_WIDTH_ATTRIBUTE).is_some()
+            || attribute_of(child, "data-comot-type").is_some();
+        check_text_is_boxed(child, boxed_here, false)?;
+    }
+    Ok(())
 }
 
 fn is_declaration(node: &ScannedNode) -> bool {
@@ -261,10 +357,13 @@ pub fn ingest_slide_svg(
 ) -> CoMotionResult<IngestResult> {
     let roots = scan_document(raw)?;
     let root = root_svg(&roots)?;
+    check_roles(root)?;
+    check_text_is_boxed(root, false, true)?;
     let mut splices: Vec<Splice> = Vec::new();
     if let Some(splice) = viewbox_splice(raw, root, canvas_width, canvas_height)? {
         splices.push(splice);
     }
+    asset_reference_splices(root, &mut splices);
 
     let mut used_ids: Vec<String> = Vec::new();
     collect_ids(&roots, &mut used_ids);
@@ -375,6 +474,27 @@ mod tests {
         assert!(err.message().contains("1280 × 720"), "{}", err.message());
         let err = ingest("<g></g>").unwrap_err();
         assert!(err.message().contains("<svg>"), "{}", err.message());
+    }
+
+    #[test]
+    fn bare_asset_reference_is_rewritten_relative_to_the_slides_directory() {
+        let out = ingest(
+            r##"<svg viewBox="0 0 1280 720"><image id="el-photo" x="0" y="0" width="10" height="10" href="assets/a.png"/><image id="el-keep" x="0" y="0" width="10" height="10" href="../assets/b.png"/><g id="el-clip" data-comot-media="assets/c.webm"><rect x="0" y="0" width="10" height="10"/></g><image id="el-remote" x="0" y="0" width="10" height="10" href="https://example.com/assets/d.png"/></svg>"##,
+        )
+        .unwrap();
+        assert!(out.svg.contains(r##"href="../assets/a.png""##), "{}", out.svg);
+        assert!(out.svg.contains(r##"href="../assets/b.png""##), "{}", out.svg);
+        assert!(
+            out.svg.contains(r##"data-comot-media="../assets/c.webm""##),
+            "{}",
+            out.svg
+        );
+        assert!(
+            out.svg
+                .contains(r##"href="https://example.com/assets/d.png""##),
+            "{}",
+            out.svg
+        );
     }
 
     #[test]

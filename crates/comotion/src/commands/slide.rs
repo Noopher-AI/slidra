@@ -5,6 +5,7 @@ use crate::argv;
 use crate::errors::CoMotionError;
 use crate::result::{CommandResult, FailureKind};
 use crate::slide::ingest;
+use crate::validate;
 use crate::slide::ops::{self, AddSlideInput, SetSlideTransitionOnInput};
 use crate::slide::style::PageStyleUpdate;
 use crate::slide::transition::PageTransitionEffect;
@@ -135,7 +136,12 @@ fn run_add(args: &[String]) -> CommandResult {
     // `--svg` (#303): the agent authors the whole page; ingest it against
     // this presentation's canvas and fonts before anything is written.
     let ingested = match svg {
-        Some(raw) => match ingest_for(&id, &raw) {
+        Some(raw) => match add_index(&id, at).and_then(|index| {
+            // The page is judged at the position it will occupy — `--at`
+            // inserts, so the pages after it shift and this one is the
+            // (index + 1)-th, not the last.
+            ingest_for(&id, &raw, &format!("slides/{:03}.svg", index + 1), Some(index))
+        }) {
             Ok(v) => Some(v),
             Err(err) => {
                 return CommandResult::failure(err.message().to_string(), failure_kind_for(&err));
@@ -173,14 +179,66 @@ fn run_add(args: &[String]) -> CommandResult {
     }
 }
 
+/// Where `slide add` will put the new page: `--at` when given, otherwise
+/// the end of the running order.
+fn add_index(id: &str, at: Option<f64>) -> Result<usize, CoMotionError> {
+    let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
+    Ok(match at {
+        Some(value) => (value as usize).min(project.slides.len()),
+        None => project.slides.len(),
+    })
+}
+
+/// Where an existing path sits in the running order, or `None` when it is
+/// not a page of this deck (a template).
+fn slide_index(id: &str, slide_path: &str) -> Result<Option<usize>, CoMotionError> {
+    let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
+    Ok(project.slides.iter().position(|path| path == slide_path))
+}
+
 /// Ingests agent-authored page markup for this presentation (canvas from
-/// `project.json`, fonts from the container) — shared by `slide add --svg`
-/// and `slide set --svg`.
-fn ingest_for(id: &str, raw: &str) -> Result<ingest::IngestResult, CoMotionError> {
+/// `project.json`, fonts from the container) and puts the result through the
+/// write gate — shared by `slide add --svg` and `slide set --svg`.
+///
+/// `at` is the 0-based position the page will occupy, or `None` when the
+/// target is a template rather than a page of this deck: a template has no
+/// place in the running order, so there is no page number to report and no
+/// outline entry to judge it against, and it was already gated as the page
+/// `template add --from` copied it from.
+fn ingest_for(
+    id: &str,
+    raw: &str,
+    slide_path: &str,
+    at: Option<usize>,
+) -> Result<ingest::IngestResult, CoMotionError> {
     let work_dir = workspace::resolve_work_dir(id)?;
     let project = read_project_json(&work_dir)?;
     let fonts = crate::fonts::resolve_presentation_fonts(id)?;
-    ingest::ingest_slide_svg(raw, project.canvas.width, project.canvas.height, &fonts)
+    let ingested =
+        ingest::ingest_slide_svg(raw, project.canvas.width, project.canvas.height, &fonts)?;
+    if let Some(index) = at {
+        let refused = validate::check_authored_page(id, index, slide_path, &ingested.svg)?;
+        if !refused.is_empty() {
+            return Err(CoMotionError::invalid(describe_refusal(&refused)));
+        }
+    }
+    Ok(ingested)
+}
+
+/// The refusal an author can act on without running anything else: every
+/// rule the page breaks, in `validate`'s own wording, plus the line that
+/// says what was *not* checked — so a page is not rewritten again over an
+/// animation that was never this command's business.
+fn describe_refusal(refused: &[validate::ValidationError]) -> String {
+    let lines: Vec<String> = refused
+        .iter()
+        .map(|error| format!("- {}（{}）", error.message, error.rule))
+        .collect();
+    format!(
+        "這一頁沒有寫入：還有 {} 條規則沒過，改好再送一次。\n{}\n（只驗這一頁自己的內容；轉場、進場效果、備忘稿、範本、blueprint 是寫入後補的命令，不在這裡擋。怎麼修見 reference/slide-design.md 第 9 節。）",
+        refused.len(),
+        lines.join("\n")
+    )
 }
 
 /// `slide set <id> <slide-path> --svg '<整頁 SVG>'` (#303): overwrites one
@@ -208,7 +266,7 @@ fn run_set(args: &[String]) -> CommandResult {
     };
     let result = (|| -> Result<ingest::IngestResult, CoMotionError> {
         let existing = ws_write::require_slide(&id, &slide_path)?;
-        let ingested = ingest_for(&id, &raw)?;
+        let ingested = ingest_for(&id, &raw, &slide_path, slide_index(&id, &slide_path)?)?;
         let with_metadata = ingest::carry_metadata(&ingested.svg, &existing.content)?;
         ws_write::write_presentation_file(&id, &slide_path, &with_metadata)?;
         Ok(ingest::IngestResult {

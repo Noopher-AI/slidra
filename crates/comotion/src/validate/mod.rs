@@ -153,6 +153,20 @@ pub struct Shape {
     pub order: usize,
 }
 
+/// One reference a page makes to a file of the presentation's own — the
+/// `href` of an `<image>`, the `data-comot-media` of a video or audio
+/// element. `element` is the id of the top-level container it sits in, so a
+/// report can name what the author sees.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssetRef {
+    pub element: String,
+    pub value: String,
+}
+
+/// The attributes an element points at an asset with (mirrors
+/// `slide::ingest::ASSET_REFERENCE_ATTRIBUTES`).
+const ASSET_REFERENCE_ATTRIBUTES: &[&str] = &["href", "xlink:href", "data-comot-media"];
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SlideFacts {
     pub background: Option<String>,
@@ -169,6 +183,8 @@ pub struct SlideFacts {
     pub click_steps: usize,
     /// Every effect's `target` id, in document order.
     pub effect_targets: Vec<String>,
+    /// Every asset reference the page makes, background included.
+    pub asset_refs: Vec<AssetRef>,
 }
 
 /// Characters that count toward a text budget: everything but whitespace.
@@ -273,8 +289,46 @@ pub fn read_slide_facts(svg: &str) -> CoMotionResult<SlideFacts> {
 
     let mut order = 0usize;
     collect_elements(svg, root, parse_transform(None)?, &mut order, &mut facts)?;
+    collect_asset_refs(root, None, &mut facts.asset_refs);
 
     Ok(facts)
+}
+
+/// Walks the whole page for asset references. Unlike `collect_elements` this
+/// does not stop at the background: a background image is exactly as broken
+/// as any other when it points at nothing. `owner` is the outermost
+/// container id seen on the way down — the id the author addresses.
+fn collect_asset_refs(node: &ScannedNode, owner: Option<&str>, into: &mut Vec<AssetRef>) {
+    let id = attribute_value(node, "id");
+    let owner_here = owner.or(id.as_deref());
+    for name in ASSET_REFERENCE_ATTRIBUTES {
+        if let Some(value) = attribute_value(node, name) {
+            into.push(AssetRef {
+                element: owner_here.unwrap_or_default().to_string(),
+                value,
+            });
+        }
+    }
+    for child in &node.children {
+        collect_asset_refs(child, owner_here, into);
+    }
+}
+
+/// The virtual path a reference written inside `slides/00N.svg` resolves to,
+/// or `None` when it addresses something outside the presentation (a
+/// `data:` URI, a remote URL, a fragment) and so is no business of this
+/// rule. A bare `assets/x` resolves to `slides/assets/x` — exactly the
+/// broken path the stage asks for, which is why it is reported rather than
+/// quietly read as if the `../` were there.
+fn resolved_asset_path(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.starts_with('#') || value.contains("://") || value.starts_with("data:") {
+        return None;
+    }
+    match value.strip_prefix("../") {
+        Some(rest) => Some(rest.to_string()),
+        None => Some(format!("slides/{value}")),
+    }
 }
 
 /// Walks one level of `<g>` children, descending into any group that is not
@@ -418,6 +472,9 @@ pub struct Context<'a> {
     pub outline: Option<&'a OutlinePlan>,
     pub spec: Option<&'a DesignSpec>,
     pub template_names: &'a [String],
+    /// Every file the presentation actually holds, as virtual paths — what
+    /// `asset.missing` checks a page's references against.
+    pub files: &'a [String],
 }
 
 impl Context<'_> {
@@ -523,6 +580,46 @@ pub fn check_slide(
             );
         }
     }
+    // --- assets (no plan needed) ---
+    // A page that points at a file the presentation does not hold renders a
+    // blank rectangle and says nothing about why (#303). The commonest
+    // shape of this is a href copied straight from `asset import`'s
+    // `assets/…` reply: written inside a slide it means
+    // `slides/assets/…`. Ingest now rewrites that one on the way in, so
+    // what reaches here is a reference that is genuinely broken — a typo, a
+    // deleted asset, or a page written before that rewrite existed.
+    for reference in &facts.asset_refs {
+        let Some(resolved) = resolved_asset_path(&reference.value) else {
+            continue;
+        };
+        if ctx.files.iter().any(|file| file == &resolved) {
+            continue;
+        }
+        let element = reference.element.as_str();
+        // Two different mistakes wear the same rule: a path that points
+        // outside `assets/` altogether (the author wrote a slide-relative
+        // href), and a path that is shaped right but names a file the
+        // presentation does not hold. Saying which one it is saves a guess.
+        let message = match resolved.strip_prefix("assets/") {
+            Some(name) => format!(
+                "第 {n} 頁 {element} 指向的資產不存在：{name}（用 ls <presentation-id> assets 對一次檔名，還沒匯入就先 asset import）"
+            ),
+            None => format!(
+                "第 {n} 頁 {element} 的 {} 不是資產路徑（投影片在 slides/ 底下，資產要寫成 ../assets/<檔名>）",
+                reference.value
+            ),
+        };
+        push(
+            errors,
+            slide,
+            (!element.is_empty()).then_some(element),
+            "asset.missing",
+            reference.value.clone(),
+            "../assets/<這份簡報有的資產>",
+            message,
+        );
+    }
+
     // Decorative geometry (bleeding circles, rings, diagonals) may run off
     // the canvas and may carry a stroke; only a stroked rect is the "boxed
     // card" look the design language forbids.
@@ -1398,6 +1495,82 @@ pub fn check_deck(
 }
 
 /// `comotion validate <id> [slide-path]`.
+/// The rules a page must already satisfy to be written at all (`slide add
+/// --svg` / `slide set --svg`).
+///
+/// The split is not "important rules here, unimportant ones there" — every
+/// rule matters equally. It is about what fixing one costs *after* the
+/// write. Everything listed here is decided by the page's own markup, so
+/// the only way to fix it afterwards is to author the whole page again and
+/// `slide set` it — the write that just happened was wasted work either
+/// way, and refusing it turns a silent debt into an error message that says
+/// what to change.
+///
+/// Everything NOT listed is left to `validate`, because a later command
+/// puts it right without rewriting anything: the transition and enter
+/// effects (`effect add`, `slide transition set`), the page's background
+/// and its colour (`slide background set`, `slide style set`), the notes
+/// (`slide notes set`), the template registration (`template add`), the
+/// blueprint (`plan set outline`), a stroked rect (`element style set`),
+/// and every deck-level rule (`roster.*`, `rhythm.*`), which cannot be
+/// judged from one page at all. Gating those would make the documented
+/// build order impossible: a page has to exist before it can be animated.
+pub const WRITE_GATE_RULES: &[&str] = &[
+    "geometry.right-overflow",
+    "geometry.bottom-overflow",
+    "geometry.text-overlap",
+    "text.title-length",
+    "text.bullet-length",
+    "text.bullet-lines",
+    "text.bullet-count",
+    "text.page-total",
+    "focus.single-title",
+    "structure.scrim",
+    "style.font-size",
+    "style.text-fill",
+    "style.shape-fill",
+    "role.required",
+    "role.node-label",
+    "role.edge-endpoints",
+    "role.spine-count",
+    "role.garnish-meaning",
+    "asset.missing",
+];
+
+/// Runs the write gate on one authored page, before it is written.
+/// `index` is the 0-based position the page will occupy, which is what
+/// decides the page number in each message and which outline entry the
+/// page is judged against.
+pub fn check_authored_page(
+    id: &str,
+    index: usize,
+    slide_path: &str,
+    svg: &str,
+) -> CoMotionResult<Vec<ValidationError>> {
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let project = read_project_json(&work_dir)?;
+    let outline = plan::read_outline(&work_dir)?;
+    let spec = plan::read_design_spec(&work_dir)?;
+    let template_names: Vec<String> = read_template_entries(&project)
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    let files = virtual_fs::list_virtual_files(&work_dir, "assets")?;
+    let ctx = Context {
+        canvas_width: project.canvas.width,
+        canvas_height: project.canvas.height,
+        outline: outline.as_ref(),
+        spec: spec.as_ref(),
+        template_names: &template_names,
+        files: &files,
+    };
+    let facts = read_slide_facts(svg)?;
+    let mut errors = Vec::new();
+    check_slide(&ctx, index, slide_path, &facts, &mut errors);
+    errors.retain(|error| WRITE_GATE_RULES.contains(&error.rule));
+    Ok(errors)
+}
+
 pub fn validate_presentation(
     id: &str,
     slide_path: Option<&str>,
@@ -1410,12 +1583,14 @@ pub fn validate_presentation(
         .into_iter()
         .map(|t| t.name)
         .collect();
+    let files = virtual_fs::list_virtual_files(&work_dir, "assets")?;
     let ctx = Context {
         canvas_width: project.canvas.width,
         canvas_height: project.canvas.height,
         outline: outline.as_ref(),
         spec: spec.as_ref(),
         template_names: &template_names,
+        files: &files,
     };
 
     let mut slides: Vec<(String, SlideFacts)> = Vec::new();
@@ -1576,6 +1751,7 @@ mod tests {
             outline: Some(&outline),
             spec: Some(&spec),
             template_names: &names,
+            files: &[],
         };
         let facts = read_slide_facts(svg).unwrap();
         let mut errors = Vec::new();
@@ -1744,6 +1920,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: None,
                 template_names: &[],
+                files: &[],
             };
             let body = textbox("el-t", 80.0, 72.0, 600.0, 40.0, "#F4F6F8", &[("t", false)]);
             let slides: Vec<(String, SlideFacts)> = (1..=4)
@@ -1787,6 +1964,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: Some(&spec),
                 template_names: &[],
+                files: &[],
             };
             let facts = read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap();
             let mut errors = Vec::new();
@@ -1822,6 +2000,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: None,
                 template_names: &[],
+                files: &[],
             };
             let body = textbox("el-t", 80.0, 72.0, 600.0, 40.0, "#F4F6F8", &[("t", false)]);
             let slides: Vec<(String, SlideFacts)> = (1..=2)
@@ -1870,6 +2049,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: Some(&spec),
                 template_names: &names,
+                files: &[],
             };
             let facts = read_slide_facts(&slide(Some("#101418"), "n", &body)).unwrap();
             let mut errors = Vec::new();
@@ -1943,6 +2123,7 @@ mod tests {
             outline: Some(&outline),
             spec: Some(&spec),
             template_names: &names,
+            files: &[],
         };
         let mut errors = Vec::new();
         check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
@@ -2018,6 +2199,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: Some(&spec),
                 template_names: &names,
+                files: &[],
             };
             let facts = read_slide_facts(&slide(Some("#0B1220"), "n", svg)).unwrap();
             let mut errors = Vec::new();
@@ -2253,6 +2435,7 @@ mod tests {
             outline: None,
             spec: None,
             template_names: &names,
+            files: &[],
         };
         let facts = read_slide_facts(&svg).unwrap();
         let mut errors = Vec::new();
@@ -2273,6 +2456,36 @@ mod tests {
                 .any(|rule| rule.starts_with("text.") || rule.starts_with("style.")),
             "{r:?}"
         );
+    }
+
+    #[test]
+    fn asset_missing_reports_only_references_the_presentation_cannot_serve() {
+        let svg = slide(
+            Some("#101418"),
+            "n",
+            concat!(
+                r#"<g id="el-ok"><image x="0" y="0" width="10" height="10" href="../assets/there.png"/></g>"#,
+                r#"<g id="el-gone"><image x="0" y="0" width="10" height="10" href="../assets/gone.png"/></g>"#,
+                r#"<g id="el-remote"><image x="0" y="0" width="10" height="10" href="https://example.com/x.png"/></g>"#,
+            ),
+        );
+        let names: Vec<String> = Vec::new();
+        let files = vec!["assets/there.png".to_string()];
+        let ctx = Context {
+            canvas_width: 1280.0,
+            canvas_height: 720.0,
+            outline: None,
+            spec: None,
+            template_names: &names,
+            files: &files,
+        };
+        let facts = read_slide_facts(&svg).unwrap();
+        let mut errors = Vec::new();
+        check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
+        let missing: Vec<&ValidationError> =
+            errors.iter().filter(|e| e.rule == "asset.missing").collect();
+        assert_eq!(missing.len(), 1, "{errors:?}");
+        assert_eq!(missing[0].element.as_deref(), Some("el-gone"));
     }
 
     #[test]
@@ -2307,6 +2520,7 @@ mod tests {
             outline: Some(&outline),
             spec: Some(&spec),
             template_names: &names,
+            files: &[],
         };
         let facts = read_slide_facts(&svg).unwrap();
         let mut errors = Vec::new();
@@ -2373,6 +2587,7 @@ mod tests {
             outline: Some(&outline),
             spec: Some(&spec),
             template_names: &names,
+            files: &[],
         };
         let slides: Vec<(String, SlideFacts)> = [cover, dup, thanks]
             .iter()
@@ -2609,6 +2824,7 @@ mod tests {
                 outline: Some(&outline),
                 spec: Some(&spec),
                 template_names: &names,
+                files: &[],
             };
             let mut errors = Vec::new();
             check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);

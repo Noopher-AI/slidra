@@ -126,6 +126,35 @@ pub fn list_virtual_entries(work_dir: &Path, virtual_path: &str) -> CoMotionResu
     }
 }
 
+/// Every file beneath `virtual_path`, as virtual paths, sorted. A path that
+/// resolves to no directory yields an empty list rather than an error: a
+/// presentation with no `assets/` directory has no assets, which is a fact
+/// about it, not a failure to read it.
+pub fn list_virtual_files(work_dir: &Path, virtual_path: &str) -> CoMotionResult<Vec<String>> {
+    let root = build_virtual_tree(work_dir)?;
+    let segments = split_virtual_path(virtual_path);
+    let mut files = Vec::new();
+    if let Some(VirtualNode::Directory { children }) = navigate(&root, &segments) {
+        collect_virtual_files(children, virtual_path, &mut files);
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn collect_virtual_files(
+    children: &HashMap<String, VirtualNode>,
+    prefix: &str,
+    into: &mut Vec<String>,
+) {
+    for (name, node) in children {
+        let path = format!("{prefix}/{name}");
+        match node {
+            VirtualNode::File { .. } => into.push(path),
+            VirtualNode::Directory { children } => collect_virtual_files(children, &path, into),
+        }
+    }
+}
+
 /// Resolves `virtual_path` to its real filesystem path, without reading it.
 /// Used by primitives that need the real path to modify a file in place,
 /// while still going through the same structural discovery as every read.

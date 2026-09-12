@@ -2900,3 +2900,79 @@ fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
         "{missing:?}"
     );
 }
+
+/// The write gate: a page whose own markup breaks a rule is refused, and
+/// nothing is written — while a page that is merely unfinished (no
+/// transition, no effects, no notes, no background) is written, because
+/// those are added by later commands.
+#[test]
+fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
+    let fixture = Fixture::new("write-gate");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let id = extract_id(&fixture.run_rust(&["open", comot_path.to_str().unwrap()]));
+
+    // Two text boxes at the same place, plus an asset that does not exist.
+    let refused = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-comot-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">上面</text><text id="el-b" data-comot-text-width="600" x="80" y="110" font-size="40" fill="#F4F6F8">下面</text><image id="el-p" x="0" y="0" width="10" height="10" href="../assets/nope.png"/></svg>"##,
+    ]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    let message = String::from_utf8_lossy(&refused.stderr).into_owned();
+    assert!(message.contains("geometry.text-overlap"), "{message}");
+    assert!(message.contains("asset.missing"), "{message}");
+    let listed = fixture.run_rust(&["ls", &id, "slides"]);
+    assert!(
+        String::from_utf8_lossy(&listed.stdout).trim().is_empty(),
+        "a refused page must not be written: {listed:?}"
+    );
+
+    // The same page, apart, with no asset: unfinished but legal.
+    let written = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-comot-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">上面</text><text id="el-b" data-comot-text-width="600" x="80" y="300" font-size="40" fill="#F4F6F8">下面</text></svg>"##,
+    ]);
+    assert!(written.status.success(), "{written:?}");
+
+    // Raw text is not a text box, and an unknown role is not a role.
+    let raw_text = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720"><g id="el-t"><text x="80" y="100" font-size="40">裸文字</text></g></svg>"##,
+    ]);
+    assert_eq!(raw_text.status.code(), Some(1), "{raw_text:?}");
+    assert!(
+        String::from_utf8_lossy(&raw_text.stderr).contains("不是文字框"),
+        "{raw_text:?}"
+    );
+    // The documented exception: a watermark that says it is decoration.
+    let watermark = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720"><g id="el-mark" data-comot-role="garnish"><text x="900" y="600" font-size="320" fill="#9AA7B4" opacity="0.18">03</text></g></svg>"##,
+    ]);
+    assert!(watermark.status.success(), "{watermark:?}");
+
+    let bad_role = fixture.run_rust(&[
+        "slide",
+        "add",
+        &id,
+        "--svg",
+        r##"<svg viewBox="0 0 1280 720"><g id="el-r" data-comot-role="headline"><rect x="0" y="0" width="10" height="10" fill="#101418"/></g></svg>"##,
+    ]);
+    assert_eq!(bad_role.status.code(), Some(1), "{bad_role:?}");
+    assert!(
+        String::from_utf8_lossy(&bad_role.stderr).contains("不是合法角色"),
+        "{bad_role:?}"
+    );
+}
