@@ -239,14 +239,14 @@ async function waitForAgentBadgeSettled(page: Page): Promise<void> {
     await page.waitForTimeout(50);
   }
   // Same startup race, a second incidental symptom of it: the status bar's
-  // settings gear (StatusBar.tsx, unconditionally rendered once mounted —
+  // page nav (StatusBar.tsx, unconditionally rendered once mounted —
   // nothing about it depends on any single ticket) was also caught
   // mid-render in some of the same baselines. Bounded and non-throwing for
   // the same reason as the badge wait above.
   const deadline2 = Date.now() + 1500;
-  const settingsButton = page.locator(".status-settings-button").first();
+  const pageNav = page.locator(".status-page").first();
   while (Date.now() < deadline2) {
-    if (await settingsButton.isVisible().catch(() => false)) return;
+    if (await pageNav.isVisible().catch(() => false)) return;
     await page.waitForTimeout(50);
   }
 }

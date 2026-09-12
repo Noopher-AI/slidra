@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, modelFrom, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentModelView, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
+import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
@@ -11,7 +11,6 @@ import { createPresentationInfoLoader, type PresentationInfo } from "./presentat
 import { TitleBar } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
-import { SettingsDialog } from "./shell/settings/SettingsDialog.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
@@ -225,30 +224,9 @@ export function App() {
   // request's own error strip (409 editing / 400 / 500 / network).
   const [agentSwitchingKind, setAgentSwitchingKind] = useState<AgentKind | null>(null);
   const [agentActionError, setAgentActionError] = useState<string | null>(null);
-  // 標題列 agent 名稱：unset 時回退成 null（沿用既有「Agent connected」泛用
-  // 文案，Plan §4.9），loading/error 也還沒有名字可顯示；ready/unauthenticated
-  // 都有已知的 label（未登入不代表不知道是哪個 agent）。
-  const agentLabel =
-    agentStatus.kind === "ready" || agentStatus.kind === "unauthenticated" ? agentStatus.label : null;
-  // 對話框下方顯示的模型名稱。`GET /api/agent` 的 `model` 欄位——只有在
-  // ACP session 真的建立起來之後才有值（session 是第一則訊息才建立的），
-  // 沒有值就什麼都不顯示，不猜。
-  const [agentModel, setAgentModel] = useState<AgentModelView | null>(null);
   // 可切換的模型清單與目前的 id，同樣來自 `GET /api/agent`；空清單＝沒得選。
   const [agentModelOptions, setAgentModelOptions] = useState<readonly AgentModelOption[]>([]);
   const [agentModelId, setAgentModelId] = useState<string | null>(null);
-  // [E3.T5]: the settings dialog's own open/closed state (Plan §4.2). Toggled
-  // by the titlebar gear, force-opened by the chat empty state's "開啟設定"
-  // button, closed by the dialog itself (Esc/mask/close button).
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  // Plan §3.6: only the mutual-exclusion obligation this ticket owns —
-  // opening settings must close the Export dropdown (Dock/Rail menus stay
-  // untouched, per the plan's own note: the mask already swallows their
-  // mousedown, so they simply become unreachable underneath it).
-  useEffect(() => {
-    if (settingsOpen) setExportOpen(false);
-  }, [settingsOpen]);
-
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
   // assumed from "the promise resolved". Synced only from fullscreenchange
   // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
@@ -930,7 +908,6 @@ export function App() {
       const data: unknown = await response.json();
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
-      setAgentModel(modelFrom(data));
       const models = modelOptionsFrom(data);
       setAgentModelOptions(models.options);
       setAgentModelId(models.current);
@@ -1024,16 +1001,6 @@ export function App() {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     setAgentActionError(body.error ?? "切換 agent 失敗");
     setAgentSwitchingKind(null);
-  }
-
-  /** Titlebar gear — a toggle, same as Export's own button (Plan §4.2). */
-  function toggleSettings(): void {
-    setSettingsOpen((open) => !open);
-  }
-
-  /** ChatPanel empty state's "開啟設定" — always opens, never toggles (Plan §4.7: "與齒輪走同一條路" means the same destination, not the same click semantics). */
-  function openSettings(): void {
-    setSettingsOpen(true);
   }
 
   /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
@@ -1717,18 +1684,6 @@ export function App() {
           canPlay={hasSlides}
         />
       )}
-      {shellVisible && settingsOpen && (
-        <SettingsDialog
-          onClose={() => setSettingsOpen(false)}
-          status={agentStatus}
-          probing={agentProbing}
-          editingFrozen={editingFrozen}
-          switchingKind={agentSwitchingKind}
-          switchError={agentActionError}
-          onSelect={(kind) => void handleSelectAgent(kind)}
-          onProbe={() => void handleProbeAgent()}
-        />
-      )}
       {shellVisible && (
         <div className="app-notices">
           {liveReloadError && (
@@ -1836,13 +1791,20 @@ export function App() {
                 onStop={() => void stopChatTurn()}
                 stopping={stopping}
                 onNewSession={() => void startNewChatSession()}
-                agentConnection={agentConnection}
-                agentLabel={agentLabel}
-                agentModel={agentModel}
-                agentModelOptions={agentModelOptions}
-                agentModelId={agentModelId}
-                onSelectModel={(modelId) => void selectAgentModel(modelId)}
-                onLoadModels={() => void loadAgentModels()}
+                picker={{
+                  agentConnection,
+                  probing: agentProbing,
+                  editingFrozen,
+                  switchingKind: agentSwitchingKind,
+                  actionError: agentActionError,
+                  onSelectAgent: (kind) => void handleSelectAgent(kind),
+                  onProbe: () => void handleProbeAgent(),
+                  modelOptions: agentModelOptions,
+                  modelId: agentModelId,
+                  modelsLocked: working || stopping,
+                  onSelectModel: (modelId) => void selectAgentModel(modelId),
+                  onLoadModels: () => void loadAgentModels(),
+                }}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}
                 onPinnedRemove={(commentId) => {
@@ -1851,13 +1813,12 @@ export function App() {
                 }}
                 commands={commands}
                 agent={agentStatus}
-                onOpenSettings={openSettings}
               />
             }
           />
         )}
       </div>
-      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} settingsOpen={settingsOpen} onOpenSettings={toggleSettings} />}
+      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} />}
     </div>
   );
 }

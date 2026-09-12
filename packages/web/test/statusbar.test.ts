@@ -14,24 +14,18 @@ const state = {
   error: null,
 } as unknown as CanvasState;
 
-function markupFor(settingsOpen: boolean): string {
-  const props: StatusBarProps = { state, controller: null, settingsOpen, onOpenSettings: () => {} };
+function markupFor(): string {
+  const props: StatusBarProps = { state, controller: null };
   return renderToStaticMarkup(createElement(StatusBar, props));
 }
 
-describe("StatusBar 齒輪鈕（[E3.T5] Plan §4.9）", () => {
-  it("渲染帶正確 aria 屬性的齒輪鈕，settingsOpen 反映在 aria-expanded 上", () => {
-    const markup = markupFor(true);
-    expect(markup).toContain("status-settings-button");
-    expect(markup).toContain('aria-label="Settings"');
-    expect(markup).toContain('aria-haspopup="dialog"');
-    expect(markup).toContain('aria-expanded="true"');
-  });
-
-  it("齒輪鈕排在頁碼區之後，也就是狀態列（畫面右下角）的最後一個元素", () => {
-    const markup = markupFor(false);
-    expect(markup.indexOf("status-settings-button")).toBeGreaterThan(markup.indexOf("status-page"));
-    expect(markup).toContain('aria-expanded="false"');
+describe("StatusBar 右下角", () => {
+  it("沒有設定齒輪：agent 與模型都改在對話框下方的膠囊列直接點選，狀態列以頁碼區收尾", () => {
+    const markup = markupFor();
+    expect(markup).not.toContain("status-settings-button");
+    expect(markup).not.toContain('aria-label="Settings"');
+    expect(markup.trimEnd().endsWith("</span></footer>")).toBe(true);
+    expect(markup).toContain("status-page");
   });
 });
 
@@ -42,7 +36,7 @@ describe("StatusBar 齒輪鈕（[E3.T5] Plan §4.9）", () => {
 describe("StatusBar 選取 chip 文字（NOOP-349 round 3）", () => {
   function markupWithSelection(ids: string[], names: (string | null)[]): string {
     const selectedState = { ...state, selection: { ids, names } } as unknown as CanvasState;
-    const props: StatusBarProps = { state: selectedState, controller: null, settingsOpen: false, onOpenSettings: () => {} };
+    const props: StatusBarProps = { state: selectedState, controller: null };
     return renderToStaticMarkup(createElement(StatusBar, props));
   }
 

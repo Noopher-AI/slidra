@@ -32,7 +32,7 @@ export interface AgentResponse {
 }
 
 /**
- * One agent card, translated for `AgentTab` (Plan §4.4's table drives off
+ * One agent card, translated for the chat panel's `AgentPicker` (its menu drives off
  * this, plus the two external booleans `probing`/`editingFrozen` that this
  * module knows nothing about). `inUse` is derived here (`kind ===
  * response.current`) so callers never recompute it.

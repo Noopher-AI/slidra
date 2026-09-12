@@ -188,16 +188,6 @@
   font-family: var(--font-mono);
   color: var(--ink-700);
 }
-.chat-empty-state-button {
-  height: var(--control-h);
-  padding-inline: var(--space-6);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--brand-red);
-  color: var(--surface-white);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
 .chat-empty-state-button:hover {
   background: var(--brand-red-hover);
 }
@@ -383,41 +373,150 @@
   color: var(--ink-400);
 }
 
-/* 對話框下方的 agent 狀態列（連線燈＋模型）。`.agent-dot` 本身的樣式仍在
-   shell.css（那顆燈的三態沒有變，只是換了住處）；這裡只負責它在對話面板
-   底部的排列與間距。 */
+/* 對話框下方的兩顆膠囊（agent、模型），各自往上彈一個小選單。膠囊淺灰底、
+   無邊框、全圓角，平時只寫「目前是誰」；`.agent-dot` 那顆燈的三態樣式仍在
+   shell.css，這裡只把它塞進膠囊。選單借 dock.css 的 `.floating-layer` 材質，
+   但貼齊膠囊左緣往上長，不像 Dock 那樣置中。 */
 .chat-status {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-5) var(--space-3);
 }
-.chat-status-model {
-  color: var(--ink-400);
-  font-size: var(--text-xs-hint);
+.chat-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
-.chat-status-model::before {
-  content: "·";
-  margin-right: var(--space-2);
+/* 選單以整個 .chat-status 為定位框、貼齊側欄左右內距，兩顆膠囊共用同一個
+   寬度——側欄只有 340px，掛在膠囊自己身上會從右側溢出。 */
+.chat-status {
+  position: relative;
 }
-/* 模型選單長得跟純文字的模型名一樣，只在 hover 時露出是可以按的。 */
-.chat-status-model-select {
-  appearance: none;
+.chat-chip-wrap {
+  position: static;
+}
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h-compact);
+  padding-inline: var(--space-3);
   border: 0;
-  background: transparent;
-  padding: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-700);
   font: inherit;
-  font-size: var(--text-xs-hint);
-  color: var(--ink-400);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
 }
-.chat-status-model-select:hover:not(:disabled) {
-  color: var(--ink-700, inherit);
-  text-decoration: underline dotted;
+.chat-chip .agent-dot {
+  color: inherit;
+  font-size: inherit;
 }
-.chat-status-model-select:disabled {
+.chat-chip:hover:not(:disabled),
+.chat-chip[aria-expanded="true"] {
+  background: var(--surface-2);
+  color: var(--ink-900);
+}
+.chat-chip:disabled {
+  color: var(--ink-400);
   cursor: default;
+}
+.chat-chip-caret {
+  width: 0;
+  height: 0;
+  border-left: var(--space-1) solid transparent;
+  border-right: var(--space-1) solid transparent;
+  border-top: var(--space-1) solid currentColor;
+  opacity: 0.7;
+}
+.chat-chip-badge {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs-hint);
+  font-weight: 600;
+}
+.chat-chip-menu {
+  left: var(--space-5);
+  right: var(--space-5);
+  bottom: calc(100% - var(--space-2));
+  transform: none;
+  transform-origin: 0 100%;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.chat-chip-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-900);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.chat-chip-menu-item:hover:not(:disabled) {
+  background: var(--surface-1);
+}
+/* 打勾的那列是停用的（再按一次沒意義），但它是「現在的答案」，不能像
+   一般 disabled 那樣褪色。 */
+.chat-chip-menu-item:disabled {
+  cursor: default;
+  color: var(--ink-900);
+  opacity: 1;
+}
+.chat-chip-menu-item[aria-checked="true"] .chat-chip-menu-title {
+  color: var(--brand-red);
+}
+.chat-chip-menu-item[aria-checked="true"] .chat-chip-menu-title::after {
+  content: " ✓";
+}
+.chat-chip-menu-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.chat-chip-menu-detail {
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.chat-chip-menu-hint {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.chat-chip-menu-action {
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-top: 1px solid var(--surface-2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-500);
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-xs-hint);
+  cursor: pointer;
+}
+.chat-chip-menu-action:hover:not(:disabled) {
+  color: var(--ink-900);
+}
+.chat-status-error {
+  margin: 0;
+  font-size: var(--text-xs-hint);
+  color: var(--brand-red);
 }
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your

@@ -318,14 +318,6 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* [E3.T5]: the settings gear is the status bar's last item — the bottom
-   right corner of the shell. Reuses .slide-nav-button's own sizing/hit-area
-   rule below; this only adds the gap that separates it from the page nav
-   it sits beside. */
-.status-settings-button {
-  flex: none;
-  margin-left: var(--space-3);
-}
 .status-page {
   display: flex;
   align-items: center;
