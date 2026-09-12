@@ -12,6 +12,6 @@ describe("hintForBlockedCommand: turns a blocked command into a one-line 'use th
 
   it("everything else points to the CLI (file edits only go through commands)", () => {
     expect(hintForBlockedCommand("sed -i s/a/b/ /home/u/.slidra/work/abc/slides/001.svg", "abc")).toContain("slidra");
-    expect(hintForBlockedCommand("unzip /home/u/decks/x.slidra", "abc")).toContain("復原快照");
+    expect(hintForBlockedCommand("unzip /home/u/decks/x.slidra", "abc")).toContain("undo snapshot");
   });
 });

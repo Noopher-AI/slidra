@@ -7,7 +7,7 @@ export const PROBE_TIMEOUT_MS = 5000;
 
 /** Longest `detail` string a probe result ever carries — see `truncateDetail` below. */
 const MAX_DETAIL_CHARS = 200;
-const DETAIL_TRUNCATED_SUFFIX = "…（已截斷）";
+const DETAIL_TRUNCATED_SUFFIX = "… (truncated)";
 
 export interface CommandOutcome {
   code: number | null;
@@ -49,7 +49,7 @@ export const spawnCommandRunner: CommandRunner = (command, args, timeoutMs) => {
       if (settled) return;
       settled = true;
       child.kill();
-      resolve({ code: null, stdout, stderr: `逾時（${timeoutMs}ms）` });
+      resolve({ code: null, stdout, stderr: `Timed out (${timeoutMs}ms)` });
     }, timeoutMs);
     timer.unref?.();
 
@@ -102,7 +102,7 @@ export async function probeLogin(kind: AgentKind, run: CommandRunner): Promise<P
   const outcome = await run(command, args, PROBE_TIMEOUT_MS);
 
   if (outcome.code === null) {
-    return { loggedIn: false, detail: truncateDetail(outcome.stderr || "無法執行探測指令") };
+    return { loggedIn: false, detail: truncateDetail(outcome.stderr || "Failed to run the probe command") };
   }
 
   if (kind === "codex") {
@@ -117,7 +117,7 @@ export async function probeLogin(kind: AgentKind, run: CommandRunner): Promise<P
     const excerpt = outcome.stderr.trim() || outcome.stdout.trim();
     return {
       loggedIn: false,
-      detail: truncateDetail(`結束代碼 ${outcome.code}${excerpt ? `：${excerpt}` : ""}`),
+      detail: truncateDetail(`Exit code ${outcome.code}${excerpt ? `: ${excerpt}` : ""}`),
     };
   }
 
@@ -125,14 +125,14 @@ export async function probeLogin(kind: AgentKind, run: CommandRunner): Promise<P
   try {
     parsed = JSON.parse(outcome.stdout);
   } catch {
-    return { loggedIn: false, detail: truncateDetail(`無法解析回應：${outcome.stdout}`) };
+    return { loggedIn: false, detail: truncateDetail(`Failed to parse response: ${outcome.stdout}`) };
   }
   if (typeof parsed !== "object" || parsed === null || !("loggedIn" in parsed)) {
-    return { loggedIn: false, detail: truncateDetail(`回應缺少 loggedIn 欄位：${outcome.stdout}`) };
+    return { loggedIn: false, detail: truncateDetail(`Response is missing the loggedIn field: ${outcome.stdout}`) };
   }
   const loggedIn = (parsed as { loggedIn: unknown }).loggedIn;
   if (typeof loggedIn !== "boolean") {
-    return { loggedIn: false, detail: truncateDetail(`loggedIn 欄位型別不是布林值：${outcome.stdout}`) };
+    return { loggedIn: false, detail: truncateDetail(`loggedIn field is not a boolean: ${outcome.stdout}`) };
   }
   // loggedIn === false here is the ordinary logged-out state — no detail.
   return { loggedIn };

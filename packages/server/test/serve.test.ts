@@ -272,7 +272,7 @@ describe("startServe", () => {
     const getResponse = await fetch(`${server.url}/api/presentation`, { headers: { Origin: "null" } });
     expect(getResponse.status).toBe(403);
     const getBody = (await getResponse.json()) as { error: string };
-    expect(getBody.error).toMatch(/[一-鿿]/);
+    expect(getBody.error).toMatch(/opaque origin/);
 
     const postResponse = await fetch(`${server.url}/api/chat`, {
       method: "POST",
@@ -297,7 +297,7 @@ describe("startServe", () => {
     const response = await fetch(`${server.url}/api/files/slides/001.svg`, { headers: { Origin: "null" } });
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: string };
-    expect(body.error).toMatch(/[一-鿿]/);
+    expect(body.error).toMatch(/opaque origin/);
   });
 
   it("does not reject a normal request with no Origin header, or a same-origin Origin", async () => {
@@ -394,7 +394,7 @@ describe("startServe", () => {
     const id = await openFreshPresentation();
     const first = await serve(id);
 
-    await expect(serve(id, { port: first.port })).rejects.toThrow(/連接埠/);
+    await expect(serve(id, { port: first.port })).rejects.toThrow(/port already in use/i);
   });
 
   it("serves a presentation with no slides (ADR-0018: `new` creates none; the editor makes the first page)", async () => {
@@ -566,7 +566,7 @@ describe("startServe", () => {
       const body = await response.json();
 
       expect(response.status).toBe(404);
-      expect(body.error).toBe("不是投影片：project.json");
+      expect(body.error).toBe("Not a slide: project.json");
     });
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
@@ -708,7 +708,7 @@ describe("static frontend serving", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("前端尚未建置，請先執行 build");
+    expect(body.error).toBe("Frontend has not been built yet, run build first");
   });
 
   it("responds 500, not a disguised 200, when a static read fails for a reason other than not-found", async () => {

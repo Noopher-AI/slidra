@@ -21,14 +21,14 @@ import type { EditingLock } from "../editing-lock.js";
  * agent that tries to write directly can correct itself on the very next
  * turn (user story 32) instead of merely learning that it failed.
  */
-/** Sent in place of 【作者的訊息】 when the author submitted no text but has comments pinned. */
-const NO_MESSAGE_INSTRUCTION = "作者沒有輸入訊息，只送出上面這些釘選的留言——請依這些留言處理這份簡報。";
+/** Sent in place of [The author's message] when the author submitted no text but has comments pinned. */
+const NO_MESSAGE_INSTRUCTION = "The author typed no message and only sent the pinned comments above -- please act on this presentation according to those comments.";
 
 /** Refused turn: no text typed and nothing pinned, so there is nothing to act on. */
-const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，也沒有釘選的留言）";
+const EMPTY_MESSAGE_MESSAGE = "Message content must not be empty (no text typed and no comments pinned)";
 
 const WRITE_REFUSED_MESSAGE =
-  "Slidra 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `slidra text set` 命令。";
+  "Slidra does not allow the agent to write files directly; this method is always refused. To change text content, run the `slidra text set` command instead.";
 
 /** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape. */
 interface SlideCommentWithPath {
@@ -47,7 +47,7 @@ async function listAllComments(presentationId: string): Promise<SlideCommentWith
     throw new SlidraError(result.message);
   }
   if (!Array.isArray(result.data?.comments)) {
-    throw new SlidraError("comment list 回傳的資料格式錯誤");
+    throw new SlidraError("comment list returned malformed data");
   }
   return result.data.comments;
 }
@@ -62,10 +62,10 @@ async function listAllComments(presentationId: string): Promise<SlideCommentWith
  */
 export function buildCommentContext(comments: readonly SlideCommentWithPath[]): string | null {
   if (comments.length === 0) return null;
-  const lines = comments.map((comment) => `${comment.slidePath} ${comment.target} ${comment.id}：${comment.text}`);
+  const lines = comments.map((comment) => `${comment.slidePath} ${comment.target} ${comment.id}: ${comment.text}`);
   return (
-    "【作者釘選的留言】\n" +
-    "以下是作者釘在這份簡報上的留言，隨這則訊息一起給你。每一行的格式是「投影片路徑 目標 留言識別碼」，冒號之後是留言原文；目標是元素識別碼，或 page（代表整頁）。\n" +
+    "[Comments the author pinned]\n" +
+    "Below are the comments the author pinned on this presentation, sent along with this message. Each line has the format \"slide-path target comment-id\", followed by a colon and the comment's original text; the target is an element id, or page (meaning the whole page).\n" +
     lines.join("\n")
   );
 }
@@ -121,7 +121,7 @@ const WRITE_REFUSED_CODE = -32603;
  * incoming string is, by definition, a real filesystem path in this branch,
  * and ADR-0004's third layer requires no real path ever appear in an error.
  */
-const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個工作階段的範圍內";
+const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "File not found: path is outside this session's scope";
 
 /**
  * Upper bound on how much of a failed command's own output is relayed to
@@ -140,12 +140,12 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * This says what actually happened, on the author's side of the screen.
  */
 const BLOCKED_COMMAND_MESSAGE =
-  "Slidra 擋下了這條命令（不是作者拒絕的）：它直接動到這份簡報的檔案，而簡報只能透過 slidra 命令讀寫。其他不碰簡報檔案的命令不受限制。";
+  "Slidra blocked this command (the author did not reject it): it touches this presentation's files directly, and the presentation can only be read or written through slidra commands. Other commands that don't touch presentation files are unrestricted.";
 
 /**
  * Said once when a refused command took the whole turn down with it — see
  * `findRejectOption` for why some adapters leave no other way to refuse.
- * Without it the conversation ends on 「已停止」, which reads as the author's
+ * Without it the conversation ends on "Stopped", which reads as the author's
  * own doing.
  */
 /**
@@ -161,11 +161,11 @@ const MAX_REFUSAL_CORRECTIONS = 2;
 function refusalCorrectionPrompt(hints: string[]): string {
   const advice = hints.map((hint) => `- ${hint}`).join("\n");
   return [
-    "【Slidra 系統訊息｜不是作者說的】",
-    "剛剛那條命令沒有執行：它直接動到這份簡報的檔案，而簡報的內容只能透過 `slidra` 命令讀寫（其他不碰簡報檔案的命令不受限制）。",
-    "這不是作者拒絕你，也不需要問他——換成下面的做法就可以繼續：",
+    "[Slidra system message | not from the author]",
+    "That last command did not run: it touches this presentation's files directly, and the presentation's content can only be read or written through `slidra` commands (other commands that don't touch presentation files are unrestricted).",
+    "This was not the author refusing you, and there is no need to ask them -- switch to the approach below and continue:",
     advice,
-    "請接著把剛才沒做完的部分做完，不要再送同一條被擋下的命令。",
+    "Please continue and finish what you were doing, and do not send the same blocked command again.",
   ].join("\n");
 }
 
@@ -176,12 +176,12 @@ function refusalCorrectionPrompt(hints: string[]): string {
  * told the agent to do instead.
  */
 function refusalNotice(hint: string | undefined): string {
-  const head = "Slidra 擋下了 agent 直接動簡報檔案的命令（簡報只能透過 slidra 命令改）";
-  return hint === undefined ? `${head}。` : `${head}，並告訴它：${hint}`;
+  const head = "Slidra blocked the agent's command that directly touched the presentation's files (the presentation can only be changed through slidra commands)";
+  return hint === undefined ? `${head}.` : `${head}, and told it: ${hint}`;
 }
 
 const TURN_ABORTED_BY_REFUSAL_MESSAGE =
-  "這一輪到此為止：Slidra 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 slidra 命令重新發送即可。";
+  "This turn stops here: Slidra blocked the command above that directly touched the presentation's files, and this agent treats a refusal as aborting the whole turn -- the author did not press Stop. Just resend using a slidra command.";
 
 /** The model a live session runs on, as its adapter reports it at `session/new`. */
 export interface AgentModel {
@@ -464,12 +464,12 @@ export class AgentChatSession extends EventEmitter {
    */
   async setModel(modelId: string): Promise<void> {
     if (this.relayingCurrentTurn || this.pendingTurns.length > 0) {
-      throw new SlidraError("agent 正在回覆中，等這一輪結束再切換模型");
+      throw new SlidraError("The agent is currently replying, wait for this turn to finish before switching models");
     }
     await this.ensureSession();
     const choice = this.modelChoices.find((candidate) => candidate.id === modelId);
     if (!choice || !this.modelMechanism || !this.connection || !this.sessionId) {
-      throw new SlidraError(`${this.config.label} 沒有這個模型：${modelId}`);
+      throw new SlidraError(`${this.config.label} has no such model: ${modelId}`);
     }
     await this.applyModel(this.connection, this.sessionId, this.modelMechanism, choice);
   }
@@ -593,14 +593,14 @@ export class AgentChatSession extends EventEmitter {
       // so the next message starts from a clean spawn.
       const reject = this.activeReject;
       this.activeReject = undefined;
-      reject?.(new SlidraError(`${this.config.label} 的連線在建立過程中被停止，請重新發送訊息`));
+      reject?.(new SlidraError(`${this.config.label}'s connection was stopped while being established, please resend the message`));
     } else if (dropped === 0) {
-      throw new SlidraError("目前沒有進行中的回合可以停止");
+      throw new SlidraError("There is no turn currently in progress to stop");
     }
 
     if (dropped > 0) {
       this.emitTyped("chat-notice", {
-        text: `已停止；另有 ${dropped} 則尚未開始的訊息一併取消。`,
+        text: `Stopped; ${dropped} additional message(s) that had not started were also cancelled.`,
       });
     }
   }
@@ -632,12 +632,12 @@ export class AgentChatSession extends EventEmitter {
       if (context !== null) {
         // An empty message with comments pinned means "do what the pins
         // say" — the pins are the request, so the agent is told exactly
-        // that rather than being handed an empty 【作者的訊息】 block to
+        // that rather than being handed an empty [The author's message] block to
         // interpret on its own.
         prompt =
           text.trim() === ""
             ? `${context}\n\n${NO_MESSAGE_INSTRUCTION}`
-            : `${context}\n\n【作者的訊息】\n${text}`;
+            : `${context}\n\n[The author's message]\n${text}`;
       } else if (text.trim() === "") {
         // Nothing typed and nothing pinned: there is no request at all.
         this.emitTyped("chat-error", { message: EMPTY_MESSAGE_MESSAGE });
@@ -651,7 +651,7 @@ export class AgentChatSession extends EventEmitter {
     this.relayingCurrentTurn = true;
     this.cancelledUntilNextPrompt = false;
     if (this.droppedOutsideTurn > 0) {
-      console.warn(`[agent] 上一輪停止後仍收到 ${this.droppedOutsideTurn} 則 session/update，已全部丟棄`);
+      console.warn(`[agent] still received ${this.droppedOutsideTurn} session/update(s) after the last turn stopped, all discarded`);
       this.droppedOutsideTurn = 0;
     }
     this.refusedOutsideTurnLogged = false;
@@ -834,7 +834,7 @@ export class AgentChatSession extends EventEmitter {
     if (generation !== this.generation) return;
     const reject = this.activeReject;
     this.activeReject = undefined;
-    reject?.(new SlidraError(`${this.config.label} 的連線已中斷（${reason}），請重新發送訊息`));
+    reject?.(new SlidraError(`${this.config.label}'s connection was lost (${reason}), please resend the message`));
     void this.teardownSession();
   }
 
@@ -867,10 +867,10 @@ export class AgentChatSession extends EventEmitter {
     // mid-setup or mid-turn. Both leave stdio dead, so both must reach for
     // `activeReject` directly — nothing else notices on its own (fix 1).
     child.once("error", (error) => {
-      this.handleChildDown(generation, `啟動失敗：${error.message}`);
+      this.handleChildDown(generation, `Failed to start: ${error.message}`);
     });
     child.once("exit", (code, signal) => {
-      this.handleChildDown(generation, signal ? `收到訊號 ${signal}` : `結束代碼 ${code}`);
+      this.handleChildDown(generation, signal ? `received signal ${signal}` : `exit code ${code}`);
     });
 
     const stream = acp.ndJsonStream(
@@ -918,7 +918,7 @@ export class AgentChatSession extends EventEmitter {
       // `RequestError.authRequired()` from the other side of the pipe.
       if (jsonRpcErrorCode(error) === AUTH_REQUIRED_CODE) {
         throw new SlidraError(
-          `${this.config.label} 尚未登入。請在終端機完成 ${this.config.label} 的登入流程後，再重新發送訊息。`,
+          `${this.config.label} is not logged in yet. Please complete ${this.config.label}'s login process in a terminal, then resend the message.`,
         );
       }
       throw error;
@@ -943,7 +943,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     const brief = buildEditorialBrief(this.presentationId);
     const executionGuidance = this.config.kind === "codex"
-      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 slidra 命令時請使用工具的 sandbox_permissions=require_escalated，讓 Slidra 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 Slidra 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；slidra cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
+      ? "\n\nRunning Codex commands: this session is a read-only sandbox. When running slidra commands, use the tool's sandbox_permissions=require_escalated so Slidra can check and authorize each command individually; do not try to modify anything in the read-only sandbox first. This also lets Slidra acquire the editing lock before execution and fold the undo snapshot into the same turn. Never request permanent authorization. Reading the files in your work directory (AGENTS.md, reference/*.md, .agents/skills/*/SKILL.md) is your native file access: inside the sandbox, just read the relative path with cat or sed -- this kind of read-only command needs no authorization; slidra cat only reads the presentation's own virtual paths (slides/001.svg, project.json, plan/outline.md), it cannot read files in the work directory."
       : "";
     await connection.prompt({
       sessionId: this.sessionId,
@@ -995,7 +995,7 @@ export class AgentChatSession extends EventEmitter {
         if (this.outsideTurn()) {
           if (!this.refusedOutsideTurnLogged) {
             this.refusedOutsideTurnLogged = true;
-            console.warn("[agent] 沒有進行中的回合，拒絕 agent 的命令請求（已停止的回合仍在送出請求）");
+            console.warn("[agent] no turn in progress, refusing the agent's command request (a stopped turn is still sending requests)");
           }
           return { outcome: { outcome: "cancelled" } };
         }

@@ -116,7 +116,7 @@ export async function readSkillCommands(dir: string, source: SlashCommandSource)
     entries = await readdir(dir, { withFileTypes: true });
   } catch (error) {
     if (isMissingDirError(error)) return [];
-    console.warn(`讀取 skill 目錄失敗（${dir}）：${describeError(error)}`);
+    console.warn(`Failed to read skill directory (${dir}): ${describeError(error)}`);
     return [];
   }
 
@@ -133,7 +133,7 @@ export async function readSkillCommands(dir: string, source: SlashCommandSource)
       text = await readFile(skillPath, "utf8");
     } catch (error) {
       if (isMissingDirError(error)) continue;
-      console.warn(`讀取 ${skillPath} 失敗：${describeError(error)}`);
+      console.warn(`Failed to read ${skillPath}: ${describeError(error)}`);
       continue;
     }
     const { name, description } = parseSkillFrontmatter(text, entry.name);

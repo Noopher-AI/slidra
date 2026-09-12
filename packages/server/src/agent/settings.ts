@@ -56,10 +56,10 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new SlidraError(`設定檔格式錯誤，不是合法的 JSON：${filePath}`);
+    throw new SlidraError(`Malformed settings file, not valid JSON: ${filePath}`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new SlidraError(`設定檔格式錯誤，最外層必須是一個物件：${filePath}`);
+    throw new SlidraError(`Malformed settings file, the outermost value must be an object: ${filePath}`);
   }
 
   const models = readModels((parsed as Record<string, unknown>).models, filePath);
@@ -70,21 +70,21 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   if (value === "claude" || value === "codex") {
     return { agent: value, models };
   }
-  throw new SlidraError(`設定檔的 agent 欄位值無效（必須是 claude、codex 或 null）：${filePath}`);
+  throw new SlidraError(`Settings file's agent field is invalid (must be claude, codex, or null): ${filePath}`);
 }
 
 /** `models` is `{ claude?: string, codex?: string }`; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */
 function readModels(value: unknown, filePath: string): Partial<Record<AgentKind, string>> {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new SlidraError(`設定檔的 models 欄位必須是物件：${filePath}`);
+    throw new SlidraError(`Settings file's models field must be an object: ${filePath}`);
   }
   const models: Partial<Record<AgentKind, string>> = {};
   for (const kind of ["claude", "codex"] as const) {
     const id = (value as Record<string, unknown>)[kind];
     if (id === undefined) continue;
     if (typeof id !== "string" || id === "") {
-      throw new SlidraError(`設定檔的 models.${kind} 必須是非空字串：${filePath}`);
+      throw new SlidraError(`Settings file's models.${kind} must be a non-empty string: ${filePath}`);
     }
     models[kind] = id;
   }

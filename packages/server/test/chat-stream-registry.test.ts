@@ -42,7 +42,7 @@ async function serveRegistry(registry: ReturnType<typeof createChatStreamRegistr
       registry.open(fakeChatSession, res);
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: error instanceof SlidraError ? error.message : "未知錯誤" }));
+      res.end(JSON.stringify({ error: error instanceof SlidraError ? error.message : "Unknown error" }));
     }
   });
   servers.push(server);
@@ -73,6 +73,6 @@ it("once shutdown has begun, /api/chat/stream returns an explicit error instead 
   const response = await fetch(url);
 
   expect(response.status).toBe(500);
-  expect(await response.json()).toEqual({ error: "伺服器正在關閉" });
+  expect(await response.json()).toEqual({ error: "Server is shutting down" });
   expect(response.headers.get("content-type")).not.toContain("text/event-stream");
 });

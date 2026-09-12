@@ -109,7 +109,7 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
         // Shutdown already started (ticket #5 fix 3): conclude the
         // request instead of opening a stream server.close() would then
         // wait on forever.
-        throw new SlidraError("伺服器正在關閉");
+        throw new SlidraError("Server is shutting down");
       }
       await ensureWatcher();
       if (disposed) {
@@ -117,7 +117,7 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
         // watcher start — the exact race this fix closes. dispose() has
         // already seen no live streams and torn the watcher down; opening
         // one now would leave a stream server.close() waits on forever.
-        throw new SlidraError("伺服器正在關閉");
+        throw new SlidraError("Server is shutting down");
       }
       if (fatalError) {
         throw fatalError;

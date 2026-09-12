@@ -342,7 +342,7 @@ describe("text reads (`GET /api/files/`) on a binary file — unchanged", () => 
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("assets/photo.png 是二進位資產，無法以文字讀取");
+    expect(body.error).toBe("assets/photo.png is a binary asset, cannot be read as text");
   });
 });
 
@@ -405,7 +405,7 @@ async function serveRawDirectly(presentationId: string): Promise<string> {
       virtualPath = decodeURIComponent(new URL(req.url!, "http://127.0.0.1").pathname.slice(1));
     } catch {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: "路徑編碼無效" }));
+      res.end(JSON.stringify({ error: "Invalid path encoding" }));
       return;
     }
     void handleRawRequest(presentationId, virtualPath, res, req.headers.range);
@@ -500,7 +500,7 @@ describe("GET /api/raw/<virtual path> HTTP Range support", () => {
 
     expect(response.status).toBe(416);
     expect(response.headers.get("content-range")).toBe("bytes */256");
-    expect(body.error).toContain("多重區間");
+    expect(body.error).toContain("Multi-range");
   });
 
   it("a range that falls entirely past the end of file returns 416, not the whole file", async () => {

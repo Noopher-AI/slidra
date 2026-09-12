@@ -268,7 +268,7 @@ describe("slidra/command.ts: runJsonCommand (envelope parsing, exit-code-blind)"
   it("stdout is empty → ok:false, falls back to a fixed message when stderr is also empty", async () => {
     await installFakeBin("", 1, "");
     const result = await runJsonCommand(["cat", "p1", "project.json"]);
-    expect(result).toEqual({ ok: false, message: "命令執行失敗" });
+    expect(result).toEqual({ ok: false, message: "Command execution failed" });
   });
 
   it("stdout has multiple lines (extra debug output before the envelope) → not a legal envelope, ok:false", async () => {
@@ -360,7 +360,7 @@ describe("slidra/reads.ts: read decoding", () => {
     // 0x89 can never be a valid UTF-8 lead byte.
     await installFakeCat(Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"));
     await expect(readPresentationText("p1", "assets/photo.png")).rejects.toThrow(
-      "assets/photo.png 是二進位資產，無法以文字讀取",
+      "assets/photo.png is a binary asset, cannot be read as text",
     );
   });
 });

@@ -46,7 +46,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 // the same path a real not-logged-in CLI would take.
 //
 // `runServeCli` blocks until SIGINT/SIGTERM (real CLI usage) — tests start
-// it, wait for its one "已啟動" console.log line, then synthesize SIGINT via
+// it, wait for its one "started" console.log line, then synthesize SIGINT via
 // `process.emit` (fires the listener without invoking the OS default/
 // killing this test process) to let it shut down cleanly.
 
@@ -107,12 +107,12 @@ interface StartedCli {
   shutdown: () => Promise<number>;
 }
 
-/** Starts `runServeCli` and waits for both its "已啟動" line and the one agent-status line after it, before returning control to the test. */
+/** Starts `runServeCli` and waits for both its "started" line and the one agent-status line after it, before returning control to the test. */
 async function startCli(argv: string[]): Promise<StartedCli> {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const runPromise = runServeCli(argv);
 
-  // The agent status line is printed right after "已啟動" — waiting for two
+  // The agent status line is printed right after "started" — waiting for two
   // calls means both have landed before the test does anything else.
   await vi.waitFor(
     () => {
@@ -122,7 +122,7 @@ async function startCli(argv: string[]): Promise<StartedCli> {
   );
 
   const logs = logSpy.mock.calls.map((call) => String(call[0]));
-  const startedLine = logs.find((line) => line.includes("已啟動"));
+  const startedLine = logs.find((line) => line.includes("started"));
   const match = startedLine && /(http:\/\/\S+)/.exec(startedLine);
   if (!match) throw new Error(`no URL found in logs: ${JSON.stringify(logs)}`);
 
@@ -155,8 +155,8 @@ describe("runServeCli", () => {
 
     const cli = await startCli([id, "--port", "0", "--agent", "claude"]);
     try {
-      expect(cli.logs[0]).toContain("Slidra 已啟動：");
-      const agentLines = cli.logs.filter((line) => line.startsWith("使用的 agent") || line.includes("尚未選擇 agent"));
+      expect(cli.logs[0]).toContain("Slidra started:");
+      const agentLines = cli.logs.filter((line) => line.startsWith("Using agent") || line.includes("No agent selected"));
       expect(agentLines).toHaveLength(1);
       expect(agentLines[0]).toContain("Claude Code");
       expect(agentLines[0]).toContain("claude auth login");
@@ -172,7 +172,7 @@ describe("runServeCli", () => {
     const id = await openFreshPresentation();
 
     const cli = await startCli([id, "--port", "0"]);
-    expect(cli.logs).toContain("尚未選擇 agent，聊天功能待設定；serve 其餘功能照常。");
+    expect(cli.logs).toContain("No agent selected yet, chat is not configured; serve's other features work as usual.");
 
     expect(await cli.shutdown()).toBe(0);
   });
@@ -216,14 +216,14 @@ describe("runServeCli", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const cli = await startCli([id, "--port", "0"]);
-    expect(cli.logs).toContain("尚未選擇 agent，聊天功能待設定；serve 其餘功能照常。");
+    expect(cli.logs).toContain("No agent selected yet, chat is not configured; serve's other features work as usual.");
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
 
     expect(await cli.shutdown()).toBe(0);
   });
 
-  it("still returns 1, before ever printing \"已啟動\", for a failure unrelated to agent selection (unknown presentation id)", async () => {
+  it("still returns 1, before ever printing \"started\", for a failure unrelated to agent selection (unknown presentation id)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 

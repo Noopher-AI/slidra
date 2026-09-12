@@ -248,16 +248,16 @@ describe("buildCommentContext", () => {
     expect(buildCommentContext([])).toBeNull();
   });
 
-  it("formats each comment as '<slidePath> <target> <commentId>：<text>', one per line, in the given order", () => {
+  it("formats each comment as '<slidePath> <target> <commentId>: <text>', one per line, in the given order", () => {
     const result = buildCommentContext([
-      { id: "c-1", slidePath: "slides/001.svg", target: "el-a", author: "author", created: "t1", text: "第一則" },
-      { id: "c-2", slidePath: "slides/002.svg", target: "page", author: "author", created: "t2", text: "第二則" },
+      { id: "c-1", slidePath: "slides/001.svg", target: "el-a", author: "author", created: "t1", text: "first note" },
+      { id: "c-2", slidePath: "slides/002.svg", target: "page", author: "author", created: "t2", text: "second note" },
     ]);
     expect(result).toBe(
-      "【作者釘選的留言】\n" +
-        "以下是作者釘在這份簡報上的留言，隨這則訊息一起給你。每一行的格式是「投影片路徑 目標 留言識別碼」，冒號之後是留言原文；目標是元素識別碼，或 page（代表整頁）。\n" +
-        "slides/001.svg el-a c-1：第一則\n" +
-        "slides/002.svg page c-2：第二則",
+      "[Comments the author pinned]\n" +
+        "Below are the comments the author pinned on this presentation, sent along with this message. Each line has the format \"slide-path target comment-id\", followed by a colon and the comment's original text; the target is an element id, or page (meaning the whole page).\n" +
+        "slides/001.svg el-a c-1: first note\n" +
+        "slides/002.svg page c-2: second note",
     );
   });
 });
@@ -316,9 +316,9 @@ describe("chat: the editorial brief and prompt shape", () => {
 
     const prompts = promptEntries(await readFakeAgentLog());
     const sentText = (prompts[1].prompt[0] as { text: string }).text;
-    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}：把這個標題改短一點`);
-    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}：整頁重寫成三個要點`);
-    expect(sentText.endsWith("【作者的訊息】\n麻煩照留言處理")).toBe(true);
+    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}: 把這個標題改短一點`);
+    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}: 整頁重寫成三個要點`);
+    expect(sentText.endsWith("[The author's message]\n麻煩照留言處理")).toBe(true);
   });
 
   it("reuses the same sessionId across two separate messages", async () => {
@@ -458,7 +458,7 @@ describe("chat: cancel", () => {
     await sse.close();
 
     const notice = collected.find((e) => e.event === "chat-notice");
-    expect((notice!.data as { text: string }).text).toContain("1 則尚未開始的訊息");
+    expect((notice!.data as { text: string }).text).toContain("1 additional message(s) that had not started");
     // The fake agent logs every prompt it receives; the queued one never got sent.
     const log = await readFile(logPath, "utf-8");
     expect(log).not.toContain("排在後面的第二則");
@@ -468,7 +468,7 @@ describe("chat: cancel", () => {
     const server = await serve(fakeAgent({}));
     const response = await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
     expect(response.status).toBe(409);
-    expect(((await response.json()) as { error: string }).error).toContain("沒有進行中的回合");
+    expect(((await response.json()) as { error: string }).error).toContain("no turn currently in progress");
   });
 });
 
@@ -487,7 +487,7 @@ describe("chat: not logged in", () => {
     expect(errorEvent).toBeDefined();
     const message = (errorEvent!.data as { message: string }).message;
     expect(message).toContain("Claude Code");
-    expect(message).toMatch(/登入/);
+    expect(message).toMatch(/not logged in/);
   });
 });
 
@@ -614,7 +614,7 @@ describe("chat: session/request_permission — presentation files must go throug
     await sse.close();
 
     const texts = collected.filter((e) => e.event === "chat-notice").map((e) => (e.data as { text: string }).text);
-    expect(texts.some((text) => text.includes("不是作者按了停止"))).toBe(true);
+    expect(texts.some((text) => text.includes("the author did not press Stop"))).toBe(true);
   });
 
   it("forwards the adapter's own stderr to serve's log, tagged with its name", async () => {
@@ -769,11 +769,11 @@ describe("chat: HTTP method gate", () => {
 
     const otherPost = await fetch(`${server.url}/api/presentation`, { method: "POST" });
     expect(otherPost.status).toBe(405);
-    expect((await otherPost.json()).error).toBe("只支援 GET");
+    expect((await otherPost.json()).error).toBe("Only GET is supported");
 
     const chatDelete = await fetch(`${server.url}/api/chat`, { method: "DELETE" });
     expect(chatDelete.status).toBe(405);
-    expect((await chatDelete.json()).error).toBe("只支援 GET");
+    expect((await chatDelete.json()).error).toBe("Only GET is supported");
 
     const stillGet = await fetch(`${server.url}/api/presentation`);
     expect(stillGet.status).toBe(200);
@@ -990,7 +990,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
         expect(errorEvent).toBeDefined();
         const message = (errorEvent!.data as { message: string }).message;
         expect(message).toContain("Claude Code");
-        expect(message).toMatch(/重新發送訊息/);
+        expect(message).toMatch(/resend the message/);
 
         // Second message: a fresh subprocess spawn (the marker means it
         // will not exit again this time) must start a genuinely working
@@ -1118,7 +1118,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("assets/pic.bin 是二進位資產，無法以文字讀取");
+    expect(errorEntry?.readTextFileError?.message).toBe("assets/pic.bin is a binary asset, cannot be read as text");
   });
 
   it("honours line (1-based) and limit (max line count) per ACP semantics", async () => {
@@ -1249,7 +1249,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     // Explicit refusal — never resolved against the real filesystem — and
     // the message names no real path at all, not even the one the agent
     // itself sent.
-    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：路徑不在這個工作階段的範圍內");
+    expect(errorEntry?.readTextFileError?.message).toBe("File not found: path is outside this session's scope");
     expect(errorEntry?.readTextFileError?.message).not.toContain("/etc/passwd");
   });
 
@@ -1322,8 +1322,8 @@ describe("chat: the whole loop — read via the file method, request permission,
     // produces — the same text `session.ts` sends as the very first
     // prompt — is what makes "the agent could have constructed this
     // command from the brief alone" true instead of merely assumed.
-    const briefIdMatch = /識別碼是：(\S+)/.exec(buildEditorialBrief(id));
-    if (!briefIdMatch) throw new Error("test fixture: 編輯規約 does not name a presentation id");
+    const briefIdMatch = /presentation ID is: (\S+)/.exec(buildEditorialBrief(id));
+    if (!briefIdMatch) throw new Error("test fixture: editorial brief does not name a presentation id");
     const idFromBrief = briefIdMatch[1];
     expect(idFromBrief).toBe(id); // sanity: the brief really does name this presentation
 
@@ -1456,7 +1456,7 @@ describe("chat: the author can see the command run", () => {
     // With no tag, there's no follow-up status update.
     expect(events.filter((event) => event.event === "chat-command-update")).toEqual([]);
     const notice = events.find((event) => event.event === "chat-notice");
-    expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
+    expect((notice!.data as { text: string }).text).toContain("blocked the agent's command that directly touched the presentation's files");
   });
 
   it("leaves a command's own failure alone — only a refused one gets Slidra's wording", async () => {

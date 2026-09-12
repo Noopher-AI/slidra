@@ -68,7 +68,7 @@ export async function runJsonCommand<Data = unknown>(args: string[]): Promise<Co
   const envelope = parseEnvelope(stdout);
   if (envelope === null) {
     const message = stderr.trim();
-    return { ok: false, message: message.length > 0 ? message : "命令執行失敗" };
+    return { ok: false, message: message.length > 0 ? message : "Command execution failed" };
   }
   if (envelope.ok) {
     return { ok: true, data: envelope.data as Data, message: envelope.message };

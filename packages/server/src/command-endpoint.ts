@@ -212,10 +212,10 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
     raw = await readLimitedBody(req, MAX_COMMAND_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      sendJson(res, 400, { error: `請求內容過大（上限 ${MAX_COMMAND_BODY_BYTES} 位元組）` });
+      sendJson(res, 400, { error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)` });
       return;
     }
-    sendJson(res, 400, { error: "請求內容讀取失敗" });
+    sendJson(res, 400, { error: "Failed to read request body" });
     return;
   }
 
@@ -223,25 +223,25 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
   try {
     body = JSON.parse(raw);
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   if (typeof body !== "object" || body === null) {
-    sendJson(res, 400, { error: "請求內容必須是物件" });
+    sendJson(res, 400, { error: "Request body must be an object" });
     return;
   }
 
   const { name, input } = body as { name?: unknown; input?: unknown };
   if (typeof name !== "string") {
-    sendJson(res, 400, { error: "name 必須是字串" });
+    sendJson(res, 400, { error: "name must be a string" });
     return;
   }
   if (!COMMAND_WHITELIST.includes(name)) {
-    sendJson(res, 403, { error: `這個端點不接受命令：${name}` });
+    sendJson(res, 403, { error: `This endpoint does not accept command: ${name}` });
     return;
   }
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    sendJson(res, 400, { error: "input 必須是物件" });
+    sendJson(res, 400, { error: "input must be an object" });
     return;
   }
 
@@ -260,7 +260,7 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
   } catch (error) {
     // A thrown error out of encoding/spawning is a bug or an unclassified
     // failure, never a user-facing "not found".
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "命令執行失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Command execution failed" });
     return;
   }
 

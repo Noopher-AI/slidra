@@ -81,7 +81,7 @@ describe("probeLogin", () => {
     expect(result.loggedIn).toBe(false);
     expect(result.detail).toBeDefined();
     expect(result.detail!.length).toBeLessThan(300);
-    expect(result.detail).toMatch(/截斷/);
+    expect(result.detail).toMatch(/truncated/);
   });
 
   it("passes the centralized probeCommand from adapters.ts to the runner (claude)", async () => {

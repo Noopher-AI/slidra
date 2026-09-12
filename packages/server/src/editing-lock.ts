@@ -30,7 +30,7 @@ export const HUMAN_LEASE_MAX_MS = 5000;
 /** Thrown by `beginHumanEdit` when the agent currently holds the floor. */
 export class EditingLockConflictError extends Error {
   constructor() {
-    super("agent 正在編輯中，請稍候");
+    super("The agent is currently editing, please wait.");
   }
 }
 

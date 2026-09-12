@@ -25,7 +25,7 @@ const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 export function resolveSlidraBin(): string {
   const bin = process.env.SLIDRA_BIN;
   if (!bin) {
-    throw new SlidraError("未設定 SLIDRA_BIN，無法執行 slidra 命令");
+    throw new SlidraError("SLIDRA_BIN is not set, cannot run slidra commands");
   }
   return bin;
 }
@@ -65,6 +65,6 @@ export async function runSlidra(args: string[]): Promise<SlidraProcessResult> {
     // SLIDRA_BIN's value is never echoed here (ADR-0004): it may be a
     // real filesystem path a test or a misconfigured environment pointed
     // somewhere that leaks host layout.
-    throw new SlidraError("無法執行 slidra");
+    throw new SlidraError("Failed to run slidra");
   }
 }

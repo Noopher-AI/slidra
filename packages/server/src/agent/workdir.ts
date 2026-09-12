@@ -83,7 +83,7 @@ async function populateWorkdirTree(realDir: string, node: Extract<WorkdirNode, {
   } catch {
     // realDir is a real filesystem path inside the deployed work directory
     // (ADR-0004) — never quote it, even for a plain permission/I-O error.
-    throw new SlidraError("讀取工作目錄時發生錯誤");
+    throw new SlidraError("Error reading the work directory");
   }
   for (const entry of entries) {
     const realPath = path.join(realDir, entry.name);
@@ -137,12 +137,12 @@ export async function readAgentWorkdirFile(workdirReal: string, relativePath: st
   try {
     buffer = await readFile(node.realPath);
   } catch {
-    throw new SlidraError(`讀取檔案時發生錯誤：${relativePath}`);
+    throw new SlidraError(`Error reading file: ${relativePath}`);
   }
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
-    throw new SlidraError(`${relativePath} 是二進位資產，無法以文字讀取`);
+    throw new SlidraError(`${relativePath} is a binary asset, cannot be read as text`);
   }
 }
 
@@ -289,7 +289,7 @@ export async function deployAgentWorkdir(presentationId: string): Promise<string
     // Never echo the underlying fs error's own message here — it embeds a
     // real filesystem path (ADR-0004, third layer), and this error can
     // surface all the way out to `startServe`'s caller.
-    throw new SlidraError("部署 agent 工作目錄時發生錯誤");
+    throw new SlidraError("Error deploying the agent work directory");
   }
 
   return realpath(target);

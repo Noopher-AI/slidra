@@ -92,7 +92,7 @@ export async function watchPresentation(
     // above and this call. That raw error's message very likely embeds the
     // real work directory path (ADR-0004), exactly like the asynchronous
     // `error` event handled below, so it gets the same sanitised treatment.
-    throw new SlidraError("監看簡報檔案時發生錯誤");
+    throw new SlidraError("Error watching presentation files");
   }
 
   watcher.on("error", () => {
@@ -107,7 +107,7 @@ export async function watchPresentation(
     watcher.close();
     // The underlying error object very likely embeds the real work
     // directory path (ADR-0004) — it is never logged or rethrown verbatim.
-    onError(new SlidraError("監看簡報檔案時發生錯誤"));
+    onError(new SlidraError("Error watching presentation files"));
   });
 
   return {

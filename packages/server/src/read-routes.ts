@@ -129,7 +129,7 @@ export const EMPTY_EFFECT_PLAN = {
 export async function handleEffectsRoute(presentationId: string, virtualPath: string, res: ServerResponse): Promise<void> {
   const project = await loadProject(presentationId);
   if (!project.slides.includes(virtualPath)) {
-    sendJson(res, 404, { error: `不是投影片：${virtualPath}` });
+    sendJson(res, 404, { error: `Not a slide: ${virtualPath}` });
     return;
   }
   const result = await runJsonCommand<{ effects: unknown; steps: unknown; transition: unknown }>([

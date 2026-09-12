@@ -82,7 +82,7 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
   }
   const spec = match[1].trim();
   if (spec.includes(",")) {
-    return { kind: "unsatisfiable", reason: "不支援多重區間（multi-range）請求，一次只能請求一個位元組區間" };
+    return { kind: "unsatisfiable", reason: "Multi-range requests are not supported, only one byte range may be requested at a time" };
   }
   const parts = /^(\d*)-(\d*)$/.exec(spec);
   if (parts === null || (parts[1] === "" && parts[2] === "")) {
@@ -94,7 +94,7 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
     // Suffix range: the last N bytes.
     const suffixLength = Number(rawEnd);
     if (suffixLength === 0 || totalSize === 0) {
-      return { kind: "unsatisfiable", reason: "請求的位元組區間超出檔案範圍" };
+      return { kind: "unsatisfiable", reason: "Requested byte range is out of bounds" };
     }
     const start = Math.max(0, totalSize - suffixLength);
     return { kind: "satisfiable", start, end: totalSize - 1 };
@@ -102,12 +102,12 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
 
   const start = Number(rawStart);
   if (start >= totalSize) {
-    return { kind: "unsatisfiable", reason: "請求的位元組區間超出檔案範圍" };
+    return { kind: "unsatisfiable", reason: "Requested byte range is out of bounds" };
   }
   // An absent or over-long end is clamped to the last byte.
   const end = rawEnd === "" ? totalSize - 1 : Math.min(Number(rawEnd), totalSize - 1);
   if (end < start) {
-    return { kind: "unsatisfiable", reason: "請求的位元組區間無效" };
+    return { kind: "unsatisfiable", reason: "Requested byte range is invalid" };
   }
   return { kind: "satisfiable", start, end };
 }

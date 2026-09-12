@@ -101,11 +101,11 @@ async function runAssetImport(presentationId: string, sourceBasename: string, by
     await writeFile(filePath, bytes);
     const result = await runJsonCommand<AssetImportData>(["asset", "import", presentationId, filePath]);
     if (!result.ok) {
-      throw new AssetImportFailedError(result.failureKind === "not-found" ? "匯入失敗" : result.message);
+      throw new AssetImportFailedError(result.failureKind === "not-found" ? "Import failed" : result.message);
     }
     const data = result.data;
     if (typeof data !== "object" || data === null || typeof (data as AssetImportData).path !== "string") {
-      throw new AssetImportFailedError("匯入失敗");
+      throw new AssetImportFailedError("Import failed");
     }
     return data as AssetImportData;
   } finally {
@@ -126,7 +126,7 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   const hasUrl = typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
 
   if (hasName && hasUrl) {
-    sendJson(res, 400, { error: `不可同時提供 ${ASSET_NAME_HEADER} 與 ${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}` });
     return;
   }
 
@@ -137,14 +137,14 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
 
   const sourceName = typeof sourceNameHeader === "string" ? sourceNameHeader : "";
   if (sourceName.trim() === "") {
-    sendJson(res, 400, { error: `缺少標頭：${ASSET_NAME_HEADER} 或 ${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Missing header: ${ASSET_NAME_HEADER} or ${ASSET_URL_HEADER}` });
     return;
   }
   let decodedSourceName: string;
   try {
     decodedSourceName = decodeURIComponent(sourceName);
   } catch {
-    sendJson(res, 400, { error: `標頭編碼無效：${ASSET_NAME_HEADER}` });
+    sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_NAME_HEADER}` });
     return;
   }
 
@@ -153,10 +153,10 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
     body = await readLimitedBinaryBody(req, MAX_ASSET_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      sendJson(res, 400, { error: `請求內容過大（上限 ${MAX_ASSET_BODY_BYTES} 位元組）` });
+      sendJson(res, 400, { error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)` });
       return;
     }
-    sendJson(res, 400, { error: "請求內容讀取失敗" });
+    sendJson(res, 400, { error: "Failed to read request body" });
     return;
   }
 
@@ -164,7 +164,7 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   try {
     data = await runAssetImport(presentationId, decodedSourceName, new Uint8Array(body));
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "匯入失敗" });
+    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
     return;
   }
 
@@ -191,18 +191,18 @@ async function downloadAssetSource(url: string, maxBytes: number): Promise<Uint8
   try {
     response = await fetch(url);
   } catch {
-    throw new AssetImportFailedError(`無法下載來源：${url}`);
+    throw new AssetImportFailedError(`Failed to download source: ${url}`);
   }
   if (!response.ok) {
-    throw new AssetImportFailedError(`無法下載來源，伺服器回應 ${response.status}：${url}`);
+    throw new AssetImportFailedError(`Failed to download source, server responded ${response.status}: ${url}`);
   }
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && Number(contentLength) > maxBytes) {
-    throw new AssetImportFailedError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+    throw new AssetImportFailedError(`Downloaded content too large (limit ${maxBytes} bytes): ${url}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > maxBytes) {
-    throw new AssetImportFailedError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+    throw new AssetImportFailedError(`Downloaded content too large (limit ${maxBytes} bytes): ${url}`);
   }
   return bytes;
 }
@@ -218,12 +218,12 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
   try {
     url = decodeURIComponent(urlHeader);
   } catch {
-    sendJson(res, 400, { error: `標頭編碼無效：${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_URL_HEADER}` });
     return;
   }
 
   if (!URL_SCHEME_PATTERN.test(url)) {
-    sendJson(res, 400, { error: `${ASSET_URL_HEADER} 必須是 http(s) 網址` });
+    sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
     return;
   }
 
@@ -232,7 +232,7 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
     const bytes = await downloadAssetSource(url, MAX_ASSET_BODY_BYTES);
     data = await runAssetImport(presentationId, sourceBasenameOfUrl(url), bytes);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "匯入失敗" });
+    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
     return;
   }
 

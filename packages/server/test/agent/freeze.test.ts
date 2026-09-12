@@ -344,7 +344,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const duringTurn = await fetch(`${server.url}/api/undo`, { method: "POST" });
     expect(duringTurn.status).toBe(409);
     const duringBody = (await duringTurn.json()) as { error: string };
-    expect(duringBody.error).toBe("agent 正在編輯中，請稍候");
+    expect(duringBody.error).toBe("The agent is currently editing, please wait.");
 
     await waitForFrozen(server, false);
     const afterTurn = await fetch(`${server.url}/api/undo`, { method: "POST" });
@@ -437,7 +437,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     for (const [i, response] of rejectionResponses.entries()) {
       expect(response.status, `${payloads[i].name} 應該在凍結期間被擋下`).toBe(409);
       const body = (await response.json()) as { error: string };
-      expect(body.error).toBe("agent 正在編輯中，請稍候");
+      expect(body.error).toBe("The agent is currently editing, please wait.");
     }
     // The 409 refusal must be a real refusal, not a "runs anyway": none of
     // the four elements targeted by the rejected calls above moved. Scoped
@@ -489,7 +489,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     });
     expect(frozenResponse.status).toBe(409);
     const frozenBody = (await frozenResponse.json()) as { error: string };
-    expect(frozenBody.error).toBe("agent 正在編輯中，請稍候");
+    expect(frozenBody.error).toBe("The agent is currently editing, please wait.");
     expect(await listAssets(id)).toEqual([]);
 
     await waitForFrozen(server, false);

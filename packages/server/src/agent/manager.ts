@@ -50,7 +50,7 @@ export interface AgentStatus {
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
 export class AgentSwitchLockedError extends SlidraError {
   constructor() {
-    super("agent 正在編輯中，請稍候");
+    super("The agent is currently editing, please wait.");
   }
 }
 
@@ -276,7 +276,7 @@ export class AgentManager {
   /**
    * Starts a fresh conversation with the same agent: tears the current ACP
    * session down and builds a new one in its place. The adapter process,
-   * its `session/new`, and the 編輯規約 all happen again, so the agent
+   * its `session/new`, and the editing contract all happen again, so the agent
    * begins with no memory of the previous turns — the server side of the
    * chat panel's "new session" button.
    *
@@ -289,7 +289,7 @@ export class AgentManager {
       throw new AgentSwitchLockedError();
     }
     if (this.current === null) {
-      throw new SlidraError("尚未選擇 agent，沒有可以重開的對話");
+      throw new SlidraError("No agent selected, there is no conversation to restart");
     }
 
     const previousSession = this.session;
@@ -306,7 +306,7 @@ export class AgentManager {
   /** Establishes the current agent's session ahead of the first message (`POST /api/agent/session`), so `status().models` fills in. */
   async warmSession(): Promise<AgentStatus> {
     if (!this.session) {
-      throw new SlidraError("尚未選擇 agent，無法建立對話");
+      throw new SlidraError("No agent selected, cannot create a conversation");
     }
     await this.session.warm();
     return this.status();
@@ -320,7 +320,7 @@ export class AgentManager {
    */
   async setModel(modelId: string): Promise<AgentStatus> {
     if (!this.session || this.current === null) {
-      throw new SlidraError("尚未選擇 agent，無法切換模型");
+      throw new SlidraError("No agent selected, cannot switch model");
     }
     const kind = this.current;
     await this.session.setModel(modelId);
@@ -334,7 +334,7 @@ export class AgentManager {
   /** Sends the author's message on the current session. Throws if no agent is selected — callers must gate with a 409 first (§4.4). */
   sendMessage(text: string): void {
     if (!this.session) {
-      throw new SlidraError("尚未選擇 agent，無法傳送訊息");
+      throw new SlidraError("No agent selected, cannot send a message");
     }
     this.session.sendMessage(text);
   }
@@ -342,7 +342,7 @@ export class AgentManager {
   /** #303: stops the current session — the turn in flight plus every message queued behind it (see `AgentChatSession.cancel`). Throws when no agent is selected or there is nothing to stop. */
   async cancel(): Promise<void> {
     if (!this.session) {
-      throw new SlidraError("尚未選擇 agent，沒有可以停止的回合");
+      throw new SlidraError("No agent selected, there is no turn to stop");
     }
     await this.session.cancel();
   }

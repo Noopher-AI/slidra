@@ -38,9 +38,9 @@ import { broadcastSaveState } from "./save-state.js";
 
 const FILE_NAME_HEADER = "x-slidra-file-name";
 const DISCARD_UNSAVED_HEADER = "x-slidra-discard-unsaved";
-const UNNAMED_FALLBACK = "未命名.slidra";
+const UNNAMED_FALLBACK = "Untitled.slidra";
 /** The deck `POST /api/new` creates: no slides, and a name the author is meant to replace. */
-const NEW_DECK_NAME = "未命名";
+const NEW_DECK_NAME = "Untitled";
 const NEW_DECK_FILE_NAME = `${NEW_DECK_NAME}.slidra`;
 
 /** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.slidra` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
@@ -113,7 +113,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
   }
   const id2 = opened.data?.id;
   if (typeof id2 !== "string") {
-    throw new SlidraError("open 回傳的資料格式錯誤");
+    throw new SlidraError("open returned malformed data");
   }
 
   const registryAfterOpen = await readProjectsRegistry();
@@ -165,7 +165,7 @@ export async function handleNewPost(
   if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
     const saveState = await readSaveState(presentationId);
     if (saveState.known && saveState.dirty) {
-      sendJson(res, 409, { error: "目前的簡報有未儲存的變更" });
+      sendJson(res, 409, { error: "The current presentation has unsaved changes" });
       return;
     }
   }
@@ -186,7 +186,7 @@ export async function handleNewPost(
   try {
     await reopenPresentationInPlace(presentationId, stagedPath);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "建立失敗" });
+    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Create failed" });
     return;
   }
 
@@ -213,7 +213,7 @@ export async function handleOpenPost(
     try {
       displayName = decodeURIComponent(fileNameHeader);
     } catch {
-      sendJson(res, 400, { error: `標頭編碼無效：${FILE_NAME_HEADER}` });
+      sendJson(res, 400, { error: `Invalid header encoding: ${FILE_NAME_HEADER}` });
       return;
     }
   }
@@ -223,21 +223,21 @@ export async function handleOpenPost(
     body = await readLimitedBinaryBody(req, MAX_OPEN_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      sendJson(res, 400, { error: "簡報檔案過大" });
+      sendJson(res, 400, { error: "Presentation file too large" });
       return;
     }
-    sendJson(res, 400, { error: "請求內容讀取失敗" });
+    sendJson(res, 400, { error: "Failed to read request body" });
     return;
   }
   if (body.length === 0) {
-    sendJson(res, 400, { error: "沒有收到檔案內容" });
+    sendJson(res, 400, { error: "No file content received" });
     return;
   }
 
   if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
     const saveState = await readSaveState(presentationId);
     if (saveState.known && saveState.dirty) {
-      sendJson(res, 409, { error: "目前的簡報有未儲存的變更" });
+      sendJson(res, 409, { error: "The current presentation has unsaved changes" });
       return;
     }
   }
@@ -258,7 +258,7 @@ export async function handleOpenPost(
     // relayed verbatim, matching §4.1's table.
     await reopenPresentationInPlace(presentationId, stagedPath);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "開啟失敗" });
+    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Open failed" });
     return;
   }
 

@@ -27,7 +27,7 @@ function decodeCatEntries(data: unknown): CatEntry[] {
         typeof (entry as CatEntry).content === "string",
     )
   ) {
-    throw new SlidraError("cat 回傳的資料格式錯誤");
+    throw new SlidraError("cat returned malformed data");
   }
   return data;
 }
@@ -40,7 +40,7 @@ export async function readPresentationBytes(id: string, virtualPath: string): Pr
   }
   const entries = decodeCatEntries(result.data);
   if (entries.length !== 1) {
-    throw new SlidraError("cat 回傳的資料格式錯誤");
+    throw new SlidraError("cat returned malformed data");
   }
   return Buffer.from(entries[0]!.content, "base64");
 }
@@ -57,7 +57,7 @@ export async function readPresentationText(id: string, virtualPath: string): Pro
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    throw new SlidraError(`${virtualPath} 是二進位資產，無法以文字讀取`);
+    throw new SlidraError(`${virtualPath} is a binary asset, cannot be read as text`);
   }
 }
 
@@ -65,20 +65,20 @@ export async function readPresentationText(id: string, virtualPath: string): Pro
 export async function loadProject(id: string): Promise<ProjectJson> {
   const result = await runJsonCommand(["cat", id, "project.json"]);
   if (!result.ok) {
-    // Reuse the command's own message (e.g. "找不到識別碼對應的簡報：<id>")
+    // Reuse the command's own message (e.g. "no presentation found for id: <id>")
     // instead of inventing a second wording for the same failure.
     throwForFailure(result.message, result.failureKind);
   }
   const entries = decodeCatEntries(result.data);
   if (entries.length !== 1) {
-    throw new SlidraError("cat 回傳的資料格式錯誤");
+    throw new SlidraError("cat returned malformed data");
   }
   const bytes = Buffer.from(entries[0]!.content, "base64");
   let parsed: unknown;
   try {
     parsed = JSON.parse(bytes.toString("utf-8"));
   } catch {
-    throw new SlidraError("簡報的 project.json 無法解析");
+    throw new SlidraError("Could not parse the presentation's project.json");
   }
   return validateMinimalProjectJson(parsed);
 }
@@ -91,7 +91,7 @@ export async function renderSlide(id: string, slidePath: string): Promise<string
   }
   const data = result.data;
   if (typeof data !== "object" || data === null || typeof (data as { content?: unknown }).content !== "string") {
-    throw new SlidraError("slide render 回傳的資料格式錯誤");
+    throw new SlidraError("slide render returned malformed data");
   }
   return Buffer.from((data as { content: string }).content, "base64").toString("utf-8");
 }
@@ -110,7 +110,7 @@ export async function listEntries(id: string, virtualPath?: string): Promise<str
     !Array.isArray((data as { entries?: unknown }).entries) ||
     !(data as { entries: unknown[] }).entries.every((entry) => typeof entry === "string")
   ) {
-    throw new SlidraError("ls 回傳的資料格式錯誤");
+    throw new SlidraError("ls returned malformed data");
   }
   return (data as { entries: string[] }).entries;
 }

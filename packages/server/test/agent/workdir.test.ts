@@ -279,7 +279,7 @@ describe("readAgentWorkdirFile", () => {
   it("reports a non-UTF-8 file as a binary asset, not as decoded (possibly corrupted) text", async () => {
     await writeFile(path.join(workdirReal, "binary.dat"), Buffer.from([0xff, 0x00, 0x01]));
     await expect(readAgentWorkdirFile(workdirReal, "binary.dat")).rejects.toMatchObject({
-      message: "binary.dat 是二進位資產，無法以文字讀取",
+      message: "binary.dat is a binary asset, cannot be read as text",
     });
   });
 });

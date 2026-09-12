@@ -125,7 +125,7 @@ export async function renderExportPdf(options: RenderExportPdfOptions): Promise<
       // Should be unreachable — export-entry.ts sets __SLIDRA_EXPORT__
       // before creating any iframe, so __SLIDRA_EXPORT_DONE__ can never
       // become true without it. Loud failure over a fabricated page count.
-      throw new SlidraError("匯出頁未回報進度，無法決定頁數");
+      throw new SlidraError("Export page did not report progress, cannot determine page count");
     }
 
     const pdfBytes = await page.pdf({
@@ -162,6 +162,6 @@ async function writePdfAtomically(outputPath: string, bytes: Buffer): Promise<vo
     await rename(tempPath, outputPath);
   } catch {
     await rm(tempPath, { force: true }).catch(() => {});
-    throw new SlidraError("寫入匯出檔案時發生錯誤");
+    throw new SlidraError("Error writing the export file");
   }
 }

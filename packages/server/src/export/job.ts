@@ -88,7 +88,7 @@ export class ExportJobManager {
    */
   start(format: ExportFormat, broadcast: (event: ExportEvent) => void, run: ExportRunner): string {
     if (this.activeJobId !== null) {
-      throw new Error("已有匯出工作進行中");
+      throw new Error("An export job is already in progress");
     }
     const jobId = randomBytes(9).toString("hex");
     this.activeJobId = jobId;
@@ -140,7 +140,7 @@ export class ExportJobManager {
       // that class's own contract) or a plain Error with a message this
       // module never derives from a path itself, so relaying `.message`
       // verbatim holds that invariant rather than merely hoping callers do.
-      const message = error instanceof Error ? error.message : "匯出失敗";
+      const message = error instanceof Error ? error.message : "Export failed";
       this.jobs.set(jobId, { format, state: "error" });
       broadcast({ jobId, format, state: "error", message });
     } finally {

@@ -54,7 +54,7 @@ describe("shipped work directory documentation", () => {
     const text = await readFile(agentsMdPath, "utf8");
     expect(text).not.toContain("<!-- T6");
 
-    const requiredOrder = ["## Slidra 是什麼", "## 環境與限制", "## 命令參考", "## 虛擬檔案結構", "## SVG 約定重點", "## 工作慣例", "## Skills"];
+    const requiredOrder = ["## What Slidra is", "## Environment and constraints", "## Command reference", "## Virtual file structure", "## Key SVG conventions", "## Working conventions", "## Skills"];
     let searchFrom = 0;
     for (const heading of requiredOrder) {
       const index = text.indexOf(heading, searchFrom);

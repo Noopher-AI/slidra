@@ -16,6 +16,6 @@ export async function requireCliBuilt(): Promise<void> {
   try {
     await access(binPath);
   } catch {
-    throw new Error("target/release/slidra 不存在，請先執行 npm run build");
+    throw new Error("target/release/slidra does not exist, run npm run build first");
   }
 }

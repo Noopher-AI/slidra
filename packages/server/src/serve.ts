@@ -300,7 +300,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
       if (error.code === "EADDRINUSE") {
         // Never fall back to another port — a user who asked for a specific
         // port and silently got another has been lied to.
-        reject(new SlidraError(`連接埠已被使用：${port}`));
+        reject(new SlidraError(`Port already in use: ${port}`));
       } else {
         reject(error);
       }
@@ -355,7 +355,7 @@ async function handleRequest(
     // gate exists for — exempting it here is what makes that header not
     // dead code.
     if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {
-      sendJson(res, 403, { error: "不接受來自不透明來源（Origin: null）的請求" });
+      sendJson(res, 403, { error: "Does not accept requests from an opaque origin (Origin: null)" });
       return;
     }
 
@@ -402,7 +402,7 @@ async function handleRequest(
             sendJson(res, 409, { error: error.message });
             return;
           }
-          sendJson(res, 500, { error: error instanceof Error ? error.message : "建立對話失敗" });
+          sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to create conversation" });
         }
         return;
       }
@@ -487,12 +487,12 @@ async function handleRequest(
         sendJson(res, 200, { ok: true });
         return;
       }
-      sendJson(res, 405, { error: "只支援 GET" });
+      sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
 
     if (req.method !== "GET") {
-      sendJson(res, 405, { error: "只支援 GET" });
+      sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
 
@@ -593,7 +593,7 @@ async function handleRequest(
       try {
         virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
       } catch {
-        sendJson(res, 400, { error: "路徑編碼無效" });
+        sendJson(res, 400, { error: "Invalid path encoding" });
         return;
       }
       // The Range header is read here, at the one place that has `req`, and
@@ -605,13 +605,13 @@ async function handleRequest(
     }
 
     if (url.pathname.startsWith("/api/")) {
-      sendJson(res, 404, { error: "找不到端點" });
+      sendJson(res, 404, { error: "Endpoint not found" });
       return;
     }
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "未知錯誤" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 }
 
@@ -628,13 +628,13 @@ async function handleRequest(
 async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const status = await manager.status();
   if (status.current === null) {
-    sendJson(res, 409, { error: "尚未選擇 agent，請先在設定中選擇要使用的 agent", reason: "unset", kind: null });
+    sendJson(res, 409, { error: "No agent selected, choose one in settings first", reason: "unset", kind: null });
     return;
   }
   const card = status.agents.find((agent) => agent.kind === status.current)!;
   if (card.status === "unauthenticated") {
     sendJson(res, 409, {
-      error: `${card.label} 尚未登入，請在終端機執行 ${card.loginCommand}`,
+      error: `${card.label} is not logged in, run ${card.loginCommand} in a terminal`,
       reason: "unauthenticated",
       kind: status.current,
     });
@@ -645,7 +645,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const text = (body as { text?: unknown } | null)?.text;
@@ -655,7 +655,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
   // apart from an empty message with nothing pinned to it. That one is
   // refused there, not here.
   if (typeof text !== "string") {
-    sendJson(res, 400, { error: "訊息內容不可為空" });
+    sendJson(res, 400, { error: "Message content must not be empty" });
     return;
   }
   // #303: one line per author message so a turn that starts unexpectedly
@@ -683,7 +683,7 @@ async function handleChatCancelPost(manager: AgentManager, res: ServerResponse):
     console.log(`[chat] ${new Date().toISOString()} cancel requested`);
     await manager.cancel();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "目前沒有進行中的回合可以停止" });
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "There is no turn currently in progress to stop" });
     return;
   }
   sendJson(res, 202, { ok: true });
@@ -703,7 +703,7 @@ async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Pr
     console.log(`[chat] ${new Date().toISOString()} new session requested`);
     await manager.newSession();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "無法重開對話" });
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "Failed to restart conversation" });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -720,12 +720,12 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const kind = (body as { kind?: unknown } | null)?.kind;
   if (kind !== "claude" && kind !== "codex") {
-    sendJson(res, 400, { error: "kind 必須是下列其中一個值：claude、codex" });
+    sendJson(res, 400, { error: "kind must be one of: claude, codex" });
     return;
   }
   try {
@@ -736,7 +736,7 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
       sendJson(res, 409, { error: error.message, reason: "editing" });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "選擇 agent 失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to select agent" });
   }
 }
 
@@ -753,12 +753,12 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const modelId = (body as { modelId?: unknown } | null)?.modelId;
   if (typeof modelId !== "string" || modelId === "") {
-    sendJson(res, 400, { error: "modelId 必須是非空字串" });
+    sendJson(res, 400, { error: "modelId must be a non-empty string" });
     return;
   }
   try {
@@ -769,7 +769,7 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
       sendJson(res, 409, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "切換模型失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to switch model" });
   }
 }
 
@@ -791,7 +791,7 @@ async function handleSavePost(
       sendJson(res, 400, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof SlidraError ? error.message : "儲存失敗" });
+    sendJson(res, 500, { error: error instanceof SlidraError ? error.message : "Save failed" });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -820,12 +820,12 @@ async function handleExportPost(
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    sendJson(res, 400, { error: "format must be pdf or pdf-frames" });
     return;
   }
   const format = (body as { format?: unknown } | null)?.format;
   if (format !== "pdf" && format !== "pdf-frames") {
-    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    sendJson(res, 400, { error: "format must be pdf or pdf-frames" });
     return;
   }
 
@@ -849,7 +849,7 @@ async function handleExportPost(
       },
     );
   } catch {
-    sendJson(res, 409, { error: "已有匯出工作進行中" });
+    sendJson(res, 409, { error: "An export job is already in progress" });
     return;
   }
   sendJson(res, 202, { jobId });
@@ -864,14 +864,14 @@ async function handleExportPost(
 async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: string, res: ServerResponse): Promise<void> {
   const filePath = exportJobManager.getFilePath(jobId);
   if (!filePath) {
-    sendJson(res, 404, { error: "找不到匯出檔案" });
+    sendJson(res, 404, { error: "Export file not found" });
     return;
   }
   let bytes: Buffer;
   try {
     bytes = await readFile(filePath);
   } catch {
-    sendJson(res, 404, { error: "找不到匯出檔案" });
+    sendJson(res, 404, { error: "Export file not found" });
     return;
   }
   const fileName = path.basename(filePath);
@@ -895,7 +895,7 @@ async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: s
     throw new SlidraError(result.message);
   }
   if (!Array.isArray(result.data?.restoredPaths)) {
-    throw new SlidraError(`${name} 回傳的資料格式錯誤`);
+    throw new SlidraError(`${name} returned malformed data`);
   }
   return { restoredPaths: result.data.restoredPaths };
 }
@@ -917,7 +917,7 @@ async function savePresentation(presentationId: string): Promise<{ fileName: str
     throw new SlidraError(`no presentation found for id: ${presentationId}`);
   }
   if (entry.sourcePath === undefined) {
-    throw new SlidraInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 slidra pack 指定路徑");
+    throw new SlidraInvalidRequestError("This presentation has no file path to write back to, use slidra pack to specify a path");
   }
   const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
   if (!result.ok) {
@@ -947,7 +947,7 @@ async function handleUndoRedoPost(
     const result = await run(presentationId);
     sendJson(res, 200, result);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "無法完成操作" });
+    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Could not complete the operation" });
   }
 }
 
@@ -1017,7 +1017,7 @@ export function createChatStreamRegistry() {
      */
     open(manager: AgentManager, res: ServerResponse): void {
       if (closing) {
-        throw new SlidraError("伺服器正在關閉");
+        throw new SlidraError("Server is shutting down");
       }
       const stream = openEventStream(res);
       streams.add(stream);
@@ -1105,12 +1105,12 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
     if (code !== "ENOENT") {
       // A real I/O failure (permissions, etc.) — never disguise it as a
       // successful page load.
-      sendJson(res, 500, { error: "靜態檔案讀取失敗" });
+      sendJson(res, 500, { error: "Failed to read static file" });
       return;
     }
     if (isRoot) {
       // index.html itself is missing: the frontend was never built at all.
-      sendJson(res, 500, { error: "前端尚未建置，請先執行 build" });
+      sendJson(res, 500, { error: "Frontend has not been built yet, run build first" });
       return;
     }
     sendJson(res, 404, { error: "file not found" });

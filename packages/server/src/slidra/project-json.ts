@@ -48,10 +48,10 @@ export function validateMinimalProjectJson(value: unknown): ProjectJson {
   const record = value as Record<string, unknown>;
 
   if (typeof record.formatVersion !== "number") {
-    throw new SlidraError("project.json 格式錯誤：缺少或型別錯誤的 formatVersion");
+    throw new SlidraError("Malformed project.json: formatVersion is missing or has the wrong type");
   }
   if (record.formatVersion > CURRENT_FORMAT_VERSION) {
-    throw new SlidraError(`此簡報由較新版本的 Slidra 建立（格式版本 ${record.formatVersion}），請升級後再開啟`);
+    throw new SlidraError(`This presentation was created by a newer version of Slidra (format version ${record.formatVersion}), please upgrade before opening it`);
   }
   if (typeof record.name !== "string") {
     throw new SlidraError("project.json format error: missing or wrong type for name");
