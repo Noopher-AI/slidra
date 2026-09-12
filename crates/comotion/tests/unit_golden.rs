@@ -26,7 +26,6 @@ use comotion::text::font::{DEFAULT_FONT_BYTES, FontMetrics, parse_font};
 use comotion::text::metrics::measure_text_width;
 use comotion::text::render::render_text_box_content;
 use comotion::text::wrap::{Align, WrapOptions, wrap_text};
-use comotion::workspace::migrate::migrate_to_v4;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::env;
@@ -648,13 +647,12 @@ fn text_wrap_extra_cases_match_ts_reference() {
 }
 
 // ---------------------------------------------------------------------------
-// [E4.T4] A2: every repo `project.json` fixture, packed and opened through
-// Rust, ends up at `formatVersion` 4, and `pack` -> `open` round-trips the
-// resulting content exactly (plan §5 A2). Not a TS-golden comparison — a
-// self-contained Rust integration test over the crate's own `container`/
-// `workspace::migrate` public API, hence living here (boundary 2) rather
-// than in `cli_golden.rs` (a CLI process boundary these functions are
-// underneath).
+// [E4.T4] A2: every repo `project.json` fixture is already at `formatVersion`
+// 1 (there is no migration chain any more), and `pack` -> `open` round-trips
+// the content exactly (plan §5 A2). Not a TS-golden comparison — a
+// self-contained Rust integration test over the crate's own `container`
+// public API, hence living here (boundary 2) rather than in `cli_golden.rs`
+// (a CLI process boundary these functions are underneath).
 // ---------------------------------------------------------------------------
 
 fn repo_root() -> PathBuf {
@@ -725,7 +723,7 @@ fn temp_dir(label: &str) -> PathBuf {
 }
 
 #[test]
-fn every_repo_fixture_migrates_to_formatversion_4_and_pack_open_round_trips() {
+fn every_repo_fixture_is_formatversion_1_and_pack_open_round_trips() {
     let dirs = fixture_directories();
     assert_eq!(
         dirs.len(),
@@ -756,55 +754,27 @@ fn every_repo_fixture_migrates_to_formatversion_4_and_pack_open_round_trips() {
             ));
             continue;
         }
-        if let Err(err) = migrate_to_v4(&first_work) {
-            failures.push(format!(
-                "{}: migrate failed: {}",
-                source_dir.display(),
-                err.message()
-            ));
-            continue;
-        }
 
         let project: serde_json::Value = match fs::read_to_string(first_work.join("project.json")) {
             Ok(text) => serde_json::from_str(&text).unwrap(),
             Err(err) => {
                 failures.push(format!(
-                    "{}: could not read migrated project.json: {err}",
+                    "{}: could not read project.json: {err}",
                     source_dir.display()
                 ));
                 continue;
             }
         };
-        if project["formatVersion"] != serde_json::json!(4) {
+        if project["formatVersion"] != serde_json::json!(1) {
             failures.push(format!(
-                "{}: formatVersion is {:?}, not 4",
+                "{}: formatVersion is {:?}, not 1",
                 source_dir.display(),
                 project["formatVersion"]
             ));
         }
-        if !project.get("fonts").is_some_and(|v| v.is_array()) {
-            failures.push(format!(
-                "{}: fonts key missing or not an array after migration",
-                source_dir.display()
-            ));
-        }
-        if project.get("transition").is_some() {
-            failures.push(format!(
-                "{}: transition key still present after migration",
-                source_dir.display()
-            ));
-        }
-        if let Some(templates) = project.get("templates").and_then(|v| v.as_array()) {
-            if !templates.iter().all(|t| t.is_object()) {
-                failures.push(format!(
-                    "{}: templates contains a non-object entry after migration",
-                    source_dir.display()
-                ));
-            }
-        }
 
-        // pack -> open round-trip: second pack/unpack of the ALREADY-v4
-        // work dir must produce byte-identical content to the first.
+        // pack -> open round-trip: second pack/unpack of the work dir must
+        // produce byte-identical content to the first.
         let second_comot = scratch.join(format!("{i}-second.comot"));
         let second_work = scratch.join(format!("{i}-second-work"));
         if let Err(err) = pack_directory(&first_work, &second_comot) {
@@ -822,17 +792,6 @@ fn every_repo_fixture_migrates_to_formatversion_4_and_pack_open_round_trips() {
                 err.message()
             ));
             continue;
-        }
-        // The second unpack is already formatVersion 4 — migrate_to_v4 must
-        // be a byte-identical no-op (§4.2's own contract).
-        let before_second_migrate = fs::read_to_string(second_work.join("project.json")).unwrap();
-        migrate_to_v4(&second_work).unwrap();
-        let after_second_migrate = fs::read_to_string(second_work.join("project.json")).unwrap();
-        if before_second_migrate != after_second_migrate {
-            failures.push(format!(
-                "{}: migrate_to_v4 on an already-v4 work dir was not a byte-identical no-op",
-                source_dir.display()
-            ));
         }
 
         let first_tree = collect_tree(&first_work);
@@ -856,99 +815,9 @@ fn every_repo_fixture_migrates_to_formatversion_4_and_pack_open_round_trips() {
     fs::remove_dir_all(&scratch).ok();
     assert!(
         failures.is_empty(),
-        "A2 fixture migration/round-trip failures:\n{}",
+        "A2 fixture round-trip failures:\n{}",
         failures.join("\n")
     );
-}
-
-/// A synthesized fixture (no repo fixture carries `transition`, per
-/// comot-format.md's own note): `transition: "fade"` with two slides, one
-/// already carrying `<comot:transition>`. The one without gets
-/// `enter="fade" enter-duration="0.4" exit="none" exit-duration="0.5"`; the
-/// one that already has one is left byte-for-byte untouched; the
-/// `project.json`'s `transition` key disappears either way.
-#[test]
-fn synthesized_legacy_fade_transition_migrates_only_the_slide_without_one() {
-    let work = temp_dir("synthesized-fade");
-    fs::create_dir_all(work.join("slides")).unwrap();
-    let untouched_slide = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><metadata><comot:transition xmlns:comot=\"https://co-motion.dev/ns\" enter=\"zoom\" enter-duration=\"1\" exit=\"none\" exit-duration=\"0.5\"/></metadata></svg>\n";
-    fs::write(
-        work.join("slides/001.svg"),
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n",
-    )
-    .unwrap();
-    fs::write(work.join("slides/002.svg"), untouched_slide).unwrap();
-    fs::write(
-        work.join("project.json"),
-        r#"{"formatVersion":2,"name":"Legacy Fade","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"],"transition":"fade"}"#,
-    )
-    .unwrap();
-
-    migrate_to_v4(&work).unwrap();
-
-    let migrated_slide_1 = fs::read_to_string(work.join("slides/001.svg")).unwrap();
-    assert!(
-        migrated_slide_1
-            .contains("enter=\"fade\" enter-duration=\"0.4\" exit=\"none\" exit-duration=\"0.5\"")
-    );
-    let slide_2_after = fs::read_to_string(work.join("slides/002.svg")).unwrap();
-    assert_eq!(
-        slide_2_after, untouched_slide,
-        "a slide that already had transition metadata must be byte-identical after migration"
-    );
-
-    let project: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(work.join("project.json")).unwrap()).unwrap();
-    assert_eq!(project["formatVersion"], 4);
-    assert!(project.get("transition").is_none());
-
-    fs::remove_dir_all(&work).ok();
-}
-
-/// The frozen `project.json` write format (plan §4.2's "凍結格式"):
-/// `serde_json`'s 2-space pretty printer, exactly one trailing newline,
-/// existing keys keep their original position when their value changes,
-/// and a newly-added key (`fonts`) lands at the end.
-#[test]
-fn migrated_project_json_uses_the_frozen_write_format() {
-    let work = temp_dir("frozen-format");
-    fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"mystery":true}"#).unwrap();
-
-    migrate_to_v4(&work).unwrap();
-
-    let text = fs::read_to_string(work.join("project.json")).unwrap();
-    assert!(
-        text.ends_with("}\n"),
-        "must end in exactly one trailing newline"
-    );
-    assert!(
-        !text.ends_with("}\n\n"),
-        "must not have a double trailing newline"
-    );
-    assert!(
-        text.contains("{\n  \"formatVersion\": 4,\n  \"name\": \"X\","),
-        "must use 2-space indentation with formatVersion in its original first position"
-    );
-    let keys: Vec<&str> = text
-        .lines()
-        .filter_map(|line| line.trim_start().split(':').next())
-        .filter(|k| k.starts_with('"'))
-        .collect();
-    assert_eq!(
-        keys,
-        vec![
-            "\"formatVersion\"",
-            "\"name\"",
-            "\"canvas\"",
-            "\"width\"",
-            "\"height\"",
-            "\"slides\"",
-            "\"mystery\"",
-            "\"fonts\""
-        ]
-    );
-
-    fs::remove_dir_all(&work).ok();
 }
 
 #[derive(Deserialize)]

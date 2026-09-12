@@ -31,7 +31,6 @@ fn open_presentation(path: &str) -> Result<String, CoMotionError> {
     // disk. Every failure from here rolls it back — it must not become an
     // orphan directory nobody can reach.
     let registration = (|| -> Result<(), CoMotionError> {
-        workspace::migrate::migrate_to_v4(&work_dir)?;
         let saved_at = workspace::registry::max_mtime_in_directory(&work_dir)?;
         // Read-modify-write under the lock: a concurrent `open` reading the
         // same map and writing after us would drop this brand-new entry.
@@ -98,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn opens_a_comot_and_registers_it_at_formatversion_4() {
+    fn opens_a_comot_and_registers_it_at_formatversion_1() {
         let _guard = registry::ENV_LOCK.lock().unwrap();
         let home = temp_dir("open-success-home");
         unsafe {
@@ -131,7 +130,7 @@ mod tests {
         let project: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(work_dir.join("project.json")).unwrap())
                 .unwrap();
-        assert_eq!(project["formatVersion"], 4);
+        assert_eq!(project["formatVersion"], 1);
 
         unsafe {
             std::env::remove_var("COMOTION_HOME");

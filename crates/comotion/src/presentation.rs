@@ -2,11 +2,11 @@
 //! originally ported from `packages/core/src/presentation.ts` ([E4.T12]
 //! deletes that TypeScript source; Rust is now the sole implementation).
 //!
-//! `FORMAT_VERSION` is **4**: Rust's `open` performs the 1→2→3→4 migration,
-//! and `new` produces `formatVersion: 4` directly, so the crate's own idea
-//! of "current" format version is 4.
+//! `FORMAT_VERSION` is **1**: there is no migration chain. `open` and
+//! `validate_project_json` reject any other value outright, and `new`
+//! produces `formatVersion: 1` directly.
 
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 1;
 
 const PRESENTATION_FONT_FAMILY: &str = "Noto Sans TC";
 const PRESENTATION_FONT_FILE: &str = "fonts/NotoSansTC-Presentation.ttf";
@@ -70,14 +70,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn produces_formatversion_4_with_no_slides() {
+    fn produces_formatversion_1_with_no_slides() {
         let files = build_minimal_presentation("測試簡報");
         let (_, project_bytes) = files
             .iter()
             .find(|(path, _)| path == "project.json")
             .unwrap();
         let project: serde_json::Value = serde_json::from_slice(project_bytes).unwrap();
-        assert_eq!(project["formatVersion"], 4);
+        assert_eq!(project["formatVersion"], 1);
         assert_eq!(project["name"], "測試簡報");
         assert_eq!(project["slides"], serde_json::json!([]));
         assert_eq!(project["fonts"][0]["family"], "Noto Sans TC");

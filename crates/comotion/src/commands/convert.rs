@@ -210,7 +210,7 @@ mod tests {
     fn already_compliant_slide_reports_no_slides_need_conversion_when_empty() {
         let fixture = Fixture::new(
             "empty",
-            r#"{"formatVersion":4,"name":"T","canvas":{"width":100,"height":100},"slides":[],"fonts":[]}"#,
+            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":[],"fonts":[]}"#,
             &[],
         );
         let result = run(&[fixture.id.clone()]);
@@ -222,7 +222,7 @@ mod tests {
     fn wraps_a_bare_primitive_and_reports_changed() {
         let fixture = Fixture::new(
             "wrap",
-            r#"{"formatVersion":4,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">\n  <rect width=\"1\" height=\"1\"/>\n</svg>",
@@ -239,7 +239,7 @@ mod tests {
     fn already_compliant_slide_is_untouched_and_reported_as_such() {
         let fixture = Fixture::new(
             "compliant",
-            r#"{"formatVersion":4,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"a\"><rect width=\"1\" height=\"1\"/></g></svg>",
@@ -257,7 +257,7 @@ mod tests {
     fn blocking_issue_writes_nothing_and_names_the_slide() {
         let fixture = Fixture::new(
             "blocking",
-            r#"{"formatVersion":4,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><script>evil()</script></svg>",

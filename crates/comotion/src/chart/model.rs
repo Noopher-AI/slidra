@@ -27,12 +27,11 @@ use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_docume
 use crate::svgnum::format_svg_number;
 use crate::text::escape_xml_attr;
 
-/// Same value as TS's `EFFECTS_NS` (`packages/core/src/effects/index.ts:54`)
-/// — the `<comot:effects>`/`<comot:notes>` namespace, reused for
-/// `<comot:chart>` (ADR-0012 amendment). There is no Rust port of the
-/// `effects` module yet to import this constant from (out of this ticket's
-/// scope), so it is duplicated here as a literal rather than invented.
-pub const CHART_NS: &str = "https://co-motion.dev/ns";
+/// Same value as `effects::edit::EFFECTS_NS` — the `<comot:effects>`/
+/// `<comot:notes>` namespace, reused for `<comot:chart>` (ADR-0012
+/// amendment). Duplicated here as a literal rather than imported, to avoid
+/// a cross-module dependency for a single constant.
+pub const CHART_NS: &str = "https://slidra.app/ns/2026";
 
 pub const CHART_MIN_CATEGORIES: usize = 2;
 pub const CHART_MAX_CATEGORIES: usize = 60;

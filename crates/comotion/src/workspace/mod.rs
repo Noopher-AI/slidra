@@ -7,13 +7,14 @@
 //! `write.rs` holds the content-write doors (`assertSlidePathListed`,
 //! `write_presentation_file` and friends, plus — as of [E4.T5] —
 //! `require_slide` and the per-presentation clipboard file I/O). Container
-//! packing/unpacking lives in `container.rs`; format-version migration lives
-//! in `migrate.rs`. NOOP-281/F5 adds `list_presentation_entries` (`asset
+//! packing/unpacking lives in `container.rs`. NOOP-281/F5 adds `list_presentation_entries` (`asset
 //! import`'s conflict-free-filename scan) directly to this file, and a
 //! `fonts` submodule for a presentation's embedded font book — every other
 //! write this crate's commands need (`write_presentation_file`/
 //! `create_presentation_file`/`assert_slide_path_listed`/`require_slide`)
-//! reuses `write.rs`'s existing doors rather than adding its own.
+//! reuses `write.rs`'s existing doors rather than adding its own. There is
+//! no format-version migration: `FORMAT_VERSION` is fixed at 1 and
+//! `project::validate_project_json` rejects anything else outright.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `COMOTION_HOME`, defaulting to
@@ -40,7 +41,6 @@
 
 pub mod fonts;
 pub mod lock;
-pub mod migrate;
 pub mod project;
 pub mod virtual_fs;
 pub mod write;

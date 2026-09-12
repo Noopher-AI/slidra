@@ -136,10 +136,15 @@ fn validate_project_json(value: &Value) -> CoMotionResult<&serde_json::Map<Strin
         .as_object()
         .ok_or_else(|| CoMotionError::invalid("project.json 格式錯誤：內容不是物件"))?;
 
-    if !matches!(obj.get("formatVersion"), Some(Value::Number(_))) {
-        return Err(CoMotionError::invalid(
-            "project.json 格式錯誤：缺少或型別錯誤的 formatVersion",
-        ));
+    let format_version_ok = matches!(
+        obj.get("formatVersion"),
+        Some(Value::Number(n)) if n.as_u64() == Some(u64::from(crate::presentation::FORMAT_VERSION))
+    );
+    if !format_version_ok {
+        return Err(CoMotionError::invalid(format!(
+            "project.json 格式錯誤：formatVersion 必須是 {}",
+            crate::presentation::FORMAT_VERSION
+        )));
     }
     if !matches!(obj.get("name"), Some(Value::String(_))) {
         return Err(CoMotionError::invalid(
@@ -554,7 +559,7 @@ mod tests {
     /// FAIL 2 (NOOP-334r2): `write_project` is Rust's only `project.json`
     /// write point, and it did not default a missing `fonts` key the way
     /// TS's `writeProject` (`packages/core/src/slide-ops.ts`) does —
-    /// `docs/spec/comot-format.md` requires the key from format v4 on.
+    /// `docs/spec/comot-format.md` requires the key to always be present.
     /// Asserts the FULL serialized bytes, not just "contains fonts": the
     /// key's position (after every existing key, matching TS's
     /// `nextProject.fonts = []` appending onto an object with no such key)
@@ -577,7 +582,7 @@ mod tests {
         let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
         assert_eq!(
             content,
-            "{\n  \"formatVersion\": 4,\n  \"name\": \"T\",\n  \"canvas\": {\n    \"width\": 1,\n    \"height\": 1\n  },\n  \"slides\": [],\n  \"fonts\": []\n}\n"
+            "{\n  \"formatVersion\": 1,\n  \"name\": \"T\",\n  \"canvas\": {\n    \"width\": 1,\n    \"height\": 1\n  },\n  \"slides\": [],\n  \"fonts\": []\n}\n"
         );
     }
 
@@ -602,7 +607,7 @@ mod tests {
         let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
         assert_eq!(
             content,
-            "{\n  \"formatVersion\": 4,\n  \"name\": \"T\",\n  \"fonts\": [\n    {\n      \"family\": \"Inter\",\n      \"file\": \"fonts/inter.ttf\"\n    }\n  ],\n  \"slides\": []\n}\n"
+            "{\n  \"formatVersion\": 1,\n  \"name\": \"T\",\n  \"fonts\": [\n    {\n      \"family\": \"Inter\",\n      \"file\": \"fonts/inter.ttf\"\n    }\n  ],\n  \"slides\": []\n}\n"
         );
     }
 }

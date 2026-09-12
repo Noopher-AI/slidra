@@ -614,7 +614,7 @@ mod tests {
             std::fs::create_dir_all(work.join("slides")).unwrap();
             std::fs::write(
                 work.join("project.json"),
-                r#"{"formatVersion":4,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
+                r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
             )
             .unwrap();
             std::fs::write(work.join("slides/001.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><rect id=\"r1\" width=\"1\" height=\"1\"/></svg>\n").unwrap();

@@ -34,7 +34,7 @@ use crate::svgnum::format_svg_number;
 use crate::text::escape::escape_xml_attr;
 
 /// Custom namespace the effect list lives in.
-pub const EFFECTS_NS: &str = "https://co-motion.dev/ns";
+pub const EFFECTS_NS: &str = "https://slidra.app/ns/2026";
 
 // The shared primitive, not a private copy: it takes the same UTF-16
 // offsets `scan_document` hands out and is the one place that converts them
@@ -220,32 +220,6 @@ fn validate_insert_index(requested: Option<f64>, current_length: usize) -> CoMot
     Ok(requested as usize)
 }
 
-/// Rewrites `<comot:effects>`'s `xmlns:comot` to the correct value when it
-/// is missing or wrong.
-fn with_corrected_namespace(svg_content: &str, list: &ScannedNode) -> String {
-    if let Some(ns_attr) = attribute_of(list, "xmlns:comot") {
-        if ns_attr.value == EFFECTS_NS {
-            return svg_content.to_string();
-        }
-        return apply_splices(
-            svg_content,
-            &[Splice {
-                start: ns_attr.start,
-                end: ns_attr.end,
-                text: format!("xmlns:comot=\"{EFFECTS_NS}\""),
-            }],
-        );
-    }
-    let after_tag_name = list.start + 1 + "comot:effects".len();
-    apply_splices(
-        svg_content,
-        &[insert_at(
-            after_tag_name,
-            format!(" xmlns:comot=\"{EFFECTS_NS}\""),
-        )],
-    )
-}
-
 fn insert_effect_items(
     svg_content: &str,
     items_markup: &str,
@@ -273,20 +247,15 @@ fn insert_effect_items(
         });
     };
 
-    let fixed = with_corrected_namespace(svg_content, list);
-    let refreshed_roots = scan_document(&fixed)?;
-    let refreshed_svg_root = require_svg_root(&refreshed_roots)?;
-    let refreshed_located = locate_effects_list(refreshed_svg_root)?;
-    let refreshed_list = refreshed_located.list.expect("just confirmed present");
-    let items = effect_nodes_of(refreshed_list);
+    let items = effect_nodes_of(list);
     let index = validate_insert_index(requested_index, items.len())?;
     let offset = if index == items.len() + 1 {
-        refreshed_list.content_end
+        list.content_end
     } else {
         items[index - 1].start
     };
     Ok(apply_splices(
-        &fixed,
+        svg_content,
         &[insert_at(offset, items_markup.to_string())],
     ))
 }
@@ -790,24 +759,6 @@ mod tests {
     }
 
     #[test]
-    fn add_effects_corrects_wrong_namespace() {
-        let svg = r#"<svg viewBox="0 0 100 100"><metadata><comot:effects xmlns:comot="https://schemas.comotion.app/effects"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
-        let updated = add_effects(
-            svg,
-            "slides/001.svg",
-            &["el1".to_string()],
-            &AddEffectInput {
-                family: "enter".to_string(),
-                effect: "fade".to_string(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(updated.contains(&format!("xmlns:comot=\"{EFFECTS_NS}\"")));
-        assert!(!updated.contains("schemas.comotion.app"));
-    }
-
-    #[test]
     fn remove_effects_dedups_and_removes_descending() {
         let svg = with_effects(
             r#"<comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/><comot:effect target="el1" family="enter" effect="appear" start="with-previous" duration="0.6" delay="0"/>"#,
@@ -1005,29 +956,6 @@ mod tests {
         assert_eq!(effects.len(), 2);
         assert_eq!(effects[0].target, "el1");
         assert_eq!(effects[1].target, "el2");
-    }
-
-    #[test]
-    fn add_effects_corrects_the_namespace_at_the_right_place_after_cjk() {
-        let svg = r#"<svg viewBox="0 0 100 100"><metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">中文備忘稿</comot:notes><comot:effects xmlns:comot="https://schemas.comotion.app/effects"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
-        let updated = add_effects(
-            svg,
-            "slides/001.svg",
-            &["el1".to_string()],
-            &AddEffectInput {
-                family: "enter".to_string(),
-                effect: "fade".to_string(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        assert!(updated.contains(&format!("xmlns:comot=\"{EFFECTS_NS}\"")));
-        assert!(!updated.contains("schemas.comotion.app"));
-        assert_eq!(
-            read_effect_list(&updated, "slides/001.svg").unwrap().len(),
-            1
-        );
     }
 
     #[test]

@@ -138,7 +138,7 @@ mod tests {
         let _guard = registry::ENV_LOCK.lock().unwrap();
         let home = temp_dir("same-path-home");
         let work = temp_dir("same-path-work");
-        std::fs::write(work.join("project.json"), r#"{"formatVersion":4,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
+        std::fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
         unsafe {
             std::env::set_var("COMOTION_HOME", &home);
         }
@@ -173,7 +173,7 @@ mod tests {
         let _guard = registry::ENV_LOCK.lock().unwrap();
         let home = temp_dir("diff-path-home");
         let work = temp_dir("diff-path-work");
-        std::fs::write(work.join("project.json"), r#"{"formatVersion":4,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
+        std::fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
         unsafe {
             std::env::set_var("COMOTION_HOME", &home);
         }

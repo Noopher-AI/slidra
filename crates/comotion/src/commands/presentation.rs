@@ -132,7 +132,7 @@ mod tests {
             std::fs::create_dir_all(work.join("slides")).unwrap();
             std::fs::write(
                 work.join("project.json"),
-                r#"{"formatVersion":4,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
+                r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
             )
             .unwrap();
             std::fs::write(

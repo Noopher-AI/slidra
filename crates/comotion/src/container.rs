@@ -108,9 +108,9 @@ fn collect_files(
 }
 
 /// Unzips a `.comot` container into `target_dir`. Validates that the
-/// container has a readable, structurally valid `project.json` before
-/// trusting it. Callers (`open`) run the `formatVersion` migration
-/// afterwards — this function only unpacks and structurally validates.
+/// container has a readable, structurally valid `project.json` at
+/// `FORMAT_VERSION` and that no slide SVG carries an old CoMotion namespace
+/// marker before trusting it — there is no migration to run afterwards.
 pub fn unpack_container(comot_path: &Path, target_dir: &Path) -> CoMotionResult<()> {
     let comot_display = comot_path.display().to_string();
     let metadata = std::fs::metadata(comot_path)
@@ -176,6 +176,7 @@ pub fn unpack_container(comot_path: &Path, target_dir: &Path) -> CoMotionResult<
         }
 
         validate_project_json(target_dir, &comot_display)?;
+        assert_no_legacy_comotion_slides(target_dir, &comot_display)?;
         Ok(())
     })();
 
@@ -212,6 +213,37 @@ fn join_relative(base: &Path, relative: &str) -> PathBuf {
     path
 }
 
+/// Rejects a presentation whose slide SVGs still carry the old CoMotion
+/// namespace markers (`xmlns:comot` or `co-motion.dev/ns`). Format version 1
+/// is shared by both the old CoMotion format and the new Slidra format, so
+/// the version number alone cannot tell them apart — reading one of the old
+/// files anyway would silently lose its effects/notes/comments rather than
+/// fail loudly. This is a hard rejection, not a compatibility parse: the
+/// content is never interpreted or converted.
+fn assert_no_legacy_comotion_slides(work_dir: &Path, comot_display: &str) -> CoMotionResult<()> {
+    let slides_dir = work_dir.join("slides");
+    let entries = match std::fs::read_dir(&slides_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(()),
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("svg") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if content.contains("xmlns:comot") || content.contains("co-motion.dev/ns") {
+            return Err(CoMotionError::invalid(format!(
+                "this presentation was made by CoMotion and is not supported by Slidra: {comot_display}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn validate_project_json(work_dir: &Path, comot_display: &str) -> CoMotionResult<()> {
     let project_json_path = work_dir.join("project.json");
     let raw = std::fs::read_to_string(&project_json_path).map_err(|_| {
@@ -242,7 +274,7 @@ mod tests {
     }
 
     fn minimal_project_json() -> &'static str {
-        r#"{"formatVersion":4,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#
+        r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#
     }
 
     #[test]
