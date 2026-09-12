@@ -2049,13 +2049,14 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
     );
 
     // Every entry has all five required subsections, in order (spec's own
-    // command-entry format: 語法(syntax) → 參數(parameters) → 成功 data(success data) → 錯誤情境(error cases) → 範例(example)).
+    // command-entry format: Syntax → Parameters → Success `data` → Error
+    // cases → Example).
     let required_markers = [
-        "**語法**",
-        "**參數**",
-        "**成功 `data`**",
-        "**錯誤情境**",
-        "**範例**",
+        "**Syntax**",
+        "**Parameters**",
+        "**Success `data`**",
+        "**Error cases**",
+        "**Example**",
     ];
     let mut problems: Vec<String> = Vec::new();
     for (name, body) in &spec_entries {
