@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-locked" data-comot-name="鎖定方塊" data-comot-lock="true">
+  <g id="el-locked" data-slidra-name="Locked Box" data-slidra-lock="true">
     <rect x="200" y="280" width="200" height="160" fill="#c66"/>
   </g>
-  <g id="el-unlocked" data-comot-name="未鎖定方塊">
+  <g id="el-unlocked" data-slidra-name="Unlocked Box">
     <rect x="880" y="280" width="200" height="160" fill="#69c"/>
   </g>
-  <g id="el-caption" data-comot-name="說明">
-    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">鎖定測試</text>
+  <g id="el-caption" data-slidra-name="Caption">
+    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">Lock Test</text>
   </g>
-  <g id="el-parent" data-comot-name="未鎖定父群組">
-    <g id="el-locked-child" data-comot-name="鎖定子方塊" data-comot-lock="true">
+  <g id="el-parent" data-slidra-name="Unlocked Parent Group">
+    <g id="el-locked-child" data-slidra-name="Locked Child Box" data-slidra-lock="true">
       <rect x="540" y="40" width="200" height="160" fill="#c9c"/>
     </g>
   </g>

@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "name": "惡意投影片測試簡報：這段文字不該讓 hostile-deck 的 script 取得",
+  "name": "Hostile slide test deck: this text must not be reachable by the hostile-deck script",
   "canvas": {
     "width": 1280,
     "height": 720

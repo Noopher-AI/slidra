@@ -8,43 +8,41 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
- * 播放模式外觀 (issue #54): pure black full-bleed stage, the floating
- * control bar (上一步/下一步/頁碼/全螢幕/離開播放), the idle-hide of both
- * cursor and control bar together, and the survival of the three floating
- * notices through that idle-hide. `demo/` is used for the control-bar/
- * idle/screenshot tests (no effect list to fight the paging assertions);
+ * Play mode appearance: pure black full-bleed stage, the floating control
+ * bar (previous/next/page number/fullscreen/exit play), the idle-hide of
+ * both cursor and control bar together, and the survival of the three
+ * floating notices through that idle-hide. `demo/` is used for the
+ * control-bar/idle tests (no effect list to fight the paging assertions);
  * `fixtures/broken-effects-deck/` is reused from
  * e2e/player-effect-error.test.ts for the one test that needs a real
  * `.player-error-notice` on screen.
  *
  * Viewport fixed at 1440×900, same as e2e/appearance.test.ts and
- * docs/design/base-shell.html's own static frame ("樣板永遠以 1440×900 的
- * 視窗呈現").
+ * docs/design/base-shell.html's own static frame (which is always rendered
+ * at a 1440×900 window).
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const brokenEffectsDeckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
 const playDeckDir = path.join(e2eDir, "fixtures/play-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/play");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
 let browser: Browser;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -55,16 +53,16 @@ async function startServerFor(
   deckDir: string,
   prefix: string,
 ): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-home-`));
-  const comotDir = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-files-`));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-home-`));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-files-`));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // slidra serve spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, `${prefix}.comot`);
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, `${prefix}.slidra`);
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -75,7 +73,7 @@ async function startServerFor(
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -85,10 +83,10 @@ async function startServerFor(
     server,
     cleanup: async () => {
       await server.close();
-      delete process.env["COMOTION_HOME"];
-      delete process.env["COMOTION_BIN"];
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env["SLIDRA_HOME"];
+      delete process.env["SLIDRA_BIN"];
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -128,17 +126,20 @@ async function enterPlay(page: Page): Promise<void> {
     .toBe("true");
 }
 
-it("控制列的上一步／下一步換的是投影片本身，不是效果清單的步驟（裁決 3）", async () => {
-  // 對照表發現（gate round 1 追加要求）：demo/ 的四頁都沒有效果清單，
-  // 「下一步換的是投影片、不是效果步驟」這句名字，用一個沒有任何效果
-  // 步驟可以推進的 deck 是測不出來的——就算控制列誤接成逐步推進
-  // player-runtime 的效果步驟，demo/ 上量出來的行為也會跟接
-  // controller.next() 一模一樣，測試會在錯的實作下照樣綠燈。改用
-  // fixtures/play-deck/（player-mode.test.ts 已驗證過的 fixture）：
-  // 第 1 頁有兩個 enter 效果步驟（fadeText/appearText）要按兩次方向鍵
-  // 才會套用完、第三次才換頁；控制列的「下一步」只按一次就要直接跳到
-  // 第 2 頁，兩個效果步驟完全沒被套用——這才是「換頁不換效果步驟」
-  // 這句話量得出來的形狀。
+it("the control bar's previous/next buttons change the slide itself, not a step in the effect list", async () => {
+  // demo/'s four slides all carry no effect list, so the claim "next changes
+  // the slide, not an effect step" cannot be measured against a deck with no
+  // effect steps to advance through — even if the control bar were wired to
+  // step through player-runtime's effect steps by mistake, the behavior
+  // measured on demo/ would look identical to calling controller.next(), and
+  // the test would stay green under the wrong implementation. Using
+  // fixtures/play-deck/ instead (the fixture player-mode.test.ts already
+  // validates): slide 1 has two enter effect steps (fadeText/appearText)
+  // that need two arrow-key presses to fully apply, with the third changing
+  // the slide; the control bar's "next" must jump straight to slide 2 on a
+  // single press, with neither effect step applied at all — that is the
+  // shape that actually measures "changing slides does not change effect
+  // steps".
   const { page, cleanup } = await openApp(playDeckDir, "play-appearance-nav");
   try {
     await enterPlay(page);
@@ -149,43 +150,51 @@ it("控制列的上一步／下一步換的是投影片本身，不是效果清�
     const titleText = () => playFrame().locator("#el-title").textContent().catch(() => null);
     const title2Text = () => playFrame().locator("#el-title2").textContent().catch(() => null);
 
-    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
-    // 進場時兩個 enter 元素都還沒套用（同 player-mode.test.ts 的既有驗證）。
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("Play Slide 1");
+    // On entry neither enter element is applied yet (same existing check as
+    // player-mode.test.ts).
     await expect.poll(fadeOpacity).toBe("0");
 
-    // 按一次「下一步」：若真的是 controller.next()（showSlide(+1)），
-    // 會直接跳到第 2 頁，完全跳過第 1 頁剩下的兩個效果步驟。
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await expect.poll(title2Text, { timeout: 30_000 }).toBe("播放第二頁");
-    // 沒有按過方向鍵、也沒有經過任何「套用中」的中間態——第 1 頁的
-    // fade-in 元素本來就已經跟著整份文件一起被換掉了（play iframe 換頁
-    // 是整份 srcdoc 重新指派，不是同文件內局部更新，見 canvas.ts）。
+    // Click "next" once: if it really is controller.next() (showSlide(+1)),
+    // it jumps straight to slide 2, completely skipping slide 1's two
+    // remaining effect steps.
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await expect.poll(title2Text, { timeout: 30_000 }).toBe("Play Slide 2");
+    // No arrow key was pressed, and there was no intermediate "applying"
+    // state — slide 1's fade-in element was simply swapped out along with
+    // the whole document (changing pages in the play iframe reassigns the
+    // whole srcdoc, not an in-place update within the same document, see
+    // canvas.ts).
 
-    // 按一次「上一步」：換回第 1 頁，頁碼與 disabled 同步（樣板的
-    // `N / M` 形式；play-deck 只有 2 頁）。
-    await page.locator('.play-bar button[aria-label="上一步"]').click();
-    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
+    // Click "previous" once: switches back to slide 1, page number and
+    // disabled state stay in sync (the template's `N / M` form; play-deck
+    // only has 2 slides).
+    await page.locator('.play-bar button[aria-label="Previous"]').click();
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("Play Slide 1");
     expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 2");
-    expect(await page.locator('.play-bar button[aria-label="上一步"]').isDisabled()).toBe(true);
+    expect(await page.locator('.play-bar button[aria-label="Previous"]').isDisabled()).toBe(true);
   } finally {
     await page.close();
     await cleanup();
   }
 });
 
-it("[A15] 控制列子節點順序與樣板一致（上一步／頁碼／下一步／分隔線／全螢幕／離開播放），且底部置中", async () => {
-  // gate round 2 (2026-08-25), medium finding：全螢幕/離開播放這兩顆一度
-  // 順序反了（樣板是「全螢幕、離開播放」），而現有 e2e 對 `.play-bar` 的
-  // 每一個選擇器都是 aria-label 或 class（見這個檔案與
-  // player-effect-error.test.ts/player-media.test.ts 裡所有
-  // `.play-bar ...` 用法），沒有任何一條在守子節點的實際順序——這正是
-  // 這個偏差能一路走到 round 2 才被抓到的原因。這裡直接讀
-  // `.play-bar` 的 DOM children、依序轉成可辨識的名字，跟樣板
-  // （base-shell.html:419-426，波指揮官在 1440×900 用 Playwright 量過的
-  // 順序）逐一比對，把順序變成一個真的被斷言守住的契約，而不是只靠人眼
-  // 讀 JSX。[E2.T11] §4.8 把 pos 從「上/下之後」移到「上一步與下一步之間」
-  // （原型的實際順序），並把控制列從左下移到底部置中——一併補上水平置中的
-  // 幾何斷言，這兩者都是本票才第一次被守住的契約。
+it("the control bar's child node order matches the template (previous/page number/next/divider/fullscreen/exit play), and it is centered at the bottom", async () => {
+  // Fullscreen/exit play were once reversed in order (the template has
+  // "fullscreen, exit play"), and every existing e2e selector for
+  // `.play-bar` is an aria-label or class (see every `.play-bar ...` usage
+  // in this file and in player-effect-error.test.ts/player-media.test.ts) —
+  // none of them guards the child nodes' actual order, which is exactly why
+  // this deviation went unnoticed for a while. This reads `.play-bar`'s DOM
+  // children directly, converts each in order to a recognizable name, and
+  // compares against the template (base-shell.html:419-426, an order
+  // measured with Playwright at 1440×900) one by one, turning the order
+  // into a contract actually enforced by an assertion rather than relying
+  // on eyeballing the JSX. The page-number position was also moved from
+  // "after previous/next" to "between previous and next" (the prototype's
+  // actual order), and the control bar was moved from bottom-left to
+  // bottom-center — this adds the horizontal-centering geometry assertion
+  // alongside it, both contracts enforced here for the first time.
   const { page, cleanup } = await openApp(demoDir, "play-appearance-order");
   try {
     await enterPlay(page);
@@ -199,7 +208,7 @@ it("[A15] 控制列子節點順序與樣板一致（上一步／頁碼／下一�
         return child.textContent?.trim() ?? child.tagName;
       }),
     );
-    expect(order).toEqual(["上一步", "pos", "下一步", "divider", "全螢幕", "離開播放"]);
+    expect(order).toEqual(["Previous", "pos", "Next", "divider", "Fullscreen", "Exit Play"]);
 
     const barBox = await page.locator(".play-bar").boundingBox();
     const canvasAreaBox = await page.locator(".canvas-area").boundingBox();
@@ -214,13 +223,16 @@ it("[A15] 控制列子節點順序與樣板一致（上一步／頁碼／下一�
   }
 });
 
-it("閒置 2.5 秒後游標與控制列一起隱去，在投影片區域內移動滑鼠也能同時再現", async () => {
-  // gate round 1 (2026-08-25), high finding：投影片 iframe 佔了播放畫面
-  // 絕大部分面積，是作者最自然會把滑鼠移過去的地方。這裡原本的版本繞去
-  // 控制列旁邊的窄邊（`page.mouse.move(60, 850)`），繞開了「跨 frame 邊界
-  // 的 mousemove 不會冒泡到上層文件」這個限制，而不是回報它——測項名字
-  // 說「滑鼠一動」，斷言卻只驗過一小塊安全地帶。這一版把「投影片區域內」
-  // 設為主要路徑，原本的「投影片外」保留在最後當對照組。
+it("cursor and control bar hide together after 2.5s idle, and moving the mouse inside the slide area also brings them back", async () => {
+  // The slide iframe covers most of the play screen's area, and is where an
+  // author would most naturally move their mouse. An earlier version of
+  // this test worked around the limitation that "a mousemove crossing a
+  // frame boundary does not bubble to the parent document" by moving the
+  // mouse to the narrow strip next to the control bar instead
+  // (`page.mouse.move(60, 850)`), rather than reporting it — the test's name
+  // says "moving the mouse", but the assertion only ever covered one small
+  // safe zone. This version makes "inside the slide area" the primary path,
+  // keeping the original "outside the slide" as a control case at the end.
   const { page, cleanup } = await openApp(demoDir, "play-appearance-idle");
   try {
     await enterPlay(page);
@@ -231,42 +243,47 @@ it("閒置 2.5 秒後游標與控制列一起隱去，在投影片區域內移�
     const cursorOf = () => app.evaluate((el) => getComputedStyle(el).cursor);
 
     const iframeBox = await page.locator("iframe.slide-frame").boundingBox();
-    if (!iframeBox) throw new Error("找不到播放 iframe 的 bounding box");
-    // 量測寫進報告：1440×900 視窗下量到的 iframe 尺寸（gate 指揮官的量測
-    // 是 1415.11×795.98，這裡各次執行會有次像素差異，數量級一致即可）。
+    if (!iframeBox) throw new Error("could not find the play iframe's bounding box");
+    // Logged for reference: the iframe size measured at a 1440×900 viewport
+    // (a prior measurement was 1415.11×795.98; sub-pixel differences across
+    // runs are fine as long as the order of magnitude matches).
     console.log(`iframe box: ${JSON.stringify(iframeBox)}`);
     const iframeCenter = { x: iframeBox.x + iframeBox.width / 2, y: iframeBox.y + iframeBox.height / 2 };
 
-    // 剛進入播放：控制列可見，游標正常。
+    // Right after entering play: control bar visible, cursor normal.
     await expect.poll(() => opacityOf(bar)).toBe("1");
     expect(await cursorOf()).toBe("default");
 
-    // 閒置超過 2.5 秒：兩者一起隱去。
+    // Idle for over 2.5s: both hide together.
     await page.waitForTimeout(2800);
     await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("0");
     expect(await cursorOf()).toBe("none");
 
-    // 主要路徑：在投影片區域「內」移動滑鼠。`.play-mousemove-catcher`
-    // （PlayChrome/play.css）鋪在 iframe 之上、接住這次 mousemove，讓它
-    // 冒泡到上層文件，而不是被瀏覽器直接派送進 iframe 自己的文件裡。
+    // Primary path: move the mouse INSIDE the slide area.
+    // `.play-mousemove-catcher` (PlayChrome/play.css) sits on top of the
+    // iframe and catches this mousemove, letting it bubble to the parent
+    // document instead of being dispatched directly into the iframe's own
+    // document by the browser.
     await page.mouse.move(iframeCenter.x, iframeCenter.y);
     await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("1");
     expect(await cursorOf()).toBe("default");
 
-    // 量測委任的取捨：停留在投影片區域內持續移動（不是移出去一次就不再
-    // 動），確認閒置計時器真的每次都被重置、控制列不會在還沒滿 2.5 秒時
-    // 自己先閃一次熄滅——這是覆蓋層是否把「每一次」mousemove 都冒泡出去
-    // 的直接證據，不是只驗第一次。三次、每次間隔 1.2 秒（< 2.5 秒的閒置
-    // 門檻），全部應維持 opacity "1"，不曾中途變回 "0"。
+    // Keep moving inside the slide area (not just moving once and stopping),
+    // to confirm the idle timer really is reset every time and the control
+    // bar does not flicker off on its own before 2.5s elapses — direct
+    // evidence that the overlay bubbles up EVERY mousemove, not just the
+    // first. Three moves, 1.2s apart (< the 2.5s idle threshold), should all
+    // keep opacity at "1" without ever reverting to "0" in between.
     for (let i = 0; i < 3; i++) {
       await page.waitForTimeout(1200);
       await page.mouse.move(iframeCenter.x + i + 1, iframeCenter.y);
       expect(await opacityOf(bar)).toBe("1");
     }
 
-    // 對照組：移到控制列附近、明確在投影片 iframe 之外——上層文件本身的
-    // mousemove 本來就會冒泡到 document，這條路徑從一開始就成立，保留
-    // 下來證明覆蓋層沒有意外擋掉這條原本就通的路。
+    // Control case: move near the control bar, clearly outside the slide
+    // iframe — the parent document's own mousemove already bubbles to
+    // document on its own, so this path worked from the start; kept here to
+    // prove the overlay did not accidentally block this already-working path.
     await page.waitForTimeout(2800);
     await expect.poll(() => opacityOf(bar), { timeout: 5_000 }).toBe("0");
     await page.mouse.move(60, 850);
@@ -278,28 +295,31 @@ it("閒置 2.5 秒後游標與控制列一起隱去，在投影片區域內移�
   }
 });
 
-it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 click 後的補償）", async () => {
-  // gate round 1 的量測沒有明講、但改動本身引出的問題：覆蓋層
-  // pointer-events:auto 會攔下投影片區域的 click，原生的「點 iframe 給它
-  // 瀏覽器焦點」因此不再發生。PlayChrome 用 controller.focusPlayer()
-  // 補回——這裡驗證補償真的成立，不只是讀程式碼相信它成立。
-  // [E2.T11] §4.8：這個覆蓋層的 onClick 現在「多做一件事」——除了
-  // focusPlayer() 之外還會 stepPlayer("advance")（原型的「點畫面前進」）。
-  // 不影響這條測項本身在驗的焦點回收，下一個人如果看到這裡的簡報也跟著
-  // 前進了一步，那是新行為，不是回歸。
+it("clicking the slide area still hands focus back to the player (the overlay's compensation after intercepting the click)", async () => {
+  // A problem introduced by the change itself: the overlay's
+  // pointer-events:auto intercepts clicks in the slide area, so the native
+  // "clicking the iframe gives it browser focus" no longer happens.
+  // PlayChrome compensates with controller.focusPlayer() — this verifies the
+  // compensation actually holds, not just trusting the code by reading it.
+  // The overlay's onClick now also does one more thing besides
+  // focusPlayer(): it calls stepPlayer("advance") (the prototype's "clicking
+  // the screen advances"). That does not affect the focus-recovery this test
+  // checks; if a future reader sees the presentation here also advance a
+  // step, that is new behavior, not a regression.
   const { page, cleanup } = await openApp(demoDir, "play-appearance-focus-click");
   try {
     await enterPlay(page);
 
-    // 偷走焦點（沿用 e2e/player-fullscreen.test.ts 已驗證過的做法）。
+    // Steal focus (reusing the technique already validated in
+    // e2e/player-fullscreen.test.ts).
     const playBar = page.locator(".play-bar");
-    await page.locator('button:has-text("離開播放")').focus();
+    await page.locator('button:has-text("Exit Play")').focus();
     await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
-    // 在投影片區域中央點一下——這個座標落在 .play-mousemove-catcher 上，
-    // 不是原生落進 iframe 的點擊。
+    // Click in the center of the slide area — this coordinate lands on
+    // .play-mousemove-catcher, not a click that natively lands in the iframe.
     const box = await page.locator(".canvas-area").boundingBox();
-    if (!box) throw new Error("找不到 .canvas-area 的 bounding box");
+    if (!box) throw new Error("could not find .canvas-area's bounding box");
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 
     await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
@@ -309,48 +329,57 @@ it("投影片區域的點擊仍會把焦點交回播放器（覆蓋層攔截 cli
   }
 });
 
-it("兩種浮動通知（播放錯誤／全螢幕錯誤）並列可見、不互相覆蓋，且在控制列隱去後依然顯示", async () => {
+it("both floating notices (play error/fullscreen error) are visible side by side without overlapping, and remain visible after the control bar hides", async () => {
   const { page, cleanup } = await openApp(brokenEffectsDeckDir, "play-appearance-notices");
   try {
     await page.locator('.play-button').click();
 
-    // 播放錯誤：這份 deck 第 1 頁的效果清單解析必定失敗（見
-    // e2e/player-effect-error.test.ts）。canvas.ts 的解析失敗路徑（見
-    // renderPlay 的 catch 分支）把 srcdoc 換成沒有 player-runtime 的靜態
-    // 版本，所以這一頁永遠不會送出 "ready"。
+    // Play error: this deck's slide 1 effect list is guaranteed to fail
+    // parsing (see e2e/player-effect-error.test.ts). canvas.ts's
+    // parse-failure path (see renderPlay's catch branch) swaps the srcdoc
+    // for a static version with no player-runtime, so this slide never sends
+    // "ready".
     //
-    // #68 撤掉焦點提示之後，這裡只剩兩種通知。焦點提示原本會跟著這次失敗
-    // 一起成立（playerHasFocus 停在 false），但它從來不是這個測項要證明的
-    // 事——要證明的是「通知不隨控制列一起隱去」，兩種通知同樣證得。
-    const errorNotice = page.locator(".player-error-notice", { hasText: "效果清單" });
+    // After the focus notice was removed, only these two notice kinds
+    // remain. The focus notice would have held alongside this failure
+    // (playerHasFocus stuck at false), but it was never what this test needs
+    // to prove — the point is "notices do not hide along with the control
+    // bar", which both notice kinds equally demonstrate.
+    const errorNotice = page.locator(".player-error-notice", { hasText: "effect list" });
     await expect.poll(() => errorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
     expect(await page.locator(".player-focus-notice").count()).toBe(0);
 
-    // 全螢幕錯誤：沿用 e2e/player-fullscreen.test.ts 已驗證過的做法——用
-    // 一個一定會拒絕的 requestFullscreen 替身製造真實的錯誤（不是假造
-    // 成功又謊報失敗），再按下全螢幕鈕。
+    // Fullscreen error: reusing the technique already validated in
+    // e2e/player-fullscreen.test.ts — produce a real error with a
+    // requestFullscreen stub that is guaranteed to reject (not faking
+    // success and then lying about failure), then click the fullscreen button.
     await page.evaluate(() => {
       const container = document.querySelector(".canvas-area") as HTMLElement;
-      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
+      container.requestFullscreen = () => Promise.reject(new Error("simulated test: Fullscreen request rejected"));
     });
     await page.locator(".play-bar .fullscreen-toggle-button").click();
-    const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+    const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "Fullscreen toggle failed" });
     await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    // 兩則通知不互相覆蓋（review gate round 1, P2 的反面證據）：先前兩者
-    // 用同一組 position:absolute 疊在同一個位置，後渲染的會蓋住先渲染的，
-    // 而 isVisible() 仍會回報 true（Playwright 的可見性判斷不看 z-order），
-    // 所以要量真實座標矩形是否相交。
+    // The two notices must not overlap each other: previously both used the
+    // same position:absolute stacked at the same spot, so the later-rendered
+    // one would cover the earlier one while isVisible() still reported true
+    // (Playwright's visibility check ignores z-order) — so what actually
+    // needs measuring is whether the real coordinate rectangles intersect.
     //
-    // 這條量測原本在 e2e/player-fullscreen.test.ts，用「焦點提示 ＋ 全螢幕
-    // 錯誤」這一組，因為那裡的 fixture 造不出播放錯誤。那一組只共存約 100
-    // 毫秒（焦點一交回去提示就卸載），得靠頁面內逐幀取樣才量得準（issue
-    // #43）。#68 撤掉焦點提示後，量測搬到這裡——這份 broken deck 讓兩則
-    // 通知穩定共存，不再有會關上的窗口，兩次 boundingBox() 讀取之間沒有
-    // 任何東西會卸載，所以逐幀取樣連同它防的那個 race 一起不需要了。
+    // This measurement originally lived in e2e/player-fullscreen.test.ts,
+    // using the "focus notice + fullscreen error" pair, because that
+    // fixture cannot produce a play error. That pair only coexisted for
+    // about 100ms (the notice unmounts as soon as focus is handed back), so
+    // it needed frame-by-frame in-page sampling to measure accurately. After
+    // the focus notice was removed, the measurement moved here — this
+    // broken deck lets both notices coexist stably with no closing window,
+    // and nothing unmounts between the two boundingBox() reads, so the
+    // frame-by-frame sampling (and the race it guarded against) is no
+    // longer needed.
     const errorBox = await errorNotice.first().boundingBox();
     const fullscreenBox = await fullscreenErrorNotice.first().boundingBox();
-    if (!errorBox || !fullscreenBox) throw new Error("兩則通知都要有實際大小才量得到重疊");
+    if (!errorBox || !fullscreenBox) throw new Error("both notices must have a real size to measure overlap");
     const overlaps =
       errorBox.x < fullscreenBox.x + fullscreenBox.width &&
       errorBox.x + errorBox.width > fullscreenBox.x &&
@@ -361,9 +390,11 @@ it("兩種浮動通知（播放錯誤／全螢幕錯誤）並列可見、不互�
     const opacityOf = (locator: ReturnType<Page["locator"]>) =>
       locator.first().evaluate((el) => getComputedStyle(el).opacity);
 
-    // 通知本身不在 .play-bar 裡，閒置隱藏規則只作用在 .play-bar，所以兩
-    // 種通知在控制列隱去後仍應可見——它們是錯誤，不是 chrome。這裡不再動
-    // 滑鼠（上面的 evaluate()/click() 已經是最後的互動），單純等待閒置。
+    // The notices themselves aren't inside .play-bar, and the idle-hide rule
+    // only applies to .play-bar, so both notices should stay visible after
+    // the control bar hides — they're errors, not chrome. No more mouse
+    // movement here (the evaluate()/click() above were the last interaction);
+    // just wait out the idle timer.
     await page.waitForTimeout(2800);
     await expect.poll(() => opacityOf(page.locator(".play-bar")), { timeout: 5_000 }).toBe("0");
     expect(await opacityOf(errorNotice)).toBe("1");
@@ -374,12 +405,13 @@ it("兩種浮動通知（播放錯誤／全螢幕錯誤）並列可見、不互�
   }
 });
 
-it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都不在 DOM 裡", async () => {
+it("in play mode, the dock, thumbnail rail, chat, notes, and status bar are all absent from the DOM", async () => {
   const { page, cleanup } = await openApp(demoDir, "play-appearance-dom");
   try {
-    // 進入播放前：這些元素都在（標準檢視的既有外殼）。DOM count，不是
-    // 可見性——#54 明文要求「不在 DOM 裡」，`display:none`／`opacity:0`
-    // 都不算數，只有 querySelector/count 為 0 才算數。
+    // Before entering play: all of these elements are present (the standard
+    // view's existing shell). Checking DOM count, not visibility — the spec
+    // explicitly requires "absent from the DOM", where `display:none` /
+    // `opacity:0` don't count, only querySelector/count === 0 does.
     expect(await page.locator(".titlebar").count()).toBe(1);
     expect(await page.locator(".dock").count()).toBe(1);
     expect(await page.locator(".overview").count()).toBe(1);
@@ -398,32 +430,38 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
     expect(await page.locator(".notes").count()).toBe(0);
     expect(await page.locator(".status-bar").count()).toBe(0);
 
-    // 背景純黑，投影片置中且完整可見 (AC1/AC2)：舞台底本身即 #000
-    // （styles/play.css 既有的 `.canvas` 規則），這裡量測整個播放黑幕
-    // 容器 `.canvas-area` 的背景色，確認不是殘留的舞台底表面色。
+    // Background is pure black, slide is centered and fully visible
+    // (AC1/AC2): the stage's base is already #000 (styles/play.css's
+    // existing `.canvas` rule); this measures the whole play blackout
+    // container `.canvas-area`'s background color, confirming it isn't a
+    // leftover stage-surface color.
     const bg = await page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).toBe("rgb(0, 0, 0)");
 
-    // gate round 1 (2026-08-25), medium finding：`.notes` 已離開 DOM
-    // （上面已驗），但 `.main` 的第二條軌道（shell.css 的
-    // `grid-template-rows: 1fr var(--h-notes)`）原本就算沒有 `<Notes>`
-    // 也仍然佔位，留下一條透明、透出 `.app` 背景色（`--s-well`，不是黑）
-    // 的窄條。量測方式沿用指揮官自己的做法：`.canvas-area` 高度應等於
-    // `.body` 高度（收合成功就不會再矮一截），且視窗底部中央那一點的
-    // 實際繪製顏色應該是黑色——不是只信 `.canvas-area` 自己的
-    // background，因為那條規則填不到被 `.main` 軌道多留出來的空間。
+    // `.notes` has already left the DOM (verified above), but `.main`'s
+    // second track (shell.css's `grid-template-rows: 1fr var(--h-notes)`)
+    // still reserves that space even with no `<Notes>`, leaving a
+    // transparent strip that shows through to `.app`'s background
+    // (`--s-well`, not black). The measurement here follows the same
+    // approach: `.canvas-area`'s height should equal `.body`'s height (no
+    // longer a bit short once the collapse succeeds), and the actually
+    // rendered color at the bottom-center point of the viewport should be
+    // black — not just trusting `.canvas-area`'s own background, since that
+    // rule doesn't fill the extra space `.main`'s track leaves behind.
     const bodyHeight = await page.locator(".body").evaluate((el) => el.getBoundingClientRect().height);
     const canvasAreaHeight = await page.locator(".canvas-area").evaluate((el) => el.getBoundingClientRect().height);
     expect(canvasAreaHeight).toBe(bodyHeight);
 
     const viewport = page.viewportSize();
-    if (!viewport) throw new Error("找不到 viewport 尺寸");
-    // 用 elementsFromPoint（複數版）取整疊、由上而下找第一個非透明背景：
-    // 這個點最上層是 .play-mousemove-catcher（gate round 1 高風險項的
-    // 修復，本身透明、沒有自己的背景色），單看 elementFromPoint 抓到的
-    // 那一個元素會誤判成「透明」，量不出玻璃底下真正的顏色。人眼在這個
-    // 點看到的其實是透明覆蓋層底下、真正不透明的那一層——這裡照著相同
-    // 邏輯往下找。
+    if (!viewport) throw new Error("could not find the viewport size");
+    // Use elementsFromPoint (the plural form) to get the whole stack and
+    // find the first non-transparent background from top to bottom: the
+    // topmost element at this point is .play-mousemove-catcher (transparent,
+    // with no background of its own), so checking only what
+    // elementFromPoint returns would misreport it as "transparent" and
+    // never measure the real color underneath the glass. What the eye
+    // actually sees at this point is the truly opaque layer beneath the
+    // transparent overlay — this follows the same logic to look further down.
     const bottomCenterColor = await page.evaluate(
       ([x, y]) => {
         const stack = document.elementsFromPoint(x, y);
@@ -437,8 +475,8 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
     );
     expect(bottomCenterColor).toBe("rgb(0, 0, 0)");
 
-    // F-01 (NOOP-355 #287): already in play mode here (enterPlay() above),
-    // so this reuses the existing session instead of a second startup —
+    // Already in play mode here (enterPlay() above), so this reuses the
+    // existing session instead of a second startup —
     // `.stage` (overflow:hidden) must not have overflow content to clip in
     // the first place, and neither should the srcdoc iframe's own document.
     const stageScroll = await page.locator(".stage").evaluate((el) => ({
@@ -463,16 +501,16 @@ it("播放模式下，功能區、縮圖軌、對話、備忘稿、狀態列都�
   }
 });
 
-it("離開播放模式後，總覽縮圖軌重新掛載且可點擊換頁（overview 模組存活證明）", async () => {
+it("after leaving play mode, the overview thumbnail rail remounts and page changes still work by clicking (proof the overview module survives)", async () => {
   const { page, cleanup } = await openApp(demoDir, "play-appearance-overview-survival");
   try {
-    // 進入播放，再離開——`<Rail>` 卸載又重掛載一次。
+    // Enter play, then leave — `<Rail>` unmounts and remounts once.
     await enterPlay(page);
     await page.locator(".play-bar .play-toggle-button.leave").click();
     await expect.poll(() => page.locator(".play-button").count(), { timeout: 10_000 }).toBe(1);
 
-    // 只數元素不足以證明模組還活著（見波簡報的「陷阱」一節）：必須點
-    // 一下縮圖，實際觀察投影片真的換了。
+    // Counting elements alone doesn't prove the module is still alive: click
+    // a thumbnail and actually observe the slide change.
     const thumbnails = page.locator(".overview-thumb");
     await expect.poll(() => thumbnails.count(), { timeout: 10_000 }).toBe(4);
 
@@ -488,52 +526,24 @@ it("離開播放模式後，總覽縮圖軌重新掛載且可點擊換頁（over
   }
 });
 
-it("基準截圖：控制列浮現態", async () => {
-  const { page, cleanup } = await openApp(demoDir, "play-appearance-shot-awake");
-  try {
-    await enterPlay(page);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "play-awake", baselineDir });
-  } finally {
-    await page.close();
-    await cleanup();
-  }
-});
-
-it("基準截圖：控制列隱藏態", async () => {
-  const { page, cleanup } = await openApp(demoDir, "play-appearance-shot-asleep");
-  try {
-    await enterPlay(page);
-    await page.waitForTimeout(2800);
-    await expect
-      .poll(() => page.locator(".play-bar").evaluate((el) => getComputedStyle(el).opacity), { timeout: 5_000 })
-      .toBe("0");
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "play-asleep", baselineDir });
-  } finally {
-    await page.close();
-    await cleanup();
-  }
-});
-
-it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
-  // `.canvas`（play.css，data-mode="play"）的 #000 黑幕是進場前/載入前的
-  // 佔位色，本該被投影片文件蓋掉。但 `slide add` 的空白頁沒有背景矩形
-  // （crates/comotion/src/slide/ops.rs 的 build_blank_slide_svg），播放
-  // 模式走的是 renderPlay() 的正常路徑（canvas.ts's wrapPlayDocument），不
-  // 是票面文字點名的 wrapSlideDocument——這裡直接量播放中 iframe 自己的
-  // html/body 背景，量的是實際播放路徑用到的那個 wrap 函式，不是名字對得
-  // 上但實際沒被這條路徑呼叫到的那個。
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-files-"));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+it("a slide with no background rect (a blank page from `slide add`) still renders an opaque white background in play mode instead of solid black", async () => {
+  // `.canvas`'s (play.css, data-mode="play") #000 blackout is the
+  // placeholder color before/while loading, meant to be covered by the
+  // slide document. But a blank page from `slide add` has no background rect
+  // (crates/slidra/src/slide/ops.rs's build_blank_slide_svg), and play mode
+  // goes through renderPlay()'s normal path (canvas.ts's wrapPlayDocument) —
+  // this measures the actually-playing iframe's own html/body background
+  // directly, i.e. the wrap function the real play path actually uses.
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-play-nobg-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-play-nobg-files-"));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
   try {
     const registry: CommandRegistry = createDefaultRegistry();
-    const comotPath = path.join(comotDir, "deck.comot");
-    await registry.dispatch("new", { path: comotPath, name: "無背景播放測試" });
-    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const slidraPath = path.join(slidraDir, "deck.slidra");
+    await registry.dispatch("new", { path: slidraPath, name: "Backgroundless playback test" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const presentationId = opened.data!.id;
     // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
     await registry.dispatch("slide add", { id: presentationId });
@@ -546,7 +556,7 @@ it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放�
       env: {
         PATH: `${binDir}:${path.dirname(process.execPath)}`,
         E2E_PRESENTATION_ID: presentationId,
-        E2E_NEW_TITLE: "此測試不會送出訊息",
+        E2E_NEW_TITLE: "this test never sends a message",
       },
     };
     const server = await startServe({ presentationId, port: 0, agent });
@@ -561,11 +571,13 @@ it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放�
 
       const playBody = page.frameLocator("iframe.slide-frame").locator("body");
       const bodyBackground = await playBody.evaluate((el) => getComputedStyle(el).backgroundColor);
-      // 規格拍板的字面值（票內「不透明白底」）：不是從實作反推的快照。只量
-      // body——wrapPlayDocument()（canvas.ts）刻意只在 body 上蓋白底，沒有
-      // 額外對 html 設定；body 沒填滿的部分本來就會由瀏覽器的 canvas
-      // background propagation 規則沿用 body 的顏色，html 自己維持初始的
-      // 透明值是正常、預期的行為，不是缺陷。
+      // The literal value the spec settled on ("opaque white background"):
+      // not a snapshot reverse-engineered from the implementation. Only body
+      // is measured — wrapPlayDocument() (canvas.ts) deliberately only
+      // covers body with white, without touching html; wherever body isn't
+      // filled, the browser's canvas background propagation rule naturally
+      // carries body's color over, and html staying at its initial
+      // transparent value is normal, expected behavior, not a defect.
       expect(bodyBackground).toBe("rgb(255, 255, 255)");
 
       await page.close();
@@ -573,9 +585,9 @@ it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放�
       await server.close();
     }
   } finally {
-    delete process.env["COMOTION_HOME"];
-    delete process.env["COMOTION_BIN"];
-    await rm(coMotionHome, { recursive: true, force: true });
-    await rm(comotDir, { recursive: true, force: true });
+    delete process.env["SLIDRA_HOME"];
+    delete process.env["SLIDRA_BIN"];
+    await rm(slidraHome, { recursive: true, force: true });
+    await rm(slidraDir, { recursive: true, force: true });
   }
 });

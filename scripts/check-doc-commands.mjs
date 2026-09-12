@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Fails when a Markdown doc or shell script tells someone to run an
 // `npm run <x>` that doesn't exist in package.json's scripts — the exact
-// bug pattern `npm run serve` used to be (see docs/verify-setup.md and A8
-// of NOOP-269). Run manually or via `npm test`:
+// bug pattern `npm run serve` used to be (see docs/verify-setup.md). Run
+// manually or via `npm test`:
 //
 //   node scripts/check-doc-commands.mjs
 
@@ -60,13 +60,13 @@ function main() {
   const violations = findViolations(files, knownScripts, ROOT);
 
   if (violations.length === 0) {
-    console.log(`檢查了 ${files.length} 個檔案，沒有發現不存在的 npm 指令。`);
+    console.log(`Checked ${files.length} files, no missing npm commands found.`);
     return;
   }
 
   for (const violation of violations) {
     console.error(
-      `${violation.file}:${violation.line}: npm run ${violation.scriptName} 不存在於 package.json 的 scripts`,
+      `${violation.file}:${violation.line}: npm run ${violation.scriptName} does not exist in package.json's scripts`,
     );
   }
   process.exitCode = 1;

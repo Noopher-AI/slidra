@@ -6,11 +6,11 @@ import { exportFileName } from "./output-name.js";
 import type { ExportFormat } from "./job.js";
 
 /**
- * Entry point for `comotion export <presentation-id> --format pdf|pdf-frames
+ * Entry point for `slidra export <presentation-id> --format pdf|pdf-frames
  * [--out <path>] [--port <n>]` (NOOP-93 §4.3).
  *
- * Invoked from `packages/cli/bin/comotion.js` via the same runtime-only
- * dynamic import `serve` already uses. [E4.T9]/F7: `@comotion/server` no
+ * Invoked from `packages/cli/bin/slidra.js` via the same runtime-only
+ * dynamic import `serve` already uses. [E4.T9]/F7: `@slidra/server` no
  * longer depends on `packages/cli`'s in-process registry at all.
  */
 export async function runExportCli(argv: string[]): Promise<number> {
@@ -29,7 +29,7 @@ export async function runExportCli(argv: string[]): Promise<number> {
     return 1;
   }
   if (project.slides.length === 0) {
-    console.error("簡報沒有投影片");
+    console.error("Presentation has no slides");
     return 1;
   }
 
@@ -44,13 +44,13 @@ export async function runExportCli(argv: string[]): Promise<number> {
       format,
       outputPath,
       onRunning: (totalFrames) => {
-        console.log(`匯出開始：${format}，共 ${totalFrames} 格`);
+        console.log(`Export started: ${format}, ${totalFrames} frames total`);
       },
       onProgress: (completedFrames, totalFrames) => {
-        console.log(`進度：${completedFrames}/${totalFrames}`);
+        console.log(`Progress: ${completedFrames}/${totalFrames}`);
       },
     });
-    console.log(`已匯出：${outputPath}（${result.pageCount} 頁）`);
+    console.log(`Exported: ${outputPath} (${result.pageCount} pages)`);
     return 0;
   } catch (error) {
     // renderExportPdf never writes anything to outputPath until page.pdf()
@@ -92,18 +92,18 @@ function parseExportArgv(argv: string[]): ParseResult {
     const arg = argv[i];
     if (arg === "--format") {
       const value = argv[i + 1];
-      if (value === undefined || isFlagLike(value)) return { ok: false, message: "--format 缺少值" };
+      if (value === undefined || isFlagLike(value)) return { ok: false, message: "--format is missing a value" };
       format = value;
       i++;
     } else if (arg === "--out") {
       const value = argv[i + 1];
-      if (value === undefined || isFlagLike(value)) return { ok: false, message: "--out 缺少值" };
+      if (value === undefined || isFlagLike(value)) return { ok: false, message: "--out is missing a value" };
       outPath = value;
       i++;
     } else if (arg === "--port") {
       const value = argv[i + 1];
       const parsedPort = value === undefined ? NaN : Number(value);
-      if (!Number.isInteger(parsedPort)) return { ok: false, message: "--port 缺少有效的數值" };
+      if (!Number.isInteger(parsedPort)) return { ok: false, message: "--port is missing a valid number" };
       port = parsedPort;
       i++;
     } else if (presentationId === undefined && !isFlagLike(arg)) {
@@ -111,13 +111,13 @@ function parseExportArgv(argv: string[]): ParseResult {
     }
   }
 
-  if (!presentationId) return { ok: false, message: "命令 export 缺少參數：presentation-id" };
-  if (!format) return { ok: false, message: "命令 export 缺少參數：--format" };
+  if (!presentationId) return { ok: false, message: "Command export is missing an argument: presentation-id" };
+  if (!format) return { ok: false, message: "Command export is missing an argument: --format" };
   // Case-sensitive, on purpose (§4.3's table): "PDF", "Pdf", etc. are
   // rejected outright rather than normalized — a typo should be reported,
   // not silently repaired.
   if (format !== "pdf" && format !== "pdf-frames") {
-    return { ok: false, message: "--format 必須是下列其中一個值：pdf、pdf-frames" };
+    return { ok: false, message: "--format must be one of: pdf, pdf-frames" };
   }
   return { ok: true, value: { presentationId, format, outPath, port } };
 }

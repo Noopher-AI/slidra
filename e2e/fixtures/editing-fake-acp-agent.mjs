@@ -7,25 +7,30 @@
 // needs an agent that actually edits the deck, because the whole point of
 // the test is that an edit made by the agent reaches the SVG on the canvas.
 //
-// What it does on the author's first message (prompt index 0 is CoMotion's
-// 編輯規約, so the author's message is index 1) depends on the message text
-// (T5/NOOP-110 follow-up, e2e/freeze.test.ts):
+// What it does on the author's first message (prompt index 0 is Slidra's
+// own editing-charter turn, so the author's message is index 1) depends on
+// the message text (T5/NOOP-110 follow-up, e2e/freeze.test.ts):
 //   - default (any text without one of the keywords below, including the
-//     original "改標題"): unchanged since #16/#8 —
+//     original "改標題" trigger some tests still send — a literal Chinese
+//     phrase left in place because e2e/freeze.test.ts, outside this file's
+//     translation scope, sends it verbatim): unchanged since #16/#8 —
 //     1. reads `slides/001.svg` through the ACP client's fs/read_text_file,
 //        the same way a real agent discovers the element id;
-//     2. asks for permission to run a `comotion text set` shell command,
+//     2. asks for permission to run a `slidra text set` shell command,
 //        so the server's allowlist is really exercised;
 //     3. if permission is granted, runs that command through `sh -c`,
-//        resolving `comotion` from PATH — the exact step that was broken
-//        during #8's manual acceptance (`command not found: comotion`);
+//        resolving `slidra` from PATH — the exact step that was broken
+//        during #8's manual acceptance (`command not found: slidra`);
 //     4. streams one reply chunk back.
-//   - "兩步": same read/permission/hold dance, then TWO `text set` commands
-//     in the same turn (second one appends "（第二步）") — exercises one
+//   - "兩步" (also a literal trigger e2e/freeze.test.ts sends, left
+//     untranslated for the same reason): same read/permission/hold dance,
+//     then TWO `text set` commands in the same turn (second one appends
+//     "（第二步）", also asserted verbatim by that file) — exercises one
 //     turn's several commands undoing together as a single group (US 44).
-//   - "只看": reads the slide, holds, replies — never runs any command, so
-//     the deck must never freeze (US 48: thinking/reading alone doesn't
-//     take the editing lock).
+//   - "只看" (same note — a literal e2e/freeze.test.ts trigger): reads the
+//     slide, holds, replies — never runs any command, so the deck must
+//     never freeze (US 48: thinking/reading alone doesn't take the editing
+//     lock).
 //
 // The new title is taken from E2E_NEW_TITLE so the test owns the string it
 // asserts on.
@@ -52,7 +57,7 @@ function requireEnv(name) {
   // No fallback: a missing variable means the test wired this fixture up
   // wrong, and a silent default would turn that into a mysterious
   // assertion failure much later.
-  if (!value) throw new Error(`fake agent 缺少環境變數：${name}`);
+  if (!value) throw new Error(`fake agent is missing environment variable: ${name}`);
   return value;
 }
 
@@ -98,24 +103,24 @@ class EditingFakeAgent {
       }
       await this.connection.sessionUpdate({
         sessionId: params.sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "只是看了一下" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "just took a look" } },
       });
       return { stopReason: "end_turn" };
     }
 
     const titles = authorText.includes("兩步") ? [newTitle, `${newTitle}（第二步）`] : [newTitle];
     for (const title of titles) {
-      const command = `comotion text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
+      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
       const permission = await this.connection.requestPermission({
         sessionId: params.sessionId,
-        toolCall: { toolCallId: "e2e-text-set", title: "修改標題文字", rawInput: { command } },
+        toolCall: { toolCallId: "e2e-text-set", title: "Edit title text", rawInput: { command } },
         options: [
-          { kind: "allow_once", name: "允許", optionId: "allow" },
-          { kind: "reject_once", name: "拒絕", optionId: "reject" },
+          { kind: "allow_once", name: "Allow", optionId: "allow" },
+          { kind: "reject_once", name: "Reject", optionId: "reject" },
         ],
       });
       if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
-        throw new Error(`命令未獲允許：${JSON.stringify(permission.outcome)}`);
+        throw new Error(`command was not allowed: ${JSON.stringify(permission.outcome)}`);
       }
 
       if (freezeHoldMs > 0) {
@@ -127,7 +132,7 @@ class EditingFakeAgent {
 
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
-      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "標題已更新" } },
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "title updated" } },
     });
     return { stopReason: "end_turn" };
   }
@@ -144,17 +149,17 @@ function extractPromptText(prompt) {
 
 function extractTextElementId(svg) {
   const match = /<text[^>]*\bid="([^"]+)"/.exec(svg);
-  if (!match) throw new Error("投影片裡找不到帶 id 的 <text> 元素");
+  if (!match) throw new Error("could not find a <text> element with an id in the slide");
   return match[1];
 }
 
 function runShellCommand(command, cwd) {
   return new Promise((resolve, reject) => {
-    // `sh -c` with `comotion` resolved from PATH, exactly as a real agent
+    // `sh -c` with `slidra` resolved from PATH, exactly as a real agent
     // would run it — so a PATH that cannot reach the CLI fails here loudly.
     execFile("/bin/sh", ["-c", command], { cwd }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(`命令執行失敗：${command}\n${stdout}\n${stderr}`));
+        reject(new Error(`command failed: ${command}\n${stdout}\n${stderr}`));
         return;
       }
       resolve();

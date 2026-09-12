@@ -10,84 +10,89 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Issue #23 quotes the spec verbatim: "遇到未實作的家族、效果或起始方式，
- * 拋錯並在畫面上說明，不要靜默忽略." Nothing in the repo tested the DOM
- * side of that sentence — packages/web/src/canvas.ts throws and surfaces
+ * The spec states: "when an unimplemented family, effect, or start mode is
+ * encountered, throw and explain it on screen — don't silently ignore it."
+ * Nothing in the repo tested the DOM
+ * side of that sentence — apps/web/src/canvas.ts throws and surfaces
  * `error` (unit-tested indirectly through effects.ts/player-plan.ts), but
  * whether an author actually SEES a message, with enough detail to find
  * the broken line, was never checked end to end. This file closes that
  * gap with a hand-written broken fixture
  * (`e2e/fixtures/broken-effects-deck/`): five slides, five different
  * kinds of damage —
- *   1. a `family="media"` effect target missing `data-comot-media` (the
- *      exact mistake made while hand-authoring `demo/slides/004.svg` for
- *      this same ticket)
+ *   1. a `family="media"` effect target missing `data-slidra-media` (the
+ *      exact mistake made while hand-authoring `demo/slides/004.svg`)
  *   2. a `target` that does not resolve to any element on the slide (a
  *      very plausible typo: an id renamed without updating the effect
  *      list that points at it)
- *   3. an unimplemented `family` value (`build` — [E2.T7] implemented
- *      `emphasis` for real, so this fixture's stand-in for "a family
+ *   3. an unimplemented `family` value (`build` — `emphasis` was
+ *      implemented for real, so this fixture's stand-in for "a family
  *      nothing implements" moved to a value that stays permanently
- *      unimplemented, D4)
+ *      unimplemented)
  *   4. an unimplemented `effect` value under an otherwise-valid family
  *      (`enter`/`wipe` — plausible if an author assumes PowerPoint-style
  *      transition names just work; `wipe` is deliberately never
- *      implemented, [E2.T7] §2 — this fixture is *why* it never will be)
- *   5. an unimplemented `start` value (`on-hover` — [E2.T7] implemented
- *      `with-previous` for real, D3, so this fixture's stand-in for "a
- *      start nothing implements" moved to a value that stays permanently
+ *      implemented — this fixture is *why* it never will be)
+ *   5. an unimplemented `start` value (`on-hover` — `with-previous` was
+ *      implemented for real, so this fixture's stand-in for "a start
+ *      nothing implements" moved to a value that stays permanently
  *      unimplemented)
- * Round 1 of the Codex review gate on this ticket found #3–#5 missing:
- * the suite only proved the DOM banner exists for damage it happens to
- * be good at catching, not for the "未實作" half of the spec sentence —
- * exactly the gap this kind of e2e test exists to close.
+ * An earlier review pass found #3–#5 missing: the suite only proved the DOM banner exists for damage it happens to
+ * be good at catching, not for the "unimplemented" half of the spec
+ * sentence — exactly the gap this kind of e2e test exists to close.
  *
- * Two things this test insists on, per the coordinator's review:
+ * Two things this test insists on:
  *   1. The banner text must name the actual broken thing (element id /
  *      attribute name / unsupported value), not just say "something went
- *      wrong" — otherwise "說明" is not satisfied, only "拋錯" is.
+ *      wrong" — otherwise "explain it" is not satisfied, only "throw" is.
  *   2. The degraded slide must still render its real content (canvas.ts's
  *      renderPlay catch branch falls back to wrapSlideDocument — the
  *      static, no-runtime render used in view mode) rather than leaving
  *      the frame blank.
  *
- * 下面每個 `page.close()` 當初是這樣被診斷出來的：透過加時間戳記的觀測，
- * 重複跑了約 30 次，發現這個檔案大約每 5-8 次就會有 1 次整個卡到 120 秒
- * 的測試逾時上限，卡點是某個 `it()` 呼叫 `cleanup()`（→ `server.close()`）
- * 時，該次測試自己開的那個 page 上，live-reload／chat 的 SSE 連線
- * （在掛載時就急切地開啟——見 App.tsx）還沒關閉。`startServe` 的
- * `close()` 雖然會主動關掉它自己追蹤的串流，但跟任何普通的
- * `http.Server.close()` 一樣，仍然會等待 socket 上其他還開著的連線；
- * 一個沒關閉的 Playwright page，它的連線要一直等到 `afterAll` 裡共用的
- * `browser` 整個關閉才會死掉，於是所有卡住的 `server.close()` 會在那一刻
- * 同時被解除——這正是當初加時間戳觀測時看到的現象。
+ * Every `page.close()` below was diagnosed this way: with timestamped
+ * observation added, the file was run repeatedly around 30 times, and
+ * roughly 1 in every 5-8 runs hung all the way to the 120-second test
+ * timeout. The sticking point was that when some `it()` called `cleanup()`
+ * (-> `server.close()`), that test's own page still had its live-reload/chat
+ * SSE connection open (opened eagerly on mount — see App.tsx). `startServe`'s
+ * `close()` does actively close the streams it tracks itself, but like any
+ * ordinary `http.Server.close()`, it still waits for other connections still
+ * open on the socket; an unclosed Playwright page's connection only dies
+ * once the shared `browser` in `afterAll` fully closes, at which point every
+ * stuck `server.close()` resolves at once — exactly what the timestamped
+ * observation showed.
  *
- * 這個根因後來在 #37 修好了：`packages/server/src/serve.ts` 的
- * `close()` 現在會在 `server.close(cb)` 之後緊接著呼叫
- * `server.closeAllConnections()`，所以即使還有連線開著也不會再卡住關閉。
- * 這一點針對本檔案有實際測量過：把下面每個 `page.close()` 都拿掉後，
- * 單獨連續跑這個檔案 10 次，全部通過、沒有任何一次卡住（每次跑完約
- * 2 秒左右，離會咬人的 120 秒逾時還很遠）。10 次是一個小樣本，對照當初
- * 大約 5-8 次會中一次的機率型 bug 來說，這只能說「這個樣本裡沒有再重
- * 現」，不能證明這個 hang 從此不會再發生。
+ * The root cause was later fixed in a follow-up:
+ * `packages/server/src/serve.ts`'s `close()` now calls
+ * `server.closeAllConnections()` right after `server.close(cb)`, so closing
+ * no longer hangs even with connections still open. This was actually
+ * measured against this file: with every `page.close()` below removed,
+ * running this file 10 times in a row passed every time with no hang (each
+ * run took about 2 seconds, far from the 120-second timeout that bites).
+ * 10 runs is a small sample against a bug that originally hit roughly 1 in
+ * 5-8 times, so this only shows "it didn't reproduce in this sample", not
+ * that the hang can never happen again.
  *
- * 這個對照組也另外跑過：把同一份拿掉 page.close() 的檔案，搭配還沒套用
- * #37 修復的舊版 `serve.ts`（沒有 `closeAllConnections()`），在同一台機器、
- * 同一個 Node 版本上跑。結果第 3 次就整個卡到 120 秒逾時上限，1 個測試
- * 失敗、3 個通過——也就是說這個 hang 在這台機器、這個 Node 版本上依然會
- * 重現，不是「這台機器現在剛好測不出來了」。因此上面那 10 次乾淨的結果，
- * 是對照一個真的還會發作的失敗模式而得到的，不只是單純沒觀察到失敗而已。
+ * This was also run as a control: the same file with `page.close()` removed,
+ * against the old `serve.ts` before the fix (no `closeAllConnections()`), on
+ * the same machine and Node version. It hung all the way to the 120-second
+ * timeout on the 3rd run — 1 test failed, 3 passed — meaning the hang still
+ * reproduces on this machine and this Node version, it isn't a case of "this
+ * machine just happens not to reproduce it right now." So the 10 clean runs
+ * above were measured against a failure mode that genuinely still occurs,
+ * not simply an absence of observed failure.
  *
- * 即便如此，這裡仍然刻意保留 `page.close()`：關閉 page 本身就是良好的
- * 收尾習慣，跟伺服器端修好與否無關；而且留著它，將來如果 `close()` 又
- * 出現類似的退化，會在這裡直接變成一個清楚可歸因的失敗，而不是一次
- * 神秘的 120 秒逾時。
+ * Even so, `page.close()` is deliberately kept here: closing the page is
+ * good hygiene regardless of whether the server side is fixed, and keeping
+ * it means that if `close()` ever regresses again, it turns into a clearly
+ * attributable failure here instead of a mysterious 120-second timeout.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -95,10 +100,10 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 let browser: Browser;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -110,16 +115,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-effecterror-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-effecterror-files-"));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-effecterror-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-effecterror-files-"));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "broken-effects-deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "broken-effects-deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -130,7 +135,7 @@ async function startServerFor(): Promise<{
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -141,10 +146,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env["COMOTION_HOME"];
-      delete process.env["COMOTION_BIN"];
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env["SLIDRA_HOME"];
+      delete process.env["SLIDRA_BIN"];
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -157,7 +162,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
   }
 }
 
-it("進入播放時效果清單解析失敗：畫面上出現指名問題所在的錯誤說明，投影片仍以靜態方式顯示原本的內容", async () => {
+it("effect list parsing fails on entering play: an error notice on screen names where the problem is, and the slide still renders its original content statically", async () => {
   const { server, cleanup } = await startServerFor();
   let page: import("playwright").Page | undefined;
   try {
@@ -166,26 +171,30 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
 
-    // 檢視模式：不呼叫 computePlayerPlan，所以第 1 頁在這裡完全正常，
-    // 內容就看得到——壞掉的只是效果清單，不是投影片本身。
+    // View mode: computePlayerPlan is never called, so slide 1 is completely
+    // normal here and its content is visible — only the effect list is
+    // broken, not the slide itself.
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
 
-    // 進入播放：effects.ts 對第 1 頁的效果清單解析會拋錯（media 效果的
-    // 目標缺少 data-comot-media），canvas.ts 把它顯示成畫面上的橫幅。
+    // Entering play: effects.ts throws parsing slide 1's effect list (the
+    // media effect's target is missing data-slidra-media), and canvas.ts
+    // shows it as an on-screen banner.
     const notice = page.locator(".player-error-notice");
     await expect.poll(() => notice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     const noticeText = await notice.first().textContent();
-    // 訊息要指名是哪個元素、缺了哪個屬性——不是「發生錯誤」這種空話，
-    // 這樣作者才找得到要修哪一行。
+    // The message must name which element and which attribute is missing —
+    // not an empty phrase like "an error occurred" — so the author can
+    // actually find the line to fix.
     expect(noticeText).toContain("el-speaker");
-    expect(noticeText).toContain("data-comot-media");
+    expect(noticeText).toContain("data-slidra-media");
 
-    // 降級行為要誠實：解析失敗不等於畫面空白，投影片本身的內容仍在。
+    // The degraded behavior must be honest: a parse failure is not the same
+    // as a blank screen — the slide's own content is still there.
     const opacityOf = (selector: string) =>
       playFrame()
         .locator(selector)
@@ -194,15 +203,17 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     await expect.poll(() => opacityOf("#el-broken-title")).toBe("1");
     await expect.poll(() => opacityOf("#el-speaker")).toBe("1");
 
-    // 換到第 2 頁（另一種損壞：target 指向不存在的元素）。播放模式下方向
-    // 鍵推進在解析失敗時沒有 runtime 可監聽，所以改走 #54 控制列的
-    // 「下一步」——它接的是 controller.next()（＝showSlide(currentIndex+1)，
-    // 換頁不換效果步驟），在播放模式下也能用，不需要任何 runtime 活著。
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    // Switch to slide 2 (a different kind of damage: target points to an
+    // element that doesn't exist). Arrow-key advancement in play mode has no
+    // runtime to listen for it once parsing has failed, so this uses the
+    // control bar's "next" instead — it's wired to controller.next() (i.e.
+    // showSlide(currentIndex+1), changing the page without changing effect
+    // steps), which works in play mode without any runtime alive.
+    await page.locator('.play-bar button[aria-label="Next"]').click();
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title-2").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 2 頁：指向不存在的元素");
+      .toBe("Slide 2: target points to a nonexistent element");
 
     const noticeText2 = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText2).toContain("el-does-not-exist");
@@ -215,8 +226,8 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
     // waits for every currently open connection to end, and an unclosed
     // page's SSE streams never end on their own. Diagnosed while chasing
-    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
-    // ticket's report) — closing the page here made 16/16 repeated runs
+    // an intermittent ~1-in-5 full-120s hang in this exact file —
+    // closing the page here made 16/16 repeated runs
     // pass cleanly where the un-fixed version reproduced the hang twice
     // in 16 runs.
     await page?.close();
@@ -224,7 +235,7 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
   }
 });
 
-it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯誤說明", async () => {
+it("an unimplemented family on entering play: an error notice on screen names that family value", async () => {
   const { server, cleanup } = await startServerFor();
   let page: import("playwright").Page | undefined;
   try {
@@ -235,22 +246,23 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    // 從第 1 頁換到第 3 頁：控制列的「下一步」是換頁（±1），不是跳頁，
-    // 所以連按兩次，經過第 2 頁（另一種損壞，見上一個測項）。
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    // Switching from slide 1 to slide 3: the control bar's "next" changes
+    // the page by ±1, not by jumping, so click it twice, passing through
+    // slide 2 (a different kind of damage, see the previous test).
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-3").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 3 頁：未實作的 family");
+      .toBe("Slide 3: unimplemented family");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("build");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
@@ -262,8 +274,8 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
     // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
     // waits for every currently open connection to end, and an unclosed
     // page's SSE streams never end on their own. Diagnosed while chasing
-    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
-    // ticket's report) — closing the page here made 16/16 repeated runs
+    // an intermittent ~1-in-5 full-120s hang in this exact file —
+    // closing the page here made 16/16 repeated runs
     // pass cleanly where the un-fixed version reproduced the hang twice
     // in 16 runs.
     await page?.close();
@@ -271,7 +283,7 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
   }
 });
 
-it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯誤說明", async () => {
+it("an unimplemented effect on entering play: an error notice on screen names that effect value", async () => {
   const { server, cleanup } = await startServerFor();
   let page: import("playwright").Page | undefined;
   try {
@@ -282,22 +294,22 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    // 從第 1 頁換到第 4 頁：連按三次「下一步」（見上一個測項的說明）。
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    // Switching from slide 1 to slide 4: click "next" three times (see the previous test's explanation).
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-4").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 4 頁：未實作的 effect");
+      .toBe("Slide 4: unimplemented effect");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("wipe");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
@@ -309,8 +321,8 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
     // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
     // waits for every currently open connection to end, and an unclosed
     // page's SSE streams never end on their own. Diagnosed while chasing
-    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
-    // ticket's report) — closing the page here made 16/16 repeated runs
+    // an intermittent ~1-in-5 full-120s hang in this exact file —
+    // closing the page here made 16/16 repeated runs
     // pass cleanly where the un-fixed version reproduced the hang twice
     // in 16 runs.
     await page?.close();
@@ -318,7 +330,7 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
   }
 });
 
-it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯誤說明", async () => {
+it("an unimplemented start on entering play: an error notice on screen names that start value", async () => {
   const { server, cleanup } = await startServerFor();
   let page: import("playwright").Page | undefined;
   try {
@@ -329,23 +341,23 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
-    // 從第 1 頁換到第 5 頁：連按四次「下一步」（見上一個測項的說明）。
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    // Switching from slide 1 to slide 5: click "next" four times (see the previous test's explanation).
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-5").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 5 頁：未實作的 start");
+      .toBe("Slide 5: unimplemented start");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("on-hover");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
@@ -357,8 +369,8 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
     // closed BEFORE cleanup()'s server.close(): Node's http.Server.close()
     // waits for every currently open connection to end, and an unclosed
     // page's SSE streams never end on their own. Diagnosed while chasing
-    // an intermittent ~1-in-5 full-120s hang in this exact file (see this
-    // ticket's report) — closing the page here made 16/16 repeated runs
+    // an intermittent ~1-in-5 full-120s hang in this exact file —
+    // closing the page here made 16/16 repeated runs
     // pass cleanly where the un-fixed version reproduced the hang twice
     // in 16 runs.
     await page?.close();

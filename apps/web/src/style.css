@@ -1,0 +1,65 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Global button reset, copied verbatim from docs/design/base-shell.html
+   line 62 (review gate finding, 08-25): without it, every <button> keeps
+   the UA's own light ButtonFace behind whatever `color` a rule sets, so a
+   near-white --ink label on that light face renders as an unreadable
+   blank box. This is part of the visual baseline itself, not an invented
+   value. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* This file is a shrinking ledger (ticket #48): every region this unit
+   redesigns has its own stylesheet under styles/ now — see main.tsx's
+   import order. What is left here is only what nobody has redesigned yet:
+   the play iframe itself, and the play-mode floating notices. #50 (stage)
+   and #54 (play appearance) will each carry their own section away when
+   they land. */
+
+.slide-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Floating notice stack for play mode: focus hints, playback errors, and
+   fullscreen errors can all be active at once. They used to each be
+   position:absolute at the same spot, so the later-rendered one covered the
+   earlier one. Positioning and stacking gap are now centralized here — each
+   notice only keeps its own appearance styling, laid out side by side with
+   flex column + gap, so they no longer overlap. */
+.player-notices {
+  position: absolute;
+  top: calc(var(--u) * 3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 2);
+}
+
+/* No dedicated error-red token exists in the base-shell template — see
+   shell.css's live-reload-banner comment for the same call applied here: a
+   neutral raised surface plus the notice's own text carries the meaning
+   instead of an invented colour. */
+.player-error-notice {
+  padding: calc(var(--u) * 2) calc(var(--u) * 3.5);
+  border-radius: var(--r);
+  background: var(--s-raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: var(--fs-small);
+}

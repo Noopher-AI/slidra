@@ -1,17 +1,17 @@
 import { createRequire } from "node:module";
 import { accessSync, chmodSync, constants, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path, { dirname } from "node:path";
-import { resolveCoMotionHome } from "../comotion/home.js";
+import { resolveSlidraHome } from "../slidra/home.js";
 import type { AgentAdapterConfig } from "./session.js";
 
 /**
- * The two ACP adapters CoMotion knows how to drive. Claude Code and Codex
+ * The two ACP adapters Slidra knows how to drive. Claude Code and Codex
  * are not themselves ACP servers — each needs its own thin adapter package
  * that speaks ACP over stdio and drives the underlying CLI.
  *
  * NOOP-230: both adapters ship as ordinary npm dependencies of
- * `@comotion/server` (see `package.json`) rather than something the user
- * installs globally and CoMotion goes looking for on `PATH`. "Which one is
+ * `@slidra/server` (see `package.json`) rather than something the user
+ * installs globally and Slidra goes looking for on `PATH`. "Which one is
  * installed" is no longer a question serve ever asks — both are always
  * present the moment `npm install` has run; "which one is selected" is a
  * separate, user-level decision (`settings.ts`).
@@ -91,22 +91,22 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   const resolved = require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
   const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
 
-  // NOOP-278: when the comotion Rust binary execs this Node process as its
-  // fallback (crates/comotion/src/fallback.rs), it sets COMOTION_BIN to
+  // NOOP-278: when the slidra Rust binary execs this Node process as its
+  // fallback (crates/slidra/src/fallback.rs), it sets SLIDRA_BIN to
   // its own absolute path but does not itself put its directory on PATH.
-  // An agent shelling out to a bare `comotion ...` (as the editing
+  // An agent shelling out to a bare `slidra ...` (as the editing
   // protocol instructs) would otherwise find nothing, since this project
   // never installs a CLI globally — the Rust binary is one link in a chain
   // that also falls back to this very Node process, so its directory needs
-  // to be reachable again for that chain to close. When COMOTION_BIN is
+  // to be reachable again for that chain to close. When SLIDRA_BIN is
   // unset (today's only real invocation path — no Rust binary yet in the
   // chain), `config.env` stays unset and this function's return value is
   // byte-for-byte identical to before this change: the existing e2e
   // fixtures that put `node_modules/.bin` on PATH themselves depend on
   // that being untouched.
-  const coMotionBin = process.env.COMOTION_BIN;
-  if (coMotionBin) {
-    config.env = { PATH: `${dirname(coMotionBin)}:${process.env.PATH ?? ""}` };
+  const slidraBin = process.env.SLIDRA_BIN;
+  if (slidraBin) {
+    config.env = { PATH: `${dirname(slidraBin)}:${process.env.PATH ?? ""}` };
   }
 
   // claude-code-acp drives Claude Code through the Agent SDK, which ships
@@ -123,7 +123,7 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   }
 
   if (kind === "codex") {
-    // The read-only preset is what makes CoMotion the gate: a `comotion`
+    // The read-only preset is what makes Slidra the gate: a `slidra`
     // command that writes cannot run inside the sandbox, so Codex has to
     // ask, and `decidePermission` answers with the allowlist. The mode is
     // the adapter's own env knob (it replaces the old `-c approval_policy`
@@ -135,7 +135,7 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
     // It goes through a tiny launcher rather than straight into
     // `CODEX_PATH` because Codex runs commands in a login shell whose
     // startup files rebuild PATH — the serve process's own PATH (where
-    // `comotion` lives) never reaches the sandbox otherwise. The launcher
+    // `slidra` lives) never reaches the sandbox otherwise. The launcher
     // passes `-c allow_login_shell=false`, which the adapter offers no other
     // way to set (`CODEX_CONFIG` is merged per thread, and Codex reads this
     // key at startup only).
@@ -149,14 +149,14 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
 }
 
 /**
- * Writes `<COMOTION_HOME>/codex-launcher.sh`, an `exec` of the real Codex
+ * Writes `<SLIDRA_HOME>/codex-launcher.sh`, an `exec` of the real Codex
  * with `-c allow_login_shell=false` in front of the adapter's own
  * `app-server` argument, and returns its path. Rewritten on every resolve
  * (the Codex path may have moved since last time); a stale copy from an
  * older serve is simply overwritten.
  */
 function writeCodexLauncher(codexPath: string): string {
-  const home = resolveCoMotionHome();
+  const home = resolveSlidraHome();
   mkdirSync(home, { recursive: true });
   const launcher = path.join(home, "codex-launcher.sh");
   writeFileSync(launcher, `#!/bin/sh

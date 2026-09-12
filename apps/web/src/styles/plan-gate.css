@@ -1,0 +1,183 @@
+/* Plan confirmation gate (PlanGateModal) — a dialog that blocks the whole
+   shell. The mask and dialog skeleton have the same shape as
+   settings-dialog (same shape, no shared class, following rail.css's
+   precedent); z-index is one step above settings/outline's 40, since the
+   plan gate must sit above other dialogs. */
+.plan-gate-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  background: var(--s-overlay);
+}
+
+.plan-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: calc(var(--panel-w) * 2);
+  max-width: 100%;
+  max-height: 100%;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border-radius: var(--radius-xl-dialog);
+  box-shadow: var(--shadow-dialog);
+  color: var(--ink-900);
+}
+
+.plan-gate-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.plan-gate-title {
+  margin: 0;
+  font-size: var(--text-lg-dialog);
+  font-weight: 700;
+}
+.plan-gate-subtitle {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--ink-500);
+}
+
+.plan-gate-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.plan-gate-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+}
+.plan-gate-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+.plan-gate-table th,
+.plan-gate-table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--surface-2);
+  vertical-align: top;
+}
+.plan-gate-table th {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink-500);
+  background: var(--surface-0);
+}
+.plan-gate-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.plan-gate-question {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+}
+.plan-gate-question-text {
+  padding: 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+.plan-gate-question-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-base);
+  color: var(--ink-500);
+}
+.plan-gate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+}
+.plan-gate-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.plan-gate-recommended {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs-hint);
+  font-weight: 600;
+  color: var(--brand-red);
+  background: var(--brand-red-tint);
+}
+
+.plan-gate-free-text,
+.plan-gate-overall,
+.plan-gate-redo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.plan-gate-free-text {
+  margin-top: var(--space-3);
+}
+.plan-gate-free-text input,
+.plan-gate-overall textarea,
+.plan-gate-redo textarea {
+  padding: var(--space-2) var(--space-4);
+  box-sizing: border-box;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--ink-900);
+  background: var(--surface-white);
+  resize: vertical;
+}
+.plan-gate-free-text input:focus,
+.plan-gate-overall textarea:focus,
+.plan-gate-redo textarea:focus {
+  outline: none;
+  border-color: var(--brand-red);
+}
+
+.plan-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.plan-gate-actions button {
+  height: var(--control-h);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.plan-gate-discard,
+.plan-gate-redo-open,
+.plan-gate-redo-submit {
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  color: var(--ink-700);
+}
+.plan-gate-discard {
+  margin-right: auto;
+}
+.plan-gate-redo-submit:disabled {
+  color: var(--ink-300);
+}
+.plan-gate-confirm {
+  background: var(--brand-red);
+  border: 0;
+  color: var(--surface-white);
+}

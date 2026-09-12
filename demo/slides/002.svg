@@ -1,10 +1,10 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-asset-title" data-comot-name="標題">
-    <text x="640" y="150" text-anchor="middle" font-size="64" fill="#f4f6f8">第 2 頁：資產</text>
+  <g id="el-asset-title" data-slidra-name="Title">
+    <text x="640" y="150" text-anchor="middle" font-size="64" fill="#f4f6f8">Page 2: assets</text>
   </g>
   <!-- Relative path on purpose: the canvas injects a <base> so the browser
        resolves it to /api/raw/. If this picture is missing, that wiring broke. -->
-  <g id="el-photo" data-comot-name="照片">
+  <g id="el-photo" data-slidra-name="Photo">
     <image href="../assets/photo.svg" x="490" y="220" width="300" height="300"/>
   </g>
 </svg>

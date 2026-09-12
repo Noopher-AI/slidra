@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { probeLogin, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
 
 // Pure decision logic driven entirely through an injected CommandRunner —
-// no real `claude`/`codex` CLI is ever spawned here (§3.3 of the ticket:
-// the "happy path, actually logged in" case can only be verified this way
-// since the suite must pass on a machine that is not logged into either).
+// no real `claude`/`codex` CLI is ever spawned here: the "happy path,
+// actually logged in" case can only be verified this way since the suite
+// must pass on a machine that is not logged into either.
 
 function outcome(partial: Partial<CommandOutcome>): CommandOutcome {
   return { code: 0, stdout: "", stderr: "", ...partial };
@@ -81,7 +81,7 @@ describe("probeLogin", () => {
     expect(result.loggedIn).toBe(false);
     expect(result.detail).toBeDefined();
     expect(result.detail!.length).toBeLessThan(300);
-    expect(result.detail).toMatch(/截斷/);
+    expect(result.detail).toMatch(/truncated/);
   });
 
   it("passes the centralized probeCommand from adapters.ts to the runner (claude)", async () => {

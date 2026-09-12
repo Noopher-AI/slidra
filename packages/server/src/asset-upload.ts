@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runJsonCommand } from "./comotion/command.js";
+import { runJsonCommand } from "./slidra/command.js";
 
 /**
  * `POST /api/asset` (T3/NOOP-142) — the front end's byte-upload path for
@@ -15,7 +15,7 @@ import { runJsonCommand } from "./comotion/command.js";
  * base64-encoded into JSON anyway. This route exists so the transport
  * matches what a browser actually has: raw bytes in the body, a filename
  * in a header. [E4.T9]/F7: the format decision itself now lives entirely
- * in the Rust `comotion asset import <staged-file> --json` command — this
+ * in the Rust `slidra asset import <staged-file> --json` command — this
  * module writes the uploaded bytes to a temp file and spawns it, then
  * cleans the temp file up; it owns no format logic of its own (ADR-0015:
  * one place decides, never a second copy).
@@ -24,7 +24,7 @@ import { runJsonCommand } from "./comotion/command.js";
 /** Same order of magnitude headroom over a real screenshot/photo as the CLI's own import allows; large enough for real media, small enough to bound memory while reading. */
 export const MAX_ASSET_BODY_BYTES = 32 * 1024 * 1024;
 
-const ASSET_NAME_HEADER = "x-comotion-asset-name";
+const ASSET_NAME_HEADER = "x-slidra-asset-name";
 /**
  * [E2.T17] plan §4.3/D5: the URL-import counterpart of `ASSET_NAME_HEADER`
  * — GUI panels send the source as a URL instead of raw bytes. Only
@@ -35,7 +35,7 @@ const ASSET_NAME_HEADER = "x-comotion-asset-name";
  * "anything this server process can open a file descriptor on" — `file:`,
  * a relative path, and an absolute path are all rejected the same way.
  */
-const ASSET_URL_HEADER = "x-comotion-asset-url";
+const ASSET_URL_HEADER = "x-slidra-asset-url";
 const URL_SCHEME_PATTERN = /^https?:\/\//i;
 
 interface AssetImportData {
@@ -83,7 +83,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * Writes `bytes` to a fresh temp file (named after `sourceBasename`'s own
  * basename — `asset import` derives the imported file's name from its
  * source's basename, so the staged file's name must match what the caller
- * asked to import) and runs `comotion asset import <staged-file> --json`
+ * asked to import) and runs `slidra asset import <staged-file> --json`
  * against it, cleaning the temp directory up either way.
  *
  * A missing/unreadable source file (`failureKind === "not-found"`) can only
@@ -94,18 +94,18 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * virtual paths and is relayed verbatim.
  */
 async function runAssetImport(presentationId: string, sourceBasename: string, bytes: Uint8Array): Promise<AssetImportData> {
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-asset-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-asset-"));
   const safeName = path.basename(sourceBasename) || "asset";
   const filePath = path.join(dir, safeName);
   try {
     await writeFile(filePath, bytes);
     const result = await runJsonCommand<AssetImportData>(["asset", "import", presentationId, filePath]);
     if (!result.ok) {
-      throw new AssetImportFailedError(result.failureKind === "not-found" ? "匯入失敗" : result.message);
+      throw new AssetImportFailedError(result.failureKind === "not-found" ? "Import failed" : result.message);
     }
     const data = result.data;
     if (typeof data !== "object" || data === null || typeof (data as AssetImportData).path !== "string") {
-      throw new AssetImportFailedError("匯入失敗");
+      throw new AssetImportFailedError("Import failed");
     }
     return data as AssetImportData;
   } finally {
@@ -126,7 +126,7 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   const hasUrl = typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
 
   if (hasName && hasUrl) {
-    sendJson(res, 400, { error: `不可同時提供 ${ASSET_NAME_HEADER} 與 ${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}` });
     return;
   }
 
@@ -137,14 +137,14 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
 
   const sourceName = typeof sourceNameHeader === "string" ? sourceNameHeader : "";
   if (sourceName.trim() === "") {
-    sendJson(res, 400, { error: `缺少標頭：${ASSET_NAME_HEADER} 或 ${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Missing header: ${ASSET_NAME_HEADER} or ${ASSET_URL_HEADER}` });
     return;
   }
   let decodedSourceName: string;
   try {
     decodedSourceName = decodeURIComponent(sourceName);
   } catch {
-    sendJson(res, 400, { error: `標頭編碼無效：${ASSET_NAME_HEADER}` });
+    sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_NAME_HEADER}` });
     return;
   }
 
@@ -153,10 +153,10 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
     body = await readLimitedBinaryBody(req, MAX_ASSET_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      sendJson(res, 400, { error: `請求內容過大（上限 ${MAX_ASSET_BODY_BYTES} 位元組）` });
+      sendJson(res, 400, { error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)` });
       return;
     }
-    sendJson(res, 400, { error: "請求內容讀取失敗" });
+    sendJson(res, 400, { error: "Failed to read request body" });
     return;
   }
 
@@ -164,11 +164,11 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   try {
     data = await runAssetImport(presentationId, decodedSourceName, new Uint8Array(body));
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "匯入失敗" });
+    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
     return;
   }
 
-  sendJson(res, 200, { ok: true, data, message: `已匯入媒體：${data.path}` });
+  sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
 }
 
 /** `sourceNameOf` for a URL (mirrors the old `packages/cli` asset-import command's own helper): the URL path's basename, percent-decoded. */
@@ -180,7 +180,7 @@ function sourceBasenameOfUrl(url: string): string {
  * Downloads `url`'s bytes, bounded by `maxBytes` — checked against
  * `Content-Length` first (fails fast without buffering when the server is
  * honest about size), then again after buffering (a missing or lying
- * header does not get a pass). `crates/comotion/src/http.rs`'s own module
+ * header does not get a pass). `crates/slidra/src/http.rs`'s own module
  * comment documents that the Rust binary's `asset import <url>` takes NO
  * size limit at all, so the URL must never be handed to it directly (plan
  * §4.5, decision #8) — this Node-side download is what keeps
@@ -191,24 +191,24 @@ async function downloadAssetSource(url: string, maxBytes: number): Promise<Uint8
   try {
     response = await fetch(url);
   } catch {
-    throw new AssetImportFailedError(`無法下載來源：${url}`);
+    throw new AssetImportFailedError(`Failed to download source: ${url}`);
   }
   if (!response.ok) {
-    throw new AssetImportFailedError(`無法下載來源，伺服器回應 ${response.status}：${url}`);
+    throw new AssetImportFailedError(`Failed to download source, server responded ${response.status}: ${url}`);
   }
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null && Number(contentLength) > maxBytes) {
-    throw new AssetImportFailedError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+    throw new AssetImportFailedError(`Downloaded content too large (limit ${maxBytes} bytes): ${url}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > maxBytes) {
-    throw new AssetImportFailedError(`下載內容過大（上限 ${maxBytes} 位元組）：${url}`);
+    throw new AssetImportFailedError(`Downloaded content too large (limit ${maxBytes} bytes): ${url}`);
   }
   return bytes;
 }
 
 /**
- * [E2.T17] plan §4.3/D5: `POST /api/asset`'s URL mode — `X-Comotion-Asset-Url`
+ * [E2.T17] plan §4.3/D5: `POST /api/asset`'s URL mode — `X-Slidra-Asset-Url`
  * (URL-encoded) instead of a raw-bytes body. Downloads server-side (bounded
  * by `MAX_ASSET_BODY_BYTES`) and stages the result the same way the
  * raw-bytes path does, then runs the same `asset import` spawn.
@@ -218,12 +218,12 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
   try {
     url = decodeURIComponent(urlHeader);
   } catch {
-    sendJson(res, 400, { error: `標頭編碼無效：${ASSET_URL_HEADER}` });
+    sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_URL_HEADER}` });
     return;
   }
 
   if (!URL_SCHEME_PATTERN.test(url)) {
-    sendJson(res, 400, { error: `${ASSET_URL_HEADER} 必須是 http(s) 網址` });
+    sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
     return;
   }
 
@@ -232,9 +232,9 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
     const bytes = await downloadAssetSource(url, MAX_ASSET_BODY_BYTES);
     data = await runAssetImport(presentationId, sourceBasenameOfUrl(url), bytes);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "匯入失敗" });
+    sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
     return;
   }
 
-  sendJson(res, 200, { ok: true, data, message: `已匯入媒體：${data.path}` });
+  sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
 }

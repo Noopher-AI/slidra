@@ -1,0 +1,209 @@
+/* Table insert panel / Style › Object table section / stage cell overlay —
+   same glass/floating-layer material every other Dock panel and stage
+   overlay already uses (tokens.css), nothing new invented here. */
+
+.table-panel {
+  width: var(--panel-w);
+  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.table-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--space-1);
+}
+.table-panel-cell {
+  aspect-ratio: 1;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface-white);
+}
+.table-panel-cell[data-active] {
+  background: var(--brand-red-tint);
+  border-color: var(--brand-red);
+}
+.table-panel-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.table-panel-theme {
+  flex: 1;
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.table-panel-theme:hover {
+  background: var(--surface-1);
+}
+.table-panel-theme[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+  background: var(--surface-1);
+}
+.table-panel-header-toggle {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.table-panel-insert {
+  height: var(--control-h);
+  border-radius: var(--radius-sm);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.table-panel-insert:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.table-panel-insert:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Style › Object table section ──────────────────────────────────── */
+.table-section {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.table-section-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.table-section-theme {
+  flex: 1;
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.table-section-theme[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+  background: var(--surface-1);
+}
+.table-section-header-toggle {
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.table-section-cell {
+  flex-wrap: wrap;
+}
+.table-section-align {
+  flex: 1;
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+.table-section-align[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+  background: var(--surface-1);
+}
+.table-section-color {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.table-section-color input[type="color"] {
+  width: var(--control-h-compact);
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  background: none;
+}
+.table-section-binding {
+  justify-content: space-between;
+}
+.table-section-source {
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-section-refresh {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-700);
+  border: 1px solid var(--surface-2);
+}
+.table-section-refresh:hover {
+  background: var(--surface-1);
+}
+
+/* ── Stage cell overlay: range box, edit input, column-width drag handle ── */
+.table-range-box {
+  pointer-events: none;
+  border: calc(var(--focus-ring-width) * 2) solid var(--brand-red);
+  border-radius: var(--radius-xs);
+  box-sizing: border-box;
+}
+.table-cell-editor {
+  box-sizing: border-box;
+  pointer-events: auto;
+  border: calc(var(--focus-ring-width) * 2) solid var(--brand-red);
+  border-radius: var(--radius-xs);
+  padding: var(--space-1);
+  font: inherit;
+  background: var(--surface-white);
+  color: var(--ink-900);
+}
+.table-col-handle {
+  width: var(--space-2);
+  pointer-events: auto;
+  cursor: col-resize;
+  transform: translateX(-50%);
+}
+.table-col-handle:hover {
+  background: var(--glass-hover);
+}
+
+/* ── Cell right-click menu ─────────────────────────────────────────── */
+.table-cell-menu {
+  z-index: 20;
+  pointer-events: auto;
+  min-width: calc(var(--panel-w) * 0.6);
+  box-sizing: border-box;
+  padding: var(--space-2);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+  animation: floating-layer-in var(--dur-fast) var(--ease-out);
+}
+.table-cell-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+  text-align: left;
+}
+.table-cell-menu-item:hover {
+  background: var(--surface-1);
+}
+.table-cell-menu-divider {
+  height: 1px;
+  margin-block: var(--space-1);
+  background: var(--surface-2);
+}

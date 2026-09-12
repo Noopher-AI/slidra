@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <text id="el-title" x="640" y="360" text-anchor="middle" font-size="56">看起來人畜無害的投影片</text>
+  <text id="el-title" x="640" y="360" text-anchor="middle" font-size="56">A seemingly harmless slide</text>
   <!--
     Spec user story 22: a slide carrying a malicious script must not be
     able to reach presentation data. This script only runs at all once

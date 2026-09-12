@@ -10,7 +10,7 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Spec user story 22: a slide carrying malicious script cannot reach
+ * The spec requires that a slide carrying malicious script cannot reach
  * presentation data. A separate fixture deck from `player-deck` /
  * `play-deck` (per the design doc — those decks' existing assertions must
  * not have to change shape to make room for a hostile fourth slide). The
@@ -22,32 +22,32 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/hostile-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-hostile-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-hostile-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-hostile-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-hostile-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "hostile-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "hostile-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -58,7 +58,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -68,13 +68,13 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", async () => {
+it("a hostile slide's script still cannot reach presentation data once in play mode", async () => {
   const page = await browser.newPage();
 
   // Collected on the TOP page — this is the parent document the hostile
@@ -109,7 +109,7 @@ it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", as
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("看起來人畜無害的投影片");
+    .toBe("A seemingly harmless slide");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -127,18 +127,17 @@ it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", as
   // wire (confirmed by `opaqueOriginResponses` staying empty below). That
   // is a *stronger* guarantee than ADR-0010's stated threat model assumes
   // ("an opaque origin can still send simple requests — it just can't
-  // read the response"): here it cannot even send this one. This is
-  // reported to the coordinator (see the unit's own report) rather than
-  // treated as this test's problem to route around; the "fetch-resolved"
-  // branch below is kept so this test still passes correctly if some
-  // other engine, or a future Chromium, actually lets the simple request
-  // reach the network the way the spec assumed.
+  // read the response"): here it cannot even send this one. This is a
+  // stronger result than the test strictly needs, not a problem to route
+  // around; the "fetch-resolved" branch below is kept so this test still
+  // passes correctly if some other engine, or a future Chromium, actually
+  // lets the simple request reach the network the way the spec assumed.
   if (probe.outcome === "fetch-resolved") {
     // The request reached the network (an opaque origin can still write),
     // but must never have handed real presentation content to the script:
     // the server's `Origin: null` gate must have refused it.
     expect(probe.status).toBe(403);
-    expect(probe.text ?? "").not.toContain("惡意投影片測試簡報");
+    expect(probe.text ?? "").not.toContain("Hostile slide test deck");
     expect(opaqueOriginResponses.length).toBeGreaterThan(0);
     expect(opaqueOriginResponses.every((status) => status === 403)).toBe(true);
   } else {

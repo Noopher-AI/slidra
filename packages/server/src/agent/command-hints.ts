@@ -1,5 +1,5 @@
 /**
- * Turns a command CoMotion refused into one sentence telling the agent what
+ * Turns a command Slidra refused into one sentence telling the agent what
  * to use instead.
  *
  * Under the policy in `protected-paths.ts` there is now only one reason a
@@ -19,7 +19,7 @@
  */
 
 const CLI_ONLY_ADVICE =
-  "這份簡報的檔案只能透過 `comotion` 命令讀寫——直接改檔的修改不會進復原快照、畫面不會更新，重新打包時也不保證留得住。命令清單在 `reference/commands.md`。";
+  "This presentation's files can only be read or written through `slidra` commands — a direct file edit does not enter the undo snapshot history, the view will not update, and it is not guaranteed to survive the next repack. The command list is in `reference/commands.md`.";
 
 /** Program basenames whose intent is "read this file". */
 const READ_PROGRAMS = new Set(["cat", "head", "tail", "less", "more", "bat", "nl", "xxd", "od"]);
@@ -33,10 +33,10 @@ const LIST_PROGRAMS = new Set(["ls", "tree", "find", "dir", "du", "stat"]);
 export function hintForBlockedCommand(command: string, presentationId: string): string {
   const program = command.trim().split(/\s+/)[0]?.split("/").pop();
   if (program !== undefined && READ_PROGRAMS.has(program)) {
-    return `請改用 \`comotion cat ${presentationId} <虛擬路徑>\`（虛擬路徑就是 \`project.json\`、\`slides/001.svg\` 這種相對路徑）。`;
+    return `Use \`slidra cat ${presentationId} <virtual-path>\` instead (a virtual path is a relative path like \`project.json\` or \`slides/001.svg\`).`;
   }
   if (program !== undefined && LIST_PROGRAMS.has(program)) {
-    return `請改用 \`comotion ls ${presentationId}\`（可在後面加一段虛擬路徑）。`;
+    return `Use \`slidra ls ${presentationId}\` instead (you may append a virtual path).`;
   }
   return CLI_ONLY_ADVICE;
 }

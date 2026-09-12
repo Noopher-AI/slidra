@@ -32,7 +32,7 @@ export interface ExportRunResult {
 }
 
 export type ExportRunner = (
-  /** The freshly-generated job id — `run` needs it to place its output under `<COMOTION_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
+  /** The freshly-generated job id — `run` needs it to place its output under `<SLIDRA_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
   jobId: string,
   format: ExportFormat,
   onRunning: (totalFrames: number) => void,
@@ -78,7 +78,7 @@ export class ExportJobManager {
 
   /**
    * Starts a new job: broadcasts `queued` synchronously, before returning
-   * — §4.4's "queued 在 202 回應之前廣播" — then runs `run` in the
+   * — "queued is broadcast before the 202 response" — then runs `run` in the
    * background, broadcasting `running`/`progress`/`done`/`error` as it
    * reports back. Throws synchronously (before anything is broadcast or
    * recorded) if a job is already active; the caller is expected to have
@@ -88,7 +88,7 @@ export class ExportJobManager {
    */
   start(format: ExportFormat, broadcast: (event: ExportEvent) => void, run: ExportRunner): string {
     if (this.activeJobId !== null) {
-      throw new Error("已有匯出工作進行中");
+      throw new Error("An export job is already in progress");
     }
     const jobId = randomBytes(9).toString("hex");
     this.activeJobId = jobId;
@@ -136,11 +136,11 @@ export class ExportJobManager {
     } catch (error) {
       // ADR-0004: an export failure's message must never carry a real
       // filesystem path. Every error this job can actually throw already
-      // comes from `renderExportPdf`'s own `CoMotionError`s (path-free by
+      // comes from `renderExportPdf`'s own `SlidraError`s (path-free by
       // that class's own contract) or a plain Error with a message this
       // module never derives from a path itself, so relaying `.message`
       // verbatim holds that invariant rather than merely hoping callers do.
-      const message = error instanceof Error ? error.message : "匯出失敗";
+      const message = error instanceof Error ? error.message : "Export failed";
       this.jobs.set(jobId, { format, state: "error" });
       broadcast({ jobId, format, state: "error", message });
     } finally {

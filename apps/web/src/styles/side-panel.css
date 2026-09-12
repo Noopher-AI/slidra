@@ -1,0 +1,212 @@
+/* ═══════════════════════════════════════════════════════════════
+   Right side panel (New v3 skeleton): 3 main tabs (Chat/Style/Animate) +
+   Page/Object sub-tabs under Style/Animate (SidePanel.tsx's state machine).
+   Both tab levels are the prototype's segmented control (surface.1 track +
+   white selected chip + shadow.seg), differing only in size.
+   ═══════════════════════════════════════════════════════════════ */
+
+.side-panel {
+  grid-column: 3;
+  width: var(--panel-w);
+  flex-shrink: 0;
+  border-left: 1px solid var(--surface-2);
+  background: var(--surface-white);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Grid item: without this the panel's auto min-height lets a long chat
+     transcript stretch it past the row, so .chat-messages never scrolls
+     and .chat-input gets pushed below the viewport. */
+  min-height: 0;
+}
+
+.side-panel-tabs {
+  flex-shrink: 0;
+  display: flex;
+  gap: calc(var(--space-1) / 2);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: calc(var(--space-2) / 2);
+  border-radius: var(--radius-md-segmented);
+  background: var(--surface-1);
+}
+
+.side-panel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h-compact);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-500);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.side-panel-tab:hover {
+  color: var(--ink-900);
+}
+.side-panel-tab:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
+  outline-offset: 1px;
+}
+/* Selected state combines background, shadow, and text color — never a
+   single cue alone. */
+.side-panel-tab[aria-selected="true"] {
+  background: var(--surface-white);
+  color: var(--ink-900);
+  box-shadow: var(--shadow-seg);
+}
+
+.side-panel-subtabs {
+  flex-shrink: 0;
+  display: flex;
+  gap: calc(var(--space-1) / 2);
+  margin: var(--space-6) var(--space-6) 0;
+  padding: calc(var(--space-2) / 2);
+  border-radius: var(--radius-md-segmented);
+  background: var(--surface-1);
+}
+.side-panel-subtab {
+  flex: 1;
+  height: var(--control-h-compact);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-500);
+  background: transparent;
+}
+.side-panel-subtab[aria-selected="true"] {
+  background: var(--surface-white);
+  color: var(--ink-900);
+  box-shadow: var(--shadow-seg);
+}
+
+.side-panel-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: side-panel-tabpanel-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes side-panel-tabpanel-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Empty Page/Object containers for animation content, to be filled in
+   later — they fill the tab area so future work can lay content inside
+   without touching this file's layout rules. */
+.animate-page-panel,
+.animate-object-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── #200：Style › Object／Style › Page ──────────────────────────── */
+
+.style-object-panel,
+.style-page-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.style-panel-empty {
+  margin: var(--space-8) auto;
+  color: var(--ink-400);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.style-panel-note,
+.style-section-note {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: var(--text-xs);
+}
+
+.style-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+.style-section legend {
+  padding: 0;
+  color: var(--ink-700);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.style-section-skeleton {
+  color: var(--ink-400);
+}
+
+.style-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--ink-500);
+}
+.style-field select,
+.style-field input {
+  height: var(--control-h-compact);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-md);
+  padding-inline: var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--ink-900);
+  background: var(--surface-white);
+}
+.style-field select:disabled,
+.style-field input:disabled {
+  color: var(--ink-300);
+  background: var(--surface-1);
+}
+.style-field-note {
+  color: var(--ink-400);
+}
+
+.style-page-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.style-page-preset,
+.style-page-swap {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}

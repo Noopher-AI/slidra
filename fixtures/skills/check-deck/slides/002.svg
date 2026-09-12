@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-p2-title" data-comot-name="標題">
+  <g id="el-p2-title" data-slidra-name="標題">
     <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">產品進度</text>
   </g>
-  <g id="el-p2-body" data-comot-name="內文">
+  <g id="el-p2-body" data-slidra-name="內文">
     <text x="80" y="220" font-family="Noto Sans TC" font-size="24" fill="#333333">我們將持續改善產品品直，並優化整體使用體驗。</text>
   </g>
 </svg>

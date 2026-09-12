@@ -12,7 +12,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
   return { promise, resolve, reject };
 }
 
-describe("ExportJobManager (NOOP-93 §4.4)", () => {
+describe("ExportJobManager (§4.4)", () => {
   it("runs the full queued -> running -> progress* -> done sequence with the right payloads", async () => {
     const events: ExportEvent[] = [];
     const manager = new ExportJobManager();
@@ -33,7 +33,7 @@ describe("ExportJobManager (NOOP-93 §4.4)", () => {
 
     const jobId = manager.start("pdf-frames", (event) => events.push(event), run);
     // start() only returns once the synchronous "queued" broadcast already
-    // happened — §4.4's "queued 在 202 回應之前廣播".
+    // happened — §4.4's guarantee that "queued" is broadcast before the 202 response.
     expect(events).toEqual([{ jobId, format: "pdf-frames", state: "queued" }]);
 
     // Let the fire-and-forget async work inside start() run to completion.
@@ -65,7 +65,7 @@ describe("ExportJobManager (NOOP-93 §4.4)", () => {
     const manager = new ExportJobManager();
     const run: ExportRunner = async (_jobId, _format, onRunning) => {
       onRunning(2);
-      throw new Error("模擬的匯出失敗");
+      throw new Error("Simulated export failure");
     };
 
     const jobId = manager.start("pdf", (event) => events.push(event), run);
@@ -74,7 +74,7 @@ describe("ExportJobManager (NOOP-93 §4.4)", () => {
     expect(events).toEqual([
       { jobId, format: "pdf", state: "queued" },
       { jobId, format: "pdf", state: "running", totalFrames: 2, completedFrames: 0 },
-      { jobId, format: "pdf", state: "error", message: "模擬的匯出失敗" },
+      { jobId, format: "pdf", state: "error", message: "Simulated export failure" },
     ]);
     expect(manager.hasActiveJob()).toBe(false);
     expect(manager.getFilePath(jobId)).toBeUndefined();
@@ -92,7 +92,7 @@ describe("ExportJobManager (NOOP-93 §4.4)", () => {
     manager.start("pdf", () => {}, run);
     expect(manager.hasActiveJob()).toBe(true);
 
-    expect(() => manager.start("pdf-frames", () => {}, run)).toThrow("已有匯出工作進行中");
+    expect(() => manager.start("pdf-frames", () => {}, run)).toThrow("An export job is already in progress");
 
     gate.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));

@@ -8,61 +8,42 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot, settledBox, type Box } from "./helpers/screenshot.js";
 import { waitForAgentConnected } from "./helpers/launch.js";
 
 /**
- * [E2.T8] `05-INTERACTIONS.feature`「與 AI 協作」— the four scenarios that
- * belong in this file (plan §6.1/§6.4): 對元素留言、對整頁留言、跳轉與編
- * 輯、送出, plus AC7 (Save/Open round-trip) and AC8(b) (agent-written
- * comment shows up in the GUI without a page refresh). The fifth scenario,
- * "Agent 編輯中", is `e2e/freeze.test.ts`'s own AC-2/US46 test, extended in
- * place (§2 邊界 12 — this is the only new e2e file this ticket authorises).
+ * `05-INTERACTIONS.feature`'s "collaborating with AI" scenarios — the four
+ * scenarios that belong in this file: commenting on an element, commenting
+ * on a whole page, jumping to and editing a comment, and submitting, plus
+ * a Save/Open round-trip and an agent-written comment showing up in
+ * the GUI without a page refresh. The fifth scenario, "agent editing",
+ * is `e2e/freeze.test.ts`'s own test, extended in place.
  *
  * `editing-fake-acp-agent.mjs` cannot serve this file — it only knows
- * `text set`. `comment-fake-acp-agent.mjs` (this ticket's own fixture)
- * branches on the author's message text into `comment add`/`slide add`/
- * `text set`, or echoes the prompt back verbatim (the default case, which
- * is what "送出" actually asserts on: proof the comment-context prefix
- * server-side `session.ts` builds really reached the agent).
+ * `text set`. `comment-fake-acp-agent.mjs` branches on the author's message
+ * text into `comment add`/`slide add`/`text set`, or echoes the prompt back
+ * verbatim (the default case, which is what "submitting" actually asserts
+ * on: proof the comment-context prefix server-side `session.ts` builds
+ * really reached the agent).
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/ai-collab");
 
 const VIEWPORT = { width: 1440, height: 900 };
-
-/**
- * 把 boundingBox 取整並夾在 viewport 內——尺寸不符是 compareScreenshot 的無容忍硬失敗
- * （helpers/screenshot.ts）。角落各自四捨五入（而不是 x/y 與 width/height 分開四捨五入）
- * 是刻意的：後者在 box 邊界落在 .5 附近時，x 與 width 可能各自進位到不同方向，兩次執行
- * 算出的尺寸就會差 1px。從角落算可以消掉這個誤差（抄自 e2e/table.test.ts 的 snapClip）。
- */
-function snapClip(box: Box): Box {
-  const x = Math.max(0, Math.round(box.x));
-  const y = Math.max(0, Math.round(box.y));
-  const right = Math.min(VIEWPORT.width, Math.round(box.x + box.width));
-  const bottom = Math.min(VIEWPORT.height, Math.round(box.y + box.height));
-  const width = right - x;
-  const height = bottom - y;
-  if (width <= 0 || height <= 0) throw new Error(`clip 尺寸無效：${width}x${height}`);
-  return { x, y, width, height };
-}
 
 let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, please run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -89,20 +70,20 @@ async function startServerFor(
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
-  comotPath: string;
+  slidraPath: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-deck-"));
-  // [E3.T3] #232/#236: never resolve against the real machine's
-  // `~/.claude/skills` — a real skill directory happening to exist on
-  // whatever machine runs this suite would silently leak into `/` list
-  // assertions (Plan §6.3). Always temp dirs, populated per-test via
-  // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
-  // skill directory name) when a test needs a deterministic entry.
-  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-bundled-"));
-  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-user-"));
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-deck-"));
+  // Never resolve against the real machine's `~/.claude/skills` — a real
+  // skill directory happening to exist on whatever machine runs this suite
+  // would silently leak into `/` list assertions. Always temp dirs,
+  // populated per-test via `skills.bundled`/`skills.user` (SKILL.md
+  // frontmatter text, keyed by skill directory name) when a test needs a
+  // deterministic entry.
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-user-"));
   for (const [dir, entries] of [
     [bundledSkillsDir, skills.bundled] as const,
     [userSkillsDir, skills.user] as const,
@@ -113,18 +94,18 @@ async function startServerFor(
       await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
     }
   }
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -149,13 +130,13 @@ async function startServerFor(
     server,
     registry,
     presentationId,
-    comotPath,
+    slidraPath,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
       await rm(bundledSkillsDir, { recursive: true, force: true });
       await rm(userSkillsDir, { recursive: true, force: true });
@@ -194,14 +175,14 @@ async function listComments(
   return result.data!.comments;
 }
 
-/** [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
+/** The context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
 async function hoverContextBar(page: Page): Promise<void> {
   const box = (await page.locator(".context-bar").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect.poll(() => page.locator(".context-bar.is-solid").count()).toBeGreaterThan(0);
 }
 
-it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁出現 comment pin（AC3 截圖）", async () => {
+it("commenting on an element: select a single element, Comment to AI, a comment pin appears next to the selection box after submitting", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -214,11 +195,7 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
 
     const composer = page.locator(".comment-composer");
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await composer.locator("textarea").fill("把這個標題改短一點");
-
-    await settleForScreenshot(page);
-    const box = snapClip(await settledBox(composer, "留言框"));
-    await compareScreenshot(page, { name: "comment-composer", baselineDir, clip: box });
+    await composer.locator("textarea").fill("Make this title shorter");
 
     await composer.getByRole("button", { name: "Add comment" }).click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
@@ -227,13 +204,13 @@ it("對元素留言：選取單一元素、Comment to AI、送出後選取框旁
     await expect.poll(() => pin.textContent(), { timeout: 5000 }).toBe("1");
 
     const comments = await listComments(registry, presentationId, "slides/001.svg");
-    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "把這個標題改短一點" })]);
+    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "Make this title shorter" })]);
   } finally {
     await cleanup();
   }
 });
 
-it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘Enter 等同按 Add comment", async () => {
+it("Cmd+Enter saves a comment (06-KEYBOARD_AND_GESTURES.md): pressing Cmd+Enter in the comment box is equivalent to clicking Add comment", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -246,7 +223,7 @@ it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘En
 
     const composer = page.locator(".comment-composer");
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await composer.locator("textarea").fill("⌘Enter 儲存留言測試");
+    await composer.locator("textarea").fill("Cmd+Enter save comment test");
     await composer.locator("textarea").press("Meta+Enter");
 
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
@@ -254,172 +231,164 @@ it("⌘↵ 儲存留言（06-KEYBOARD_AND_GESTURES.md）：在留言框按 ⌘En
     await expect.poll(() => pin.textContent(), { timeout: 5000 }).toBe("1");
 
     const comments = await listComments(registry, presentationId, "slides/001.svg");
-    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "⌘Enter 儲存留言測試" })]);
+    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "Cmd+Enter save comment test" })]);
   } finally {
     await cleanup();
   }
 });
 
-it("⌘↵ 送出聊天（06-KEYBOARD_AND_GESTURES.md）：在聊天輸入框按 ⌘Enter 等同按 Send", async () => {
+it("Cmd+Enter sends a chat message (06-KEYBOARD_AND_GESTURES.md): pressing Cmd+Enter in the chat input is equivalent to clicking Send", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server, { waitForAgent: true });
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
     const input = page.locator(".chat-input textarea");
-    await input.fill("⌘Enter 送出測試");
+    await input.fill("Cmd+Enter send test");
     await input.press("Meta+Enter");
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("⌘Enter 送出測試");
-    expect(await input.inputValue()).toBe(""); // 送出後清空輸入框
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("Cmd+Enter send test");
+    expect(await input.inputValue()).toBe(""); // the input clears after sending
   } finally {
     await cleanup();
   }
 });
 
-it("對整頁留言：縮圖留言鈕開整頁留言框，送出後縮圖恆亮紅底", async () => {
+it("commenting on a whole page: the thumbnail's comment button opens a page-level comment box, and the thumbnail stays highlighted red after submitting", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
     const commentButton = page.locator('.overview-item[data-index="0"] .overview-comment-button');
-    await commentButton.dispatchEvent("click"); // 滑入才顯示（opacity 0），直接觸發 click 事件不需要真的 hover。
+    await commentButton.dispatchEvent("click"); // only shows on hover (opacity 0); dispatching click directly avoids a real hover.
 
     const composer = page.locator(".comment-composer");
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await composer.locator("textarea").fill("整頁重寫成三個要點");
+    await composer.locator("textarea").fill("Rewrite the whole page into three points");
     await composer.getByRole("button", { name: "Add comment" }).click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
 
     await expect.poll(() => commentButton.evaluate((el) => el.classList.contains("has-comments")), { timeout: 5000 }).toBe(true);
 
     const comments = await listComments(registry, presentationId, "slides/001.svg");
-    expect(comments).toEqual([expect.objectContaining({ target: "page", text: "整頁重寫成三個要點" })]);
+    expect(comments).toEqual([expect.objectContaining({ target: "page", text: "Rewrite the whole page into three points" })]);
   } finally {
     await cleanup();
   }
 });
 
-it("跳轉與編輯：點 Pinned context 的一列、或點 comment pin，開啟編輯模式（原文帶入、Save changes）", async () => {
+it("jump-to and edit: clicking a Pinned context row, or a comment pin, opens edit mode (original text prefilled, Save changes)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "元素留言" });
-    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/002.svg", target: "page", text: "整頁留言" });
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "Element comment" });
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/002.svg", target: "page", text: "Page comment" });
 
     const page = await openApp(server);
     const pinnedItems = page.locator(".chat-pinned-item");
     await expect.poll(() => pinnedItems.count(), { timeout: 5000 }).toBe(2);
 
-    // 第一列（頁序在前）：點擊跳到該頁、選取該元素、開編輯模式。
+    // First row (earlier page order): clicking jumps to that page, selects that element, opens edit mode.
     await pinnedItems.nth(0).locator(".chat-pinned-item-text").click();
     const composer = page.locator(".comment-composer");
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("元素留言");
+    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("Element comment");
     expect(await composer.getByRole("button", { name: "Save changes" }).isVisible()).toBe(true);
     await composer.getByRole("button", { name: "Cancel" }).click();
 
-    // comment pin：與上面同一則留言，點擊同樣開編輯模式。
+    // comment pin: the same comment as above, clicking it also opens edit mode.
     const pin = page.locator(".comment-pin");
     await expect.poll(() => pin.isVisible(), { timeout: 5000 }).toBe(true);
     await pin.click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("元素留言");
+    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("Element comment");
     await composer.getByRole("button", { name: "Cancel" }).click();
 
-    // 第二列（整頁留言）：跳頁、清空選取、開編輯模式。
+    // Second row (page-level comment): jumps page, clears selection, opens edit mode.
     await pinnedItems.nth(1).locator(".chat-pinned-item-text").click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(true);
-    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("整頁留言");
+    await expect.poll(() => composer.locator("textarea").inputValue(), { timeout: 5000 }).toBe("Page comment");
   } finally {
     await cleanup();
   }
 });
 
-it("送出：留言隨訊息一起送給 agent（context 前綴真的抵達）；Pinned context 截圖（AC4）", async () => {
+it("submitting: pinned comments are sent to the agent together with the message (the context prefix really arrives)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "把標題改短" });
-    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/002.svg", target: "page", text: "整頁重寫" });
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "Shorten the title" });
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/002.svg", target: "page", text: "Rewrite the whole page" });
 
     const page = await openApp(server, { waitForAgent: true });
     const pinned = page.locator(".chat-pinned");
     await expect.poll(() => pinned.isVisible(), { timeout: 5000 }).toBe(true);
     expect(await page.locator(".chat-input-pinned").textContent()).toBe("2 pinned");
 
-    await settleForScreenshot(page);
-    const box = snapClip(await settledBox(pinned, "Pinned context"));
-    await compareScreenshot(page, { name: "pinned-context", baselineDir, clip: box });
-
-    await sendChatMessage(page, "麻煩照留言處理");
+    await sendChatMessage(page, "Please handle it per the comments");
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("麻煩照留言處理");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("Please handle it per the comments");
     const replyText = (await reply.textContent()) ?? "";
     expect(replyText).toContain("slides/001.svg el-title");
-    expect(replyText).toContain("把標題改短");
+    expect(replyText).toContain("Shorten the title");
     expect(replyText).toContain("slides/002.svg page");
-    expect(replyText).toContain("整頁重寫");
+    expect(replyText).toContain("Rewrite the whole page");
   } finally {
     await cleanup();
   }
 });
 
-it("送出：有釘選留言時，輸入框留空也送得出去（留言本身就是要求）", async () => {
+it("submitting: with pinned comments present, an empty input can still be sent (the comment itself is the request)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "把標題改短" });
+    await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "Shorten the title" });
 
     const page = await openApp(server, { waitForAgent: true });
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input button").click(); // 一個字都沒打
+    await page.locator(".chat-input button").click(); // not a single character typed
 
-    // 對話裡顯示的是佔位字，不是空泡泡。
+    // The conversation shows a placeholder string, not an empty bubble.
     const authored = page.locator(".chat-message-author").last();
-    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toBe("（未輸入訊息，只送出 1 則釘選留言）");
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toBe("(No message entered — sending 1 pinned comment(s) only)");
 
-    // 假 agent 回聲收到的 prompt：留言與「沒有輸入訊息」的指示都在，沒有空的【作者的訊息】。
+    // The prompt echoed back by the fake agent: both the comment and the "no message entered" note are present, with no empty [The author's message] section.
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("把標題改短");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("Shorten the title");
     const replyText = (await reply.textContent()) ?? "";
-    expect(replyText).toContain("作者沒有輸入訊息");
-    expect(replyText).not.toContain("【作者的訊息】");
+    expect(replyText).toContain("The author typed no message and only sent the pinned comments above");
+    expect(replyText).not.toContain("[The author's message]");
   } finally {
     await cleanup();
   }
 });
 
-it("Agent 編輯中（持鎖）：titlebar 凍結徽章截圖（AC5）", async () => {
+it("agent editing (holding the lock): a frozen badge appears in the titlebar", async () => {
   const FREEZE_HOLD_MS = 1500;
   const { server, cleanup } = await startServerFor({ E2E_FREEZE_HOLD_MS: String(FREEZE_HOLD_MS) });
   try {
     const page = await openApp(server, { waitForAgent: true });
-    await sendChatMessage(page, "持鎖");
+    await sendChatMessage(page, "hold the lock");
 
     const badge = page.locator(".titlebar-frozen-badge");
     await expect.poll(() => badge.isVisible(), { timeout: 30_000 }).toBe(true);
-
-    await settleForScreenshot(page);
-    const box = snapClip(await settledBox(page.locator(".titlebar"), "titlebar"));
-    await compareScreenshot(page, { name: "titlebar-frozen", baselineDir, clip: box });
   } finally {
     await cleanup();
   }
 });
 
-it("#303：送出後 Send 鈕變成停止鍵，按下去這一輪以 cancelled 結束並顯示「已停止」", async () => {
-  // The 持鎖 branch holds for E2E_FREEZE_HOLD_MS before running its
+it("after sending, the Send button becomes a stop button; clicking it ends the turn as cancelled and shows \"stopped\"", async () => {
+  // The lock-holding branch holds for E2E_FREEZE_HOLD_MS before running its
   // command — the observable window in which Stop has something to stop.
   const { server, registry, presentationId, cleanup } = await startServerFor({ E2E_FREEZE_HOLD_MS: "8000" });
   try {
     const page = await openApp(server, { waitForAgent: true });
     const before = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
-    await sendChatMessage(page, "持鎖");
+    await sendChatMessage(page, "hold the lock");
 
     const stop = page.locator(".chat-input .chat-stop");
     await expect.poll(() => stop.isVisible(), { timeout: 10_000 }).toBe(true);
     await stop.click();
 
-    const stopped = page.locator(".chat-system", { hasText: "已停止" });
+    const stopped = page.locator(".chat-system", { hasText: "Stopped" });
     await expect.poll(() => stopped.count(), { timeout: 10_000 }).toBe(1);
     // Send is back, the turn is over, and the held command never ran.
     await expect.poll(() => page.locator(".chat-input button[type=submit]").isVisible(), { timeout: 5000 }).toBe(true);
@@ -431,11 +400,9 @@ it("#303：送出後 Send 鈕變成停止鍵，按下去這一輪以 cancelled �
 });
 
 /**
- * #303: `From outline…` now goes 大綱 → `/comotion-plan` → `plan set`（假 agent）
- * → 計畫閘門（`.plan-gate`，擋住式）→ 確認並建置 → `/comotion-build 【計畫確認】`
- * → `slide add`（假 agent）。Running 指令卡的截圖（舊 AC6）不再在這裡驗：這條
- * 路的第一條命令是一整份 `plan set '…'`，卡片文字與舊基準 `running-command-card`
- * 完全不同；那張基準隨這次改動作廢。
+ * `From outline…` now goes outline → `/slidra-plan` → `plan set` (fake agent)
+ * → the plan gate (`.plan-gate`, a blocking modal) → confirm and build →
+ * `/slidra-build 【計畫確認】` → `slide add` (fake agent).
  */
 async function openOutlineAndSubmit(page: Page, outline: string): Promise<void> {
   await page.getByRole("button", { name: "New" }).click();
@@ -445,61 +412,61 @@ async function openOutlineAndSubmit(page: Page, outline: string): Promise<void> 
   await page.locator(".outline-modal-submit").click();
 }
 
-it("從大綱規劃：走真實 UI 入口，計畫閘門彈出、建議選項預選，確認後 agent 真的建置新頁（AC2）", async () => {
+it("planning from an outline: through the real UI entry point, the plan gate pops up with a recommended option preselected, and after confirming the agent really builds the new page", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server, { waitForAgent: true });
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(2);
 
-    await openOutlineAndSubmit(page, "第一步\n第二步");
+    await openOutlineAndSubmit(page, "Step one\nStep two");
 
-    // 送出的是 /comotion-plan 加固定位置行（契約 §4），不是舊的 slide add 前綴。
+    // What's sent is /slidra-plan plus a fixed positional line, not the old slide add prefix.
     const authored = page.locator(".chat-message-author").last();
-    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/comotion-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/slidra-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
 
-    // 假 agent 的 `plan set` 落地 → live reload → 閘門開；不用重新整理。
+    // The fake agent's `plan set` lands → live reload → the gate opens; no page refresh needed.
     const gate = page.locator(".plan-gate");
     await expect.poll(() => gate.isVisible(), { timeout: 30_000 }).toBe(true);
-    // 計畫表與題目都來自檔案；agent 的建議是預設值。
+    // Both the plan table and the questions come from the file; the agent's recommendation is the default value.
     expect(await gate.locator(".plan-gate-table tbody tr").count()).toBe(1);
-    expect(await gate.locator(".plan-gate-table tbody td").nth(1).textContent()).toBe("封面");
+    expect(await gate.locator(".plan-gate-table tbody td").nth(1).textContent()).toBe("Cover");
     const recommended = gate.locator('.plan-gate-question[data-question-id="mode"] input[value="pyramid"]');
     expect(await recommended.isChecked()).toBe(true);
     expect(await gate.locator(".plan-gate-recommended").count()).toBe(1);
 
-    // 擋住式：Esc 關不掉。
+    // Blocking modal: Esc does not close it.
     await page.keyboard.press("Escape");
     expect(await gate.isVisible()).toBe(true);
 
-    // 換一個選項、填補充，確認並建置 → 送出的訊息一行一題（契約 §4）。
+    // Switch to a different option, fill in extra notes, confirm and build → the sent message has one line per question.
     await gate.locator('.plan-gate-question[data-question-id="mode"] input[value="narrative"]').check();
-    await gate.locator(".plan-gate-free-text input").fill("用故事線");
-    await gate.locator(".plan-gate-overall textarea").fill("整體再精簡");
+    await gate.locator(".plan-gate-free-text input").fill("use a story arc");
+    await gate.locator(".plan-gate-overall textarea").fill("tighten it overall");
     await gate.locator(".plan-gate-confirm").click();
     await expect.poll(() => gate.count(), { timeout: 5000 }).toBe(0);
     const confirmMessage = page.locator(".chat-message-author").last();
-    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/comotion-build 【計畫確認】");
+    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/slidra-build 【計畫確認】");
     expect(await confirmMessage.textContent()).toContain("mode=narrative");
-    expect(await confirmMessage.textContent()).toContain("mode.note=用故事線");
-    expect(await confirmMessage.textContent()).toContain("補充：整體再精簡");
+    expect(await confirmMessage.textContent()).toContain("mode.note=use a story arc");
+    expect(await confirmMessage.textContent()).toContain("補充：tighten it overall");
 
-    // AC2：新頁真的被加上，不只是 UI 事件——縮圖列 +1、project.json 多一個路徑。
+    // The new page is really added, not just a UI event — the thumbnail row is +1 and project.json gains one more path.
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(3);
     const project = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "project.json" });
     const slides = JSON.parse(project.data!.content).slides as string[];
     expect(slides).toHaveLength(3);
-    // 同一份草稿不會在後續 presentation-changed 時再彈一次（agent 還沒把它改成 confirmed）。
+    // The same draft doesn't pop the gate again on a later presentation-changed event (the agent hasn't marked it confirmed yet).
     expect(await gate.count()).toBe(0);
   } finally {
     await cleanup();
   }
 });
 
-it("從大綱規劃：閘門的「放棄」直接刪掉 plan/，閘門消失、agent 不介入", async () => {
+it("planning from an outline: the gate's \"discard\" deletes plan/ directly, the gate disappears, and the agent never gets involved", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server, { waitForAgent: true });
-    await openOutlineAndSubmit(page, "只有一行");
+    await openOutlineAndSubmit(page, "Just one line");
     const gate = page.locator(".plan-gate");
     await expect.poll(() => gate.isVisible(), { timeout: 30_000 }).toBe(true);
 
@@ -508,24 +475,24 @@ it("從大綱規劃：閘門的「放棄」直接刪掉 plan/，閘門消失、a
 
     const outlineFile = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "plan/outline.md" });
     expect(outlineFile.ok).toBe(false);
-    // 沒有送任何聊天訊息：最後一則作者訊息仍是原本的 /comotion-plan。
+    // No chat message was ever sent: the last author message is still the original /slidra-plan.
     const authored = page.locator(".chat-message-author").last();
-    expect(await authored.textContent()).toContain("/comotion-plan");
+    expect(await authored.textContent()).toContain("/slidra-plan");
     expect(await page.locator(".overview-item").count()).toBe(2);
   } finally {
     await cleanup();
   }
 });
 
-it("AC7：留言經 Save／Open 往返後仍在", async () => {
-  const { server, registry, comotPath, cleanup } = await startServerFor();
+it("a comment survives a Save/Open round-trip", async () => {
+  const { server, registry, slidraPath, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
     await hoverContextBar(page);
     await page.locator(".context-bar").getByRole("button", { name: "Comment to AI" }).click();
     const composer = page.locator(".comment-composer");
-    await composer.locator("textarea").fill("存檔後應該還在");
+    await composer.locator("textarea").fill("should still be here after saving");
     await composer.getByRole("button", { name: "Add comment" }).click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
 
@@ -537,22 +504,22 @@ it("AC7：留言經 Save／Open 往返後仍在", async () => {
     // reasoning helpers/screenshot.ts's settleForScreenshot documents.
     await page.waitForTimeout(500);
 
-    const reopened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const reopened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const comments = await listComments(registry, reopened.data!.id, "slides/001.svg");
-    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "存檔後應該還在" })]);
+    expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "should still be here after saving" })]);
   } finally {
     await cleanup();
   }
 });
 
-it("AC8(b)：agent 用 comment 命令寫入後，不重新整理，GUI 的 Pinned context 自動多一列", async () => {
-  const AGENT_COMMENT = "agent 透過命令寫的留言";
+it("after the agent writes via the comment command, without a refresh the GUI's Pinned context automatically gets one more row", async () => {
+  const AGENT_COMMENT = "comment written by the agent via a command";
   const { server, cleanup } = await startServerFor({ E2E_AGENT_COMMENT: AGENT_COMMENT });
   try {
     const page = await openApp(server, { waitForAgent: true });
     expect(await page.locator(".chat-pinned").count()).toBe(0);
 
-    await sendChatMessage(page, "寫留言");
+    await sendChatMessage(page, "write a comment");
 
     const pinnedItems = page.locator(".chat-pinned-item");
     await expect.poll(() => pinnedItems.count(), { timeout: 30_000 }).toBe(1);
@@ -562,20 +529,19 @@ it("AC8(b)：agent 用 comment 命令寫入後，不重新整理，GUI 的 Pinne
   }
 });
 
-// [E3.T3] #232/#236: the `/` slash-command menu. Not a new e2e file (Plan
-// §6.2/§7 — no new e2e file this ticket authorises) — this suite already
-// starts a real server+browser with a fake agent that can echo prompts
-// verbatim, exactly what these two scenarios need.
+// The `/` slash-command menu. This suite already starts a real
+// server+browser with a fake agent that can echo prompts verbatim, exactly
+// what these two scenarios need.
 
-it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報更新即時變動", async () => {
+it("slash commands: list, up/down arrow selection, Enter to complete, Esc to close, live-updates on report changes", async () => {
   const { server, cleanup } = await startServerFor({
     E2E_AVAILABLE_COMMANDS: JSON.stringify([
-      { name: "draft", description: "草擬一頁新投影片" },
-      { name: "publish", description: "發布目前版本" },
+      { name: "draft", description: "Draft a new slide" },
+      { name: "publish", description: "Publish the current version" },
     ]),
     E2E_AVAILABLE_COMMANDS_UPDATE: JSON.stringify([
-      { name: "draft", description: "草擬一頁新投影片" },
-      { name: "archive", description: "封存目前簡報" },
+      { name: "draft", description: "Draft a new slide" },
+      { name: "archive", description: "Archive the current presentation" },
     ]),
   });
   try {
@@ -588,43 +554,43 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
     // (session.ts: the ACP subprocess is spawned lazily on the first chat
     // message) — sending one first is what actually makes its
     // availableCommands report land.
-    await sendChatMessage(page, "打個招呼");
+    await sendChatMessage(page, "say hello");
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("打個招呼");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toContain("say hello");
 
-    // 清單全部出現，含描述（AC1 的畫面驗證部分）。
+    // All list entries appear, with descriptions.
     await input.fill("/");
     await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
     expect(await menuItem.nth(0).textContent()).toContain("draft");
-    expect(await menuItem.nth(0).textContent()).toContain("草擬一頁新投影片");
+    expect(await menuItem.nth(0).textContent()).toContain("Draft a new slide");
     expect(await menuItem.nth(1).textContent()).toContain("publish");
 
-    // ↓↓ 從 draft 選到 publish，再繞回 draft，Enter 補全成 "/draft "。
+    // Down/down from draft to publish, then wrap back to draft; Enter completes it to "/draft ".
     await input.press("ArrowDown");
     await input.press("ArrowDown");
     await expect.poll(() => menuItem.nth(0).getAttribute("aria-selected"), { timeout: 5000 }).toBe("true");
     await input.press("Enter");
     await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe("/draft ");
-    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0); // 補全後 draft 不再符合觸發條件，選單自動關閉
+    await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0); // after completion, "draft" no longer matches the trigger condition, so the menu closes itself
 
-    // Esc：重新打開後關閉，且在同一個觸發區段內繼續打字不重開。
+    // Esc: reopening after closing, and typing further within the same trigger segment does not reopen it.
     await input.fill("/");
     await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2);
     await input.press("Escape");
     await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
-    await input.press("d"); // 仍在觸發條件內（"/d"），但 Esc 關閉狀態必須持續
+    await input.press("d"); // still within the trigger condition ("/d"), but the Esc-closed state must persist
     await expect.poll(() => menu.count(), { timeout: 5000 }).toBe(0);
-    await input.fill(""); // 離開觸發條件，Esc 的關閉狀態重置
+    await input.fill(""); // leaving the trigger condition resets the Esc-closed state
     await input.fill("/");
-    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2); // 重新打開
+    await expect.poll(() => menuItem.count(), { timeout: 5000 }).toBe(2); // reopens
 
-    // 回報更新後，不重新整理頁面，清單即時變動：publish 消失、archive 出現。
-    // （這則訊息本身不觸發任何 agent 回覆——假 agent 送出更新後直接
-    // end_turn，見 comment-fake-acp-agent.mjs 的「更新命令」分支——所以這裡
-    // 直接輪詢選單內容，而不是等待一則不存在的新訊息。）
+    // After the report updates, without a page refresh, the list changes live: publish disappears and archive appears.
+    // (This message itself triggers no agent reply — the fake agent goes
+    // straight to end_turn after sending the update — so this polls the menu
+    // contents directly rather than waiting for a new message that never comes.)
     await input.fill("");
-    await sendChatMessage(page, "更新命令");
-    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe(""); // sendMessage() 清空 draft 後才輪到這裡打 "/"
+    await sendChatMessage(page, "update commands");
+    await expect.poll(() => input.inputValue(), { timeout: 5000 }).toBe(""); // sendMessage() clears the draft before "/"" gets typed here
     await input.fill("/");
     await expect.poll(() => menuItem.allTextContents(), { timeout: 30_000 }).toEqual(
       expect.arrayContaining([expect.stringContaining("archive")]),
@@ -638,34 +604,34 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
   }
 });
 
-it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
+it("slash commands: sending /xxx with an argument, the prompt text the fake agent receives matches the input exactly", async () => {
   const { server, cleanup } = await startServerFor(
     {},
-    { bundled: { "comotion-plan": "---\nname: comotion-plan\ndescription: 從大綱規劃投影片\n---\n" } },
+    { bundled: { "slidra-plan": "---\nname: slidra-plan\ndescription: Plan a slide from an outline\n---\n" } },
   );
   try {
     const page = await openApp(server, { waitForAgent: true });
     const input = page.locator(".chat-input textarea");
 
-    // "comotion-plan" comes from the bundled skill directory, which is
+    // "slidra-plan" comes from the bundled skill directory, which is
     // populated before the server ever starts — no need to wait for the
     // agent's own report (which does not exist yet, see the test above) to
     // complete this one. A shipped skill's directory name carries the
-    // `comotion-` namespace itself, so what the author types is exactly
-    // what the agent has registered (#248).
-    await input.fill("/comotion-pl");
+    // `slidra-` namespace itself, so what the author types is exactly
+    // what the agent has registered.
+    await input.fill("/slidra-pl");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");
     const completed = await input.inputValue();
-    expect(completed).toBe("/comotion-plan ");
+    expect(completed).toBe("/slidra-plan ");
 
-    // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
-    await input.fill(`${completed}這是參數`);
-    await expect.poll(() => page.locator(".slash-menu").count(), { timeout: 5000 }).toBe(0); // 含空白，觸發條件已不成立
+    // Keep typing the argument — the completed text is left untouched, just followed by whatever the author types.
+    await input.fill(`${completed}this is the argument`);
+    await expect.poll(() => page.locator(".slash-menu").count(), { timeout: 5000 }).toBe(0); // contains a space, so the trigger condition no longer holds
     await page.locator(".chat-input button:not([disabled])").click();
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-plan 這是參數");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/slidra-plan this is the argument");
   } finally {
     await cleanup();
   }

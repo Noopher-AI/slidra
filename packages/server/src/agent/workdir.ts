@@ -3,8 +3,8 @@ import type { Dirent } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
-import { isEnoent, resolveCoMotionHome } from "../comotion/home.js";
+import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
+import { isEnoent, resolveSlidraHome } from "../slidra/home.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -57,16 +57,15 @@ export function classifyAgentReadPath(rawPath: string, workdirReal: string): Age
 }
 
 /**
- * A minimal private copy of `packages/core`'s `virtual-fs.ts` structural
- * containment ([E4.T9]/F7 — the server no longer imports that package),
- * scoped to exactly what `readAgentWorkdirFile` below needs: build a tree
- * by enumerating real directories/files only (never following symlinks —
- * `readdir(withFileTypes:true)`'s `Dirent` only reports `isDirectory()`/
+ * Structural containment for the work directory, scoped to exactly what
+ * `readAgentWorkdirFile` below needs: build a tree by enumerating real
+ * directories/files only (never following symlinks — `readdir({
+ * withFileTypes: true })`'s `Dirent` only reports `isDirectory()`/
  * `isFile()` for the entry itself, so a symlink is neither and is silently
  * excluded), then resolve a caller-supplied relative path by exact segment
  * lookup. A path with a segment like ".." is just a literal name that was
  * never discovered on disk — it structurally cannot resolve to anything,
- * the same guarantee core's own virtual filesystem gives a presentation's
+ * the same guarantee a presentation's own virtual filesystem gives its
  * content.
  */
 type WorkdirNode = { type: "file"; realPath: string } | { type: "directory"; children: Map<string, WorkdirNode> };
@@ -84,7 +83,7 @@ async function populateWorkdirTree(realDir: string, node: Extract<WorkdirNode, {
   } catch {
     // realDir is a real filesystem path inside the deployed work directory
     // (ADR-0004) — never quote it, even for a plain permission/I-O error.
-    throw new CoMotionError("讀取工作目錄時發生錯誤");
+    throw new SlidraError("Error reading the work directory");
   }
   for (const entry of entries) {
     const realPath = path.join(realDir, entry.name);
@@ -118,42 +117,42 @@ function navigateWorkdirTree(root: WorkdirNode, relativePath: string): WorkdirNo
  * empty path (or one made of only `/`/`.`) resolves to the tree's own
  * root, which is a directory, not a file. That would otherwise read as if
  * the agent asked for *something* and got a directory — but an empty path
- * did not name anything at all, so it is refused as "找不到檔案" instead,
+ * did not name anything at all, so it is refused as "file not found" instead,
  * before the root is ever reached.
  */
 export async function readAgentWorkdirFile(workdirReal: string, relativePath: string): Promise<string> {
   const hasSegment = relativePath.split("/").some((segment) => segment.length > 0);
   if (!hasSegment) {
-    throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`file not found: ${relativePath}`);
   }
   const root = await buildWorkdirTree(workdirReal);
   const node = navigateWorkdirTree(root, relativePath);
   if (!node) {
-    throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`file not found: ${relativePath}`);
   }
   if (node.type !== "file") {
-    throw new CoMotionNotFoundError(`不是檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`not a file: ${relativePath}`);
   }
   let buffer: Buffer;
   try {
     buffer = await readFile(node.realPath);
   } catch {
-    throw new CoMotionError(`讀取檔案時發生錯誤：${relativePath}`);
+    throw new SlidraError(`Error reading file: ${relativePath}`);
   }
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
-    throw new CoMotionError(`${relativePath} 是二進位資產，無法以文字讀取`);
+    throw new SlidraError(`${relativePath} is a binary asset, cannot be read as text`);
   }
 }
 
 /**
  * The package-shipped source of the work directory's contents, resolved
  * relative to this module's own location — the same trick `serve.ts`'s
- * `resolveWebDist()` uses for `packages/web/dist`, which works unmodified
+ * `resolveWebDist()` uses for `apps/web/dist`, which works unmodified
  * from both `src/` and `dist/` because both sit one directory level under
  * `packages/server/`. `agent-workdir/` is *not* copied into `dist/` by any
- * build step (unlike `packages/web/dist`, which vite itself produces) — it
+ * build step (unlike `apps/web/dist`, which vite itself produces) — it
  * stays at the package root, where this path resolves to it from either
  * location.
  */
@@ -164,11 +163,11 @@ export function resolveAgentWorkdirSource(): string {
 
 /**
  * Where one presentation's work directory is deployed to on the user's
- * machine — `<COMOTION_HOME>/agent/<presentationId>`, never cleaned up
+ * machine — `<SLIDRA_HOME>/agent/<presentationId>`, never cleaned up
  * when `serve` exits.
  *
  * Keyed by presentation id rather than one shared `agent/` directory
- * because two `comotion serve` processes can run on the same machine at
+ * because two `slidra serve` processes can run on the same machine at
  * the same time, and `deployAgentWorkdir()` replaces its target wholesale
  * on every startup. A shared path means the second `serve` to start pulls
  * the directory out from under the first one's already-spawned ACP agent,
@@ -180,7 +179,7 @@ export function resolveAgentWorkdirSource(): string {
  * in one directory.
  */
 export function agentWorkdirTarget(presentationId: string): string {
-  return path.join(resolveCoMotionHome(), "agent", presentationId);
+  return path.join(resolveSlidraHome(), "agent", presentationId);
 }
 
 /**
@@ -232,7 +231,7 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * (disk full, a permissions error) never leaves the target half-written:
  * everything happens in a sibling directory first, and only a clean copy
  * ever gets renamed over the real target. The staging directory shares
- * `COMOTION_HOME` with the target, and therefore its filesystem, which is
+ * `SLIDRA_HOME` with the target, and therefore its filesystem, which is
  * what makes the final `rename` atomic rather than a copy-then-delete.
  *
  * The previous generation is *retired* (renamed aside), never deleted here
@@ -253,7 +252,7 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * path back must be compared against the same resolved form.
  */
 export async function deployAgentWorkdir(presentationId: string): Promise<string> {
-  const home = resolveCoMotionHome();
+  const home = resolveSlidraHome();
   const source = resolveAgentWorkdirSource();
   const target = agentWorkdirTarget(presentationId);
   const parent = path.dirname(target);
@@ -290,7 +289,7 @@ export async function deployAgentWorkdir(presentationId: string): Promise<string
     // Never echo the underlying fs error's own message here — it embeds a
     // real filesystem path (ADR-0004, third layer), and this error can
     // surface all the way out to `startServe`'s caller.
-    throw new CoMotionError("部署 agent 工作目錄時發生錯誤");
+    throw new SlidraError("Error deploying the agent work directory");
   }
 
   return realpath(target);

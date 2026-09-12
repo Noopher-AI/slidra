@@ -2,12 +2,12 @@
 
 風格的性格有一半來自字型。這份清單是**策展過的開源字型**：授權都允許嵌入與商用（SIL OFL 1.1 或 Apache 2.0），中文的覆蓋率都足以做一份完整的繁體簡報。
 
-**字型檔不在 repo 裡**，用 `comotion font import` 從下面的網址匯入；匯入後那份 `.comot` 就自帶這個字型，換一台機器打開仍然正確。
+**字型檔不在 repo 裡**，用 `slidra font import` 從下面的網址匯入；匯入後那份 `.slidra` 就自帶這個字型，換一台機器打開仍然正確。
 
 ## 匯入怎麼下
 
 ```
-comotion font import <presentation-id> <URL> --family '<家族名>' --license '<授權>' --source '<出處>'
+slidra font import <presentation-id> <URL> --family '<家族名>' --license '<授權>' --source '<出處>'
 ```
 
 `--family` 要**逐字**用下表的家族名——那是之後寫進 SVG `font-family` 的字串，打錯會在排版時直接失敗。
@@ -22,7 +22,7 @@ comotion font import <presentation-id> <URL> --family '<家族名>' --license '<
 | `jf open 粉圓` | 圓潤、親和、沒有攻擊性 | 教學、兒少、社群、輕鬆主題 | SIL OFL 1.1 | https://justfont.com/jfopenhuninn |
 | `cwTeXKai` | 楷書，手寫的筆順感 | 人文、書法、傳統主題 | SIL OFL 1.1 | https://github.com/l10n-tw/cwtex-q-fonts |
 
-**中文字型很大**（5～15 MB）。一份簡報最多匯入 **2 種中文字型**（標題一種、內文一種），再多會讓 `.comot` 檔變得難以傳遞。
+**中文字型很大**（5～15 MB）。一份簡報最多匯入 **2 種中文字型**（標題一種、內文一種），再多會讓 `.slidra` 檔變得難以傳遞。
 
 ## 拉丁（給英文標題與數字）
 

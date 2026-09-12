@@ -10,45 +10,45 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Gate review round 2, P2: a legal slide element can carry its own inline
- * `style="opacity:1"`. Inline style normally wins the CSS cascade over any
- * injected stylesheet rule, regardless of that rule's specificity — without
- * `!important` on both the hide stylesheet (player-plan.ts) and the
- * runtime's own reveal (player-runtime.js), such an element flashes fully
- * visible at the very start of play, defeating "進入播放時不會閃過完整內
- * 容". This is a real-browser cascade question, not something jsdom can
- * answer reliably, so it is tested here end to end rather than only at the
- * unit level.
+ * A legal slide element can carry its own inline `style="opacity:1"`.
+ * Inline style normally wins the CSS cascade over any injected stylesheet
+ * rule, regardless of that rule's specificity — without `!important` on
+ * both the hide stylesheet (player-plan.ts) and the runtime's own reveal
+ * (player-runtime.js), such an element flashes fully visible at the very
+ * start of play, defeating the guarantee that entering play mode never
+ * flashes the full content. This is a real-browser cascade question, not
+ * something jsdom can answer reliably, so it is tested here end to end
+ * rather than only at the unit level.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/inline-opacity-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-inlineop-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-inlineop-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "inline-opacity-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "inline-opacity-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -59,7 +59,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -69,18 +69,18 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it('元素自帶 inline style="opacity:1" 時，進場前仍被藏起來，推進後仍看得到', async () => {
+it('an element with its own inline style="opacity:1" is still hidden before entering and visible after advancing', async () => {
   const page = await browser.newPage();
   await page.goto(server.url);
 
   const stubborn = page.frameLocator("iframe.slide-frame").locator("#el-stubborn");
-  await expect.poll(() => stubborn.textContent().catch(() => null), { timeout: 30_000 }).toBe("固執的文字");
+  await expect.poll(() => stubborn.textContent().catch(() => null), { timeout: 30_000 }).toBe("Stubborn Text");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);

@@ -11,38 +11,44 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type StartedServer } from "./helpers/launch.js";
 
 /**
- * NOOP-60/#197 驗收條件第 4 條：「Undo／Redo 按鈕與快捷鍵透過 CLI 生效，
- * agent 執行 `comotion undo` 後 GUI 同步」。四個 case（Plan §6.2）：
- * 1. 按鈕；2. 快捷鍵；3. CLI→GUI 同步（不重新整理頁面，靠既有的 SSE
- * live-reload）；4. 凍結態（agent 持鎖時按鈕停用、快捷鍵不送請求）。
+ * Undo/Redo buttons and keyboard shortcuts take effect through the CLI,
+ * and the GUI stays in sync after the agent runs `slidra undo`. Four
+ * cases: 1. the button; 2. the keyboard shortcut; 3. CLI-to-GUI sync
+ * (without reloading the page, relying on the existing SSE live-reload);
+ * 4. frozen state (buttons disabled and the shortcut sends no request
+ * while the agent holds the lock).
  *
- * 1–3 用 `demo/` 這份共用 fixture 的 `el-title`（純 `<text>`，見
- * demo/slides/001.svg）：`registry.dispatch("text set", ...)` 直接改它，
- * 不需要在瀏覽器裡雙擊進入編輯——undo/redo 的按鈕與同步路徑跟「文字是怎麼
- * 被改的」無關，這裡只驗 undo/redo 本身。
+ * Cases 1-3 use the shared `demo/` fixture's `el-title` (a plain `<text>`,
+ * see demo/slides/001.svg): `registry.dispatch("text set", ...)` changes
+ * it directly, with no need to double-click into edit mode in the
+ * browser — the undo/redo buttons and sync path don't care how the text
+ * was changed, only undo/redo itself is under test here.
  *
- * 4 沿用 e2e/freeze.test.ts 既有的假 ACP agent fixture
- * （editing-fake-acp-agent.mjs）與凍結流程，量測「按鈕 disabled + Ctrl+Z
- * 不送 /api/undo」，不重複量測伺服器端的凍結語意本身
- * （packages/server/test/agent/freeze.test.ts 已經覆蓋）。
+ * Case 4 reuses e2e/freeze.test.ts's existing fake ACP agent fixture
+ * (editing-fake-acp-agent.mjs) and freeze flow, measuring "button
+ * disabled + Ctrl+Z sends no /api/undo" without re-measuring the
+ * server-side freeze semantics themselves (already covered by
+ * packages/server/test/agent/freeze.test.ts).
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-// editing-fake-acp-agent.mjs 要求 `<text id="...">` id 直接掛在 <text> 本身
-// （extractTextElementId），demo/ 的 <text> 沒有 id（id 只掛在外層 <g>）——
-// 凍結態測試改用 e2e/freeze.test.ts 同一份 fixture deck，其他三個 case
-// 仍用 demo/（不需要餵給假 agent，直接用 registry.dispatch 改文字）。
+// editing-fake-acp-agent.mjs requires the `<text id="...">` id to sit
+// directly on the `<text>` element itself (extractTextElementId), but
+// demo/'s `<text>` has no id (the id sits only on the outer `<g>`) — the
+// frozen-state test uses e2e/freeze.test.ts's same fixture deck instead,
+// while the other three cases still use demo/ (no need to feed the fake
+// agent, they just use registry.dispatch to change the text directly).
 const frozenDeckDir = path.join(e2eDir, "fixtures/player-deck");
 const VIEWPORT = { width: 1440, height: 900 };
 const SLIDE_PATH = "slides/001.svg";
 const ELEMENT_ID = "el-title";
-const ORIGINAL_TEXT = "驗收用簡報";
-const NEW_TEXT = "驗收用簡報（改過）";
+const ORIGINAL_TEXT = "Acceptance Demo Deck";
+const NEW_TEXT = "Acceptance Demo Deck (edited)";
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -82,7 +88,7 @@ async function setTitle(registry: CommandRegistry, presentationId: string, text:
   if (!result.ok) throw new Error(result.message);
 }
 
-it("按鈕：Titlebar ↶ 讓 registry.dispatch 改過的文字回到原值", async () => {
+it("button: the titlebar's ↶ reverts text changed via registry.dispatch back to its original value", async () => {
   const { started, page } = await start("undo-redo-button");
   try {
     await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
@@ -96,7 +102,7 @@ it("按鈕：Titlebar ↶ 讓 registry.dispatch 改過的文字回到原值", as
   }
 });
 
-it("快捷鍵：⌘Z/⇧⌘Z 走同一條路徑", async () => {
+it("keyboard shortcut: ⌘Z/⇧⌘Z go through the same path", async () => {
   const { started, page } = await start("undo-redo-shortcut");
   try {
     await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
@@ -114,16 +120,18 @@ it("快捷鍵：⌘Z/⇧⌘Z 走同一條路徑", async () => {
   }
 });
 
-it("快捷鍵：點過舞台元素（焦點在 iframe 內）後直接按 ⌘Z 仍可 undo（#198）", async () => {
+it("keyboard shortcut: pressing ⌘Z still undoes after clicking a stage element (focus inside the iframe)", async () => {
   const { started, page } = await start("undo-redo-shortcut-after-stage-click");
   try {
     await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
     await setTitle(started.registry, started.presentationId, NEW_TEXT);
     await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(NEW_TEXT);
 
-    // 點 iframe 內的元素把鍵盤焦點留在 iframe 裡——不點 .titlebar，這正是
-    // 既有那條「快捷鍵」測試繞開的坑。等狀態列的選取 chip 出現，確認點擊
-    // 真的落在舞台上。
+    // Clicking an element inside the iframe leaves keyboard focus inside
+    // it — deliberately not clicking .titlebar, which is exactly the pitfall
+    // the other shortcut test above avoids. Wait for the status bar's
+    // selection chip to appear to confirm the click actually landed on
+    // the stage.
     await page.frameLocator("iframe.slide-frame").locator(`#${ELEMENT_ID}`).click();
     await expect.poll(() => page.locator(".status-selection-chip").textContent().then((t) => t?.trim() ?? null)).toContain("Selected:");
 
@@ -137,38 +145,40 @@ it("快捷鍵：點過舞台元素（焦點在 iframe 內）後直接按 ⌘Z �
   }
 });
 
-it("CLI ↔ GUI 同步：agent 執行 comotion undo（registry.dispatch(\"undo\")）後，不重新整理頁面 GUI 也自己變回原值", async () => {
+it("CLI-GUI sync: after the agent runs slidra undo (registry.dispatch(\"undo\")), the GUI reverts on its own without a page reload", async () => {
   const { started, page } = await start("undo-redo-cli-sync");
   try {
     await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
     await setTitle(started.registry, started.presentationId, NEW_TEXT);
     await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(NEW_TEXT);
 
-    // 模擬 agent 下 `comotion undo`：直接呼叫 registry，不經過瀏覽器。
+    // Simulates the agent issuing `slidra undo`: calls registry directly,
+    // bypassing the browser.
     const undo = await started.registry.dispatch("undo", { id: started.presentationId });
     expect(undo.ok).toBe(true);
 
-    // 不 page.reload()：靠既有的 file watcher → SSE /api/events →
-    // live-reload.ts → controller.reload() 這條鏈自己把畫面同步回來。
+    // No page.reload(): relies on the existing file watcher -> SSE
+    // /api/events -> live-reload.ts -> controller.reload() chain to sync
+    // the view on its own.
     await expect.poll(() => iframeTitleText(page), { timeout: 30_000 }).toBe(ORIGINAL_TEXT);
   } finally {
     await started.cleanup();
   }
 });
 
-// ── 凍結態：沿用 e2e/freeze.test.ts 的假 ACP agent fixture ──────────────
+// ── Frozen state: reuses e2e/freeze.test.ts's fake ACP agent fixture ──────
 
 async function startFrozenServer(): Promise<{ server: RunningServer; registry: CommandRegistry; presentationId: string; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-undoredo-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-undoredo-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-undoredo-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-undoredo-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(frozenDeckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(frozenDeckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -179,7 +189,7 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "凍結測試不看這個標題",
+      E2E_NEW_TITLE: "frozen test doesn't look at this title",
       E2E_FREEZE_HOLD_MS: "3000",
     },
   };
@@ -192,10 +202,10 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -205,7 +215,7 @@ async function editingFrozen(page: Page): Promise<boolean> {
   return banner > 0;
 }
 
-it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/undo 請求", async () => {
+it("frozen state: Undo/Redo buttons are disabled while the agent holds the lock, and ⌘Z sends no /api/undo request", async () => {
   const frozen = await startFrozenServer();
   try {
     const page = await browser.newPage({ viewport: VIEWPORT });
@@ -219,7 +229,7 @@ it("凍結態：agent 持鎖時 Undo/Redo 按鈕停用，⌘Z 不送出 /api/und
     await waitForAgentConnected(page);
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input textarea").fill("改標題");
+    await page.locator(".chat-input textarea").fill("change the title");
     await page.locator(".chat-input button").click();
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);

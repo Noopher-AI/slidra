@@ -1,30 +1,30 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-media-caption" family="enter" effect="fade" start="on-click"/>
-      <comot:effect target="el-video-placeholder" family="media" effect="play" start="on-click"/>
-      <comot:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-media-caption" family="enter" effect="fade" start="on-click"/>
+      <slidra:effect target="el-video-placeholder" family="media" effect="play" start="on-click"/>
+      <slidra:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
+    </slidra:effects>
   </metadata>
-  <g id="el-media-title" data-comot-name="標題">
-    <text x="640" y="90" text-anchor="middle" font-size="56" fill="#f4f6f8">第 4 頁：影音</text>
+  <g id="el-media-title" data-slidra-name="Title">
+    <text x="640" y="90" text-anchor="middle" font-size="56" fill="#f4f6f8">Page 4: audio/video</text>
   </g>
-  <g id="el-media-caption" data-comot-name="說明文字">
-    <text x="640" y="150" text-anchor="middle" font-size="30" fill="#9aa7b4">重點說明</text>
+  <g id="el-media-caption" data-slidra-name="Caption">
+    <text x="640" y="150" text-anchor="middle" font-size="30" fill="#9aa7b4">Key point</text>
   </g>
 
-  <!-- 影片佔位元素：播放前顯示這個色塊，這個位置不是一個洞 (ADR-0005). -->
-  <g id="el-video-placeholder" data-comot-name="影片" data-comot-media="../assets/intro.webm">
+  <!-- Video placeholder element: shows this color block before playback; this spot is not a hole (ADR-0005). -->
+  <g id="el-video-placeholder" data-slidra-name="Video" data-slidra-media="../assets/intro.webm">
     <rect
           x="240" y="220" width="400" height="300" fill="#3a4550"/>
   </g>
 
-  <!-- 音訊掛在一個可見元素上：這裡畫一顆喇叭圖形 (ADR-0009). -->
-  <g id="el-audio-icon" data-comot-name="旁白" data-comot-media="../assets/narration.oga">
+  <!-- Audio is hung on a visible element: draws a speaker icon here (ADR-0009). -->
+  <g id="el-audio-icon" data-slidra-name="Narration" data-slidra-media="../assets/narration.oga">
     <circle cx="960" cy="370" r="70" fill="#c66"/>
     <path d="M935 340 L935 400 L955 400 L985 425 L985 315 L955 340 Z" fill="#101418"/>
   </g>
   <g id="el-fgAdS_SAIXG3">
-    <text x="960" y="470" text-anchor="middle" font-size="26" fill="#9aa7b4">旁白</text>
+    <text x="960" y="470" text-anchor="middle" font-size="26" fill="#9aa7b4">Narration</text>
   </g>
 </svg>

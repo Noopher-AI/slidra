@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// A scripted fake ACP agent speaking real JSON-RPC over stdio — Seam B's
-// counterparty (issue #1's Testing Decisions). It simulates Claude Code; it
-// is not a CoMotion module, so driving it over stdio is scripting a
-// protocol boundary, not self-verification.
+// A scripted fake ACP agent speaking real JSON-RPC over stdio — the
+// counterparty for the test architecture's Seam B. It simulates Claude
+// Code; it is not a Slidra module, so driving it over stdio is scripting
+// a protocol boundary, not self-verification.
 //
 // Behaviour is configured entirely through environment variables so each
 // test can script a different scenario without command-line plumbing:
@@ -10,7 +10,7 @@
 //   FAKE_AGENT_LOG        - path this script appends one JSON line to per
 //                            `session/prompt` call it receives, so tests can
 //                            inspect exactly what the client sent (the
-//                            編輯規約 as prompt #0, content-block shape,
+//                            editorial brief as prompt #0, content-block shape,
 //                            sessionId reuse). Also logs one line per
 //                            `session/new` call, carrying the `cwd` it
 //                            received.
@@ -26,7 +26,7 @@
 //                            and logs { setConfigOption }.
 //                            replies[i] are the text chunks streamed back as
 //                            separate agent_message_chunk updates for the
-//                            i-th `session/prompt` call (0 = the 編輯規約).
+//                            i-th `session/prompt` call (0 = the editorial brief).
 //                            Missing entries fall back to a single echo chunk.
 //                            failFirstAttemptMarkerPath: when set, the FIRST
 //                            process (across however many separate spawns of
@@ -36,14 +36,14 @@
 //                            spawn finds the marker present and proceeds
 //                            normally. Used to script "first start fails,
 //                            retry succeeds" across a real subprocess
-//                            respawn, which is what ticket #6 fix 4 is about.
+//                            respawn.
 //                            exitDuringPromptIndex: when the `session/prompt`
 //                            call at this index arrives, the process exits
 //                            immediately (process.exit(1)) instead of
 //                            replying — no response, no further stdio. Used
-//                            to script "the adapter dies mid-turn", which is
-//                            what fix 1 (round 2) must not let deadlock the
-//                            chat forever. Paired with exitOnceMarkerPath so
+//                            to script "the adapter dies mid-turn", which
+//                            must not deadlock the chat forever. Paired
+//                            with exitOnceMarkerPath so
 //                            a respawned process (the session recovering on
 //                            the next message) does not exit again.
 //                            exitOnceMarkerPath: when set together with
@@ -55,19 +55,19 @@
 //                            requestPermissionOnPromptIndex: at this prompt
 //                            index, call session/request_permission before
 //                            streaming replies. permissionCommand (string,
-//                            default "comotion ls") becomes
+//                            default "slidra ls") becomes
 //                            toolCall.rawInput.command — this is where
-//                            ticket #7's allowlist reads the shell command
+//                            the allowlist reads the shell command
 //                            from. The outcome is logged as
 //                            `{ permissionOutcome }`. permissionOptions
 //                            (array, default [allow_once, reject_once]):
 //                            overrides the offered option list, used to
 //                            script an adapter that offers only
-//                            `allow_always` (ticket #7 fix 2).
+//                            `allow_always`.
 //                            readTextFileOnPromptIndex / readTextFilePath /
 //                            readTextFileLine / readTextFileLimit: at this
 //                            prompt index, call fs/read_text_file for the
-//                            given virtual path (ticket #7). Logs
+//                            given virtual path. Logs
 //                            `{ readTextFileResult: content }` on success or
 //                            `{ readTextFileError: { code, message } }` on
 //                            failure. readTextFileEveryPromptFrom: like
@@ -77,10 +77,9 @@
 //                            two turns is visible on the second read.
 //                            toolCallOnPromptIndex: at this prompt index,
 //                            stream a command tool call's whole life cycle
-//                            as session/update notifications (ticket #17):
-//                            a `tool_call` carrying
+//                            as session/update notifications: a `tool_call` carrying
 //                            rawInput.command = toolCallCommand (default
-//                            "comotion text set ..."), then a
+//                            "slidra text set ..."), then a
 //                            `tool_call_update` moving it to in_progress,
 //                            then a final `tool_call_update` whose status is
 //                            toolCallOutcome ("completed" by default,
@@ -92,7 +91,7 @@
 //                            must never reach the author's screen.
 //                            writeTextFileOnPromptIndex / writeTextFilePath /
 //                            writeTextFileContent: at this prompt index,
-//                            call fs/write_text_file (ticket #7 — this must
+//                            call fs/write_text_file (this must
 //                            always fail). Logs
 //                            `{ writeTextFileError: { code, message } }` on
 //                            failure or `{ writeTextFileResult: true }` if
@@ -133,9 +132,9 @@ if (config.stderrLine) process.stderr.write(`${config.stderrLine}\n`);
 
 // The cwd the client handed us in `session/new` (see `newSession` below) —
 // kept so `prompt` can build an absolute `fs/read_text_file` path the same
-// way a real, conforming ACP agent does (ticket #7 fix 3): resolve the cwd
-// it was given, then join the relative path onto that resolved form. This
-// is what actually reproduces the `/var` vs `/private/var` mismatch a real
+// way a real, conforming ACP agent does: resolve the cwd it was given,
+// then join the relative path onto that resolved form. This is what
+// actually reproduces the `/var` vs `/private/var` mismatch a real
 // `claude-code-acp` 0.12.6 was probed sending on macOS.
 let sessionCwd;
 
@@ -178,8 +177,7 @@ class FakeAgent {
 
   async newSession(params) {
     // Logged so tests can assert on exactly what cwd the client sent
-    // (ticket #6 fix 1: never a real project path, never under
-    // COMOTION_HOME).
+    // (never a real project path, never under SLIDRA_HOME).
     log({ newSessionCwd: params.cwd });
     sessionCwd = params.cwd;
 
@@ -197,7 +195,7 @@ class FakeAgent {
       // Sent after newSession's own response is decided but before it is
       // returned — a conforming agent's initial report lands between
       // `session/new` and the first author turn, never folded into one
-      // (ticket for #232/#236: `relayingCurrentTurn` must not gate this).
+      // (`relayingCurrentTurn` must not gate this).
       await this.connection.sessionUpdate({
         sessionId: "fake-session-1",
         update: { sessionUpdate: "available_commands_update", availableCommands: config.availableCommands },
@@ -256,15 +254,15 @@ class FakeAgent {
           title: "測試工具呼叫",
           // permissionOmitCommand scripts a tool call whose rawInput carries
           // no `command` key at all — the "cannot determine the command"
-          // case the allowlist must fail closed on (ticket #7).
+          // case the allowlist must fail closed on.
           // permissionRawInput: an arbitrary raw input shape, for the case
           // where the command cannot be read out of it at all (a shell
           // shape this client does not know) but a protected path is still
           // sitting in there somewhere.
-          rawInput: config.permissionRawInput ?? (config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "comotion ls" }),
+          rawInput: config.permissionRawInput ?? (config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "slidra ls" }),
         },
-        // permissionOptions: overrides the default option list below (ticket
-        // #7 fix 2) — used to script an adapter that offers only
+        // permissionOptions: overrides the default option list below —
+        // used to script an adapter that offers only
         // `allow_always` (no `allow_once`), which the client must refuse
         // rather than accept as a persistent grant.
         options: config.permissionOptions ?? [
@@ -286,10 +284,10 @@ class FakeAgent {
       try {
         // readTextFileAbsoluteUnderCwd: send an *absolute* path built by
         // resolving the session cwd we were given and joining the relative
-        // virtual path onto it — the shape a real conforming agent sends
-        // (ticket #7 fix 3), as opposed to readTextFilePath, which is sent
-        // verbatim (used for plain relative paths and for absolute paths
-        // that are deliberately outside the session cwd).
+        // virtual path onto it — the shape a real conforming agent sends,
+        // as opposed to readTextFilePath, which is sent verbatim (used for
+        // plain relative paths and for absolute paths that are
+        // deliberately outside the session cwd).
         const requestedPath = config.readTextFileAbsoluteUnderCwd
           ? path.join(realpathSync(sessionCwd), config.readTextFileAbsoluteUnderCwd)
           : config.readTextFilePath;
@@ -317,7 +315,7 @@ class FakeAgent {
           status: "pending",
           rawInput: config.toolCallOmitCommand
             ? { description: "not a shell command" }
-            : { command: config.toolCallCommand ?? "comotion text set --id p1 --element-id el-1 --text 新標題" },
+            : { command: config.toolCallCommand ?? "slidra text set --id p1 --element-id el-1 --text 新標題" },
         },
       });
       // permissionForToolCall: ask permission for *this* tool call, between
@@ -384,7 +382,7 @@ class FakeAgent {
       });
     }
 
-    // #303: `holdPromptOnIndex` keeps this turn open for `holdPromptMs`
+    // `holdPromptOnIndex` keeps this turn open for `holdPromptMs`
     // (default 10 s) so a test has a window to `session/cancel` it. A real
     // agent answers the original prompt with `cancelled` once it has
     // stopped; this fixture does the same the moment `cancel` arrives,
@@ -400,7 +398,7 @@ class FakeAgent {
       this.releaseHold = undefined;
       log({ heldPromptEnded: stopReason });
       if (stopReason === "cancelled" && config.lateActivityAfterCancel) {
-        // #303: mimics claude-code-acp, whose model keeps going after
+        // Mimics claude-code-acp, whose model keeps going after
         // `session/cancel` — updates and a permission request arrive
         // with no prompt in flight. Fired after this response is sent.
         setTimeout(async () => {
@@ -418,12 +416,12 @@ class FakeAgent {
               title: "遲到的命令",
               kind: "execute",
               status: "pending",
-              rawInput: { command: "comotion ls late" },
+              rawInput: { command: "slidra ls late" },
             },
           });
           const response = await this.connection.requestPermission({
             sessionId: params.sessionId,
-            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "comotion ls late" } },
+            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "slidra ls late" } },
             options: [
               { kind: "allow_once", name: "允許", optionId: "allow" },
               { kind: "reject_once", name: "拒絕", optionId: "reject" },

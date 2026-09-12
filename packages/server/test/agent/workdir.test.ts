@@ -10,22 +10,22 @@ import {
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
 
-// NOOP-238: the product work directory `comotion serve` deploys on every
-// startup (`packages/server/agent-workdir/` -> `<COMOTION_HOME>/agent`) and
-// the agent session reads real files from, alongside the presentation's own
-// virtual tree. No server, no ACP subprocess — everything here is a plain
-// filesystem check.
+// The product work directory `slidra serve` deploys on every startup
+// (`packages/server/agent-workdir/` -> `<SLIDRA_HOME>/agent`) and the agent
+// session reads real files from, alongside the presentation's own virtual
+// tree. No server, no ACP subprocess — everything here is a plain filesystem
+// check.
 
-let coMotionHome: string;
+let slidraHome: string;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-workdir-home-"));
-  process.env.COMOTION_HOME = coMotionHome;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-workdir-home-"));
+  process.env.SLIDRA_HOME = slidraHome;
 });
 
 afterEach(async () => {
-  delete process.env.COMOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** Every file under `dir`, as a sorted list of paths relative to `dir` (posix-style, for stable comparison across platforms). */
@@ -59,10 +59,10 @@ describe("resolveAgentWorkdirSource", () => {
 const PRESENTATION = "pres-1";
 
 describe("deployAgentWorkdir", () => {
-  it("deploys the source's files to <COMOTION_HOME>/agent/<id>, byte-for-byte (A1)", async () => {
+  it("deploys the source's files to <SLIDRA_HOME>/agent/<id>, byte-for-byte", async () => {
     const target = await deployAgentWorkdir(PRESENTATION);
     expect(target).toBe(await realpath(agentWorkdirTarget(PRESENTATION)));
-    expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(coMotionHome, "agent", PRESENTATION));
+    expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(slidraHome, "agent", PRESENTATION));
 
     const source = resolveAgentWorkdirSource();
     const sourceFiles = (await listFilesRecursively(source)).filter(
@@ -77,7 +77,7 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("copies .agents/skills into .claude/skills, relative paths and bytes identical (A2)", async () => {
+  it("copies .agents/skills into .claude/skills, relative paths and bytes identical", async () => {
     const target = await deployAgentWorkdir(PRESENTATION);
     const agentsSkills = await listFilesRecursively(path.join(target, ".agents", "skills"));
     const claudeSkills = await listFilesRecursively(path.join(target, ".claude", "skills"));
@@ -91,7 +91,7 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge (A3)", async () => {
+  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
     await deployAgentWorkdir(PRESENTATION);
     const target = agentWorkdirTarget(PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "使用者亂改的內容");
@@ -116,7 +116,7 @@ describe("deployAgentWorkdir", () => {
     expect(secondFiles).toEqual(firstFiles);
   });
 
-  // The concurrency regressions (two `comotion serve` on one machine).
+  // The concurrency regressions (two `slidra serve` on one machine).
   // `deployAgentWorkdir` used to `rm -rf` one shared `<HOME>/agent`, which
   // unlinked the directory a running agent had as its `cwd`.
 
@@ -135,14 +135,14 @@ describe("deployAgentWorkdir", () => {
     expect(await realpath(a)).toBe(a);
   });
 
-  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading (B2)", async () => {
+  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading", async () => {
     const first = await deployAgentWorkdir(PRESENTATION);
     const firstInode = (await stat(first)).ino;
 
     await deployAgentWorkdir(PRESENTATION);
 
     // The old inode is still readable — it was renamed aside, not removed.
-    const agentDir = path.join(coMotionHome, "agent");
+    const agentDir = path.join(slidraHome, "agent");
     const retired = (await readdir(agentDir)).filter((name) => name.startsWith(`${PRESENTATION}.old-`));
     expect(retired).toHaveLength(1);
     const retiredDir = path.join(agentDir, retired[0]!);
@@ -155,7 +155,7 @@ describe("deployAgentWorkdir", () => {
     await deployAgentWorkdir(PRESENTATION);
     await deployAgentWorkdir(PRESENTATION);
 
-    const retired = (await readdir(path.join(coMotionHome, "agent"))).filter((name) =>
+    const retired = (await readdir(path.join(slidraHome, "agent"))).filter((name) =>
       name.startsWith(`${PRESENTATION}.old-`),
     );
     expect(retired).toHaveLength(1);
@@ -164,7 +164,7 @@ describe("deployAgentWorkdir", () => {
   it("never sweeps another presentation's retired directory — it may still be that serve's live agent cwd", async () => {
     await deployAgentWorkdir("pres-a");
     await deployAgentWorkdir("pres-a"); // retires pres-a's first generation
-    const agentDir = path.join(coMotionHome, "agent");
+    const agentDir = path.join(slidraHome, "agent");
     const retiredA = (await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"));
     expect(retiredA).toHaveLength(1);
 
@@ -176,7 +176,7 @@ describe("deployAgentWorkdir", () => {
 
   it("leaves no staging directory behind", async () => {
     await deployAgentWorkdir(PRESENTATION);
-    const staging = (await readdir(coMotionHome)).filter((name) => name.startsWith("agent.tmp-"));
+    const staging = (await readdir(slidraHome)).filter((name) => name.startsWith("agent.tmp-"));
     expect(staging).toEqual([]);
   });
 });
@@ -224,7 +224,7 @@ describe("readAgentWorkdirFile", () => {
   let workdirReal: string;
 
   beforeEach(async () => {
-    workdirReal = await mkdtemp(path.join(tmpdir(), "comotion-workdir-read-"));
+    workdirReal = await mkdtemp(path.join(tmpdir(), "slidra-workdir-read-"));
     await writeFile(path.join(workdirReal, "CLAUDE.md"), "@AGENTS.md\n");
     await mkdir(path.join(workdirReal, "reference"));
     await writeFile(path.join(workdirReal, "reference", "commands.md"), "# 命令參考\n");
@@ -239,25 +239,25 @@ describe("readAgentWorkdirFile", () => {
     expect(await readAgentWorkdirFile(workdirReal, "reference/commands.md")).toBe("# 命令參考\n");
   });
 
-  it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file' (A12)", async () => {
-    await expect(readAgentWorkdirFile(workdirReal, "")).rejects.toMatchObject({ message: "找不到檔案：" });
-    await expect(readAgentWorkdirFile(workdirReal, "/")).rejects.toMatchObject({ message: "找不到檔案：/" });
-    await expect(readAgentWorkdirFile(workdirReal, ".")).rejects.toMatchObject({ message: "找不到檔案：." });
+  it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file'", async () => {
+    await expect(readAgentWorkdirFile(workdirReal, "")).rejects.toMatchObject({ message: "file not found: " });
+    await expect(readAgentWorkdirFile(workdirReal, "/")).rejects.toMatchObject({ message: "file not found: /" });
+    await expect(readAgentWorkdirFile(workdirReal, ".")).rejects.toMatchObject({ message: "file not found: ." });
   });
 
-  it("refuses a '..' escape as not-found — '..' is just a name the real directory tree never contains (A12)", async () => {
+  it("refuses a '..' escape as not-found — '..' is just a name the real directory tree never contains", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "../outside.txt")).rejects.toMatchObject({
-      message: "找不到檔案：../outside.txt",
+      message: "file not found: ../outside.txt",
     });
   });
 
-  it("refuses a symlink that points outside the work directory — excluded structurally, never followed (A12)", async () => {
-    const outsideDir = await mkdtemp(path.join(tmpdir(), "comotion-workdir-outside-"));
+  it("refuses a symlink that points outside the work directory — excluded structurally, never followed", async () => {
+    const outsideDir = await mkdtemp(path.join(tmpdir(), "slidra-workdir-outside-"));
     try {
       await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
       await symlink(path.join(outsideDir, "secret.txt"), path.join(workdirReal, "link.txt"));
       await expect(readAgentWorkdirFile(workdirReal, "link.txt")).rejects.toMatchObject({
-        message: "找不到檔案：link.txt",
+        message: "file not found: link.txt",
       });
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
@@ -266,20 +266,20 @@ describe("readAgentWorkdirFile", () => {
 
   it("refuses a genuinely absent path as not-found", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "does/not/exist.md")).rejects.toMatchObject({
-      message: "找不到檔案：does/not/exist.md",
+      message: "file not found: does/not/exist.md",
     });
   });
 
-  it("reports a directory as 'not a file', not as absent (A12)", async () => {
+  it("reports a directory as 'not a file', not as absent", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "reference")).rejects.toMatchObject({
-      message: "不是檔案：reference",
+      message: "not a file: reference",
     });
   });
 
-  it("reports a non-UTF-8 file as a binary asset, not as decoded (possibly corrupted) text (A12)", async () => {
+  it("reports a non-UTF-8 file as a binary asset, not as decoded (possibly corrupted) text", async () => {
     await writeFile(path.join(workdirReal, "binary.dat"), Buffer.from([0xff, 0x00, 0x01]));
     await expect(readAgentWorkdirFile(workdirReal, "binary.dat")).rejects.toMatchObject({
-      message: "binary.dat 是二進位資產，無法以文字讀取",
+      message: "binary.dat is a binary asset, cannot be read as text",
     });
   });
 });

@@ -1,37 +1,45 @@
-"""F-17：情境列擋住下一行可點內容（父票 NOOP-352／GitHub #284，[E5.T7]）。
+"""F-17: the context bar blocks clickable content on the line below it.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列固定原語）——這支腳本只用這個清單，不新增原語、不改寫成別的 harness：
+Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+`qa/agent_helpers.py` provides the fixed primitives below) -- this script only uses
+this list, without adding new primitives or rewriting it against another harness:
 
     open_deck() / goto_slide(n) / select(name_or_id, additive=False) /
     selection() / hover(x, y) / click_at(x, y, shift=False) / context_bar() /
     slide_svg(n) / console_errors()
 
-`select`/`hover`/`click_at`/`context_bar` 與 `select` 的 `additive` kwarg 是
-本票新增（見 `qa/agent_helpers.py` 對應 docstring）。
+`select`/`hover`/`click_at`/`context_bar`, and `select`'s `additive` kwarg, were added
+for this ticket (see the corresponding docstrings in `qa/agent_helpers.py`).
 
-判準（Execute 對照 Plan §5 的實測修正，見下方 A/B 各自的說明）：base 上
-A、B 兩條都 FAIL（點擊被情境列擋下，選取不變或加選失敗），分支上兩條都
-PASS；C 是回歸防線（hover 後仍按得到 Delete），兩邊都應該 PASS。
+Criteria: on base, both A and B fail (the click gets blocked by the context bar, so
+selection stays unchanged or the additive selection fails); on the branch, both pass;
+C is a regression guard (Delete is still clickable after hover) and should pass on
+both sides.
 
-Execute 時對照 Plan 的兩處修正：
-  1. Plan §5(A) 指第 1 頁「標題→副標」——Execute 當時判定這個場景無法重現
-     而改用第 3 頁「第一點→第二點」；Review（NOOP-386）在 1440×900 重新
-     量過，選「標題」之後情境列在 (442,378)–(1092,414)、副標的 box 在
-     y 394.25–419.25，兩者重疊 23.6px，副標中心 (656,406.8) 在 base 上
-     `elementFromPoint` 命中 `BUTTON.context-bar-item`、點下去選取停在
-     「標題」——票面場景確實重現得出來（Execute 量到的「約 3px 空隙」是選
-     「副標」之後排在它下方的那一列，不是本場景）。因此 A0 把票面逐字的
-     第 1 頁場景補回來，第 3 頁「第一點→第二點」保留為 A：`elementFromPoint`
-     同樣證實那裡的第二點中心命中的是 `<button class="context-bar-item">`，
-     是同一個缺陷在條列版面上的第二個實例，兩條都留著。
-  2. C 段（hover 後點 Delete）刻意留在第 1 頁，不用第 3 頁：第 3 頁的
-     情境列因為多一顆 Edit animation 按鈕而變寬（764px），在 1440px 寬
-     的視窗下會被右邊 Chat 面板（x≈1101 起）局部遮住最右側的 Delete/
-     Duplicate——這是與本票 hover 穿透無關的既有版面問題（視窗夠寬或動
-     畫按鈕不存在時不會發生），留給 Dev-Reviewer 判斷是否要另外開票；
-     這裡换到第 1 頁（沒有動畫按鈕、情境列較窄）避開它，Delete 全程在
-     可視範圍內。
+Two corrections made while reproducing the reported scenario (see A/B below for the
+reasoning behind each):
+  1. The scenario as originally reported was "slide 1, title -> subtitle", which
+     seemed hard to reproduce at first, so slide 3's "bullet one -> bullet two" was
+     used instead. A closer remeasurement at 1440x900 found: after selecting the
+     title, the context bar sits at (442,378)-(1092,414), and the subtitle's box is
+     at y 394.25-419.25 -- the two overlap by 23.6px, and the subtitle's center point
+     (656,406.8) does hit `BUTTON.context-bar-item` via `elementFromPoint` on base,
+     with the click landing on the title instead of moving selection to the subtitle.
+     So the originally reported scenario does reproduce after all (the "roughly 3px
+     gap" mentioned earlier was measured against the row that ends up below the
+     subtitle once it's selected, not this scenario). A0 below restores that original
+     slide-1 scenario verbatim, and slide 3's "bullet one -> bullet two" case (A) is
+     kept as well, since `elementFromPoint` confirms the same thing there too --
+     bullet two's center hits a `<button class="context-bar-item">` -- making it a
+     second instance of the same defect on a bulleted layout.
+  2. Section C (clicking Delete after hover) is deliberately kept on slide 1 rather
+     than slide 3: slide 3's context bar is wider (764px) because of its extra Edit
+     animation button, and at a 1440px-wide viewport it gets partially covered by the
+     Chat panel on the right (starting around x=1101), hiding Delete/Duplicate at the
+     far right -- an unrelated pre-existing layout issue (it doesn't happen with a
+     wider viewport or without the animation button), left for a separate ticket if
+     needed. Using slide 1 instead (no animation button, narrower context bar) avoids
+     it, keeping Delete fully in view throughout.
 """
 
 import time  # noqa: E402
@@ -46,10 +54,10 @@ def check(label: str, ok: bool, actual: object) -> None:
 
 
 def wait_selection_chip(expected: str, timeout: float = 2.0) -> str:
-    """`select()`/`selection()` 可能讀到呼叫當下尚未刷新的舊 chip（見
-    `agent_helpers.py` 的 `_wait_chip_update` 說明：chip 已非空時立刻回）
-    ——本檔自己對 `selection()["chip"]` 輪詢到符合預期或逾時，不信任
-    `select()` 呼叫當下的回傳值。"""
+    """`select()`/`selection()` may read a chip that hasn't refreshed yet at call
+    time (see `agent_helpers.py`'s `_wait_chip_update`: it returns as soon as the
+    chip is non-empty) -- so this file polls `selection()["chip"]` itself until it
+    matches or times out, rather than trusting `select()`'s return value directly."""
     deadline = time.time() + timeout
     last = ""
     while time.time() < deadline:
@@ -63,69 +71,76 @@ def wait_selection_chip(expected: str, timeout: float = 2.0) -> str:
 def main() -> int:
     open_deck()  # noqa: F821
 
-    # A0（父票驗收條件逐字那一條，Review 補回）：第 1 頁，選「標題」後直接
-    # 點「副標」的座標。Review 在自己的 pod 量過（1440×900，`select("標題")`
-    # 之後）：情境列 (442,378)–(1092,414)、副標的 box y 394.25–419.25，兩者
-    # 在 y 軸重疊 23.6px，副標中心 (656,406.8) 在 base 上 `elementFromPoint`
-    # 命中的是 `BUTTON.context-bar-item`、點下去選取停在「標題」——票面描述
-    # 的場景在目前的 demo 素材下確實重現得出來（交付留言所述「約 3px 空隙」
-    # 量到的是選「副標」之後才排在它下方的那一列，不是本場景）。
+    # A0 (the acceptance criteria's original scenario, restored verbatim): slide 1,
+    # click the subtitle's coordinates right after selecting the title. Remeasured
+    # at 1440x900 right after `select("標題")`: the context bar sits at
+    # (442,378)-(1092,414), the subtitle's box is at y 394.25-419.25, overlapping by
+    # 23.6px on the y axis; the subtitle's center point (656,406.8) hits a
+    # `BUTTON.context-bar-item` via `elementFromPoint` on base -- so the reported
+    # scenario does reproduce with the current demo content (the "roughly 3px gap"
+    # mentioned earlier was measured against the row that appears below the subtitle
+    # once it's already selected, not this scenario).
     goto_slide(1)  # noqa: F821
     select("標題")  # noqa: F821
-    time.sleep(0.5)  # 讓情境列真的渲染、定位穩定，避免量到動畫中途的座標
+    time.sleep(0.5)  # let the context bar actually render and settle before measuring, to avoid mid-animation coordinates
     select("副標")  # noqa: F821
     chip_a0 = wait_selection_chip("Selected: 副標")
-    check("A0 第 1 頁：選標題後直接點副標的座標，選取變成副標", chip_a0 == "Selected: 副標", chip_a0)
+    check("A0 slide 1: clicking the subtitle's coordinates right after selecting the title moves selection to the subtitle", chip_a0 == "Selected: 副標", chip_a0)
 
-    # A：第 3 頁，非 additive 點擊——「第一點」被選取後，「第二點」的位置
-    # 落在情境列範圍內；base 上這一點命中的是情境列本身（`.context-bar-
-    # item` 按鈕或空白處），選取維持在「第一點」不變；分支上情境列預設
-    # 穿透，點擊落到 iframe，選取變成「第二點」。
+    # A: slide 3, non-additive click -- with "bullet one" selected, "bullet two"'s
+    # position falls within the context bar's bounds; on base this click hits the
+    # context bar itself (a `.context-bar-item` button or empty space within it) and
+    # selection stays on "bullet one"; on the branch the context bar passes clicks
+    # through by default, so the click reaches the iframe and selection moves to
+    # "bullet two".
     goto_slide(3)  # noqa: F821
     select("第一點")  # noqa: F821
-    time.sleep(0.5)  # 讓情境列真的渲染、定位穩定，避免量到動畫中途的座標
+    time.sleep(0.5)  # let the context bar actually render and settle before measuring, to avoid mid-animation coordinates
     select("第二點")  # noqa: F821
     chip_a = wait_selection_chip("Selected: 第二點")
-    check("A 非 additive 點擊穿透情境列，選到第二點", chip_a == "Selected: 第二點", chip_a)
+    check("A non-additive click passes through the context bar and selects bullet two", chip_a == "Selected: 第二點", chip_a)
 
-    # B：同一頁重來，這次 additive（⇧點）——「第二點」一樣被情境列壓住，
-    # base 上這一擊同樣落在情境列上，加選失敗（chip 停在「第一點」或變成
-    # 別的東西，不會是「2 elements」）；分支上加選成功。
+    # B: same slide again, this time additive (shift-click) -- "bullet two" is
+    # likewise covered by the context bar; on base this click lands on the context
+    # bar too, so the additive selection fails (the chip stays on "bullet one" or
+    # turns into something else, never "2 elements"); on the branch the additive
+    # selection succeeds.
     goto_slide(3)  # noqa: F821
     select("第一點")  # noqa: F821
     time.sleep(0.5)
     select("第二點", additive=True)  # noqa: F821
     chip_b = wait_selection_chip("Selected: 2 elements")
-    check("B additive（⇧點）穿透情境列，加選成 2 elements", chip_b == "Selected: 2 elements", chip_b)
+    check("B additive (shift-click) passes through the context bar and adds to selection ('2 elements')", chip_b == "Selected: 2 elements", chip_b)
 
-    # C：回歸防線——情境列預設穿透不代表它自己的按鈕壞了。hover 到它自己
-    # 的矩形中心，停留足夠時間（`hover()` 内建 sleep，見其 docstring 對
-    # HOVER_SOLIDIFY_MS 的引用）solidify 後，Delete 真的能點到、真的刪掉
-    # 元素。用第 1 頁（見檔頭說明：情境列在這裡不會寬到被 Chat 面板局部
-    # 遮住）。
+    # C: regression guard -- the context bar passing through clicks by default
+    # doesn't mean its own buttons are broken. After hovering over its own rectangle
+    # long enough (`hover()` has a built-in sleep, see its docstring's reference to
+    # HOVER_SOLIDIFY_MS) to solidify, Delete should really be clickable and really
+    # delete the element. Uses slide 1 (see the note above: its context bar isn't
+    # wide enough to get partially covered by the Chat panel).
     goto_slide(1)  # noqa: F821
     select("標題")  # noqa: F821
     time.sleep(0.5)
     cb = context_bar()  # noqa: F821
-    check("C 情境列存在且未 hover 時是 ghost（非 solid）", cb["present"] and not cb["solid"], cb)
+    check("C context bar exists and is a ghost (not solid) before hover", cb["present"] and not cb["solid"], cb)
     rect = cb["rect"]
     hover(rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2)  # noqa: F821
     cb2 = context_bar()  # noqa: F821
-    check("C hover 停留後轉為 solid", cb2["solid"] is True, cb2["solid"])
+    check("C turns solid after hovering long enough", cb2["solid"] is True, cb2["solid"])
 
     before = slide_svg(1)  # noqa: F821
     click_at(*cb2["buttons"]["Delete"])  # noqa: F821
     time.sleep(0.3)
     after = slide_svg(1)  # noqa: F821
-    check("C 點 Delete 真的刪掉選取元素（檔案不再含 el-title、位元組已變）", "el-title" not in after and after != before, after != before)
-    check("C 無 console error", console_errors() == [], console_errors())  # noqa: F821
+    check("C clicking Delete really removes the selected element (el-title is gone, bytes changed)", "el-title" not in after and after != before, after != before)
+    check("C no console error", console_errors() == [], console_errors())  # noqa: F821
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failure(s)" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use runs the stdin script via exec(code, globals()); globals()['__name__']
+# is "browser_harness.run", never "__main__", so the `if __name__ == "__main__"` guard
+# would never fire (qa/README.md §2). Call main() unconditionally instead and let
+# the caller's process exit code carry the result.
 raise SystemExit(main())

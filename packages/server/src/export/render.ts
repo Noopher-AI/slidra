@@ -2,12 +2,12 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { chromium } from "playwright";
-import { CoMotionError } from "../comotion/errors.js";
+import { SlidraError } from "../slidra/errors.js";
 
 export type ExportFormat = "pdf" | "pdf-frames";
 
 export interface RenderExportPdfOptions {
-  /** The origin (CLI's own `export/server.ts`, or an already-running `comotion serve`) that serves `export.html` and the three read-only routes it needs. */
+  /** The origin (CLI's own `export/server.ts`, or an already-running `slidra serve`) that serves `export.html` and the three read-only routes it needs. */
   serverUrl: string;
   format: ExportFormat;
   /** Final destination — written atomically (temp file + rename), never left half-written on failure. */
@@ -45,15 +45,15 @@ interface ExportProgress {
 
 declare global {
   interface Window {
-    __COMOT_EXPORT__?: ExportProgress;
-    __COMOT_EXPORT_DONE__?: boolean;
-    __COMOT_EXPORT_ERROR__?: string;
+    __SLIDRA_EXPORT__?: ExportProgress;
+    __SLIDRA_EXPORT_DONE__?: boolean;
+    __SLIDRA_EXPORT_ERROR__?: string;
   }
 }
 
 /**
  * Drives one headless Chromium page through `export.html` end to end
- * (NOOP-93 §3.4/§3.5/§4.5): navigate, poll `window.__COMOT_EXPORT__` for
+ * (NOOP-93 §3.4/§3.5/§4.5): navigate, poll `window.__SLIDRA_EXPORT__` for
  * progress, wait for done/error, then `page.pdf()` and write the bytes to
  * `outputPath`.
  *
@@ -78,7 +78,7 @@ export async function renderExportPdf(options: RenderExportPdfOptions): Promise<
     let lastCompleted = -1;
     const pollTimer = setInterval(() => {
       void page
-        .evaluate(() => window.__COMOT_EXPORT__ ?? null)
+        .evaluate(() => window.__SLIDRA_EXPORT__ ?? null)
         .then((progress) => {
           if (!progress) return;
           if (!reportedRunning) {
@@ -101,7 +101,7 @@ export async function renderExportPdf(options: RenderExportPdfOptions): Promise<
     let final: { canvas: { width: number; height: number }; progress: ExportProgress | null; error?: string };
     try {
       await page.waitForFunction(
-        () => window.__COMOT_EXPORT_DONE__ === true || window.__COMOT_EXPORT_ERROR__ !== undefined,
+        () => window.__SLIDRA_EXPORT_DONE__ === true || window.__SLIDRA_EXPORT_ERROR__ !== undefined,
         undefined,
         { timeout: RENDER_TIMEOUT_MS },
       );
@@ -110,8 +110,8 @@ export async function renderExportPdf(options: RenderExportPdfOptions): Promise<
         const presentation = (await response.json()) as { canvas: { width: number; height: number } };
         return {
           canvas: presentation.canvas,
-          progress: window.__COMOT_EXPORT__ ?? null,
-          error: window.__COMOT_EXPORT_ERROR__,
+          progress: window.__SLIDRA_EXPORT__ ?? null,
+          error: window.__SLIDRA_EXPORT_ERROR__,
         };
       });
     } finally {
@@ -119,13 +119,13 @@ export async function renderExportPdf(options: RenderExportPdfOptions): Promise<
     }
 
     if (final.error) {
-      throw new CoMotionError(final.error);
+      throw new SlidraError(final.error);
     }
     if (!final.progress) {
-      // Should be unreachable — export-entry.ts sets __COMOT_EXPORT__
-      // before creating any iframe, so __COMOT_EXPORT_DONE__ can never
+      // Should be unreachable — export-entry.ts sets __SLIDRA_EXPORT__
+      // before creating any iframe, so __SLIDRA_EXPORT_DONE__ can never
       // become true without it. Loud failure over a fabricated page count.
-      throw new CoMotionError("匯出頁未回報進度，無法決定頁數");
+      throw new SlidraError("Export page did not report progress, cannot determine page count");
     }
 
     const pdfBytes = await page.pdf({
@@ -162,6 +162,6 @@ async function writePdfAtomically(outputPath: string, bytes: Buffer): Promise<vo
     await rename(tempPath, outputPath);
   } catch {
     await rm(tempPath, { force: true }).catch(() => {});
-    throw new CoMotionError("寫入匯出檔案時發生錯誤");
+    throw new SlidraError("Error writing the export file");
   }
 }

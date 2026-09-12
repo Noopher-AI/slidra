@@ -1,13 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { encodeCommandArgv } from "./comotion/argv.js";
-import { runJsonCommand } from "./comotion/command.js";
+import { encodeCommandArgv } from "./slidra/argv.js";
+import { runJsonCommand } from "./slidra/command.js";
 
 /**
- * `POST /api/command` (NOOP-91 §4.9) — the front end's only write path.
+ * `POST /api/command` — the front end's only write path.
  *
  * Direct manipulation on the canvas (drag, handles, snapping) has to end in
- * a real command, and before this ticket the server had no route that could
- * run one: `POST` was 405 for everything except `/api/chat`. This module is
+ * a real command, and previously the server had no route that could run
+ * one: `POST` was 405 for everything except `/api/chat`. This module is
  * that route, and it is deliberately the narrowest thing that can work.
  *
  * Two properties carry the whole security posture, and both are structural
@@ -26,21 +26,19 @@ import { runJsonCommand } from "./comotion/command.js";
  *     so a request that could name another one would let a page reach
  *     outside the deck it is displaying.
  *
- * Freeze/lock gates are explicitly NOT here (cross-ticket arbitration):
- * another ticket layers those on top of this route.
+ * Freeze/lock gates are explicitly NOT here: those are layered on top of
+ * this route separately.
  */
 
 /**
- * The only commands this endpoint will run. Each entry is a decision for
- * whichever ticket needed it, not a convenience — the Ribbon's "常用" tab
- * (NOOP-141) is what added `slide add` / `element copy` / `element cut` /
+ * The only commands this endpoint will run. Each entry was added as a
+ * given panel needed it, not as a convenience — the Ribbon's "Common" tab
+ * is what added `slide add` / `element copy` / `element cut` /
  * `element paste` / `element insert` / `textbox add` / `element align` /
  * `element distribute` / `element order` to the original four, in-place text
- * editing (NOOP-144) added `text set`, and the style panel (NOOP-143) added
- * `element style set` — the command layer's own
- * `STYLE_ATTRIBUTE_WHITELIST`/`validateStyleAttribute`
- * (`packages/core/src/element-edit.ts`) still does the real gatekeeping on
- * which attributes are settable.
+ * editing added `text set`, and the style panel added `element style set` —
+ * the command layer's own gatekeeping logic still validates which
+ * attributes are settable.
  */
 export const COMMAND_WHITELIST: readonly string[] = [
   "element move",
@@ -49,7 +47,7 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "textbox width",
   "text set",
   "slide add",
-  // [E2.T3] 的頁面管理與備忘稿加入這四條。
+  // Page management and speaker notes added these four.
   "slide delete",
   "slide duplicate",
   "slide move",
@@ -66,49 +64,58 @@ export const COMMAND_WHITELIST: readonly string[] = [
   // [E2.T11] replaces the presentation-wide `presentation transition set`
   // with the per-slide `slide transition set`.
   "slide transition set",
-  // [E4.T7] 的範本管理對話框加入這四條。
+  // The template-management dialog added these four.
   "template add",
   "template list",
   "template rename",
   "template delete",
-  // #303 的計畫確認視窗：「放棄」直接刪掉 plan/ 草稿，不經 agent；`plan list`
-  // 讓前端在沒有 SSE 事件時也能查目前有沒有草稿。讀計畫檔走 `/api/files/`。
+  // The plan-confirmation dialog: "Discard" deletes the plan/ draft
+  // directly, without going through the agent; `plan list` lets the front
+  // end check whether a draft exists even with no SSE event to trigger it.
+  // Reading the plan file itself goes through `/api/files/`.
   "plan list",
   "plan delete",
-  // NOOP-90/T2 的舞台選取與直接操作加入這三條：四角把手送
-  // `element resize`（新命令）；Delete/Backspace 與元素右鍵選單的 Delete
-  // 送 `element delete`；⌘D 與右鍵選單的 Duplicate 送 `element
-  // duplicate` —— 這兩條命令本來就存在於 registry，只是從未被這個端點
-  // 放行過，沒有這三條會被這個白名單本身 403 掉。
+  // Stage selection and direct manipulation added these three: the corner
+  // handles send `element resize` (a new command); Delete/Backspace and the
+  // element context menu's Delete send `element delete`; Cmd+D and the
+  // context menu's Duplicate send `element duplicate` — the latter two
+  // commands already existed in the registry, just never allowed through
+  // this endpoint before, so without these three entries this whitelist
+  // itself would 403 them.
   "element resize",
   "element delete",
   "element duplicate",
-  // [E2.T15] 的 Dock Group/Ungroup 按鈕加入這兩條。
+  // The Dock's Group/Ungroup buttons added these two.
   "element group",
   "element ungroup",
-  // [E2.T17] Video/Image/Audio 插入面板的 caption 欄位（D4）：caption 落地
-  // 成 `data-comot-name`，走既有 `element name set` 命令。
+  // The Video/Image/Audio insert panel's caption field: the caption lands
+  // as `data-slidra-name`, going through the existing `element name set`
+  // command.
   "element name set",
-  // [E2.T7] 的 Animate 面板／時間軸／情境列 Edit animation 加入這四條；
-  // `effect list` 不在其中——GUI 的清單狀態走一般的檔案讀取路徑
-  // （`GET /api/files/`），不需要透過命令端點。
+  // The Animate panel / timeline / scenario bar's Edit animation added
+  // these four; `effect list` is not among them — the GUI's list state
+  // goes through the ordinary file-read path (`GET /api/files/`), which
+  // does not need the command endpoint.
   "effect add",
   "effect remove",
   "effect move",
   "effect set",
-  // [E2.T8] 的留言框／Pinned context 加入這三條——建立、修改、刪除留言都是
-  // GUI 的寫入路徑；`comment list` 不必加，前端讀留言走 `/api/raw/`，不經
-  // 這個端點（見計畫 §4.3）。
+  // The comment box / pinned context added these three — creating,
+  // editing, and deleting a comment are all write paths for the GUI;
+  // `comment list` need not be added since the front end reads comments
+  // through `/api/raw/`, not through this endpoint.
   "comment add",
   "comment edit",
   "comment delete",
-  // [E2.T18] 的剪貼簿加入這三條：⌘C／⌘X／⌘V 對儲存格範圍的路由縫，走
-  // table 命令族（軟依賴 [E2.T14]，本輪只補這三條 cell-range 命令）。
+  // The clipboard added these three: Cmd+C/Cmd+X/Cmd+V on a cell range
+  // route through to the table command family (only these three
+  // cell-range commands are covered so far).
   "table cell copy",
   "table cell cut",
   "table cell paste",
-  // E2.T14 的 Table 插入面板、儲存格編輯／樣式／合併／欄寬拖曳、Style ›
-  // Object 的表格段與 Refresh 按鈕。
+  // The Table insert panel, cell editing/styling/merging/column-width
+  // dragging, and the Style > Object tab's table section and Refresh
+  // button.
   "table create",
   "table cell set",
   "table cell style set",
@@ -123,7 +130,7 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "table bind",
   "table refresh",
   "table set",
-  // E2.T12 的圖表插入面板、資料視窗與其八條命令。
+  // The chart insert panel, its data window, and its eight commands.
   "chart create",
   "chart data set",
   "chart type set",
@@ -132,12 +139,13 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "chart stack set",
   "chart legend set",
   "chart option set",
-  // #200 (NOOP-69) 的樣式面板加入這三條：文字框對齊、頁面樣式（背景／強調
-  // 色）、頁面尺寸。
+  // The style panel added these three: text-box alignment, slide style
+  // (background/accent color), and canvas size.
   "textbox align",
   "slide style set",
   "presentation canvas set",
-  // #303 背景圖片手動控制面板：上傳/選擇/清除背景圖片、調整透明度。
+  // The manual background-image control panel: upload/select/clear the
+  // background image, adjust opacity.
   "slide background set",
 ];
 
@@ -204,10 +212,10 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
     raw = await readLimitedBody(req, MAX_COMMAND_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
-      sendJson(res, 400, { error: `請求內容過大（上限 ${MAX_COMMAND_BODY_BYTES} 位元組）` });
+      sendJson(res, 400, { error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)` });
       return;
     }
-    sendJson(res, 400, { error: "請求內容讀取失敗" });
+    sendJson(res, 400, { error: "Failed to read request body" });
     return;
   }
 
@@ -215,25 +223,25 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
   try {
     body = JSON.parse(raw);
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   if (typeof body !== "object" || body === null) {
-    sendJson(res, 400, { error: "請求內容必須是物件" });
+    sendJson(res, 400, { error: "Request body must be an object" });
     return;
   }
 
   const { name, input } = body as { name?: unknown; input?: unknown };
   if (typeof name !== "string") {
-    sendJson(res, 400, { error: "name 必須是字串" });
+    sendJson(res, 400, { error: "name must be a string" });
     return;
   }
   if (!COMMAND_WHITELIST.includes(name)) {
-    sendJson(res, 403, { error: `這個端點不接受命令：${name}` });
+    sendJson(res, 403, { error: `This endpoint does not accept command: ${name}` });
     return;
   }
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    sendJson(res, 400, { error: "input 必須是物件" });
+    sendJson(res, 400, { error: "input must be an object" });
     return;
   }
 
@@ -252,7 +260,7 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
   } catch (error) {
     // A thrown error out of encoding/spawning is a bug or an unclassified
     // failure, never a user-facing "not found".
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "命令執行失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Command execution failed" });
     return;
   }
 

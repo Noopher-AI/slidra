@@ -27,7 +27,7 @@ describe("check-reference-subset", () => {
 
   it("reports a reference command that has no entry in the spec", () => {
     const referenceContent = "## made up command\n\n**參數**：`<presentation-id>`。\n**用途**：不存在。\n";
-    const specContent = "# comotion CLI 規格\n\n## `new`\n\n**語法**\n\n```\ncomotion new <path>\n```\n";
+    const specContent = "# slidra CLI 規格\n\n## `new`\n\n**語法**\n\n```\nslidra new <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
@@ -41,7 +41,7 @@ describe("check-reference-subset", () => {
   it("reports a flag reference mentions that the spec's matching entry never mentions", () => {
     const referenceContent = "## asset import\n\n**參數**：`<presentation-id>` `<source>`、`--as csv`（選填）。\n";
     const specContent =
-      "# comotion CLI 規格\n\n## `asset import`\n\n**語法**\n\n```\ncomotion asset import <presentation-id> <source>\n```\n";
+      "# slidra CLI 規格\n\n## `asset import`\n\n**語法**\n\n```\nslidra asset import <presentation-id> <source>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
@@ -55,7 +55,7 @@ describe("check-reference-subset", () => {
   it("does not let a spec's --csv-asset token satisfy a reference requirement for bare --csv (no substring matching)", () => {
     const referenceContent = "## chart data set\n\n**參數**：`<presentation-id>`、`--csv <path>`（選填）。\n";
     const specContent =
-      "# comotion CLI 規格\n\n## `chart data set`\n\n**參數**\n\n- `--csv-asset`：選填，容器內虛擬路徑。\n";
+      "# slidra CLI 規格\n\n## `chart data set`\n\n**參數**\n\n- `--csv-asset`：選填，容器內虛擬路徑。\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
@@ -69,7 +69,7 @@ describe("check-reference-subset", () => {
   it("ignores a flag mentioned only in reference's 用途/範例 prose, not in its 參數 line", () => {
     const referenceContent =
       "## cat\n\n**參數**：`<presentation-id>` `<path>`。\n**用途**：不支援 `--recursive`，未來可能加上。\n";
-    const specContent = "# comotion CLI 規格\n\n## `cat`\n\n**語法**\n\n```\ncomotion cat <presentation-id> <path>\n```\n";
+    const specContent = "# slidra CLI 規格\n\n## `cat`\n\n**語法**\n\n```\nslidra cat <presentation-id> <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);

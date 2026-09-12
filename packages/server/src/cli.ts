@@ -4,13 +4,13 @@ import type { AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
 
 /**
- * Entry point for `comotion serve <presentation-id>`.
+ * Entry point for `slidra serve <presentation-id>`.
  *
- * This is invoked from `packages/cli/bin/comotion.js` (plain JS, not part
+ * This is invoked from `packages/cli/bin/slidra.js` (plain JS, not part
  * of the compiled `packages/cli` sources) via a runtime-only dynamic
- * import. [E4.T9]/F7: `@comotion/server` no longer depends on
+ * import. [E4.T9]/F7: `@slidra/server` no longer depends on
  * `packages/cli` at all — every command it needs now spawns the Rust
- * `comotion` binary (`comotion/`) instead of dispatching against an
+ * `slidra` binary (`slidra/`) instead of dispatching against an
  * in-process registry.
  *
  * NOOP-230: serve now always starts, whether or not an agent is selected —
@@ -24,7 +24,7 @@ import type { AgentSource } from "./agent/manager.js";
 export async function runServeCli(argv: string[]): Promise<number> {
   const parsed = parseServeArgv(argv);
   if (!parsed) {
-    console.error("命令 serve 缺少參數：presentation-id");
+    console.error("Command serve is missing an argument: presentation-id");
     return 1;
   }
 
@@ -59,7 +59,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  console.log(`CoMotion 已啟動：${server.url}`);
+  console.log(`Slidra started: ${server.url}`);
   await printAgentStatusLine(server.url);
 
   await new Promise<void>((resolve) => {
@@ -89,7 +89,7 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
     agents: Array<{ kind: AgentKind; label: string; status: "available" | "unauthenticated"; loginCommand: string }>;
   };
   if (status.current === null) {
-    console.log("尚未選擇 agent，聊天功能待設定；serve 其餘功能照常。");
+    console.log("No agent selected yet, chat is not configured; serve's other features work as usual.");
     return;
   }
   const card = status.agents.find((agent) => agent.kind === status.current);
@@ -99,9 +99,9 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
     throw new Error(`/api/agent/probe did not report a card for current kind: ${status.current}`);
   }
   if (card.status === "available") {
-    console.log(`使用的 agent：${card.label}`);
+    console.log(`Using agent: ${card.label}`);
   } else {
-    console.log(`使用的 agent：${card.label}（尚未登入，請在終端機執行 ${card.loginCommand}）`);
+    console.log(`Using agent: ${card.label} (not logged in yet, run ${card.loginCommand} in a terminal)`);
   }
 }
 
@@ -118,7 +118,7 @@ function parseServeArgv(
       const value = argv[i + 1];
       const parsedPort = value === undefined ? NaN : Number(value);
       if (!Number.isInteger(parsedPort)) {
-        console.error("--port 缺少有效的數值");
+        console.error("--port is missing a valid number");
         return undefined;
       }
       port = parsedPort;
@@ -126,7 +126,7 @@ function parseServeArgv(
     } else if (arg === "--agent") {
       const value = argv[i + 1];
       if (value !== "claude" && value !== "codex") {
-        console.error("--agent 必須是下列其中一個值：claude、codex");
+        console.error("--agent must be one of: claude, codex");
         return undefined;
       }
       agent = value;

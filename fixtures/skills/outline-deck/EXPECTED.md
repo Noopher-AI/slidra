@@ -1,6 +1,6 @@
 初始頁數：2（`slides/001.svg`／`002.svg` 是兩張沒有設計過的範本頁，直接 `ls` 這份未執行過的 fixture 會看到 2 頁，這是預期的初始狀態）。
 
-流程分兩段：先 `/comotion-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。` 加上 `INPUT.md` 的內容，agent 寫好 `plan/` 後停下；作者在確認視窗（或終端機）拍板後送 `/comotion-build 【計畫確認】…`，agent 才建置。
+流程分兩段：先 `/slidra-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。` 加上 `INPUT.md` 的內容，agent 寫好 `plan/` 後停下；作者在確認視窗（或終端機）拍板後送 `/slidra-build 【計畫確認】…`，agent 才建置。
 
 ## 計畫階段必須符合
 
@@ -13,7 +13,7 @@
 ## 建置階段必須符合
 
 - `validate <presentation-id>` 結束碼 0、`errors` 為空。
-- 每一頁 `<comot:notes>` 非空，內容是口語句子，不是頁面文字的重抄。
+- 每一頁 `<slidra:notes>` 非空，內容是口語句子，不是頁面文字的重抄。
 - 頁面上的字是計畫裡的關鍵詞，不是 `INPUT.md` 逐字照抄；也不得含 `INPUT.md` 沒有的數字、公司名、日期、價格、承諾。
 - `plan/outline.md` 每一頁都補上了 `blueprint`，相鄰兩頁 `shape` 不同。
 - `template list <presentation-id>` 至少列得出「封面」。

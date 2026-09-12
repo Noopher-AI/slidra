@@ -1,24 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-a" data-comot-name="方塊 A" transform="translate(80 80)">
+  <g id="el-a" data-slidra-name="Block A" transform="translate(80 80)">
     <rect x="0" y="0" width="140" height="90" fill="#c66"/>
   </g>
-  <g id="el-b" data-comot-name="方塊 B" transform="translate(300 80)">
+  <g id="el-b" data-slidra-name="Block B" transform="translate(300 80)">
     <rect x="0" y="0" width="140" height="90" fill="#6a6"/>
   </g>
-  <g id="el-emphasis" data-comot-name="強調元素" transform="translate(520 80)">
+  <g id="el-emphasis" data-slidra-name="Emphasis Element" transform="translate(520 80)">
     <rect x="0" y="0" width="120" height="90" fill="#c9c"/>
   </g>
-  <g id="el-exit" data-comot-name="退場元素" transform="translate(720 80)">
+  <g id="el-exit" data-slidra-name="Exit Element" transform="translate(720 80)">
     <rect x="0" y="0" width="120" height="90" fill="#9c6"/>
   </g>
-  <g id="el-path" data-comot-name="路徑元素" transform="translate(80 300)">
+  <g id="el-path" data-slidra-name="Path Element" transform="translate(80 300)">
     <rect x="0" y="0" width="60" height="60" fill="#66c"/>
   </g>
-  <g id="el-group" data-comot-name="群組" transform="translate(80 450)">
-    <g id="el-group-a" data-comot-name="群組成員 A" transform="translate(0 0)">
+  <g id="el-group" data-slidra-name="Group" transform="translate(80 450)">
+    <g id="el-group-a" data-slidra-name="Group Member A" transform="translate(0 0)">
       <rect x="0" y="0" width="60" height="60" fill="#c96"/>
     </g>
-    <g id="el-group-b" data-comot-name="群組成員 B" transform="translate(80 0)">
+    <g id="el-group-b" data-slidra-name="Group Member B" transform="translate(80 0)">
       <rect x="0" y="0" width="60" height="60" fill="#96c"/>
     </g>
   </g>

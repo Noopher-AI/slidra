@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-stubborn" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-stubborn" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <!--
     gate review round 2, P2: this element carries its own inline
@@ -11,5 +11,5 @@
     the cascade and this element flashes fully visible at the start of
     play, defeating the whole point of pre-hiding.
   -->
-  <text id="el-stubborn" style="opacity:1" x="640" y="360" text-anchor="middle" font-size="56">固執的文字</text>
+  <text id="el-stubborn" style="opacity:1" x="640" y="360" text-anchor="middle" font-size="56">Stubborn Text</text>
 </svg>

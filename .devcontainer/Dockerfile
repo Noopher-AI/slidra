@@ -2,7 +2,7 @@
 # JPEG 8 ABI.  The matching official image supplies all three browser engines
 # and their system libraries. It ships Node 24; CI (.github/workflows/e2e.yml)
 # pins Node 22, so Node 22 is installed below and asserted at build time
-# (2026-09-04 NOOP-52: asserting v22 on the image's own Node failed the build).
+# (asserting v22 against the image's own Node failed the build).
 FROM mcr.microsoft.com/playwright:v1.62.1-noble
 
 ARG UID=1000
@@ -35,7 +35,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # engines via `playwright install --with-deps`; match that here so the
 # devcontainer can run the same e2e suite CI does.
 #
-# NOOP-31: the builder previously cached this layer from a run where
+# The builder previously cached this layer from a run where
 # `install-deps` had silently failed to pull in libglib2.0-0, and every
 # later build reused that broken layer since the instruction text never
 # changed. The `: '...'` no-op below changes the instruction text once to
@@ -57,7 +57,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/* \
     && node --version | grep -q '^v22\.'
 
-RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
+RUN : 'cache-bust: verify Noble Playwright browser system deps' \
     && npx --yes playwright@1.62.1 install-deps chromium firefox webkit \
     && apt-get install -y libxcb-shm0 libgtk-3-0t64 libicu74 libavif16 libjpeg8 \
     && rm -rf /var/lib/apt/lists/* \
@@ -71,7 +71,7 @@ RUN : 'cache-bust NOOP-52: verify Noble Playwright browser system deps' \
 # `rustc` links every binary (including pure-Rust crates with proc-macro
 # build scripts, e.g. `quote`/`proc-macro2`) via a C linker — it does not
 # ship its own. The Playwright/Node base image has no C toolchain at all
-# (NOOP-278 Run 2: `cargo build --release` failed with `linker `cc` not
+# (`cargo build --release` failed with `linker `cc` not
 # found` the moment dependencies started compiling). `build-essential` is
 # the standard Debian/Ubuntu meta-package for this (gcc + libc dev headers +
 # make); nothing here is Rust-specific, it is a system-level linker, so it
@@ -84,7 +84,7 @@ RUN apt-get update \
 USER dev
 ENV HOME=/home/dev
 
-# Rust toolchain for the comotion CLI skeleton (NOOP-278 / GitHub #257).
+# Rust toolchain for the slidra CLI skeleton.
 # `--default-toolchain none` deliberately leaves rustup without a pinned
 # version here: `rust-toolchain.toml` (repo root) is the single source of
 # truth for the channel, and it is only visible to `rustup` once the repo is

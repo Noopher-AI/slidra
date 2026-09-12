@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// A fake ACP agent for T5's server tests (NOOP-93/#110). `fake-acp-agent.mjs`
+// A fake ACP agent for T5's server tests. `fake-acp-agent.mjs`
 // scripts at most one command per prompt and never actually executes it;
 // `editing-fake-acp-agent.mjs` executes exactly one, for the e2e smoke test.
-// T5's own tests need a turn that runs *several* real `comotion` commands
+// T5's own tests need a turn that runs *several* real `slidra` commands
 // in sequence (AC1: "one turn's commands undo as one group") and a turn
 // that runs none at all, only a read (AC2-b: "thinking doesn't freeze") —
 // neither existing fixture can script that, so this is a separate fixture
@@ -11,9 +11,9 @@
 // Configured entirely through FAKE_AGENT_CONFIG (JSON), read once at
 // startup:
 //   commandsPerTurn: string[][] — commandsPerTurn[i] is the list of full
-//     shell command strings (e.g. "comotion text set <id> ...") to run,
+//     shell command strings (e.g. "slidra text set <id> ...") to run,
 //     in order, during the author's (i+1)-th prompt (prompt index 0 is
-//     always CoMotion's own 編輯規約, never scripted here). Each command
+//     always Slidra's own editorial brief, never scripted here). Each command
 //     goes through the real session/request_permission -> sh -c sequence,
 //     exactly like editing-fake-acp-agent.mjs, so the server's allowlist
 //     and the freeze gate are both really exercised.
@@ -76,7 +76,7 @@ class MultiCommandFakeAgent {
 
   async prompt(params) {
     const index = promptCount++;
-    // Prompt index 0 is always the 編輯規約 — never scripted, matches every
+    // Prompt index 0 is always the editorial brief — never scripted, matches every
     // other fixture in this suite (`AUTHOR_PROMPT_INDEX = 1`-style offset).
     const turn = index - 1;
 

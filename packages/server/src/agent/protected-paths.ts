@@ -4,17 +4,17 @@ import { homedir } from "node:os";
 /**
  * Decides whether a shell command reaches for a presentation's real files
  * (ADR-0004's second layer, as re-drawn: the CLI is the only way to change
- * a `.comot`; everything else the agent wants to run is its own business).
+ * a `.slidra`; everything else the agent wants to run is its own business).
  *
- * The rule this enforces is one sentence: **a `.comot`'s contents may only
- * be changed through `comotion`.** So this module refuses a command when
+ * The rule this enforces is one sentence: **a `.slidra`'s contents may only
+ * be changed through `slidra`.** So this module refuses a command when
  * any path it names lands in
  *
- *   - `<COMOTION_HOME>` — the live work directories of every presentation,
+ *   - `<SLIDRA_HOME>` — the live work directories of every presentation,
  *     the undo history, `projects.json`, the save-state bookkeeping —
- *     *except* `<COMOTION_HOME>/agent`, which is the agent's own working
+ *     *except* `<SLIDRA_HOME>/agent`, which is the agent's own working
  *     directory and has to stay usable; or
- *   - a `.comot` container file anywhere on disk.
+ *   - a `.slidra` container file anywhere on disk.
  *
  * **What this is not.** It does not model the shell (see
  * `command-allowlist.ts` for why that game cannot be won), and it is not a
@@ -24,17 +24,17 @@ import { homedir } from "node:os";
  * against the thing that actually happens, which is an agent reaching for
  * `sed` on a slide because that is faster than composing a command. The
  * protection that does not depend on catching every spelling is the
- * `.comot` container itself: the work directory is repacked from the CLI's
+ * `.slidra` container itself: the work directory is repacked from the CLI's
  * own view of it, so an edit made behind the CLI's back does not
  * necessarily survive, and `validate` still has the last word on what the
  * deck may contain.
  */
 export interface ProtectedPaths {
-  /** `<COMOTION_HOME>` — everything under it is CLI-only, except `agentWorkdir`. */
-  comotionHome: string;
-  /** `<COMOTION_HOME>/agent/<id>`: the agent's own cwd, deliberately left open. */
+  /** `<SLIDRA_HOME>` — everything under it is CLI-only, except `agentWorkdir`. */
+  slidraHome: string;
+  /** `<SLIDRA_HOME>/agent/<id>`: the agent's own cwd, deliberately left open. */
   agentWorkdir: string;
-  /** The open presentation's `.comot` file, when the registry knows one. */
+  /** The open presentation's `.slidra` file, when the registry knows one. */
   sourcePath?: string;
 }
 
@@ -42,20 +42,20 @@ export interface ProtectedPaths {
  * True when `command` names a path the CLI alone may touch. Tokens are
  * taken from a plain whitespace split — good enough because a *missed*
  * token only means the command runs (this module never widens anything;
- * `comotion` commands are allowed before it is ever consulted), and
+ * `slidra` commands are allowed before it is ever consulted), and
  * because a quoted path still appears in the split as a quoted token,
  * which `resolveToken` unquotes.
  */
 export function touchesProtectedPath(command: string, paths: ProtectedPaths): boolean {
-  const home = path.resolve(paths.comotionHome);
+  const home = path.resolve(paths.slidraHome);
   const agentWorkdir = path.resolve(paths.agentWorkdir);
   const source = paths.sourcePath === undefined ? undefined : path.resolve(paths.sourcePath);
 
   for (const token of command.split(/\s+/)) {
     const resolved = resolveToken(token, agentWorkdir);
     if (resolved === undefined) continue;
-    // Every `.comot` is a presentation container, whoever owns it.
-    if (resolved.endsWith(".comot")) return true;
+    // Every `.slidra` is a presentation container, whoever owns it.
+    if (resolved.endsWith(".slidra")) return true;
     if (source !== undefined && isWithin(source, resolved)) return true;
     if (isWithin(home, resolved) && !isWithin(agentWorkdir, resolved)) return true;
   }

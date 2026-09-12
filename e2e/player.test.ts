@@ -10,10 +10,10 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Multi-slide paging end to end (issue #25). The deck under test is the
+ * Multi-slide paging end to end. The deck under test is the
  * hand-written fixture in `fixtures/player-deck/`: three visibly different
- * 投影片, one of which references an asset by relative path. Everything is
- * real — a real `.comot` packed from that directory, the real `open`
+ * slides, one of which references an asset by relative path. Everything is
+ * real — a real `.slidra` packed from that directory, the real `open`
  * command, a real server, the real built bundle, a real Chromium. The
  * agent is the same fake ACP subprocess the smoke test uses; nothing here
  * talks to it.
@@ -21,34 +21,34 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/player-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let registry: CommandRegistry;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-player-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-player-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "player-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "player-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -59,7 +59,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 
@@ -72,13 +72,13 @@ afterAll(async () => {
   // finish — with a page still attached that wait never ends.
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", async () => {
+it("author can page forward and backward in the browser, and stops at both ends", async () => {
   const page = await browser.newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -87,45 +87,45 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
   const currentSlideText = async (): Promise<string | null> => {
-    if (pageErrors.length > 0) return `頁面錯誤：${pageErrors.join("; ")}`;
+    if (pageErrors.length > 0) return `Page errors: ${pageErrors.join("; ")}`;
     return slideText.textContent().catch(() => null);
   };
   const nextButton = page.locator('.slide-nav-button[aria-label="Next slide"]');
   const previousButton = page.locator('.slide-nav-button[aria-label="Previous slide"]');
   const position = page.locator(".slide-nav-position");
 
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
   await expect.poll(() => position.textContent(), { timeout: 30_000 }).toBe("Slide 1 of 3");
-  // 第一頁再往前不動：the control is there, and it refuses.
+  // On the first slide, going back further does nothing: the control is there, and it refuses.
   await expect.poll(() => previousButton.isDisabled()).toBe(true);
 
   await nextButton.click();
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
   await expect.poll(() => position.textContent()).toBe("Slide 2 of 3");
 
   await nextButton.click();
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Third Slide");
   await expect.poll(() => position.textContent()).toBe("Slide 3 of 3");
 
-  // 第三頁再往後不動，也不當機。
+  // On the last slide, going forward further does nothing, and it doesn't crash.
   await expect.poll(() => nextButton.isDisabled()).toBe(true);
   await page.keyboard.press("ArrowRight");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Third Slide");
 
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
   expect(pageErrors).toEqual([]);
 });
 
-it("第二頁的相對路徑圖片真的載入了", async () => {
+it("the second slide's relative-path image actually loads", async () => {
   const page = await browser.newPage();
-  // Each response is recorded with the frame that issued it: since the 總覽
-  // (issue #27) renders real thumbnails, the same photo is legitimately
+  // Each response is recorded with the frame that issued it: since the
+  // overview panel renders real thumbnails, the same photo is legitimately
   // fetched by a thumbnail iframe too, and only frame attribution can keep
   // this test proving what it was written to prove — that the MAIN
   // canvas's slide loaded the image, not merely that somebody did.
@@ -143,10 +143,10 @@ it("第二頁的相對路徑圖片真的載入了", async () => {
   await page.goto(server.url);
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
-  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("First Slide");
 
   await page.locator('.slide-nav-button[aria-label="Next slide"]').click();
-  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Second Slide");
 
   // The frame the main canvas renders into. Its identity is stable across
   // srcdoc navigations (only play mode rebuilds the element, and this test
@@ -164,8 +164,8 @@ it("第二頁的相對路徑圖片真的載入了", async () => {
   // independent checks that it really arrived: the bytes came back 200 as
   // a PNG, and the browser painted it with a non-zero box. The filter is
   // pinned to the main canvas's own frame — a thumbnail's load of the same
-  // asset (legitimate since the 總覽 exists) must neither satisfy nor
-  // break this assertion.
+  // asset (legitimate since the overview panel exists) must neither satisfy
+  // nor break this assertion.
   const photoFromCanvas = () =>
     rawResponses.filter((r) => r.url.endsWith("/assets/photo.png") && r.frame === slideFrame);
   await expect.poll(photoFromCanvas, { timeout: 30_000 }).toHaveLength(1);

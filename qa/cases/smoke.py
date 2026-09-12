@@ -90,9 +90,10 @@ def assert_():
 
     if not _state["drag_dblclick_ok"]:
         _fail("drag()/dblclick()", "no exception", "exception")
-    # drag() not producing a visible move is not a failure here (#279 N-01
-    # is a known product defect; smoke only guarantees the primitive itself
-    # doesn't raise and selection state is still readable afterwards).
+    # drag() not producing a visible move is not a failure here (this is a
+    # known product defect covered by N-01; smoke only guarantees the
+    # primitive itself doesn't raise and selection state is still readable
+    # afterwards).
     if selection() is None:  # noqa: F821
         _fail("selection() after drag()/dblclick()", "a dict", None)
 

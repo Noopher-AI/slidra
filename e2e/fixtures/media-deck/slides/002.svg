@@ -1,3 +1,3 @@
 <svg style="background-color:#efe" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <text id="el-title2" x="640" y="360" text-anchor="middle" font-size="56">第二頁：離開第一頁後，媒體應已停止</text>
+  <text id="el-title2" x="640" y="360" text-anchor="middle" font-size="56">Slide Two: media should have stopped after leaving slide one</text>
 </svg>

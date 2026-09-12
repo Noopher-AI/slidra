@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compareScreenshot } from "./screenshot.js";
 
 /**
- * Regression guard for the CI/local appearance-baseline split (NOOP-297):
+ * Regression guard for the CI/local appearance-baseline split:
  * `SKIP_APPEARANCE_BASELINES=1` must skip the pixel compare entirely, and
  * its absence must leave the normal compare path untouched. No baseline
  * PNGs exist for `name`, so the un-skipped call is expected to reach
@@ -56,7 +56,7 @@ describe("compareScreenshot / SKIP_APPEARANCE_BASELINES", () => {
 
     await expect(
       compareScreenshot(page, { name: "no-such-baseline", baselineDir: "/tmp/does-not-exist" }),
-    ).rejects.toThrow(/找不到基準截圖/);
+    ).rejects.toThrow(/Baseline screenshot not found/);
     expect(getScreenshotCalls()).toBe(1);
   });
 });

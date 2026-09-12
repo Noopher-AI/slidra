@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-title" data-comot-name="標題" transform="translate(0 0)">
-    <text id="el-title-text" x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">投影片標題</text>
+  <g id="el-title" data-slidra-name="Title" transform="translate(0 0)">
+    <text id="el-title-text" x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">Slide Title</text>
   </g>
 </svg>

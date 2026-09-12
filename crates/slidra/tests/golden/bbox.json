@@ -1,0 +1,112 @@
+{
+  "primitives": [
+    {
+      "label": "rect",
+      "tag": "rect",
+      "attrs": {
+        "x": "5",
+        "y": "10",
+        "width": "20",
+        "height": "30"
+      },
+      "expected": {
+        "x": "5",
+        "y": "10",
+        "width": "20",
+        "height": "30"
+      }
+    },
+    {
+      "label": "ellipse",
+      "tag": "ellipse",
+      "attrs": {
+        "cx": "15",
+        "cy": "25",
+        "rx": "5",
+        "ry": "8"
+      },
+      "expected": {
+        "x": "10",
+        "y": "17",
+        "width": "10",
+        "height": "16"
+      }
+    },
+    {
+      "label": "line",
+      "tag": "line",
+      "attrs": {
+        "x1": "12",
+        "y1": "3",
+        "x2": "4",
+        "y2": "9"
+      },
+      "expected": {
+        "x": "4",
+        "y": "3",
+        "width": "8",
+        "height": "6"
+      }
+    }
+  ],
+  "path": {
+    "ok": {
+      "label": "path-cubic-bezier",
+      "d": "M0 0 C 10 100 90 -50 100 0",
+      "expected": {
+        "x": "0",
+        "y": "-10.5188",
+        "width": "100",
+        "height": "45.729"
+      }
+    },
+    "arcRejected": {
+      "label": "path-elliptical-arc-rejected",
+      "d": "M0 0 A5 5 0 0 1 10 10",
+      "expectedError": "cannot yet compute bounding box for <path> containing elliptical arcs (A/a commands)"
+    }
+  },
+  "group": {
+    "label": "group",
+    "expected": {
+      "x": "2",
+      "y": "3",
+      "width": "32",
+      "height": "9"
+    }
+  },
+  "table": {
+    "label": "table",
+    "cols": [
+      50,
+      70,
+      30
+    ],
+    "rows": [
+      20,
+      25
+    ],
+    "expected": {
+      "x": "0",
+      "y": "0",
+      "width": "150",
+      "height": "45"
+    }
+  },
+  "text": {
+    "label": "text-plain",
+    "attrs": {
+      "x": "10",
+      "y": "50",
+      "font-family": "Noto Sans TC",
+      "font-size": "24"
+    },
+    "text": "Hello 世界",
+    "expected": {
+      "x": "10",
+      "y": "22.16",
+      "width": "112.32",
+      "height": "34.752"
+    }
+  }
+}

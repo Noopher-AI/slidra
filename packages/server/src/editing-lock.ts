@@ -10,7 +10,7 @@ import { EventEmitter } from "node:events";
  *   - `human`  — a human editing gesture (e.g. a drag) is in progress.
  *   - `agent`  — the agent's current turn is running commands.
  *
- * This is in-memory, scoped to one `comotion serve` process (one
+ * This is in-memory, scoped to one `slidra serve` process (one
  * presentation per process today — see AgentAdapterConfig's own docs) —
  * never written to disk, never a cross-process lockfile. A restart starts
  * from `idle`, which is correct: nothing was actually in flight across a
@@ -30,7 +30,7 @@ export const HUMAN_LEASE_MAX_MS = 5000;
 /** Thrown by `beginHumanEdit` when the agent currently holds the floor. */
 export class EditingLockConflictError extends Error {
   constructor() {
-    super("agent 正在編輯中，請稍候");
+    super("The agent is currently editing, please wait.");
   }
 }
 
@@ -85,7 +85,7 @@ export class EditingLock extends EventEmitter {
    * the agent lock. Idempotent for the *same* turn: a second, third, ...
    * command in one turn that is already holding the lock resolves
    * immediately without re-emitting `frozen`. Never throws and never
-   * refuses — this is the "agent 等待、不拋錯" contract.
+   * refuses — this is the "agent waits, never throws" contract.
    */
   async acquireAgent(): Promise<void> {
     while (this.state === "human") {
@@ -112,7 +112,7 @@ export class EditingLock extends EventEmitter {
       this.releaseWaiters();
     }, HUMAN_LEASE_MAX_MS);
     // Never keep the process alive on this alone — a test or a short-lived
-    // `comotion serve` shutting down must not wait out this timer.
+    // `slidra serve` shutting down must not wait out this timer.
     this.leaseTimer.unref?.();
   }
 

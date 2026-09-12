@@ -35,14 +35,14 @@ describe("resolveAdapterConfig", () => {
     expect(config.env?.INITIAL_AGENT_MODE).toBe("read-only");
   });
 
-  it("codex: with `codex` on PATH, CODEX_PATH is a launcher in COMOTION_HOME that execs it with allow_login_shell=false", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "comotion-codex-on-path-"));
+  it("codex: with `codex` on PATH, CODEX_PATH is a launcher in SLIDRA_HOME that execs it with allow_login_shell=false", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "slidra-codex-on-path-"));
     const originalPath = process.env.PATH;
-    const originalHome = process.env.COMOTION_HOME;
+    const originalHome = process.env.SLIDRA_HOME;
     try {
       await writeFile(path.join(dir, "codex"), "#!/bin/sh\n", { mode: 0o755 });
       process.env.PATH = `${dir}${path.delimiter}${originalPath ?? ""}`;
-      process.env.COMOTION_HOME = path.join(dir, "home");
+      process.env.SLIDRA_HOME = path.join(dir, "home");
       const launcher = resolveAdapterConfig("codex").env?.CODEX_PATH;
       expect(launcher).toBe(path.join(dir, "home", "codex-launcher.sh"));
       const text = await readFile(launcher!, "utf8");
@@ -53,14 +53,14 @@ describe("resolveAdapterConfig", () => {
       expect(resolveAdapterConfig("codex").env?.CODEX_PATH).toBeUndefined();
     } finally {
       process.env.PATH = originalPath;
-      if (originalHome === undefined) delete process.env.COMOTION_HOME;
-      else process.env.COMOTION_HOME = originalHome;
+      if (originalHome === undefined) delete process.env.SLIDRA_HOME;
+      else process.env.SLIDRA_HOME = originalHome;
       await rm(dir, { recursive: true, force: true });
     }
   });
 
   it("claude: points claude-code-acp at the `claude` on PATH (resolved through symlinks) so the model list is the author's own CLI's", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "comotion-claude-on-path-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "slidra-claude-on-path-"));
     const originalPath = process.env.PATH;
     try {
       await writeFile(path.join(dir, "claude-real"), "#!/bin/sh\n", { mode: 0o755 });

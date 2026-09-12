@@ -1,6 +1,6 @@
 頁數：3
 
-`/comotion-reshape` 開始前，`comment list <presentation-id>` 應回傳 5 則留言：`c-01`（001，`el-p1-title`）、`c-02`（002，`el-p2-bullets`）、`c-03`（003，`page`）、`c-04`（002，`page`）、`c-05`（003，`el-p3-note`）。
+`/slidra-reshape` 開始前，`comment list <presentation-id>` 應回傳 5 則留言：`c-01`（001，`el-p1-title`）、`c-02`（002，`el-p2-bullets`）、`c-03`（003，`page`）、`c-04`（002，`page`）、`c-05`（003，`el-p3-note`）。
 
 ## 可處理，應被改完並刪除留言
 

@@ -1,0 +1,239 @@
+{
+  "tree": [
+    {
+      "label": "comment-cdata-quote-tracking-pseudo-attribute-cjk",
+      "svg": "<svg><!-- <fake>假標籤</fake> --><![CDATA[ <also-fake/> ]]><rect id=\"測試一\" data-note=\"a &gt; b\" width=\"10\"/><path d=\"M10 10 L20>20\" id=\"路徑二\"/><text data-note=' id=\"el-a\"'>你好，世界！Hello</text></svg>",
+      "expected": [
+        {
+          "tag": "svg",
+          "attributes": [],
+          "start": 0,
+          "end": 191,
+          "contentStart": 5,
+          "contentEnd": 185,
+          "selfClosing": false,
+          "children": [
+            {
+              "tag": "rect",
+              "attributes": [
+                {
+                  "name": "id",
+                  "value": "測試一",
+                  "start": 62,
+                  "end": 70
+                },
+                {
+                  "name": "data-note",
+                  "value": "a &gt; b",
+                  "start": 71,
+                  "end": 91
+                },
+                {
+                  "name": "width",
+                  "value": "10",
+                  "start": 92,
+                  "end": 102
+                }
+              ],
+              "start": 56,
+              "end": 104,
+              "contentStart": 104,
+              "contentEnd": 104,
+              "selfClosing": true,
+              "children": []
+            },
+            {
+              "tag": "path",
+              "attributes": [
+                {
+                  "name": "d",
+                  "value": "M10 10 L20>20",
+                  "start": 110,
+                  "end": 127
+                },
+                {
+                  "name": "id",
+                  "value": "路徑二",
+                  "start": 128,
+                  "end": 136
+                }
+              ],
+              "start": 104,
+              "end": 138,
+              "contentStart": 138,
+              "contentEnd": 138,
+              "selfClosing": true,
+              "children": []
+            },
+            {
+              "tag": "text",
+              "attributes": [
+                {
+                  "name": "data-note",
+                  "value": " id=\"el-a\"",
+                  "start": 144,
+                  "end": 166
+                }
+              ],
+              "start": 138,
+              "end": 185,
+              "contentStart": 167,
+              "contentEnd": 178,
+              "selfClosing": false,
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "doctype-internal-subset-bracket-depth-and-duplicate-attribute",
+      "svg": "<!DOCTYPE svg [<!ENTITY x \"y\">]><svg id=\"a\" id=\"b\"><g/></svg>",
+      "expected": [
+        {
+          "tag": "svg",
+          "attributes": [
+            {
+              "name": "id",
+              "value": "a",
+              "start": 37,
+              "end": 43
+            },
+            {
+              "name": "id",
+              "value": "b",
+              "start": 44,
+              "end": 50
+            }
+          ],
+          "start": 32,
+          "end": 61,
+          "contentStart": 51,
+          "contentEnd": 55,
+          "selfClosing": false,
+          "children": [
+            {
+              "tag": "g",
+              "attributes": [],
+              "start": 51,
+              "end": 55,
+              "contentStart": 55,
+              "contentEnd": 55,
+              "selfClosing": true,
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "nested-multiline-cjk-with-commented-out-fake-self-closing-tag",
+      "svg": "<svg>\n  <g id=\"群組一\">\n    <text font-family=\"Noto Sans TC\">第一行\n    <!-- 註解也可以有 CJK 假標籤 <偽標籤/> --></text>\n  </g>\n</svg>",
+      "expected": [
+        {
+          "tag": "svg",
+          "attributes": [],
+          "start": 0,
+          "end": 117,
+          "contentStart": 5,
+          "contentEnd": 111,
+          "selfClosing": false,
+          "children": [
+            {
+              "tag": "g",
+              "attributes": [
+                {
+                  "name": "id",
+                  "value": "群組一",
+                  "start": 11,
+                  "end": 19
+                }
+              ],
+              "start": 8,
+              "end": 110,
+              "contentStart": 20,
+              "contentEnd": 106,
+              "selfClosing": false,
+              "children": [
+                {
+                  "tag": "text",
+                  "attributes": [
+                    {
+                      "name": "font-family",
+                      "value": "Noto Sans TC",
+                      "start": 31,
+                      "end": 57
+                    }
+                  ],
+                  "start": 25,
+                  "end": 103,
+                  "contentStart": 58,
+                  "contentEnd": 96,
+                  "selfClosing": false,
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "label": "empty-tag-name",
+      "svg": "<>",
+      "expectedMessage": "markup syntax error: line 1, column 1 is not a valid tag"
+    },
+    {
+      "label": "open-tag-missing-gt",
+      "svg": "<foo note=\"測試\"",
+      "expectedMessage": "markup syntax error: line 1, column 1's <foo> tag has no closing >"
+    },
+    {
+      "label": "attribute-name-unparseable",
+      "svg": "<a =\"x\"/>",
+      "expectedMessage": "attribute syntax error: cannot parse attribute name"
+    },
+    {
+      "label": "attribute-missing-equals",
+      "svg": "<a bar/>",
+      "expectedMessage": "attribute syntax error: attribute bar is missing ="
+    },
+    {
+      "label": "attribute-value-not-quoted",
+      "svg": "<a bar=1/>",
+      "expectedMessage": "attribute syntax error: value of attribute bar is not quoted"
+    },
+    {
+      "label": "attribute-value-quote-unterminated",
+      "svg": "<a \"=\"/>",
+      "expectedMessage": "attribute syntax error: quote of attribute \" is not closed"
+    },
+    {
+      "label": "close-tag-missing-gt",
+      "svg": "<a></a",
+      "expectedMessage": "markup syntax error: closing tag in line 1, column 4 has no closing >"
+    },
+    {
+      "label": "stray-close-tag-at-top-level",
+      "svg": "<a></a></a>",
+      "expectedMessage": "markup syntax error: line 1, column 8 has an extra closing tag"
+    },
+    {
+      "label": "close-tag-name-mismatch",
+      "svg": "<a></b>",
+      "expectedMessage": "markup syntax error: closing tag in line 1, column 4 is </b>, but the currently open tag is <a>"
+    },
+    {
+      "label": "eof-with-unclosed-element",
+      "svg": "<a><b></b>",
+      "expectedMessage": "markup syntax error: <a> has no matching closing tag"
+    },
+    {
+      "label": "unclosed-processing-instruction",
+      "svg": "<a><?pi unterminated</a>",
+      "expectedMessage": "markup syntax error: comment or declaration in line 1, column 4 has no end"
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,7 +22,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -33,7 +33,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   }
 }
 
-// Ticket #37: startServe()'s close() used to hang whenever any connection was
+// startServe()'s close() used to hang whenever any connection was
 // still active on the socket, because http.Server.close() closes *idle*
 // connections on its own (Node >=18.19) but still waits indefinitely for any
 // connection that is genuinely active — a request still arriving, or a
@@ -71,34 +71,34 @@ const fakeAgent: AgentAdapterConfig = {
 // expiry, so it cleanly separates the two outcomes.
 const CLOSE_DEADLINE_MS = 1000;
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-static-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-serve-close-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-close-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-serve-close-static-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", name]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", name]);
   if (!created.ok) throw new Error(created.message);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   if (!opened.ok) throw new Error(opened.message);
   return opened.data!.id;
 }

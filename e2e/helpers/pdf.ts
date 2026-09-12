@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser } from "playwright";
 
 /**
- * Test-only PDF reader (NOOP-93 §6.3): page count and per-page rasterized
+ * Test-only PDF reader: page count and per-page rasterized
  * screenshots, via `pdfjs-dist` (a root `devDependency` — production code
  * must never import it, this file included only under `e2e/`).
  *
@@ -107,20 +107,20 @@ export async function loadPdf(browser: Browser, pdfBytes: Buffer): Promise<PdfIn
   // this is what actually loads the ESM build into the page and exposes
   // it as a global for every `evaluate()` call below to read.
   await page.addScriptTag({
-    content: `import * as pdfjsLib from "/pdf.min.mjs"; window.__comotPdfjs = pdfjsLib;`,
+    content: `import * as pdfjsLib from "/pdf.min.mjs"; window.__slidraPdfjs = pdfjsLib;`,
     type: "module",
   });
-  await page.waitForFunction(() => (window as unknown as { __comotPdfjs?: unknown }).__comotPdfjs !== undefined);
+  await page.waitForFunction(() => (window as unknown as { __slidraPdfjs?: unknown }).__slidraPdfjs !== undefined);
 
   const numPages = await page.evaluate(
     async ({ base64, workerUrl }) => {
-      const pdfjsLib = (window as unknown as { __comotPdfjs: any }).__comotPdfjs;
+      const pdfjsLib = (window as unknown as { __slidraPdfjs: any }).__slidraPdfjs;
       pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
       const binary = atob(base64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
-      (window as unknown as { __comotPdfDoc: unknown }).__comotPdfDoc = doc;
+      (window as unknown as { __slidraPdfDoc: unknown }).__slidraPdfDoc = doc;
       return doc.numPages as number;
     },
     { base64: pdfBytes.toString("base64"), workerUrl: `${workerServer.url}/pdf.worker.min.mjs` },
@@ -129,8 +129,8 @@ export async function loadPdf(browser: Browser, pdfBytes: Buffer): Promise<PdfIn
   const pageSizes: Array<{ width: number; height: number }> = [];
   for (let i = 1; i <= numPages; i++) {
     const size = await page.evaluate(async (pageNumber) => {
-      const doc = (window as unknown as { __comotPdfDoc: { getPage: (n: number) => Promise<unknown> } })
-        .__comotPdfDoc;
+      const doc = (window as unknown as { __slidraPdfDoc: { getPage: (n: number) => Promise<unknown> } })
+        .__slidraPdfDoc;
       const pdfPage = (await doc.getPage(pageNumber)) as { getViewport: (opts: { scale: number }) => { width: number; height: number } };
       const viewport = pdfPage.getViewport({ scale: 1 });
       return { width: viewport.width, height: viewport.height };
@@ -145,8 +145,8 @@ export async function loadPdf(browser: Browser, pdfBytes: Buffer): Promise<PdfIn
       const pageNumber = index + 1;
       await page.evaluate(
         async ({ pageNumber: n, scale: s }) => {
-          const doc = (window as unknown as { __comotPdfDoc: { getPage: (n: number) => Promise<unknown> } })
-            .__comotPdfDoc;
+          const doc = (window as unknown as { __slidraPdfDoc: { getPage: (n: number) => Promise<unknown> } })
+            .__slidraPdfDoc;
           const pdfPage = (await doc.getPage(n)) as {
             getViewport: (opts: { scale: number }) => { width: number; height: number };
             render: (opts: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> };

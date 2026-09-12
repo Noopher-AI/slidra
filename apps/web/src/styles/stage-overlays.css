@@ -1,0 +1,307 @@
+/* Two stage overlay layers:
+   - `.stage-geometry` (z1): display-only elements that never take input —
+     snap guides, animation-number badges. The whole layer and all its
+     descendants always have `pointer-events: none !important`, so no child
+     component can re-enable itself as clickable — this makes it
+     structurally impossible to reintroduce a display-only badge that
+     accidentally opens up to `auto` and blocks an iframe's resize handle,
+     rather than relying on every component to remember to opt out.
+   - `.stage-widgets` (z2): everything clickable — name/group labels and
+     comment pins, the context bar, the comment composer, table edit
+     box/column-width handles/right-click menu, the chart data window, and
+     third-party player iframes. The container itself is
+     `pointer-events: none`, re-enabled uniformly by `.stage-widgets > *`;
+     individual components don't need to (and shouldn't) declare their own.
+   Rules for the widget layer: a widget must not cover slide content, or it
+   must handle hover itself (the context bar takes this second path,
+   stepping aside in grab mode — see the `[data-grab]` rule below). The
+   display-only exceptions are a closed list, not to be extended with a
+   fourth: `.selection-label-row` (the label and comment pin are two
+   children of the same flex row — splitting them buys nothing),
+   `.embed-layer` (the container itself takes no events; individual
+   iframes decide per mode), and `.table-range-box` (a purely visual
+   selection-range box) — all three explicitly override back to `none` via
+   `.stage-widgets > .X`. Third-party player iframes are forced to live in
+   the parent document due to sandboxing (ADR-0011), making them the one
+   explicit exception in this layer. `CommentLayer` is not an empty
+   container — when it renders `.comment-composer` it carries its own
+   positioning, so it needs no extra full-cover container layer. */
+.stage-geometry {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.stage-geometry,
+.stage-geometry * {
+  pointer-events: none !important;
+}
+
+.guide-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stage-widgets {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.stage-widgets > * {
+  pointer-events: auto;
+}
+.stage-widgets > .selection-label-row,
+.stage-widgets > .embed-layer,
+.stage-widgets > .table-range-box {
+  pointer-events: none;
+}
+
+/* Name/group/drill-in-path label (see 05-INTERACTIONS.feature "Selection";
+   color values taken from the prototype's selection label). Positioning
+   was moved from `.selection-label` itself to this new row container, so
+   the comment pin can appear as the flex row's second child, to the
+   label's right, on the same line. */
+.selection-label-row {
+  position: absolute;
+  transform: translateY(-100%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+.selection-label {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* Comment pin, on the same line as the label, to its right (see
+   .selection-label-row above). */
+.comment-pin {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  min-width: var(--space-8);
+  height: var(--space-8);
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Drag-snap guide line — drawn in the parent document (ADR-0011 amendment),
+   replacing the old in-iframe `.guide` from selection-runtime.js. */
+.guide {
+  position: absolute;
+  background: var(--guide);
+  pointer-events: none;
+}
+.guide-v {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}
+.guide-h {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+/* Context bar below the selection box: appearance follows the prototype,
+   content includes the old right-click menu's Order/Duplicate, plus
+   Comment to AI/Edit style. Material and sizing match the prototype's
+   context bar: --control-h-compact (28px) buttons, 36px container height
+   (matching ContextBar.tsx's BAR_HEIGHT), --glass-bg-soft glass background,
+   blur, thin --glass-border (no shadow), --radius-lg corners. */
+.context-bar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  box-sizing: border-box;
+  /* --control-h-compact (28px) buttons + --space-1 padding each side = 36px, the BAR_HEIGHT ContextBar.tsx uses for the below/above flip. */
+  height: calc(var(--control-h-compact) + 2 * var(--space-1));
+  max-width: calc(100% - var(--space-8));
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  animation: context-bar-in var(--dur-fast) var(--ease-out);
+  /* Semi-transparent while not hovered — content underneath stays clickable
+     and selectable (`pointer-events` is decided by the higher-specificity
+     `.stage-widgets > .context-bar` rule below; this rule only controls
+     appearance). */
+  opacity: 0.55;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+/* The context bar handles hover itself (OverlayLayer's
+   createHoverSolidifier): defaults to `pointer-events: none` (0,2,0,
+   overriding `.stage-widgets > *`'s auto), and only opens back up to
+   `auto` once `.is-solid` (0,3,0) is added after HOVER_SOLIDIFY_MS of
+   sustained hover. */
+.stage-widgets > .context-bar {
+  pointer-events: none;
+}
+.stage-widgets > .context-bar.is-solid {
+  pointer-events: auto;
+}
+.context-bar.is-solid {
+  opacity: 1;
+}
+/* Grab mode (hand tool / holding Space): the context bar steps aside so a
+   drag starting on top of it passes through to pan the slide — even while
+   it's currently solid. This rule must come after the `.is-solid` rule:
+   both have the same specificity (0,3,0), and the later rule wins, so grab
+   mode still wins when both conditions are true. */
+.canvas-area[data-grab="true"] .context-bar {
+  pointer-events: none;
+}
+@keyframes context-bar-in {
+  from {
+    transform: translateY(var(--space-1));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.context-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h-compact);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-xs); /* same size as .selection-label */
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.context-bar-item:hover {
+  background: var(--surface-1);
+  color: var(--ink-900);
+}
+/* Comment to AI: the prototype's own red-tint hover, and a touch more padding. */
+.context-bar-item-comment {
+  padding: 0 var(--space-4);
+}
+.context-bar-item-comment:hover {
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+}
+/* Icon-only Order buttons: square, no label. */
+.context-bar-item-icon {
+  padding: 0 var(--space-2);
+}
+.context-bar-item-danger {
+  color: var(--brand-red-hover);
+}
+.context-bar-divider {
+  width: 1px;
+  height: calc(var(--control-h-compact) - var(--space-5));
+  margin: 0 var(--space-1);
+  background: var(--glass-divider);
+}
+
+/* Glass comment composer: material matches ContextBar's glass container
+   (the same set of --glass-* tokens); positioning is computed by
+   CommentComposer.tsx's useLayoutEffect and written directly to
+   style.left/top. */
+.comment-composer {
+  position: absolute;
+  /* Ordering within the widget layer: the comment composer must sit above
+     the context bar and embedded players. */
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: var(--panel-w);
+  padding: var(--space-3);
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: var(--glass-bg-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  animation: context-bar-in var(--dur-fast) var(--ease-out);
+}
+.comment-composer-input {
+  min-height: calc(var(--space-8) * 4);
+  padding: var(--space-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-900);
+  font: inherit;
+  font-size: var(--text-xs);
+  resize: vertical;
+}
+.comment-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.comment-composer-cancel,
+.comment-composer-delete,
+.comment-composer-submit {
+  height: var(--control-h-compact);
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.comment-composer-cancel {
+  background: transparent;
+  color: var(--ink-700);
+}
+.comment-composer-cancel:hover {
+  background: var(--surface-1);
+}
+.comment-composer-delete {
+  background: transparent;
+  color: var(--brand-red-hover);
+  margin-right: auto;
+}
+.comment-composer-delete:hover {
+  background: var(--brand-red-tint);
+}
+.comment-composer-submit {
+  background: var(--brand-red);
+  color: var(--surface-white);
+}
+.comment-composer-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Third-party embedded player (YouTube). Unlike other overlay layers, this
+   one must stay present in play mode — an embedded video needs to keep
+   playing through playback and fullscreen. The container itself takes no
+   events; each iframe's pointer-events is decided by EmbedLayer per mode. */
+.embed-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.embed-frame {
+  position: absolute;
+  border: 0;
+}

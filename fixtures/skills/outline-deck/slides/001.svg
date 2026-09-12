@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-cover-title" data-comot-name="標題">
+  <g id="el-cover-title" data-slidra-name="標題">
     <text x="80" y="300" font-family="Noto Sans TC" font-size="60">範本標題頁</text>
   </g>
-  <g id="el-cover-sub" data-comot-name="副標">
+  <g id="el-cover-sub" data-slidra-name="副標">
     <text x="80" y="380" font-family="Noto Sans TC" font-size="28" fill="#666666">範本副標</text>
   </g>
 </svg>

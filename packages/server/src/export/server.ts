@@ -6,17 +6,17 @@ import { fileURLToPath } from "node:url";
 import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
 
 /**
- * The CLI's own minimal HTTP server for `comotion export` (NOOP-93 §3.6).
+ * The CLI's own minimal HTTP server for `slidra export` (NOOP-93 §3.6).
  *
- * `comotion export` runs standalone — there is no already-running
- * `comotion serve` to piggyback on, and `startServe` cannot be reused for
+ * `slidra export` runs standalone — there is no already-running
+ * `slidra serve` to piggyback on, and `startServe` cannot be reused for
  * it: `ServeOptions.agent` is required with no fallback (`serve.ts:44-52`'s
  * own comment says this is deliberate), so faking an adapter just to
  * satisfy the type would be lying to the type system for a feature
  * (chat/agent) the export page never uses. The GUI path (`POST
  * /api/export` on an already-running `serve`) does NOT use this file at
  * all — it points `render.ts` at that server's own URL, which already
- * serves `export.html` (the same `packages/web/dist` build, now built with
+ * serves `export.html` (the same `apps/web/dist` build, now built with
  * two Vite entries) and the same three read-only routes.
  *
  * Exactly five things this server answers: static files (`export.html` and
@@ -96,11 +96,11 @@ async function handleRequest(
     // @font-face fetch is the one legitimate `Origin: null` request this
     // server ever sees.
     if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {
-      sendJson(res, 403, { error: "不接受來自不透明來源（Origin: null）的請求" });
+      sendJson(res, 403, { error: "Does not accept requests from an opaque origin (Origin: null)" });
       return;
     }
     if (req.method !== "GET") {
-      sendJson(res, 405, { error: "只支援 GET" });
+      sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
 
@@ -125,20 +125,20 @@ async function handleRequest(
       try {
         virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
       } catch {
-        sendJson(res, 400, { error: "路徑編碼無效" });
+        sendJson(res, 400, { error: "Invalid path encoding" });
         return;
       }
       await handleRawRoute(presentationId, virtualPath, res, req.headers.range);
       return;
     }
     if (url.pathname.startsWith("/api/")) {
-      sendJson(res, 404, { error: "找不到端點" });
+      sendJson(res, 404, { error: "Endpoint not found" });
       return;
     }
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "未知錯誤" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 }
 
@@ -147,7 +147,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** `packages/web/dist` — this file lives at `packages/server/src/export/`, three directories below `packages/`. */
+/** `apps/web/dist` — this file lives at `packages/server/src/export/`, three directories below `packages/`. */
 function resolveWebDist(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return path.join(here, "../../../web/dist");
@@ -171,14 +171,14 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "ENOENT") {
-      sendJson(res, 500, { error: "靜態檔案讀取失敗" });
+      sendJson(res, 500, { error: "Failed to read static file" });
       return;
     }
     if (isRoot) {
-      sendJson(res, 500, { error: "前端尚未建置，請先執行 build" });
+      sendJson(res, 500, { error: "Frontend has not been built yet, run build first" });
       return;
     }
-    sendJson(res, 404, { error: "找不到檔案" });
+    sendJson(res, 404, { error: "file not found" });
   }
 }
 

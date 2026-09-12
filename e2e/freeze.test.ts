@@ -10,12 +10,11 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * T5 (NOOP-93/#110), 接縫三: Ctrl+Z's granularity and the editing freeze,
- * driven in a real browser against a real server. Server-side grouping/
- * freeze-window behaviour (AC1, AC2, AC4) is covered exhaustively over HTTP
- * in packages/server/test/agent/freeze.test.ts — this file only exercises
- * what needs an actual browser: AC3 ("frozen still browses") and the
- * Ctrl+Z keyboard path.
+ * Ctrl+Z's granularity and the editing freeze, driven in a real browser
+ * against a real server. Server-side grouping/freeze-window behaviour is
+ * covered exhaustively over HTTP in packages/server/test/agent/freeze.test.ts
+ * — this file only exercises what needs an actual browser: "frozen still
+ * browses" and the Ctrl+Z keyboard path.
  *
  * The agent is `editing-fake-acp-agent.mjs`, the same fixture
  * e2e/smoke.test.ts and e2e/player.test.ts already use, given
@@ -30,20 +29,20 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/player-deck");
 // player-deck has no draggable element (see this file's own header comment
-// on e2e/direct-manipulation.test.ts's fixture) — AC-3b/AC-4/AC-5 need a
-// deck with both a draggable element AND a `<text id=...>` the fake agent
-// can `text set`, so they reuse direct-manipulation's fixture/font-injection
+// on e2e/direct-manipulation.test.ts's fixture) — the drag-related tests below
+// need a deck with both a draggable element AND a `<text id=...>` the fake
+// agent can `text set`, so they reuse direct-manipulation's fixture/font-injection
 // shape instead (startServerForDrag/openAppDrag below).
 const dmDeckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
-const NEW_TITLE = "凍結測試改過的標題";
+const NEW_TITLE = "Freeze test changed title";
 const FREEZE_HOLD_MS = 1500;
 const DM_VIEWPORT = { width: 1440, height: 900 };
 const DM_VIEWBOX = { width: 1280, height: 720 };
@@ -52,9 +51,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -75,16 +74,16 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 async function startServerFor(): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "player-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "player-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -106,10 +105,10 @@ async function startServerFor(): Promise<{ server: RunningServer; cleanup: () =>
     server,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -126,7 +125,7 @@ async function openApp(server: RunningServer): Promise<{ page: Page; pageErrors:
 function currentSlideTextOf(page: Page, pageErrors: string[]): () => Promise<string | null> {
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
   return async () => {
-    if (pageErrors.length > 0) return `頁面錯誤：${pageErrors.join("; ")}`;
+    if (pageErrors.length > 0) return `Page errors: ${pageErrors.join("; ")}`;
     return slideText.textContent().catch(() => null);
   };
 }
@@ -148,7 +147,7 @@ async function sendChatMessage(page: Page, text: string): Promise<void> {
 /**
  * Sends the author's message straight through `POST /api/chat` (the exact
  * endpoint the chat UI itself calls, App.tsx:521) instead of driving the
- * `.chat-input` UI. AC-5 needs to fire this while a real mouse button is
+ * `.chat-input` UI. The test below needs to fire this while a real mouse button is
  * physically held down mid-drag (`dragBy`'s `onMidDrag`) — clicking the
  * chat button there would move the mouse away from the iframe and off the
  * gesture in progress, corrupting the very drag the test means to observe.
@@ -181,21 +180,21 @@ async function startServerForDrag(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-deck-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-deck-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   await cp(dmDeckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -219,10 +218,10 @@ async function startServerForDrag(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
     },
   };
@@ -239,11 +238,11 @@ async function openAppDrag(server: RunningServer): Promise<{ page: Page; pageErr
   return { page, pageErrors };
 }
 
-/** The main-canvas `<svg>`'s bounding box in PAGE (viewport) coordinates — what `page.mouse` expects. Copied from e2e/direct-manipulation.test.ts (plan §5: not worth extracting a cross-file helper for). */
+/** The main-canvas `<svg>`'s bounding box in PAGE (viewport) coordinates — what `page.mouse` expects. (Not worth extracting into a shared cross-file helper.) */
 async function svgBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
   const svg = page.frameLocator("iframe.slide-frame").locator("svg").first();
   const box = await svg.boundingBox();
-  if (!box) throw new Error("量不到主畫布 svg 的邊界框");
+  if (!box) throw new Error("could not measure the main canvas svg's bounding box");
   return box;
 }
 
@@ -277,12 +276,12 @@ async function dragBy(
   await page.waitForTimeout(150);
 }
 
-/** `translate(x y)` -> `{x, y}`. Throws if the element carries no such transform. Copied from e2e/direct-manipulation.test.ts. */
+/** `translate(x y)` -> `{x, y}`. Throws if the element carries no such transform. */
 function readTranslate(svg: string, elementId: string): { x: number; y: number } {
   const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
-  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  if (!elementMatch) throw new Error(`could not find ${elementId}'s transform`);
   const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
-  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  if (!translateMatch) throw new Error(`${elementId}'s transform has no translate: ${elementMatch[1]}`);
   return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
 }
 
@@ -292,7 +291,7 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-it("凍結期間仍可翻頁、進出播放模式；解凍後標題確實已更新（AC3）", async () => {
+it("can still navigate slides and enter/exit play mode while frozen; the title has actually updated once unfrozen", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const { page, pageErrors } = await openApp(server);
@@ -300,29 +299,30 @@ it("凍結期間仍可翻頁、進出播放模式；解凍後標題確實已更�
     const nextButton = page.locator('.slide-nav-button[aria-label="Next slide"]');
     const previousButton = page.locator('.slide-nav-button[aria-label="Previous slide"]');
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "改標題");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
 
-    // 翻頁：凍結不擋瀏覽。
+    // Navigating slides: freezing doesn't block browsing.
     await nextButton.click();
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
     expect(await editingFrozen(page)).toBe(true);
 
     await previousButton.click();
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
-    // 進播放模式：凍結不擋瀏覽。
+    // Entering play mode: freezing doesn't block browsing.
     await page.locator('.play-button').click();
     await page.locator(".play-bar-position").waitFor({ timeout: 30_000 });
     expect(await editingFrozen(page)).toBe(true);
 
-    // 離開播放，回到檢視模式。
+    // Leave play mode, back to view mode.
     await page.locator(".play-toggle-button.leave").click();
     await page.locator(".play-bar-position").waitFor({ state: "detached", timeout: 30_000 });
 
-    // 整段瀏覽期間，agent 這回合都還沒結束——現在才等它結束、確認標題真的變了。
+    // The agent's turn hasn't ended throughout all this browsing — only now
+    // wait for it to finish and confirm the title has actually changed.
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(NEW_TITLE);
 
@@ -332,13 +332,13 @@ it("凍結期間仍可翻頁、進出播放模式；解凍後標題確實已更�
   }
 });
 
-it("Ctrl/Cmd+Z 在解凍後可用，能把 agent 這一回合做的修改復原（顆粒度：接縫三對照的是伺服器測試裡的多命令分組行為）", async () => {
+it("Ctrl/Cmd+Z works once unfrozen and undoes what the agent's turn just did (granularity mirrors the server tests' multi-command grouping)", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "改標題");
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(NEW_TITLE);
@@ -349,7 +349,7 @@ it("Ctrl/Cmd+Z 在解凍後可用，能把 agent 這一回合做的修改復原�
     const isMac = process.platform === "darwin";
     await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     expect(pageErrors).toEqual([]);
   } finally {
@@ -357,13 +357,13 @@ it("Ctrl/Cmd+Z 在解凍後可用，能把 agent 這一回合做的修改復原�
   }
 });
 
-it("一次 Ctrl/Cmd+Z 收回 agent 一回合的所有命令：兩步都算數，且不會停在中間那一步（AC-1/US44）", async () => {
+it("a single Ctrl/Cmd+Z undoes every command from an agent's turn: both steps count, and it never stops at the intermediate step", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "兩步");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
@@ -374,7 +374,7 @@ it("一次 Ctrl/Cmd+Z 收回 agent 一回合的所有命令：兩步都算數，
 
     // One undo returns all the way to the pre-turn text, never stopping at
     // the intermediate first-command state — the whole turn is one group.
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     expect(pageErrors).toEqual([]);
   } finally {
@@ -382,14 +382,14 @@ it("一次 Ctrl/Cmd+Z 收回 agent 一回合的所有命令：兩步都算數，
   }
 });
 
-it("agent 動手期間編輯凍結，作者看得到凍結狀態；凍結期間 Ctrl+Z 不動作（AC-2/US46）", async () => {
+it("editing freezes while the agent is acting, the author can see the frozen state, and Ctrl+Z does nothing while frozen", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
     const banner = page.locator(".editing-frozen-banner");
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
     expect(await banner.isVisible()).toBe(false);
 
     await sendChatMessage(page, "改標題");
@@ -397,33 +397,35 @@ it("agent 動手期間編輯凍結，作者看得到凍結狀態；凍結期間 
     await expect.poll(() => banner.isVisible()).toBe(true);
     expect(await banner.textContent()).toBe("Agent editing · undo/redo paused");
 
-    // [E2.T8] AC9 (i)：TitleBar 自己的凍結徽章——與上面 App.tsx 的
-    // `.editing-frozen-banner` 是兩個獨立元素，文字也刻意不同（沒有
-    // "/redo"），這裡是第一次有測試守住這一行字（plan §3.4）。
+    // TitleBar has its own frozen badge — a separate element from
+    // App.tsx's `.editing-frozen-banner` above, with deliberately different
+    // text (no "/redo"); this is the first test to guard that exact string.
     const titlebarBadge = page.locator(".titlebar-frozen-badge");
     await expect.poll(() => titlebarBadge.isVisible()).toBe(true);
     expect(await titlebarBadge.textContent()).toBe("Agent editing · undo paused");
 
-    // [E2.T8] AC9 (ii)：Undo／Redo 兩顆按鈕在凍結期間都 disabled。
+    // Both the Undo and Redo buttons are disabled while frozen.
     const undoButton = page.locator('.titlebar-icon-button[aria-label="Undo"]');
     const redoButton = page.locator('.titlebar-icon-button[aria-label="Redo"]');
     expect(await undoButton.isDisabled()).toBe(true);
     expect(await redoButton.isDisabled()).toBe(true);
 
-    // [E2.T8] AC9 (iii)：即使繞過瀏覽器對 disabled 按鈕的原生點擊保護，
-    // 直接 `.click()` 那兩顆鈕，投影片文字也不變——這是回歸守門，不是
-    // 這個屬性本來就會擋下點擊的重複驗證（App.tsx 的 `runUndoRedo` 本身
-    // 也在 `editingFrozenRef.current` 時提前 return）。
+    // Even bypassing the browser's native click protection for disabled
+    // buttons and calling `.click()` on them directly, the slide text still
+    // doesn't change — this is a regression guard, not a redundant check of
+    // something the disabled attribute would already block (App.tsx's
+    // `runUndoRedo` itself also early-returns when
+    // `editingFrozenRef.current` is set).
     await undoButton.evaluate((el: HTMLButtonElement) => el.click());
     await redoButton.evaluate((el: HTMLButtonElement) => el.click());
-    expect(await currentSlideText()).toBe("第一頁");
+    expect(await currentSlideText()).toBe("First Slide");
 
-    // [E2.T8] AC9 (iv)：既有的鍵盤 ⌘Z 斷言原封不動保留——
+    // The existing keyboard Cmd+Z assertion is kept unchanged —
     // App.tsx's editingFrozenRef early-return: Ctrl+Z while frozen sends no
     // request at all, so the (still first-page) text is untouched.
     const isMac = process.platform === "darwin";
     await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
-    expect(await currentSlideText()).toBe("第一頁");
+    expect(await currentSlideText()).toBe("First Slide");
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
     await expect.poll(() => banner.isVisible()).toBe(false);
@@ -435,7 +437,7 @@ it("agent 動手期間編輯凍結，作者看得到凍結狀態；凍結期間 
   }
 });
 
-it("agent 只是讀檔／思考、一條命令都沒下時不凍結：作者整段期間仍可拖曳（AC-4/US48）", async () => {
+it("does not freeze when the agent only reads/thinks without issuing any command: the author can still drag the whole time", async () => {
   const { server, registry, presentationId, cleanup } = await startServerForDrag();
   try {
     const { page, pageErrors } = await openAppDrag(server);
@@ -455,7 +457,7 @@ it("agent 只是讀檔／思考、一條命令都沒下時不凍結：作者整�
         },
       },
     );
-    // "只看" never calls session/request_permission, so
+    // The "look only" message never calls session/request_permission, so
     // openEditLockOnFirstCommand (session.ts:566) is never reached — the
     // deck must never have frozen, before, during, or after the drag.
     expect(sawFrozenDuringDrag).toBe(false);
@@ -477,7 +479,7 @@ it("agent 只是讀檔／思考、一條命令都沒下時不凍結：作者整�
   }
 });
 
-it("凍結期間嘗試拖曳：拖曳被擋下，簡報檔案位元組完全不變（AC-3b/US47）", async () => {
+it("attempting to drag while frozen: the drag is blocked and the presentation file's bytes stay unchanged", async () => {
   const { server, registry, presentationId, cleanup } = await startServerForDrag();
   try {
     const { page, pageErrors } = await openAppDrag(server);
@@ -500,7 +502,7 @@ it("凍結期間嘗試拖曳：拖曳被擋下，簡報檔案位元組完全不�
   }
 });
 
-it("agent 要下第一條命令時使用者正在拖曳：等使用者放手才動手，不拋錯（AC-5）", async () => {
+it("when the user is dragging as the agent is about to issue its first command: the agent waits for the drag to end before acting, without throwing", async () => {
   const { server, registry, presentationId, cleanup } = await startServerForDrag();
   try {
     const { page, pageErrors } = await openAppDrag(server);
@@ -514,7 +516,7 @@ it("agent 要下第一條命令時使用者正在拖曳：等使用者放手才�
         onMidDrag: async () => {
           // The mouse button is still down here (gesture-start already fired
           // its `POST /api/editing/begin`) — the author's message arrives
-          // while the human lease is held, exactly the race AC-5 covers.
+          // while the human lease is held, exactly the race this test covers.
           await sendChatMessageViaApi(page, "改標題");
           // Sample repeatedly rather than once: a single sample landing
           // between two ticks would silently pass even if the wait were
@@ -527,8 +529,8 @@ it("agent 要下第一條命令時使用者正在拖曳：等使用者放手才�
       },
     );
     // The agent must not have grabbed the lock while the drag was still in
-    // progress — this is "不拋錯" in observable terms: nothing about the
-    // drag was refused or interrupted.
+    // progress — this is "without erroring out" in observable terms:
+    // nothing about the drag was refused or interrupted.
     expect(sawFrozenDuringDrag).toBe(false);
 
     // The drag's own `element move` landed — it was never in contention

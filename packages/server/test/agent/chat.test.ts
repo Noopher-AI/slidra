@@ -12,7 +12,7 @@ import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { buildCommentContext } from "../../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -23,7 +23,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -41,7 +41,7 @@ async function readPresentationTextViaCli(id: string, virtualPath: string): Prom
   return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
 }
 
-// Seam B (issue #1): start the real server, drive it over HTTP, with a
+// Seam B: start the real server, drive it over HTTP, with a
 // scripted fake ACP agent — a real subprocess speaking ACP over stdio,
 // never the real Claude Code or Codex — as the counterparty.
 
@@ -50,19 +50,19 @@ const fixturePath = path.join(
   "fixtures/fake-acp-agent.mjs",
 );
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let logDir: string;
 let logPath: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-chat-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-log-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-chat-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
@@ -71,18 +71,18 @@ afterEach(async () => {
   // stream) is torn down here, including on assertion failure, or the
   // suite hangs on a live child process / open socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018): the tests below read and edit
   // slides/001.svg, so mint one page with one title text box.
@@ -99,7 +99,7 @@ async function openFreshPresentation(): Promise<string> {
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const id = await openFreshPresentation();
   const svgText = await readPresentationTextViaCli(id, "slides/001.svg");
-  const match = /<g id="(el-[^"]+)" data-comot-text-width/.exec(svgText);
+  const match = /<g id="(el-[^"]+)" data-slidra-text-width/.exec(svgText);
   if (!match) throw new Error("test fixture: title element id not found");
   return { id, elementId: match[1] };
 }
@@ -112,9 +112,9 @@ async function openFixturePresentation(files: Record<string, Uint8Array | string
     encoded[name] = typeof content === "string" ? new TextEncoder().encode(content) : content;
   }
   const zipped = zipSync(encoded);
-  const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, `fixture-${Math.random().toString(36).slice(2)}.slidra`);
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -243,27 +243,27 @@ class SseReader {
   }
 }
 
-describe("[E2.T8] buildCommentContext", () => {
-  it("no comments: null (so runTurn sends the author's text with no prefix at all — AC13)", () => {
+describe("buildCommentContext", () => {
+  it("no comments: null (so runTurn sends the author's text with no prefix at all)", () => {
     expect(buildCommentContext([])).toBeNull();
   });
 
-  it("formats each comment as '<slidePath> <target> <commentId>：<text>', one per line, in the given order", () => {
+  it("formats each comment as '<slidePath> <target> <commentId>: <text>', one per line, in the given order", () => {
     const result = buildCommentContext([
-      { id: "c-1", slidePath: "slides/001.svg", target: "el-a", author: "author", created: "t1", text: "第一則" },
-      { id: "c-2", slidePath: "slides/002.svg", target: "page", author: "author", created: "t2", text: "第二則" },
+      { id: "c-1", slidePath: "slides/001.svg", target: "el-a", author: "author", created: "t1", text: "first note" },
+      { id: "c-2", slidePath: "slides/002.svg", target: "page", author: "author", created: "t2", text: "second note" },
     ]);
     expect(result).toBe(
-      "【作者釘選的留言】\n" +
-        "以下是作者釘在這份簡報上的留言，隨這則訊息一起給你。每一行的格式是「投影片路徑 目標 留言識別碼」，冒號之後是留言原文；目標是元素識別碼，或 page（代表整頁）。\n" +
-        "slides/001.svg el-a c-1：第一則\n" +
-        "slides/002.svg page c-2：第二則",
+      "[Comments the author pinned]\n" +
+        "Below are the comments the author pinned on this presentation, sent along with this message. Each line has the format \"slide-path target comment-id\", followed by a colon and the comment's original text; the target is an element id, or page (meaning the whole page).\n" +
+        "slides/001.svg el-a c-1: first note\n" +
+        "slides/002.svg page c-2: second note",
     );
   });
 });
 
-describe("chat: the 編輯規約 and prompt shape", () => {
-  it("sends the 編輯規約 as the very first session/prompt, as a one-text-block content array", async () => {
+describe("chat: the editorial brief and prompt shape", () => {
+  it("sends the editorial brief as the very first session/prompt, as a one-text-block content array", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -281,7 +281,7 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     expect(prompts[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
   });
 
-  it("[E2.T8] AC14: with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
+  it("with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
     const id = await openFreshPresentation();
     // The fresh presentation's default `slides/001.svg` carries a bare
     // `<text>` title — not `assertSlideCompliant` until `convert` runs
@@ -316,9 +316,9 @@ describe("chat: the 編輯規約 and prompt shape", () => {
 
     const prompts = promptEntries(await readFakeAgentLog());
     const sentText = (prompts[1].prompt[0] as { text: string }).text;
-    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}：把這個標題改短一點`);
-    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}：整頁重寫成三個要點`);
-    expect(sentText.endsWith("【作者的訊息】\n麻煩照留言處理")).toBe(true);
+    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}: 把這個標題改短一點`);
+    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}: 整頁重寫成三個要點`);
+    expect(sentText.endsWith("[The author's message]\n麻煩照留言處理")).toBe(true);
   });
 
   it("reuses the same sessionId across two separate messages", async () => {
@@ -334,7 +334,7 @@ describe("chat: the 編輯規約 and prompt shape", () => {
     await sse.close();
 
     const prompts = promptEntries(await readFakeAgentLog());
-    expect(prompts).toHaveLength(3); // 編輯規約 + 2 user messages
+    expect(prompts).toHaveLength(3); // editorial brief + 2 user messages
     const sessionIds = new Set(prompts.map((entry) => entry.sessionId));
     expect(sessionIds.size).toBe(1);
   });
@@ -363,7 +363,7 @@ describe("chat: reply streaming", () => {
   });
 });
 
-describe("chat: cancel (#303)", () => {
+describe("chat: cancel", () => {
   it("POST /api/chat/cancel ends the running turn with chat-done stopReason=cancelled", async () => {
     const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -458,7 +458,7 @@ describe("chat: cancel (#303)", () => {
     await sse.close();
 
     const notice = collected.find((e) => e.event === "chat-notice");
-    expect((notice!.data as { text: string }).text).toContain("1 則尚未開始的訊息");
+    expect((notice!.data as { text: string }).text).toContain("1 additional message(s) that had not started");
     // The fake agent logs every prompt it receives; the queued one never got sent.
     const log = await readFile(logPath, "utf-8");
     expect(log).not.toContain("排在後面的第二則");
@@ -468,7 +468,7 @@ describe("chat: cancel (#303)", () => {
     const server = await serve(fakeAgent({}));
     const response = await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
     expect(response.status).toBe(409);
-    expect(((await response.json()) as { error: string }).error).toContain("沒有進行中的回合");
+    expect(((await response.json()) as { error: string }).error).toContain("no turn currently in progress");
   });
 });
 
@@ -487,11 +487,11 @@ describe("chat: not logged in", () => {
     expect(errorEvent).toBeDefined();
     const message = (errorEvent!.data as { message: string }).message;
     expect(message).toContain("Claude Code");
-    expect(message).toMatch(/登入/);
+    expect(message).toMatch(/not logged in/);
   });
 });
 
-describe("chat: session/request_permission — 簡報檔案只能走 CLI，其餘放行", () => {
+describe("chat: session/request_permission — presentation files must go through the CLI, everything else is allowed", () => {
   /** Runs one permission scenario and returns the outcome the fake agent logged. */
   async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
     const server = await serve(
@@ -509,14 +509,14 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
   }
 
-  it("allows a plain comotion command, selecting the offered allow option", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion text set abc slides/001.svg el-1 新標題" });
+  it("allows a plain slidra command, selecting the offered allow option", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra text set abc slides/001.svg el-1 新標題" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows Codex's shell argv after validating the entire script", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: ["/bin/zsh", "-lc", "comotion text set abc slides/001.svg el-1 '新標題'"],
+      permissionCommand: ["/bin/zsh", "-lc", "slidra text set abc slides/001.svg el-1 '新標題'"],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -525,9 +525,9 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // itself (see `unquoteShellWord`): a command carrying quotes of its own
   // arrives wrapped in quotes it never had. Without unquoting, every
   // writing command is refused on its leading `"`.
-  it("allows a comotion command codex-acp sent in its shell-quoted form", async () => {
+  it("allows a slidra command codex-acp sent in its shell-quoted form", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `"comotion text set abc slides/001.svg el-1 '新標題'"`,
+      permissionCommand: `"slidra text set abc slides/001.svg el-1 '新標題'"`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -536,7 +536,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // single-quoted chunks for one `plan set` whose argument spans lines.
   it("allows a shell-quoted command built from several adjacent quoted chunks", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `"comotion plan set abc outline '"'\`\`\`json\n{ "n": 1 }\n\`\`\`'"'"`,
+      permissionCommand: `"slidra plan set abc outline '"'\`\`\`json\n{ "n": 1 }\n\`\`\`'"'"`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -545,7 +545,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // the command and lets the turn continue, `cancel` is Codex's abort.
   it("refuses with decline, not the abort, when the adapter offers both", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `rm -rf ${coMotionHome}/work/abc`,
+      permissionCommand: `rm -rf ${slidraHome}/work/abc`,
       permissionOptions: [
         { kind: "allow_once", name: "允許", optionId: "allow_once" },
         { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
@@ -555,14 +555,15 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect(outcome).toEqual({ outcome: "selected", optionId: "decline" });
   });
 
-  // 直接讀簡報檔案被擋之後，整輪本來會死在 adapter 的 `interrupt: true` 上，
-  // agent 只收到「使用者拒絕」。現在 CoMotion 把回合接回來，告訴它該用什麼。
-  it("被擋下的命令會換成一句建議送回 agent，回合繼續", async () => {
+  // Once a direct read of a presentation file is refused, the whole turn used to
+  // die on the adapter's `interrupt: true`, with the agent only ever hearing
+  // "user rejected". Now Slidra picks the turn back up and tells it what to use instead.
+  it("turns a refused command into a suggestion sent back to the agent, and the turn continues", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"], ["知道了，改用讀檔工具"]],
         requestPermissionOnPromptIndex: 1,
-        permissionCommand: `cat ${coMotionHome}/work/abc/slides/001.svg`,
+        permissionCommand: `cat ${slidraHome}/work/abc/slides/001.svg`,
         permissionOptions: [
           { kind: "allow_once", name: "允許", optionId: "allow_once" },
           { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
@@ -578,23 +579,24 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     const collected = await untilDone;
     await sse.close();
 
-    // 回合沒有死在 cancelled 上
+    // The turn does not die on cancelled.
     expect((collected.at(-1)!.data as { stopReason: string }).stopReason).toBe("end_turn");
-    // agent 收到的第二個 prompt 就是那句建議
+    // The second prompt the agent receives is exactly that suggestion.
     const prompts = (await readFakeAgentLog()).filter((entry) => entry.prompt !== undefined);
-    expect(JSON.stringify(prompts.at(-1)!.prompt)).toContain("comotion cat");
-    // 作者看得到這件事發生過
+    expect(JSON.stringify(prompts.at(-1)!.prompt)).toContain("slidra cat");
+    // The author can see that this happened.
     expect(collected.some((e) => e.event === "chat-notice")).toBe(true);
   });
 
-  // 命令字串根本讀不出來（只有受保護路徑躺在 rawInput 裡）時沒有建議可給，
-  // 才走這條：回合真的結束，至少講清楚不是作者按的停止。
+  // This path is only hit when the command string can't be recovered at all
+  // (only a protected path sits in rawInput), so there's no suggestion to give:
+  // the turn genuinely ends, but at least it's made clear the author didn't stop it.
   it("says so when a refused command took the whole turn down with it", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
         requestPermissionOnPromptIndex: 1,
-        permissionRawInput: { script: `${coMotionHome}/work/abc/slides/001.svg` },
+        permissionRawInput: { script: `${slidraHome}/work/abc/slides/001.svg` },
         // Only the abort on offer, and the adapter aborts the turn on it.
         permissionOptions: [
           { kind: "allow_once", name: "允許", optionId: "allow_once" },
@@ -612,7 +614,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     await sse.close();
 
     const texts = collected.filter((e) => e.event === "chat-notice").map((e) => (e.data as { text: string }).text);
-    expect(texts.some((text) => text.includes("不是作者按了停止"))).toBe(true);
+    expect(texts.some((text) => text.includes("the author did not press Stop"))).toBe(true);
   });
 
   it("forwards the adapter's own stderr to serve's log, tagged with its name", async () => {
@@ -631,42 +633,44 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     }
   });
 
-  // 政策改版：CoMotion 只保護簡報自己的檔案，其餘 shell 命令一律放行。
-  // 以下這組守的是新的那條線——`<COMOTION_HOME>`（除了 agent 自己的工作目錄）
-  // 與任何 `.comot` 容器，只能透過 CLI 動。
+  // Policy update: Slidra now only protects the presentation's own files;
+  // every other shell command is allowed. The group below guards the new
+  // line — `<SLIDRA_HOME>` (aside from the agent's own work directory)
+  // and any `.slidra` container may only be touched through the CLI.
 
   it("refuses a command that writes straight into the presentation's work directory", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `sed -i s/a/b/ ${coMotionHome}/work/abc/slides/001.svg`,
+      permissionCommand: `sed -i s/a/b/ ${slidraHome}/work/abc/slides/001.svg`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  it("refuses a command that reads CoMotion's own bookkeeping", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: `cat ${coMotionHome}/projects.json` });
+  it("refuses a command that reads Slidra's own bookkeeping", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: `cat ${slidraHome}/projects.json` });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  it("refuses a command that opens a .comot container directly, wherever it lives", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "unzip /tmp/somebody-elses.comot -d /tmp/out" });
+  it("refuses a command that opens a .slidra container directly, wherever it lives", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "unzip /tmp/somebody-elses.slidra -d /tmp/out" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
   it("refuses a protected path buried inside another program's script argument", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `sh -c 'rm -rf ${coMotionHome}/history/abc'`,
+      permissionCommand: `sh -c 'rm -rf ${slidraHome}/history/abc'`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
   it("refuses a protected path in a raw input shape whose command cannot be read at all", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionRawInput: { script: `${coMotionHome}/work/abc/slides/001.svg` },
+      permissionRawInput: { script: `${slidraHome}/work/abc/slides/001.svg` },
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  // 另一半：不碰簡報檔案的命令不再被擋——這是這次改版真正的重點。
+  // The other half: commands that don't touch presentation files are no longer
+  // blocked — that's the actual point of this policy update.
 
   it("allows an ordinary shell command that has nothing to do with the presentation", async () => {
     const outcome = await permissionOutcomeFor({ permissionCommand: "grep -rn pyramid reference/" });
@@ -678,8 +682,8 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
-  it("allows a comotion command with a pipe — the CLI is the CLI however it is spelled", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion ls abc | head -3" });
+  it("allows a slidra command with a pipe — the CLI is the CLI however it is spelled", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra ls abc | head -3" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
@@ -690,20 +694,20 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
 
   it("allows a double-quoted argument, which the old character grammar refused outright", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: 'comotion text set abc slides/001.svg el-1 "第三季 財報"',
+      permissionCommand: 'slidra text set abc slides/001.svg el-1 "第三季 財報"',
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows a single-quoted Chinese argument containing spaces", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion text set abc slides/001.svg el-1 '第三季 財報 標題'",
+      permissionCommand: "slidra text set abc slides/001.svg el-1 '第三季 財報 標題'",
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
-  it("allows a comotion command with a trailing 2>&1", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion cat abc project.json 2>&1" });
+  it("allows a slidra command with a trailing 2>&1", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra cat abc project.json 2>&1" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 });
@@ -726,15 +730,15 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
   }
 
-  // Fix 2 (ticket #7): some adapters stop calling session/request_permission
+  // Some adapters stop calling session/request_permission
   // for a tool once a persistent grant (allow_always) has been given —
   // accepting it once would silently disable this gate for every later
-  // command in the session, including non-comotion ones. Only allow_once
+  // command in the session, including non-slidra ones. Only allow_once
   // may ever be selected for an allow decision.
 
-  it("allows a valid comotion command when allow_once is offered", async () => {
+  it("allows a valid slidra command when allow_once is offered", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion ls abc",
+      permissionCommand: "slidra ls abc",
       permissionOptions: [
         { kind: "allow_once", name: "允許一次", optionId: "allow-once" },
         { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
@@ -744,9 +748,9 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow-once" });
   });
 
-  it("refuses a valid comotion command when only allow_always is offered, rather than accepting a persistent grant", async () => {
+  it("refuses a valid slidra command when only allow_always is offered, rather than accepting a persistent grant", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion ls abc",
+      permissionCommand: "slidra ls abc",
       permissionOptions: [
         { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
         { kind: "reject_once", name: "拒絕", optionId: "reject" },
@@ -765,11 +769,11 @@ describe("chat: HTTP method gate", () => {
 
     const otherPost = await fetch(`${server.url}/api/presentation`, { method: "POST" });
     expect(otherPost.status).toBe(405);
-    expect((await otherPost.json()).error).toBe("只支援 GET");
+    expect((await otherPost.json()).error).toBe("Only GET is supported");
 
     const chatDelete = await fetch(`${server.url}/api/chat`, { method: "DELETE" });
     expect(chatDelete.status).toBe(405);
-    expect((await chatDelete.json()).error).toBe("只支援 GET");
+    expect((await chatDelete.json()).error).toBe("Only GET is supported");
 
     const stillGet = await fetch(`${server.url}/api/presentation`);
     expect(stillGet.status).toBe(200);
@@ -805,7 +809,7 @@ describe("chat: shutdown does not hang on an open stream", () => {
 });
 
 describe("chat: session cwd", () => {
-  it("hands the agent the deployed product work directory as its cwd, never the real process cwd (NOOP-238)", async () => {
+  it("hands the agent the deployed product work directory as its cwd, never the real process cwd", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -823,20 +827,20 @@ describe("chat: session cwd", () => {
 
     // Never the real project directory the CLI was launched from.
     expect(sentCwd).not.toBe(process.cwd());
-    // Exactly `<COMOTION_HOME>/agent/<presentationId>`, resolved — the
+    // Exactly `<SLIDRA_HOME>/agent/<presentationId>`, resolved — the
     // product work directory `deployAgentWorkdir()` deploys before
     // `startServe` ever
-    // constructs the session (NOOP-238). The escape-hatch this test used to
-    // assert ("never under COMOTION_HOME") is inverted by design: `../work/<id>`
+    // constructs the session. The escape-hatch this test used to
+    // assert ("never under SLIDRA_HOME") is inverted by design: `../work/<id>`
     // is no longer reachable from here, because `fs/read_text_file`'s
     // containment is the deployed directory's own real tree
     // (`classifyAgentReadPath`/`readAgentWorkdirFile`), not a string prefix
     // check an agent could try to walk out of.
-    const expectedWorkdir = await realpath(path.join(coMotionHome, "agent", id));
+    const expectedWorkdir = await realpath(path.join(slidraHome, "agent", id));
     expect(sentCwd).toBe(expectedWorkdir);
   });
 
-  it("lets the agent read the deployed CLAUDE.md via a relative path (NOOP-238)", async () => {
+  it("lets the agent read the deployed CLAUDE.md via a relative path", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
@@ -860,7 +864,7 @@ describe("chat: session cwd", () => {
     expect(result?.readTextFileResult).toBe(await readFile(sourceClaudeMd, "utf8"));
   });
 
-  it("lets the agent read a file under the deployed .claude/skills tree via a relative path (NOOP-238)", async () => {
+  it("lets the agent read a file under the deployed .claude/skills tree via a relative path", async () => {
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
@@ -875,8 +879,8 @@ describe("chat: session cwd", () => {
     // `agent-workdir/` source, which this test must never touch, and which
     // a second deploy would overwrite anyway. This only proves the read
     // wiring reaches the real, already-deployed `.claude/skills` tree; skill
-    // *content* is out of this ticket's scope (T6/T7).
-    const skillDir = path.join(coMotionHome, "agent", id, ".claude", "skills", "probe");
+    // *content* is out of scope here.
+    const skillDir = path.join(slidraHome, "agent", id, ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
     await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
 
@@ -893,7 +897,7 @@ describe("chat: session cwd", () => {
   });
 });
 
-describe("chat: serve close does not delete the deployed work directory (NOOP-238)", () => {
+describe("chat: serve close does not delete the deployed work directory", () => {
   it("leaves the work directory's AGENTS.md readable and unchanged after close()", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
@@ -906,14 +910,14 @@ describe("chat: serve close does not delete the deployed work directory (NOOP-23
       path.join(path.dirname(fileURLToPath(import.meta.url)), "../../agent-workdir/AGENTS.md"),
       "utf8",
     );
-    const deployedAgentsMd = await readFile(path.join(coMotionHome, "agent", id, "AGENTS.md"), "utf8");
+    const deployedAgentsMd = await readFile(path.join(slidraHome, "agent", id, "AGENTS.md"), "utf8");
     expect(deployedAgentsMd).toBe(sourceAgentsMd);
   });
 });
 
 describe("chat: a failed start must not leak its subprocess", () => {
   it("tears down the failed attempt's child so a retry leaves exactly one live child process", async () => {
-    const markerDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-marker-"));
+    const markerDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-marker-"));
     const markerPath = path.join(markerDir, "attempted");
     try {
       const server = await serve(
@@ -955,11 +959,11 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
   it(
     "errors out the pending turn instead of hanging, and a later message starts a fresh, working session",
     async () => {
-      const markerDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-exit-marker-"));
+      const markerDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-exit-marker-"));
       const markerPath = path.join(markerDir, "exited-once");
       try {
         // exitDuringPromptIndex: 1 is the author's first message (index 0 is
-        // the 編輯規約) — the fake agent exits instead of replying, exactly
+        // the editorial brief) — the fake agent exits instead of replying, exactly
         // once (exitOnceMarkerPath), simulating the adapter dying mid-turn.
         const server = await serve(
           fakeAgent({
@@ -986,7 +990,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
         expect(errorEvent).toBeDefined();
         const message = (errorEvent!.data as { message: string }).message;
         expect(message).toContain("Claude Code");
-        expect(message).toMatch(/重新發送訊息/);
+        expect(message).toMatch(/resend the message/);
 
         // Second message: a fresh subprocess spawn (the marker means it
         // will not exit again this time) must start a genuinely working
@@ -1061,8 +1065,8 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：does/not/exist.svg");
-    expect(errorEntry?.readTextFileError?.message).not.toContain(coMotionHome);
+    expect(errorEntry?.readTextFileError?.message).toBe("file not found: does/not/exist.svg");
+    expect(errorEntry?.readTextFileError?.message).not.toContain(slidraHome);
   });
 
   it("fails explicitly for a directory — not an empty string, not a listing", async () => {
@@ -1086,7 +1090,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("不是檔案：slides");
+    expect(errorEntry?.readTextFileError?.message).toBe("not a file: slides");
   });
 
   it("keeps the existing text-read refusal for a binary asset — this method does not widen what cat allows", async () => {
@@ -1114,13 +1118,13 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("assets/pic.bin 是二進位資產，無法以文字讀取");
+    expect(errorEntry?.readTextFileError?.message).toBe("assets/pic.bin is a binary asset, cannot be read as text");
   });
 
   it("honours line (1-based) and limit (max line count) per ACP semantics", async () => {
     const id = await openFixturePresentation({
       "project.json": fixtureProjectJson(["slides/001.svg"]),
-      // [E2.T8]: every chat turn now reads this file's comments (`<svg>`-rooted,
+      // Every chat turn now reads this file's comments (`<svg>`-rooted,
       // per `readSlideComments`) before relaying the prompt, so "line1" is
       // wrapped in a self-contained `<svg>` root to stay parseable — line 2/3/4
       // are untouched plain text, preserving the exact line/limit semantics
@@ -1150,7 +1154,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     expect(result?.readTextFileResult).toBe("line2\nline3");
   });
 
-  // Fix 3 (ticket #7): a real, conforming ACP agent sends `path` as an
+  // A real, conforming ACP agent sends `path` as an
   // *absolute* path rooted at the session cwd it was handed — never the
   // bare relative virtual path the brief names (confirmed against a real
   // `claude-code-acp` 0.12.6 probe). The test below drives the fake agent
@@ -1245,7 +1249,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     // Explicit refusal — never resolved against the real filesystem — and
     // the message names no real path at all, not even the one the agent
     // itself sent.
-    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：路徑不在這個工作階段的範圍內");
+    expect(errorEntry?.readTextFileError?.message).toBe("File not found: path is outside this session's scope");
     expect(errorEntry?.readTextFileError?.message).not.toContain("/etc/passwd");
   });
 
@@ -1274,7 +1278,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
 });
 
 describe("chat: fs/write_text_file always refuses, and the refusal names the command to use instead", () => {
-  it("refuses, naming comotion text set, and writes nothing", async () => {
+  it("refuses, naming slidra text set, and writes nothing", async () => {
     const id = await openFreshPresentation();
     const before = await readPresentationTextViaCli(id, "slides/001.svg");
 
@@ -1298,7 +1302,7 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
     const errorEntry = log.find((entry) => "writeTextFileError" in entry) as
       | { writeTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.writeTextFileError?.message).toContain("comotion text set");
+    expect(errorEntry?.writeTextFileError?.message).toContain("slidra text set");
     expect(log.some((entry) => "writeTextFileResult" in entry)).toBe(false);
 
     const after = await readPresentationTextViaCli(id, "slides/001.svg");
@@ -1307,20 +1311,19 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
 });
 
 describe("chat: the whole loop — read via the file method, request permission, allowed, change visible through a read", () => {
-  it("lets the agent read the slide, get permission for comotion text set, and see the edit afterwards only through another read", async () => {
+  it("lets the agent read the slide, get permission for slidra text set, and see the edit afterwards only through another read", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
 
-    // Fix 2 (ticket #7): the id used to build the permission command below
-    // must be one a real agent could actually have read out of the 編輯規約
+    // The id used to build the permission command below
+    // must be one a real agent could actually have read out of the editorial brief
     // itself — never the test's own `id` variable spliced in directly, which
     // would prove nothing about whether the brief actually hands the agent
-    // a usable id (this is exactly the gap that would have failed ticket
-    // #8 outright). Parsing it out of the exact text `buildEditorialBrief`
+    // a usable id. Parsing it out of the exact text `buildEditorialBrief`
     // produces — the same text `session.ts` sends as the very first
     // prompt — is what makes "the agent could have constructed this
     // command from the brief alone" true instead of merely assumed.
-    const briefIdMatch = /識別碼是：(\S+)/.exec(buildEditorialBrief(id));
-    if (!briefIdMatch) throw new Error("test fixture: 編輯規約 does not name a presentation id");
+    const briefIdMatch = /presentation ID is: (\S+)/.exec(buildEditorialBrief(id));
+    if (!briefIdMatch) throw new Error("test fixture: editorial brief does not name a presentation id");
     const idFromBrief = briefIdMatch[1];
     expect(idFromBrief).toBe(id); // sanity: the brief really does name this presentation
 
@@ -1330,10 +1333,10 @@ describe("chat: the whole loop — read via the file method, request permission,
         readTextFileEveryPromptFrom: 1,
         readTextFilePath: "slides/001.svg",
         requestPermissionOnPromptIndex: 1,
-        // Single-quoted, per the 編輯規約's quoting rule (ticket #7 fix 1):
+        // Single-quoted, per the editorial brief's quoting rule:
         // double quotes are refused outright by the new allowlist grammar,
         // so a real agent following the brief would quote this way.
-        permissionCommand: `comotion text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
+        permissionCommand: `slidra text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
       }),
       id,
     );
@@ -1358,7 +1361,7 @@ describe("chat: the whole loop — read via the file method, request permission,
     // The permission grant only authorizes the command — actually running
     // it is the agent's own business (ADR-0006), which this fake agent does
     // not simulate a real shell for. Applying it here, through the exact
-    // `comotion` binary the agent's permission command names, is what the
+    // `slidra` binary the agent's permission command names, is what the
     // agent's own Bash tool would have done once permission came back
     // "allow".
     const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 財報"]);
@@ -1379,7 +1382,7 @@ describe("chat: the whole loop — read via the file method, request permission,
   });
 });
 
-describe("chat: the author can see the command run (ticket #17)", () => {
+describe("chat: the author can see the command run", () => {
   /** Runs one scripted command life cycle and returns every SSE event seen up to chat-done. */
   async function commandEventsFor(
     scenario: Record<string, unknown>,
@@ -1402,13 +1405,13 @@ describe("chat: the author can see the command run (ticket #17)", () => {
   }
 
   it("relays the command and its successful ending, with the command text verbatim from rawInput.command", async () => {
-    const events = await commandEventsFor({ toolCallCommand: "comotion ls p1" });
+    const events = await commandEventsFor({ toolCallCommand: "slidra ls p1" });
 
     const started = events.find((e) => e.event === "chat-command");
     expect(started?.data).toEqual({
       toolCallId: "fake-command-call",
       cli: true,
-      command: "comotion ls p1",
+      command: "slidra ls p1",
       status: "pending",
     });
 
@@ -1421,9 +1424,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
 
   it("relays a failed command together with its output, so the author never has to open a terminal", async () => {
     const events = await commandEventsFor({
-      toolCallCommand: "comotion text set p1 slides/001.svg el-1 '新標題'",
+      toolCallCommand: "slidra text set p1 slides/001.svg el-1 '新標題'",
       toolCallOutcome: "failed",
-      toolCallOutput: "zsh: command not found: comotion\nexit code 127",
+      toolCallOutput: "zsh: command not found: slidra\nexit code 127",
     });
 
     const failure = events
@@ -1433,15 +1436,16 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     expect(failure).toEqual({
       toolCallId: "fake-command-call",
       status: "failed",
-      output: "zsh: command not found: comotion\nexit code 127",
+      output: "zsh: command not found: slidra\nexit code 127",
     });
   });
 
   it("shows a refused non-CLI command untagged, and tells the author in one line", async () => {
-    // 命令照樣出現在時間軸上（作者看得到機器上發生什麼事），但沒有狀態標記
-    // ——它不是 CLI 操作。被擋這件事由一句通知負責。
+    // The command still shows up on the timeline (the author can see what
+    // happened on the machine), but with no status tag — it isn't a CLI
+    // operation. Being refused is communicated by a single notice instead.
     const events = await commandEventsFor({
-      toolCallCommand: `sed -i s/a/b/ ${coMotionHome}/work/p1/slides/001.svg`,
+      toolCallCommand: `sed -i s/a/b/ ${slidraHome}/work/p1/slides/001.svg`,
       permissionForToolCall: true,
       toolCallOutcome: "failed",
       toolCallOutput: "The user doesn't want to proceed with this tool use.",
@@ -1449,15 +1453,15 @@ describe("chat: the author can see the command run (ticket #17)", () => {
 
     const started = events.find((event) => event.event === "chat-command");
     expect((started!.data as { cli: boolean }).cli).toBe(false);
-    // 沒有標記就不會有後續狀態更新
+    // With no tag, there's no follow-up status update.
     expect(events.filter((event) => event.event === "chat-command-update")).toEqual([]);
     const notice = events.find((event) => event.event === "chat-notice");
-    expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
+    expect((notice!.data as { text: string }).text).toContain("blocked the agent's command that directly touched the presentation's files");
   });
 
-  it("leaves a command's own failure alone — only a refused one gets CoMotion's wording", async () => {
+  it("leaves a command's own failure alone — only a refused one gets Slidra's wording", async () => {
     const events = await commandEventsFor({
-      toolCallCommand: "comotion ls p1",
+      toolCallCommand: "slidra ls p1",
       permissionForToolCall: true,
       toolCallOutcome: "failed",
       toolCallOutput: "exit code 1",
@@ -1488,9 +1492,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     expect(events.filter((e) => e.event.startsWith("chat-command"))).toEqual([]);
   });
 
-  it("never relays commands from the 編輯規約 turn", async () => {
+  it("never relays commands from the editorial brief turn", async () => {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "comotion ls p1" }),
+      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "slidra ls p1" }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);

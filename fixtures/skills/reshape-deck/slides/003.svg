@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:comments xmlns:comot="https://co-motion.dev/ns">
-      <comot:comment id="c-03" target="page" author="作者" created="2026-09-01T00:03:00.000Z">這頁背景改成白色</comot:comment>
-      <comot:comment id="c-05" target="el-p3-note" author="作者" created="2026-09-01T00:04:00.000Z">照 Q2 那份的版型改</comot:comment>
-    </comot:comments>
+    <slidra:comments xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:comment id="c-03" target="page" author="作者" created="2026-09-01T00:03:00.000Z">這頁背景改成白色</slidra:comment>
+      <slidra:comment id="c-05" target="el-p3-note" author="作者" created="2026-09-01T00:04:00.000Z">照 Q2 那份的版型改</slidra:comment>
+    </slidra:comments>
   </metadata>
-  <g id="el-p3-note" data-comot-name="附註">
+  <g id="el-p3-note" data-slidra-name="附註">
     <text x="80" y="500" font-family="Noto Sans TC" font-size="20">備註：本頁沿用 Q1 版型</text>
   </g>
 </svg>

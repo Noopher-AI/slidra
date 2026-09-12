@@ -1,4 +1,4 @@
-"""CoMotion primitives for browser-use (BH_AGENT_WORKSPACE/agent_helpers.py).
+"""Slidra primitives for browser-use (BH_AGENT_WORKSPACE/agent_helpers.py).
 
 Loaded once per `browser-use` invocation by browser_harness.helpers
 (_load_agent_helpers): every top-level name not starting with "_" becomes a
@@ -33,8 +33,8 @@ _FRAME_READY_TIMEOUT = 15.0
 # does: cold V8 JIT, a cold disk cache for Chromium's own binary and the
 # app's JS bundle, and (on a sandbox pod) contention with whatever the rest
 # of `quick_start.sh --qa` just finished building. Measured on this pod: the
-# same commit failed _require_runtime_ready()'s plain 15s bound on a build
-# fresh off `sandbox-setup`, then passed immediately on a rerun with
+# same commit failed _require_runtime_ready()'s plain 15s bound on a freshly
+# provisioned sandbox, then passed immediately on a rerun with
 # everything warm — same code, different outcome, so the 15s bound (not the
 # app) was the problem. goto_slide()'s rebuilds happen against an already-
 # warm browser and stay on _FRAME_READY_TIMEOUT so per-gesture waits in a
@@ -51,7 +51,7 @@ _SLIDE_NAV_RE = re.compile(r"Slide (\d+) of (\d+)")
 # attempt and keep polling (_wait_frame_ready's readiness check) or simply
 # never caught one before this change either (a bare 5s timeout already
 # propagated unhandled out of _wait_chip_update / _wait_status_bar_settled
-# pre-round-5) — so retrying with a longer, configurable timeout only makes
+# previously) — so retrying with a longer, configurable timeout only makes
 # an already-possible slow/failed iteration deliberate and legible instead
 # of an accidental bare TimeoutError. _FRAME_READY_TIMEOUT/
 # _DRAG_SETTLE_TIMEOUT themselves are untouched; a degraded environment may
@@ -72,17 +72,17 @@ _REBUILD_START_GRACE = 0.3
 
 
 def _ipc_timeout():
-    """CO_MOTION_QA_IPC_TIMEOUT, parsed lazily (never at import time — this
+    """SLIDRA_QA_IPC_TIMEOUT, parsed lazily (never at import time — this
     module's top-level code must never raise, see module docstring)."""
-    raw = os.environ.get("CO_MOTION_QA_IPC_TIMEOUT")
+    raw = os.environ.get("SLIDRA_QA_IPC_TIMEOUT")
     if raw is None or raw == "":
         return _DEFAULT_IPC_TIMEOUT
     try:
         value = float(raw)
     except ValueError:
-        raise ValueError(f"CO_MOTION_QA_IPC_TIMEOUT 必須是數字，收到 {raw!r}") from None
+        raise ValueError(f"SLIDRA_QA_IPC_TIMEOUT must be a number, got {raw!r}") from None
     if value <= 0:
-        raise ValueError(f"CO_MOTION_QA_IPC_TIMEOUT 必須是正數，收到 {raw!r}")
+        raise ValueError(f"SLIDRA_QA_IPC_TIMEOUT must be positive, got {raw!r}")
     return value
 
 
@@ -100,7 +100,7 @@ def _cdp_ro(method, **params):
             if attempt < _IPC_RETRY_ATTEMPTS:
                 time.sleep(_IPC_RETRY_INTERVAL)
     raise RuntimeError(
-        f"{method} 逾時：已嘗試 {_IPC_RETRY_ATTEMPTS} 次，每次逾時 {timeout:g}s"
+        f"{method} timed out: tried {_IPC_RETRY_ATTEMPTS} times, {timeout:g}s per attempt"
     ) from last_exc
 
 
@@ -139,7 +139,7 @@ def _js_ro(expression, target_id=None):
 
 
 def _dispatch_mouse(**params):
-    """Input.dispatchMouseEvent, no retry (round-5 plan): a timeout here
+    """Input.dispatchMouseEvent, no retry: a timeout here
     doesn't mean the event wasn't delivered, so retrying could double-fire
     the gesture. On timeout, best-effort release the mouse button so it
     doesn't stay stuck down for the next caller, then raise."""
@@ -168,8 +168,8 @@ def _dispatch_mouse(**params):
             except Exception:
                 pass
         raise RuntimeError(
-            f"Input.dispatchMouseEvent({params.get('type')}) 逾時（{timeout:g}s）；"
-            "已嘗試補送 mouseReleased 避免滑鼠鍵卡在按下狀態"
+            f"Input.dispatchMouseEvent({params.get('type')}) timed out ({timeout:g}s); "
+            "attempted a follow-up mouseReleased to avoid leaving the button stuck down"
         ) from exc
 
 
@@ -190,7 +190,7 @@ def _qa_dir():
 
 
 def _server_url():
-    return os.environ.get("CO_MOTION_QA_URL", _DEFAULT_URL).rstrip("/")
+    return os.environ.get("SLIDRA_QA_URL", _DEFAULT_URL).rstrip("/")
 
 
 def _http_get(url):
@@ -198,22 +198,22 @@ def _http_get(url):
         return _bh_http_get(url)
     except Exception as exc:
         hint = ""
-        if not os.environ.get("CO_MOTION_QA_URL"):
-            hint = "（CO_MOTION_QA_URL 未設，已使用預設值 http://127.0.0.1:5173；請先 source .quickstart/qa/qa.env）"
-        raise RuntimeError(f"HTTP GET {url} 失敗：{exc}{hint}") from exc
+        if not os.environ.get("SLIDRA_QA_URL"):
+            hint = " (SLIDRA_QA_URL is not set, falling back to http://127.0.0.1:5173; source .quickstart/qa/qa.env first)"
+        raise RuntimeError(f"HTTP GET {url} failed: {exc}{hint}") from exc
 
 
 def _activate_current_tab():
     """Bring the QA tab to the front via CDP Target.activateTarget.
 
-    Verified empirically (round 5): a freshly opened/reused headless-Chromium
+    Verified empirically: a freshly opened/reused headless-Chromium
     tab is not necessarily the browser's "active" target (another target,
     e.g. the initial about:blank page, can hold that state). Input events
     dispatched to a non-active target still land on the right DOM element
     (confirmed via document.elementFromPoint at the click coordinates) but
     produce no app-level effect at all -- deterministically, every time, not
     intermittently -- because the click never becomes a registered
-    interaction. This reproduces r3/r4's "select() chip stays empty" /
+    interaction. This reproduces "select() chip stays empty" /
     "'NoneType' object is not subscriptable" failures independently of any
     IPC timeout."""
     try:
@@ -231,10 +231,10 @@ def _activate_current_tab():
 # "Could not find node with given id" (-32000), or hand back a node id that
 # describes the iframe that is already gone.
 #
-# NOOP-349: this is the second way this harness measured the wrong thing. A
-# stale frame id resolves to the PREVIOUS document, so _find_target_box()
-# computes its coordinates there and the click lands wherever that element
-# used to be — the chip never appears and select() reports "點擊可能沒有效果"
+# This is one way this harness can measure the wrong thing. A stale frame id
+# resolves to the PREVIOUS document, so _find_target_box() computes its
+# coordinates there and the click lands wherever that element used to be —
+# the chip never appears and select() reports "click may have had no effect"
 # after its timeout. Widening that timeout does nothing, because nothing is
 # ever going to arrive. Re-fetching the document (which is what refreshes the
 # node cache) and trying again is the actual fix.
@@ -264,8 +264,8 @@ def _iframe_frame_id(attempts=3):
             if attempt < attempts:
                 time.sleep(0.1)
     raise RuntimeError(
-        f"解析投影片 iframe 的 frameId 連續 {attempts} 次都撞到失效的 CDP node id"
-        "（DOM 一直在變動，可能是投影片正在重建）"
+        f"resolving the slide iframe's frameId hit a stale CDP node id {attempts} times in a row "
+        "(the DOM keeps changing, possibly a slide rebuild in progress)"
     ) from last_exc
 
 
@@ -297,13 +297,13 @@ def _iframe_target_id():
 # gesture simply never happened, and the assertion that follows measures the
 # state from before it.
 #
-# NOOP-349: this is what made F-15's B-2 fail for five review rounds. It was
-# read as "the marquee hit the wrong number of elements" and chased through
-# browser-use/CDP timeouts, /dev/shm sizing and Target.activateTarget, none of
-# which were involved. Instrumenting the parent's message channel showed the
-# failing runs carried no gesture events at all, only the previous iframe's
-# blur. Waiting for the real signal took B-2 from 2/6 to 6/6, and F-15 as a
-# whole from "never clean" to 3/3.
+# This is what made one marquee-selection case flaky across several review
+# rounds. It was read as "the marquee hit the wrong number of elements" and
+# chased through browser-use/CDP timeouts, /dev/shm sizing and
+# Target.activateTarget, none of which were involved. Instrumenting the
+# parent's message channel showed the failing runs carried no gesture events
+# at all, only the previous iframe's blur. Waiting for the real signal fixed
+# it reliably.
 #
 # The probe below tracks that signal from the parent document:
 #   pending  True between "the iframe's srcdoc was replaced" and "the new
@@ -360,12 +360,12 @@ def _ready_probe(mark_pending=False):
     it on first use and after any parent reload (which wipes it)."""
     r = _js_ro(_READY_PROBE_JS.replace("MARK_PENDING", "true" if mark_pending else "false"))
     if not isinstance(r, dict) or "seq" not in r or "pending" not in r:
-        raise RuntimeError(f"runtime-ready probe 回傳了非預期的形狀：{r!r}")
+        raise RuntimeError(f"runtime-ready probe returned an unexpected shape: {r!r}")
     return int(r["seq"]), bool(r["pending"])
 
 
-# NOOP-413 round 2: `_ready_probe()`'s own `Runtime.evaluate` call cannot run
-# until this module's Python code gets around to issuing it, which — for
+# `_ready_probe()`'s own `Runtime.evaluate` call cannot run until this
+# module's Python code gets around to issuing it, which — for
 # `open_deck()`'s cold-start reload — was always well after `Page.reload` +
 # `_wait_for_load()` had already returned. A parent-document reload tears
 # down and rebuilds the entire JS heap, so any earlier `window.addEventListener`
@@ -373,7 +373,7 @@ def _ready_probe(mark_pending=False):
 # "runtime-ready" (sent by the iframe as soon as the freshly-loaded parent
 # renders it) had already been posted, with nobody listening yet, into a void
 # nothing after ever fires into again — a guaranteed 45s timeout on every cold
-# start, not a flaky one (round 1 Review FAIL #2 item 3).
+# start, not a flaky one.
 #
 # `Page.addScriptToEvaluateOnNewDocument` sidesteps the ordering problem
 # entirely instead of trying to win it: Chrome evaluates the registered
@@ -428,9 +428,10 @@ def _require_runtime_ready(timeout=_FRAME_READY_TIMEOUT):
             return
         if time.time() >= deadline:
             raise RuntimeError(
-                f"投影片 iframe 重建後 {timeout:.0f} 秒內沒有送出 runtime-ready，"
-                "拒絕派送輸入事件（此時送出的事件會被靜默丟棄，"
-                "手勢不會發生，之後的斷言會量到手勢前的狀態）"
+                f"no runtime-ready within {timeout:.0f}s of the slide iframe rebuild; "
+                "refusing to dispatch input events (any dispatched now would be "
+                "silently dropped, the gesture would never happen, and the "
+                "following assertion would measure the pre-gesture state)"
             )
         time.sleep(0.05)
 
@@ -443,13 +444,12 @@ def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
     module variable.
 
     The selection host alone is not enough: it is appendChild'd by the
-    runtime before bodyMarkup is parsed (NOOP-349 round 3), so a caller
-    that only waited for the host could still race a marquee drag against
-    an iframe with no <svg> yet. document.readyState is deliberately not
-    checked here (round-3 plan §4.D) — it can sit at "interactive" for a
-    long time on slow media/fonts, which would just move the timeout
-    somewhere else without telling the caller anything about selection
-    correctness.
+    runtime before bodyMarkup is parsed, so a caller that only waited for
+    the host could still race a marquee drag against an iframe with no
+    <svg> yet. document.readyState is deliberately not checked here — it
+    can sit at "interactive" for a long time on slow media/fonts, which
+    would just move the timeout somewhere else without telling the caller
+    anything about selection correctness.
 
     NOT sufficient before dispatching input. Both conditions above are true
     while selection-runtime.js is still between "markup parsed" and
@@ -465,7 +465,7 @@ def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
         if tid:
             try:
                 ready = _js_ro(
-                    "document.querySelector('[data-comot-selection-host]') != null "
+                    "document.querySelector('[data-slidra-selection-host]') != null "
                     "&& document.querySelector('svg') != null",
                     target_id=tid,
                 )
@@ -474,7 +474,7 @@ def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
             if ready:
                 return tid
         time.sleep(0.3)
-    raise RuntimeError(f"投影片 iframe 在 {timeout:.0f} 秒內沒有就緒（slide-frame / frameId / selection host / svg markup 其中一項沒出現）")
+    raise RuntimeError(f"slide iframe not ready within {timeout:.0f}s (one of slide-frame / frameId / selection host / svg markup never appeared)")
 
 
 def _iframe_offset():
@@ -483,7 +483,7 @@ def _iframe_offset():
         "if(!f)return null;const r=f.getBoundingClientRect();return {x:r.x,y:r.y};})()"
     )
     if rect is None:
-        raise RuntimeError("找不到 iframe.slide-frame（父文件）")
+        raise RuntimeError("could not find iframe.slide-frame (parent document)")
     return rect
 
 
@@ -493,8 +493,8 @@ def _find_target_box(tid, name_or_id):
         f"(()=>{{const want={json.dumps(name_or_id)};const order={json.dumps(order)};"
         "let e=null;for(const kind of order){"
         "if(kind==='id'){e=document.getElementById(want);}"
-        "else{e=Array.from(document.querySelectorAll('[data-comot-name]'))"
-        ".find(x=>x.getAttribute('data-comot-name')===want)||null;}"
+        "else{e=Array.from(document.querySelectorAll('[data-slidra-name]'))"
+        ".find(x=>x.getAttribute('data-slidra-name')===want)||null;}"
         "if(e)break;}"
         "if(!e)return null;const r=e.getBoundingClientRect();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
@@ -514,7 +514,7 @@ def _wait_chip_update(timeout=_CHIP_UPDATE_TIMEOUT):
 
 
 def open_deck():
-    """Open (or reuse) the tab on CO_MOTION_QA_URL and wait for the deck to
+    """Open (or reuse) the tab on SLIDRA_QA_URL and wait for the deck to
     render. Returns {"url", "presentation_id", "slides"}."""
     url = _server_url()
     same = False
@@ -551,9 +551,9 @@ def open_deck():
     # open_deck() already checks (HTTP 200, DOM ready, runtime-ready all
     # still fire — just for the old bundle) and only shows up as a QA case
     # passing (or failing) against the wrong commit's behaviour. Measured
-    # on this pod switching branch -> base for F-02/F-05 (NOOP-403): both
-    # cases falsely PASSED on base because the tab was still running the
-    # branch's cached bundle, with `navigated` False the whole time.
+    # on this pod switching branch -> base for two cases: both falsely
+    # PASSED on base because the tab was still running the branch's cached
+    # bundle, with `navigated` False the whole time.
     #
     # Ask the live JS heap instead of the daemon: a real process restart
     # cannot leave `window.__cmQaBundleVerified` behind (a fresh V8 heap
@@ -573,34 +573,34 @@ def open_deck():
     # that reliably lands on exactly 1440x900, and it persists across
     # browser-use calls since it's a CDP-level override, not a CLI flag.
     _cdp_ro("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
-    # NOOP-413 round 2: gate on `navigated or reloaded`, not `navigated`
+    # Gate on `navigated or reloaded`, not `navigated`
     # alone. In this harness `navigated` alone routinely comes back False on
     # the very first open_deck() of a brand-new `--qa` session too — not just
     # on the daemon-staleness case the comment above documents — because
-    # Chromium is launched already pointed at CO_MOTION_QA_URL, so the
+    # Chromium is launched already pointed at SLIDRA_QA_URL, so the
     # daemon's `current_tab()` matches from the start. The bundle-freshness
     # reload above (`reloaded`) is what actually tells us a real navigation —
     # with a real iframe rebuild racing the exact same probe-installation
     # question — just happened, regardless of what `navigated` says; gating
     # only on `navigated` skipped `_require_runtime_ready` entirely on that
     # path and left `_wait_frame_ready` on its short default, which is what
-    # produced this round's own new flake (cold `_wait_frame_ready` timeout
-    # right after the bundle-check reload, `navigated` False throughout).
+    # produced a flake (cold `_wait_frame_ready` timeout right after the
+    # bundle-check reload, `navigated` False throughout).
     #
-    # No explicit _ready_probe(mark_pending=...) call here (round 1 had one,
-    # and it was the bug): _install_ready_probe() above already guarantees
-    # the probe was watching before this navigation's iframe could exist, so
-    # its `pending` genuinely reflects reality — forcing it True regardless,
-    # the way round 1 did, is what produced FAIL #2 item 3's deadlock
-    # whenever the real "runtime-ready" had in fact already arrived (nothing
-    # was ever going to flip a force-set True back to False again).
+    # No explicit _ready_probe(mark_pending=...) call here (an earlier
+    # version had one, and it was the bug): _install_ready_probe() above
+    # already guarantees the probe was watching before this navigation's
+    # iframe could exist, so its `pending` genuinely reflects reality —
+    # forcing it True regardless, as before, produced a deadlock whenever
+    # the real "runtime-ready" had in fact already arrived (nothing was
+    # ever going to flip a force-set True back to False again).
     cold = navigated or reloaded
     if cold:
         _require_runtime_ready(_INITIAL_LOAD_TIMEOUT)
     _wait_frame_ready(_INITIAL_LOAD_TIMEOUT if cold else _FRAME_READY_TIMEOUT)
     return {
         "url": url,
-        "presentation_id": os.environ.get("CO_MOTION_QA_PRESENTATION_ID", ""),
+        "presentation_id": os.environ.get("SLIDRA_QA_PRESENTATION_ID", ""),
         "slides": slide_count(),
     }
 
@@ -614,7 +614,7 @@ def goto_slide(n):
         "return {x:r.x+r.width/2,y:r.y+r.height/2};})()"
     )
     if box is None:
-        raise RuntimeError(f"goto_slide: 找不到縮圖 Slide {n}")
+        raise RuntimeError(f"goto_slide: could not find thumbnail Slide {n}")
     # Navigating rebuilds the srcdoc iframe, so the document that answers the
     # DOM checks in _wait_frame_ready() may be one whose pointer listeners are
     # not attached yet: the runtime appends the selection host and parses the
@@ -622,8 +622,8 @@ def goto_slide(n):
     # Waiting on the DOM alone let a drag() issued right after goto_slide()
     # dispatch its mouse events into that gap, where they are dropped without
     # a trace — no gesture-start, no gesture-move, no gesture-end, and a
-    # marquee that silently selects nothing (NOOP-349: F-15's B-2, 2/6 before
-    # this wait, 6/6 after).
+    # marquee that silently selects nothing (this was the root cause behind
+    # one flaky marquee-selection case, fixed reliably by this wait).
     _click(box["x"], box["y"])
     # Two waits, in this order, and both are needed.
     #
@@ -643,7 +643,7 @@ def goto_slide(n):
     text = _js_ro("(document.querySelector('.slide-nav-position')||{}).textContent || ''") or ""
     m = _SLIDE_NAV_RE.search(text)
     if not m:
-        raise RuntimeError(f"goto_slide: 無法解析頁碼：{text!r}")
+        raise RuntimeError(f"goto_slide: could not parse page number: {text!r}")
     return int(m.group(1))
 
 
@@ -653,7 +653,7 @@ def slide_count():
 
 
 def select(name_or_id, additive=False):
-    """Click the element matched by `data-comot-name` (or `#id` for an
+    """Click the element matched by `data-slidra-name` (or `#id` for an
     `el-`-prefixed id) inside the slide iframe. `additive=True` holds Shift
     (CDP modifiers=8) so the click adds to/toggles the current selection
     instead of replacing it. Returns selection()."""
@@ -661,23 +661,24 @@ def select(name_or_id, additive=False):
     box = _find_target_box(tid, name_or_id)
     if box is None:
         names = _js_ro(
-            "Array.from(document.querySelectorAll('[data-comot-name]')).map(e=>e.getAttribute('data-comot-name'))",
+            "Array.from(document.querySelectorAll('[data-slidra-name]')).map(e=>e.getAttribute('data-slidra-name'))",
             target_id=tid,
         )
-        raise RuntimeError(f"select: 找不到元素 {name_or_id!r}；本頁現有的 data-comot-name：{names!r}")
+        raise RuntimeError(f"select: could not find element {name_or_id!r}; data-slidra-name present on this page: {names!r}")
     off = _iframe_offset()
     cx = box["x"] + box["width"] / 2 + off["x"]
     cy = box["y"] + box["height"] / 2 + off["y"]
     _click(cx, cy, modifiers=8 if additive else 0)
     chip = _wait_chip_update()
     if not chip:
-        # Round-5 plan contract: don't let an empty chip flow into
-        # selection() and surface as a bare TypeError downstream (r4's
-        # "'NoneType' object is not subscriptable") — report it here, where
-        # we still know which element the click targeted.
+        # Don't let an empty chip flow into selection() and surface as a
+        # bare TypeError downstream ("'NoneType' object is not
+        # subscriptable") — report it here, where we still know which
+        # element the click targeted.
         raise RuntimeError(
-            f"select: 點擊 {name_or_id!r} 後等待 {_CHIP_UPDATE_TIMEOUT:g}s，選取 chip 仍為空"
-            "（點擊可能沒有效果，或渲染被延後）"
+            f"select: clicked {name_or_id!r}, waited {_CHIP_UPDATE_TIMEOUT:g}s, "
+            "selection chip is still empty (click may have had no effect, "
+            "or rendering was delayed)"
         )
     return selection()
 
@@ -697,13 +698,13 @@ def selection():
     # getComputedStyle, not the class list — showing/hiding is driven by
     # style.display writes on re-render, not a CSS class toggle.
     result = _js_ro(
-        "(()=>{const host=document.querySelector('[data-comot-selection-host]');"
+        "(()=>{const host=document.querySelector('[data-slidra-selection-host]');"
         "if(!host||!host.shadowRoot)return {box:null,handles:{}};"
         "const root=host.shadowRoot;const sel=root.querySelector('.sel');"
         "let box=null;if(sel){const r=sel.getBoundingClientRect();"
         "box={x:r.x,y:r.y,w:r.width,h:r.height};}"
         "const handles={};root.querySelectorAll('.handle').forEach(h=>{"
-        "const name=h.getAttribute('data-comot-handle');if(!name)return;"
+        "const name=h.getAttribute('data-slidra-handle');if(!name)return;"
         "if(getComputedStyle(h).display==='none')return;"
         "const r=h.getBoundingClientRect();"
         "handles[name]=[r.x+r.width/2,r.y+r.height/2];});"
@@ -717,9 +718,9 @@ def selection():
     return {"chip": chip, "box": box, "handles": handles}
 
 
-# [E5.T7]/F-17 決定 8: the selection context bar is ghost (pointer-events:
+# F-17: the selection context bar is ghost (pointer-events:
 # none, half-opaque) until the pointer hovers it continuously for
-# HOVER_SOLIDIFY_MS (packages/web/src/shell/stage-overlays/OverlayLayer.tsx)
+# HOVER_SOLIDIFY_MS (apps/web/src/shell/stage-overlays/OverlayLayer.tsx)
 # — long enough that this constant, and the sleep below, are pinned to it by
 # name rather than guessed at independently.
 _CONTEXT_BAR_HOVER_SETTLE = 0.4
@@ -739,11 +740,11 @@ def click_at(x, y, shift=False):
     not tied to a named element the way select()/_find_target_box() are —
     the one-click counterpart to `dblclick`, for scenarios that need a plain
     click first (e.g. selecting a table before its very first double-click —
-    see F-09/N-03, NOOP-399: `TableOverlay`'s own mount effect must flush
+    see F-09/N-03: `TableOverlay`'s own mount effect must flush
     before a cold double-click on a never-selected table reliably opens the
     cell editor, the same race e2e/table.test.ts's E8 documents). `shift=True`
     holds Shift (CDP modifiers=8), for an additive click that is not on a
-    `data-comot-name`'d element (e.g. a context bar button)."""
+    `data-slidra-name`'d element (e.g. a context bar button)."""
     _click(x, y, modifiers=8 if shift else 0)
 
 
@@ -774,8 +775,8 @@ _DRAG_SETTLE_STABLE_GAP = 0.1
 def _wait_status_bar_settled(timeout=_DRAG_SETTLE_TIMEOUT):
     """Poll status_bar() until two reads at least _DRAG_SETTLE_STABLE_GAP
     apart return the same text, up to `timeout`. Never raises — PASS/FAIL is
-    always decided by the case script's own assertions, not by this helper
-    (round-3 plan §4.C); a caller that times out here just gets whatever the
+    always decided by the case script's own assertions, not by this helper;
+    a caller that times out here just gets whatever the
     bar currently says, same as before this helper existed."""
     deadline = time.time() + timeout
     last = status_bar()
@@ -799,13 +800,13 @@ def drag(from_xy, to_xy, steps=10):
     i.e. this would not register as a drag anyway).
 
     Before returning, waits (up to 2s) for the status bar text to stabilize
-    (NOOP-349 round 3) — mouseReleased used to return immediately, racing
-    every caller's next status_bar()/selection() read against the
-    gesture-end -> host state update -> React re-render chain."""
+    — mouseReleased used to return immediately, racing every caller's next
+    status_bar()/selection() read against the gesture-end -> host state
+    update -> React re-render chain."""
     fx, fy = from_xy
     tx, ty = to_xy
     if math.hypot(tx - fx, ty - fy) < 8:
-        raise ValueError("drag: 總位移小於 8px，等同沒有拖曳")
+        raise ValueError("drag: total displacement under 8px, equivalent to no drag")
     _dispatch_mouse(type="mousePressed", x=fx, y=fy, button="left", buttons=1, clickCount=1)
     for i in range(1, steps + 1):
         x = fx + (tx - fx) * i / steps
@@ -825,7 +826,7 @@ def dblclick(x, y):
     _dispatch_mouse(type="mouseReleased", x=x, y=y, button="left", buttons=0, clickCount=2)
 
 
-# Keyboard primitives (NOOP-399): F-04/F-09/N-03 are the first cases in this
+# Keyboard primitives: F-04/F-09/N-03 are the first cases in this
 # module that need to type — nothing before them exercised anything past
 # mouse gestures. Only the three control keys those cases actually use;
 # extend this table rather than hand-rolling a one-off dispatch elsewhere.
@@ -835,10 +836,10 @@ _KEY_SPECS = {
     "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27, "nativeVirtualKeyCode": 27},
 }
 
-# NOOP-413 round 2: `rawKeyDown` is CDP's own term for "does not generate a
+# `rawKeyDown` is CDP's own term for "does not generate a
 # text event" — it never inserted "\n" into a focused <textarea>, in direct
-# contradiction of press()'s old docstring. Verified against F-04 (round 1
-# Review): with "rawKeyDown", the hard line break in the typed title was
+# contradiction of press()'s old docstring. Verified against F-04: with
+# "rawKeyDown", the hard line break in the typed title was
 # silently dropped every time. Only Enter is in this table because it is the
 # only key in _KEY_SPECS whose whole point is to insert text; Tab/Escape stay
 # on "rawKeyDown" since a real "keyDown" with text for them would insert their
@@ -861,7 +862,7 @@ def press(key):
     target-wide, same as `_dispatch_mouse`."""
     spec = _KEY_SPECS.get(key)
     if spec is None:
-        raise ValueError(f"press: 不認得的鍵 {key!r}；已知：{sorted(_KEY_SPECS)}")
+        raise ValueError(f"press: unknown key {key!r}; known keys: {sorted(_KEY_SPECS)}")
     timeout = _ipc_timeout()
     text = _KEY_TEXT.get(key)
     if text is not None:
@@ -892,15 +893,14 @@ def save_state():
     return json.loads(_http_get(f"{_server_url()}/api/save-state"))
 
 
-# NOOP-413 round 2: selection-runtime.js's in-place-edit <textarea> lives
+# selection-runtime.js's in-place-edit <textarea> lives
 # inside the selection host's shadow root (attachShadow({mode:"open"}), see
 # selection-runtime.js), and document.activeElement does not pierce a shadow
 # boundary on its own — it stops at the host element. Descending via
 # `.shadowRoot.activeElement` (open shadow roots only, which is all this
 # codebase creates) until there is no deeper one left is what actually reaches
 # the focused element; without it active_element() always reported the host
-# DIV, never the textarea itself (root cause of F-04's first assertion,
-# round 1 Review).
+# DIV, never the textarea itself (root cause of F-04's first assertion).
 _ACTIVE_ELEMENT_JS = (
     "(()=>{let e=document.activeElement;"
     "while(e&&e.shadowRoot&&e.shadowRoot.activeElement){e=e.shadowRoot.activeElement;}"
@@ -942,18 +942,18 @@ def click_ui(selector):
         "const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
     )
     if box is None:
-        raise RuntimeError(f"click_ui: 找不到符合 {selector!r} 的元素")
+        raise RuntimeError(f"click_ui: no element matching {selector!r}")
     _click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
 
 
 def cell_box(row, col):
     """Parent-document client rect of table cell (row, col) — the
-    `[data-comot-cell="row,col"]` group inside the slide iframe — or
+    `[data-slidra-cell="row,col"]` group inside the slide iframe — or
     `None` when nothing is currently rendered there (a merge-covered
     position, or a hidden `repeat` template row)."""
     tid = _wait_frame_ready()
     box = _js_ro(
-        f"(()=>{{const e=document.querySelector('[data-comot-cell=\"{int(row)},{int(col)}\"]');"
+        f"(()=>{{const e=document.querySelector('[data-slidra-cell=\"{int(row)},{int(col)}\"]');"
         "if(!e)return null;const r=e.getBoundingClientRect();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height};})()",
         target_id=tid,
@@ -967,7 +967,7 @@ def cell_box(row, col):
 def iframe_count(selector):
     """`document.querySelectorAll(selector).length` inside the slide
     iframe — for polling a LIVE on-screen count mid-edit (e.g.
-    `"#el-title text > tspan"`, F-04/NOOP-399), since `slide_svg()` only
+    `"#el-title text > tspan"`, F-04), since `slide_svg()` only
     ever reads the committed file on disk, never what is on screen before
     Esc commits it."""
     tid = _wait_frame_ready()
@@ -976,8 +976,8 @@ def iframe_count(selector):
 
 def iframe_selection_text():
     """The slide iframe's own `window.getSelection()`, stringified — empty
-    when nothing is natively text-selected inside it. N-03 (NOOP-399): the
-    slide document's `<body>` carries `user-select:none` (NOOP-349), so
+    when nothing is natively text-selected inside it. N-03: the
+    slide document's `<body>` carries `user-select:none`, so
     even a native double-click should never produce one."""
     tid = _wait_frame_ready()
     return _js_ro("String(window.getSelection())", target_id=tid) or ""
@@ -985,13 +985,13 @@ def iframe_selection_text():
 
 def edit_textarea_user_select():
     """`getComputedStyle(...).userSelect` of the runtime's hidden edit
-    textarea, or `None` when no edit session is open. N-03 (NOOP-399): the
+    textarea, or `None` when no edit session is open. N-03: the
     slide document's own `user-select:none` deliberately excepts this one
     element — it is the keyboard/IME sink for text editing and must stay
     selectable."""
     tid = _wait_frame_ready()
     return _js_ro(
-        "(()=>{const h=document.querySelector('[data-comot-selection-host]');"
+        "(()=>{const h=document.querySelector('[data-slidra-selection-host]');"
         "if(!h||!h.shadowRoot)return null;const t=h.shadowRoot.querySelector('textarea');"
         "return t?getComputedStyle(t).userSelect:null;})()",
         target_id=tid,
@@ -1047,7 +1047,7 @@ def shot(name):
     """Screenshot to qa/out/<name>.png (not version-controlled). `name` is
     restricted to [A-Za-z0-9._-]+ so this can never write outside qa/out/."""
     if not _NAME_RE.match(name):
-        raise ValueError(f"shot: name 只能是 [A-Za-z0-9._-]+，收到 {name!r}")
+        raise ValueError(f"shot: name must match [A-Za-z0-9._-]+, got {name!r}")
     out_dir = _qa_dir() / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
     return _capture_screenshot(str(out_dir / f"{name}.png"))

@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionNotFoundError } from "./comotion/errors.js";
-import { readPresentationBytes } from "./comotion/reads.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
+import { readPresentationBytes } from "./slidra/reads.js";
 import { MEDIA_MIME_TYPES } from "./media-types.js";
 
 /**
@@ -16,11 +16,11 @@ import { MEDIA_MIME_TYPES } from "./media-types.js";
 // [E4.T9]/F7) — a literal expansion of `packages/core`'s `MEDIA_FORMATS`
 // table (the server no longer imports that package at all). This table
 // must stay in lockstep with the player's own extension allow-list
-// (packages/web/src/player-plan.ts's VIDEO_EXTENSIONS/AUDIO_EXTENSIONS,
+// (apps/web/src/player-plan.ts's VIDEO_EXTENSIONS/AUDIO_EXTENSIONS,
 // ticket #30) — an extension the player accepts but this table does not
 // falls back to application/octet-stream below, which some browsers refuse
 // to decode as media even though the bytes are fine. A web test
-// (packages/web/test/player-plan.test.ts) asserts every entry in the
+// (apps/web/test/player-plan.test.ts) asserts every entry in the
 // player's allow-list resolves to a non-octet-stream type here,
 // specifically to keep the two lists from drifting apart again.
 
@@ -82,7 +82,7 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
   }
   const spec = match[1].trim();
   if (spec.includes(",")) {
-    return { kind: "unsatisfiable", reason: "不支援多重區間（multi-range）請求，一次只能請求一個位元組區間" };
+    return { kind: "unsatisfiable", reason: "Multi-range requests are not supported, only one byte range may be requested at a time" };
   }
   const parts = /^(\d*)-(\d*)$/.exec(spec);
   if (parts === null || (parts[1] === "" && parts[2] === "")) {
@@ -94,7 +94,7 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
     // Suffix range: the last N bytes.
     const suffixLength = Number(rawEnd);
     if (suffixLength === 0 || totalSize === 0) {
-      return { kind: "unsatisfiable", reason: "請求的位元組區間超出檔案範圍" };
+      return { kind: "unsatisfiable", reason: "Requested byte range is out of bounds" };
     }
     const start = Math.max(0, totalSize - suffixLength);
     return { kind: "satisfiable", start, end: totalSize - 1 };
@@ -102,12 +102,12 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
 
   const start = Number(rawStart);
   if (start >= totalSize) {
-    return { kind: "unsatisfiable", reason: "請求的位元組區間超出檔案範圍" };
+    return { kind: "unsatisfiable", reason: "Requested byte range is out of bounds" };
   }
   // An absent or over-long end is clamped to the last byte.
   const end = rawEnd === "" ? totalSize - 1 : Math.min(Number(rawEnd), totalSize - 1);
   if (end < start) {
-    return { kind: "unsatisfiable", reason: "請求的位元組區間無效" };
+    return { kind: "unsatisfiable", reason: "Requested byte range is invalid" };
   }
   return { kind: "satisfiable", start, end };
 }
@@ -119,19 +119,19 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
  *
  * `readPresentationFileBytes` can fail for reasons that must not be
  * collapsed into the same response, so the classification here is
- * deliberately the narrow way round: only `CoMotionNotFoundError` (a
- * `CoMotionError` subtype that positively means "the virtual path does
+ * deliberately the narrow way round: only `SlidraNotFoundError` (a
+ * `SlidraError` subtype that positively means "the virtual path does
  * not resolve to a file — not found, or resolves to a directory, or the
  * presentation id itself is unknown") is a 404. Every other
- * `CoMotionError` — an I/O failure reading the file or an earlier
+ * `SlidraError` — an I/O failure reading the file or an earlier
  * directory, a corrupt registry, or any subtype added later that nobody
  * has taught this function about yet — is a 500, because "not an
- * instance of CoMotionNotFoundError" is not evidence that the asset is
+ * instance of SlidraNotFoundError" is not evidence that the asset is
  * missing. This is the inverse of an earlier version that treated
  * "not an I/O error" as proof of absence, which silently 404'd every new
  * error kind until someone noticed (ticket #11, fourth fix round). Either
  * way the response body is `error.message`, which — like every
- * `CoMotionError` message — never contains the real filesystem path
+ * `SlidraError` message — never contains the real filesystem path
  * (ADR-0004); only the caller-supplied virtual path may appear in it.
  *
  * `Range` handling (ticket #13) deliberately happens *after* the bytes have
@@ -152,12 +152,12 @@ export async function handleRawRequest(
   try {
     bytes = await readPresentationBytes(presentationId, virtualPath);
   } catch (error) {
-    if (error instanceof CoMotionNotFoundError) {
+    if (error instanceof SlidraNotFoundError) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;
     }
-    if (error instanceof CoMotionError) {
+    if (error instanceof SlidraError) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;

@@ -1,0 +1,21 @@
+/* Selection (the actual interaction logic lives in selection-runtime.js /
+   canvas.ts — this file exists for documentation purposes only). The
+   `.status-selection-chip b` style already lives in shell.css (rewritten
+   together with the status bar), so it isn't repeated here.
+
+   Contract: colors for in-canvas selection/handles/text cursor/text
+   selection/alignment guides come from canvas.ts reading the
+   `--brand-red` / `--surface-white` CSS custom properties via
+   getComputedStyle(document.documentElement) (canvas.ts's
+   selectionColors()), serialized into window.__SLIDRA_SELECTION_COLORS__
+   and injected into the slide iframe, where selection-runtime.js (a
+   <style> inside the shadow root, with zero hardcoded color literals)
+   consumes those two values.
+
+   These previously read two legacy-shell compatibility tokens (values
+   tokens.css kept around so old callers wouldn't break: `#e03a56` /
+   `#201f1e` — not empty strings, but the legacy shell's red, which was once
+   mistakenly recorded here as "no color"; those token names have since been
+   removed from tokens.css). This now reads the design package's officially
+   named `--brand-red` (#c8233b) / `--surface-white` (#ffffff), matching
+   the prototype's (docs/design/prototype) selection box/handle colors. */

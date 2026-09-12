@@ -1,0 +1,277 @@
+/* ═══════════════════════════════════════════════════════════════
+   Play-mode blackout backdrop. This file
+   holds only [data-mode="play"] blackout/play-specific rules; the
+   fullscreen sizing rule (`.canvas-area:fullscreen`) stays in shell.css
+   because fullscreen now also applies in view mode, not just play mode.
+
+   Deliberately NOT `position: fixed; inset: 0` covering the whole
+   viewport, even though 1.8 in the plan describes exactly that. Measured
+   while building this ticket: doing so puts the (always-fixed z-index)
+   canvas-area in the top layer above the rail, and
+   e2e/player-effect-error.test.ts / e2e/player-media.test.ts — both part
+   of the required, frozen 57-test baseline — click
+   `button[aria-label="Page N"]` (a thumbnail-rail thumbnail) *while still in
+   play mode* as their only way to change slides when a broken effect list
+   leaves no runtime alive to hear arrow keys. A full-viewport overlay
+   makes that click unreachable — a real regression, not a cosmetic one.
+   TitleBar/Ribbon/StatusBar/Notes (elements with no existing test
+   depending on them appearing during play mode) still leave
+   the DOM entirely in play mode (see App.tsx's shellVisible gate); the
+   rail and chat sidebar stay exactly as visible/clickable as they always
+   were, which is genuinely the only behaviour-neutral
+   choice available given the conflict. This is a case where the plan and
+   the frozen regression baseline could not both be honoured literally. */
+.app[data-mode="play"] .canvas {
+  background: var(--s-blackout);
+}
+
+/* Pure black, full bleed: measuring base-shell.html (Playwright's built-in
+   Chromium, 1440×900, after clicking `.view-btn[data-view="play"]`)
+   confirms the `#play` container is `padding: 0px`, `background: rgb(0, 0,
+   0)`; `#play .stage` is `background: rgb(0, 0, 0)`, `border: 0px none`,
+   `box-shadow: none` — `.canvas-area`'s (the template's `.well`
+   counterpart) usual `padding: calc(var(--u) * 7)` (shell.css:260) and
+   `.stage`'s usual white background/border/shadow (stage.css) only apply
+   in standard view and must be overridden in play mode. `.canvas` is
+   already `#000` (the existing rule above); this adds the same override
+   to the `.canvas-area` and `.stage` layers so the blackout runs pure
+   black, with no gaps, from the stage well all the way to the stage
+   border. */
+.app[data-mode="play"] .canvas-area {
+  background: var(--s-blackout);
+  padding: 0;
+}
+.app[data-mode="play"] .stage {
+  background: var(--s-blackout);
+  border: 0;
+  box-shadow: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Control bar show/hide. `.play-bar`'s static box — position, translucent
+   background, border, radius, blur — was originally split off into
+   shell.css, then migrated back here (see the block further down) so the
+   whole control's styling lives in one file. The idle-fade
+   `opacity`/`transition`, the awake toggle, the paging controls/divider
+   and the cursor-hide/`.body` collapse below have always lived here.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Idle fade-out: PlayChrome toggles this class via its `awake` state. */
+.play-bar {
+  opacity: 0;
+  transition: opacity var(--dur-panel) var(--ease-panel);
+}
+.play-bar.awake {
+  opacity: 1;
+}
+
+/* Divider from base-shell.html:335, between the new paging controls and
+   the existing exit-play/fullscreen controls. */
+.play-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line-overlay-strong);
+  margin: 0 var(--u);
+}
+
+/* SVG size and page-number text for previous/next: shell.css only landed
+   the three rules `.play-bar`/`.play-bar button`/`.play-bar
+   button:hover`; base-shell.html:326's `.play-bar svg` and :332's `.pos`
+   were never landed, so this adds the template's literal values verbatim.
+   `.play-nav-button` has no separate layout rule of its own — it shares
+   shell.css's `.play-bar button`/`.play-bar button:hover` (height,
+   padding, hover background) with `.play-toggle-button
+   leave`/`.fullscreen-toggle-button`; only its content changes from text
+   to SVG. */
+.play-bar svg {
+  width: var(--icon-control);
+  height: var(--icon-control);
+  stroke: currentColor;
+  fill: none;
+  /* Keeps the literal 1.5 rather than switching to --icon-stroke (1.4):
+     that would not be a pixel-neutral change. */
+  stroke-width: 1.5;
+}
+/* The disabled state (previous on the first page / next on the last page)
+   has no existing literal value from the template — the template's
+   buttons are never disabled (a purely static demo, see base-shell.html's
+   `<script>`) — so this follows the App's existing disabled convention
+   (`.slide-nav-button:disabled`'s `color: var(--ink-faint)`). */
+.play-bar button:disabled {
+  cursor: default;
+  color: var(--ink-faint);
+}
+.play-bar button:disabled svg {
+  opacity: 0.55;
+}
+.play-bar-position {
+  padding: 0 calc(var(--u) * 2);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cursor hides together with the control bar: `.app[data-mode="play"]`
+   itself already exists (App.tsx:432); this only adds the play-mode
+   cursor rule. App.tsx is frozen outside two narrow exceptions, so an
+   `awake` class can't be added at the `.app` level — hence using
+   `:has()` to look up from `.play-bar.awake` (a class PlayChrome toggles
+   itself). Playwright's bundled Chromium supports `:has()`. */
+.app[data-mode="play"] {
+  cursor: none;
+}
+.app[data-mode="play"]:has(.play-bar.awake) {
+  cursor: default;
+}
+
+/* <Rail>/.chat-sidebar are now genuinely removed from the DOM in play mode
+   (see App.tsx), so `.main` is the only grid item left in `.body`. Without
+   this override, it would fall into the first track (thumbnail-rail
+   width, `shell.css:197-201`) and the stage would shrink to a narrow
+   sliver. `shell.css` is frozen for this unit, so the override lives
+   here. */
+.app[data-mode="play"] .body {
+  grid-template-columns: 1fr;
+}
+
+/* `.main`'s second track (shell.css:275's `grid-template-rows: 1fr
+   var(--h-notes)`, `--h-notes` = 104px) still takes up space even once
+   `<Notes>` is out of the DOM — measured under play mode, `.main`'s
+   bottom left a 104px-tall transparent strip showing through `.app`'s
+   background color `rgb(16,15,15)` (`--s-well`), not black. `.canvas-
+   area`'s blackout (the existing rule above) can't fill it, because it
+   lives inside the first, now-empty track and can't reach past its own
+   track's boundary. This collapses `.main` to a single track so
+   `.canvas-area` fills `.main`'s entire height. There's already a rule
+   `.main:has(> .canvas-area > .grid-view) { grid-template-rows: 1fr; }`
+   (for the overview grid) elsewhere: the two selectors are mutually
+   exclusive — `.grid-view` only mounts into the DOM when `view === "grid"
+   && state.mode !== "play"`, so `.grid-view` doesn't exist in play mode
+   and that other `:has()` never matches; `[data-mode="play"]` only holds
+   in play mode, so the two rules' match conditions never overlap and
+   won't conflict once combined. */
+.app[data-mode="play"] .main {
+  grid-template-rows: 1fr;
+}
+
+/* See PlayChrome.tsx for the full explanation of
+   `.play-mousemove-catcher` — this only holds its layout. Covers all of
+   `.canvas-area` (`position: relative`, shell.css), with a z-index above
+   `.canvas` (where the iframe sits, z-index auto) but below
+   `.player-notices`/`.play-bar` (both z-index:2), so those two still
+   receive clicks (e.g. the focus hint's "click here to return focus to
+   the player" button) — the catcher only blocks the stage area they
+   don't cover. */
+.play-mousemove-catcher {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* ── Floating play-mode control bar (migrated in from shell.css): the
+   static box that had landed in shell.css was moved here, merging it with
+   this file's own idle-fade/svg/page-number rules into a single file. The
+   original rgba literals were swapped for tokens.css's corresponding
+   semantic tokens (--s-overlay/--line-overlay/--s-overlay-raised/--r-pill/
+   --r-control), verified value-for-value to be pixel-neutral. ────────── */
+/* Bottom-centered pill (the prototype's left:50%;bottom:22px;
+   translateX(-50%)), replacing the earlier bottom-left positioning; child
+   node order, text, and classes are untouched. */
+.play-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--u) * 5);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--u);
+  padding: calc(var(--u) * 1.5);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  border-radius: var(--r-pill);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+
+/* Top-centered hint pill, sharing the awake fade with .play-bar
+   (PlayChrome toggles the class itself). A purely informational strip,
+   never accepting clicks — the .play-mousemove-catcher underneath it and
+   the .player-notices/.play-bar on the same layer still need to receive
+   clicks. */
+.play-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--u) * 5);
+  transform: translateX(-50%);
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  border-radius: var(--r-pill);
+  backdrop-filter: blur(12px);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  z-index: 2;
+  opacity: 0;
+  transition: opacity var(--dur-panel) var(--ease-panel);
+  pointer-events: none;
+}
+.play-hint.awake {
+  opacity: 1;
+}
+.play-bar button {
+  height: 26px;
+  padding: 0 calc(var(--u) * 2.5);
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-control);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+}
+.play-bar button:not(:disabled):hover {
+  background: var(--s-overlay-raised);
+  color: var(--ink);
+}
+.play-bar button:not(:disabled):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.play-bar .play-toggle-button.leave {
+  height: 32px;
+  border-radius: var(--r-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-weight: 700;
+}
+.play-bar .play-toggle-button.leave:not(:disabled):hover {
+  background: var(--brand-red-hover);
+  color: var(--surface-white);
+}
+
+/* ── View-mode fullscreen-exit control (migrated in from shell.css for the
+   same reason as above) ──────────────────────────────────────────── */
+.view-fullscreen-bar {
+  position: absolute;
+  right: calc(var(--u) * 5);
+  top: calc(var(--u) * 5);
+  z-index: 2;
+}
+.view-fullscreen-bar .fullscreen-toggle-button {
+  height: 26px;
+  padding: 0 calc(var(--u) * 2.5);
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-control);
+  color: var(--ink-dim);
+  font-size: var(--fs-small);
+  background: var(--s-overlay);
+  border: 1px solid var(--line-overlay);
+  backdrop-filter: blur(12px);
+}
+.view-fullscreen-bar .fullscreen-toggle-button:hover {
+  background: var(--s-overlay-raised);
+  color: var(--ink);
+}
+.view-fullscreen-bar .fullscreen-toggle-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}

@@ -1,13 +1,14 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <!-- 損壞之處：el-speaker 是 family="media" 的效果目標，卻沒有
-           data-comot-media 屬性 (ADR-0005 的不變式：media 效果的元素必須
-           帶 data-comot-media)。這是這張票的作者本人手寫 demo/ 時真的
-           犯過的錯，拿來當這個測試的第一種損壞。 -->
-      <comot:effect target="el-speaker" family="media" effect="play" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <!-- Breakage: el-speaker is a "media" family effect target but has no
+           data-slidra-media attribute (ADR-0005's invariant: an element
+           targeted by a media effect must carry data-slidra-media). This is
+           a real mistake the author of this ticket made writing demo/ by
+           hand, reused here as this test's first kind of breakage. -->
+      <slidra:effect target="el-speaker" family="media" effect="play" start="on-click"/>
+    </slidra:effects>
   </metadata>
-  <text id="el-broken-title" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 1 頁：缺少 data-comot-media</text>
+  <text id="el-broken-title" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">Slide 1: missing data-slidra-media</text>
   <circle id="el-speaker" cx="640" cy="400" r="80" fill="#c66"/>
 </svg>

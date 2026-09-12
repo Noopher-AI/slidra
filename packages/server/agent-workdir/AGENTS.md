@@ -1,102 +1,102 @@
-# CoMotion Agent 工作手冊
+# Slidra Agent Handbook
 
-這份文件鋪設在你（agent）的工作目錄裡，是穩定不變的長期指引；每次對話開頭收到的編輯規約只講會變的東西（識別碼、引號規則），其餘都在這裡與 `reference/`，隨時用原生的檔案讀取能力回來查。
+This document is deployed into your (the agent's) work directory as stable, long-term guidance; the editorial brief you get at the start of every conversation only covers what changes (the ID, quoting rules) — everything else lives here and in `reference/`, and you can come back and read it anytime with your native file-reading ability.
 
-每次啟動 `comotion serve` 都會用套件內建的版本整個重鋪這個工作目錄；你在這裡做的任何改動都不會被保留，筆記請留在對話裡。
+Every time `slidra serve` starts, this work directory is redeployed wholesale from the package's built-in version; any change you make here is never kept — keep your notes in the conversation instead.
 
-## CoMotion 是什麼
+## What Slidra is
 
-CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器操作簡報，你（agent）用 `comotion` 命令操作同一份簡報——兩邊改的是同一個檔案，不是各自的副本。一份簡報的每一張投影片都是一份合法的 SVG，SVG 本身就是成品；除了 SVG 之外，沒有更權威的表示法在它背後。
+Slidra is a presentation-editing tool. The author operates the presentation through the graphical editor in a browser; you (the agent) operate the same presentation through `slidra` commands — both sides change the same file, not separate copies. Every slide in a presentation is a valid SVG, and the SVG itself is the finished artifact; there is no more authoritative representation behind it.
 
-## 環境與限制
+## Environment and constraints
 
-編輯規約已經講了：簡報的內容只能透過 `comotion` 命令讀寫，其他 shell 命令不受限制。這裡補三件它沒講的：
+The editorial brief already said this: the presentation's content can only be read or written through `slidra` commands, and every other shell command is unrestricted. Here are three things it did not say:
 
-- 「只能透過命令」指的是簡報的實體檔案：拿 shell 的檔案工具（`sed`、`cp`、`rm` 之類）去動它們會被擋下，而且你本來就拿不到那些路徑。跟簡報無關的命令（查資料、處理暫存檔、跑別的工具）照你平常的方式做。
-- 被擋下時你收到的是「使用者拒絕了這次工具使用」這種訊息，看起來像作者按了拒絕，其實不是——CoMotion 會另外告訴你該改用哪個命令，照著改，不要問作者為什麼拒絕。
-- 色碼記得包引號（`'#3366FF'`），否則 `#` 之後會被 shell 當成註解吃掉。
+- "Only through commands" refers to the presentation's physical files: using shell file tools (`sed`, `cp`, `rm`, etc.) against them will be blocked, and you never get those paths in the first place anyway. Commands unrelated to the presentation (looking things up, handling temp files, running other tools) — do them however you normally would.
+- When blocked, the message you get back reads like "the user declined this tool use", which looks like the author clicked reject — they did not. Slidra will separately tell you which command to use instead; just switch to it, no need to ask the author why it was refused.
+- Remember to quote color codes (`'#3366FF'`), or the shell will treat everything after `#` as a comment and swallow it.
 
-## 命令參考
+## Command reference
 
-`comotion` 完整的命令清單——每個命令的名稱、參數與一句用途——在 [`reference/commands.md`](reference/commands.md)。動手前先查那份參考，不要用編輯規約裡的兩個範例去猜其他命令的語法。
+`slidra`'s full command list — every command's name, parameters, and a one-line purpose — is in [`reference/commands.md`](reference/commands.md). Check that reference before you act; don't guess other commands' syntax from the two examples in the editorial brief.
 
-版面、字級、配色角色、動畫與驗證規則一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)，可匯入的開源字型依 [`reference/fonts.md`](reference/fonts.md)。設計規則的驗證交給 `comotion validate` 命令，不要自己心算。
+Layout, font size, color roles, animation, and validation rules always follow [`reference/slide-design.md`](reference/slide-design.md); narrative modes and pacing follow [`reference/modes.md`](reference/modes.md); importable open-source fonts follow [`reference/fonts.md`](reference/fonts.md). Leave validating the design rules to the `slidra validate` command — don't work it out in your head.
 
-## 虛擬檔案結構
+## Virtual file structure
 
-一份簡報是這樣的一組虛擬路徑，你只能用 `comotion` 命令讀寫它們（實體檔案在哪裡你拿不到，也不需要知道）：
+A presentation is this set of virtual paths, which you can only read and write through `slidra` commands (you never get, and never need, the real file locations):
 
-- `project.json`：簡報的中繼資料（名稱、畫布尺寸、投影片清單、內嵌字型）。
-- `slides/00N.svg`：每一頁投影片，索引從 1 開始，檔名補零到三位（第 2 頁是 `slides/002.svg`）。整頁寫入用 `slide add --svg`／`slide set --svg`，規則見 `reference/slide-design.md` 第 0 節。
-- `assets/`：匯入的圖片、影片、音訊等媒體。你不能寫檔，但 `asset import --svg` 可以從命令列內容直接建立一張 SVG 資產（背景圖就是這樣來的）。
-- `fonts/`：簡報內嵌的字型檔案。
-- `templates/00N.svg`：`template add` 存下來的可重複使用範本；範本路徑一律用 `template list` 回傳的 `file` 欄位，名稱與檔名不是同一件事。
-- `plan/outline.md`、`plan/design-spec.md`：這份簡報的逐頁計畫與設計規格，固定就這兩個檔名。檔案開頭是一個 ```` ```json ```` 圍欄（機器可讀），其後是 markdown 正文。只能用 `plan set` 寫、`cat` 讀、`plan delete` 刪；`validate` 與確認視窗都讀它。
+- `project.json`: the presentation's metadata (name, canvas size, slide list, embedded fonts).
+- `slides/00N.svg`: each slide page, indexed from 1, zero-padded to three digits in the filename (page 2 is `slides/002.svg`). Whole-page writes use `slide add --svg` / `slide set --svg`; see `reference/slide-design.md` section 0 for the rules.
+- `assets/`: imported media — images, video, audio. You cannot write files directly, but `asset import --svg` can create an SVG asset straight from command-line content (this is how background images get made).
+- `fonts/`: font files embedded in the presentation.
+- `templates/00N.svg`: reusable templates saved by `template add`; always use the `file` field `template list` returns for a template's path — the name and the filename are not the same thing.
+- `plan/outline.md`, `plan/design-spec.md`: this presentation's page-by-page plan and design spec, always exactly these two filenames. The file opens with a ```` ```json ```` fence (machine-readable), followed by markdown prose. Only `plan set` writes it, `cat` reads it, `plan delete` removes it; both `validate` and the confirmation dialog read it.
 
-## SVG 約定重點
+## Key SVG conventions
 
-- 每一個可編輯的圖元都包在 `<g id="el-…" data-comot-name="…">` 容器裡；裸圖元會被大多數命令拒絕，並要求先跑 `convert`。
-- 元素識別碼一律從 `comotion` 的回傳或 `cat` 的結果讀出來，動手前先 `cat` 那一頁。
-- 整頁寫入（`slide add --svg`／`slide set --svg`）**有閘門**：這一頁自己的幾何、文字量、字級配色、角色自洽、資產路徑、scrim 沒過就整頁拒收，什麼都不會寫進去。被拒不是作者按了拒絕，回傳會列出每一條沒過的規則。送出前先照 `reference/slide-design.md` 第 0 節的自檢清單算一遍——**文字框的行數要自己估**，標題折成兩行卻沒把下一個元素往下挪，是最常見的一種。
-- 引用資產（圖片的 `href`、影音的 `data-comot-media`）在頁面 SVG 裡寫 `../assets/…`——投影片住在 `slides/` 底下，路徑是相對於它的。`asset import` 回傳的 `assets/…` 是虛擬路徑，整頁寫入時會自動補成 `../assets/…`，但指到不存在的檔案仍然只會畫出一塊空白，由 `validate` 的 `asset.missing` 抓。
-- 備忘稿存在 `<metadata><comot:notes>` 裡，只能用 `cat` 讀。
-- 留言存在 `<metadata><comot:comments>` 裡，`comment list` 讀、`comment add` 寫、`comment delete` 刪。
-- 動畫效果存在 `<metadata><comot:effects>` 裡，排列順序就是播放順序。`effect list` 在這張投影片沒有任何效果時結束碼是非零——這代表「沒有動畫」，不是錯誤。
+- Every editable element is wrapped in a `<g id="el-…" data-slidra-name="…">` container; a bare element is refused by most commands, which require running `convert` first.
+- Always read element ids out of `slidra`'s own return value or a `cat` result — `cat` the page before acting on it.
+- A whole-page write (`slide add --svg` / `slide set --svg`) **has a gate**: if this page's own geometry, text volume, font-size/color, role consistency, asset paths, or scrim don't pass, the whole page is refused — nothing is written at all. A refusal is not the author clicking reject; the response lists every rule that failed. Run through `reference/slide-design.md` section 0's self-check list before submitting — **you must estimate a text box's line count yourself**; a title that wraps to two lines without pushing the next element down is the most common failure.
+- Referenced assets (an image's `href`, media's `data-slidra-media`) are written as `../assets/…` inside the page SVG — a slide lives under `slides/`, and the path is relative to it. `asset import`'s returned `assets/…` is a virtual path and is auto-completed to `../assets/…` on a whole-page write, but pointing at a file that doesn't exist still just renders a blank spot, caught by `validate`'s `asset.missing`.
+- Speaker notes live in `<metadata><slidra:notes>`, readable only with `cat`.
+- Comments live in `<metadata><slidra:comments>`; `comment list` reads, `comment add` writes, `comment delete` removes.
+- Animation effects live in `<metadata><slidra:effects>`; their order is the playback order. `effect list` exits non-zero when this slide has no effects at all — that means "no animation", not an error.
 
-## 工作慣例
+## Working conventions
 
-- 改動任何一頁之前，先 `comotion cat <presentation-id> slides/00N.svg` 讀一次目前的內容。
-- 你這一輪回覆裡下的所有命令，會被合併成作者按一次 undo 就能整段復原的一個群組——所以一個要求在同一輪做完；`undo`／`redo` 動到的是與作者共用的同一條歷史，不拿來試錯。
-- 留言處理完就 `comment delete` 刪掉；做不到的留言保留原文，在對話裡就那一則提問。
-- 一次只做一頁，做完確認過再做下一頁；使用者一次要求做多頁時，中途出錯才知道停在哪裡。**這是下命令的節奏，不是結束回合的理由**——一頁做完就接著做下一頁，不要停下來報進度。
-- 同一份簡報上的 `comotion` 命令由 CLI 自己排隊執行，平行下多條命令安全但不會比較快；一次一條、看完結果再下下一條，出錯時才知道是哪一條。
+- Before changing any page, first `slidra cat <presentation-id> slides/00N.svg` to read its current content.
+- Every command you run within this one reply is folded into a single group the author can undo in one press — so finish one request within the same turn; `undo`/`redo` act on the same history you share with the author, not a scratchpad for trial and error.
+- Delete a comment with `comment delete` once it's handled; leave one you can't act on as-is, and ask about it in the conversation.
+- Do one page at a time, confirm it, then move to the next; when the author asks for multiple pages at once, this is what lets an error mid-way tell you exactly where you stopped. **This is the pacing for issuing commands, not a reason to end the turn** — finish one page and move straight to the next, don't stop to report progress.
+- `slidra` commands against the same presentation are queued by the CLI itself; issuing several in parallel is safe but no faster — issue one at a time, read its result, then issue the next, so a failure tells you exactly which one.
 
-## 一輪做到哪裡才算完
+## What counts as finishing a turn
 
-作者送出一則訊息、你回覆一次，中間就是一輪。**一輪要把作者這則訊息要求的事情整件做完**，不是做到一個段落就回頭報進度。
+The author sends one message, you reply once — everything in between is one turn. **A turn must finish the whole thing the author's message asked for**, not stop at some milestone to report progress.
 
-作者按下送出之後就離開畫面是常態；你回完一句「已完成前兩頁，其餘待續」，這份簡報就停在那裡，直到他回來打「繼續」。對他來說那不是進度，是停擺。
+It is normal for the author to step away right after hitting send; if you reply with something like "finished the first two pages, the rest to follow", the presentation just sits there until they come back and type "continue". To them, that isn't progress — it's a stall.
 
-**可以結束這一輪的，只有這三種情形：**
+**Only these three situations may end the turn:**
 
-1. 事情做完了，而且收尾條件（下一節）通過。
-2. 需要作者決定，而這個決定你無權替他做（計畫還沒拍板、要覆寫他手上的頁面、文字含有命令列表達不出的半形單引號）。
-3. 同一個障礙擋住去路，你換過做法仍然過不去（同一條命令改寫兩次仍然失敗、缺少的素材你生不出來）。
+1. The work is done, and the finishing conditions (next section) pass.
+2. The author needs to decide something you have no authority to decide for them (the plan hasn't been approved yet, a page they're holding would be overwritten, text contains a literal single quote the command line can't express).
+3. The same obstacle blocks you and a different approach still doesn't get past it (the same command rewritten twice still fails, missing material you cannot produce).
 
-**不能結束這一輪的情形**（這些都要繼續做下去，不要停）：
+**Situations that do NOT end the turn** (keep going in all of these, don't stop):
 
-- 還有頁沒建、還有留言沒處理、還有錯誤沒修——不論已經做了幾頁、下了幾條命令、花了多久。
-- 你覺得「做到一個段落了，先讓作者看看」。作者要的是做完，不是中途過目。
-- 你覺得回合太長了。長度不是停下來的理由。
+- There is still a page not built, a comment not handled, or an error not fixed — no matter how many pages you've built, how many commands you've run, or how long it's taken.
+- You feel like "this is a good milestone, let the author take a look". The author wants it done, not a mid-way preview.
+- You feel the turn is getting too long. Length is not a reason to stop.
 
-**真的落到第 2 或第 3 種情形而必須停**：回覆的第一行就要是 `未完成：<還缺什麼>`，接著一行寫你卡在哪、需要作者做什麼決定。不要用完成句式（「已完成…」「目前已建置…」）收尾一件沒做完的事——作者會以為它做完了。
+**If you genuinely fall into situation 2 or 3 and must stop**: the first line of your reply must be `Incomplete: <what's still missing>`, followed by a line saying where you're stuck and what decision you need from the author. Never close out unfinished work with a completion phrasing ("Done…", "Currently built…") — the author will think it's finished.
 
-## 收尾條件
+## Finishing conditions
 
-**只要這一輪動過任何一頁的內容，回覆之前的最後一件事一定是 `comotion validate <presentation-id>`**（只動一頁時可以只驗那一頁），並且把結果寫進回覆的第一行：`validate 0 錯誤` 或 `validate 還有 N 個錯誤`。
+**Whenever this turn touched any page's content, the very last thing before replying must be `slidra validate <presentation-id>`** (validating just that page is fine when only one page was touched), and the result goes in the first line of your reply: `validate: 0 errors` or `validate: N errors remaining`.
 
-沒跑過 validate 就不知道有沒有做壞，「看起來沒問題」不算數：文字會不會折行、折了之後會不會壓到下一個元素、圖片指到的資產在不在、字級與配色有沒有偏離規格，都是你下命令時看不到、只有 validate 看得到的事。
+Without running validate, you cannot know whether something broke — "looks fine" doesn't count: whether text wraps, whether a wrap pushes into the next element, whether an image's asset exists, whether font size and color have drifted from spec — these are things you cannot see while issuing commands, and only validate can.
 
-`errors` 不是空的就繼續修，修完再驗一次，直到 0 錯誤為止——**這仍然是同一輪**，不要把「還有錯誤待修」當成回報內容送出去。真的修不動某一筆（落到上一節第 3 種情形），照上一節的格式說明是哪一筆、你試過什麼。
+If `errors` is not empty, keep fixing and re-validate until it reaches 0 — **this is still the same turn**, don't send "there are still errors to fix" as your reported outcome. If you genuinely cannot fix one (situation 3 from the previous section), use that section's format to say which one, and what you tried.
 
 ## Skills
 
-每一個 skill 的完整步驟都在你工作目錄的 `.agents/skills/<名稱>/SKILL.md`（Claude Code 讀的是同一份內容的 `.claude/skills/<名稱>/SKILL.md`）。目錄名、`SKILL.md` 的 `name`、作者打的斜線命令三者完全一致。**只要作者的訊息以 `/comotion-<名稱>` 開頭，就代表他要你照那個 skill 做**：先讀該 `SKILL.md`，再照裡面的步驟執行，斜線後面的文字就是這個 skill 的輸入。
+Every skill's full steps are in your work directory's `.agents/skills/<name>/SKILL.md` (Claude Code reads the same content from `.claude/skills/<name>/SKILL.md`). The directory name, the `SKILL.md`'s `name`, and the slash command the author types are all identical. **Whenever the author's message starts with `/slidra-<name>`, that means they want you to follow that skill**: read that `SKILL.md` first, then follow the steps inside it — the text after the slash command is that skill's input.
 
-三個素材庫（`style-kit`、`background-kit`、`layout-kit`）是 `plan` 與 `build` 正常流程的一部分：計畫階段從風格庫適配配色與背景配方，建置階段逐頁從版面庫挑版面。三個庫都是「目錄是起點，不是白名單」——可以改、可以混、也可以自己生。
+The three asset libraries (`style-kit`, `background-kit`, `layout-kit`) are part of `plan` and `build`'s normal flow: the planning stage adapts a color scheme and background recipe from the style library; the build stage picks a layout per page from the layout library. All three libraries are "a starting point, not a whitelist" — you can adapt, mix, or generate your own.
 
-| 作者打的 | skill | 什麼時候用 |
+| Author types | skill | When to use |
 |---|---|---|
-| `/comotion-plan` | `comotion-plan` | 把大綱規劃成逐頁計畫與設計規格，寫進 `plan/` 後等作者在確認視窗拍板 |
-| `/comotion-build` | `comotion-build` | 依確認過的計畫一頁寫一份 SVG、套動畫、登記範本，`validate` 修到 0 錯誤 |
-| `/comotion-new-slide` | `comotion-new-slide` | 加一頁講某件事 |
-| `/comotion-validate` | `comotion-validate` | 跑 `comotion validate` 並通讀錯字與動畫順序，把每個問題釘成留言，只留言不動手 |
-| `/comotion-reshape` | `comotion-reshape` | 逐則處理釘選留言，改完刪留言 |
-| `/comotion-animate` | `comotion-animate` | 為指定頁或整份加上依序揭露的動畫與轉場 |
-| `/comotion-style` | `comotion-style` | 統一整份的字級、顏色與字型，或把某頁樣式套到全部 |
-| `/comotion-notes` | `comotion-notes` | 依每頁內容補上口語化的備忘稿，可指定時長 |
-| `/comotion-table` | `comotion-table` | 把貼上的 Markdown 表格在指定頁做成表格 |
-| `/comotion-chart` | `comotion-chart` | 用一組數列在指定頁做出圖表，可選雙軸與堆疊 |
-| `/comotion-style-kit` | `comotion-style-kit` | 從風格庫挑一種寫進 `plan/design-spec.md` |
-| `/comotion-background-kit` | `comotion-background-kit` | 從背景庫挑一種配方建成資產並套到頁面 |
-| `/comotion-layout-kit` | `comotion-layout-kit` | 從版面庫挑一種排某一頁 |
+| `/slidra-plan` | `slidra-plan` | Turn an outline into a page-by-page plan and design spec, write it into `plan/`, then wait for the author to approve it in the confirmation dialog |
+| `/slidra-build` | `slidra-build` | Following the approved plan, write one SVG per page, apply animation, register templates, and fix with `validate` down to 0 errors |
+| `/slidra-new-slide` | `slidra-new-slide` | Add a page about something |
+| `/slidra-validate` | `slidra-validate` | Run `slidra validate` and proofread typos and animation order, pin every issue as a comment — comment only, never edit directly |
+| `/slidra-reshape` | `slidra-reshape` | Work through pinned comments one by one, deleting each after it's handled |
+| `/slidra-animate` | `slidra-animate` | Add sequential-reveal animation and transitions to a given page or the whole deck |
+| `/slidra-style` | `slidra-style` | Unify font sizes, colors, and fonts across the deck, or apply one page's style to all |
+| `/slidra-notes` | `slidra-notes` | Add conversational speaker notes based on each page's content, with an optional target duration |
+| `/slidra-table` | `slidra-table` | Turn a pasted Markdown table into a table on a given page |
+| `/slidra-chart` | `slidra-chart` | Build a chart from a data series on a given page, with optional dual axes and stacking |
+| `/slidra-style-kit` | `slidra-style-kit` | Pick one from the style library and write it into `plan/design-spec.md` |
+| `/slidra-background-kit` | `slidra-background-kit` | Pick a recipe from the background library, build it into an asset, and apply it to the page |
+| `/slidra-layout-kit` | `slidra-layout-kit` | Pick one from the layout library to lay out a given page |

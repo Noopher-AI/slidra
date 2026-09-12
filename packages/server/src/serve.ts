@@ -3,10 +3,10 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoMotionError, CoMotionInvalidRequestError } from "./comotion/errors.js";
-import { runJsonCommand } from "./comotion/command.js";
-import { readProjectsRegistry, resolveCoMotionHome } from "./comotion/home.js";
-import { readSaveState } from "./comotion/save-state.js";
+import { SlidraError, SlidraInvalidRequestError } from "./slidra/errors.js";
+import { runJsonCommand } from "./slidra/command.js";
+import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
+import { readSaveState } from "./slidra/save-state.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
@@ -34,14 +34,14 @@ import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 
 /**
- * `comotion serve` is a mode of the CLI, not a second backend (ADR-0002):
- * every read of presentation content spawns the real `comotion` binary
- * ([E4.T9]/F7 — `comotion/`), the exact same program one-shot
- * `comotion cat`/`ls` runs. This module never opens a presentation file
+ * `slidra serve` is a mode of the CLI, not a second backend (ADR-0002):
+ * every read of presentation content spawns the real `slidra` binary
+ * ([E4.T9]/F7 — `slidra/`), the exact same program one-shot
+ * `slidra cat`/`ls` runs. This module never opens a presentation file
  * directly.
  */
 export interface ServeOptions {
-  /** Opaque id of an already-opened presentation (see `comotion open`). */
+  /** Opaque id of an already-opened presentation (see `slidra open`). */
   presentationId: string;
   /**
    * Port to bind. Defaults to 5173. Tests must always pass 0 (let the OS
@@ -88,7 +88,7 @@ export interface ServeOptions {
   /**
    * Directory the built frontend is served from. Omitted everywhere in
    * production (`cli.ts`, the e2e smoke test), where it resolves to the
-   * real `packages/web/dist` exactly as before.
+   * real `apps/web/dist` exactly as before.
    *
    * It exists so tests have somewhere else to write. Without it the
    * static-serving tests had no choice but to populate the real build
@@ -202,8 +202,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     editingLock.off("unfrozen", onUnfrozen);
   });
 
-  // `/` 斜線命令清單（architecture comment on #232/#236): agent report ∪
-  // bundled skills ∪ user skills, recomputed on demand rather than cached —
+  // The `/` slash-command list: agent report ∪ bundled skills ∪ user
+  // skills, recomputed on demand rather than cached —
   // the underlying skill directories can change between calls and this is
   // never hot-path code. `GET /api/agent/commands` below calls this
   // directly for the initial value; the SSE push below recomputes and
@@ -300,7 +300,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
       if (error.code === "EADDRINUSE") {
         // Never fall back to another port — a user who asked for a specific
         // port and silently got another has been lied to.
-        reject(new CoMotionError(`連接埠已被使用：${port}`));
+        reject(new SlidraError(`Port already in use: ${port}`));
       } else {
         reject(error);
       }
@@ -329,7 +329,7 @@ async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    // ADR-0010: 播放模式 gives the (untrusted, ADR-0003) slide's iframe
+    // ADR-0010: play mode gives the (untrusted, ADR-0003) slide's iframe
     // `allow-scripts`, which puts it in an opaque origin. An opaque origin
     // can still send cross-origin *simple* requests — it cannot read the
     // response, but it can write — so a hostile slide could otherwise fire
@@ -355,7 +355,7 @@ async function handleRequest(
     // gate exists for — exempting it here is what makes that header not
     // dead code.
     if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {
-      sendJson(res, 403, { error: "不接受來自不透明來源（Origin: null）的請求" });
+      sendJson(res, 403, { error: "Does not accept requests from an opaque origin (Origin: null)" });
       return;
     }
 
@@ -392,17 +392,17 @@ async function handleRequest(
         return;
       }
       if (url.pathname === "/api/agent/session") {
-        // The chat panel's "選擇模型…": brings the ACP session up before
+        // The chat panel's "Choose model…": brings the ACP session up before
         // the first message so the model list exists to pick from. Same
         // handshake the first message would run; no author turn happens.
         try {
           sendJson(res, 200, await manager.warmSession());
         } catch (error) {
-          if (error instanceof CoMotionError) {
+          if (error instanceof SlidraError) {
             sendJson(res, 409, { error: error.message });
             return;
           }
-          sendJson(res, 500, { error: error instanceof Error ? error.message : "建立對話失敗" });
+          sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to create conversation" });
         }
         return;
       }
@@ -424,7 +424,7 @@ async function handleRequest(
         // T3/NOOP-142: the same "agent holds the floor" 409 gate as
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
-        // lock just because it does not spawn the comotion binary.
+        // lock just because it does not spawn the slidra binary.
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
@@ -487,12 +487,12 @@ async function handleRequest(
         sendJson(res, 200, { ok: true });
         return;
       }
-      sendJson(res, 405, { error: "只支援 GET" });
+      sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
 
     if (req.method !== "GET") {
-      sendJson(res, 405, { error: "只支援 GET" });
+      sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
 
@@ -583,7 +583,7 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/raw/")) {
       // Deliberately NOT `POST /api/command`'s whitelist, unlike every
       // other read in this file. Every whitelisted command is reachable by
-      // the agent (ADR-0004's permission hook allows `comotion *`). A
+      // the agent (ADR-0004's permission hook allows `slidra *`). A
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,
@@ -593,7 +593,7 @@ async function handleRequest(
       try {
         virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
       } catch {
-        sendJson(res, 400, { error: "路徑編碼無效" });
+        sendJson(res, 400, { error: "Invalid path encoding" });
         return;
       }
       // The Range header is read here, at the one place that has `req`, and
@@ -605,13 +605,13 @@ async function handleRequest(
     }
 
     if (url.pathname.startsWith("/api/")) {
-      sendJson(res, 404, { error: "找不到端點" });
+      sendJson(res, 404, { error: "Endpoint not found" });
       return;
     }
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "未知錯誤" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 }
 
@@ -628,13 +628,13 @@ async function handleRequest(
 async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const status = await manager.status();
   if (status.current === null) {
-    sendJson(res, 409, { error: "尚未選擇 agent，請先在設定中選擇要使用的 agent", reason: "unset", kind: null });
+    sendJson(res, 409, { error: "No agent selected, choose one in settings first", reason: "unset", kind: null });
     return;
   }
   const card = status.agents.find((agent) => agent.kind === status.current)!;
   if (card.status === "unauthenticated") {
     sendJson(res, 409, {
-      error: `${card.label} 尚未登入，請在終端機執行 ${card.loginCommand}`,
+      error: `${card.label} is not logged in, run ${card.loginCommand} in a terminal`,
       reason: "unauthenticated",
       kind: status.current,
     });
@@ -645,7 +645,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const text = (body as { text?: unknown } | null)?.text;
@@ -655,7 +655,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
   // apart from an empty message with nothing pinned to it. That one is
   // refused there, not here.
   if (typeof text !== "string") {
-    sendJson(res, 400, { error: "訊息內容不可為空" });
+    sendJson(res, 400, { error: "Message content must not be empty" });
     return;
   }
   // #303: one line per author message so a turn that starts unexpectedly
@@ -673,7 +673,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
  * way; 409 when nothing is running (no agent selected, or the agent is
  * idle) — the author pressed Stop on a turn that had already ended.
  *
- * What stopping does NOT do: a `comotion` command the agent had already
+ * What stopping does NOT do: a `slidra` command the agent had already
  * launched keeps running to completion (each command is atomic), and
  * nothing already written to the presentation is rolled back — the
  * author's undo is the tool for that.
@@ -683,7 +683,7 @@ async function handleChatCancelPost(manager: AgentManager, res: ServerResponse):
     console.log(`[chat] ${new Date().toISOString()} cancel requested`);
     await manager.cancel();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "目前沒有進行中的回合可以停止" });
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "There is no turn currently in progress to stop" });
     return;
   }
   sendJson(res, 202, { ok: true });
@@ -703,7 +703,7 @@ async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Pr
     console.log(`[chat] ${new Date().toISOString()} new session requested`);
     await manager.newSession();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "無法重開對話" });
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "Failed to restart conversation" });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -720,12 +720,12 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const kind = (body as { kind?: unknown } | null)?.kind;
   if (kind !== "claude" && kind !== "codex") {
-    sendJson(res, 400, { error: "kind 必須是下列其中一個值：claude、codex" });
+    sendJson(res, 400, { error: "kind must be one of: claude, codex" });
     return;
   }
   try {
@@ -736,7 +736,7 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
       sendJson(res, 409, { error: error.message, reason: "editing" });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "選擇 agent 失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to select agent" });
   }
 }
 
@@ -744,7 +744,7 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
  * `POST /api/agent/model` — the chat panel's model picker. `modelId` must be
  * one of `GET /api/agent`'s `models[].id`; the switch goes to the live ACP
  * session (establishing one first if no message has been sent yet) and is
- * persisted per agent kind. A `CoMotionError` (mid-turn, unknown model, no
+ * persisted per agent kind. A `SlidraError` (mid-turn, unknown model, no
  * agent) is the author's problem to read, so it comes back as 409 with its
  * own wording rather than a generic 500.
  */
@@ -753,23 +753,23 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
     return;
   }
   const modelId = (body as { modelId?: unknown } | null)?.modelId;
   if (typeof modelId !== "string" || modelId === "") {
-    sendJson(res, 400, { error: "modelId 必須是非空字串" });
+    sendJson(res, 400, { error: "modelId must be a non-empty string" });
     return;
   }
   try {
     const status = await manager.setModel(modelId);
     sendJson(res, 200, { ok: true, modelId: status.modelId, model: status.model });
   } catch (error) {
-    if (error instanceof CoMotionError) {
+    if (error instanceof SlidraError) {
       sendJson(res, 409, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "切換模型失敗" });
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to switch model" });
   }
 }
 
@@ -787,11 +787,11 @@ async function handleSavePost(
   try {
     await savePresentation(presentationId);
   } catch (error) {
-    if (error instanceof CoMotionInvalidRequestError) {
+    if (error instanceof SlidraInvalidRequestError) {
       sendJson(res, 400, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof CoMotionError ? error.message : "儲存失敗" });
+    sendJson(res, 500, { error: error instanceof SlidraError ? error.message : "Save failed" });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -820,12 +820,12 @@ async function handleExportPost(
   try {
     body = JSON.parse(await readBody(req));
   } catch {
-    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    sendJson(res, 400, { error: "format must be pdf or pdf-frames" });
     return;
   }
   const format = (body as { format?: unknown } | null)?.format;
   if (format !== "pdf" && format !== "pdf-frames") {
-    sendJson(res, 400, { error: "format 必須是 pdf 或 pdf-frames" });
+    sendJson(res, 400, { error: "format must be pdf or pdf-frames" });
     return;
   }
 
@@ -837,7 +837,7 @@ async function handleExportPost(
       async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
         const project = await loadProject(presentationId);
         const fileName = exportFileName(project.name, jobFormat);
-        const outputPath = path.join(resolveCoMotionHome(), "exports", id, fileName);
+        const outputPath = path.join(resolveSlidraHome(), "exports", id, fileName);
         const result = await renderExportPdf({
           serverUrl: `http://${serverAddress.host}:${serverAddress.port}`,
           format: jobFormat,
@@ -849,7 +849,7 @@ async function handleExportPost(
       },
     );
   } catch {
-    sendJson(res, 409, { error: "已有匯出工作進行中" });
+    sendJson(res, 409, { error: "An export job is already in progress" });
     return;
   }
   sendJson(res, 202, { jobId });
@@ -864,14 +864,14 @@ async function handleExportPost(
 async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: string, res: ServerResponse): Promise<void> {
   const filePath = exportJobManager.getFilePath(jobId);
   if (!filePath) {
-    sendJson(res, 404, { error: "找不到匯出檔案" });
+    sendJson(res, 404, { error: "Export file not found" });
     return;
   }
   let bytes: Buffer;
   try {
     bytes = await readFile(filePath);
   } catch {
-    sendJson(res, 404, { error: "找不到匯出檔案" });
+    sendJson(res, 404, { error: "Export file not found" });
     return;
   }
   const fileName = path.basename(filePath);
@@ -887,15 +887,15 @@ async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: st
  * `undo <id> --json` / `redo <id> --json` (plan §3.7): neither is part of
  * `COMMAND_WHITELIST` (they are not reachable through `POST /api/command`),
  * so this is a direct `runJsonCommand` call rather than going through
- * `comotion/argv.ts`'s encoder table.
+ * `slidra/argv.ts`'s encoder table.
  */
 async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: string): Promise<{ restoredPaths: string[] }> {
   const result = await runJsonCommand<{ restoredPaths: string[] }>([name, presentationId]);
   if (!result.ok) {
-    throw new CoMotionError(result.message);
+    throw new SlidraError(result.message);
   }
   if (!Array.isArray(result.data?.restoredPaths)) {
-    throw new CoMotionError(`${name} 回傳的資料格式錯誤`);
+    throw new SlidraError(`${name} returned malformed data`);
   }
   return { restoredPaths: result.data.restoredPaths };
 }
@@ -907,21 +907,21 @@ const runRedo = (id: string): Promise<{ restoredPaths: string[] }> => runCommand
  * `POST /api/save`'s actual pack (plan §3.7): reads `sourcePath` off
  * `projects.json` — there is no CLI command that already knows it — and
  * runs `pack <id> <sourcePath> --json`, which itself advances `savedAt`
- * when the output path equals `sourcePath` (`comotion/save-state.ts`'s
+ * when the output path equals `sourcePath` (`slidra/save-state.ts`'s
  * next read picks that up).
  */
 async function savePresentation(presentationId: string): Promise<{ fileName: string }> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(presentationId);
   if (!entry) {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${presentationId}`);
+    throw new SlidraError(`no presentation found for id: ${presentationId}`);
   }
   if (entry.sourcePath === undefined) {
-    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 comotion pack 指定路徑");
+    throw new SlidraInvalidRequestError("This presentation has no file path to write back to, use slidra pack to specify a path");
   }
   const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
   if (!result.ok) {
-    throw new CoMotionError(result.message);
+    throw new SlidraError(result.message);
   }
   return { fileName: path.basename(entry.sourcePath) };
 }
@@ -930,7 +930,7 @@ async function savePresentation(presentationId: string): Promise<{ fileName: str
  * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
  * editing requests in the single-editor-lock sense (plan §4.1): refused
  * with 409 while the agent holds the floor, run unconditionally otherwise
- * — a thrown `CoMotionError` on an empty stack is relayed here as 400 with
+ * — a thrown `SlidraError` on an empty stack is relayed here as 400 with
  * the command's own message verbatim rather than a silent 200.
  */
 async function handleUndoRedoPost(
@@ -947,7 +947,7 @@ async function handleUndoRedoPost(
     const result = await run(presentationId);
     sendJson(res, 200, result);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "無法完成操作" });
+    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Could not complete the operation" });
   }
 }
 
@@ -1017,7 +1017,7 @@ export function createChatStreamRegistry() {
      */
     open(manager: AgentManager, res: ServerResponse): void {
       if (closing) {
-        throw new CoMotionError("伺服器正在關閉");
+        throw new SlidraError("Server is shutting down");
       }
       const stream = openEventStream(res);
       streams.add(stream);
@@ -1054,7 +1054,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * Resolves the built frontend's static directory (packages/web/dist),
+ * Resolves the built frontend's static directory (apps/web/dist),
  * relative to this module's own location so it works regardless of the
  * caller's cwd. The directory need not exist yet — `serveStatic` falls back
  * to an explicit error when it doesn't, which is all Seam B tests exercise;
@@ -1062,7 +1062,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  */
 function resolveWebDist(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, "../../web/dist");
+  return path.join(here, "../../../apps/web/dist");
 }
 
 /**
@@ -1070,7 +1070,7 @@ function resolveWebDist(): string {
  * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
  * longer imports that package). Repo-root `assets/fonts/` is the same
  * physical file the Rust binary's own `include_bytes!` embeds
- * (`crates/comotion/src/presentation.rs`) — both moved together off
+ * (`crates/slidra/src/presentation.rs`) — both moved together off
  * `packages/core/src/assets/fonts/` when that package was deleted
  * ([E4.T12]).
  */
@@ -1105,15 +1105,15 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
     if (code !== "ENOENT") {
       // A real I/O failure (permissions, etc.) — never disguise it as a
       // successful page load.
-      sendJson(res, 500, { error: "靜態檔案讀取失敗" });
+      sendJson(res, 500, { error: "Failed to read static file" });
       return;
     }
     if (isRoot) {
       // index.html itself is missing: the frontend was never built at all.
-      sendJson(res, 500, { error: "前端尚未建置，請先執行 build" });
+      sendJson(res, 500, { error: "Frontend has not been built yet, run build first" });
       return;
     }
-    sendJson(res, 404, { error: "找不到檔案" });
+    sendJson(res, 404, { error: "file not found" });
   }
 }
 

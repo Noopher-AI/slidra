@@ -1,5 +1,5 @@
 /**
- * Recognises a `comotion` invocation written in a shape that is provably
+ * Recognises a `slidra` invocation written in a shape that is provably
  * free of shell syntax.
  *
  * **Its role changed with ADR-0019.** This used to be the gate: a command
@@ -7,7 +7,7 @@
  * matches is the CLI and is allowed outright, and one that does not is
  * judged by `protected-paths.ts` instead (refused only if it names the
  * presentation's real files). Everything below is unchanged and must stay
- * that way: it is still what lets a `comotion` command be allowed without
+ * that way: it is still what lets a `slidra` command be allowed without
  * looking at what its arguments contain.
  *
  * Earlier revisions of this module tried to *recognise danger*: tokenize
@@ -15,7 +15,7 @@
  * like it could chain, pipe, substitute, or redirect. Each round found one
  * more shell construct the tokenizer had not modelled — quoting, then
  * command substitution, then backslash escapes changing where a quoted
- * region actually closes (`comotion "foo\"bar"; printf PWNED \"` passed
+ * region actually closes (`slidra "foo\"bar"; printf PWNED \"` passed
  * the old tokenizer while bash treats the `;` as unquoted). That is not a
  * sequence of bugs to patch; it is proof that matching a POSIX shell's
  * grammar exactly is not a winnable game. The shell's grammar is large and
@@ -34,9 +34,9 @@
  * The accepted shape:
  *   1. The command is a sequence of arguments separated by plain spaces or
  *      tabs. The first argument must be exactly the literal word
- *      `comotion` — the program being executed, not a prefix match
- *      (`comotion-something-else` is refused) and not merely present
- *      somewhere in the string (`sh -c 'comotion ls'` is refused, because
+ *      `slidra` — the program being executed, not a prefix match
+ *      (`slidra-something-else` is refused) and not merely present
+ *      somewhere in the string (`sh -c 'slidra ls'` is refused, because
  *      its first argument is `sh`).
  *   2. Every argument is *either*:
  *        - a bare token made only of ASCII letters, digits, and
@@ -70,9 +70,9 @@
  *      a command sends stderr where stdout already goes and can start no
  *      new command, name no new program, and expand nothing. Whatever
  *      remains after stripping it still has to pass rules 1–4 unchanged,
- *      so `comotion cat X 'abc 2>&1` (unterminated quote) and
- *      `comotion cat X$(id) 2>&1` are still refused. Only one occurrence
- *      is stripped — `comotion ls X 2>&1 2>&1` is refused. It is allowed
+ *      so `slidra cat X 'abc 2>&1` (unterminated quote) and
+ *      `slidra cat X$(id) 2>&1` are still refused. Only one occurrence
+ *      is stripped — `slidra ls X 2>&1 2>&1` is refused. It is allowed
  *      because agents append it by reflex to see stderr, and a refusal
  *      reaches them as an opaque "the user rejected this", which they read
  *      as a human saying no and stop on.
@@ -83,9 +83,9 @@
  * A command an agent cannot express this way is a small cost. A bypass of
  * this allowlist is not.
  */
-export function isCoMotionCommand(command: string): boolean {
+export function isSlidraCommand(command: string): boolean {
   const tokens = tokenize(stripTrailingStderrRedirect(command));
-  return tokens !== undefined && tokens.length > 0 && tokens[0] === "comotion";
+  return tokens !== undefined && tokens.length > 0 && tokens[0] === "slidra";
 }
 
 /**

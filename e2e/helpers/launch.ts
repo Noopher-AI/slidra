@@ -17,21 +17,21 @@ const rootDir = path.join(e2eDir, "..");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 /**
- * Checks that `packages/web/dist/index.html` and `target/release/comotion`
- * (`comotion serve`'s own read/write path, and this file's own
+ * Checks that `apps/web/dist/index.html` and `target/release/slidra`
+ * (`slidra serve`'s own read/write path, and this file's own
  * `createDefaultRegistry()`/`registry.dispatch` calls below, both go
- * through the same compiled binary now — [E4.T9]/F7, [E4.T12]) exist under
- * `rootDir` — callers must build before running these tests.
+ * through the same compiled binary now) exist under `rootDir` — callers
+ * must build before running these tests.
  */
 export async function requireBuilt(rootDir: string): Promise<void> {
-  const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
-  await requireExists(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
-  await requireExists(path.join(rootDir, "target/release/comotion"), "target/release/comotion 不存在，請先執行 npm run build");
+  const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+  await requireExists(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireExists(path.join(rootDir, "target/release/slidra"), "target/release/slidra does not exist, run npm run build first");
 }
 
 async function requireExists(filePath: string, message: string): Promise<void> {
@@ -50,16 +50,16 @@ export interface StartServerOptions {
   /**
    * Inject `assets/fonts` into the deck's `fonts/` before
    * packing (ADR-0016 decision 2). Defaults to `false` — most decks are not
-   * font-injected, and unconditional injection would change their `.comot`
+   * font-injected, and unconditional injection would change their `.slidra`
    * content and break byte-exact appearance baselines.
    */
   injectFonts?: boolean;
-  /** [E2.T8]: overrides the default `editing-fake-acp-agent.mjs` fixture. Existing 27 call sites are unaffected — this is optional and defaults to the current fixture. */
+  /** Overrides the default `editing-fake-acp-agent.mjs` fixture. Existing call sites are unaffected — this is optional and defaults to the current fixture. */
   agentFixture?: string;
-  /** [E2.T8]: merged over the default agent env (`E2E_PRESENTATION_ID`/`E2E_NEW_TITLE`, both still set unless overridden here). */
+  /** Merged over the default agent env (`E2E_PRESENTATION_ID`/`E2E_NEW_TITLE`, both still set unless overridden here). */
   agentEnv?: Record<string, string>;
   /**
-   * [E3.T5]: what `serve` starts already pointed at — same field
+   * What `serve` starts already pointed at — same field
    * `ServeOptions.initialAgent` (`serve.ts`). Given at all, this wins over
    * the default `agent` config above (`serve.ts`'s own precedence) — used
    * to reach the "unset"/"cli"-sourced starting points `agentEnv` alone
@@ -67,15 +67,15 @@ export interface StartServerOptions {
    */
   initialAgent?: { kind: AgentKind | null; source: AgentSource };
   /**
-   * [E3.T5]: injected login-probe runner (`probe.ts`'s `CommandRunner` seam)
-   * — given at all, `assumeLoggedIn` is never set (`serve.ts`'s own
+   * Injected login-probe runner (`probe.ts`'s `CommandRunner` seam) —
+   * given at all, `assumeLoggedIn` is never set (`serve.ts`'s own
    * precedence), so login status is 100% controlled by this function
    * instead of the default `agent` config's real-CLI-probing shortcut.
    */
   runCommand?: CommandRunner;
   /**
-   * [E3.T5]: resolves each `AgentKind` to the adapter `serve` spawns for it
-   * — required alongside `runCommand` so a select doesn't fall through to
+   * Resolves each `AgentKind` to the adapter `serve` spawns for it —
+   * required alongside `runCommand` so a select doesn't fall through to
    * the real `@zed-industries/*` adapters. Takes this call's own
    * `presentationId` as a second argument (this helper's own convenience,
    * not `ServeOptions.agentManager.resolveAdapter`'s real signature —
@@ -108,18 +108,18 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     runCommand,
     resolveAdapter,
   } = options;
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-home-`));
-  const comotDir = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-files-`));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: `comotion serve` now spawns the Rust binary for every read
-  // and write — `COMOTION_BIN` must be set before `startServe` below, or
-  // startup fails immediately on the presentation load.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-home-`));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-files-`));
+  process.env.SLIDRA_HOME = slidraHome;
+  // `slidra serve` now spawns the Rust binary for every read and write —
+  // `SLIDRA_BIN` must be set before `startServe` below, or startup fails
+  // immediately on the presentation load.
+  process.env.SLIDRA_BIN = slidraBin;
 
   let deckStagingDir: string | undefined;
   let packSource = deckDir;
   if (injectFonts) {
-    deckStagingDir = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-deck-`));
+    deckStagingDir = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-deck-`));
     await cp(deckDir, deckStagingDir, { recursive: true });
     await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
     await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -127,9 +127,9 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   }
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(packSource, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(packSource, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -140,7 +140,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
       ...agentEnv,
     },
   };
@@ -162,10 +162,10 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       if (deckStagingDir) await rm(deckStagingDir, { recursive: true, force: true });
     },
   };

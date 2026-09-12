@@ -1,0 +1,106 @@
+/* ═══════════════════════════════════════════════════════════════
+   Stage (New v3 skeleton). `.canvas-area` (the well, padding/background/
+   fullscreen target) lives in shell.css — this file owns `.stage` (the
+   slide's own box) and the drag/drop overlay. The zoom/pan `transform` is
+   set inline by Stage.tsx (computed from stage-view.ts's state, not a
+   design-token value), so it is not repeated here.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* `width: auto` + `top/left: 50%` (not `width: 100%` + `place-items:
+   center`): `.canvas-area`'s grid track is stretch-aligned (see that
+   file's own comment on why), so `.stage` fills the track on both axes
+   independently and `aspect-ratio` + `max-width`/`max-height` pick
+   whichever axis is actually the tighter constraint — a window narrower or
+   shorter than 16:9 both letterbox correctly. `top/left: 50%` is relative
+   to `.canvas-area`'s own stretch-sized box; Stage.tsx's inline `transform`
+   starts with `translate(-50%, -50%)` (undoing this offset against
+   `.stage`'s own size, the standard self-centering trick) and then composes
+   the pan/zoom transform after it — see that file's own comment. */
+.stage {
+  aspect-ratio: 16 / 9;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  position: relative;
+  top: 50%;
+  left: 50%;
+  /* Transparent, not white: the slide document paints its own `#fff`
+     body (canvas.ts wrapSlideDocument/wrapSelectionDocument, #120), so a
+     background here is only ever visible in the sub-pixel row the
+     `translate(-50%, -50%)` centering leaves at the top/bottom edge
+     (e.g. y = 101.5 at 1280×720). With white it blended into a 1px light
+     seam along the bottom of every dark slide (measured rgb(139,139,139)
+     over the slide's rgb(16,20,24)); transparent lets the well show
+     through instead. */
+  background: transparent;
+  border-radius: var(--stage-radius);
+  box-shadow: var(--shadow-stage);
+  overflow: hidden;
+}
+
+/* Before any slide exists, the stage shouldn't look like a slide: remove
+   the paper's shadow and corner radius. The iframe itself is also
+   transparent (canvas.ts's EMPTY_DECK_DOCUMENT), so the whole well is
+   just a solid dark area with one line of white text in the middle. */
+.stage[data-empty="true"] {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.stage-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--surface-white);
+  opacity: 0.55;
+  font-size: var(--text-md-panel-title);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* Under fullscreen, the aspect-ratio box no longer applies and the iframe
+   fills the whole screen — an existing regression contract takes priority
+   over this skeleton work's visuals (e2e/player-fullscreen.test.ts asserts
+   frameSize[0] === screenSize[0]). */
+.canvas-area:fullscreen .stage,
+.canvas-area:-webkit-full-screen .stage {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* T3/NOOP-142: drag/drop asset-import overlay. Absolutely positioned over
+   `.stage` (position: relative), so it exactly matches the slide's own box
+   regardless of zoom. `pointer-events` toggles via Stage.tsx's inline style. */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: calc(var(--space-1) / 2) dashed transparent;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.drop-overlay[data-active="true"] {
+  background: var(--brand-red-tint);
+  border-color: var(--brand-red);
+}

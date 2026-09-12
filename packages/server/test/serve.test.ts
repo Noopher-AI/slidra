@@ -12,8 +12,8 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
 
-/** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+/** The real Rust binary this whole suite drives — `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,10 +22,10 @@ interface CliEnvelope<T = unknown> {
   failureKind?: string;
 }
 
-/** Runs the real `comotion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
+/** Runs the real `slidra` binary with `--json`, exit-code-blind (mirrors `slidra/command.ts`'s `runJsonCommand`). */
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -38,7 +38,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 // The real build output `resolveWebDist()` defaults to. `npm run test:e2e`
 // runs a browser against exactly these bytes, so this suite must never
-// write to or delete from here (ticket #20). Referenced only by the
+// write to or delete from here. Referenced only by the
 // isolation guard at the bottom of this file, never by a test's fixtures.
 const realWebDist = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 
@@ -85,7 +85,7 @@ beforeAll(async () => {
 // None of the tests in this file touch /api/chat*, and spawning is lazy
 // (first sendMessage), so this fixture is never actually spawned here —
 // it exists only to satisfy the now-required `agent` field on ServeOptions
-// (ticket #6, fix 6: "serve without an agent" is unrepresentable).
+// ("serve without an agent" is unrepresentable).
 const fakeAgentFixture = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "agent/fixtures/fake-acp-agent.mjs",
@@ -98,18 +98,18 @@ const fakeAgent: AgentAdapterConfig = {
 };
 
 // root ignores permission bits, so the chmod(0o000)-based I/O-failure test
-// below can never observe a real EACCES there. Same detection ticket #10's
-// and #11's tests already established (packages/cli/test/commands.test.ts,
-// packages/server/test/raw.test.ts) — reused rather than reinvented.
+// below can never observe a real EACCES there. The same detection is
+// already established by tests in packages/cli/test/commands.test.ts and
+// packages/server/test/raw.test.ts — reused rather than reinvented.
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
-// Every test points COMOTION_HOME at its own temp directory (ADR-0004
+// Every test points SLIDRA_HOME at its own temp directory (ADR-0004
 // testing convention) and always binds port 0, reading the assigned port
-// back — a fixed port would collide with ticket #6's own server tests.
+// back — a fixed port would collide with this file's own server tests.
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 // Where this test's server serves static files from — a throwaway stand-in
 // for packages/web/dist, injected via ServeOptions.staticDir. Deliberately
 // NOT created here: the "frontend was never built" test needs it absent,
@@ -119,12 +119,12 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-static-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-serve-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-serve-static-"));
   webDist = path.join(staticRoot, "dist");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
@@ -132,18 +132,18 @@ afterEach(async () => {
   // Always shut every server started in the test down, including on
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", name]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
@@ -172,9 +172,9 @@ async function openPresentationWithRampAsset(): Promise<string> {
     "slides/001.svg": new TextEncoder().encode("<svg/>"),
     "assets/clip.mp4": RAMP_BYTES,
   });
-  const comotPath = path.join(comotDir, "with-ramp-asset.comot");
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, "with-ramp-asset.slidra");
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
@@ -196,11 +196,11 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
   return server;
 }
 
-// Builds a hostile .comot with a literal project.json body (bypassing the
+// Builds a hostile .slidra with a literal project.json body (bypassing the
 // server's own JSON.stringify) so the malformed-container tests exercise
 // the exact bytes the review found unhandled — real fflate zips, no mocks.
 //
-// Ticket #12: `open` now runs the same structural validation `serve` used
+// `open` now runs the same structural validation `serve` used
 // to run on its own, so a structurally invalid project.json is rejected
 // right here, before any id or work directory exists for it — it never
 // reaches `serve()` at all. This returns `open`'s own rejection message
@@ -212,7 +212,7 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
     "slides/": new Uint8Array(0),
     "assets/": new Uint8Array(0),
   });
-  const malformedPath = path.join(comotDir, "malformed.comot");
+  const malformedPath = path.join(slidraDir, "malformed.slidra");
   await writeFile(malformedPath, zipped);
   const opened = await runCli<{ id: string }>(["open", malformedPath]);
   expect(opened.ok).toBe(false);
@@ -221,11 +221,11 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
 
 describe("startServe", () => {
   // The `/api/raw/` route reads the request's Range header and hands it to
-  // handleRawRequest (ticket #13). raw.test.ts calls that function directly,
-  // which deliberately proves the range logic without serve.ts — so nothing
+  // handleRawRequest. raw.test.ts calls that function directly, which
+  // deliberately proves the range logic without serve.ts — so nothing
   // there would notice if this route stopped passing the header along. These
   // two tests cover exactly that wiring, over a real socket.
-  it("/api/raw/ 把請求的 Range 標頭一路帶到位元組切片，回 206 與確切的區間", async () => {
+  it("/api/raw/ carries the request's Range header all the way through to the byte slice, returning 206 with the exact range", async () => {
     const id = await openPresentationWithRampAsset();
 
     const server = await serve(id);
@@ -239,7 +239,7 @@ describe("startServe", () => {
     expect(body.equals(RAMP_BYTES.subarray(10, 20))).toBe(true);
   });
 
-  it("/api/raw/ 沒有 Range 標頭時仍回 200 完整檔案，並宣告 Accept-Ranges", async () => {
+  it("/api/raw/ still returns 200 with the full file and announces Accept-Ranges when there is no Range header", async () => {
     const id = await openPresentationWithRampAsset();
 
     const server = await serve(id);
@@ -260,7 +260,7 @@ describe("startServe", () => {
     expect(server.url).toBe(`http://127.0.0.1:${server.port}`);
   });
 
-  // ADR-0010 / ticket #28: an opaque-origin document (the play iframe, once
+  // ADR-0010: an opaque-origin document (the play iframe, once
   // it has `allow-scripts`) sends the literal header value "Origin: null"
   // on a cross-origin request. Rejecting it closes the write-blind gap that
   // opening `allow-scripts` creates — the two are one gate, checked ahead
@@ -272,7 +272,7 @@ describe("startServe", () => {
     const getResponse = await fetch(`${server.url}/api/presentation`, { headers: { Origin: "null" } });
     expect(getResponse.status).toBe(403);
     const getBody = (await getResponse.json()) as { error: string };
-    expect(getBody.error).toMatch(/[一-鿿]/);
+    expect(getBody.error).toMatch(/opaque origin/);
 
     const postResponse = await fetch(`${server.url}/api/chat`, {
       method: "POST",
@@ -282,7 +282,7 @@ describe("startServe", () => {
     expect(postResponse.status).toBe(403);
   });
 
-  // ADR-0011 / #56: view mode's iframe now also carries allow-scripts, so
+  // ADR-0011: view mode's iframe now also carries allow-scripts, so
   // it is opaque-origin too and can send the same "Origin: null" writes
   // ADR-0010 already worried about for play mode. The gate above
   // (`req.headers.origin === "null"`, serve.ts:203) is checked ahead of
@@ -297,7 +297,7 @@ describe("startServe", () => {
     const response = await fetch(`${server.url}/api/files/slides/001.svg`, { headers: { Origin: "null" } });
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: string };
-    expect(body.error).toMatch(/[一-鿿]/);
+    expect(body.error).toMatch(/opaque origin/);
   });
 
   it("does not reject a normal request with no Origin header, or a same-origin Origin", async () => {
@@ -311,7 +311,7 @@ describe("startServe", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  it("serves the presentation's metadata reached only through the comotion binary", async () => {
+  it("serves the presentation's metadata reached only through the slidra binary", async () => {
     const id = await openFreshPresentation("我的簡報");
 
     const server = await serve(id);
@@ -339,14 +339,14 @@ describe("startServe", () => {
   });
 
   // Validation standard 8 (plan §5): the structural proof that `serve` no
-  // longer reads any presentation file itself now points `COMOTION_BIN` at
+  // longer reads any presentation file itself now points `SLIDRA_BIN` at
   // a fake, hand-written `.mjs` binary — never touching a real filesystem —
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
-  // injection point: it proves the server goes through `runCoMotion`'s own
+  // injection point: it proves the server goes through `runSlidra`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
-  it("serves fabricated content from a stub COMOTION_BIN, never touching the real filesystem", async () => {
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
+  it("serves fabricated content from a stub SLIDRA_BIN, never touching the real filesystem", async () => {
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -361,7 +361,7 @@ describe("startServe", () => {
         '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
         '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "已讀取：slides/fake.svg" };',
         "} else {",
-        '  result = { ok: false, message: "找不到檔案：" + rest.join(" "), failureKind: "not-found" };',
+        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
         "}",
         "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
@@ -369,9 +369,9 @@ describe("startServe", () => {
       { mode: 0o755 },
     );
 
-    process.env.COMOTION_BIN = fakeBinPath;
+    process.env.SLIDRA_BIN = fakeBinPath;
     try {
-      // COMOTION_HOME is this test's own fresh, empty temp directory —
+      // SLIDRA_HOME is this test's own fresh, empty temp directory —
       // "unregistered-stub-id" names nothing on the real filesystem at all.
       const server = await serve("unregistered-stub-id");
 
@@ -381,7 +381,7 @@ describe("startServe", () => {
       const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
       expect(slide).toBe("<svg>STUB</svg>");
     } finally {
-      process.env.COMOTION_BIN = coMotionBinPath;
+      process.env.SLIDRA_BIN = slidraBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });
@@ -394,7 +394,7 @@ describe("startServe", () => {
     const id = await openFreshPresentation();
     const first = await serve(id);
 
-    await expect(serve(id, { port: first.port })).rejects.toThrow(/連接埠/);
+    await expect(serve(id, { port: first.port })).rejects.toThrow(/port already in use/i);
   });
 
   it("serves a presentation with no slides (ADR-0018: `new` creates none; the editor makes the first page)", async () => {
@@ -407,7 +407,7 @@ describe("startServe", () => {
       "slides/": new Uint8Array(0),
       "assets/": new Uint8Array(0),
     });
-    const emptyPath = path.join(comotDir, "empty.comot");
+    const emptyPath = path.join(slidraDir, "empty.slidra");
     await writeFile(emptyPath, zipped);
     const opened = await runCli<{ id: string }>(["open", emptyPath]);
     expect(opened.ok).toBe(true);
@@ -449,18 +449,18 @@ describe("startServe", () => {
     expect(body.error).not.toContain("root:");
   });
 
-  // Ticket #14: `/api/files/` used to turn every dispatch failure into a
+  // `/api/files/` used to turn every dispatch failure into a
   // 404, so a permission problem, a failing disk or a corrupt registry all
   // told the author "your file is missing" and sent them looking in
-  // completely the wrong place. Same classification as `/api/raw/`
-  // (ticket #11): only a positively proven absence is a 404.
+  // completely the wrong place. Same classification as `/api/raw/`:
+  // only a positively proven absence is a 404.
   it.skipIf(isRunningAsRoot)("responds 500, not 404, when the slide exists but the underlying read fails", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
     // Real filesystem path of the unpacked slide, per workspace.ts's
     // workDirFor(home, id) = path.join(home, "work", id). Only used to
     // break the read (chmod) — never asserted against the response.
-    const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
     await chmod(realSlidePath, 0o000);
 
     try {
@@ -470,10 +470,10 @@ describe("startServe", () => {
       expect(response.status).toBe(500);
       expect(body.error).toBeTruthy();
       // A real I/O failure must never be told back as "the file is missing".
-      expect(body.error).not.toBe("找不到檔案：slides/001.svg");
+      expect(body.error).not.toBe("file not found: slides/001.svg");
       // The real filesystem path must never leak (ADR-0004, third layer).
       expect(body.error).not.toContain(realSlidePath);
-      expect(body.error).not.toContain(coMotionHome);
+      expect(body.error).not.toContain(slidraHome);
       expect(body.error).not.toContain("EACCES");
     } finally {
       await chmod(realSlidePath, 0o644);
@@ -487,17 +487,17 @@ describe("startServe", () => {
     // workspace.ts's registryPath(home) = path.join(home, "projects.json").
     // A damaged registry is a server-side failure, not evidence the
     // requested slide is missing.
-    await writeFile(path.join(coMotionHome, "projects.json"), "{ not valid json");
+    await writeFile(path.join(slidraHome, "projects.json"), "{ not valid json");
 
     const response = await fetch(`${server.url}/api/files/slides/001.svg`);
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("簡報登記資料已損毀");
-    expect(body.error).not.toContain(coMotionHome);
+    expect(body.error).toBe("presentation registry data is corrupted");
+    expect(body.error).not.toContain(slidraHome);
   });
 
-  // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
+  // `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
   // the browser. Builds its fixture through the real Rust binary rather
   // than a hand-built container, since these tests exercise the route
@@ -566,18 +566,18 @@ describe("startServe", () => {
       const body = await response.json();
 
       expect(response.status).toBe(404);
-      expect(body.error).toBe("不是投影片：project.json");
+      expect(body.error).toBe("Not a slide: project.json");
     });
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
-      const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+      const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
       const original = await readFile(realSlidePath, "utf-8");
       const damaged = original.replace(
         "</svg>",
-        '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
-          '<comot:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
-          "</comot:effects></metadata></svg>",
+        '<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">' +
+          '<slidra:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
+          "</slidra:effects></metadata></svg>",
       );
       await writeFile(realSlidePath, damaged);
 
@@ -586,7 +586,7 @@ describe("startServe", () => {
       const body = await response.json();
 
       expect(response.status).toBe(500);
-      expect(body.error).toContain("尚未實作");
+      expect(body.error).toContain("not yet implemented");
     });
   });
 
@@ -628,17 +628,17 @@ describe("startServe", () => {
   });
 
   it("never leaks the hidden work directory's path in project.json validation errors", async () => {
-    // Echoing back the .comot path the caller supplied is legitimate
+    // Echoing back the .slidra path the caller supplied is legitimate
     // (ADR-0004) — it's the user's own argument, not the work directory.
-    // What must never appear is COMOTION_HOME's hidden work directory.
+    // What must never appear is SLIDRA_HOME's hidden work directory.
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );
 
-    expect(message).not.toContain(coMotionHome);
+    expect(message).not.toContain(slidraHome);
   });
 
-  // The exact ticket #12 scenario: a container whose project.json is only
+  // The exact scenario: a container whose project.json is only
   // `{"formatVersion":1}` used to pass `open`'s formatVersion-only check
   // and then explode inside `serve` as a raw TypeError on `slides` being
   // undefined. It must now be rejected by `open` itself, with a named
@@ -708,7 +708,7 @@ describe("static frontend serving", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("前端尚未建置，請先執行 build");
+    expect(body.error).toBe("Frontend has not been built yet, run build first");
   });
 
   it("responds 500, not a disguised 200, when a static read fails for a reason other than not-found", async () => {
@@ -729,7 +729,7 @@ describe("static frontend serving", () => {
   });
 });
 
-// Ticket #20: declared last, so it runs after every test above. This is
+// Declared last, so it runs after every test above. This is
 // what makes "tests never touch the real build output" a checked property
 // instead of a convention — point the static tests back at the real
 // packages/web/dist and this goes red.

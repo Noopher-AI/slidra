@@ -5,14 +5,17 @@ import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 
 /**
- * NOOP-60/#197 驗收條件第 2 條：「1280×720 與 2560×1440 下版面尺寸與原型
- * 一致」。原型與書面規格（01-DESIGN_TOKENS.md 的「間距與尺寸」、
- * 02-DESIGN_DOC.md §3）都沒有跑起來或量測，本檔直接核對 tokens.css 落地
- * 的字面數值——這些數值本身已由 packages/web/test/tokens.test.ts 機械核
- * 對回 01-DESIGN_TOKENS.md，這裡驗證的是「CSS 數值有沒有真的在瀏覽器裡
- * 生效成對應的版面尺寸」，兩者互補、不重複。
+ * Verifies that shell layout dimensions at 1280x720 and 2560x1440 match the
+ * design prototype. Neither the prototype nor the written spec
+ * (01-DESIGN_TOKENS.md's spacing/sizing section, 02-DESIGN_DOC.md §3) is
+ * ever actually run or measured, so this file checks the literal values
+ * that land in tokens.css directly — those values are already mechanically
+ * checked against 01-DESIGN_TOKENS.md by apps/web/test/tokens.test.ts, and
+ * what this file verifies is whether the CSS values actually take effect as
+ * the corresponding layout sizes in the browser. The two are complementary,
+ * not redundant.
  *
- * 誤差容忍 ±1px（子像素捨入，boundingBox() 是浮點數）。
+ * Tolerance is ±1px (sub-pixel rounding, since boundingBox() returns floats).
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -43,14 +46,14 @@ afterEach(async () => {
 
 async function boundingBoxOf(page: Page, selector: string): Promise<{ x: number; y: number; width: number; height: number }> {
   const box = await page.locator(selector).boundingBox();
-  if (!box) throw new Error(`${selector} 沒有量到 boundingBox（不存在或未渲染）`);
+  if (!box) throw new Error(`${selector} has no measured boundingBox (missing or not rendered)`);
   return box;
 }
 
 for (const viewport of VIEWPORTS) {
   const label = `${viewport.width}x${viewport.height}`;
 
-  it(`${label}：外殼各區塊尺寸與 tokens.css 落地的設計包數值一致`, async () => {
+  it(`${label}: shell region sizes match the values landed in tokens.css`, async () => {
     const started: StartedServer = await startServerFor({ deckDir: demoDir, prefix: `shell-layout-${label}` });
     try {
       const page = await openApp(browser, started.server, { viewport });
@@ -74,14 +77,19 @@ for (const viewport of VIEWPORTS) {
       const dock = await boundingBoxOf(page, ".dock");
       expect(dock.height).toBeCloseTo(46, 0);
 
-      // 舞台留白：直接讀 .canvas-area 的 computed padding（28px 上／36px
-      // 左右／76px 底，Dock 保留區），不是從 .canvas-area 與 .stage 的
-      // boundingBox 差值反推——.stage 用 aspect-ratio + max-width/height
-      // 貼合可用空間，在非 16:9 的可用空間（本殼的 rail/side-panel/notes
-      // 版位並不保證裁出剛好 16:9 的舞台區）下會在某一軸出現額外的
-      // letterbox，那不是 padding 值本身、也不是這裡要驗的東西——舞台置中
-      // 與該額外留白的行為已由 e2e/stage.test.ts 的 DOCK_RESERVATION 斷言
-      // 覆蓋，此檔只驗 tokens.css 落地的 padding 字面值有沒有真的生效。
+      // Stage whitespace: read .canvas-area's computed padding directly
+      // (28px top / 36px left-right / 76px bottom, reserved for the dock)
+      // rather than deriving it from the difference between .canvas-area's
+      // and .stage's boundingBox — .stage fits the available space with
+      // aspect-ratio + max-width/height, and when that available space
+      // isn't exactly 16:9 (the rail/side-panel/notes layout in this shell
+      // doesn't guarantee a stage area that comes out to exactly 16:9),
+      // extra letterboxing appears on one axis. That letterboxing isn't the
+      // padding value itself and isn't what this test verifies — stage
+      // centering and that extra whitespace's behavior are already covered
+      // by the DOCK_RESERVATION assertions in e2e/stage.test.ts. This file
+      // only checks whether the literal padding values in tokens.css
+      // actually take effect.
       const padding = await page.locator(".canvas-area").evaluate((el) => {
         const cs = getComputedStyle(el);
         return {

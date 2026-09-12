@@ -11,7 +11,7 @@ import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,7 +22,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -34,7 +34,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 }
 
 /**
- * `POST /api/asset` (T3/NOOP-142). Seam B: the real server over real HTTP.
+ * `POST /api/asset`. Seam B: the real server over real HTTP.
  * This is the front end's byte-upload path for drag/drop and clipboard
  * paste — `/api/command` cannot carry raw bytes (see asset-upload.ts's
  * module comment), so this is a second, narrower write route with the same
@@ -60,26 +60,26 @@ const SLIDE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g
 // content, not on the claimed filename (mirrors packages/cli/test/asset-import.test.ts's PNG_BYTES).
 const PNG_BYTES = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-asset-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-asset-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-asset-static-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-asset-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-asset-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-asset-static-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -96,9 +96,9 @@ async function openDeck(fileName: string): Promise<string> {
     ),
     "slides/001.svg": new TextEncoder().encode(SLIDE),
   });
-  const comotPath = path.join(comotDir, fileName);
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, fileName);
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -127,7 +127,7 @@ async function postAsset(
 ): Promise<{ status: number; json: any }> {
   const response = await fetch(`${server.url}/api/asset`, {
     method: "POST",
-    headers: { "X-Comotion-Asset-Name": encodeURIComponent(sourceName) },
+    headers: { "X-Slidra-Asset-Name": encodeURIComponent(sourceName) },
     body,
   });
   const text = await response.text();
@@ -140,8 +140,8 @@ async function postAsset(
   return { status: response.status, json };
 }
 
-it("合法 PNG 上傳落地到 assets/ 並回 200 與匯入資料", async () => {
-  const id = await openDeck("upload.comot");
+it("a valid PNG upload lands in assets/ and returns 200 with import data", async () => {
+  const id = await openDeck("upload.slidra");
   const server = await serve(id);
 
   const { status, json } = await postAsset(server, PNG_BYTES, "photo.png");
@@ -153,19 +153,19 @@ it("合法 PNG 上傳落地到 assets/ 並回 200 與匯入資料", async () => 
   expect(await listAssets(id)).toEqual(["photo.png"]);
 });
 
-it("副檔名偽裝成 .png 的純文字內容回 400，assets/ 不變", async () => {
-  const id = await openDeck("fake.comot");
+it("plain text disguised with a .png extension returns 400, assets/ unchanged", async () => {
+  const id = await openDeck("fake.slidra");
   const server = await serve(id);
 
   const { status, json } = await postAsset(server, "this is not a real image", "fake.png");
 
   expect(status).toBe(400);
-  expect(json.error).toContain("不支援的媒體格式");
+  expect(json.error).toContain("unsupported media format");
   expect(await listAssets(id)).toEqual([]);
 });
 
-it("缺少檔名標頭回 400", async () => {
-  const id = await openDeck("noname.comot");
+it("returns 400 when the filename header is missing", async () => {
+  const id = await openDeck("noname.slidra");
   const server = await serve(id);
 
   const response = await fetch(`${server.url}/api/asset`, { method: "POST", body: PNG_BYTES });
@@ -173,8 +173,8 @@ it("缺少檔名標頭回 400", async () => {
   expect(response.status).toBe(400);
 });
 
-it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
-  const id = await openDeck("big.comot");
+it("an oversized body returns 400 and is never written to assets/", async () => {
+  const id = await openDeck("big.slidra");
   const server = await serve(id);
   const oversized = Buffer.concat([PNG_BYTES, Buffer.alloc(32 * 1024 * 1024)]);
 
@@ -184,7 +184,7 @@ it("超過上限的 body 回 400，且不會寫入 assets/", async () => {
   expect(await listAssets(id)).toEqual([]);
 });
 
-describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
+describe("POST /api/asset — URL mode", () => {
   let sourceServer: http.Server;
   let sourceBaseUrl: string;
 
@@ -210,7 +210,7 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
   async function postAssetUrl(server: RunningServer, url: string): Promise<{ status: number; json: any }> {
     const response = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Comotion-Asset-Url": encodeURIComponent(url) },
+      headers: { "X-Slidra-Asset-Url": encodeURIComponent(url) },
     });
     const text = await response.text();
     let json: any = null;
@@ -222,8 +222,8 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     return { status: response.status, json };
   }
 
-  it("下載一張真實圖片並匯入，走與 asset import <url> 相同的格式偵測", async () => {
-    const id = await openDeck("url-upload.comot");
+  it("downloads a real image and imports it, using the same format detection as asset import <url>", async () => {
+    const id = await openDeck("url-upload.slidra");
     const server = await serve(id);
 
     const { status, json } = await postAssetUrl(server, `${sourceBaseUrl}/photo.png`);
@@ -234,8 +234,8 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(await listAssets(id)).toEqual(["photo.png"]);
   });
 
-  it("拒絕非 http(s) 的 scheme（file:／相對路徑），不落地任何檔案", async () => {
-    const id = await openDeck("url-scheme.comot");
+  it("rejects a non-http(s) scheme (file:/relative path), landing no file", async () => {
+    const id = await openDeck("url-scheme.slidra");
     const server = await serve(id);
 
     const { status, json } = await postAssetUrl(server, "file:///etc/passwd");
@@ -245,15 +245,15 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(await listAssets(id)).toEqual([]);
   });
 
-  it("同時提供檔名與 URL 兩個標頭時回 400，不猜哪個優先", async () => {
-    const id = await openDeck("url-both-headers.comot");
+  it("returns 400 when both filename and URL headers are given, without guessing which one wins", async () => {
+    const id = await openDeck("url-both-headers.slidra");
     const server = await serve(id);
 
     const response = await fetch(`${server.url}/api/asset`, {
       method: "POST",
       headers: {
-        "X-Comotion-Asset-Name": encodeURIComponent("photo.png"),
-        "X-Comotion-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
+        "X-Slidra-Asset-Name": encodeURIComponent("photo.png"),
+        "X-Slidra-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
       },
       body: PNG_BYTES,
     });
@@ -261,8 +261,8 @@ describe("POST /api/asset — URL 模式（[E2.T17] plan §4.3/D5）", () => {
     expect(response.status).toBe(400);
   });
 
-  it("下載失敗（404）回 400，不落地任何檔案", async () => {
-    const id = await openDeck("url-404.comot");
+  it("a failed download (404) returns 400, landing no file", async () => {
+    const id = await openDeck("url-404.slidra");
     const server = await serve(id);
 
     const { status } = await postAssetUrl(server, `${sourceBaseUrl}/does-not-exist.png`);

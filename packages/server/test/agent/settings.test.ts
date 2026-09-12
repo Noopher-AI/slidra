@@ -2,23 +2,23 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, chmod } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CoMotionError } from "../../src/comotion/errors.js";
+import { SlidraError } from "../../src/slidra/errors.js";
 import { agentSettingsPath, readAgentSettings, writeAgentModel, writeAgentSelection } from "../../src/agent/settings.js";
 
 // Pure filesystem behaviour (no subprocess): every row of NOOP-230 §4.1's
-// settings.ts behaviour table, driven purely through COMOTION_HOME pointed
+// settings.ts behaviour table, driven purely through SLIDRA_HOME pointed
 // at a fresh mkdtemp dir per test — the same isolation pattern chat.test.ts
-// already uses for other COMOTION_HOME-scoped state.
+// already uses for other SLIDRA_HOME-scoped state.
 describe("agent settings", () => {
   let home: string;
 
   beforeEach(async () => {
-    home = await mkdtemp(path.join(tmpdir(), "comotion-settings-"));
-    process.env.COMOTION_HOME = home;
+    home = await mkdtemp(path.join(tmpdir(), "slidra-settings-"));
+    process.env.SLIDRA_HOME = home;
   });
 
   afterEach(async () => {
-    delete process.env.COMOTION_HOME;
+    delete process.env.SLIDRA_HOME;
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
@@ -28,23 +28,23 @@ describe("agent settings", () => {
     await expect(readFile(agentSettingsPath())).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("throws a CoMotionError naming the file path on an empty file", async () => {
+  it("throws a SlidraError naming the file path on an empty file", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), "");
-    await expect(readAgentSettings()).rejects.toThrow(CoMotionError);
+    await expect(readAgentSettings()).rejects.toThrow(SlidraError);
     await expect(readAgentSettings()).rejects.toThrow(agentSettingsPath());
   });
 
-  it("throws a CoMotionError on invalid JSON", async () => {
+  it("throws a SlidraError on invalid JSON", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), "{ not json");
-    await expect(readAgentSettings()).rejects.toThrow(CoMotionError);
+    await expect(readAgentSettings()).rejects.toThrow(SlidraError);
   });
 
-  it("throws a CoMotionError when the top level is not an object", async () => {
+  it("throws a SlidraError when the top level is not an object", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), "[1,2,3]");
-    await expect(readAgentSettings()).rejects.toThrow(CoMotionError);
+    await expect(readAgentSettings()).rejects.toThrow(SlidraError);
   });
 
   it("returns { agent: null } when the agent field is absent", async () => {
@@ -65,26 +65,26 @@ describe("agent settings", () => {
     expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
   });
 
-  it("throws a CoMotionError listing the valid values when agent is an unknown value", async () => {
+  it("throws a SlidraError listing the valid values when agent is an unknown value", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "gemini" }));
     await expect(readAgentSettings()).rejects.toThrow(/claude/);
     await expect(readAgentSettings()).rejects.toThrow(/codex/);
   });
 
-  it("writeAgentSelection creates COMOTION_HOME and the file when neither exists yet", async () => {
+  it("writeAgentSelection creates SLIDRA_HOME and the file when neither exists yet", async () => {
     await writeAgentSelection("claude");
     const raw = await readFile(agentSettingsPath(), "utf8");
     expect(JSON.parse(raw)).toEqual({ agent: "claude" });
   });
 
-  it("models: absent reads as {}, a per-kind pick reads back, and a wrong shape is a CoMotionError", async () => {
+  it("models: absent reads as {}, a per-kind pick reads back, and a wrong shape is a SlidraError", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex", models: { codex: "gpt-5.5" } }));
     expect(await readAgentSettings()).toEqual({ agent: "codex", models: { codex: "gpt-5.5" } });
 
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex", models: { codex: 3 } }));
-    await expect(readAgentSettings()).rejects.toThrow(CoMotionError);
+    await expect(readAgentSettings()).rejects.toThrow(SlidraError);
   });
 
   it("writeAgentModel keeps the other kind's pick, the agent key, and unknown keys", async () => {

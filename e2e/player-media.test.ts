@@ -10,26 +10,25 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * 媒體播放效果 end to end (issue #30): advancing to a video step starts the
- * video, advancing to an audio step starts the audio, both align to their
- * SVG placeholder, both are served with real HTTP Range support, and both
- * stop when the author leaves the slide. Real binaries throughout — no
- * mocks (design doc's Testing Decisions) — `fixtures/media-deck/assets/`
- * holds a tiny hand-produced WebM (VP8/Opus) clip and a tiny Ogg/Vorbis
- * clip, made with ffmpeg. WebM/Ogg, not MP4/AAC, because Playwright's
- * bundled Chromium is an open-source build that may lack H.264/AAC (design
- * doc's "codec trap").
+ * Media playback end to end: advancing to a video step starts the video,
+ * advancing to an audio step starts the audio, both align to their SVG
+ * placeholder, both are served with real HTTP Range support, and both stop
+ * when the author leaves the slide. Real binaries throughout — no mocks —
+ * `fixtures/media-deck/assets/` holds a tiny hand-produced WebM (VP8/Opus)
+ * clip and a tiny Ogg/Vorbis clip, made with ffmpeg. WebM/Ogg, not MP4/AAC,
+ * because Playwright's bundled Chromium is an open-source build that may
+ * lack H.264/AAC.
  *
  * Never launches Chromium with an autoplay-policy override — the real
  * keyboard press below is the real user gesture play() relies on, and that
- * is the entire point of the "播放帶聲音成功，不被自動播放政策擋下"
- * acceptance criterion.
+ * is the entire point of the acceptance criterion that playback with sound
+ * succeeds without being blocked by the autoplay policy.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/media-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -37,10 +36,10 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 let browser: Browser;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -53,16 +52,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-media-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-media-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-media-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-media-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "media-deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "media-deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -73,7 +72,7 @@ async function startServerFor(): Promise<{
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -85,10 +84,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -103,7 +102,7 @@ async function canvasFrame(page: import("playwright").Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 async function requireBuilt(filePath: string, message: string): Promise<void> {
@@ -115,7 +114,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 /**
- * Clicking 播放 rebuilds the iframe with `allow-scripts` immediately, but so
+ * Clicking Play rebuilds the iframe with `allow-scripts` immediately, but so
  * does view mode (ADR-0011) — the sandbox attribute can no longer tell "play
  * mode has started" from "still viewing". Wait for .titlebar (view mode's
  * shell chrome) to unmount instead, which is the signal that actually flips
@@ -123,15 +122,15 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
  * player (see canvas.ts's `onWindowMessage` "ready" branch). Only after that
  * does waiting on the play bar's own `data-player-focus` mean anything.
  * That attribute replaced the focus notice this helper used to wait on
- * (#68 removed the notice); it reports the same `playerHasFocus` state,
- * just without putting it in the author's face.
+ * before it was removed; it reports the same `playerHasFocus` state, just
+ * without putting it in the author's face.
  */
 async function waitForPlayerFocus(page: import("playwright").Page): Promise<void> {
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
   await expect.poll(() => page.locator('.play-bar[data-player-focus="true"]').count(), { timeout: 10_000 }).toBe(1);
 }
 
-it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放時該位置不是一個洞", async () => {
+it("static view already shows the video and audio placeholder elements, not an empty hole, before playback", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -151,11 +150,11 @@ it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放�
   }
 });
 
-// [E2.T17] plan §4.4/A3-A4: the STAGE (view mode) media layer — distinct
-// from every play-mode test below, which enters play via `.play-button`
-// first. These two open the app in its default view mode and interact
-// with `data-comot-media-control` directly inside the view iframe.
-it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度", async () => {
+// The STAGE (view mode) media layer — distinct from every play-mode test
+// below, which enters play via `.play-button` first. These two open the
+// app in its default view mode and interact with `data-slidra-media-control`
+// directly inside the view iframe.
+it("video on the stage (view mode) can play, pause, and seek", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -164,7 +163,7 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
     const viewFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     const video = viewFrame().locator("video");
     await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
@@ -173,7 +172,7 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
       .toBeGreaterThan(0);
     expect(await video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true);
 
-    const playButton = viewFrame().locator('[data-comot-media-control="play"]').first();
+    const playButton = viewFrame().locator('[data-slidra-media-control="play"]').first();
     await playButton.click();
     await expect
       .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 })
@@ -186,10 +185,12 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
     await playButton.click();
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 }).toBe(true);
 
-    // 拖曳進度：真實拖曳一個看不見厚度的 range 很不可靠，直接把值設到目標並
-    // 送出瀏覽器拖曳時本來就會送的同一個 "input" 事件——production 的
-    // `seek.addEventListener("input", ...)` 分不出這跟真的滑鼠拖曳有什麼不同。
-    const seek = viewFrame().locator('[data-comot-media-control="seek"]').first();
+    // Seeking: really dragging a range input with no visible thickness is
+    // unreliable, so set the value directly and dispatch the same "input"
+    // event a real drag would send — production's
+    // `seek.addEventListener("input", ...)` can't tell this apart from an
+    // actual mouse drag.
+    const seek = viewFrame().locator('[data-slidra-media-control="seek"]').first();
     const duration = await video.evaluate((el: HTMLVideoElement) => el.duration);
     const target = duration / 2;
     await seek.evaluate((el: HTMLInputElement, value: number) => {
@@ -204,7 +205,7 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
   }
 });
 
-it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度", async () => {
+it("audio on the stage (view mode) can play, pause, and seek", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -213,7 +214,7 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
     const viewFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     const audio = viewFrame().locator("audio");
     await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(1);
@@ -222,7 +223,7 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
       .toBeGreaterThan(0);
     expect(await audio.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
 
-    const playButton = viewFrame().locator('[data-comot-media-control="play"]').nth(1);
+    const playButton = viewFrame().locator('[data-slidra-media-control="play"]').nth(1);
     await playButton.click();
     await expect
       .poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 })
@@ -235,7 +236,7 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
     await playButton.click();
     await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 }).toBe(true);
 
-    const seek = viewFrame().locator('[data-comot-media-control="seek"]').nth(1);
+    const seek = viewFrame().locator('[data-slidra-media-control="seek"]').nth(1);
     const duration = await audio.evaluate((el: HTMLAudioElement) => el.duration);
     const target = duration / 2;
     await seek.evaluate((el: HTMLInputElement, value: number) => {
@@ -253,12 +254,12 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
 // selection-runtime.js's `findMediaControlTarget` guard (checked first in
 // both the "click" and "pointerdown" window listeners) has zero coverage
 // otherwise — a mutation test removing both call sites left the full unit
-// (2041/2041) and e2e (358 綠) suites green (NOOP-225 review round 1). These
-// two are the regression it was missing: without the guard, a click/drag
-// that lands on the control bar is indistinguishable from one that lands on
-// empty stage, and falls through to the plain "clicked outside, clear
-// selection" / "no element hit, start a marquee" paths below it.
-it("元素被選取時點 .media-play：選取狀態不受影響（[E2.T17] 舞台媒體控制守衛）", async () => {
+// (2041/2041) and e2e (358 green) suites passing. These two are the
+// regression it was missing: without the guard, a click/drag that lands on
+// the control bar is indistinguishable from one that lands on empty stage,
+// and falls through to the plain "clicked outside, clear selection" /
+// "no element hit, start a marquee" paths below it.
+it("clicking .media-play while an element is selected leaves the selection unaffected (stage media control guard)", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -267,18 +268,20 @@ it("元素被選取時點 .media-play：選取狀態不受影響（[E2.T17] 舞�
 
     await expect
       .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     const frame = await canvasFrame(page);
     await frame.locator("#el-video-placeholder").click();
     await expect.poll(() => selectionChip.textContent()).toBe("Selected: el-video-placeholder");
 
     const video = frame.locator("video");
     await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
-    const playButton = frame.locator('[data-comot-media-control="play"]').first();
+    const playButton = frame.locator('[data-slidra-media-control="play"]').first();
     await playButton.click();
 
-    // 播放鍵本身仍要正常運作——守衛不能把整顆按鈕擋死，只能擋掉「點擊落在
-    // 控制列上」被誤判為「點在空白處」而觸發的清除選取。
+    // The play button itself must still work normally — the guard must not
+    // block the whole button, only the misfire where a click landing on the
+    // control bar gets mistaken for "clicked on empty space" and clears the
+    // selection.
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 }).toBe(false);
     expect(await selectionChip.textContent()).toBe("Selected: el-video-placeholder");
   } finally {
@@ -286,7 +289,7 @@ it("元素被選取時點 .media-play：選取狀態不受影響（[E2.T17] 舞�
   }
 });
 
-it("在 .media-seek 上按住拖曳：不產生 marquee、不改變選取（[E2.T17] 舞台媒體控制守衛）", async () => {
+it("holding and dragging on .media-seek produces no marquee and does not change the selection (stage media control guard)", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -295,22 +298,22 @@ it("在 .media-seek 上按住拖曳：不產生 marquee、不改變選取（[E2.
 
     await expect
       .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     const frame = await canvasFrame(page);
-    await expect.poll(() => frame.locator('[data-comot-media-control="seek"]').count()).toBeGreaterThan(0);
+    await expect.poll(() => frame.locator('[data-slidra-media-control="seek"]').count()).toBeGreaterThan(0);
     await expect.poll(() => selectionChip.textContent()).toBe("");
 
     const marqueeDisplay = () =>
       frame.evaluate(() => {
-        const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+        const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
         const marquee = host?.shadowRoot?.querySelector(".marquee") as HTMLElement | null;
         return marquee?.style.display ?? null;
       });
 
-    const seek = frame.locator('[data-comot-media-control="seek"]').first();
+    const seek = frame.locator('[data-slidra-media-control="seek"]').first();
     await seek.hover();
     await page.mouse.down();
-    await page.mouse.move(200, 200, { steps: 5 }); // 遠超 DRAG_THRESHOLD_PX，若守衛失效會被判成 marquee 手勢
+    await page.mouse.move(200, 200, { steps: 5 }); // far past DRAG_THRESHOLD_PX; if the guard failed this would be read as a marquee gesture
     expect(await marqueeDisplay()).not.toBe("block");
     await page.mouse.up();
 
@@ -321,7 +324,7 @@ it("在 .media-seek 上按住拖曳：不產生 marquee、不改變選取（[E2.
   }
 });
 
-it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且伺服器以 206 Partial Content 回應", async () => {
+it("advancing to a video step plays it, aligned to the placeholder's position and size, with the server responding 206 Partial Content", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -340,7 +343,7 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -374,17 +377,17 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
     expect(videoRect.width).toBeCloseTo(placeholderRect.width, 0);
     expect(videoRect.height).toBeCloseTo(placeholderRect.height, 0);
 
-    // "大型影片不必整份下載即可開始播放" — observed from the browser's own
-    // network events, not a fetch this test writes itself.
+    // A large video does not need to fully download before it can start
+    // playing — observed from the browser's own network events, not a
+    // fetch this test writes itself.
     await expect.poll(() => videoResponses.length, { timeout: 10_000 }).toBeGreaterThan(0);
     const videoResponse = videoResponses[0];
     expect(videoResponse.status()).toBe(206);
     expect(await videoResponse.headerValue("accept-ranges")).toBe("bytes");
-    // Ticket #30, review round 2: a real Content-Type, not
-    // application/octet-stream — the e2e test was passing before this fix
-    // only because Chromium sniffs bytes when the header is generic, which
-    // masked the server-side MIME table gap. Asserting it here keeps that
-    // gap from silently coming back.
+    // A real Content-Type, not application/octet-stream — the e2e test was
+    // passing before this fix only because Chromium sniffs bytes when the
+    // header is generic, which masked the server-side MIME table gap.
+    // Asserting it here keeps that gap from silently coming back.
     expect(await videoResponse.headerValue("content-type")).toBe("video/webm");
 
     expect(pageErrors).toEqual([]);
@@ -393,7 +396,7 @@ it("推進到影片的步驟時播放，對齊佔位元素位置與大小，且�
   }
 });
 
-it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回應", async () => {
+it("advancing to an audio step plays it, with the server responding 206 Partial Content", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -408,7 +411,7 @@ it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回�
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -436,7 +439,7 @@ it("推進到音訊的步驟時播放，且伺服器以 206 Partial Content 回�
   }
 });
 
-it("離開投影片時，正在播放的影片與音訊全部停止；回到投影片時不出現兩份媒體同時播放", async () => {
+it("leaving a slide stops all playing video and audio; returning to it never shows two copies of the media playing at once", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await browser.newPage();
@@ -445,7 +448,7 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -456,7 +459,7 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
     await expect.poll(() => playFrame().locator("audio").count(), { timeout: 10_000 }).toBe(1);
 
     const audioHandle = await playFrame().locator("audio").elementHandle();
-    if (!audioHandle) throw new Error("找不到音訊元素");
+    if (!audioHandle) throw new Error("could not find the audio element");
     await expect
       .poll(() => audioHandle.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 })
       .toBe(false);
@@ -467,13 +470,12 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
     await page.keyboard.press("ArrowRight");
     await expect
       .poll(() => playFrame().locator("#el-title2").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第二頁：離開第一頁後，媒體應已停止");
+      .toBe("Slide Two: media should have stopped after leaving slide one");
 
     // The old document's own execution context is gone along with it — a
-    // handle from before the navigation can no longer be evaluated. That is
-    // the measurement that decides assumption 11 (see the report): the
-    // navigation itself tore the whole previous document down, audio
-    // included, rather than leaving it detached-but-still-playing.
+    // handle from before the navigation can no longer be evaluated. This is
+    // what confirms the navigation itself tore the whole previous document
+    // down, audio included, rather than leaving it detached-but-still-playing.
     await expect(audioHandle.evaluate((el: HTMLAudioElement) => el.paused)).rejects.toThrow();
 
     // The fresh slide-2 document never had any media in the first place.
@@ -481,16 +483,16 @@ it("離開投影片時，正在播放的影片與音訊全部停止；回到投�
     expect(await playFrame().locator("audio").count()).toBe(0);
 
     // Idempotence across a genuine "leave and come back": go back to slide
-    // 1 via #54's play-bar 上一步 button (controller.previous(), i.e.
-    // showSlide(currentIndex - 1) — currently on slide 2 (index 1), so
-    // this is a byte-for-byte equivalent call to the overview thumbnail
-    // click this line used to make, per the wave brief's 裁決 1), replay
-    // both steps, and confirm exactly one of each media element exists —
-    // never two stacked from an old and a new document.
-    await page.locator('.play-bar button[aria-label="上一步"]').click();
+    // 1 via the play-bar's previous-step button (controller.previous(), i.e.
+    // showSlide(currentIndex - 1) — currently on slide 2 (index 1), so this
+    // is a byte-for-byte equivalent call to the overview thumbnail click
+    // this line used to make), replay both steps, and confirm exactly one
+    // of each media element exists — never two stacked from an old and a
+    // new document.
+    await page.locator('.play-bar button[aria-label="Previous"]').click();
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     // showSlide() while still in play mode reassigns srcdoc just like
     // entering play the first time did, so the fresh runtime's own "ready"
     // message re-triggers canvas.ts's focusPlayer() automatically — no

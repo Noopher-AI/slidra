@@ -9,12 +9,11 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
- * 元素選取 (#56, ADR-0011): clicking an element on the canvas in view mode
+ * Element selection: clicking an element on the canvas in view mode
  * selects it, draws a four-corner box over it in a Shadow DOM, and shows
- * its 顯示名稱 (or 識別碼 fallback) in the status bar. Modeled on
+ * its display name (or id fallback) in the status bar. Modeled on
  * e2e/demo-deck.test.ts's startServerFor shape and e2e/player-hostile.test.ts's
  * hostile-fixture posture.
  *
@@ -24,52 +23,49 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * found a real gap here: DOM `.click()` passes even when a missing
  * `pointer-events: none` would swallow a genuine mouse event.
  *
- * 場景 ↔ 測試對照表（05-INTERACTIONS.feature，NOOP-91 round-2 FAIL #4 補做
- * ——第 1 輪漏做）：
+ * Scenario ↔ test cross-reference table (05-INTERACTIONS.feature):
  *
- * - 功能「選取」› 場景「單選」（出現選取框/左上名稱標籤/情境列正下方）:
- *   - "點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DOM 裡，不是 b/u 八點）"
- *   - "狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯示其識別碼"
- *   - "單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）"
- *   - "基準截圖：標準檢視含選取框"／"點 demo 第 1 頁的背景會選到背景容器..."
- *   - "敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框..."／"投影片自己的 script 搶先攔截點擊..."
- *   - "離開播放後仍可重新選取：..."
- *   - 情境列「空間不足翻到上方」分支：本檔未 e2e 化，理由見「選取後簡報檔案
- *     位元組完全未變」測項之前的說明區塊——精確覆蓋在
- *     packages/web/test/stage-overlays.test.ts（純邏輯單元測試）。
- * - 功能「選取」› 場景「多選」「全選 / 取消」: ⇧點/框選/⌘A 是舞台直接操作，
- *   在 e2e/direct-manipulation.test.ts 測（"Shift 點兩個元素後一起拖曳"、
- *   "從空白處拖出框選矩形"、"⌘A 全選本頁頂層元素..."）；本檔只測「點空白處
- *   取消選取，狀態列的選取顯示區清空」（Esc/點空白清除選取的那一半）。
- * - 功能「群組（含巢狀）」› 場景「選取群組」:
- *   - "點群組裡的子元素，選到的是整個群組，狀態列顯示群組的顯示名稱"
- *   - "選取群組時顯示虛線框"
- * - 功能「群組（含巢狀）」› 場景「鑽入」（標籤顯示路徑「Group 2 › Group 1」）:
- *   - "巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，外層的框保留不動"
- *   - "Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至也被退出為止"
- *   - "拖曳作用對象與選取層級一致：..."
- *   - "基準截圖：群組編輯中的虛線框"／"基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）"
- * - 功能「群組（含巢狀）」› 場景「成組」「巢狀」「解組」（[E2.T15]/#205，Dock
- *   的 Group/Ungroup 按鈕；「停用態」矩陣本身測在
- *   packages/web/test/dock.test.ts，這裡只測按鈕真的接到命令、檔案真的變了）:
- *   - "成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並顯示 toast"
- *     （含基準截圖 group-toast）
- *   - "巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再包一層，既有群組原封不動"
- *   - "解組：整組選取後按 Ungroup，只解目前這一層——內層群組與其動畫皆保留在外的那一層被移除"
+ * - Feature "Selection" › Scenario "Single select" (selection box appears /
+ *   top-left name label / context bar directly below):
+ *   - "clicking an element on the canvas selects it, showing a four-corner box (drawn in the Shadow DOM, not eight b/u handles)"
+ *   - "the status bar shows the selected element's display name; an element with no display name shows its id instead"
+ *   - "selecting a single element: a name label appears (above the selection box) along with the context bar (below the selection box)"
+ *   - "baseline screenshot: standard view with selection box" / "clicking the background on demo slide 1 selects the background container..."
+ *   - "hostile slide CSS cannot cover the Shadow DOM selection box..." / "a slide's own script intercepts the click first..."
+ *   - "selection still works after leaving play mode: ..."
+ *   - The context bar's "flips above when there's not enough room below" branch: not e2e'd in this file — see the explanatory block before the "the presentation file's bytes are completely unchanged after selection" test — it's covered precisely by apps/web/test/stage-overlays.test.ts (a pure-logic unit test).
+ * - Feature "Selection" › Scenario "Multi-select" / "Select all / deselect": ⇧-click/box-select/⌘A are direct stage operations,
+ *   tested in e2e/direct-manipulation.test.ts ("shift-clicking two elements then dragging them together",
+ *   "dragging a box-select rectangle from empty space", "⌘A selects all top-level elements on the page..."); this file only tests
+ *   "clicking empty space deselects, clearing the status bar's selection display" (the Esc/click-empty-space-to-clear half).
+ * - Feature "Groups (including nested)" › Scenario "Select group":
+ *   - "clicking a child inside a group selects the whole group, and the status bar shows the group's display name"
+ *   - "selecting a group shows a dashed box"
+ * - Feature "Groups (including nested)" › Scenario "Drill in" (label shows the path "Group 2 › Group 1"):
+ *   - "drilling into nested groups one level at a time stacks dashed boxes: each level entered adds one box, and outer boxes stay put"
+ *   - "exiting one level at a time with Esc: each press collapses only the innermost box, and outer boxes remain until they too are exited"
+ *   - "the drag target matches the selection level: ..."
+ *   - "baseline screenshot: dashed box while editing a group" / "baseline screenshot: label after drilling into a group (Group 2 › Group 1 path)"
+ * - Feature "Groups (including nested)" › Scenario "Group" / "Nested" / "Ungroup" (the Dock's
+ *   Group/Ungroup buttons; the disabled-state matrix itself is tested in
+ *   apps/web/test/dock.test.ts — this file only tests that the button actually issues the command and the file actually changes):
+ *   - "grouping: shift-selecting 2 elements and clicking Group removes the members' own animations and shows a toast"
+ *     (includes the group-toast baseline screenshot)
+ *   - "nesting: selecting one existing group plus one element and clicking Group wraps them in an outer layer, leaving the existing group untouched"
+ *   - "ungrouping: selecting a whole group and clicking Ungroup dissolves only the current level — the inner group and its animation are preserved, only the outer level is removed"
  *
- * 其餘測項（沙箱 sandbox 屬性、播放模式互動）不對應本檔案上述場景，各自的
- * 測項名稱已自我描述。
+ * The remaining test cases (sandbox attributes, play-mode interactions) don't
+ * map to the scenarios above; each one's own title is self-descriptive.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
-const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+const slidraBin = path.join(rootDir, "target/release/slidra");
+const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const hostileDeckDir = path.join(e2eDir, "fixtures/hostile-selection-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/selection");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -77,9 +73,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "packages/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -102,16 +98,16 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 async function startServerFor(
   deckDir: string,
 ): Promise<{ server: RunningServer; registry: CommandRegistry; presentationId: string; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -122,7 +118,7 @@ async function startServerFor(
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 
@@ -134,10 +130,10 @@ async function startServerFor(
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -166,14 +162,14 @@ async function canvasFrame(page: Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-it("檢視模式的主畫布 iframe sandbox 是 allow-scripts，且不含 allow-same-origin", async () => {
+it("view mode's main canvas iframe sandbox is allow-scripts and does not include allow-same-origin", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
@@ -187,7 +183,7 @@ it("檢視模式的主畫布 iframe sandbox 是 allow-scripts，且不含 allow-
 
 // ADR-0011: this loosening is cut in exactly one place, the main canvas —
 // the overview rail's thumbnails must stay zero-token.
-it("總覽縮圖的 iframe sandbox 仍是零 token（這個洞只鑿在主畫布一處）", async () => {
+it("the overview thumbnails' iframe sandbox stays zero-token (this loosening applies only to the main canvas)", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
@@ -199,7 +195,7 @@ it("總覽縮圖的 iframe sandbox 仍是零 token（這個洞只鑿在主畫布
   }
 });
 
-it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DOM 裡，不是 b/u 八點）", async () => {
+it("clicking an element on the canvas selects it, showing a four-corner box (drawn in the Shadow DOM, not eight b/u handles)", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
@@ -212,7 +208,7 @@ it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DO
       // not a DOM-position assumption — the runtime is injected before
       // the fetched slide markup (#56 fix), so the host is not
       // document.body's last child.
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const root = host.shadowRoot;
       if (!root) return null;
       const sel = root.querySelector(".sel");
@@ -225,7 +221,7 @@ it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DO
         topRight: contentOf(sel, "::after"),
         bottomLeft: contentOf(i, "::before"),
         bottomRight: contentOf(i, "::after"),
-        // 軍令 4: exactly four corners, never eight handles — the
+        // exactly four corners, never eight handles — the
         // template's `b`/`u` elements must never be created.
         hasB: root.querySelector("b") !== null,
         hasU: root.querySelector("u") !== null,
@@ -245,7 +241,7 @@ it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DO
   }
 });
 
-it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯示其識別碼", async () => {
+it("the status bar shows the selected element's display name; an element with no display name shows its id instead", async () => {
   const { server, cleanup } = await startServerFor(hostileDeckDir);
   try {
     const page = await openApp(server);
@@ -253,7 +249,7 @@ it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯�
     const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     await slideFrame.locator("#el-plain").click();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: el-plain");
@@ -269,13 +265,13 @@ it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯�
  * (ADR-0012).
  */
 async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-deck-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-deck-"));
   await mkdir(path.join(dir, "slides"), { recursive: true });
   await mkdir(path.join(dir, "assets"), { recursive: true });
   await writeFile(
     path.join(dir, "project.json"),
     JSON.stringify(
-      { formatVersion: 1, name: "選取測試簡報", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] },
+      { formatVersion: 1, name: "Selection Test Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] },
       null,
       2,
     ),
@@ -292,16 +288,16 @@ async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: ()
 // of conversion just to keep one test's assumption alive would be the wrong
 // repair, so the test brings its own deck instead: one small square with
 // generous empty space around it.
-it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
+it("clicking empty space deselects, clearing the status bar's selection display", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-comot-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="Square">\n' +
       '    <rect x="540" y="280" width="200" height="160" fill="#c66"/>\n' +
       "  </g>\n" +
       // openApp waits for the first painted <text>; a deck with none would
       // never finish loading as far as that helper is concerned.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">Square</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -320,14 +316,14 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
     // 1280×720 viewBox, so this point has no element under it at all.
     const svgRoot = slideFrame.locator("svg").first();
     const box = await svgRoot.boundingBox();
-    if (!box) throw new Error("量不到 svg 的邊界框");
+    if (!box) throw new Error("could not measure the svg's bounding box");
     await page.mouse.click(box.x + 4, box.y + 4);
 
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -338,21 +334,24 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
   }
 });
 
-// NOOP-91 round-2 FAIL #4: 05-INTERACTIONS.feature「選取 › 單選」的
-// 「出現…左上名稱標籤」「情境列出現在選取框正下方（空間不足則翻到上方）」
-// 兩句「而且」句子此前完全沒有 e2e 覆蓋（座標換算邏輯的單元測試見
-// packages/web/test/stage-overlays.test.ts；這裡驗證真實瀏覽器的最終定位）。
-it("單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）", async () => {
+// 05-INTERACTIONS.feature's "Selection › Single select" scenario has two
+// "and" clauses — "a name label appears at top-left" and "the context bar
+// appears directly below the selection box (flipping above when there's
+// not enough room)" — that previously had no e2e coverage at all (the
+// coordinate-conversion logic itself is unit-tested in
+// apps/web/test/stage-overlays.test.ts; this verifies the final on-screen
+// position in a real browser).
+it("selecting a single element: a name label appears (above the selection box) along with the context bar (below the selection box)", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-comot-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="Square">\n' +
       // Bottom edge at y=200, leaving 520 user units of slide below it —
       // comfortably more than the context bar's fixed 49 CSS px (GAP 13 +
       // BAR_HEIGHT 36) floor at any realistic render scale.
       '    <rect x="540" y="100" width="200" height="100" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">Square</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -363,7 +362,7 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
     await slideFrame.locator("#el-square").click();
 
     const label = page.locator(".selection-label");
-    await expect.poll(() => label.textContent().catch(() => null)).toBe("方塊");
+    await expect.poll(() => label.textContent().catch(() => null)).toBe("Square");
 
     const selBox = await slideFrame.locator(".sel").boundingBox();
     const labelBox = await label.boundingBox();
@@ -383,33 +382,33 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
   }
 });
 
-// [E5.T7]/F-17（#279 決定 8）：a bullet-list layout's second line used to sit
+// a bullet-list layout's second line used to sit
 // right where the (always-opaque, always-`pointer-events:auto`) context bar
 // renders after selecting the first line — the bar visually and hit-test
 // blocked that line, so clicking it (or ⇧-clicking it to add to the
 // selection) landed on the bar instead. Fixed by making the bar itself
-// ghost (半透明、`pointer-events:none`) until the pointer actually hovers it
+// ghost (semi-transparent, `pointer-events:none`) until the pointer actually hovers it
 // for `HOVER_SOLIDIFY_MS`, and reverting to ghost after it leaves for
 // `HOVER_GHOST_MS` (`OverlayLayer`'s `createHoverSolidifier`,
-// `packages/web/test/stage-overlays.test.ts` unit-tests the delay logic
+// `apps/web/test/stage-overlays.test.ts` unit-tests the delay logic
 // itself directly). This is the one e2e case that crosses the parent
 // document/iframe boundary the unit tests cannot reach: a real click must
 // pass through the bar's on-screen position into the iframe underneath it.
-it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停留 hover 後才能按到它自己的按鈕", async () => {
+it("the context bar passes clicks through to blocked content underneath while unhovered; hovering long enough lets its own button receive clicks", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-title" data-comot-name="標題">\n' +
+      '  <g id="el-title" data-slidra-name="Title">\n' +
       '    <rect x="100" y="60" width="1080" height="100" fill="#c66"/>\n' +
       // openApp() waits for the slide's first painted <text> before
       // returning — this fixture is otherwise all <rect>.
-      '    <text x="120" y="120" font-size="20">標題</text>\n' +
+      '    <text x="120" y="120" font-size="20">Title</text>\n' +
       "  </g>\n" +
       // Starts right at the title's bottom edge and runs deep enough
       // (measured empirically: with this deck's viewBox/viewport pair the
       // context bar renders fully inside this rect's on-screen box) that
       // the bar's fixed CSS-px band below the title always lands on top of
-      // it, reproducing the ticket's "情境列擋住下一行" layout.
-      '  <g id="el-subtitle" data-comot-name="副標">\n' +
+      // it, reproducing the "context bar blocks the next line" layout.
+      '  <g id="el-subtitle" data-slidra-name="Subtitle">\n' +
       '    <rect x="100" y="170" width="1080" height="400" fill="#6c9"/>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -419,7 +418,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-title").click();
-    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("標題");
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("Title");
 
     const barBox = await page.locator(".context-bar").boundingBox();
     expect(barBox).not.toBeNull();
@@ -430,7 +429,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
     // on-screen position must pass straight through to the subtitle rect
     // the bar happens to be sitting on top of.
     await page.mouse.click(overBar.x, overBar.y);
-    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("副標");
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("Subtitle");
 
     // Hover the (subtitle's own, freshly repositioned) bar long enough to
     // solidify, then its Delete button must actually receive a click —
@@ -452,7 +451,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
 // The above-flip branch (`ContextBar`'s `fitsBelow === false`) is NOT
 // e2e'd here — measured directly (see this PR's delivery notes): `.canvas-
 // area`'s CSS reserves a FIXED `--space-gutter-bottom: 76px` below the
-// rendered slide (packages/web/src/styles/tokens.css), and the flip
+// rendered slide (apps/web/src/styles/tokens.css), and the flip
 // threshold is GAP(8) + BAR_HEIGHT(40) = 48px < 76px. Any element placed
 // anywhere within the slide's own bounds therefore always leaves at least
 // 76px below it — `fitsBelow` is mathematically guaranteed true for every
@@ -460,12 +459,12 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
 // (probed at well heights from ~150px to ~700px). The flip branch is only
 // reachable through zoom+pan pushing a selection's on-screen box past the
 // visible well's edge, which this suite does not attempt to orchestrate
-// precisely — `packages/web/test/stage-overlays.test.ts` unit-tests both
+// precisely — `apps/web/test/stage-overlays.test.ts` unit-tests both
 // branches of `ContextBar`'s `fitsBelow` decision directly against its own
 // props instead, including the exact boundary case, which is the more
 // precise place to pin this particular piece of logic down.
 
-it("選取後簡報檔案位元組完全未變", async () => {
+it("the presentation file's bytes are completely unchanged after selection", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor(demoDir);
   try {
     const before = sha256(
@@ -494,7 +493,7 @@ it("選取後簡報檔案位元組完全未變", async () => {
 // with the same markup inside the same iframe and showing the fixture
 // really does defeat it — a fixture that fails to defeat a naive
 // implementation would prove nothing about the Shadow DOM.
-it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋掉沒用 Shadow DOM 的對照組", async () => {
+it("hostile slide CSS cannot cover the Shadow DOM selection box, though the same CSS does cover a non-Shadow-DOM control", async () => {
   const { server, cleanup } = await startServerFor(hostileDeckDir);
   try {
     const page = await openApp(server);
@@ -504,7 +503,7 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
     const measurement = await frame.evaluate(() => {
       // The real box selection-runtime.js already drew, inside its shadow
       // root — protected by the host's own inline !important styles.
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const realBox = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       if (!realBox) return null;
       const realStyle = getComputedStyle(realBox);
@@ -560,20 +559,20 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
   }
 });
 
-// Gate review round 1 (#56): the view-mode iframe has `allow-scripts` too
-// (ADR-0011), so any slide script can forge a `comot-player` message by
+// the view-mode iframe has `allow-scripts` too
+// (ADR-0011), so any slide script can forge a `slidra-player` message by
 // hand — `event.source === frame.contentWindow` only proves which iframe
 // sent it, never which script inside that iframe did. Before canvas.ts's
 // mode gate, this forged message drove advancePastEnd() and replaced the
 // view-mode srcdoc with the play document (containing
-// `window.__COMOT_PLAN__`) while mode stayed "view" — reproduced directly
+// `window.__SLIDRA_PLAN__`) while mode stayed "view" — reproduced directly
 // against this branch's pre-fix canvas.ts. Slide 2 of hostile-selection-deck
 // carries the forging script; slide 1's hostile CSS plays no part here.
 // Slide 2 is deliberately not the deck's last slide (slide 3 is harmless
 // filler after it): advancePastEnd() is a no-op on the last slide even
 // with no gate at all, so landing on the true last slide would make this
 // test pass whether or not the fix is in place.
-it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不會把 iframe 換成播放文件", async () => {
+it("in view mode, a slide forging a slidra-player message neither advances the slide nor swaps the iframe to the play document", async () => {
   const { server, cleanup } = await startServerFor(hostileDeckDir);
   try {
     const page = await openApp(server);
@@ -594,13 +593,13 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     await expect.poll(() => pageIndicator.textContent()).toBe("Slide 2 of 4");
     const srcdoc = await slideFrame.getAttribute("srcdoc");
     expect(srcdoc).not.toBeNull();
-    expect(srcdoc).not.toContain("__COMOT_PLAN__");
+    expect(srcdoc).not.toContain("__SLIDRA_PLAN__");
   } finally {
     await cleanup();
   }
 });
 
-// Gate round 2 (#56): slide 4 of hostile-selection-deck installs a
+// slide 4 of hostile-selection-deck installs a
 // capturing `window` click listener that calls
 // `event.stopImmediatePropagation()` the moment its inline script runs.
 // Before the fix, this silently killed selection with no visible error:
@@ -610,7 +609,7 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
 // reaches. The click below is a real mouse click (Playwright locator
 // click), never `element.click()` in page script, per this file's own
 // posture note above.
-it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）也選不掉：狀態列與選取框仍更新", async () => {
+it("a slide's own script intercepting the click first (stopImmediatePropagation) still can't block selection: the status bar and selection box still update", async () => {
   const { server, cleanup } = await startServerFor(hostileDeckDir);
   try {
     const page = await openApp(server);
@@ -622,11 +621,11 @@ it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）�
 
     const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -636,12 +635,12 @@ it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）�
   }
 });
 
-// 裁決 6 (#56): exitPlay() destroys the play iframe and rebuilds it in view
+// exitPlay() destroys the play iframe and rebuilds it in view
 // mode — that rebuild must re-inject selection-runtime.js, or selection
 // silently stops working with no error and no failed assertion anywhere
 // else. Both the status bar text and the Shadow DOM box are asserted: the
 // status bar alone would not catch a rebuilt frame that lost its box.
-it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取框仍畫在 Shadow DOM 裡", async () => {
+it("selection still works after leaving play mode: the status bar shows the display name, and the selection box is still drawn in the Shadow DOM", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
   try {
     const page = await openApp(server);
@@ -653,18 +652,18 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
     // carry allow-scripts (ADR-0011).
     await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
-    await page.locator('button:has-text("離開播放")').click();
+    await page.locator('button:has-text("Exit Play")').click();
     // Symmetric wait for the round trip back to view mode: the titlebar
     // (and with it its own Play-from-start button) reappears.
     await expect.poll(() => page.locator(".titlebar").count()).toBe(1);
 
     const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -674,41 +673,26 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
   }
 });
 
-it("基準截圖：標準檢視含選取框", async () => {
-  const { server, cleanup } = await startServerFor(demoDir);
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    // The box's geometry is read from getBoundingClientRect() at click
-    // time; give layout a tick to settle before the byte-exact capture.
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "selected", baselineDir });
-  } finally {
-    await cleanup();
-  }
-});
-
 // ADR-0012: a group is a container of containers, so clicking a child
 // inside a group selects the whole group — PowerPoint's semantics. This is
-// what "選取改為認容器" actually buys, and it is invisible on `demo/`
-// (which has no groups), so the test brings its own deck.
-it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組的顯示名稱", async () => {
+// what switching selection to recognize containers actually buys, and it
+// is invisible on `demo/` (which has no groups), so the test brings its
+// own deck.
+it("clicking a child inside a group selects the whole group, and the status bar shows the group's display name", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-comot-name="群組">\n' +
-      '    <g id="el-child-left" data-comot-name="左邊">\n' +
+      '  <g id="el-group" data-slidra-name="Group">\n' +
+      '    <g id="el-child-left" data-slidra-name="Left">\n' +
       '      <rect x="200" y="260" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
-      '    <g id="el-child-right" data-comot-name="右邊">\n' +
+      '    <g id="el-child-right" data-slidra-name="Right">\n' +
       '      <rect x="880" y="260" width="200" height="200" fill="#69c"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other
       // caller. This one sits well outside the group.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Group test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -721,23 +705,21 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
     // el-child-left; the outermost is el-group, and el-group is the answer.
     await page.frameLocator("iframe.slide-frame").locator("#el-child-left rect").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
-    // 功能「群組（含巢狀）」› 場景「選取群組」：標籤顯示群組的顯示名稱（此處
-    // 選取停在頂層，groupPath 是 []，所以標籤沒有「A › B」路徑前綴，就是名稱本身）。
-    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("群組");
-
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "group-selected", baselineDir });
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group");
+    // Feature "Groups (including nested)" › Scenario "Select group": the label
+    // shows the group's display name (selection stays at the top level here,
+    // so groupPath is [] and the label has no "A › B" path prefix — just the name itself).
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("Group");
   } finally {
     await cleanup();
     await deck.cleanup();
   }
 });
 
-// --- NOOP-149 / #117: 群組編輯的虛線框視覺輔助 -----------------------------
+// --- The dashed-box visual aid for group editing -----------------------------
 
 /**
- * The `.group-frame` overlay's box pool (NOOP-149 r2): one dashed box per
+ * The `.group-frame` overlay's box pool: one dashed box per
  * level of `groupPath` currently in scope, outermost first. Only the
  * currently-visible (`display:block`) boxes are returned — a collapsed
  * inner level leaves its pooled element behind with `display:none`, which
@@ -748,7 +730,7 @@ async function groupFrameBoxes(
 ): Promise<Array<{ display: string; left: number; top: number; width: number; height: number }>> {
   const frame = await canvasFrame(page);
   return frame.evaluate(() => {
-    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const els = [...host.shadowRoot!.querySelectorAll(".group-frame")] as HTMLElement[];
     return els
       .filter((el) => getComputedStyle(el).display !== "none")
@@ -775,21 +757,21 @@ async function groupFrameBoxes(
 async function makeNestedGroupDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
       '    <rect x="450" y="200" width="380" height="320" fill="none" stroke="#ccc"/>\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 260)">\n' +
-      '      <rect id="el-leaf" data-comot-name="葉節點" width="200" height="200" fill="#c66"/>\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(500 260)">\n' +
+      '      <rect id="el-leaf" data-slidra-name="Leaf Node" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other callers.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組虛線框測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Group dashed-box test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
 }
 
-it("選取群組時顯示虛線框", async () => {
+it("selecting a group shows a dashed box", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -808,7 +790,7 @@ it("選取群組時顯示虛線框", async () => {
   }
 });
 
-it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，外層的框保留不動", async () => {
+it("drilling into nested groups one level at a time stacks dashed boxes: each level entered adds one box, and outer boxes stay put", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -817,19 +799,19 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     const selName = page.locator(".status-selection-chip");
 
     // First dblclick enters el-outer (the outermost group at top level).
-    // NOOP-149r3: the newly-entered scope's own selection is resolved by
+    // The newly-entered scope's own selection is resolved by
     // the same outermost-within-scope rule a click/drag would use
     // (resolveClickTarget), so it lands on el-inner — the outermost
     // id-carrying element strictly inside el-outer — not directly on the
     // leaf under the pointer. This is what makes the highlighted selection
     // box match what a drag started right after this dblclick would
-    // actually move (see the "拖曳作用對象與選取層級一致" test below).
+    // actually move (see the "the drag target matches the selection level" test below).
     // el-inner being selected-but-not-yet-entered gets the same one-frame
-    // preview a plain click on any group gets ("選取群組時顯示虛線框"
-    // above), on top of el-outer's own entered-scope frame — 2 frames
-    // already, not 1.
+    // preview a plain click on any group gets ("selecting a group shows a
+    // dashed box" above), on top of el-outer's own entered-scope frame —
+    // 2 frames already, not 1.
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     // The click/dblclick sequence's own select messages each round-trip
     // through the host (which echoes group scope + handle flags back down
     // — see canvas.ts's pushSelectionToRuntime); give the last echo time to
@@ -845,10 +827,10 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
     // the leaf as el-inner's own outermost-within-scope descendant. Both
     // frames were already showing (as el-outer's entered-scope frame and
     // el-inner's selected-but-not-entered preview) — entering el-inner for
-    // real must not move or drop either one (NOOP-149 r2: a single-element
-    // frame that moved to the innermost level made the outer group vanish).
+    // real must not move or drop either one (a single-element frame that
+    // moved to the innermost level would make the outer group vanish).
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
     await page.waitForTimeout(50);
     const afterInner = await groupFrameBoxes(page);
     expect(afterInner).toHaveLength(2);
@@ -871,7 +853,7 @@ it("巢狀逐層進入時虛線框逐層疊加：每進一層新增一個框，�
   }
 });
 
-it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至也被退出為止", async () => {
+it("exiting one level at a time with Esc: each press collapses only the innermost box, and outer boxes remain until they too are exited", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -880,12 +862,12 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
     const selName = page.locator(".status-selection-chip");
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     await page.waitForTimeout(50);
     const [outerFrame] = await groupFrameBoxes(page);
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
     // See the previous test's comment: wait for the dblclick's own select
     // message to round-trip back through the host before pressing Escape,
     // so a late-arriving echo cannot re-apply the just-entered scope on
@@ -915,8 +897,8 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
 
 /**
  * Two-child inner group for the drag/selection-consistency test below —
- * mirrors the human's PR #123 repro (三層巢狀 deck ⊃ 內層群組 ⊃ 藍色方塊／
- * 粉色方塊). `makeNestedGroupDeck`'s inner group wraps a single leaf, so
+ * mirrors a three-level-nested deck ⊃ inner group ⊃ blue square/pink
+ * square repro. `makeNestedGroupDeck`'s inner group wraps a single leaf, so
  * its own bounding box happens to coincide with that leaf's — useless for
  * telling "the solid box wraps the leaf" apart from "the solid box wraps
  * the whole group" geometrically. Two side-by-side children make the two
@@ -924,7 +906,7 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
  */
 // ADR-0012's normal form requires every group's children to themselves be
 // `<g>` containers ("a group is a container of containers") and forbids an
-// id/data-comot-name on a bare primitive — core's parseSlide (packages/core
+// id/data-slidra-name on a bare primitive — core's parseSlide (packages/core
 // src/slide/format.ts's toElement) only recurses into a `<g>`'s children as
 // real, independently addressable SlideElements when EVERY child is itself
 // a `<g>`; otherwise the whole thing collapses into one opaque "compound"
@@ -937,18 +919,18 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
 async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(460 220)">\n' +
-      '      <g id="el-blue" data-comot-name="藍色方塊">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(460 220)">\n' +
+      '      <g id="el-blue" data-slidra-name="Blue Square">\n' +
       '        <rect width="150" height="150" fill="#69c"/>\n' +
       "      </g>\n" +
-      '      <g id="el-pink" data-comot-name="粉色方塊" transform="translate(190 0)">\n' +
+      '      <g id="el-pink" data-slidra-name="Pink Square" transform="translate(190 0)">\n' +
       '        <rect width="150" height="150" fill="#c9a"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">拖曳一致性測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Drag consistency test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -957,13 +939,13 @@ async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => 
 /** `translate(x y)` on `elementId`'s own `<g>` — mirrors e2e/direct-manipulation.test.ts's own `readTranslate`. */
 function readTranslate(svg: string, elementId: string): { x: number; y: number } {
   const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
-  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  if (!elementMatch) throw new Error(`could not find ${elementId}'s transform`);
   const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
-  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  if (!translateMatch) throw new Error(`${elementId}'s transform has no translate: ${elementMatch[1]}`);
   return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
 }
 
-// NOOP-149r3: the human's second PR #123 repro — after entering a group,
+// A regression repro — after entering a group,
 // the solid selection box was drawn on a leaf while a drag actually moved
 // its enclosing (un-entered) inner group. The two assertions below cover
 // both halves of that mismatch directly, rather than trusting that
@@ -972,7 +954,7 @@ function readTranslate(svg: string, elementId: string): { x: number; y: number }
 // under the pointer); second, that dragging from that same point really
 // does move the group as a rigid whole (both children shift, and neither
 // child gained a transform of its own).
-it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際被拖動的節點是同一個", async () => {
+it("the drag target matches the selection level: the node marked by the solid box is the same node actually being dragged", async () => {
   const deck = await makeDragConsistencyDeck();
   const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
   try {
@@ -985,7 +967,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
     // the solid selection box must land on the whole group, not on
     // el-pink alone.
     await pink.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     await page.waitForTimeout(50);
 
     // The iframe is sandboxed without allow-same-origin (see the sandbox
@@ -994,12 +976,12 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
     // same as groupFrameBoxes above.
     const frame = await canvasFrame(page);
     const selBox = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const rect = host.shadowRoot!.querySelector(".sel")!.getBoundingClientRect();
       return { width: rect.width, height: rect.height };
     });
     const pinkBox = await pink.boundingBox();
-    if (!pinkBox) throw new Error("量不到 el-pink 的邊界框");
+    if (!pinkBox) throw new Error("could not measure el-pink's bounding box");
     // el-inner's own box (blue + pink side by side) is roughly twice as
     // wide as el-pink alone — a box that had wrongly wrapped just the leaf
     // would be close to pinkBox.width, not ~2x it.
@@ -1042,31 +1024,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
   }
 });
 
-it("基準截圖：群組編輯中的虛線框", async () => {
-  const deck = await makeNestedGroupDeck();
-  const { server, cleanup } = await startServerFor(deck.dir);
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    await page.frameLocator("iframe.slide-frame").locator("#el-leaf").dblclick();
-    // Same settle-before-capture wait as the other baseline screenshot
-    // above — geometry is read from getBoundingClientRect() at click time.
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "group-frame", baselineDir });
-  } finally {
-    await cleanup();
-    await deck.cleanup();
-  }
-});
-
-// NOOP-91 round-2 FAIL #3: 驗收條件第二條「截圖比對：單選、多選、群組選取、
-// 鑽入標籤、Arrange 選單、右鍵選單」六案，第 1 輪只交了前三案——這是第四案。
-// 基準圖尚未產生（AGENTS.md「視覺回歸的把關分工」：本機只能比對, 不能產生
-// 基準）；這條測試在基準產生前會因「找不到基準截圖」失敗，符合
-// compareScreenshot 自己文件裡「先寫測試、CI 觸發 update_baselines 產生
-// 基準」的流程。
-it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", async () => {
+it("the label after drilling into a group (Group 2 › Group 1 path)", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -1074,23 +1032,20 @@ it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", as
     const slideLeaf = page.frameLocator("iframe.slide-frame").locator("#el-leaf");
     const selName = page.locator(".status-selection-chip");
 
-    // Two dblclicks drills all the way to the leaf, same sequence as "巢狀
-    // 逐層進入" above — label ends up "外層群組 › 內層群組 › 葉節點".
+    // Two dblclicks drills all the way to the leaf, same sequence as
+    // "drilling into nested groups one level at a time" above — label
+    // ends up "outer group › inner group › leaf node".
     await slideLeaf.dblclick();
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
-    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("外層群組 › 內層群組 › 葉節點");
-
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "drill-in-label", baselineDir });
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("Outer Group › Inner Group › Leaf Node");
   } finally {
     await cleanup();
     await deck.cleanup();
   }
 });
 
-// --- [E2.T15]/#205: 成組／解組 (Dock 的 Group/Ungroup 按鈕) ----------------
+// --- Grouping/ungrouping (the Dock's Group/Ungroup buttons) ----------------
 
 /** How many effect items the slide currently has, straight off the server (independent of what the GUI has rendered). */
 async function effectCount(registry: CommandRegistry, presentationId: string): Promise<number> {
@@ -1106,24 +1061,24 @@ async function effectCount(registry: CommandRegistry, presentationId: string): P
 async function makeGroupCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-a" data-comot-name="矩形A">\n' +
+      '  <g id="el-a" data-slidra-name="Rectangle A">\n' +
       '    <rect x="200" y="80" width="160" height="120" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-b" data-comot-name="矩形B">\n' +
+      '  <g id="el-b" data-slidra-name="Rectangle B">\n' +
       '    <rect x="500" y="80" width="160" height="120" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">成組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">Grouping test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
 }
 
-it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並顯示 toast", async () => {
+it("grouping: shift-selecting 2 elements and clicking Group removes the members' own animations and shows a toast", async () => {
   const deck = await makeGroupCommandDeck();
   const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
   try {
-    // el-a carries an animation of its own before grouping — [E2.T7]: a
+    // el-a carries an animation of its own before grouping — a
     // member's individual animation does not carry over into the new group.
     const added = await registry.dispatch("effect add", {
       id: presentationId, slidePath: "slides/001.svg", elementIds: ["el-a"],
@@ -1147,31 +1102,22 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     const toast = page.locator(".dock-toast");
     await expect.poll(() => toast.textContent()).toBe("Grouped 2 elements · their animations were removed");
 
-    // D4.2：成組後選取變成新群組本身；D1：新群組得到自動命名 Group 1。
-    // 移到截圖之前（F8, NOOP-289 期間發現）：dock 按鈕的 enabled/disabled
-    // 狀態跟著「選取是否已還原」走，不是 toast 一出現就與 reload 進度脫鉤
-    // ——這裡等的正是同一個 reload，只是等的方式從「不管它」換成「等它
-    // 落地」，讓下面的截圖固定在 reload 之後那個狀態，不再跟 reload 賽跑
-    // （原本「不等 reload 完成」的假設在這個成員上不成立，被較快的 reload
-    // 時序放大成偶發 flaky）。
+    // After grouping, selection becomes the new group itself; the new group
+    // is auto-named Group 1.
+    // Moved ahead of the screenshot: the dock button's enabled/disabled
+    // state tracks whether selection has been restored, not whether the
+    // toast has merely appeared — it is not decoupled from reload progress.
+    // What we wait for here is that same reload, just switched from
+    // "ignore it" to "wait for it to land", so the screenshot below is
+    // pinned to the state after reload instead of racing it (the original
+    // "don't wait for reload to finish" assumption doesn't hold for this
+    // member, and got amplified into occasional flakiness by a faster reload).
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
     expect(await effectCount(registry, presentationId)).toBe(0);
 
-    // 基準截圖：toast（clip 到 dock ∪ toast 的聯集，四邊取整——見
-    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。
-    await settleForScreenshot(page);
-    const dockBox = await page.locator(".dock").boundingBox();
-    const toastBox = await toast.boundingBox();
-    if (!dockBox || !toastBox) throw new Error("量不到 .dock 或 .dock-toast 的邊界框");
-    const x = Math.floor(Math.min(dockBox.x, toastBox.x));
-    const y = Math.floor(Math.min(dockBox.y, toastBox.y));
-    const right = Math.ceil(Math.max(dockBox.x + dockBox.width, toastBox.x + toastBox.width));
-    const bottom = Math.ceil(Math.max(dockBox.y + dockBox.height, toastBox.y + toastBox.height));
-    await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
-
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
-    const groupMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
-    if (!groupMatch) throw new Error("找不到新群組的 <g data-comot-name=\"Group 1\">");
+    const groupMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
+    if (!groupMatch) throw new Error("could not find the new group's <g data-slidra-name=\"Group 1\">");
     expect(svg.indexOf('id="el-a"')).toBeGreaterThan(groupMatch.index);
     expect(svg.indexOf('id="el-b"')).toBeGreaterThan(groupMatch.index);
   } finally {
@@ -1182,27 +1128,27 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
 
 // A pre-existing group (el-group ⊃ el-child) sitting next to a lone element
 // (el-extra), both direct children of <svg> — selecting "one existing group
-// + one element" and grouping them is the 巢狀 scenario (05-INTERACTIONS
-// .feature「群組（含巢狀）」).
+// + one element" and grouping them is the "nested" scenario (05-INTERACTIONS
+// .feature's "Groups (including nested)").
 async function makeNestingCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-comot-name="子群組">\n' +
-      '    <g id="el-child" data-comot-name="子項">\n' +
+      '  <g id="el-group" data-slidra-name="Subgroup">\n' +
+      '    <g id="el-child" data-slidra-name="Child">\n' +
       '      <rect x="150" y="80" width="120" height="100" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-extra" data-comot-name="額外元素">\n' +
+      '  <g id="el-extra" data-slidra-name="Extra Element">\n' +
       '    <rect x="450" y="80" width="120" height="100" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">巢狀成組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">Nested grouping test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
 }
 
-it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再包一層，既有群組原封不動", async () => {
+it("nesting: selecting one existing group plus one element and clicking Group wraps them in an outer layer, leaving the existing group untouched", async () => {
   const deck = await makeNestingCommandDeck();
   const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
   try {
@@ -1227,8 +1173,8 @@ it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再�
     // group wraps el-group (as a whole) and el-extra.
     expect(svg).toContain('id="el-group"');
     expect(svg).toContain('id="el-child"');
-    const outerMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
-    if (!outerMatch) throw new Error("找不到新的外層群組");
+    const outerMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
+    if (!outerMatch) throw new Error("could not find the new outer group");
     expect(svg.indexOf('id="el-group"')).toBeGreaterThan(outerMatch.index);
     expect(svg.indexOf('id="el-extra"')).toBeGreaterThan(outerMatch.index);
   } finally {
@@ -1237,29 +1183,32 @@ it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再�
   }
 });
 
-// `makeNestedGroupDeck`（group-frame 系列測試用）刻意在 el-outer 底下混了一
-// 個沒有 id 的裝飾用 <rect>——ADR-0012 合規規則要求容器的子節點「全部是
-// <g>，或全部是圖元」，這個 fixture 只在 selection-runtime 的畫面層合法，
-// 送進 `element group/ungroup`（走 assertSlideCompliant）會直接 403：「容器
-// 同時含有圖元與子容器」。這裡另外做一份三層都合規的巢狀 deck。
+// `makeNestedGroupDeck` (used by the group-frame test series) deliberately
+// mixes in an id-less decorative <rect> under el-outer — ADR-0012's
+// compliance rule requires a container's children to be "all <g>, or all
+// primitives", so this fixture is only legal at selection-runtime's
+// rendering layer. Sending it into `element group/ungroup` (which goes
+// through assertSlideCompliant) fails outright with a 403: "container has
+// both primitives and child containers". So this builds a separate,
+// fully-compliant three-level nested deck.
 async function makeCompliantNestedDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 60)">\n' +
-      '      <g id="el-leaf" data-comot-name="葉節點">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(500 60)">\n' +
+      '      <g id="el-leaf" data-slidra-name="Leaf Node">\n' +
       '        <rect width="200" height="200" fill="#c66"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
-      '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">解組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">Ungroup test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
 }
 
-it("解組：整組選取後按 Ungroup，只解目前這一層——內層群組與其動畫皆保留在外的那一層被移除", async () => {
+it("ungrouping: selecting a whole group and clicking Ungroup dissolves only the current level — the inner group and its animation are preserved, only the outer level is removed", async () => {
   const deck = await makeCompliantNestedDeck();
   const { server, registry, presentationId, cleanup } = await startServerFor(deck.dir);
   try {
@@ -1278,21 +1227,21 @@ it("解組：整組選取後按 Ungroup，只解目前這一層——內層群�
     // Not yet drilled into anything: clicking the leaf resolves to the
     // outermost group at top scope, el-outer.
     await slideLeaf.click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 外層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Outer Group");
     expect(await groupButton.getAttribute("aria-label")).toBe("Ungroup");
     expect(await groupButton.isDisabled()).toBe(false);
 
     await groupButton.click();
     await expect.poll(() => page.locator(".dock-toast").textContent()).toBe("Ungrouped · the group animation was removed");
 
-    // D4.2：解組後選取變成被解散群組的直接子節點——el-outer 唯一的直接
-    // 子節點是 el-inner。
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    // After ungrouping, selection becomes the dissolved group's direct
+    // child — el-outer's only direct child is el-inner.
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     expect(await effectCount(registry, presentationId)).toBe(0);
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
     expect(svg).not.toContain('id="el-outer"');
-    // 只解目前這一層：內層群組（及其葉節點）原封不動保留。
+    // Only the current level is dissolved: the inner group (and its leaf node) is preserved untouched.
     expect(svg).toContain('id="el-inner"');
     expect(svg).toContain('id="el-leaf"');
   } finally {

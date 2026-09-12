@@ -1,105 +1,124 @@
-# CoMotion
+# Slidra
 
-以 SVG 為本體的簡報編輯器。人與 agent 共同編輯同一份簡報，agent 透過 CLI 操作，人透過視覺編輯器操作。
+An SVG-native presentation editor. Humans and agents edit the same deck together — the agent operates
+through the CLI, the human through the visual editor.
 
 ## Language
 
-### 簡報內容
+### Deck content
 
-**簡報**：
-一份完整的 CoMotion 作品，由有序的投影片、資產與設定組成。
-_Avoid_: 專案、deck、PPT、檔案
+**Deck**:
+A complete Slidra work, made up of ordered slides, assets, and settings.
+_Avoid_: project, PPT, file
 
-**投影片**：
-簡報中的單一頁面，以一份 SVG 表達。
-_Avoid_: 頁面、page、slide
+**Slide**:
+A single page within a deck, expressed as one SVG.
+_Avoid_: page
 
-**元素**：
-投影片中一個可被獨立定址與操作的視覺物件。
-_Avoid_: 物件、圖層、shape、node
+**Element**:
+A visual object inside a slide that can be independently addressed and manipulated.
+_Avoid_: object, layer, shape, node
 
-**顯示名稱**：
-元素給人看的名字。與元素用來被定址的識別碼是兩回事，改動它不影響定址。
-_Avoid_: 標籤、label、別名
+**Display name**:
+The human-facing name of an element. Distinct from the identifier used to address the element —
+changing it does not affect addressing.
+_Avoid_: label, alias
 
-**畫布**：
-簡報的頁面尺寸。一份簡報只有一個，每張投影片都照著它設計。
-_Avoid_: 版面、頁面大小、canvas、尺寸設定
+**Canvas**:
+The deck's page dimensions. A deck has exactly one, and every slide is designed against it.
+_Avoid_: layout, page size, canvas size setting
 
-**選取**：
-使用者當前指向的元素。只存在於這一次操作之中，不寫進簡報，也不改變任何內容。
-_Avoid_: 選中、聚焦、focus、active
+**Selection**:
+The element the user is currently pointing at. It exists only for the duration of that interaction —
+it is never written into the deck and never changes any content.
+_Avoid_: selected, focused, focus, active
 
-**資產**：
-投影片引用的外部媒體檔案，例如影片、音訊、點陣圖。
-_Avoid_: 素材、媒體、resource、附件
+**Asset**:
+An external media file referenced by a slide — a video, audio, or raster image, for example.
+_Avoid_: material, media, resource, attachment
 
-**群組**：
-數個元素合起來被當成一個元素看待。群組自己也是元素，可以再被群組。
-_Avoid_: 組合、集合、group、圖層群組
+**Group**:
+Several elements treated as a single element. A group is itself an element, and can be grouped again.
+_Avoid_: composite, collection, layer group
 
-**文字框**：
-承載文字的元素。它有寬度，文字寫滿就自己折到下一行。一行字不是一個元素。
-_Avoid_: 文字方塊、text box、標籤、字串
+**Text box**:
+An element that holds text. It has a width, and text wraps to the next line on its own once it fills
+the box. A single line of text is not itself an element.
+_Avoid_: text block, label, string
 
-**動態文字**：
-內容不是打出來的，而是 CoMotion 依當下情境算出來的文字，例如頁碼。
-_Avoid_: 欄位、變數、佔位符、placeholder
+**Dynamic text**:
+Content that isn't typed in but computed by Slidra from the current context — a page number, for
+example.
+_Avoid_: field, variable, placeholder
 
-**範本**：
-一份可以套用的起始投影片。套用就是整份複製到新的投影片上，從那一刻起兩者再無關係。
-一份簡報可以有好幾份範本。
-_Avoid_: 母片、版面配置、樣板、master、layout、theme
+**Template**:
+A starting slide that can be applied. Applying it copies the whole thing onto a new slide; from that
+point on, the two are unrelated. A deck can have several templates.
+_Avoid_: master, layout, master slide, master layout, theme
 
-**鎖定**：
-元素上的一個標記，說明它是版面的骨架、不該被隨手動到。人在編輯器裡碰不到它。
-擋的是手滑，不是絕對禁止。
-_Avoid_: 唯讀、不可改、凍結、protected
+**Lock**:
+A marker on an element indicating it is structural scaffolding for the layout and shouldn't be touched
+casually. The human can't reach it in the editor. It guards against accidental slips, not an absolute
+prohibition.
+_Avoid_: read-only, immutable, frozen, protected
 
-**備忘稿**：
-只有簡報者看得到的文字，掛在一張投影片上，不會出現在投影片本身。
-_Avoid_: 註解、講稿、notes、旁白
+**Speaker notes**:
+Text visible only to the presenter, attached to a slide, that never appears on the slide itself.
+_Avoid_: comment, script, notes, narration
 
-### 動態
+### Motion
 
-**步驟**：
-播放時的推進單位。使用者推進一次，該步驟的效果一起發生。步驟不被儲存，而是由效果清單推導出來——以「按一下」起始的效果切出一組，那一組就是一個步驟。作用域是一頁之內。
-_Avoid_: 動畫格、frame、時間點、時間軸
+**Step**:
+The unit of advancement during playback. Each time the user advances, all effects belonging to that
+step happen together. Steps aren't stored directly — they're derived from the effect list: a group of
+effects starting with a "click" trigger forms one step. Scope is confined to a single slide.
+_Avoid_: animation frame, frame, time point, timeline
 
-**效果**：
-對某個元素施加的一次變化。分家族：進場、強調、退場等；對影音資產，播放本身就是一種效果。每個效果都指向一個元素，沒有例外。
-_Avoid_: 動畫、特效、animation、build
+**Effect**:
+A single change applied to an element. Effects fall into families — entrance, emphasis, exit, and so
+on; for audio/video assets, playback itself is an effect. Every effect targets exactly one element, no
+exceptions.
+_Avoid_: animation, special effect, build
 
-**效果清單**：
-一張投影片上所有效果的明確順序，寫在該投影片 SVG 裡。投影片自成一體，對調兩頁不必動任何其他檔案。
-_Avoid_: 時間軸、動畫窗格、timeline、序列
+**Effect list**:
+The explicit ordering of all effects on a slide, written into that slide's SVG. A slide is
+self-contained — swapping two slides requires touching no other file.
+_Avoid_: timeline, animation pane, sequence
 
-**進場**：
-一個效果家族：讓靜態元素出現。影音的播放不屬於此家族，它是另一個家族的效果。
-_Avoid_: 動畫、特效、transition、effect
+**Entrance**:
+An effect family: making a static element appear. Media playback is not part of this family — it's an
+effect in a different family.
+_Avoid_: animation, special effect, transition, effect
 
-**轉場**：
-從一張投影片換到下一張時的變化，分「進場（Enter）」與「離場（Exit）」兩半，各自的效果與時長由每一張投影片自己決定（[E2.T11]）——不是整份簡報共用同一種。
-_Avoid_: 換頁效果、切換、transition、過場
+**Transition**:
+The change that happens when moving from one slide to the next, split into an "Enter" half and an
+"Exit" half; each slide decides its own effect and duration for each half — it is not shared uniformly
+across the whole deck.
+_Avoid_: page-change effect, switch, crossfade
 
-**播放**：
-依步驟推進呈現簡報的模式，與編輯相對。是否全螢幕由使用者決定，不是播放的定義的一部分。
-_Avoid_: 展示、放映、preview、簡報模式
+**Play**:
+The mode of presenting a deck by advancing through steps, as opposed to editing. Whether it's fullscreen
+is up to the user — that's not part of the definition of playback.
+_Avoid_: presentation, screening, preview, presentation mode
 
-**總覽**：
-把整份簡報的投影片依序縮小排列，供人一眼定位與跳頁的檢視。
-_Avoid_: 縮圖列、大綱、sidebar、overview
+**Overview**:
+A view that lays out every slide in the deck, shrunk down and in order, for at-a-glance navigation and
+jumping between slides.
+_Avoid_: filmstrip, outline, sidebar
 
-### 人與 agent 的協作
+### Human-agent collaboration
 
-**命令**：
-CLI 提供的一個語意化操作。命令是修改簡報的唯一途徑，人與 agent 都經由它。
-_Avoid_: API、指令、動作、operation
+**Command**:
+A semantic operation exposed by the CLI. Commands are the only way to modify a deck — both humans and
+agents go through them.
+_Avoid_: API, instruction, action, operation
 
-**註記**：
-使用者掛在元素上、待 agent 處理的一句修改指示。送出對話時一併夾帶給 agent。
-_Avoid_: 評論、comment、備註、標記
+**Annotation**:
+A one-line edit instruction the user attaches to an element for the agent to act on. It's bundled along
+when the user sends their message to the agent.
+_Avoid_: comment, remark, tag
 
-**編輯規約**：
-對話開始時送給 agent 的第一則訊息，說明 CoMotion 的操作規則與可用命令。
-_Avoid_: 系統提示、system prompt、skill、指示
+**Editing charter**:
+The first message sent to the agent at the start of a conversation, explaining Slidra's operating
+rules and available commands.
+_Avoid_: system prompt, skill, instructions

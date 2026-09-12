@@ -2,10 +2,10 @@ import { mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withProjectsRegistryLock } from "../src/comotion/home.js";
+import { withProjectsRegistryLock } from "../src/slidra/home.js";
 
 // The advisory lock around a `projects.json` read-modify-write. It exists
-// because two `comotion serve` processes (or a `serve` and a CLI run) can
+// because two `slidra serve` processes (or a `serve` and a CLI run) can
 // write the registry at the same moment: both sides write through temp file
 // + rename, so the file is never torn, but the second writer's whole-map
 // write silently drops the first writer's new entry.
@@ -13,25 +13,25 @@ import { withProjectsRegistryLock } from "../src/comotion/home.js";
 /** The one name this lock is allowed to have — the Rust crate hardcodes the same string. */
 const LOCK_FILE = ".projects.json.lock";
 
-let coMotionHome: string;
+let slidraHome: string;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-lock-home-"));
-  process.env.COMOTION_HOME = coMotionHome;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-lock-home-"));
+  process.env.SLIDRA_HOME = slidraHome;
 });
 
 afterEach(async () => {
-  delete process.env.COMOTION_HOME;
-  await rm(coMotionHome, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  await rm(slidraHome, { recursive: true, force: true });
 });
 
-const lockPath = (): string => path.join(coMotionHome, LOCK_FILE);
+const lockPath = (): string => path.join(slidraHome, LOCK_FILE);
 
 describe("withProjectsRegistryLock", () => {
   it("uses the exact lock filename the Rust crate also hardcodes — the two must never drift", async () => {
     let seen: string[] = [];
     await withProjectsRegistryLock(async () => {
-      seen = await readdir(coMotionHome);
+      seen = await readdir(slidraHome);
     });
     expect(seen).toEqual([LOCK_FILE]);
   });
@@ -79,7 +79,7 @@ describe("withProjectsRegistryLock", () => {
     await writeFile(lockPath(), "");
 
     await expect(withProjectsRegistryLock(async () => "never runs")).rejects.toThrow(
-      "另一個 comotion 正在寫入簡報登記資料，請稍後再試",
+      "another slidra is writing presentation registry data, please try again later",
     );
   }, 15_000);
 });
