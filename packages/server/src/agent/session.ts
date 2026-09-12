@@ -212,7 +212,13 @@ interface ChatEvents {
   "chat-done": (payload: { stopReason: string }) => void;
   "chat-error": (payload: { message: string }) => void;
   /** A command the agent has started running — `command` verbatim from ACP's `rawInput.command`. */
-  "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus }) => void;
+  /**
+   * A command the agent is about to run. `cli` says whether it is a
+   * `comotion` invocation — the only kind that carries a status the author
+   * is meant to read (see `relayCommandStart`). A command with `cli: false`
+   * is shown once and never followed by `chat-command-update`.
+   */
+  "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus; cli: boolean }) => void;
   /**
    * A status change on a command already relayed by `chat-command`.
    * `output` only ever accompanies a failure. `blocked` marks the one
@@ -1036,15 +1042,16 @@ export class AgentChatSession extends EventEmitter {
   private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
     if (command === undefined) return;
-    // Only the CLI reaches the author's timeline. Since ADR-0019 the agent
-    // runs ordinary shell work of its own — reading its own references,
-    // grepping, poking at temp files — and none of that is the author's
-    // business: a row of Done/Failed cards for it is noise, and a failure
-    // in it is the agent's problem to solve, not a status the author is
-    // being asked to read. What changes the presentation is a `comotion`
-    // command, and that is what shows.
-    if (!namesCoMotionProgram(command)) return;
-    this.relayedToolCalls.add(update.toolCallId);
+    // Every command the agent runs is shown — since ADR-0019 that includes
+    // its own shell work (reading its references, grepping, temp files),
+    // and the author is entitled to see what is happening on their
+    // machine. What only the CLI gets is a *status*: 執行中／完成／失敗 is
+    // a claim about the presentation, and a failed `grep` of the agent's
+    // own notes is the agent's problem to solve, not an outcome the author
+    // is being asked to read. So a non-CLI command is relayed once, as the
+    // line it is, and never updated.
+    const cli = namesCoMotionProgram(command);
+    if (cli) this.relayedToolCalls.add(update.toolCallId);
     this.emitTyped("chat-command", {
       toolCallId: update.toolCallId,
       // ACP declares `status` optional on `tool_call` and specifies
@@ -1052,6 +1059,7 @@ export class AgentChatSession extends EventEmitter {
       // default, not a guess standing in for missing information.
       command,
       status: update.status ?? "pending",
+      cli,
     });
   }
 

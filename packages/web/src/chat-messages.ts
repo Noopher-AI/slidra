@@ -36,6 +36,14 @@ export interface CommandMessage {
   /** Verbatim from ACP's `rawInput.command`. Never reassembled here. */
   command: string;
   status: CommandStatus;
+  /**
+   * True for a `comotion` invocation. Only those carry a status the author
+   * is meant to read: 執行中／完成／失敗 is a claim about the presentation,
+   * and the agent's own shell work (reading its references, grepping) has
+   * no outcome the author is being asked to act on. The command is still
+   * shown — just without a tag, and never updated.
+   */
+  cli: boolean;
   /** Present only when the command failed — its own output, shown to the author as-is. */
   output?: string;
   /**
@@ -164,8 +172,9 @@ export function appendCommandMessage(
   toolCallId: string,
   command: string,
   status: CommandStatus,
+  cli: boolean,
 ): ChatMessage[] {
-  return [...messages, { id, role: "command", toolCallId, command, status }];
+  return [...messages, { id, role: "command", toolCallId, command, status, cli }];
 }
 
 /**

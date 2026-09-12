@@ -125,7 +125,7 @@ describe("startChatStream", () => {
     expect(started.working).toBe(false);
     expect(started.messages).toEqual([
       { id: 0, role: "agent", text: "開始" },
-      { id: 1, role: "command", toolCallId: "t1", command: "comotion slide add x", status: "in_progress", interrupted: true },
+      { id: 1, role: "command", toolCallId: "t1", command: "comotion slide add x", status: "in_progress", cli: true, interrupted: true },
       { id: 2, role: "system", text: "已停止" },
     ]);
   });
@@ -161,6 +161,7 @@ describe("startChatStream", () => {
       {
         id: 0,
         role: "command",
+        cli: true,
         toolCallId: "call-1",
         command: "comotion ls p1",
         status: "in_progress",

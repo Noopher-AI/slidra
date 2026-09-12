@@ -1407,6 +1407,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     const started = events.find((e) => e.event === "chat-command");
     expect(started?.data).toEqual({
       toolCallId: "fake-command-call",
+      cli: true,
       command: "comotion ls p1",
       status: "pending",
     });
@@ -1436,9 +1437,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     });
   });
 
-  it("keeps a refused command out of the timeline and tells the author in one line instead", async () => {
-    // 被擋的命令一定不是 `comotion` 命令，而時間軸只放 CLI 命令——所以作者
-    // 看到的不是一張 Failed 卡片，而是一句「CoMotion 擋下了…」。
+  it("shows a refused non-CLI command untagged, and tells the author in one line", async () => {
+    // 命令照樣出現在時間軸上（作者看得到機器上發生什麼事），但沒有狀態標記
+    // ——它不是 CLI 操作。被擋這件事由一句通知負責。
     const events = await commandEventsFor({
       toolCallCommand: `sed -i s/a/b/ ${coMotionHome}/work/p1/slides/001.svg`,
       permissionForToolCall: true,
@@ -1446,7 +1447,10 @@ describe("chat: the author can see the command run (ticket #17)", () => {
       toolCallOutput: "The user doesn't want to proceed with this tool use.",
     });
 
-    expect(events.filter((event) => event.event === "chat-command")).toEqual([]);
+    const started = events.find((event) => event.event === "chat-command");
+    expect((started!.data as { cli: boolean }).cli).toBe(false);
+    // 沒有標記就不會有後續狀態更新
+    expect(events.filter((event) => event.event === "chat-command-update")).toEqual([]);
     const notice = events.find((event) => event.event === "chat-notice");
     expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
   });

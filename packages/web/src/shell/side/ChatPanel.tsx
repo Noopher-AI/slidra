@@ -240,18 +240,28 @@ export function ChatPanel({
             <div
               key={message.id}
               className={`chat-command chat-command-${
-                message.interrupted ? "interrupted" : message.blocked ? "blocked" : message.status
+                !message.cli
+                  ? "untagged"
+                  : message.interrupted
+                    ? "interrupted"
+                    : message.blocked
+                      ? "blocked"
+                      : message.status
               }`}
-              role={message.status === "failed" ? "alert" : undefined}
+              role={message.cli && message.status === "failed" ? "alert" : undefined}
             >
               <p className="chat-command-line">
-                <span className="chat-command-status">
-                  {message.interrupted
-                    ? COMMAND_INTERRUPTED_LABEL
-                    : message.blocked
-                      ? COMMAND_BLOCKED_LABEL
-                      : COMMAND_STATUS_LABEL[message.status]}
-                </span>
+                {/* 只有 CLI 命令帶狀態標記：agent 自己的 shell 工作照樣顯示，
+                    但它的成敗不是作者要讀的東西（見 relayCommandStart）。 */}
+                {message.cli && (
+                  <span className="chat-command-status">
+                    {message.interrupted
+                      ? COMMAND_INTERRUPTED_LABEL
+                      : message.blocked
+                        ? COMMAND_BLOCKED_LABEL
+                        : COMMAND_STATUS_LABEL[message.status]}
+                  </span>
+                )}
                 <code className="chat-command-text">{message.command}</code>
               </p>
               {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}

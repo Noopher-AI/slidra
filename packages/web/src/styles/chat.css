@@ -92,6 +92,13 @@
   gap: var(--space-2);
 }
 
+/* 沒有狀態標記的命令（agent 自己的 shell 工作）：留在時間軸上，但退到背景，
+   讓帶標記的 CLI 命令是眼睛先找到的東西。 */
+.chat-command-untagged {
+  background: transparent;
+  color: var(--ink-500);
+}
+
 .chat-command-status {
   display: inline-flex;
   align-items: center;

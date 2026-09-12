@@ -124,13 +124,14 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
   // Ticket #17: the agent is about to run a command. It becomes its own
   // message in the conversation, in the order it actually happened.
   source.addEventListener("chat-command", (event) => {
-    const { toolCallId, command, status } = JSON.parse((event as MessageEvent).data) as {
+    const { toolCallId, command, status, cli } = JSON.parse((event as MessageEvent).data) as {
       toolCallId: string;
       command: string;
       status: CommandStatus;
+      cli?: boolean;
     };
     options.updateMessages((previous) =>
-      appendCommandMessage(previous, options.nextMessageId(), toolCallId, command, status),
+      appendCommandMessage(previous, options.nextMessageId(), toolCallId, command, status, cli ?? true),
     );
     // Whatever the agent was saying ended where the command began ("現在
     // 來修改文字："). Anything it says after the command is a new
