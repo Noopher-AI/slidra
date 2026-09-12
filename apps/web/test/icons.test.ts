@@ -35,8 +35,8 @@ const ALL_ICON_NAMES: IconName[] = [
   "backward",
 ];
 
-describe("Icon（NOOP-376 驗收）", () => {
-  it("25 個 IconName 都能渲染出含 viewBox 與 aria-hidden 的 svg", () => {
+describe("Icon", () => {
+  it("all 25 IconNames render an svg with a viewBox and aria-hidden", () => {
     expect(ALL_ICON_NAMES).toHaveLength(25);
     for (const name of ALL_ICON_NAMES) {
       const markup = renderToStaticMarkup(createElement(Icon, { name }));
@@ -45,7 +45,7 @@ describe("Icon（NOOP-376 驗收）", () => {
     }
   });
 
-  it("渲染結果不含硬寫色值或 px 字面值", () => {
+  it("the rendered output contains no hardcoded color values or px literals", () => {
     for (const name of ALL_ICON_NAMES) {
       const markup = renderToStaticMarkup(createElement(Icon, { name }));
       // currentColor legitimately contains none of these substrings, so a
@@ -57,7 +57,7 @@ describe("Icon（NOOP-376 驗收）", () => {
     }
   });
 
-  it("三個 size 各自渲染出對應的 --icon-* token", () => {
+  it("each of the three sizes renders its corresponding --icon-* token", () => {
     const expectations: Record<IconSize, string> = {
       inline: "var(--icon-inline)",
       control: "var(--icon-control)",
@@ -69,13 +69,13 @@ describe("Icon（NOOP-376 驗收）", () => {
     }
   });
 
-  it("未給 size 時預設為 command", () => {
+  it("defaults to command when size is not given", () => {
     const withDefault = renderToStaticMarkup(createElement(Icon, { name: "plus" }));
     const withExplicit = renderToStaticMarkup(createElement(Icon, { name: "plus", size: "command" }));
     expect(withDefault).toBe(withExplicit);
   });
 
-  it("未知的圖示名稱會 throw", () => {
+  it("an unknown icon name throws", () => {
     expect(() => renderToStaticMarkup(createElement(Icon, { name: "not-a-real-icon" as IconName }))).toThrow(
       "未知的圖示名稱",
     );

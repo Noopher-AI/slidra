@@ -2,18 +2,17 @@ import { describe, expect, it } from "vitest";
 import { readSlideComments, scanDocument } from "../src/metadata-scan.js";
 
 /**
- * F8 (NOOP-289 決定 M1): the web bundle's own byte-offset scanner,
- * replacing core's `scanDocument`/`readSlideComments`
- * (core's slide/comments.ts). `notes.ts`'s own `readSlideNotes` is already
- * covered by `notes.test.ts` — these two tests are the ones the plan asks
- * for: both an `xmlns:slidra`-bound and an unbound (legacy) file read the
- * same way, the whole reason a byte-offset scanner was kept instead of
- * switching to `DOMParser` for this one reader (see this module's own doc
- * comment).
+ * F8: the web bundle's own byte-offset scanner, replacing core's
+ * `scanDocument`/`readSlideComments` (core's slide/comments.ts). `notes.ts`'s
+ * own `readSlideNotes` is already covered by `notes.test.ts` — these two
+ * tests cover both an `xmlns:slidra`-bound and an unbound (legacy) file
+ * reading the same way, the whole reason a byte-offset scanner was kept
+ * instead of switching to `DOMParser` for this one reader (see this
+ * module's own doc comment).
  */
 
-describe("scanDocument / readSlideComments（F8, NOOP-289 決定 M1）", () => {
-  it("有 xmlns:slidra 繫結：讀得出 <slidra:comment>", () => {
+describe("scanDocument / readSlideComments (F8)", () => {
+  it("with an xmlns:slidra binding: reads out <slidra:comment>", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       '<metadata><slidra:comments xmlns:slidra="https://slidra.app/ns/2026">' +
@@ -25,7 +24,7 @@ describe("scanDocument / readSlideComments（F8, NOOP-289 決定 M1）", () => {
     ]);
   });
 
-  it("舊檔沒有 xmlns:slidra 繫結：DOMParser 會判定損毀，但 scanDocument 是逐位元組掃描，一樣讀得出 <slidra:comment>", () => {
+  it("an old file with no xmlns:slidra binding: DOMParser treats it as malformed, but scanDocument's byte-offset scan reads out <slidra:comment> anyway", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       "<metadata><slidra:comments>" +
@@ -40,7 +39,7 @@ describe("scanDocument / readSlideComments（F8, NOOP-289 決定 M1）", () => {
     ]);
   });
 
-  it("scanDocument 本身：一個帶屬性、無自我封閉的元素，offsets 與屬性讀取正確", () => {
+  it("scanDocument itself: a non-self-closing element with an attribute has correct offsets and attribute reads", () => {
     const svg = '<svg viewBox="0 0 1 1"><g id="el-a">x</g></svg>';
     const roots = scanDocument(svg);
     expect(roots).toHaveLength(1);

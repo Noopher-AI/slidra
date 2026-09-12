@@ -76,7 +76,7 @@ function fireLoad(win: Window): void {
  * `"bounds"` (NOOP-90/T2 §4.6) is excluded the same way: `updateBoxes()`
  * fires it on every selection change alongside `select`/`clear`, and it has
  * its own dedicated assertions further down this file. `"element-bounds"`
- * (F8, NOOP-289 決定 G1) joins the same exclusion for the same reason:
+ * (F8) joins the same exclusion for the same reason:
  * `reportElementBounds()` fires once, unconditionally, at the very end of
  * the runtime's own IIFE — before `boot()` even returns — so it is exactly
  * as deterministically-first-and-irrelevant as `"runtime-ready"`.
@@ -173,7 +173,7 @@ function visibleGroupFrames(doc: Document): HTMLElement[] {
 }
 
 describe("selection-runtime.js", () => {
-  it("點一個帶 id 的元素會回報 select，帶上它的 id 與 data-slidra-name", async () => {
+  it("reports select with the id and data-slidra-name of a clicked element with an id", async () => {
     const { doc } = boot('<svg><rect id="el-a" data-slidra-name="標題"/></svg>');
     const { messages, stop } = collectMessages();
 
@@ -184,7 +184,7 @@ describe("selection-runtime.js", () => {
     stop();
   });
 
-  it("點一個只有 id、沒有 data-slidra-name 的元素，name 回報為 null", async () => {
+  it("reports name as null for an element with an id but no data-slidra-name", async () => {
     const { doc } = boot('<svg><rect id="el-b"/></svg>');
     const { messages, stop } = collectMessages();
 
@@ -195,7 +195,7 @@ describe("selection-runtime.js", () => {
     stop();
   });
 
-  it("點沒有 id 祖先的空白處會回報 clear", async () => {
+  it("reports clear when clicking blank space with no ancestor id", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
     const { messages, stop } = collectMessages();
 
@@ -206,7 +206,7 @@ describe("selection-runtime.js", () => {
     stop();
   });
 
-  it("命中判定會沿祖先鏈往上找最近帶 id 的元素", async () => {
+  it("hit-testing walks up the ancestor chain to the nearest element with an id", async () => {
     const { doc } = boot('<svg><g id="el-group"><circle id="inner"></circle></g></svg>');
     doc.getElementById("inner")!.removeAttribute("id");
     const { messages, stop } = collectMessages();
@@ -218,7 +218,7 @@ describe("selection-runtime.js", () => {
     stop();
   });
 
-  it("選取框畫在 shadow root 裡，light DOM 只看得到一個 host、host 底下沒有 .sel", async () => {
+  it("draws the selection box inside a shadow root, so the light DOM only sees the host with no .sel underneath", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
@@ -232,7 +232,7 @@ describe("selection-runtime.js", () => {
     expect(host.shadowRoot!.querySelector(".sel")).not.toBeNull();
   });
 
-  it("host 用 inline !important 鎖住 display/visibility/opacity/z-index，不吃外部樣式", async () => {
+  it("locks display/visibility/opacity/z-index on the host with inline !important, immune to outside styles", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
@@ -247,7 +247,7 @@ describe("selection-runtime.js", () => {
     expect(host.style.opacity).toBe("1");
   });
 
-  it("重點色與 handle 色來自注入的 window.__SLIDRA_SELECTION_COLORS__，不是寫死在檔案裡的色碼", async () => {
+  it("takes the accent and handle colors from injected window.__SLIDRA_SELECTION_COLORS__, not hardcoded color codes", async () => {
     const customColors = { accent: "rgb(1, 2, 3)", handle: "rgb(4, 5, 6)" };
     const { doc } = boot('<svg><rect id="el-a"/></svg>', customColors);
 
@@ -260,7 +260,7 @@ describe("selection-runtime.js", () => {
     expect(runtimeSource).not.toMatch(/#[0-9a-fA-F]{3,8}/);
   });
 
-  it("再點一次空白處會清掉選取框（display 變回 none，而不是只拿掉屬性）", async () => {
+  it("clicking blank space again clears the selection box (display goes back to none, not just an attribute removal)", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
@@ -272,7 +272,7 @@ describe("selection-runtime.js", () => {
     expect(box.style.display).toBe("none");
   });
 
-  it("單選一個非群組元素：沒有任何 .group-frame 顯示", async () => {
+  it("selecting a single non-group element shows no .group-frame", async () => {
     const { doc } = boot('<svg><rect id="el-a"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
@@ -280,7 +280,7 @@ describe("selection-runtime.js", () => {
     expect(visibleGroupFrames(doc)).toHaveLength(0);
   });
 
-  it("單選一個群組元素（本身帶 id 的子元素）：顯示一個 .group-frame", async () => {
+  it("selecting a single group element (a child with its own id) shows one .group-frame", async () => {
     const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     click(doc, doc.getElementById("el-group")!);
@@ -288,7 +288,7 @@ describe("selection-runtime.js", () => {
     expect(visibleGroupFrames(doc)).toHaveLength(1);
   });
 
-  it("雙擊進入群組編輯：顯示一個 .group-frame", async () => {
+  it("double-clicking into group edit mode shows one .group-frame", async () => {
     const { doc } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     dblclick(doc, doc.getElementById("el-child")!);
@@ -296,7 +296,7 @@ describe("selection-runtime.js", () => {
     expect(visibleGroupFrames(doc)).toHaveLength(1);
   });
 
-  it("按 Esc 從群組編輯退到頂層且未選取任何群組：.group-frame 全部收起", async () => {
+  it("pressing Esc to leave group edit mode back to the top level with nothing selected collapses all .group-frame boxes", async () => {
     const { doc, win } = boot('<svg><g id="el-group"><rect id="el-child"/></g></svg>');
 
     dblclick(doc, doc.getElementById("el-child")!);
@@ -307,11 +307,11 @@ describe("selection-runtime.js", () => {
     expect(visibleGroupFrames(doc)).toHaveLength(0);
   });
 
-  it("三層巢狀群組逐層進入：每進一層 .group-frame 累加一個，由外而內堆疊", async () => {
+  it("entering three levels of nested groups one at a time adds one .group-frame per level, stacked outermost-first", async () => {
     const { doc } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
     const leaf = doc.getElementById("leaf")!;
 
-    // First dblclick enters "outer" and (NOOP-149r3) resolves the
+    // First dblclick enters "outer" and resolves the
     // newly-entered scope's own selection through the same
     // outermost-within-scope rule a click/drag hit-test uses — that lands
     // on "middle" (a group, not yet entered), not "leaf". "middle" being
@@ -328,7 +328,7 @@ describe("selection-runtime.js", () => {
     expect(visibleGroupFrames(doc)).toHaveLength(2);
   });
 
-  it("三層巢狀群組逐層退出：Esc 每次只收掉最內層的 .group-frame，外層保留", async () => {
+  it("exiting three levels of nested groups one Esc at a time collapses only the innermost .group-frame each time, outer ones remain", async () => {
     const { doc, win } = boot('<svg><g id="outer"><g id="middle"><rect id="leaf"/></g></g></svg>');
     const leaf = doc.getElementById("leaf")!;
 
@@ -345,7 +345,7 @@ describe("selection-runtime.js", () => {
 });
 
 /**
- * ADR-0017 / NOOP-272 — in-place editing's caret/selection state machine.
+ * ADR-0017 — in-place editing's caret/selection state machine.
  * jsdom has no layout engine and implements neither `getScreenCTM` nor
  * `getNumberOfChars` at all (verified directly against jsdom, not just
  * assumed), so `indexAtPoint()` always resolves to `null` here — every
@@ -360,7 +360,7 @@ describe("selection-runtime.js", () => {
  * accidentally letting it fall through into `gesture = {...}`).
  */
 describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
-  it("組字期間按 Esc 不 commit、不離開編輯；組字結束後 Esc 才 commit", async () => {
+  it("Esc during IME composition does not commit or leave editing; Esc after composition ends commits", async () => {
     const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
@@ -378,7 +378,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("組字期間 pointerdown 落在被編輯元素之外，仍然 commit 並離開編輯（既有行為不受本次修改影響）", async () => {
+  it("a pointerdown outside the edited element during IME composition still commits and leaves editing (unchanged behavior)", async () => {
     const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g><rect id="outside"/></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
@@ -392,7 +392,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("編輯中：pointerdown 落在被編輯元素內部不會發出 gesture-start、select 或 clear", async () => {
+  it("while editing, a pointerdown inside the edited element does not emit gesture-start, select, or clear", async () => {
     const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const { messages, stop } = collectMessages();
@@ -406,7 +406,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("編輯中 click／dblclick 仍被忽略，不觸發選取", async () => {
+  it("click/dblclick while editing are still ignored and do not trigger selection", async () => {
     const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const { messages, stop } = collectMessages();
@@ -419,7 +419,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("編輯中按 Enter（無修飾鍵）不呼叫 preventDefault（NOOP-65 決定 A：讓瀏覽器原生插入換行），不 commit、不離開編輯", async () => {
+  it("Enter (no modifier) while editing does not call preventDefault (letting the browser insert a native newline), and does not commit or leave editing", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
@@ -435,7 +435,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("編輯中按 ⌘Enter／Ctrl+Enter：preventDefault，不插入換行、不 commit、不離開編輯", async () => {
+  it("Cmd+Enter/Ctrl+Enter while editing: preventDefault, no newline inserted, no commit, no leaving editing", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
@@ -454,7 +454,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     stop();
   });
 
-  it("貼上含 \\r\\n 的內容正規化成 \\n，不是被拿掉（NOOP-65 §4.4：pasted 多行文字合法）", async () => {
+  it("pasted content with \\r\\n is normalized to \\n, not stripped (multi-line pasted text is valid)", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
@@ -467,8 +467,8 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
   });
 });
 
-describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，鍵盤等同雙擊）", () => {
-  it("未編輯、選取恰好一個文字框，按 Enter（無修飾鍵）送出 dblclick-textbox", async () => {
+describe("selection-runtime.js — Enter to enter in-place editing (keyboard equivalent of double-click)", () => {
+  it("not editing, exactly one text box selected: Enter (no modifier) sends dblclick-textbox", async () => {
     const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     click(doc, doc.getElementById("el-box")!);
     const { messages, stop } = collectMessages();
@@ -481,7 +481,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
     stop();
   });
 
-  it("未選取任何元素時按 Enter 是 no-op", async () => {
+  it("Enter is a no-op when nothing is selected", async () => {
     const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     void doc;
     const { messages, stop } = collectMessages();
@@ -494,7 +494,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
     stop();
   });
 
-  it("選取 2 個以上元素時按 Enter 是 no-op", async () => {
+  it("Enter is a no-op when 2 or more elements are selected", async () => {
     const { doc, win } = boot(
       '<svg><g id="el-a" data-slidra-text-width="400"><text>A</text></g><g id="el-b" data-slidra-text-width="400"><text>B</text></g></svg>',
     );
@@ -512,7 +512,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
     stop();
   });
 
-  it("選取的不是文字元素時按 Enter 是 no-op", async () => {
+  it("Enter is a no-op when the selected element is not a text element", async () => {
     const { doc, win } = boot('<svg><rect id="el-rect" width="10" height="10"/></svg>');
     click(doc, doc.getElementById("el-rect")!);
     await tick();
@@ -526,7 +526,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
     stop();
   });
 
-  it("⌘Enter／Shift+Enter 等帶修飾鍵的 Enter 不觸發進入編輯", async () => {
+  it("Enter with a modifier held (Cmd+Enter, Shift+Enter, etc.) does not trigger entering edit mode", async () => {
     const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     click(doc, doc.getElementById("el-box")!);
     await tick();
@@ -542,15 +542,14 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
   });
 });
 
-// NOOP-328/NOOP-334: the postMessage-protocol boundary contract that makes
-// the host-side !viewport guards (canvas.ts) rarely matter in practice —
-// reportViewport() must fire synchronously, immediately before "gesture-start"
-// is posted, so send-order delivery guarantees the host already has a
-// viewport by the time it processes the gesture. Removing that
-// reportViewport() call (leaving viewport reporting wired to "load"/"resize"
-// only, as before NOOP-328) must fail this test.
-describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-start 送出", () => {
-  it("拖曳超過門檻觸發手勢時，緊接在 gesture-start 之前送出的是 viewport 訊息", async () => {
+// The postMessage-protocol boundary contract that makes the host-side
+// !viewport guards (canvas.ts) rarely matter in practice — reportViewport()
+// must fire synchronously, immediately before "gesture-start" is posted, so
+// send-order delivery guarantees the host already has a viewport by the time
+// it processes the gesture. Removing that reportViewport() call (leaving
+// viewport reporting wired to "load"/"resize" only) must fail this test.
+describe("selection-runtime.js gesture start: viewport must be sent before gesture-start", () => {
+  it("when a drag crosses the threshold to trigger a gesture, the message right before gesture-start is viewport", async () => {
     const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
 
     const messages: { event?: string }[] = [];
@@ -587,29 +586,29 @@ describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-s
   });
 });
 
-// NOOP-349 round 3, [Fix.2]: wrapSelectionDocument() (canvas.ts) places this
-// runtime's <script> before bodyMarkup, so the IIFE-end reportElementBounds()
-// call always fires before the root <svg> exists and reports an empty map —
-// the only later trigger was document.fonts.ready, which can take seconds
-// (or never fire for shape-only slides). A marquee that starts in that
-// window used to race an empty elementBoundsById on the host, silently
-// selecting nothing (F-15 B-2). Same fix shape as NOOP-328's viewport report:
-// send element-bounds synchronously, immediately before gesture-start, so
-// postMessage's own send-order-is-delivery-order guarantee closes the race.
-describe("selection-runtime.js 的 marquee 手勢起點：element-bounds 必須早於 gesture-start 送出", () => {
-  it("拖曳超過門檻觸發 marquee 手勢時，緊接在 gesture-start 之前送出的是 element-bounds、再前一則是 viewport", async () => {
+// wrapSelectionDocument() (canvas.ts) places this runtime's <script> before
+// bodyMarkup, so the IIFE-end reportElementBounds() call always fires before
+// the root <svg> exists and reports an empty map — the only later trigger
+// was document.fonts.ready, which can take seconds (or never fire for
+// shape-only slides). A marquee that starts in that window used to race an
+// empty elementBoundsById on the host, silently selecting nothing. Same fix
+// shape as the viewport report above: send element-bounds synchronously,
+// immediately before gesture-start, so postMessage's own
+// send-order-is-delivery-order guarantee closes the race.
+describe("selection-runtime.js marquee gesture start: element-bounds must be sent before gesture-start", () => {
+  it("when a drag crosses the threshold to trigger a marquee gesture, the message right before gesture-start is element-bounds, and the one before that is viewport", async () => {
     const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
     // Let boot()'s own IIFE-end post({event:"runtime-ready"})/reportElementBounds()
-    // AND jsdom's own native iframe "load" (which [Fix.1] now also wires to
+    // AND jsdom's own native iframe "load" (which also wires to
     // reportElementBounds()) get delivered to nobody before the listener
     // below attaches — verified empirically that jsdom's real "load" fires
     // and finishes delivering its messages within 2 macrotask ticks of
     // boot() here (never later; a 3rd/4th tick added nothing). Skipping
     // this drain lets a leftover element-bounds from EITHER source
     // coincidentally land in the "last three" slice checked below and mask
-    // a real regression — verified directly: removing [Fix.2]'s
-    // marquee-branch reportElementBounds() call did NOT fail this test
-    // without draining both sources first.
+    // a real regression — verified directly: removing the marquee-branch
+    // reportElementBounds() call did NOT fail this test without draining
+    // both sources first.
     await tick();
     await tick();
 
@@ -642,7 +641,7 @@ describe("selection-runtime.js 的 marquee 手勢起點：element-bounds 必須�
     expect(lastThree).toEqual(["element-bounds", "viewport", "gesture-start"]);
   });
 
-  it("非 marquee（move）手勢起點不會額外送出 element-bounds — 只有 viewport 緊接在 gesture-start 之前", async () => {
+  it("a non-marquee (move) gesture start does not send an extra element-bounds — only viewport comes right before gesture-start", async () => {
     const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
 
     const messages: { event?: string }[] = [];
@@ -664,14 +663,13 @@ describe("selection-runtime.js 的 marquee 手勢起點：element-bounds 必須�
   });
 });
 
-// NOOP-349 round 3, [Fix.1]: the IIFE-end reportElementBounds() call always
-// races an unparsed <svg> (see the describe block above), and
-// document.fonts.ready can take seconds or never resolve for a shape-only
-// slide — this "load" listener is the fast, reliable path: as soon as the
-// iframe's document has finished parsing, the host gets a real bounds
-// report without waiting on fonts at all.
-describe("selection-runtime.js 的 element-bounds：load 事件觸發補報 (NOOP-349 round 3, [Fix.1])", () => {
-  it("iframe 的 load 事件觸發後，額外送出一次 element-bounds", async () => {
+// The IIFE-end reportElementBounds() call always races an unparsed <svg>
+// (see the describe block above), and document.fonts.ready can take seconds
+// or never resolve for a shape-only slide — this "load" listener is the
+// fast, reliable path: as soon as the iframe's document has finished
+// parsing, the host gets a real bounds report without waiting on fonts at all.
+describe("selection-runtime.js element-bounds: a follow-up report fires on the load event", () => {
+  it("firing the iframe's load event sends an extra element-bounds report", async () => {
     const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
 
     const messages: { event?: string }[] = [];
@@ -712,8 +710,8 @@ async function flushRaf(win: Window): Promise<void> {
   await new Promise((resolve) => (win as unknown as { requestAnimationFrame: typeof requestAnimationFrame }).requestAnimationFrame(resolve));
 }
 
-describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列 hover 穿透）", () => {
-  it("有選取、且沒有 gesture／stage-pan／text-select-drag 時，pointermove 經 rAF 節流後送出 stage-hover", async () => {
+describe("selection-runtime.js — stage-hover relay (hover pass-through for the context bar)", () => {
+  it("with a selection and no gesture/stage-pan/text-select-drag, pointermove sends stage-hover after rAF throttling", async () => {
     const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
     await sendSelectionCommand(win, ["el-a"]);
     const { messages, stop } = collectMessages();
@@ -727,7 +725,7 @@ describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列
     expect(messages).toEqual([{ source: "slidra-selection", event: "stage-hover", point: { x: 50, y: 60 } }]);
   });
 
-  it("沒有選取時，pointermove 不送出 stage-hover", async () => {
+  it("pointermove does not send stage-hover when nothing is selected", async () => {
     const { win } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
     const { messages, stop } = collectMessages();
 
@@ -740,7 +738,7 @@ describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列
     expect(messages.filter((m) => (m as { event?: string }).event === "stage-hover")).toEqual([]);
   });
 
-  it("手勢進行中（pointerdown 已在同一個指標上起手）：pointermove 不送出 stage-hover", async () => {
+  it("pointermove does not send stage-hover while a gesture is in progress (pointerdown already started on the same pointer)", async () => {
     const { win, doc } = boot('<svg viewBox="0 0 1280 720"><rect id="el-a" width="160" height="100"/></svg>');
     await sendSelectionCommand(win, ["el-a"]);
     const { messages, stop } = collectMessages();
@@ -757,8 +755,8 @@ describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列
   });
 });
 
-describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
-  it("回報每個選取元素的祖先鏈，最外層在前；union 是所有選取元素的聯集", async () => {
+describe("selection-runtime.js — bounds event", () => {
+  it("reports each selected element's ancestor chain, outermost first; union is the union of all selected elements", async () => {
     const { win } = boot(
       '<svg><g id="el-outer" data-slidra-name="外層"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
     );
@@ -783,7 +781,7 @@ describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
     expect(bounds.union).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 
-  it("清空選取時回報空 items 與 null union", async () => {
+  it("reports empty items and a null union when the selection is cleared", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -797,7 +795,7 @@ describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
     expect(bounds.union).toBeNull();
   });
 
-  it("選取的 id 在 DOM 中已不存在時，該筆略過，不拋錯", async () => {
+  it("skips an entry without throwing when a selected id no longer exists in the DOM", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -812,12 +810,11 @@ describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
   });
 });
 
-// [E2.T7]/D9: the stage's animation number badges need bounds for every
-// element that has an effect, not just the current selection — a separate
-// on-demand command from `bounds`, deliberately never folded into that
-// per-drag-frame path (see selection-runtime.js's own comment on
-// reportMeasured).
-describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
+// The stage's animation number badges need bounds for every element that
+// has an effect, not just the current selection — a separate on-demand
+// command from `bounds`, deliberately never folded into that per-drag-frame
+// path (see selection-runtime.js's own comment on reportMeasured).
+describe("selection-runtime.js — measure command", () => {
   async function sendMeasureCommand(win: Window, ids: string[]): Promise<void> {
     const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
     win.dispatchEvent(
@@ -829,7 +826,7 @@ describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
     await tick();
   }
 
-  it("回報每個給定 id（不限於目前選取）的 getBoundingClientRect()", async () => {
+  it("reports getBoundingClientRect() for each given id (not limited to the current selection)", async () => {
     const { win } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -845,7 +842,7 @@ describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
     ]);
   });
 
-  it("給定的 id 在 DOM 中不存在時，該筆略過，不拋錯", async () => {
+  it("skips an entry without throwing when a given id does not exist in the DOM", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -859,8 +856,8 @@ describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
   });
 });
 
-describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTIONS.feature「多選」）", () => {
-  it("⇧點第二個元素後，shadow root 裡只有一個 .sel-multi 顯示，不是每個元素各一個", async () => {
+describe("selection-runtime.js — multi-select draws a single dashed union box", () => {
+  it("shift-clicking a second element shows exactly one .sel-multi in the shadow root, not one per element", async () => {
     const { doc } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
 
     click(doc, doc.getElementById("el-a")!);
@@ -875,7 +872,7 @@ describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTI
     expect(boxes[0].style.display).toBe("block");
   });
 
-  it("⇧點取消回到單選後，.sel-multi 收起", async () => {
+  it(".sel-multi collapses after shift-clicking back down to a single selection", async () => {
     const { doc } = boot('<svg><rect id="el-a"/><rect id="el-b"/></svg>');
     click(doc, doc.getElementById("el-a")!);
     const win = doc.defaultView as Window;
@@ -893,8 +890,8 @@ describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTI
   });
 });
 
-describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，項目併入父文件的情境列）", () => {
-  it("在未選取的元素上按右鍵：選取它、壓掉瀏覽器原生選單，不再回報 contextmenu 事件", async () => {
+describe("selection-runtime.js — right-click on an element (its context menu was removed, its items folded into the parent document's context bar)", () => {
+  it("right-clicking an unselected element selects it, suppresses the browser's native menu, and no longer reports a contextmenu event", async () => {
     const { win, doc } = boot('<svg><rect id="el-a" data-slidra-name="矩形"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -911,7 +908,7 @@ describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，
     expect(messages.some((m) => m.event === "contextmenu")).toBe(false);
   });
 
-  it("在空白處按右鍵：no-op，不壓掉原生選單、不發任何事件", async () => {
+  it("right-clicking blank space is a no-op: does not suppress the native menu, does not emit any event", async () => {
     const { win, doc } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -928,8 +925,8 @@ describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，
   });
 });
 
-describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）", () => {
-  it("白名單鍵（含修飾鍵）在編輯與手勢之外會被中繼；沒有修飾鍵的 a/d 不會", async () => {
+describe("selection-runtime.js — keyboard relay stage-key", () => {
+  it("whitelisted keys (with modifiers) are relayed outside of editing/gesture; unmodified a/d are not", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -951,7 +948,7 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("⌘⇧BracketRight／⌘⇧BracketLeft（真實鍵盤送出的 }/{ + code）也會被中繼成 stage-key，訊息含 code", async () => {
+  it("Cmd+Shift+BracketRight/BracketLeft (a real keyboard sends }/{ plus a code) are also relayed as stage-key, with code included", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -974,7 +971,7 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("⌘Z 與 ⇧⌘Z 會被中繼（#198）；沒有修飾鍵的 z 不會", async () => {
+  it("Cmd+Z and Shift+Cmd+Z are relayed; unmodified z is not", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -994,7 +991,7 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("F-02: ArrowLeft／ArrowRight 沒有修飾鍵也會被中繼（換頁用）", async () => {
+  it("ArrowLeft/ArrowRight are relayed even without a modifier (used for changing slides)", async () => {
     const { win } = boot('<svg><rect id="el-a"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -1013,7 +1010,7 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     ]);
   });
 
-  it("編輯期間不中繼任何白名單鍵（含 F-02 新增的 ArrowLeft／ArrowRight——就地編輯中方向鍵是游標移動，不換頁）", async () => {
+  it("no whitelisted key is relayed while editing (including ArrowLeft/ArrowRight — arrow keys move the caret during in-place editing, they don't change slides)", async () => {
     const { win } = boot('<svg><g id="el-text"><text font-size="20">Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
 
@@ -1032,18 +1029,18 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
   });
 });
 
-// F8 (NOOP-289 決定 T1): the browser has no font-metrics engine any more —
-// entering/typing in a text box now repaints "one hard-break paragraph =
-// one <tspan>" entirely locally (renderTextBoxLines/applyTextEditContent),
-// zero measurement, no host round trip at all. These three tests replace
-// the old `preview-textbox`/`applyPreviewTextbox` channel's coverage
-// (NOOP-65r3, which this ticket deletes along with the channel itself).
-describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決定 T1）", () => {
+// F8: the browser has no font-metrics engine any more — entering/typing in
+// a text box now repaints "one hard-break paragraph = one <tspan>" entirely
+// locally (renderTextBoxLines/applyTextEditContent), zero measurement, no
+// host round trip at all. These three tests replace the old
+// `preview-textbox`/`applyPreviewTextbox` channel's coverage (deleted along
+// with the channel itself).
+describe("selection-runtime.js text box in-place edit repaint (F8)", () => {
   function tspanCount(doc: Document, id: string): number {
     return doc.getElementById(id)!.querySelectorAll("text > tspan").length;
   }
 
-  it("begin-text-edit 後，<text> 的直接子 tspan 數等於 text.split(\"\\n\").length", async () => {
+  it("after begin-text-edit, <text>'s direct tspan count equals text.split(\"\\n\").length", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
 
     await beginTextEdit(win, "el-text", "第一行\n第二行\n第三行");
@@ -1062,7 +1059,7 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(tspans[2].getAttribute("data-slidra-break")).toBeNull();
   });
 
-  it("text-edit-input 帶新的 \\n 後，tspan 數跟著變——不呼叫任何命令，純本地重畫", async () => {
+  it("tspan count follows new \\n's in text-edit-input — no command is called, purely a local repaint", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     expect(tspanCount(doc, "el-text")).toBe(1);
@@ -1075,7 +1072,7 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(tspanCount(doc, "el-text")).toBe(3);
   });
 
-  it("begin-text-edit 的 markup 欄位不再被接受——即使傳了也不當一回事，只看 text", async () => {
+  it("begin-text-edit's markup field is no longer accepted — even if sent it is ignored, only text is used", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
 
@@ -1092,12 +1089,12 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(html).not.toContain("不該出現");
   });
 
-  // F-04 (NOOP-399): a plain `<text>` (no data-slidra-text-width — e.g. a
-  // slide title) used to be repainted with a bare `textContent =`, which
-  // SVG never breaks on "\n" — Enter's hard break was invisible until Esc
-  // committed and the SVG-side re-layout (render_plain_text_content) split
-  // it into tspans for real. Both branches now share renderTextBoxLines.
-  it("plain <text>（無 data-slidra-text-width）帶 \\n 時也重畫成多個 tspan，第一行標 data-slidra-break", async () => {
+  // F-04: a plain `<text>` (no data-slidra-text-width — e.g. a slide title)
+  // used to be repainted with a bare `textContent =`, which SVG never
+  // breaks on "\n" — Enter's hard break was invisible until Esc committed
+  // and the SVG-side re-layout (render_plain_text_content) split it into
+  // tspans for real. Both branches now share renderTextBoxLines.
+  it("a plain <text> (no data-slidra-text-width) with \\n also repaints into multiple tspans, marking the first line's data-slidra-break", async () => {
     const { doc, win } = boot('<svg><g id="el-plain"><text x="640" y="330" text-anchor="middle">Hi</text></g></svg>');
 
     await beginTextEdit(win, "el-plain", "a\nb");
@@ -1112,7 +1109,7 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(tspans[1].getAttribute("data-slidra-break")).toBeNull();
   });
 
-  it("plain <text> 仍是單行時只有 1 個 tspan，x/y 沿用 <text> 自己的——視覺位置不得位移", async () => {
+  it("a plain <text> still a single line has only 1 tspan, with x/y taken from <text> itself — no visual shift allowed", async () => {
     const { doc, win } = boot('<svg><g id="el-plain"><text x="640" y="330" text-anchor="middle">Hi</text></g></svg>');
 
     await beginTextEdit(win, "el-plain", "Hi");
@@ -1125,11 +1122,11 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
   });
 });
 
-// E2.T14: table cell click/dblclick/contextmenu, the table-cells /
-// preview-table-cols host<->runtime channel (plan §4.5). A table's cells
-// carry no `id` — `findSelectable` always resolves to the table container
-// itself, exactly like every other content inside it.
-describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）", () => {
+// Table cell click/dblclick/contextmenu, the table-cells /
+// preview-table-cols host<->runtime channel. A table's cells carry no `id`
+// — `findSelectable` always resolves to the table container itself,
+// exactly like every other content inside it.
+describe("selection-runtime.js — table cell interactions", () => {
   const TABLE = `
     <svg>
       <g id="el-tbl" data-slidra-type="table">
@@ -1140,7 +1137,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       </g>
     </svg>`;
 
-  it("點一格：發出 select（表格本身）與 table-cell-click（該格）", async () => {
+  it("clicking a cell emits select (the table itself) and table-cell-click (that cell)", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
     const cell = doc.querySelector('[data-slidra-cell="0,1"]')!;
@@ -1152,7 +1149,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
   });
 
-  it("⇧點：table-cell-click 的 additive 為 true", async () => {
+  it("shift-click: table-cell-click's additive is true", async () => {
     const { doc, win } = boot(TABLE);
     const { messages, stop } = collectMessages();
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
@@ -1163,7 +1160,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: true });
   });
 
-  it("⇧點同一張已選取表格的第二格：表格本身保持選取（不重發 select／不被誤判成 toggle 取消），只有 table-cell-click 回報新格子（手動瀏覽器煙霧測試抓到的迴歸）", async () => {
+  it("shift-clicking a second cell of an already-selected table keeps the table itself selected (no re-emitted select, not mistaken for a toggle-off) — only table-cell-click reports the new cell (a regression caught by manual browser smoke testing)", async () => {
     const { doc } = boot(TABLE);
     click(doc, doc.querySelector('[data-slidra-cell="0,0"]')!);
     await tick();
@@ -1180,7 +1177,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: true });
   });
 
-  it("雙擊一般儲存格：table-cell-dblclick 回報自己的 row/col，不進入群組編輯", async () => {
+  it("double-clicking a plain cell: table-cell-dblclick reports its own row/col, without entering group edit", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
     dblclick(doc, doc.querySelector('[data-slidra-cell="0,1"]')!);
@@ -1191,7 +1188,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
   });
 
-  it("雙擊一個在兩層群組裡的表格儲存格：同一次雙擊鑽到底、選取表格（groupPath 是整條鏈），並回報 table-cell-dblclick", async () => {
+  it("double-clicking a table cell nested two groups deep drills all the way down in one double-click, selecting the table (groupPath is the full chain) and reporting table-cell-dblclick", async () => {
     const grouped = TABLE.replace('<g id="el-tbl"', '<g id="el-outer"><g id="el-grp"><g id="el-tbl"').replace(/<\/svg>\s*$/, "</g></g></svg>");
     const { doc } = boot(grouped);
     const { messages, stop } = collectMessages();
@@ -1206,7 +1203,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
   });
 
-  it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
+  it("double-clicking a generated cell: table-cell-dblclick reports the row of its template row (double-click always edits the template row)", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
     dblclick(doc, doc.querySelector('[data-slidra-cell="2,0"]')!);
@@ -1216,7 +1213,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
   });
 
-  it("在格上按右鍵：table-cell-contextmenu 回報 row/col/x/y，且壓掉原生選單", async () => {
+  it("right-clicking a cell: table-cell-contextmenu reports row/col/x/y and suppresses the native menu", async () => {
     const { win, doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
@@ -1240,7 +1237,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     await tick();
   }
 
-  it("table-cells 指令：回報每一格的 rect 與表格自己的 box", async () => {
+  it("table-cells command: reports each cell's rect and the table's own box", async () => {
     const { win } = boot(TABLE);
     const { messages, stop } = collectMessages();
     await sendHostCommand(win, { command: "table-cells", id: "el-tbl" });
@@ -1253,7 +1250,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(reported.cells.map((c: any) => `${c.row},${c.col}`).sort()).toEqual(["0,0", "0,1", "1,0", "2,0"]);
   });
 
-  it("table-cells 指令：id 不存在或不是表格時，安靜地不回報（略過，不拋錯）", async () => {
+  it("table-cells command: silently reports nothing when the id doesn't exist or isn't a table (skipped, no throw)", async () => {
     const { win } = boot(TABLE);
     const { messages, stop } = collectMessages();
     await sendHostCommand(win, { command: "table-cells", id: "el-nope" });
@@ -1261,7 +1258,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(messages.some((m: any) => m.event === "table-cells")).toBe(false);
   });
 
-  it("preview-table-cols：改變每格的 rect 寬度與 transform x，不動文字內容", async () => {
+  it("preview-table-cols: changes each cell's rect width and transform x, without touching the text content", async () => {
     const { doc, win } = boot(TABLE);
     await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: [50, 30] });
 
@@ -1274,7 +1271,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(cellA.querySelector("text")!.textContent).toBe("a");
   });
 
-  it("preview-table-cols：壞輸入（含負數的陣列、非陣列）完全不動 DOM", async () => {
+  it("preview-table-cols: bad input (an array containing a negative number, or a non-array) leaves the DOM completely untouched", async () => {
     const { doc, win } = boot(TABLE);
     const before = doc.querySelector('[data-slidra-cell="0,0"]')!.querySelector("rect")!.getAttribute("width");
 
@@ -1298,11 +1295,12 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     );
   }
 
-  // E2.T14r2 §4.2's own behaviour table: `tableRangeId` null vs set changes
+  // The behavior table: `tableRangeId` null vs set changes
   // Delete/Backspace/Escape's routing, and unlocks Tab/⌘B relaying at all —
-  // every row keyed off "現況位元級不變" when the flag is null.
-  describe("selection-runtime.js — table-range 旗標的鍵盤 relay（E2.T14r2, plan §4.2）", () => {
-    it("H2: tableRangeId 為 null（預設）時，Delete 仍發 stage-key（現況不回歸）", async () => {
+  // every row keyed off "bit-for-bit unchanged from current behavior" when
+  // the flag is null.
+  describe("selection-runtime.js — keyboard relay for the table-range flag", () => {
+    it("H2: when tableRangeId is null (default), Delete still sends stage-key (no regression from current behavior)", async () => {
       const { win } = boot(TABLE);
       const { messages, stop } = collectMessages();
       pressKey(win, "Delete");
@@ -1322,7 +1320,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       expect(messages.some((m: any) => m.event === "table-key")).toBe(false);
     });
 
-    it("H3: table-range 指令設過 id 後，Delete 發的是 table-key、不發 stage-key", async () => {
+    it("H3: after a table-range command sets an id, Delete sends table-key, not stage-key", async () => {
       const { win } = boot(TABLE);
       await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
       const { messages, stop } = collectMessages();
@@ -1342,7 +1340,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       expect(messages.some((m: any) => m.event === "stage-key")).toBe(false);
     });
 
-    it("H4: tableRangeId 非 null 時 Escape 發 table-key 且不發 clear；為 null 時仍發 clear", async () => {
+    it("H4: when tableRangeId is not null, Escape sends table-key and not clear; when null, it still sends clear", async () => {
       const { doc, win } = boot(TABLE);
       click(doc, doc.querySelector('[data-slidra-cell="0,0"]')!); // selects el-tbl, so a later Escape-without-range would otherwise clear it
       await tick();
@@ -1364,7 +1362,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       expect(withoutRange.some((m: any) => m.event === "table-key")).toBe(false);
     });
 
-    it("Tab／⇧Tab 只在 tableRangeId 作用中才 relay 成 table-key，並壓掉預設行為", async () => {
+    it("Tab/Shift+Tab are only relayed as table-key while tableRangeId is active, and suppress the default behavior", async () => {
       const { win } = boot(TABLE);
       await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
       const { messages, stop } = collectMessages();
@@ -1379,7 +1377,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       expect(messages).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: true });
     });
 
-    it("⌘B／Ctrl+B 只在 tableRangeId 作用中才 relay 成 table-key", async () => {
+    it("Cmd+B/Ctrl+B are only relayed as table-key while tableRangeId is active", async () => {
       const { win } = boot(TABLE);
 
       const { messages: beforeRange, stop: stopBefore } = collectMessages();
@@ -1396,7 +1394,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       expect(messages).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "b", meta: true, ctrl: false, shift: false });
     });
 
-    it("table-range 指令的 id 不是 string 也不是 null 時忽略，tableRangeId 不動", async () => {
+    it("a table-range command with an id that is neither a string nor null is ignored, tableRangeId unchanged", async () => {
       const { win } = boot(TABLE);
       await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
       await sendHostCommand(win, { command: "table-range", id: 123 });
@@ -1424,7 +1422,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
 // building survives), whereas the same drag without a modifier replaces the
 // selection with just that element — found when a human's "⇧-click chart,
 // then Group" kept ending up with only the chart selected.
-describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是取代", () => {
+describe("selection-runtime.js — a drag start with Shift held adds to the selection, without it replaces it", () => {
   async function dragOnto(shift: boolean): Promise<{ id?: string; additive?: boolean }[]> {
     const { win, doc } = boot(
       '<svg viewBox="0 0 1280 720"><rect id="el-a" width="100" height="100"/><rect id="el-b" x="300" width="100" height="100"/></svg>',
@@ -1442,18 +1440,18 @@ describe("selection-runtime.js — 帶 ⇧ 的拖曳起點是加選，不帶是�
     return (messages as { event?: string; id?: string; additive?: boolean }[]).filter((m) => m.event === "select");
   }
 
-  it("⇧ 拖曳一個未選取的元素：送出 additive:true 的 select，原本的選取保留", async () => {
+  it("shift-dragging an unselected element: sends select with additive:true, the original selection is kept", async () => {
     const selects = await dragOnto(true);
     expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: true })]);
   });
 
-  it("不帶修飾鍵拖曳一個未選取的元素：送出 additive:false 的 select（既有行為）", async () => {
+  it("dragging an unselected element without a modifier: sends select with additive:false (unchanged behavior)", async () => {
     const selects = await dragOnto(false);
     expect(selects).toEqual([expect.objectContaining({ id: "el-b", additive: false })]);
   });
 });
 
-describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", () => {
+describe("selection-runtime.js — stage media layer", () => {
   function stubMediaPlayback(win: Window): void {
     const MediaProto = (win as unknown as { HTMLMediaElement: { prototype: HTMLMediaElement } }).HTMLMediaElement
       .prototype;
@@ -1463,7 +1461,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     };
   }
 
-  it("對 media 表裡的每個 id 建一個 <video>/<audio> 覆蓋層與控制列，且媒體本身 pointer-events:none、控制列 pointer-events:auto", async () => {
+  it("builds a <video>/<audio> overlay and control bar for each id in the media table, with the media itself pointer-events:none and the control bar pointer-events:auto", async () => {
     const { win, doc } = boot('<svg><rect id="el-video"/><circle id="el-audio"/></svg>', COLORS, {
       "el-video": { src: "../assets/clip.webm", kind: "video" },
       "el-audio": { src: "../assets/n.oga", kind: "audio" },
@@ -1487,7 +1485,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     expect(bar.style.getPropertyValue("pointer-events")).toBe("auto");
   });
 
-  it("控制列帶 data-slidra-media-control=\"play\"／\"seek\" 屬性", async () => {
+  it("the control bar carries data-slidra-media-control=\"play\"/\"seek\" attributes", async () => {
     const { win, doc } = boot('<svg><rect id="el-video"/></svg>', COLORS, {
       "el-video": { src: "../assets/clip.webm", kind: "video" },
     });
@@ -1498,7 +1496,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     expect(host.shadowRoot!.querySelector('[data-slidra-media-control="seek"]')).not.toBeNull();
   });
 
-  it("點控制列不改變選取：先選好一個元素，再點 play 鈕，selectedIds 不變、也不會多送一次 select/clear", async () => {
+  it("clicking the control bar does not change the selection: with an element already selected, clicking the play button leaves selectedIds unchanged and doesn't send an extra select/clear", async () => {
     const { win, doc } = boot('<svg><rect id="el-a"/><rect id="el-video"/></svg>', COLORS, {
       "el-video": { src: "../assets/clip.webm", kind: "video" },
     });
@@ -1517,11 +1515,11 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     await tick();
     stop();
 
-    expect(box.style.display).toBe("block"); // el-a 仍是選取中的框，沒有被清掉或換掉
+    expect(box.style.display).toBe("block"); // el-a's box is still selected, not cleared or swapped out
     expect((messages as { event?: string }[]).some((m) => m.event === "select" || m.event === "clear")).toBe(false);
   });
 
-  it("按 play 呼叫 el.play()；再按一次（此時已在播放）呼叫 el.pause()", async () => {
+  it("pressing play calls el.play(); pressing it again (now playing) calls el.pause()", async () => {
     // jsdom does not implement real media playback — `.paused` never
     // toggles on its own the way a real browser's would, so this stubs it
     // as a settable property the play/pause spies themselves flip, the
@@ -1559,7 +1557,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("media 表是空物件時，shadow root 裡不建立任何 <video>/<audio>／控制列（不影響既有選取行為）", async () => {
+  it("when the media table is an empty object, no <video>/<audio>/control bar is built in the shadow root (existing selection behavior is unaffected)", async () => {
     const { win, doc } = boot('<svg><rect id="el-a"/></svg>', COLORS, {});
     fireLoad(win);
 

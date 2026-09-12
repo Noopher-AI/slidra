@@ -6,8 +6,8 @@ const VALID_FENCE = JSON.stringify({
   mode: "pyramid",
   pages: [
     { n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "封面" },
-    // #303 §A': most pages carry no `type` — the planner only names the
-    // relationship and the build decides the layout.
+    // Most pages carry no `type` — the planner only names the relationship
+    // and the build decides the layout.
     { n: 2, relationship: "membership", rhythm: "dense", title: "三個重點" },
   ],
   questions: [
@@ -26,7 +26,7 @@ const VALID_FENCE = JSON.stringify({
 });
 const VALID_FILE = "```json\n" + VALID_FENCE + "\n```\n\n## 第 1 頁\n主張……\n";
 
-describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
+describe("plan/outline.md's JSON fence", () => {
   it("extracts the leading fence and leaves the markdown body alone", () => {
     expect(extractJsonFence(VALID_FILE)).toBe(VALID_FENCE);
     expect(extractJsonFence("# 沒有圍欄\n```json\n{}\n```")).toBeNull();
@@ -67,7 +67,7 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
     }
   });
 
-  it("#303 §A'：整份計畫都沒有 type 也要解析得出來（否則確認視窗永遠不出現）", () => {
+  it("parses successfully even when the whole plan has no type (otherwise the confirmation dialog would never appear)", () => {
     // The regression this pins: `type` became optional in the plan contract
     // but this parser still required it, so every plan the planner wrote
     // was silently discarded and the gate modal never appeared.
@@ -89,7 +89,7 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
     expect(outline!.questions).toHaveLength(1);
   });
 
-  it("relationship 缺了或不在清單內就是壞檔", () => {
+  it("treats a missing or unlisted relationship as a malformed file", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const missing = { status: "draft", mode: "x", pages: [{ n: 1, rhythm: "anchor", title: "t" }] };
@@ -112,7 +112,7 @@ describe("[#303] plan/outline.md 的 JSON 圍欄", () => {
   });
 });
 
-describe("[#303] gate messages (contract §4)", () => {
+describe("gate messages (contract §4)", () => {
   it("builds the 【計畫確認】 message one answer per line, notes only when given", () => {
     const text = buildConfirmMessage({
       choices: { mode: "pyramid", "page-5": "number" },

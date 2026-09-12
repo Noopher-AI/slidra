@@ -3,13 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// 全域設計契約掃描（NOOP-9 Plan §4.1/§4.2）：所有產品 UI CSS（tokens.css 除
-// 外，它是宣告入口，由 tokens.test.ts 用另一組規則守）＋ apps/web/src
-// 下的 TS/TSX/JS inline style，都不得直接寫死色值／duration／easing——一律
-// 透過 var(--x) 消費 tokens.css。這是對*原始碼文字*的約束（用瀏覽器讀
-// computed style 驗不出「值是不是寫成 var(--x)」，var() 解析後和字面值一模
-// 一樣），所以跟 tokens.test.ts／side-panel-css-tokens.test.ts 一樣用
-// node:fs＋regex 讀原始文字，不掛 jsdom 樣式表。
+// Global design-contract scan (Plan §4.1/§4.2): all product-UI CSS (except
+// tokens.css, which is the declaration entry point guarded by tokens.test.ts
+// under its own rules) plus TS/TSX/JS inline styles under packages/web/src
+// must never hardcode color values / durations / easing directly — every
+// value must be consumed from tokens.css via var(--x). This is a constraint
+// on the *source text* itself (reading a browser's computed style can't tell
+// whether a value was written as var(--x), since it resolves to the same
+// literal after parsing), so — like tokens.test.ts / side-panel-css-tokens.test.ts —
+// this reads the raw source text with node:fs + regex rather than mounting a
+// jsdom stylesheet.
 
 const webSrcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 const stylesDir = path.join(webSrcDir, "styles");
@@ -39,13 +42,13 @@ function lineAt(text: string, index: number): number {
  * is only an offense if what's left contains a token that ISN'T one of these strings. */
 const CSS_LITERAL_ALLOWLIST: ReadonlySet<string> = new Set(["1px", "50%", "100%", "0", "none"]);
 
-/** Same patterns as apps/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts used
+/** Same patterns as packages/web/test/side-panel-css-tokens.test.ts / play-grid-css-tokens.test.ts used
  * (hex/rgb/duration/easing/cubic-bezier) — this file supersedes their generic sweep across every
  * regional CSS file, not just the six they used to cover individually — plus three more forbidden
  * shapes added here: literal px/rem lengths, literal border-radius values, and literal box-shadow
  * values, so hardcoded spacing/radius/shadow gets caught the same way hex colours already were.
  *
- * Percentages are deliberately NOT part of the general "字面 px/rem 數值" sweep: `width: 100%` /
+ * Percentages are deliberately NOT part of the general "literal px/rem value" sweep: `width: 100%` /
  * `flex: 1 1 100%` are ordinary layout mechanics with no design-token equivalent, not a hardcoded
  * design value — forbidding bare percentages everywhere would flag routine layout CSS that has
  * nothing to do with tokens.css. Percentages are only meaningful (and only checked) inside
@@ -75,7 +78,7 @@ function isAllowedLiteral(patternName: string, matchedText: string): boolean {
   return CSS_LITERAL_ALLOWLIST.has(matchedText);
 }
 
-/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors apps/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required.
+/** Every regional stylesheet under styles/ except tokens.css, plus style.css — mirrors packages/web/test/tokens.test.ts's regionalCssFiles(). readdirSync means a newly added .css file is picked up automatically, no test edit required.
  *
  * `play.css` is also excluded: it is playback-mode chrome, explicitly out of scope for the New v3
  * shell rebuild (a separate future ticket owns it) and untouched by that work — it still runs on
@@ -111,32 +114,32 @@ function scanCss(filePath: string): Offense[] {
   return offenses;
 }
 
-describe("design-contract.test.ts — CSS 不得寫死色值／duration／easing（NOOP-9 Plan §4.1）", () => {
-  it("所有產品 UI CSS（tokens.css 除外）每個值都來自 var(--x)", () => {
+describe("design-contract.test.ts — CSS must not hardcode color values / durations / easing (Plan §4.1)", () => {
+  it("every value in product-UI CSS (except tokens.css) comes from var(--x)", () => {
     const offenses = regionalCssFiles().flatMap(scanCss);
     const messages = offenses.map((o) => `${o.file}:${o.line} ${o.name}: ${o.text}`);
     expect(messages).toEqual([]);
   });
 
-  it("tokens.css 本身不在掃描範圍內（它是宣告入口，由 tokens.test.ts 另外守）", () => {
+  it("tokens.css itself is out of scan scope (it's the declaration entry point, guarded separately by tokens.test.ts)", () => {
     expect(regionalCssFiles().some((f) => path.basename(f) === "tokens.css")).toBe(false);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
 
-/** `file` is a single relative path (from apps/web/src), not a glob — every entry names exactly one file. `allowed` is the closed list of literal values that file may contain; `reason` is why. All three fields are required (checked below at runtime, since apps/web/test/** is outside tsconfig's `include` — see NOOP-9 Plan §3.1 — so a missing field here would not be caught by `npm run typecheck`). */
+/** `file` is a single relative path (from packages/web/src), not a glob — every entry names exactly one file. `allowed` is the closed list of literal values that file may contain; `reason` is why. All three fields are required (checked below at runtime, since packages/web/test/** is outside tsconfig's `include` — see Plan §3.1 — so a missing field here would not be caught by `npm run typecheck`). */
 interface InlineStyleException {
   file: string;
   allowed: string[];
   reason: string;
 }
 
-/** The only hits in apps/web/src today (NOOP-9 Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. [E2.T17]: App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
+/** The only hits in packages/web/src today (Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
-  // [E2.T7]: same category the ms-only duration pattern below already
+  // Same category the ms-only duration pattern below already
   // structurally excuses this file for (see CODE_FORBIDDEN_PATTERNS'
   // comment) — these "ease"/"linear" strings are WAAPI `easing` option
   // values handed to `el.animate()` inside the sandboxed play iframe
@@ -151,7 +154,7 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
     allowed: ["ease", "linear"],
     reason: "el.animate() 的 easing 參數，沙盒 iframe 執行期輸出，不是產品 UI",
   },
-  // F8 (NOOP-289): slide-dom.ts's own copy of core's table/model.ts
+  // F8: slide-dom.ts's own copy of core's table/model.ts
   // readTableModel — "#000000" is the SAME fallback core's TableCell.textFill
   // reader already used (a table cell with no explicit fill), a slide-data
   // default mirroring core's contract, not a product-UI colour.
@@ -160,9 +163,11 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
     allowed: ["#000000"],
     reason: "表格儲存格 text-fill 讀不到值時的資料預設值，與 core 的 readTableModel 同一個預設，不是產品 UI",
   },
-  // [E5.T8]/NOOP-353 拍板決定 7：沒有 accent 時插入元素的 fill/stroke 對比色，
-  // 是決定本身指定的兩個具體值＋「沒有頁面背景就當白」的預設，不是可換掉的
-  // 設計 token——這三個字面值就是規格,不是抓漏對象。
+  // Decision 7: the contrast fill/stroke colors for inserted elements without
+  // an accent are two concrete values specified by the decision itself, plus
+  // a "treat as white when there's no page background" default — not a
+  // swappable design token. These three literal values ARE the spec, not
+  // something this test should be catching.
   {
     file: "contrast-fill.ts",
     allowed: ["#1f1a1a", "#f4f6f8", "#ffffff"],
@@ -170,7 +175,7 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   },
 ];
 
-/** ms-only (not bare seconds) — deliberately narrower than the CSS scan's duration pattern. Runtime scripts injected into the presentation iframe (player-runtime.js, selection-runtime.js) write CSS transition strings like `"opacity 0.4s"`; those are rendered output, not product-UI source, so this pattern does not reach into `s`-only durations at all (NOOP-9 Plan §4.2's contract table names `\d+ms` explicitly). */
+/** ms-only (not bare seconds) — deliberately narrower than the CSS scan's duration pattern. Runtime scripts injected into the presentation iframe (player-runtime.js, selection-runtime.js) write CSS transition strings like `"opacity 0.4s"`; those are rendered output, not product-UI source, so this pattern does not reach into `s`-only durations at all (Plan §4.2's contract table names `\d+ms` explicitly). */
 const CODE_FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }> = [
   { name: "hex 色碼", pattern: /#[0-9a-fA-F]{3,8}\b/g },
   { name: "rgb()/rgba()", pattern: /\brgba?\(/g },
@@ -210,8 +215,8 @@ function scanCode(filePath: string): Offense[] {
   return offenses;
 }
 
-describe("design-contract.test.ts — inline style 不得寫死色值／duration／easing（NOOP-9 Plan §4.2）", () => {
-  it("例外清單的每一條都有 file／allowed（非空）／reason 三個欄位", () => {
+describe("design-contract.test.ts — inline styles must not hardcode color values / durations / easing (Plan §4.2)", () => {
+  it("every exception-list entry has file / allowed (non-empty) / reason fields", () => {
     for (const entry of INLINE_STYLE_EXCEPTIONS) {
       expect(entry.file, "file 欄位").toBeTruthy();
       expect(entry.allowed.length, `${entry.file} 的 allowed 欄位`).toBeGreaterThan(0);
@@ -219,7 +224,7 @@ describe("design-contract.test.ts — inline style 不得寫死色值／duration
     }
   });
 
-  it("apps/web/src/**/*.{ts,tsx,js}（排除 assets/）只在例外清單涵蓋的地方出現直接色值／duration／easing", () => {
+  it("packages/web/src/**/*.{ts,tsx,js} (excluding assets/) only has direct color values / durations / easing where the exception list covers them", () => {
     const allOffenses = walkSourceFiles(webSrcDir).flatMap(scanCode);
     const byFile = new Map<string, Offense[]>();
     for (const offense of allOffenses) {

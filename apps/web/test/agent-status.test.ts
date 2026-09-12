@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { fromAgentResponse, modelOptionsFrom } from "../src/agent-status.js";
 
 // agent-status.ts's public boundary is the pure conversion `GET /api/agent`
-// JSON → AgentUiStatus | null ([E3.T5] Plan §6.3) — no React, no fetch.
+// JSON → AgentUiStatus | null — no React, no fetch.
 
-describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
+describe("fromAgentResponse", () => {
   it("current === null → unset, carrying both cards", () => {
     const result = fromAgentResponse({
       current: null,
@@ -38,7 +38,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     });
   });
 
-  it("current 已登入 → ready，該卡 inUse 為 true", () => {
+  it("current already logged in → ready, with that card's inUse true", () => {
     const result = fromAgentResponse({
       current: "claude",
       source: "settings",
@@ -56,7 +56,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     expect(result.agents.find((a) => a.kind === "codex")?.inUse).toBe(false);
   });
 
-  it("current 未登入 → unauthenticated，帶 loginCommand", () => {
+  it("current not logged in → unauthenticated, carrying loginCommand", () => {
     const result = fromAgentResponse({
       current: "codex",
       source: "cli",
@@ -74,7 +74,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     });
   });
 
-  it("卡片帶 detail（偵測異常）時原樣保留", () => {
+  it("keeps a card's detail (e.g. a detected anomaly) unchanged", () => {
     const result = fromAgentResponse({
       current: null,
       source: "none",
@@ -95,7 +95,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     expect(result.agents.find((a) => a.kind === "claude")?.detail).toBe("spawn ENOENT");
   });
 
-  it("source 原樣透出（§4.4「本次由命令列指定」判斷用）", () => {
+  it("passes source through unchanged (used to detect a CLI-specified override)", () => {
     const result = fromAgentResponse({
       current: "claude",
       source: "cli",
@@ -110,7 +110,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     expect(result.source).toBe("cli");
   });
 
-  it("agents 缺欄位（malformed）→ null，不編一個假狀態", () => {
+  it("agents with missing fields (malformed) → null, rather than fabricating a fake status", () => {
     expect(
       fromAgentResponse({
         current: null,
@@ -120,7 +120,7 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     ).toBeNull();
   });
 
-  it("整包不是物件 → null", () => {
+  it("the whole payload not being an object → null", () => {
     expect(fromAgentResponse(null)).toBeNull();
     expect(fromAgentResponse("not-an-object")).toBeNull();
     expect(fromAgentResponse(undefined)).toBeNull();

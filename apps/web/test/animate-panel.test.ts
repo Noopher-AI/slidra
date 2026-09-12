@@ -8,9 +8,9 @@ import type { TargetInfo } from "../src/shell/side/animate/useSlideEffects.js";
 import { PageTransitionView } from "../src/shell/side/animate/PageTransitionView.js";
 
 /**
- * [E2.T7]/NOOP-66/#206 §6.4: the panel's public boundary is
- * `renderToStaticMarkup` output (same convention `stage-overlays.test.ts`
- * already uses) — never an internal call count or React fibre inspection.
+ * §6.4: the panel's public boundary is `renderToStaticMarkup` output (same
+ * convention `stage-overlays.test.ts` already uses) — never an internal
+ * call count or React fibre inspection.
  */
 
 function effect(overrides: Partial<Effect> = {}): Effect {
@@ -22,24 +22,24 @@ function noop(): void {
 }
 
 describe("buildCards / cardLabel", () => {
-  it("一般元素：沒有 targetInfo 時退回顯示 target id", () => {
+  it("a plain element: falls back to showing the target id when there is no targetInfo", () => {
     const cards = buildCards([effect()], new Map());
     expect(cardLabel(cards[0], 1)).toBe("el-a");
   });
 
-  it("一般元素：targetInfo 有 data-slidra-name 時顯示名稱", () => {
+  it("a plain element: shows the name when targetInfo has data-slidra-name", () => {
     const info = new Map<string, TargetInfo>([["el-a", { name: "標題", groupMemberCount: null }]]);
     const cards = buildCards([effect()], info);
     expect(cardLabel(cards[0], 1)).toBe("標題");
   });
 
-  it("D5：target 是群組時顯示「Group N (n)」，n 是成員數，不是名稱", () => {
+  it("shows \"Group N (n)\" when the target is a group, where n is the member count, not the name", () => {
     const info = new Map<string, TargetInfo>([["el-group", { name: "群組", groupMemberCount: 3 }]]);
     const cards = buildCards([effect({ target: "el-group" })], info);
     expect(cardLabel(cards[0], 2)).toBe("Group 2 (3)");
   });
 
-  it("index 貫穿到卡片資料上，供 CLI/preview 定址使用", () => {
+  it("carries index through to the card data, for CLI/preview addressing", () => {
     const cards = buildCards([effect({ index: 0 }), effect({ target: "el-b", index: 1 })], new Map());
     expect(cards.map((c) => c.index)).toEqual([0, 1]);
   });
@@ -56,12 +56,12 @@ describe("ObjectList", () => {
     onPreview: noop,
   };
 
-  it("空清單顯示原型的空態文案，一字不改", () => {
+  it("shows the prototype's empty-state copy verbatim for an empty list", () => {
     const markup = renderToStaticMarkup(createElement(ObjectList, { cards: [], ...handlers }));
     expect(markup).toContain("No animations on this slide.");
   });
 
-  it("每個效果一張卡，編號依清單順序（1-based）", () => {
+  it("one card per effect, numbered in list order (1-based)", () => {
     const cards: EffectCardData[] = buildCards(
       [effect({ index: 0 }), effect({ target: "el-b", effect: "zoom", index: 1 })],
       new Map(),
@@ -73,15 +73,15 @@ describe("ObjectList", () => {
     expect(markup).toContain("el-b");
   });
 
-  it("第一張卡的上移按鈕停用，最後一張卡的下移按鈕停用", () => {
+  it("the first card's move-up button is disabled, and the last card's move-down button is disabled", () => {
     const cards = buildCards([effect({ index: 0 }), effect({ target: "el-b", index: 1 })], new Map());
     const markup = renderToStaticMarkup(createElement(ObjectList, { cards, ...handlers }));
-    // Two cards -> the first card's "上移" button and the second card's "下移" button are disabled.
+    // Two cards -> the first card's "move up" button and the second card's "move down" button are disabled.
     expect(markup.match(/aria-label="上移"[^>]*disabled/g) ?? []).toHaveLength(1);
     expect(markup.match(/aria-label="下移"[^>]*disabled/g) ?? []).toHaveLength(1);
   });
 
-  it("family=path 的卡片，Effect 下拉只有一個選項 path", () => {
+  it("for a family=path card, the Effect dropdown has only one option, path", () => {
     const cards = buildCards([effect({ family: "path", effect: "path", d: "M 0 0" })], new Map());
     const markup = renderToStaticMarkup(createElement(ObjectList, { cards, ...handlers }));
     const options = [...markup.matchAll(/<option[^>]*>([^<]+)<\/option>/g)].map((m) => m[1]);
@@ -90,7 +90,7 @@ describe("ObjectList", () => {
 });
 
 describe("EffectCard", () => {
-  it("Duration/Delay 欄位的值直接反映 effect 的 duration/delay", () => {
+  it("the Duration/Delay fields reflect the effect's duration/delay directly", () => {
     const cards = buildCards([effect({ duration: 1.2, delay: 0.3 })], new Map());
     const markup = renderToStaticMarkup(
       createElement(EffectCard, {
@@ -113,7 +113,7 @@ describe("EffectCard", () => {
   });
 });
 
-describe("PageTransitionView ([E2.T11]/#207 §4.7)", () => {
+describe("PageTransitionView (§4.7)", () => {
   const baseTransition = {
     enter: { effect: "none" as const, duration: 0.6 },
     exit: { effect: "none" as const, duration: 0.5 },
@@ -126,7 +126,7 @@ describe("PageTransitionView ([E2.T11]/#207 §4.7)", () => {
     onApplyAll: noop,
   };
 
-  it("Enter/Exit 各自四張效果卡，文案逐字照原型（None/Fade/Slide in/Zoom in，Exit 側 Slide out/Zoom out）", () => {
+  it("Enter/Exit each have four effect cards, copy matching the prototype verbatim (None/Fade/Slide in/Zoom in, and on the Exit side Slide out/Zoom out)", () => {
     const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition: baseTransition, ...handlers }));
     expect(markup).toContain("Slide in");
     expect(markup).toContain("Zoom in");
@@ -135,7 +135,7 @@ describe("PageTransitionView ([E2.T11]/#207 §4.7)", () => {
     expect(markup).toContain("Apply to all slides");
   });
 
-  it("目前的 enter/exit 效果卡帶 selected class，其餘不帶", () => {
+  it("the current enter/exit effect card carries the selected class, and the rest do not", () => {
     const transition = { enter: { effect: "fade" as const, duration: 0.6 }, exit: { effect: "zoom" as const, duration: 0.5 } };
     const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
     expect(markup).toMatch(/animate-page-effect-card selected"[^>]*>Fade</);
@@ -143,20 +143,20 @@ describe("PageTransitionView ([E2.T11]/#207 §4.7)", () => {
     expect(markup).not.toMatch(/selected"[^>]*>None</);
   });
 
-  it("標題右側顯示 {n}s，直接反映 duration 真值", () => {
+  it("shows {n}s to the right of the title, reflecting the actual duration value directly", () => {
     const transition = { enter: { effect: "none" as const, duration: 0.8 }, exit: { effect: "none" as const, duration: 0.5 } };
     const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
     expect(markup).toContain("0.8s");
   });
 
-  it("§4.7：目前值超出滑桿 0.2–1.5 時，數值文字仍顯示真值（3s），滑桿本身的 value 被夾到端點", () => {
+  it("§4.7: when the current value is outside the slider's 0.2-1.5 range, the numeric text still shows the true value (3s), while the slider's own value is clamped to the endpoint", () => {
     const transition = { enter: { effect: "none" as const, duration: 3 }, exit: { effect: "none" as const, duration: 0.5 } };
     const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition, ...handlers }));
     expect(markup).toContain("3s");
-    expect(markup).toContain('value="1.5"'); // 滑桿本身的 value 夾在端點
+    expect(markup).toContain('value="1.5"'); // the slider's own value is clamped to the endpoint
   });
 
-  it("滑桿的 min/max/step 是原型的 0.2/1.5/0.1", () => {
+  it("the slider's min/max/step match the prototype's 0.2/1.5/0.1", () => {
     const markup = renderToStaticMarkup(createElement(PageTransitionView, { transition: baseTransition, ...handlers }));
     expect(markup).toContain('min="0.2"');
     expect(markup).toContain('max="1.5"');

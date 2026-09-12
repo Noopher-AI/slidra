@@ -55,7 +55,7 @@ describe("mountCanvas", () => {
   // ADR-0011 / #56: view mode now carries allow-scripts (for the selection
   // runtime's hit reporting) but must never carry allow-same-origin — the
   // pair together would let the iframe's own script escape its sandbox.
-  it("view-mode iframe 的 sandbox 是 allow-scripts，且不含 allow-same-origin", async () => {
+  it("view-mode iframe's sandbox has allow-scripts and never allow-same-origin", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -73,13 +73,13 @@ describe("mountCanvas", () => {
     expect(iframe.srcdoc).toContain(slideMarkup);
   });
 
-  // N-03 (NOOP-399): the view-mode document (wrapSelectionDocument) already
-  // carries `user-select:none` on its own `<body>` (NOOP-349/#294) so a
+  // The view-mode document (wrapSelectionDocument) already
+  // carries `user-select:none` on its own `<body>` so a
   // native double-click can never spread a text selection across the whole
   // slide — this regression previously had zero test coverage at all
-  // (`grep -rn "user-select" apps/web/test/ e2e/` found nothing), so a
+  // (`grep -rn "user-select" packages/web/test/ e2e/` found nothing), so a
   // future edit to this wrapper could silently drop it.
-  it("view-mode srcdoc 的 <body> 帶 user-select:none（N-03，防止雙擊擴散成原生選字）", async () => {
+  it("view-mode srcdoc's <body> carries user-select:none, preventing a double-click from spreading into a native text selection", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -224,8 +224,9 @@ describe("mountCanvas", () => {
 
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
     expect(iframe.srcdoc).not.toContain("<base");
-    // 零頁的文件是透明的空白頁——白底會讓舞台看起來像有一張空白投影片，
-    // 「現在沒有投影片」那句話改由殼的 .stage-empty 說（Stage.tsx）。
+    // The zero-slide document is a transparent blank page — a white
+    // background would make the stage look like it has a blank slide.
+    // The "no slides currently" message is now the shell's .stage-empty (Stage.tsx).
     expect(iframe.srcdoc).toContain("background:transparent");
   });
 });
@@ -264,8 +265,8 @@ function srcdoc(): string {
   return (container.querySelector("iframe") as HTMLIFrameElement).srcdoc;
 }
 
-describe("mountCanvas 的多頁換頁", () => {
-  it("一開始顯示第一頁，狀態的索引是 0", async () => {
+describe("mountCanvas multi-slide navigation", () => {
+  it("shows the first slide initially, with the state's index at 0", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -282,7 +283,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(state.currentIndex).toBe(0);
   });
 
-  it("next() 往後翻，previous() 往前翻", async () => {
+  it("next() moves forward, previous() moves backward", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -297,7 +298,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(srcdoc()).toContain('data-testid="s2"');
   });
 
-  it("在最後一頁 next() 不動、在第一頁 previous() 不動，都不拋錯", async () => {
+  it("next() on the last slide and previous() on the first slide are both no-ops, neither throws", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -310,7 +311,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(srcdoc()).toContain('data-testid="s3"');
   });
 
-  it("showSlide() 索引越界時拋錯", async () => {
+  it("showSlide() throws when the index is out of range", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -319,7 +320,7 @@ describe("mountCanvas 的多頁換頁", () => {
     await expect(controller.showSlide(-1)).rejects.toThrow();
   });
 
-  it("每一頁都注入指向自己目錄的 <base>", async () => {
+  it("injects a <base> pointing at its own directory for every slide", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -329,7 +330,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(parsed.querySelector("base")!.getAttribute("href")).toBe("/api/raw/slides/");
   });
 
-  it("reload() 保留目前選頁，不跳回第一頁", async () => {
+  it("reload() keeps the current slide selected, instead of jumping back to the first", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -339,7 +340,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(srcdoc()).toContain('data-testid="s3"');
   });
 
-  it("reload() 後投影片變少時，選頁被夾到最後一頁", async () => {
+  it("clamps the selected slide to the last one when the slide count shrinks after reload()", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -350,7 +351,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(srcdoc()).toContain('data-testid="s2"');
   });
 
-  it("subscribe() 當下立即以現值呼叫一次，unsubscribe 後不再收到通知", async () => {
+  it("subscribe() fires once immediately with the current value, and stops after unsubscribe()", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -359,7 +360,7 @@ describe("mountCanvas 的多頁換頁", () => {
     const unsubscribe = controller.subscribe((state) => seen.push(state.currentIndex));
     expect(seen).toEqual([0]);
 
-    // #200: render() now notifies a second time once it has parsed the new
+    // render() now notifies a second time once it has parsed the new
     // slide's model (CanvasState.pageStyle depends on it, and — unlike
     // every other field — has no selection change to piggyback a notify()
     // on). One `next()` therefore reports the new index twice: once
@@ -375,7 +376,7 @@ describe("mountCanvas 的多頁換頁", () => {
     expect(seen).toEqual([0, 1, 1]);
   });
 
-  it("沒有投影片時，狀態的索引是 -1，且翻頁不拋錯", async () => {
+  it("with no slides, the state's index is -1 and paging never throws", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
@@ -404,7 +405,7 @@ describe("mountCanvas 的多頁換頁", () => {
   // Same generation guard as reload(): rapid arrow presses issue
   // overlapping slide fetches, and a slower earlier one must never paint
   // over the newer page the author actually asked for.
-  it("快速連續翻頁時，較慢的舊請求不得覆蓋較新的結果", async () => {
+  it("a slower, older request must never overwrite a newer result during rapid consecutive paging", async () => {
     let resolveSlowSecond!: (response: Response) => void;
     const slowSecond = new Promise<Response>((resolve) => {
       resolveSlowSecond = resolve;
@@ -468,9 +469,9 @@ const playDeckMarkup: Record<string, string> = {
 // in this file that exercises play mode or the animate panel must answer
 // that route too, or `computePlayerPlan`'s fetch rejects and the test
 // falls into the same "effect list failed to parse" fallback path a
-// genuinely broken deck would (see the "效果清單無法解析時" test below,
-// which relies on exactly that fallback — deliberately, via its own
-// `/api/effects/` mock returning a non-2xx response).
+// genuinely broken deck would (see the "state.error is set when the effect
+// list fails to parse" test below, which relies on exactly that fallback —
+// deliberately, via its own `/api/effects/` mock returning a non-2xx response).
 interface EffectRouteFixture {
   target: string;
   family: string;
@@ -483,7 +484,7 @@ const DEFAULT_TRANSITION_FIXTURE = {
   enter: { effect: "none", duration: 0.6 },
   exit: { effect: "none", duration: 0.5 },
 };
-/** Builds a `GET /api/effects/` response `Response`, 1-based `index` and grouped into steps like the real route. `transition` defaults to "this slide never had one" — only the [E2.T11] 頁面進出場轉場 describe block below needs to vary it per slide (F8, NOOP-289 決定 E1: `canvas.ts` now reads a slide's transition off THIS route too, not by parsing the fetched markup itself). */
+/** Builds a `GET /api/effects/` response `Response`, 1-based `index` and grouped into steps like the real route. `transition` defaults to "this slide never had one" — only the slide enter/exit transition describe block below needs to vary it per slide (`canvas.ts` now reads a slide's transition off THIS route too, not by parsing the fetched markup itself). */
 function effectsRouteResponse(effects: EffectRouteFixture[], transition = DEFAULT_TRANSITION_FIXTURE): Response {
   const wireEffects = effects.map((effect, i) => ({ duration: 0.6, delay: 0, ...effect, index: i + 1 }));
   const steps: Array<{ effects: typeof wireEffects }> = [];
@@ -525,8 +526,8 @@ function stubPlayDeck(): void {
   );
 }
 
-describe("mountCanvas 的播放模式", () => {
-  it("play() 重建 iframe，加上 allow-scripts，不含 allow-same-origin", async () => {
+describe("mountCanvas play mode", () => {
+  it("play() rebuilds the iframe with allow-scripts, never allow-same-origin", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -539,7 +540,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(sandbox).not.toContain("allow-same-origin");
   });
 
-  it("play() 的 srcdoc 帶著隱藏樣式、plan 與 runtime", async () => {
+  it("play()'s srcdoc carries the hiding styles, the plan, and the runtime", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -560,7 +561,7 @@ describe("mountCanvas 的播放模式", () => {
   // ADR-0011/#56: exitPlay() no longer returns to a zero-token sandbox —
   // view mode itself now carries allow-scripts, for the selection runtime
   // — but must still shed the play runtime's own plan/window global.
-  it("exitPlay() 回到 view 模式的 allow-scripts sandbox，不再帶播放 plan/runtime", async () => {
+  it("exitPlay() returns to view mode's allow-scripts sandbox, without the play plan/runtime", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -576,7 +577,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).not.toContain("__SLIDRA_PLAN__");
   });
 
-  it("play() 後 frameElement 回傳的是重建後的新元素，不是舊的參照", async () => {
+  it("after play(), frameElement returns the rebuilt new element, not the old reference", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -588,7 +589,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(controller.frameElement).toBe(container.querySelector("iframe"));
   });
 
-  it("效果清單無法解析時，state.error 被設定，畫面仍顯示投影片但不含 runtime", async () => {
+  it("state.error is set when the effect list fails to parse, still showing the slide but without the runtime", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
@@ -632,7 +633,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('id="el-a"');
   });
 
-  it("收到 runtime 的 focus 事件時更新 playerHasFocus", async () => {
+  it("updates playerHasFocus when the runtime sends a focus event", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -653,7 +654,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(state?.playerHasFocus).toBe(true);
   });
 
-  it("收到 runtime 的 advance-past-end 時換到下一頁；已在最後一頁時不動也不拋錯", async () => {
+  it("moves to the next slide on the runtime's advance-past-end; is a no-op on the last slide, never throws", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -688,7 +689,7 @@ describe("mountCanvas 的播放模式", () => {
   // canvas.ts must re-check document.fullscreenElement itself before
   // honoring it — otherwise a single Esc would drop the author out of
   // both fullscreen and play mode at once.
-  it("全螢幕時收到 runtime 的 exit-play 不會離開播放；離開全螢幕後再收到同一則訊息才真的退出播放", async () => {
+  it("does not leave play mode on the runtime's exit-play while fullscreen; only exits after leaving fullscreen and receiving the same message again", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -737,9 +738,9 @@ describe("mountCanvas 的播放模式", () => {
 
   // #46: the runtime's own reverse-navigation route. currentIndex 0 -> 1
   // via advance-past-end, then retreat-past-start goes back to slide 1 and
-  // must land on its *last* step (decision 五: "last", computed here since
+  // must land on its *last* step (decision 5: "last", computed here since
   // only the parent knows the step count — never a sentinel over the wire).
-  it("收到 runtime 的 retreat-past-start 時換回上一頁，並帶著該頁最後一步的 startStep", async () => {
+  it("moves back to the previous slide on the runtime's retreat-past-start, carrying that slide's last-step startStep", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -768,10 +769,10 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('\\"startStep\\":0');
   });
 
-  // #46 decision 三: a previous slide with no effect list has
+  // decision 3: a previous slide with no effect list has
   // steps.length - 1 === -1, its static look — same code path, no special
   // case.
-  it("退回沒有效果的上一頁時，startStep 是 -1", async () => {
+  it("startStep is -1 when retreating to a previous slide with no effects", async () => {
     const noEffectDeck = { name: "無效果上一頁", slides: ["slides/001.svg", "slides/002.svg"] };
     const noEffectMarkup: Record<string, string> = {
       "slides/001.svg": '<svg data-testid="s1"><rect id="el-a"/></svg>',
@@ -826,10 +827,10 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('\\"startStep\\":-1');
   });
 
-  // Same race shape as "連續收到兩則 advance-past-end 時..." above, in
+  // Same race shape as "receiving two advance-past-end in a row..." above, in
   // reverse: a superseded retreat's slower render must not paint over what
   // a later, faster navigation already applied.
-  it("較慢的舊 retreat-past-start 換頁不會蓋過較新的那一頁", async () => {
+  it("a slower, superseded retreat-past-start must not overwrite the newer slide", async () => {
     const raceDeck = { name: "三頁倒退測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
     let resolveSlide2!: () => void;
     const slide2Gate = new Promise<void>((resolve) => {
@@ -899,7 +900,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).not.toContain('data-testid="s2"');
   });
 
-  it("已在第一頁時收到 retreat-past-start 不動也不拋錯", async () => {
+  it("receiving retreat-past-start while already on the first slide is a no-op, never throws", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -917,7 +918,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(srcdoc()).toContain('\\"startStep\\":-1');
   });
 
-  it("收到 runtime 的 error 事件時設定 state.error", async () => {
+  it("sets state.error when the runtime sends an error event", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -938,7 +939,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(state?.error).toBe("找不到步驟中要顯示的元素：el-x");
   });
 
-  it("忽略不是來自目前 iframe 的訊息（即使 source 欄位宣稱是 slidra-player）", async () => {
+  it("ignores messages not from the current iframe, even when the source field claims slidra-player", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -959,7 +960,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(state?.playerHasFocus).toBe(false);
   });
 
-  it("重建 iframe 時，較慢的舊 render() 不會寫進剛建好的新 iframe（generation 也隨模式切換遞增）", async () => {
+  it("a slower, stale render() never writes into a freshly rebuilt iframe (generation also bumps on mode switch)", async () => {
     let resolveSlowView!: () => void;
     const slowView = new Promise<void>((resolve) => {
       resolveSlowView = resolve;
@@ -1018,7 +1019,7 @@ describe("mountCanvas 的播放模式", () => {
   // happened to resolve last would win regardless of which slide the
   // author is actually supposed to be on — the earlier call's slow slide 2
   // could paint over the later call's already-current slide 3.
-  it("連續收到兩則 advance-past-end 時，較慢的舊換頁不會蓋過較新的那一頁", async () => {
+  it("receiving two advance-past-end in a row: a slower, older page change must not overwrite the newer slide", async () => {
     const raceDeck = { name: "三頁播放測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
     let resolveSlide2!: () => void;
     const slide2Gate = new Promise<void>((resolve) => {
@@ -1090,7 +1091,7 @@ describe("mountCanvas 的播放模式", () => {
   // Gate review round 2, P2: a broken slide's error must actually clear
   // once the author moves to a slide that plays fine — `error = null`
   // being assigned is not enough if nothing tells React about it.
-  it("換到效果清單正常的投影片時，先前的 error 會被清掉並通知訂閱者", async () => {
+  it("clears the previous error and notifies subscribers when moving to a slide with a valid effect list", async () => {
     const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
     const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
       <metadata><slidra:effects ${NS}><slidra:effect target="el-a" family="build" effect="fade" start="on-click"/></slidra:effects></metadata>
@@ -1136,7 +1137,7 @@ describe("mountCanvas 的播放模式", () => {
 // [E2.T7]: OverlayState.hasAnimation/badges (D9) and Preview (D8) — driven
 // through the public controller/postMessage surface, same posture as the
 // selection tests above.
-describe("mountCanvas 的動畫（[E2.T7]）", () => {
+describe("mountCanvas animation", () => {
   function sendSelectionMessage(data: Record<string, unknown>): void {
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -1160,7 +1161,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
     });
   }
 
-  it("選取有動畫的元素時 hasAnimation 為 true，選取沒有動畫的元素時為 false", async () => {
+  it("hasAnimation is true when selecting an element with animation, false when selecting one without", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1177,7 +1178,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
     expect(overlay?.hasAnimation).toBe(false);
   });
 
-  it("runtime 回報 measured 之後，badges 帶著每個有效果的元素與其編號、換算過的 rect", async () => {
+  it("after the runtime reports measured, badges carry each animated element with its number and converted rect", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1199,7 +1200,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
     expect(overlay?.badges[0]).toMatchObject({ target: "el-a", n: 1 });
   });
 
-  it("previewEffects() 進入 preview 模式並把 preview 欄位嵌進 plan；preview-done 訊息回到 view 模式並還原選取", async () => {
+  it("previewEffects() enters preview mode and embeds the preview field into the plan; preview-done returns to view mode and restores the selection", async () => {
     // selectOnceLoaded (canvas.ts) only re-resolves an id through
     // currentSlideModel's own <g>-container elements (ADR-0012) — unlike
     // the other tests in this block, this one needs that resolution to
@@ -1262,7 +1263,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
     expect(state?.selection.ids).toEqual(["el-a"]);
   });
 
-  it("previewEffects(null) 把 effectIndices 嵌成 null（整頁播放）", async () => {
+  it("previewEffects(null) embeds effectIndices as null (playing the whole slide)", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1272,7 +1273,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
     expect(srcdoc()).toContain('\\"preview\\":{\\"effectIndices\\":null}');
   });
 
-  it("exitPreview() 立即回到 view 模式，不需等 preview-done", async () => {
+  it("exitPreview() returns to view mode immediately, without waiting for preview-done", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1296,13 +1297,13 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 // controller (play()/next()/previous()/showSlide()) and assert on the
 // <iframe> element's own inline style, never on the internal renderPlay()
 // function itself.
-describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
+describe("mountCanvas slide enter/exit transitions", () => {
   function frame(): HTMLIFrameElement {
     return container.querySelector("iframe") as HTMLIFrameElement;
   }
 
   /** Each entry is one slide's raw markup (with or without its own `<slidra:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
-  /** Extracts the same `enter`/`enter-duration`/`exit`/`exit-duration` attributes `slideWithTransition()` writes into a slide's `<slidra:transition>` — mirrors what the real `GET /api/effects/` route derives server-side (F8, NOOP-289 決定 E1: `canvas.ts` no longer parses this out of the fetched markup itself, so the mock route below has to, the same way the real one does). No `<slidra:transition>` at all → the route's own "never had one" default. */
+  /** Extracts the same `enter`/`enter-duration`/`exit`/`exit-duration` attributes `slideWithTransition()` writes into a slide's `<slidra:transition>` — mirrors what the real `GET /api/effects/` route derives server-side (`canvas.ts` no longer parses this out of the fetched markup itself, so the mock route below has to, the same way the real one does). No `<slidra:transition>` at all → the route's own "never had one" default. */
   function transitionFromMarkup(markup: string): typeof DEFAULT_TRANSITION_FIXTURE {
     const tagMatch = /<slidra:transition\b[^>]*>/.exec(markup);
     if (!tagMatch) return DEFAULT_TRANSITION_FIXTURE;
@@ -1342,10 +1343,10 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
   }
 
   it.each([
-    ["沒有 <metadata>", slideWithTransition("s1")],
-    ["有 <metadata> 但沒有 <slidra:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
-    ["enter/exit 都明寫 none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
-  ] as const)("讀取端：%s → 前進換頁瞬切，不拋錯", async (_label, firstSlideMarkup) => {
+    ["no <metadata>", slideWithTransition("s1")],
+    ["<metadata> present but no <slidra:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
+    ["enter/exit both explicitly none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
+  ] as const)("reading side: %s → forward paging is an instant cut, never throws", async (_label, firstSlideMarkup) => {
     stubTransitionDeck({ ...deckMarkup, "slides/001.svg": firstSlideMarkup, "slides/002.svg": slideWithTransition("s2") });
     controller = mountCanvas(container);
     await expect(controller.reload()).resolves.toBeUndefined();
@@ -1358,7 +1359,7 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
     expect(frame().style.transform).toBe("");
   });
 
-  it("[A9] enter=\"fade\" 時抵達該頁：inline style 先是 opacity:0，下一個 animation frame 變成 opacity:1 且 transition 字串含該頁的 enter 時長", async () => {
+  it("arriving at a slide with enter=\"fade\": inline style starts at opacity:0, then becomes opacity:1 on the next animation frame, with the transition string carrying that slide's enter duration", async () => {
     stubTransitionDeck({
       ...deckMarkup,
       "slides/001.svg": slideWithTransition("s1"),
@@ -1379,7 +1380,7 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
     expect(frame().style.transition).toBe("opacity 800ms var(--ease-out), transform 800ms var(--ease-out)");
   });
 
-  it("[A10] exit=\"fade\" 時前進換頁：離開頁先同步淡出（opacity:0，transition 字串含 exit 時長），時長跑完才真的換成下一頁的 srcdoc", async () => {
+  it("paging forward with exit=\"fade\": the leaving slide fades out synchronously first (opacity:0, transition string carrying the exit duration), and only swaps to the next slide's srcdoc once the duration elapses", async () => {
     vi.useFakeTimers();
     try {
       stubTransitionDeck({
@@ -1394,16 +1395,16 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
       const advancePromise = controller.next();
       await vi.advanceTimersByTimeAsync(0);
 
-      // (a) 同步設定的確定性斷言：opacity 立刻變 0，transition 字串含 1000ms。
+      // (a) Deterministic assertion on the synchronous setup: opacity flips to 0 right away, transition string contains 1000ms.
       expect(frame().style.opacity).toBe("0");
       expect(frame().style.transition).toContain("1000ms");
-      // (b) 此時仍是第一頁的內容，尚未換頁。
+      // (b) Still the first slide's content at this point — hasn't paged yet.
       expect(frame().srcdoc).toContain('data-testid="s1"');
 
       await vi.advanceTimersByTimeAsync(1000);
       await advancePromise;
 
-      // (c) exit 播完才換成第二頁，且 opacity 回到非 0（enter 為預設 none，瞬切到 1 = removeProperty）。
+      // (c) Only swaps to the second slide once exit finishes playing, with opacity back to non-zero (enter defaults to none, an instant cut to 1 = removeProperty).
       expect(frame().srcdoc).toContain('data-testid="s2"');
       expect(frame().style.opacity).toBe("");
     } finally {
@@ -1411,7 +1412,7 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
     }
   });
 
-  it("[A11] 倒退換頁不播離開頁的 exit（瞬切離開）", async () => {
+  it("paging backward never plays the leaving slide's exit (an instant cut instead)", async () => {
     stubTransitionDeck({
       ...deckMarkup,
       "slides/001.svg": slideWithTransition("s1"),
@@ -1424,13 +1425,13 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
 
     await controller.previous();
 
-    // 沒有任何 exit 動畫發生過：回到第一頁（enter="none"）之後，inline style 全清空。
+    // No exit animation ever ran: after returning to the first slide (enter="none"), the inline style is fully cleared.
     expect(frame().srcdoc).toContain('data-testid="s1"');
     expect(frame().style.opacity).toBe("");
     expect(frame().style.transition).toBe("");
   });
 
-  it("play() 進入播放會播該頁的 enter（行為變更：T6 時代這裡是瞬切）", async () => {
+  it("entering play() plays that slide's enter (a behavior change — this used to be an instant cut)", async () => {
     stubTransitionDeck({
       ...deckMarkup,
       "slides/001.svg": slideWithTransition("s1", 'enter="fade" enter-duration="0.6" exit="none" exit-duration="0.5"'),
@@ -1447,7 +1448,7 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
     expect(frame().style.opacity).toBe("1");
   });
 
-  it("上一次 enter 淡入殘留的 inline style 不會污染下一次的瞬切換頁", async () => {
+  it("inline style left over from a previous enter fade-in doesn't pollute the next instant-cut page change", async () => {
     stubTransitionDeck({
       ...deckMarkup,
       "slides/001.svg": slideWithTransition("s1"),
@@ -1477,8 +1478,8 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
 // play mode never starting at all (the runtime never runs, so no "ready"
 // ever arrives and the focus notice hangs forever) — still a real bug
 // worth a real test.
-describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
-  it("target 含有 <!--<script> 時，plan 的 <script> 標籤不會吞掉後面的 runtime", async () => {
+describe("mountCanvas play mode: escaping when embedding the plan", () => {
+  it("when target contains <!--<script>, the plan's <script> tag doesn't swallow the runtime that follows it", async () => {
     const hostileId = "el-<!--<script>";
     const hostileDeck = { name: "跳脫測試簡報", slides: ["slides/001.svg"] };
     const hostileMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
@@ -1536,8 +1537,8 @@ describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
 // stay at the seam this module owns: the CanvasState.selection field and
 // how canvas.ts reacts to postMessage events selection-runtime.js would
 // send.
-describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
-  it("view 模式的 srcdoc 帶著注入的重點色/handle 色與 selection-runtime 本體", async () => {
+describe("mountCanvas selection", () => {
+  it("view-mode srcdoc carries the injected highlight/handle colors and the selection-runtime itself", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1548,7 +1549,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(doc).toContain('source: "slidra-selection"');
   });
 
-  it("一開始 (mountCanvas 剛 reload 完) CanvasState.selection 沒有任何選取", async () => {
+  it("initially (right after mountCanvas's reload()), CanvasState.selection has no selection at all", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1560,7 +1561,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("收到 runtime 的 select 訊息會反映到 CanvasState.selection", async () => {
+  it("a select message from the runtime is reflected into CanvasState.selection", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1579,7 +1580,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [], elements: [null] });
   });
 
-  it("select 訊息沒有 data-slidra-name 時，selection.name 是 null", async () => {
+  it("selection.name is null when the select message has no data-slidra-name", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1598,7 +1599,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: ["el-b"], names: [null], groupPath: [], elements: [null] });
   });
 
-  it("收到 runtime 的 clear 訊息會把 CanvasState.selection 清回 null", async () => {
+  it("a clear message from the runtime resets CanvasState.selection back to empty", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1627,7 +1628,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
   // Same authentication rule as isPlayerMessage's own tests: identity, never
   // event.origin (ADR-0010) — an impostor `source` must be ignored outright.
-  it("不是來自目前 iframe 的 selection 訊息會被忽略", async () => {
+  it("a selection message not from the current iframe is ignored", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1646,7 +1647,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("換頁 (showSlide) 會清空選取", async () => {
+  it("paging (showSlide) clears the selection", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1668,7 +1669,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("reload() 會清空選取", async () => {
+  it("reload() clears the selection", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1689,7 +1690,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("play() 會清空選取", async () => {
+  it("play() clears the selection", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1711,7 +1712,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("exitPlay() 回到 view 模式時選取是空的", async () => {
+  it("the selection is empty after exitPlay() returns to view mode", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -1728,11 +1729,11 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
   });
 });
 
-// NOOP-275/#156: `element paste`'s `data.elementIds` (plural — unlike
+// `element paste`'s `data.elementIds` (plural — unlike
 // `textbox add`/`element insert`'s singular `data.elementId`) must become
-// the selection once the write's own reload lands, same NOOP-227 mechanism
+// the selection once the write's own reload lands, the same mechanism
 // extended to a list.
-describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", () => {
+describe("mountCanvas selection: feedback after element paste", () => {
   const slideWithTwoElements =
     '<svg viewBox="0 0 1280 720">' +
     '<g id="el-src" data-slidra-name="來源"><rect width="10" height="10"/></g>' +
@@ -1782,7 +1783,7 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
     controller!.frameElement.dispatchEvent(new Event("load"));
   }
 
-  it("貼上多個元素後全部被選取，不只第一個 (A2)", async () => {
+  it("all pasted elements end up selected after pasting multiple, not just the first", async () => {
     stubPasteCommand(["el-new1", "el-new2"]);
     controller = mountCanvas(container);
     await controller.reload();
@@ -1800,7 +1801,7 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
     expect(state?.selection.names).toEqual(["複本一", "複本二"]);
   });
 
-  it("貼上失敗（ok:false）不改變選取，也不留下待選取的 id", async () => {
+  it("a failed paste (ok:false) leaves the selection unchanged, with no pending id to select", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -1831,7 +1832,7 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
     expect(state?.selection).toEqual({ ids: [], names: [], groupPath: [], elements: [] });
   });
 
-  it("回傳的 elementIds 裡有找不到的元素時，只選取找得到的那些", async () => {
+  it("selects only the elements that can be found when some returned elementIds are missing", async () => {
     stubPasteCommand(["el-new1", "el-missing"]);
     controller = mountCanvas(container);
     await controller.reload();
@@ -1848,7 +1849,7 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
     expect(state?.selection.ids).toEqual(["el-new1"]);
   });
 
-  it("textbox add / element insert 的單一 elementId 選取行為不因本次改動而回歸", async () => {
+  it("textbox add / element insert's single-elementId selection behavior isn't regressed by this change", async () => {
     let inserted = false;
     const slideAfterInsert =
       '<svg viewBox="0 0 1280 720"><g id="el-shape" data-slidra-name="矩形"><rect width="10" height="10"/></g></svg>';
@@ -1888,10 +1889,10 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
   });
 });
 
-// NOOP-328 [Fix.5]: reproduces, at the postMessage-protocol boundary (never
+// Reproduces, at the postMessage-protocol boundary (never
 // against beginMoveGesture/toUserPoint directly — those are not a public
-// boundary), the race behind the e2e "Alt 拖到同一位置" test's intermittent
-// 180px-off failure. Root cause (see NOOP-329's plan comment for the full
+// boundary), the race behind the e2e "Alt-drag to the same position" test's
+// intermittent 180px-off failure. Root cause (see the plan comment for the full
 // arithmetic): selection-runtime.js only calls reportViewport() on the
 // iframe's own `load`/`resize` events, so a "gesture-start" that reaches
 // canvas.ts before the first "viewport" message used to hit
@@ -1900,8 +1901,8 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
 // guard at all (unlike updateMoveGesture, which already declines to act
 // while viewport is null). Every subsequent delta is then measured from the
 // wrong origin.
-describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)", () => {
-  it("gesture-start 抵達時 viewport 尚為 null，不會把手勢起點記成 (0,0)", async () => {
+describe("mountCanvas drag gesture: gesture-start arriving before viewport", () => {
+  it("does not record the gesture origin as (0,0) when gesture-start arrives while viewport is still null", async () => {
     const slideMarkupWithEl =
       '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
@@ -1992,8 +1993,8 @@ describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)
 // are that fallback — this test drives them directly, the same way the
 // gesture-move/gesture-end messages above are driven directly, since
 // neither is a public boundary either.
-describe("mountCanvas 的拖曳手勢：pointer 離開 slide iframe 邊界後仍要送出 element move (NOOP-382)", () => {
-  it("iframe 只送出 gesture-start/一次 gesture-move 就再也沒有下文（模擬遊標離開 iframe）：host 自己的 pointermove/pointerup 仍能完成手勢並送出 element move", async () => {
+describe("mountCanvas drag gesture: still sends element move after the pointer leaves the slide iframe's bounds", () => {
+  it("when the iframe only sends gesture-start plus one gesture-move and then goes silent (simulating the cursor leaving the iframe), the host's own pointermove/pointerup still complete the gesture and send element move", async () => {
     const slideMarkupWithEl =
       '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
@@ -2052,7 +2053,7 @@ describe("mountCanvas 的拖曳手勢：pointer 離開 slide iframe 邊界後仍
     ]);
   });
 
-  it("沒有進行中的 move 手勢時，host 的 pointermove/pointerup 是無害的 no-op（不會誤送 element move）", async () => {
+  it("with no move gesture in progress, the host's pointermove/pointerup are harmless no-ops (never mistakenly send element move)", async () => {
     const slideMarkupWithEl =
       '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
@@ -2094,7 +2095,7 @@ describe("mountCanvas 的拖曳手勢：pointer 離開 slide iframe 邊界後仍
 // their own if it ever did. Reproduced the same way as the move case: at
 // the postMessage-protocol boundary, never against the gesture functions
 // directly.
-describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start 早於 viewport (NOOP-334)", () => {
+describe("mountCanvas scale/rotate/textbox-width gestures: gesture-start arriving before viewport", () => {
   const slideMarkupWithEl =
     '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
   const slideMarkupWithTextbox =
@@ -2121,7 +2122,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     );
   }
 
-  it("gesture-start (scale) 抵達時 viewport 尚為 null，不會送出 element scale 指令", async () => {
+  it("does not send an element scale command when gesture-start (scale) arrives while viewport is still null", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(slideMarkupWithEl, commandCalls);
 
@@ -2155,7 +2156,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     expect(scaleCalls).toEqual([]);
   });
 
-  it("gesture-start (rotate) 抵達時 viewport 尚為 null，不會送出 element rotate 指令", async () => {
+  it("does not send an element rotate command when gesture-start (rotate) arrives while viewport is still null", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(slideMarkupWithEl, commandCalls);
 
@@ -2180,7 +2181,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     expect(rotateCalls).toEqual([]);
   });
 
-  it("gesture-start (textbox-width) 抵達時 viewport 尚為 null，不會嘗試載入字型（state.error 不會被設定）", async () => {
+  it("does not attempt to load a font when gesture-start (textbox-width) arrives while viewport is still null (state.error stays unset)", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(slideMarkupWithTextbox, commandCalls);
 
@@ -2221,17 +2222,17 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     expect(textboxCalls).toEqual([]);
   });
 
-  // NOOP-65 §7-I: a four-corner handle on a text box must redirect into
+  // A four-corner handle on a text box must redirect into
   // the SAME `textbox-width` gesture the left/right edge handles already
   // use, not the generic scale/resize path — core's `element scale`
-  // semantics are untouched (§2 第 8 條), this is purely a front-end handle
-  // remapping. F8 (NOOP-289 決定 (b)) removed the font fetch this test used
+  // semantics are untouched, this is purely a front-end handle
+  // remapping. Removed the font fetch this test used
   // to prove the redirect with (`resolveBrowserFont()` only ever ran from
   // the textbox-width path) — the positive proof is now that a
   // `"textbox width"` command lands, since only that gesture kind ever
   // sends one; the negative side (never `element scale`/`resize`) is
   // unchanged.
-  it("gesture-start (scale, corner=se) 在文字框上會走 textbox-width 路徑而非 element scale／resize", async () => {
+  it("gesture-start (scale, corner=se) on a text box takes the textbox-width path, not element scale/resize", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(slideMarkupWithTextbox, commandCalls);
 
@@ -2275,7 +2276,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
 // (`computeBounds` returning null) so nobody "fixes" it into a fallback
 // hit-test path later — the postMessage-protocol boundary is the one and
 // only source of truth (round-3 plan §4.B).
-describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是空選取 (NOOP-349 round 3)", () => {
+describe("mountCanvas marquee selection hit-testing: element-bounds is the only source of truth, empty selection when not received", () => {
   const slideMarkupWithEl =
     '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
 
@@ -2315,7 +2316,7 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  it("收到 element-bounds 後結束 marquee：涵蓋範圍內的元素被選取", async () => {
+  it("finishing a marquee after receiving element-bounds selects the elements within its coverage", async () => {
     stubFetch(slideMarkupWithEl);
     controller = mountCanvas(container);
     await controller.reload();
@@ -2331,7 +2332,7 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     expect(state?.selection.ids).toEqual(["el-a"]);
   });
 
-  it("鎖定的背景圖不會被框選選到（#303：滿版背景本來每次框選都會被抓進去）", async () => {
+  it("a locked background image is never picked up by marquee selection (a full-bleed background used to always get swept in)", async () => {
     const withBackground =
       '<svg viewBox="0 0 1280 720">' +
       '<g id="el-background" data-slidra-role="background" data-slidra-lock="true"><image x="0" y="0" width="1280" height="720" href="../assets/bg.svg"/></g>' +
@@ -2370,7 +2371,7 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     expect(state?.selection.ids).toEqual(["el-a"]);
   });
 
-  it("從未收到 element-bounds 就結束 marquee：即使矩形涵蓋元素也選不到任何東西（不丟例外）", async () => {
+  it("finishing a marquee without ever receiving element-bounds selects nothing, even when the rect covers an element (never throws)", async () => {
     stubFetch(slideMarkupWithEl);
     controller = mountCanvas(container);
     await controller.reload();
@@ -2387,11 +2388,11 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
   });
 });
 
-// F8 (NOOP-289 決定 (d)/C2): copy/cut go straight through the CLI's own
+// copy/cut go straight through the CLI's own
 // `element copy`/`element cut` now — the browser no longer serializes a
 // selection itself. `element cut` replaces the former "local serialize +
 // element delete" pair.
-describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 決定 (d)/C2）", () => {
+describe("mountCanvas clipboard: copySelection / cutSelection", () => {
   const slideMarkupWithEl = '<svg viewBox="0 0 1280 720"><g id="el-a"><rect width="10" height="10"/></g></svg>';
 
   function stubFetch(
@@ -2427,7 +2428,7 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  it("⌘C 送出 element copy，把 data.svg 回傳給呼叫者，不動選取", async () => {
+  it("Cmd+C sends element copy, returns data.svg to the caller, and leaves the selection unchanged", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(commandCalls, { ok: true, data: { svg: "<svg>copied</svg>" } });
     controller = mountCanvas(container);
@@ -2440,7 +2441,7 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
     expect(commandCalls).toEqual([{ name: "element copy", input: { slidePath: "slides/001.svg", elementIds: ["el-a"] } }]);
   });
 
-  it("⌘X 送出 element cut（不是 element delete），回傳 data.svg，清空選取", async () => {
+  it("Cmd+X sends element cut (not element delete), returns data.svg, and clears the selection", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(commandCalls, { ok: true, data: { svg: "<svg>cut</svg>" } });
     controller = mountCanvas(container);
@@ -2459,7 +2460,7 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
     expect(state?.selection.ids).toEqual([]);
   });
 
-  it("命令失敗時，copySelection／cutSelection 都回傳 null（呼叫者才不會寫入系統剪貼簿）", async () => {
+  it("both copySelection and cutSelection return null when the command fails, so the caller never writes to the system clipboard", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(commandCalls, { ok: false, message: "命令失敗" });
     controller = mountCanvas(container);
@@ -2472,10 +2473,10 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
   });
 });
 
-// F8 (NOOP-289 決定 (b)): a textbox-width drag no longer re-wraps the
+// A textbox-width drag no longer re-wraps the
 // `<text>` locally — this proves the host side of that: zero commands
 // during the drag, exactly one `"textbox width"` on release.
-describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F8, NOOP-289 決定 (b)）", () => {
+describe("mountCanvas textbox-width drag: no command sent while dragging", () => {
   const slideMarkupWithTextbox =
     '<svg viewBox="0 0 1280 720"><g id="el-a" data-slidra-text-width="200" transform="translate(100 100)">' +
     '<text font-family="Noto Sans TC" font-size="16">hello</text></g></svg>';
@@ -2496,7 +2497,7 @@ describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F
     );
   }
 
-  it("拖曳中多次 gesture-move 都不送命令，放開才送恰好一條 textbox width", async () => {
+  it("multiple gesture-move events during the drag send no command; releasing sends exactly one textbox width", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
     stubFetch(commandCalls);
     controller = mountCanvas(container);
@@ -2527,19 +2528,19 @@ describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F
   });
 });
 
-// NOOP-91 round-2 FAIL #4: `computeOverlayLabel`/`notifyOverlay` (the data
+// `computeOverlayLabel`/`notifyOverlay` (the data
 // `SelectionOverlay.tsx`/`ContextBar.tsx` render) had zero test coverage —
 // only the *rendering* of that data was ever exercised manually. These test
 // black-box through `subscribeOverlay`, the same postMessage-protocol
 // boundary every other canvas.ts test in this file uses, rather than
 // reaching into module-private state.
-describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算（NOOP-91 round-2 FAIL #4）", () => {
+describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain computation", () => {
   function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
     const frameWindow = controllerFrame.contentWindow as unknown as Window;
     window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
   }
 
-  it("單選一個元素：label 用顯示名稱、path 為空；boxes/union 來自 bounds 事件", async () => {
+  it("selecting a single element: label uses the display name with an empty path; boxes/union come from the bounds event", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -2556,7 +2557,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.union).toEqual(rect);
   });
 
-  it("refreshOverlay：frame 移動/縮放後（zoom/pan）用新的 frame 位置重算 union／boxes，不需要新的 bounds 事件", async () => {
+  it("refreshOverlay recomputes union/boxes from the frame's new position after it moves/scales (zoom/pan), without needing a new bounds event", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -2581,7 +2582,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.boxes).toEqual([{ x: 120, y: 240, width: 60, height: 80 }]);
   });
 
-  it("鑽入群組後選取子元素：label.path 依 bounds 回報的祖先鏈由外到內排列", async () => {
+  it("selecting a child element after drilling into a group: label.path is ordered outer-to-inner per the ancestor chain reported by bounds", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -2619,7 +2620,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.label).toEqual({ text: "群組子元素", path: ["群組", "el-group-2"] });
   });
 
-  it("多選：label 顯示『N elements』，不含 path（即使 bounds 回報了祖先鏈也忽略）", async () => {
+  it("multi-select: label shows 'N elements' with no path (ignored even if bounds reports an ancestor chain)", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -2645,7 +2646,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     expect(latest?.boxes).toEqual([rectA, rectB]);
   });
 
-  it("清除選取後（runtime 隨即回報空 bounds，如真實 runtime 的 updateBoxes 一樣）：label/union/boxes 全部清空", async () => {
+  it("clears label/union/boxes entirely once selection is cleared (the runtime immediately reports empty bounds, matching the real runtime's updateBoxes)", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     let latest: OverlayState | undefined;
@@ -2670,13 +2671,13 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
   });
 });
 
-describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client px（[E5.T7]/F-17）", () => {
+describe("subscribeStageHover: converts the runtime's stage-hover into the parent document's client px", () => {
   function send(controllerFrame: HTMLIFrameElement, data: unknown): void {
     const frameWindow = controllerFrame.contentWindow as unknown as Window;
     window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
   }
 
-  it("有效 point：轉成父文件 client px 後推給 listener", async () => {
+  it("a valid point is converted to parent-document client px and pushed to the listener", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const points: { x: number; y: number }[] = [];
@@ -2689,7 +2690,7 @@ describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client p
     expect(points).toEqual([{ x: 12, y: 34 }]);
   });
 
-  it("非法 point（缺欄位／非有限數）：靜默丟棄，不呼叫 listener", async () => {
+  it("an invalid point (missing fields / non-finite numbers) is silently dropped, never calling the listener", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const points: { x: number; y: number }[] = [];
@@ -2703,7 +2704,7 @@ describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client p
   });
 });
 
-describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHandler 註冊的處理器（#198）", () => {
+describe("mountCanvas stage-key relay: Cmd+Z / Shift+Cmd+Z forward to the handler registered via setUndoRedoHandler", () => {
   function relayStageKey(key: string, shift: boolean): void {
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -2713,7 +2714,7 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     );
   }
 
-  it("⌘Z 呼叫處理器一次，參數是 undo", async () => {
+  it("Cmd+Z calls the handler once with \"undo\"", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const handler = vi.fn();
@@ -2725,7 +2726,7 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     expect(handler).toHaveBeenCalledWith("undo");
   });
 
-  it("⇧⌘Z 呼叫處理器一次，參數是 redo", async () => {
+  it("Shift+Cmd+Z calls the handler once with \"redo\"", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const handler = vi.fn();
@@ -2737,7 +2738,7 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
     expect(handler).toHaveBeenCalledWith("redo");
   });
 
-  it("尚未註冊處理器時收到 ⌘Z 不拋錯，也不自己送出任何請求", async () => {
+  it("receiving Cmd+Z before any handler is registered never throws and never sends a request of its own", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
@@ -2749,7 +2750,7 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
   });
 });
 
-describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02, NOOP-385/NOOP-351/#283）", () => {
+describe("mountCanvas stage-key relay: ArrowLeft/ArrowRight paging", () => {
   function relayArrow(key: "ArrowLeft" | "ArrowRight"): void {
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -2759,7 +2760,7 @@ describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02,
     );
   }
 
-  it("ArrowRight 中繼後往下一頁，ArrowLeft 往上一頁——選取了投影片元素、焦點落在 iframe 內時仍要能換頁", async () => {
+  it("relaying ArrowRight moves to the next slide, ArrowLeft to the previous — paging must still work with a slide element selected and focus inside the iframe", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -2771,7 +2772,7 @@ describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02,
     await vi.waitFor(() => expect(srcdoc()).toContain('data-testid="s1"'));
   });
 
-  it("在最後一頁 ArrowRight、在第一頁 ArrowLeft：不拋錯，也不呼叫多餘的 fetch", async () => {
+  it("ArrowRight on the last slide and ArrowLeft on the first: neither throws nor calls an extra fetch", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -2795,7 +2796,7 @@ describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02,
 // listener call, tested here at its own public boundary
 // (`createCanvasController()`'s returned object, per plan §6.5), not
 // against a private module variable.
-describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）", () => {
+describe("mountCanvas table cell range keyboard decisions", () => {
   // 2×2 table: (0,0)/(1,0)/(1,1) start at font-weight 400, (0,1) starts
   // already bold (700) — lets the ⌘B toggle-both-ways tests below share one
   // fixture instead of two nearly-identical ones.
@@ -2851,7 +2852,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     return { controller, frameWindow };
   }
 
-  it("沒有作用中的範圍時，任何鍵都回傳 false、不送出任何命令", async () => {
+  it("with no active range, every key returns false and sends no command", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c } = await mountWithTable(calls);
 
@@ -2861,7 +2862,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(calls).toEqual([]);
   });
 
-  it("table-cell-click 建立單一儲存格範圍（非 additive）", async () => {
+  it("table-cell-click creates a single-cell range (non-additive)", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2871,7 +2872,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 1, r1: 0, c1: 1 } });
   });
 
-  it("⇧點延伸範圍：normalizeRange(anchor, 該格)", async () => {
+  it("Shift+click extends the range: normalizeRange(anchor, that cell)", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2882,7 +2883,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
   });
 
-  it("Tab 移到下一格（row-major）；⇧Tab 反向", async () => {
+  it("Tab moves to the next cell (row-major); Shift+Tab moves backward", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2895,7 +2896,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 0, c1: 0 } });
   });
 
-  it("Escape 清除範圍，表格本身仍被選取", async () => {
+  it("Escape clears the range, leaving the table itself selected", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2912,7 +2913,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(state?.selection.ids).toEqual(["el-tbl"]);
   });
 
-  it("Delete 對範圍內每一格送 table cell set --text ''，不刪表格、範圍保留", async () => {
+  it("Delete sends table cell set --text '' for every cell in the range, without deleting the table or the range", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2936,7 +2937,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(range.current).toEqual({ tableId: "el-tbl", range: { r0: 0, c0: 0, r1: 1, c1: 1 } });
   });
 
-  it("⌘B：字重 400 的格切到 700", async () => {
+  it("Cmd+B: a cell at font-weight 400 switches to 700", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: false });
@@ -2950,7 +2951,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     ]);
   });
 
-  it("⌘B：字重已 ≥700 的格切回 400", async () => {
+  it("Cmd+B: a cell already at font-weight ≥700 switches back to 400", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     sendSelection(frameWindow, { event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
@@ -2964,7 +2965,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     ]);
   });
 
-  it("選取的元素已不是那張表格：回傳 false 並清掉範圍", async () => {
+  it("returns false and clears the range once the selected element is no longer that table", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c } = await mountWithTable(calls);
     const range = watchTableRange(c);
@@ -2979,7 +2980,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
     expect(calls).toEqual([]);
   });
 
-  it("選取換到別的元素、或清空選取：範圍自動變 null", async () => {
+  it("the range automatically becomes null when the selection switches to another element or is cleared", async () => {
     const calls: { name: string; input: Record<string, unknown> }[] = [];
     const { controller: c, frameWindow } = await mountWithTable(calls);
     const range = watchTableRange(c);

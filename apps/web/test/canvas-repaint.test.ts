@@ -53,8 +53,8 @@ describe("slidePaintKey", () => {
   });
 });
 
-describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
-  it("只有 <metadata> 變動時不重設 srcdoc；內容變動與換頁才重設", async () => {
+describe("mountCanvas only repaints when the picture actually changes", () => {
+  it("does not reset srcdoc when only <metadata> changes; a content change or page navigation does reset it", async () => {
     controller = mountCanvas(container);
     await controller.reload();
     const painted = srcdoc();
@@ -83,7 +83,7 @@ describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
     expect(srcdoc()).toContain('data-testid="s1"');
   });
 
-  it("零頁簡報的空白透明頁之後，第一頁真的出現時一定重畫", async () => {
+  it("always repaints once the first real slide appears after a zero-slide deck's blank transparent page", async () => {
     const empty = { name: "空", slides: [] as string[] };
     let project: { name: string; slides: string[] } = empty;
     vi.stubGlobal(
@@ -106,7 +106,7 @@ describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
   });
 });
 
-describe("播放模式的 live reload 只在畫面真的變了才重設 srcdoc (#303)", () => {
+describe("in play mode, live reload only resets srcdoc when the picture actually changes", () => {
   function effectsRoute(): Response {
     return new Response(
       JSON.stringify({
@@ -118,7 +118,7 @@ describe("播放模式的 live reload 只在畫面真的變了才重設 srcdoc (
     );
   }
 
-  it("只有 <metadata> 變動時保留正在播放的文件；內容變動才重設", async () => {
+  it("keeps the currently playing document when only <metadata> changes; resets only on a content change", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {

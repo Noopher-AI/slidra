@@ -12,7 +12,7 @@ import {
 
 describe("chat-messages: identity, not position", () => {
   it("appendChunkToMessage updates the message matching the given id even when it is no longer last", () => {
-    // The exact scenario from ticket #6 fix 3: the agent's reply starts
+    // The exact scenario this bug fix addresses: the agent's reply starts
     // (id 1), then the author sends a second message (id 2) before the
     // reply finishes — the author's message is now the last item, but the
     // next chunk must still land on the agent's message (id 1), not
@@ -30,8 +30,8 @@ describe("chat-messages: identity, not position", () => {
       { id: 1, role: "agent", text: "Q3 財報" },
       { id: 2, role: "author", text: "還有一件事" },
     ]);
-    // The author's own words survive untouched — this is the bug fix 3
-    // exists for: an unconditional "append to last item" would have
+    // The author's own words survive untouched — this is exactly the bug
+    // this fix addresses: an unconditional "append to last item" would have
     // deleted "還有一件事" and glued " 財報" onto it instead.
     const authorMessage = afterSecondChunk.find((message) => message.id === 2);
     expect(authorMessage?.text).toBe("還有一件事");
@@ -48,7 +48,7 @@ describe("chat-messages: identity, not position", () => {
   });
 });
 
-describe("chat-messages: a command is its own kind of message (ticket #17)", () => {
+describe("chat-messages: a command is its own kind of message", () => {
   it("appendCommandMessage records the command verbatim, addressed by its ACP toolCallId", () => {
     const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "pending", true);
     expect(messages).toEqual([
@@ -102,7 +102,7 @@ describe("chat-messages: a command is its own kind of message (ticket #17)", () 
   });
 });
 
-describe("chat-messages: a stream interruption is its own fact (ticket #19)", () => {
+describe("chat-messages: a stream interruption is its own fact", () => {
   it("marks a command still running as interrupted without touching its ACP status", () => {
     const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "in_progress", true);
 
@@ -140,11 +140,11 @@ describe("chat-messages: a stream interruption is its own fact (ticket #19)", ()
   });
 });
 
-// [E3.T5] §7 決定 D3: a system message ("switched to agent X") is not a
+// §7 Decision D3: a system message ("switched to agent X") is not a
 // NoticeMessage — that type's existing meaning is "the stream broke, a
 // turn's ending was lost" (role="alert"). A routine switch confirmation is
 // role="status" and must stay distinguishable from a lost-turn notice.
-describe("chat-messages: a system message is neither speech nor a lost-turn notice ([E3.T5] D3)", () => {
+describe("chat-messages: a system message is neither speech nor a lost-turn notice (D3)", () => {
   it("appendSystemMessage records a system event, with its own id", () => {
     const messages = appendMessage([], 0, "author", "改標題");
 

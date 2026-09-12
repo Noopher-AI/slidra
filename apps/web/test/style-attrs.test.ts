@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { parseSlide, type SlideElement } from "../src/slide-dom.js";
 import { PANEL_STYLE_ATTRIBUTES, readElementStyle, summarizeSelection } from "../src/style-attrs.js";
 
-// F8 (NOOP-289): the web bundle no longer depends on core's command-layer
-// whitelist at all — this reads the normative source, `docs/spec/cli.md`'s
-// own `element style set` entry, with node:fs + regex instead (same
+// The web bundle no longer depends on core's command-layer whitelist at
+// all — this reads the normative source, `docs/spec/cli.md`'s own
+// `element style set` entry, with node:fs + regex instead (same
 // "the file's own text is the contract" posture `tokens.test.ts` already
 // applies elsewhere).
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -30,15 +30,15 @@ function elementOf(svgBody: string, id: string): SlideElement {
   return found;
 }
 
-describe("PANEL_STYLE_ATTRIBUTES（NOOP-69 §5-F 反漂移：分段面板送出 element style set 的每個屬性名都在白名單內）", () => {
-  it("每個屬性都落在 docs/spec/cli.md 的 element style set 白名單之內", () => {
+describe("PANEL_STYLE_ATTRIBUTES (anti-drift: every attribute name the segmented panel sends to `element style set` is in the whitelist)", () => {
+  it("every attribute is within the `element style set` whitelist in docs/spec/cli.md", () => {
     const whitelist = styleAttributeWhitelist();
     for (const attr of PANEL_STYLE_ATTRIBUTES) {
       expect(whitelist).toContain(attr);
     }
   });
 
-  it("固定集合：fill / stroke / stroke-width / font-family / font-size / font-weight / text-anchor / opacity", () => {
+  it("is the fixed set: fill / stroke / stroke-width / font-family / font-size / font-weight / text-anchor / opacity", () => {
     expect(PANEL_STYLE_ATTRIBUTES).toEqual([
       "fill",
       "stroke",
@@ -52,18 +52,18 @@ describe("PANEL_STYLE_ATTRIBUTES（NOOP-69 §5-F 反漂移：分段面板送出 
   });
 });
 
-describe("readElementStyle（§4.2）", () => {
-  it("群組容器（primitives 為空）回 unset", () => {
+describe("readElementStyle", () => {
+  it("a group container (with no primitives) returns unset", () => {
     const element = elementOf('<g id="el-group"><g id="el-child"><rect x="0" y="0" width="1" height="1"/></g></g>', "el-group");
     expect(readElementStyle(element, "fill")).toEqual({ kind: "unset" });
   });
 
-  it("所有 primitive 都沒有這個屬性 → unset，不捏 SVG 預設值", () => {
+  it("no primitive has this attribute → unset, without fabricating an SVG default value", () => {
     const element = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>', "el-a");
     expect(readElementStyle(element, "stroke")).toEqual({ kind: "unset" });
   });
 
-  it("單一 primitive、或多個 primitive 值相同 → 原文字串，不正規化", () => {
+  it("a single primitive, or multiple primitives with the same value → the literal string, unnormalized", () => {
     const single = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1" opacity="1.0"/></g>', "el-a");
     expect(readElementStyle(single, "opacity")).toEqual({ kind: "value", value: "1.0" });
 
@@ -74,7 +74,7 @@ describe("readElementStyle（§4.2）", () => {
     expect(readElementStyle(multi, "fill")).toEqual({ kind: "value", value: "#FFF" });
   });
 
-  it("多個 primitive 之間值不同 → mixed", () => {
+  it("multiple primitives with differing values → mixed", () => {
     const element = elementOf(
       '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#111"/><circle cx="0" cy="0" r="1" fill="#222"/></g>',
       "el-a",
@@ -82,7 +82,7 @@ describe("readElementStyle（§4.2）", () => {
     expect(readElementStyle(element, "fill")).toEqual({ kind: "mixed" });
   });
 
-  it("部分 primitive 有值、部分沒有 → mixed", () => {
+  it("some primitives have a value and some don't → mixed", () => {
     const element = elementOf(
       '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#111"/><circle cx="0" cy="0" r="1"/></g>',
       "el-a",
@@ -91,12 +91,12 @@ describe("readElementStyle（§4.2）", () => {
   });
 });
 
-describe("summarizeSelection（§4.3）", () => {
-  it("空陣列 → unset", () => {
+describe("summarizeSelection", () => {
+  it("an empty array → unset", () => {
     expect(summarizeSelection([], "fill")).toEqual({ kind: "unset" });
   });
 
-  it("每個元素都是同一個值 → 該共同值", () => {
+  it("every element has the same value → that shared value", () => {
     const a = elementOf('<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#c43e1c"/></g>', "el-a");
     const model = parseSlide(
       wrap(
@@ -108,7 +108,7 @@ describe("summarizeSelection（§4.3）", () => {
     expect(summarizeSelection([a, b], "fill")).toEqual({ kind: "value", value: "#c43e1c" });
   });
 
-  it("每個元素都 unset → unset", () => {
+  it("every element is unset → unset", () => {
     const model = parseSlide(
       wrap(
         '<g id="el-a"><rect x="0" y="0" width="1" height="1"/></g>\n' +
@@ -119,7 +119,7 @@ describe("summarizeSelection（§4.3）", () => {
     expect(summarizeSelection([a, b], "stroke")).toEqual({ kind: "unset" });
   });
 
-  it("元素之間值不同 → mixed", () => {
+  it("elements differ in value → mixed", () => {
     const model = parseSlide(
       wrap(
         '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#111"/></g>\n' +
@@ -130,7 +130,7 @@ describe("summarizeSelection（§4.3）", () => {
     expect(summarizeSelection([a, b], "fill")).toEqual({ kind: "mixed" });
   });
 
-  it("value 與 unset 並存 → mixed", () => {
+  it("value and unset coexist → mixed", () => {
     const model = parseSlide(
       wrap(
         '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#111"/></g>\n' +
@@ -141,7 +141,7 @@ describe("summarizeSelection（§4.3）", () => {
     expect(summarizeSelection([a, b], "fill")).toEqual({ kind: "mixed" });
   });
 
-  it("任一元素本身內部 mixed → 整體 mixed", () => {
+  it("any element that is internally mixed makes the whole selection mixed", () => {
     const model = parseSlide(
       wrap(
         '<g id="el-a"><rect x="0" y="0" width="1" height="1" fill="#111"/><circle cx="0" cy="0" r="1" fill="#222"/></g>\n' +

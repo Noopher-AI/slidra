@@ -115,7 +115,7 @@ describe("startChatStream", () => {
     expect(started.working).toBe(false);
   });
 
-  it("#303: a cancelled turn appends the 「已停止」 system line and marks unfinished commands interrupted", () => {
+  it("a cancelled turn appends the 「已停止」 system line and marks unfinished commands interrupted", () => {
     started = start();
     started.fake.emit("chat-chunk", { text: "開始" });
     started.fake.emit("chat-command", { toolCallId: "t1", command: "slidra slide add x", status: "in_progress" });

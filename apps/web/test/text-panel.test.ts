@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { textPanelInsertInput } from "../src/shell/dock/panels/TextPanel.js";
 
-// NOOP-65r3 §Step 3 — `textPanelInsertInput` is the preset/align →
-// `insertTextBox` input conversion pulled out of `TextPanel`'s `insert()`
-// so it has a test independent of React/DOM. Values below are verbatim
-// from `docs/design/prototype/slidra-logic-v3.js:203` (NOOP-65 計畫
-// §3.8), computed by hand against a 1000×1000 canvas so every percentage
-// in the source becomes its own literal pixel value.
+// `textPanelInsertInput` is the preset/align → `insertTextBox` input
+// conversion pulled out of `TextPanel`'s `insert()` so it has a test
+// independent of React/DOM. Values below are verbatim from
+// `docs/design/prototype/slidra-logic-v3.js:203`, computed by hand
+// against a 1000×1000 canvas so every percentage in the source becomes its
+// own literal pixel value.
 describe("textPanelInsertInput", () => {
-  it("body/left：留空文字用預設字串，位置與尺寸是 canvas 的百分比（原型 body 規格）", () => {
+  it("body/left: empty text falls back to the default string, position and size are percentages of the canvas (per the prototype's body spec)", () => {
     const input = textPanelInsertInput("body", "left", "", { width: 1000, height: 1000 }, null);
     expect(input).toEqual({
       text: "Body text", // spec.placeholderText — textarea left empty
@@ -22,7 +22,7 @@ describe("textPanelInsertInput", () => {
     });
   });
 
-  it("title/center：非空文字保留原樣，置中位置從 50% - 寬度/2 起算（原型 title 規格）", () => {
+  it("title/center: non-empty text passes through unchanged, centered position computed from 50% - width/2 (per the prototype's title spec)", () => {
     const input = textPanelInsertInput("title", "center", "我的標題", { width: 1000, height: 1000 }, null);
     expect(input).toEqual({
       text: "我的標題", // non-empty text passes through unchanged
@@ -36,8 +36,9 @@ describe("textPanelInsertInput", () => {
     });
   });
 
-  // NOOP-353 拍板決定 7：accent 優先於對比色，兩者都要在 fill 上看到。
-  it("有 accent 時 fill 用 accent，不計算對比色", () => {
+  // accent takes priority over the computed contrast color — both need to
+  // be visible in fill's behavior.
+  it("fill uses accent when one is given, without computing a contrast color", () => {
     const input = textPanelInsertInput("body", "left", "x", { width: 1000, height: 1000 }, {
       background: "#101418",
       accent: "#ff00ff",
@@ -45,7 +46,7 @@ describe("textPanelInsertInput", () => {
     expect(input.fill).toBe("#ff00ff");
   });
 
-  it("沒有 accent、深色背景時 fill 用對比色計算出的淺色", () => {
+  it("with no accent and a dark background, fill uses the light color computed by the contrast function", () => {
     const input = textPanelInsertInput("body", "left", "x", { width: 1000, height: 1000 }, {
       background: "#101418",
       accent: null,

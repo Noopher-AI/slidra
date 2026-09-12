@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseSlide } from "../src/slide-dom.js";
 
 /**
- * F8 (NOOP-289): the web bundle's own DOMParser-based `parseSlide`,
- * replacing core's byte-offset slide/format.ts parseSlide.
+ * The web bundle's own DOMParser-based `parseSlide`, replacing core's
+ * byte-offset slide/format.ts parseSlide.
  * Tested at its own public boundary — a slide markup string in, a
  * `SlideModel` out — the same way canvas.ts's own tests treat it.
  */
@@ -24,8 +24,8 @@ const SVG_WITH_GROUP_TEXTBOX_TABLE =
   "</g>" +
   "</svg>";
 
-describe("parseSlide（F8, NOOP-289）", () => {
-  it("含群組／文字框／表格的 slide → 模型形狀正確", () => {
+describe("parseSlide", () => {
+  it("a slide with a group/textbox/table → produces the correct model shape", () => {
     const model = parseSlide(SVG_WITH_GROUP_TEXTBOX_TABLE);
 
     expect(model.viewBox).toEqual({ x: 0, y: 0, width: 1280, height: 720 });
@@ -53,13 +53,13 @@ describe("parseSlide（F8, NOOP-289）", () => {
     expect(cellA.fill).toBe("#111111");
   });
 
-  it("markup 解析失敗（不是合法 XML／沒有 <svg> 根）時丟出，讓呼叫端（canvas.ts 既有 try/catch）退化成 null", () => {
+  it("throws when markup fails to parse (not valid XML / no <svg> root), letting the caller (canvas.ts's existing try/catch) degrade to null", () => {
     expect(() => parseSlide("<svg><g></svg>")).toThrow();
     expect(() => parseSlide("<html><body>not a slide</body></html>")).toThrow();
-    expect(() => parseSlide('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toThrow(); // 沒有 viewBox
+    expect(() => parseSlide('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toThrow(); // no viewBox
   });
 
-  it("data-slidra-text-width 是非法值（非正數）時，該元素 textWidth 為 null（決定 (e)：只影響這一個元素，不讓整份 slide 解析失敗，與 core 寫入端會丟例外不同）", () => {
+  it("an invalid data-slidra-text-width (non-positive) leaves that element's textWidth as null — it only affects that one element, unlike core's write path which throws, so it never fails parsing the whole slide", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       '<g id="el-a" data-slidra-text-width="not-a-number"><text>Hi</text></g>' +
@@ -70,7 +70,7 @@ describe("parseSlide（F8, NOOP-289）", () => {
     expect(model.elements.find((e) => e.id === "el-b")!.textWidth).toBeNull();
   });
 
-  it("#303：有背景圖片時 backgroundImage 讀出 asset（去掉 ../）與 opacity", () => {
+  it("reads backgroundImage's asset (stripping ../) and opacity when a background image is present", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       '<g id="el-background" data-slidra-role="background" data-slidra-lock="true">' +
@@ -81,7 +81,7 @@ describe("parseSlide（F8, NOOP-289）", () => {
     expect(model.backgroundImage).toEqual({ asset: "assets/bg.svg", opacity: 0.5 });
   });
 
-  it("#303：沒有背景圖片時 backgroundImage 是 null", () => {
+  it("backgroundImage is null when there is no background image", () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>';
     expect(parseSlide(svg).backgroundImage).toBeNull();
   });

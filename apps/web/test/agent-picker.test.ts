@@ -4,8 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AgentPicker, type AgentPickerProps } from "../src/shell/side/AgentPicker.js";
 import type { AgentCardView, AgentUiStatus } from "../src/agent-status.js";
 
-// 對話框下方的兩顆膠囊與它們的選單：純 props→markup（`defaultOpen` 讓靜態
-// 渲染也看得到選單內容）。按下去的 HTTP 呼叫在 App.tsx，屬 e2e 的範圍。
+// The two chips below the chat box and their menus: pure props→markup
+// (`defaultOpen` lets a static render still show the menu contents). The
+// HTTP calls fired on click live in App.tsx and are covered by e2e.
 
 const claude: AgentCardView = { kind: "claude", label: "Claude Code", status: "available", loginCommand: "claude auth login", inUse: true };
 const codex: AgentCardView = { kind: "codex", label: "Codex", status: "unauthenticated", loginCommand: "codex login", inUse: false };
@@ -42,8 +43,8 @@ function item(html: string, attr: string): string {
   return html.slice(html.lastIndexOf("<button", index), html.indexOf("</button>", index));
 }
 
-describe("AgentPicker：膠囊（選單關著）", () => {
-  it("agent 膠囊裝著連線燈與 agent 名稱，模型膠囊寫目前的模型；兩者都不展開選單", () => {
+describe("AgentPicker: chips (menu closed)", () => {
+  it("the agent chip carries the connection light and agent name, the model chip shows the current model; neither expands a menu", () => {
     const html = markup({ modelOptions: models, modelId: "sonnet" });
     const agentChip = chip(html, "agent");
     expect(agentChip).toContain("agent-dot-connected");
@@ -53,26 +54,26 @@ describe("AgentPicker：膠囊（選單關著）", () => {
     expect(html).not.toContain("chat-chip-menu");
   });
 
-  it("連線中／未選 agent／切換中：膠囊文字跟著變；未登入時帶「未登入」徽章", () => {
+  it("connecting / no agent selected / switching: the chip text updates accordingly; an unauthenticated state carries a badge", () => {
     expect(chip(markup({ agentConnection: "connecting" }), "agent")).toContain("Agent connecting…");
     expect(chip(markup({ agent: { kind: "unset", agents: [{ ...claude, inUse: false }, codex] } }), "agent")).toContain("選擇 agent");
     expect(chip(markup({ switchingKind: "codex" }), "agent")).toContain("切換中…");
     const unauthenticated: AgentUiStatus = { kind: "unauthenticated", current: "codex", label: "Codex", loginCommand: "codex login", source: "settings", agents: [{ ...claude, inUse: false }, { ...codex, inUse: true }] };
     const html = markup({ agent: unauthenticated });
     expect(chip(html, "agent")).toContain("未登入");
-    // 未登入沒有 session 可言：模型膠囊不出現。
+    // Unauthenticated means there is no session at all: the model chip does not appear.
     expect(html).not.toContain('data-chip="model"');
   });
 
-  it("modelsLocked 鎖住模型膠囊；loading 時 agent 膠囊停用；actionError 顯示成錯誤列", () => {
+  it("modelsLocked disables the model chip; the agent chip is disabled while loading; actionError renders as an error row", () => {
     expect(chip(markup({ modelOptions: models, modelId: "sonnet", modelsLocked: true }), "model")).toContain("disabled");
     expect(chip(markup({ agent: { kind: "loading" } }), "agent")).toContain("disabled");
     expect(markup({ actionError: "切換 agent 失敗：連線已中斷" })).toContain('class="chat-status-error"');
   });
 });
 
-describe("AgentPicker：agent 選單", () => {
-  it("每個 agent 一列：使用中的打勾且停用，未登入的列出登入指令；底部有重新偵測", () => {
+describe("AgentPicker: agent menu", () => {
+  it("one row per agent: the one in use is checked and disabled, an unauthenticated one lists its login command; a re-detect action sits at the bottom", () => {
     const html = markup({ defaultOpen: "agent" });
     const claudeItem = item(html, 'data-kind="claude"');
     expect(claudeItem).toContain('aria-checked="true"');
@@ -85,7 +86,7 @@ describe("AgentPicker：agent 選單", () => {
     expect(html).toContain("重新偵測登入狀態");
   });
 
-  it("editingFrozen 停用所有列並顯示提示；probing 時每列寫「偵測中…」；cli 來源另有一行說明", () => {
+  it("editingFrozen disables every row and shows a hint; while probing, every row reads \"detecting…\"; a cli source shows an extra explanatory line", () => {
     const frozen = markup({ defaultOpen: "agent", editingFrozen: true });
     expect(item(frozen, 'data-kind="codex"')).toContain("disabled");
     expect(frozen).toContain("agent 正在編輯中，切換請稍候");
@@ -94,15 +95,15 @@ describe("AgentPicker：agent 選單", () => {
   });
 });
 
-describe("AgentPicker：模型選單", () => {
-  it("每個模型一列，名稱加說明，目前的那列打勾且停用", () => {
+describe("AgentPicker: model menu", () => {
+  it("one row per model, name plus description, the current row is checked and disabled", () => {
     const html = markup({ defaultOpen: "model", modelOptions: models, modelId: "sonnet" });
     expect(item(html, 'data-model="sonnet"')).toContain('aria-checked="true"');
     expect(item(html, 'data-model="default"')).toContain("Opus 4.6");
     expect(item(html, 'data-model="default"')).not.toContain("disabled");
   });
 
-  it("清單還沒載入時顯示載入中", () => {
+  it("shows a loading state before the list has loaded", () => {
     expect(markup({ defaultOpen: "model" })).toContain("載入模型清單…");
   });
 });

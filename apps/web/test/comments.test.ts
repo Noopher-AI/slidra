@@ -74,7 +74,7 @@ describe("fetchDeckComments", () => {
     ]);
   });
 
-  it("a non-200 response contributes an error, not a false '沒有留言' for that slide", async () => {
+  it("a non-200 response contributes an error, not a false 'no comments' for that slide", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
 
     const result = await fetchDeckComments(["slides/001.svg"]);

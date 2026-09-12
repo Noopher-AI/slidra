@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * keydown listeners, fresh `currentStep` closure state) rather than sharing
  * mutable globals across tests.
  *
- * [E2.T7]/D7.5: jsdom has neither `Element.prototype.animate` nor
+ * D7.5: jsdom has neither `Element.prototype.animate` nor
  * `document.getAnimations` (confirmed: `el.animate === undefined`), and the
  * runtime deliberately does not feature-detect either — a real browser
  * always has both, D7.5). `stubWebAnimations` below is this test file's own
@@ -45,7 +45,7 @@ afterEach(() => {
   iframe.remove();
 });
 
-// [E2.T7]: widened from "enter" | "media" to the full five-family value set
+// Widened from "enter" | "media" to the full five-family value set
 // (D4), and duration/delay/d/index added — all optional, so every
 // pre-existing call site building a bare `{target, family, effect, start}`
 // still compiles unchanged.
@@ -94,7 +94,7 @@ interface StubAnimation {
   cancel: () => void;
 }
 
-/** [E2.T7]/D7.5: see this file's header comment. */
+/** D7.5: see this file's header comment. */
 function stubWebAnimations(win: Window): StubAnimation[] {
   const calls: StubAnimation[] = [];
   const ElementCtor = (win as unknown as { Element: { prototype: Record<string, unknown> } }).Element;
@@ -183,7 +183,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "slidra-player", event: "ready" });
   });
 
-  it("ArrowRight 推進一步時，同一步的多個元素一起出現（各自送出 el.animate，keyframes 最終 opacity 為 1）", () => {
+  it("ArrowRight advances one step: multiple elements in the same step appear together (each fires its own el.animate, keyframes end at opacity 1)", () => {
     // Hand-built here, bypassing parseEffects/deriveSteps entirely: this
     // is testing the runtime's own contract (apply whatever step it is
     // given), independent of what today's parser can produce from a real
@@ -202,7 +202,7 @@ describe("player-runtime.js", () => {
     expect(lastKeyframe(animationsFor(animations, "el-b")[0]).opacity).toBe(1);
   });
 
-  it("不屬於任何步驟的元素完全不被 runtime 碰觸", () => {
+  it("elements that belong to no step are never touched by the runtime", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade")] }],
       hidden: ["el-a"],
@@ -216,7 +216,7 @@ describe("player-runtime.js", () => {
     expect(animationsFor(animations, "el-bg")).toHaveLength(0);
   });
 
-  it("effect.duration/delay 原樣（換算成毫秒）傳給 el.animate 的 options", () => {
+  it("effect.duration/delay pass through (converted to milliseconds) into el.animate's options", () => {
     const plan: StubPlan = {
       steps: [
         { effects: [enter("el-a", "fade", { duration: 0.4, delay: 0.1 }), enter("el-b", "appear", { duration: 0 })] },
@@ -231,7 +231,7 @@ describe("player-runtime.js", () => {
     expect(animationsFor(animations, "el-b")[0].options).toMatchObject({ duration: 0 });
   });
 
-  it("同一步裡 with-previous 對齊前一個的起點、after-previous 對齊前一個的終點（各自的 delay 再疊上去）", () => {
+  it("within the same step, with-previous aligns to the previous effect's start and after-previous to its end (each one's own delay stacks on top)", () => {
     const plan: StubPlan = {
       steps: [
         {
@@ -257,7 +257,7 @@ describe("player-runtime.js", () => {
     expect(animationsFor(animations, "el-d")[0].options).toMatchObject({ delay: 850 });
   });
 
-  it("逐步推進，一次只套用一步；推進到最後一步再按，改為送出 advance-past-end", async () => {
+  it("advances one step at a time, applying only one step per press; pressing again past the last step posts advance-past-end instead", async () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }],
       hidden: ["el-a", "el-b"],
@@ -279,7 +279,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
   });
 
-  it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍解除隱藏，第 2 步的元素恢復隱藏", () => {
+  it("ArrowLeft retreats from step 2 to step 1: step 1's elements stay revealed, step 2's elements go back to hidden", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
@@ -297,7 +297,7 @@ describe("player-runtime.js", () => {
     expect(hideStyleContains(doc, "el-b")).toBe(true);
   });
 
-  it("退回時取消所有進行中的動畫，並把 hide 樣式表重新寫回完整的隱藏集合（D7 的「已知乾淨起點」延伸到 WAAPI）", () => {
+  it("retreating cancels every in-progress animation and rewrites the hide stylesheet back to the full hidden set (D7's 'known-clean starting point' extended to WAAPI)", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
@@ -311,7 +311,7 @@ describe("player-runtime.js", () => {
 
     // Every animation created before the retreat must now be cancelled — a
     // lingering `fill` hold (exit/path) is exactly the kind of state a
-    // retreat must not carry across (#46's "known-clean starting point").
+    // retreat must not carry across (the "known-clean starting point" invariant).
     // The replay itself creates its own fresh (duration:0) calls, which are
     // legitimately still active — only the pre-retreat snapshot is checked.
     expect(beforeRetreat.length).toBeGreaterThan(0);
@@ -319,7 +319,7 @@ describe("player-runtime.js", () => {
     expect(hideStyleContains(doc, "el-b")).toBe(true);
   });
 
-  it("plan.startStep 為 -1（預設值）時開機：hidden 目標維持隱藏，與剛抵達投影片時相同", () => {
+  it("booting with plan.startStep at -1 (the default): hidden targets stay hidden, same as just arriving at the slide", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }],
       hidden: ["el-a"],
@@ -331,7 +331,7 @@ describe("player-runtime.js", () => {
     expect(animations).toHaveLength(0);
   });
 
-  it("退回重播的路徑上，media 效果被跳過，不建立媒體元素", () => {
+  it("on the retreat-replay path, media effects are skipped and no media element is created", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }, { effects: [enter("el-a", "appear")] }],
       hidden: ["el-a"],
@@ -350,7 +350,7 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(0);
   });
 
-  it("退回之後再前進到同一個 media 步驟，media 仍會播放（證明跳過只發生在重播路徑上）", () => {
+  it("advancing back to the same media step after retreating still plays the media (proving the skip only happens on the replay path)", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [media("el-video")] }],
       hidden: ["el-a"],
@@ -370,7 +370,7 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(1);
   });
 
-  it("退回時媒體尚未開始播放：pause() 讓 play() 承諾在拆除之後才以 AbortError 回絕，不誤報成 error", async () => {
+  it("retreating before media has started playing: pause() lets play()'s promise reject with AbortError only after teardown, and it is not misreported as an error", async () => {
     // Reachability (defect found in review of ae34c98): ArrowRight onto a
     // media step, ArrowRight onto an ordinary step, then ArrowLeft while the
     // browser has not yet settled the play() promise. jsdom doesn't
@@ -417,7 +417,7 @@ describe("player-runtime.js", () => {
     expect(messages).not.toContainEqual(expect.objectContaining({ event: "error" }));
   });
 
-  it("play() 承諾以非 AbortError 回絕：即使該元素剛被 retreat 拆除，仍要送出 error", async () => {
+  it("play()'s promise rejects with a non-AbortError: an error is still posted even if the element was just torn down by a retreat", async () => {
     // Complementary to the test above: without this, suppressing AbortError
     // could quietly degrade into suppressing every rejection.
     const plan: StubPlan = {
@@ -449,7 +449,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
   });
 
-  it("play() 以 AbortError 回絕，但該元素從未被 retreat 拆除過：仍要送出 error", async () => {
+  it("play() rejects with AbortError but the element was never torn down by a retreat: an error is still posted", async () => {
     // The other half of the same complementary guard: an AbortError alone
     // is not sufficient to suppress — only an AbortError on an element this
     // runtime itself tore down.
@@ -480,7 +480,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual(expect.objectContaining({ event: "error" }));
   });
 
-  it("退回重播時，每個 el.animate 呼叫都用 duration 0（不重播更早效果原本的動畫時長）", () => {
+  it("during retreat-replay, every el.animate call uses duration 0 (the earlier effect's original animation duration is not replayed)", () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "fade", { duration: 0.4 })] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
@@ -498,7 +498,7 @@ describe("player-runtime.js", () => {
     expect(forA[1].options.duration).toBe(0);
   });
 
-  it("開機時 plan.startStep 設為最後一步索引：直接落在該步驟已全部套用的狀態", async () => {
+  it("booting with plan.startStep set to the last step's index: lands directly in the state where that step is already fully applied", async () => {
     const plan: StubPlan = {
       steps: [{ effects: [enter("el-a", "appear")] }, { effects: [enter("el-b", "appear")] }],
       hidden: ["el-a", "el-b"],
@@ -514,7 +514,7 @@ describe("player-runtime.js", () => {
     expect(messages[messages.length - 1]).toEqual({ source: "slidra-player", event: "ready" });
   });
 
-  it("ArrowLeft 在投影片第一步（尚未按過任何鍵）時，送出 retreat-past-start，畫面不變", async () => {
+  it("ArrowLeft on the slide's first step (no key pressed yet) posts retreat-past-start and leaves the view unchanged", async () => {
     const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
     const { win, doc, animations } = boot(plan, ["el-a"]);
     const { messages, stop } = collectMessages();
@@ -528,7 +528,7 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "slidra-player", event: "retreat-past-start" });
   });
 
-  it("沒有步驟的投影片：第一次 ArrowRight 就直接送出 advance-past-end", async () => {
+  it("a slide with no steps: the very first ArrowRight immediately posts advance-past-end", async () => {
     const { win } = boot({ steps: [], hidden: [] }, []);
     const { messages, stop } = collectMessages();
 
@@ -539,12 +539,12 @@ describe("player-runtime.js", () => {
     expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
   });
 
-  // [E2.T11] §3.8/§4.5: Space/PageDown mirror ArrowRight (「前進一步」),
-  // PageUp mirrors ArrowLeft (「後退一步」), Escape posts a new "exit-play"
+  // §3.8/§4.5: Space/PageDown mirror ArrowRight ("advance one step"),
+  // PageUp mirrors ArrowLeft ("retreat one step"), Escape posts a new "exit-play"
   // event canvas.ts decides how to act on (the runtime itself has no notion
   // of fullscreen). Existing ArrowRight/ArrowLeft behaviour must not regress.
-  describe("Space／PageDown／PageUp／Escape ([E2.T11])", () => {
-    it("Space 推進一步，跟 ArrowRight 完全同義（同一步的元素一起出現）", () => {
+  describe("Space / PageDown / PageUp / Escape", () => {
+    it("Space advances one step, fully synonymous with ArrowRight (elements of the same step appear together)", () => {
       const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
       const { win, doc, animations } = boot(plan, ["el-a"]);
 
@@ -554,7 +554,7 @@ describe("player-runtime.js", () => {
       expect(hideStyleContains(doc, "el-a")).toBe(false);
     });
 
-    it("PageDown 推進一步，跟 ArrowRight 完全同義", () => {
+    it("PageDown advances one step, fully synonymous with ArrowRight", () => {
       const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
       const { win, doc, animations } = boot(plan, ["el-a"]);
 
@@ -564,7 +564,7 @@ describe("player-runtime.js", () => {
       expect(hideStyleContains(doc, "el-a")).toBe(false);
     });
 
-    it("PageUp 退回一步，跟 ArrowLeft 完全同義", () => {
+    it("PageUp retreats one step, fully synonymous with ArrowLeft", () => {
       const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }], hidden: ["el-a", "el-b"] };
       const { win, doc } = boot(plan, ["el-a", "el-b"]);
       press(win, "ArrowRight");
@@ -576,7 +576,7 @@ describe("player-runtime.js", () => {
       expect(hideStyleContains(doc, "el-b")).toBe(true);
     });
 
-    it("在投影片最後一步再按 Space／PageDown：送出 advance-past-end（跟 ArrowRight 同一條路徑，不建立第二個推進機制）", async () => {
+    it("pressing Space / PageDown again on the slide's last step posts advance-past-end (the same code path as ArrowRight, not a second advance mechanism)", async () => {
       const { win } = boot({ steps: [], hidden: [] }, []);
       const { messages, stop } = collectMessages();
 
@@ -587,7 +587,7 @@ describe("player-runtime.js", () => {
       expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
     });
 
-    it("Escape 送出 exit-play——不是 advance/retreat，也不直接改變任何步驟狀態", async () => {
+    it("Escape posts exit-play — it's not advance/retreat, and it doesn't directly change any step state", async () => {
       const plan: StubPlan = { steps: [{ effects: [enter("el-a", "fade")] }], hidden: ["el-a"] };
       const { win, doc } = boot(plan, ["el-a"]);
       const { messages, stop } = collectMessages();
@@ -597,11 +597,11 @@ describe("player-runtime.js", () => {
       stop();
 
       expect(messages).toContainEqual({ source: "slidra-player", event: "exit-play" });
-      // Escape 本身不改變揭露狀態——它是父文件的事，不是 runtime 的效果推進。
+      // Escape itself does not change reveal state — that's the parent document's concern, not the runtime's effect-advance.
       expect(hideStyleContains(doc, "el-a")).toBe(true);
     });
 
-    it("既有的 ArrowRight／ArrowLeft 不因新鍵位而回歸：兩者仍照原行為推進/退回", () => {
+    it("existing ArrowRight / ArrowLeft do not regress from the new key bindings: both still advance/retreat as before", () => {
       const plan: StubPlan = {
         steps: [{ effects: [enter("el-a", "fade")] }, { effects: [enter("el-b", "fade")] }],
         hidden: ["el-a", "el-b"],
@@ -619,7 +619,7 @@ describe("player-runtime.js", () => {
     });
   });
 
-  it("推進到 media 效果的步驟時，建立對齊佔位元素的 <video>，src 是原始 data-slidra-media 值", () => {
+  it("advancing to a step with a media effect creates a <video> aligned to the placeholder element, with src set to the original data-slidra-media value", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }],
       hidden: [],
@@ -634,7 +634,7 @@ describe("player-runtime.js", () => {
     expect(created[0].getAttribute("src")).toBe("assets/intro.webm");
   });
 
-  it("推進到 media 效果的步驟時，建立 <audio>（不是 <video>）", () => {
+  it("advancing to a step with a media effect creates an <audio> element (not <video>)", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-audio")] }],
       hidden: [],
@@ -648,7 +648,7 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(0);
   });
 
-  it("同一 media 目標被推進兩次時，不建立第二個媒體元素（idempotence）", () => {
+  it("advancing to the same media target twice does not create a second media element (idempotence)", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }, { effects: [media("el-video")] }],
       hidden: [],
@@ -662,7 +662,7 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(1);
   });
 
-  // Codex review gate round 1, P2: element ids come straight from
+  // Element ids come straight from
   // untrusted slide content (ADR-0010) — nothing stops a legal id from
   // being "constructor". A plain `{}` for mediaElements already has an
   // inherited, truthy `constructor` property (Object.prototype's own)
@@ -674,7 +674,7 @@ describe("player-runtime.js", () => {
   // (design doc's settled decision #12: errors must surface, never fail
   // silently) — and this is not a contrived edge case, "constructor" is a
   // perfectly legal SVG id an author could genuinely pick.
-  it('target id 恰好是 "constructor" 時，media 仍正確建立並播放（不是被繼承屬性誤判成已存在而靜默跳過）', () => {
+  it('when the target id is exactly "constructor", media is still created and played correctly (not silently skipped by mistaking the inherited property for an existing entry)', () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("constructor")] }],
       hidden: [],
@@ -687,7 +687,7 @@ describe("player-runtime.js", () => {
     expect(doc.body.querySelectorAll("video")).toHaveLength(1);
   });
 
-  it("plan.media 沒有該目標的設定時，送出 error 事件而不是拋例外", async () => {
+  it("posts an error event instead of throwing when plan.media has no config for the target", async () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }],
       hidden: [],
@@ -705,7 +705,7 @@ describe("player-runtime.js", () => {
     );
   });
 
-  it("收到 host 的 focus 指令時，把焦點拿回自己的 window", async () => {
+  it("takes focus back to its own window when it receives a focus command from the host", async () => {
     const { win } = boot({ steps: [], hidden: [] }, []);
     let called = false;
     // jsdom does not implement a real Window.focus(); stubbing it out lets
@@ -722,10 +722,10 @@ describe("player-runtime.js", () => {
   });
 
   // ------------------------------------------------------------------
-  // [E2.T7]: emphasis/exit families, and Preview (D8).
+  // emphasis/exit families, and Preview (D8).
   // ------------------------------------------------------------------
 
-  it("emphasis 效果不影響 hidden，keyframes 是 transform 的來回關鍵影格", () => {
+  it("emphasis effects do not affect hidden state; keyframes are a there-and-back transform sequence", () => {
     const plan: StubPlan = { steps: [{ effects: [emphasis("el-a", "pulse")] }], hidden: [] };
     const { win, doc, animations } = boot(plan, ["el-a"]);
 
@@ -738,7 +738,7 @@ describe("player-runtime.js", () => {
     expect(call.options.fill).toBe("none");
   });
 
-  it("D12：exit 效果的 target 一開始不在 hidden，el.animate 用 fill: forwards 收尾在 opacity 0", () => {
+  it("D12: an exit effect's target starts out not hidden, and el.animate ends with fill: forwards holding at opacity 0", () => {
     const plan: StubPlan = {
       steps: [{ effects: [exitEffect("el-a", "fade-out")] }],
       hidden: [], // this target's only effect is exit — never pre-hidden.
@@ -754,8 +754,8 @@ describe("player-runtime.js", () => {
     expect(lastKeyframe(call).opacity).toBe(0);
   });
 
-  describe("Preview（D8）", () => {
-    it("plan.preview.effectIndices 給定時，只播放那幾個效果索引，完成後送出 preview-done", async () => {
+  describe("Preview (D8)", () => {
+    it("when plan.preview.effectIndices is given, only those effect indices play, then preview-done is posted once done", async () => {
       const plan: StubPlan = {
         steps: [
           { effects: [enter("el-a", "appear", { duration: 0, index: 0 })] },
@@ -778,7 +778,7 @@ describe("player-runtime.js", () => {
       expect(messages[0]).toEqual({ source: "slidra-player", event: "ready" });
     });
 
-    it("plan.preview.effectIndices 為 null 時，依序播放整份簡報每一步，最後送出 preview-done", async () => {
+    it("when plan.preview.effectIndices is null, plays every step of the whole deck in order, then posts preview-done", async () => {
       const plan: StubPlan = {
         steps: [
           { effects: [enter("el-a", "appear", { duration: 0, index: 0 })] },
@@ -800,7 +800,7 @@ describe("player-runtime.js", () => {
       expect(messages).toContainEqual({ source: "slidra-player", event: "preview-done" });
     });
 
-    it("preview 為空清單（沒有步驟）時，立刻送出 preview-done", async () => {
+    it("posts preview-done immediately when preview has an empty list (no steps)", async () => {
       const plan: StubPlan = { steps: [], hidden: [], preview: { effectIndices: null } };
       boot(plan, []);
       const { messages, stop } = collectMessages();

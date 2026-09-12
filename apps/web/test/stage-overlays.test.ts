@@ -10,16 +10,16 @@ import { ContextBar } from "../src/shell/stage-overlays/ContextBar.js";
 import { TableCellMenu } from "../src/shell/stage-overlays/TableCellMenu.js";
 
 /**
- * NOOP-91 round-2 FAIL #4: `SelectionOverlay`/`ContextBar`'s coordinate math
- * (name label position, context-bar below/above flip) and `OverlayLayer`'s
- * parent-client-px -> well-relative-px conversion had zero test coverage —
- * everything under `apps/web/src/shell/stage-overlays/` was reviewed by
- * eye only. Same `renderToStaticMarkup` convention `icons.test.ts` already
- * uses for a small presentational component: render with given props,
- * inspect the resulting markup string.
+ * `SelectionOverlay`/`ContextBar`'s coordinate math (name label position,
+ * context-bar below/above flip) and `OverlayLayer`'s parent-client-px ->
+ * well-relative-px conversion had zero test coverage — everything under
+ * `packages/web/src/shell/stage-overlays/` was reviewed by eye only. Same
+ * `renderToStaticMarkup` convention `icons.test.ts` already uses for a small
+ * presentational component: render with given props, inspect the resulting
+ * markup string.
  */
 
-describe("OverlayLayer の toLocalPoint／toLocalRect（parent-client px -> well-relative px）", () => {
+describe("OverlayLayer's toLocalPoint / toLocalRect (parent-client px -> well-relative px)", () => {
   it("toLocalPoint subtracts the well's own offset", () => {
     expect(toLocalPoint({ x: 150, y: 220 }, { x: 100, y: 200 })).toEqual({ x: 50, y: 20 });
   });
@@ -38,11 +38,11 @@ describe("OverlayLayer の toLocalPoint／toLocalRect（parent-client px -> well
   });
 });
 
-describe("pointInsideRect（[E5.T7]/F-17：情境列的 hover 命中測試）", () => {
-  it("內部、邊界（含）、邊界外一像素", () => {
+describe("pointInsideRect (F-17: hover hit-testing for the context bar)", () => {
+  it("inside, on the boundary (inclusive), and one pixel outside the boundary", () => {
     const rect = { x: 100, y: 100, width: 50, height: 20 };
     expect(pointInsideRect({ x: 120, y: 110 }, rect)).toBe(true);
-    // getBoundingClientRect 的慣例：邊界本身算「在裡面」。
+    // Following getBoundingClientRect's convention: the boundary itself counts as "inside".
     expect(pointInsideRect({ x: 100, y: 100 }, rect)).toBe(true);
     expect(pointInsideRect({ x: 150, y: 120 }, rect)).toBe(true);
     expect(pointInsideRect({ x: 99, y: 110 }, rect)).toBe(false);
@@ -50,7 +50,7 @@ describe("pointInsideRect（[E5.T7]/F-17：情境列的 hover 命中測試）", 
   });
 });
 
-describe("createHoverSolidifier（[E5.T7]/F-17 決定 8：ghost/solid 雙延遲防閃爍）", () => {
+describe("createHoverSolidifier (F-17: dual-delay ghost/solid to prevent flicker)", () => {
   const SOLIDIFY_MS = 120;
   const GHOST_MS = 250;
 
@@ -62,7 +62,7 @@ describe("createHoverSolidifier（[E5.T7]/F-17 決定 8：ghost/solid 雙延遲�
     vi.useRealTimers();
   });
 
-  it("進入 rect：未滿 solidifyMs 就離開（快速掃過）不轉 solid；停留滿 solidifyMs 才轉 solid", () => {
+  it("entering the rect: leaving before solidifyMs elapses (a quick scan) does not go solid; staying for the full solidifyMs does", () => {
     const onChange = vi.fn();
     const solidifier = createHoverSolidifier(onChange, SOLIDIFY_MS, GHOST_MS);
 
@@ -82,7 +82,7 @@ describe("createHoverSolidifier（[E5.T7]/F-17 決定 8：ghost/solid 雙延遲�
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
-  it("離開 rect：未滿 ghostMs 就回來（邊界抖動）維持 solid、不閃；停留滿 ghostMs 才轉回 ghost；reset() 立即清空並清掉待處理計時器", () => {
+  it("leaving the rect: returning before ghostMs elapses (border jitter) stays solid without flicker; staying away for the full ghostMs reverts to ghost; reset() clears immediately and cancels any pending timer", () => {
     const onChange = vi.fn();
     const solidifier = createHoverSolidifier(onChange, SOLIDIFY_MS, GHOST_MS);
     solidifier.update(true);
@@ -119,13 +119,13 @@ describe("createHoverSolidifier（[E5.T7]/F-17 決定 8：ghost/solid 雙延遲�
   });
 });
 
-describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取 › 單選」）", () => {
-  it("沒有選取（union/label 皆 null）：不渲染，不含 .selection-label", () => {
+describe("SelectionOverlay: name / group / drill-in path label (05-INTERACTIONS.feature 'Selection > Single select')", () => {
+  it("no selection (union/label both null): renders nothing, no .selection-label", () => {
     const markup = renderToStaticMarkup(createElement(SelectionOverlay, { union: null, label: null }));
     expect(markup).not.toContain("selection-label");
   });
 
-  it("單選一個元素：標籤只顯示元素名稱（沒有鑽入路徑時不加 ›）", () => {
+  it("single element selected: label shows only the element name (no › when there's no drill-in path)", () => {
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -136,7 +136,7 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
     expect(markup).not.toContain("›");
   });
 
-  it("鑽入群組：標籤依祖先鏈由外到內、以「›」串接（F9「Group 2 › Group 1」的形狀）", () => {
+  it("drilled into a group: label follows the ancestor chain from outermost to innermost, joined by '›' (F9's 'Group 2 › Group 1' shape)", () => {
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -146,7 +146,7 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
     expect(markup).toContain(">群組 2 › 群組 1 › 群組子元素<");
   });
 
-  it("標籤定位在選取框左上角、往上偏移 22px（left=union.x, top=union.y-22）", () => {
+  it("label is positioned at the selection box's top-left corner, offset up 22px (left=union.x, top=union.y-22)", () => {
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -158,8 +158,8 @@ describe("SelectionOverlay：名稱／群組／鑽入路徑標籤（05-INTERACTI
   });
 });
 
-describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature「選取 › 單選」「情境列出現在選取框正下方（空間不足則翻到上方）」）", () => {
-  it("沒有選取（union 為 null）：不渲染，不含 .context-bar", () => {
+describe("ContextBar: positioning and above/below flip (05-INTERACTIONS.feature 'Selection > Single select', 'context bar appears directly below the selection box, flips above when there's not enough room')", () => {
+  it("no selection (union is null): renders nothing, no .context-bar", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: null,
@@ -177,7 +177,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).not.toContain("context-bar\"");
   });
 
-  it("下方空間足夠：情境列出現在選取框正下方（top = union.y + union.height + 13）", () => {
+  it("enough room below: context bar appears directly below the selection box (top = union.y + union.height + 13)", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -197,7 +197,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:213px");
   });
 
-  it("下方空間不足（選取框貼近畫布底部的 Dock 保留區）：翻到上方（top = union.y - 13 - 36）", () => {
+  it("not enough room below (selection box close to the Dock reserved zone at the bottom of the canvas): flips above (top = union.y - 13 - 36)", () => {
     // Well is 720px tall, the bottom 76px belong to the Dock (DOCK_RESERVE);
     // a selection whose bottom edge sits at 620 leaves 620+13+36 = 669 > 644.
     const markup = renderToStaticMarkup(
@@ -218,7 +218,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).toContain("top:521px");
   });
 
-  it("拖曳中（dragging）：不渲染情境列", () => {
+  it("while dragging: the context bar does not render", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -236,7 +236,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(markup).not.toContain("context-bar\"");
   });
 
-  it("玻璃容器：Comment to AI ｜ Edit style ｜ 前後層四項（圖示） ｜ Copy／Cut／Paste（圖示） ｜ Duplicate ｜ Delete", () => {
+  it("glass container: Comment to AI | Edit style | four layer-order items (icons) | Copy/Cut/Paste (icons) | Duplicate | Delete", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -269,13 +269,13 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
       "Duplicate",
       "Delete",
     ]);
-    // [E2.T18]: +3 icon-only buttons (Copy/Cut/Paste), same class as the four Order buttons — 4 + 3 = 7.
+    // +3 icon-only buttons (Copy/Cut/Paste), same class as the four Order buttons — 4 + 3 = 7.
     expect(markup.match(/context-bar-item-icon/g)).toHaveLength(7);
     expect(markup.match(/context-bar-divider/g)).toHaveLength(4);
     expect(markup).toContain("context-bar-item-danger");
-    // [E2.T7]: hasAnimation: false — no Edit animation button at all (not merely disabled/hidden).
+    // hasAnimation: false — no Edit animation button at all (not merely disabled/hidden).
     expect(markup).not.toContain("Edit animation");
-    // [E2.T18] A9: Copy/Cut/Paste each render their OWN icon — three distinct
+    // Copy/Cut/Paste each render their OWN icon — three distinct
     // markup strings, not one icon copy-pasted three times (merged in from a
     // deleted test that asserted the same intent via internal SVG details —
     // circle counts, stroke widths — instead of this public-shape check).
@@ -285,8 +285,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     expect(new Set(iconMarkups).size).toBe(3);
   });
 
-  // [E2.T7]/07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」
-  it("hasAnimation: true 時，Edit style 右側渲染 Edit animation（spark 圖示）", () => {
+  // 07-DISCUSSION_LOG.md: no Edit animation button when there's no animation
+  it("when hasAnimation: true, an Edit animation (spark icon) button renders to the right of Edit style", () => {
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
         union: { x: 100, y: 100, width: 160, height: 100 },
@@ -321,7 +321,7 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
     ]);
   });
 
-  it("剛好卡在翻轉門檻上：貼齊 Dock 保留區上緣仍算「放得下」，不翻轉", () => {
+  it("exactly at the flip threshold: flush with the top edge of the Dock reserved zone still counts as 'fits', so it does not flip", () => {
     // union.y + union.height + GAP + BAR_HEIGHT === bounds.height - DOCK_RESERVE exactly.
     const markup = renderToStaticMarkup(
       createElement(ContextBar, {
@@ -341,8 +341,8 @@ describe("ContextBar：情境列定位與上下翻轉（05-INTERACTIONS.feature�
   });
 });
 
-describe("TableCellMenu（E2.T14, plan §4.5）", () => {
-  it("永遠顯示 Edit/Bold/插列插欄/刪列刪欄/Clear；canMerge=false 時不顯示 Merge cells", () => {
+describe("TableCellMenu (plan §4.5)", () => {
+  it("always shows Edit/Bold/insert-row/insert-column/delete-row/delete-column/Clear; hides Merge cells when canMerge=false", () => {
     const markup = renderToStaticMarkup(
       createElement(TableCellMenu, {
         menuRef: { current: null },
@@ -376,7 +376,7 @@ describe("TableCellMenu（E2.T14, plan §4.5）", () => {
     expect(markup).not.toContain(">Unmerge<");
   });
 
-  it("canMerge=true 時顯示 Merge cells，canUnmerge=true 時顯示 Unmerge", () => {
+  it("shows Merge cells when canMerge=true, and Unmerge when canUnmerge=true", () => {
     const markup = renderToStaticMarkup(
       createElement(TableCellMenu, {
         menuRef: { current: null },
@@ -403,12 +403,13 @@ describe("TableCellMenu（E2.T14, plan §4.5）", () => {
 });
 
 /**
- * [E5.T3] 兩層化：`z-index` 收斂與 `!important` 穿透規則都是對*原始碼文字*
- * 的約束（瀏覽器 computed style 驗不出「檔案裡有幾個 z 值」「有沒有寫
- * `!important`」），跟 `design-contract.test.ts` 同一套 `node:fs` + regex 做
- * 法，不掛 jsdom 樣式表。
+ * Two-tier layering: the `z-index` convergence and `!important` pass-through
+ * rule are both constraints on the *source text* (a browser's computed style
+ * can't verify "how many z values are in the file" or "whether `!important`
+ * is written"), so this uses the same `node:fs` + regex approach as
+ * `design-contract.test.ts` rather than mounting a jsdom stylesheet.
  */
-describe("stage-overlays.css：兩層化的 z-index 與 pointer-events 文字契約", () => {
+describe("stage-overlays.css: text-contract for two-tier z-index and pointer-events", () => {
   const cssPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
@@ -419,7 +420,7 @@ describe("stage-overlays.css：兩層化的 z-index 與 pointer-events 文字契
   const css = readFileSync(cssPath, "utf-8");
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
 
-  it("AC2：z-index 宣告恰好三筆，分別屬於 .stage-geometry(1)／.stage-widgets(2)／.comment-composer(5)", () => {
+  it("AC2: exactly three z-index declarations, belonging to .stage-geometry(1) / .stage-widgets(2) / .comment-composer(5)", () => {
     const declarations = [...withoutComments.matchAll(/([.\w-]+)\s*\{[^}]*z-index:\s*(\d+)/g)].map((m) => ({
       selector: m[1],
       value: m[2],
@@ -431,15 +432,17 @@ describe("stage-overlays.css：兩層化的 z-index 與 pointer-events 文字契
     ]);
   });
 
-  it("AC3：幾何層強制穿透規則逐字存在——`.stage-geometry, .stage-geometry * { pointer-events: none !important }`", () => {
+  it("AC3: the geometry layer's forced pass-through rule exists verbatim — `.stage-geometry, .stage-geometry * { pointer-events: none !important }`", () => {
     const normalized = withoutComments.replace(/\s+/g, "");
     expect(normalized).toContain(".stage-geometry,.stage-geometry*{pointer-events:none!important;}");
   });
 
-  // [E5.T7]/F-17 決定 8：情境列預設穿透（ghost），`.is-solid` 才開回可點——
-  // specificity 0,3,0 蓋過 `.stage-widgets > .context-bar` 的 0,2,0，兩者都
-  // 逐字存在才是「情境列自己處理 hover」真正生效，不是只改了外觀。
-  it("F-17：情境列預設 pointer-events:none，`.is-solid` 才開回 auto", () => {
+  // F-17: the context bar passes through pointer events by default (ghost),
+  // and only becomes clickable once `.is-solid` is applied — specificity 0,3,0
+  // overrides `.stage-widgets > .context-bar`'s 0,2,0. Both rules must exist
+  // verbatim for "the context bar handles hover itself" to actually take
+  // effect, not just look right.
+  it("F-17: the context bar defaults to pointer-events:none, only `.is-solid` switches it back to auto", () => {
     const normalized = withoutComments.replace(/\s+/g, "");
     expect(normalized).toContain(".stage-widgets>.context-bar{pointer-events:none;}");
     expect(normalized).toContain(".stage-widgets>.context-bar.is-solid{pointer-events:auto;}");

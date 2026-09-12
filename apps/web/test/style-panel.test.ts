@@ -48,35 +48,35 @@ function render(state: CanvasState): string {
   return renderToStaticMarkup(createElement(StyleObjectPanel, { state, controller: null }));
 }
 
-describe("StyleObjectPanel（#200 §4.1/§4.6）", () => {
-  it("空選取：空狀態提示，不渲染任何欄位", () => {
+describe("StyleObjectPanel", () => {
+  it("empty selection: shows the empty-state hint, renders no fields", () => {
     const markup = render(stateFor([]));
     expect(markup).toContain("選取元素以檢視樣式");
     expect(markup).not.toContain("style-field");
   });
 
-  it("選到群組：全部欄位 disabled，且顯示群組提示，不渲染 Text/Shape 段", () => {
+  it("a group is selected: all fields disabled, shows the group hint, doesn't render the Text/Shape sections", () => {
     const markup = render(stateFor(["el-group"]));
     expect(markup).toContain("群組沒有可套用樣式的圖元");
     expect(markup).not.toContain('data-section="text"');
     expect(markup).not.toContain('data-section="shape"');
-    // Appearance 一律顯示，但欄位要是 disabled 的。
+    // Appearance is always shown, but its fields must be disabled.
     expect(markup).toContain('data-section="appearance"');
     expect(markup).toMatch(/data-attr="opacity"[^>]*disabled/);
   });
 
-  it("形狀元素：Shape 段的欄位現值全部 unset（沒設過 stroke），data-state 與 placeholder 一致", () => {
+  it("a shape element: every field in the Shape section is unset (stroke never set), data-state and placeholder agree", () => {
     const markup = render(stateFor(["el-a"]));
     expect(markup).toContain('data-section="shape"');
     expect(markup).toMatch(/data-attr="stroke" data-state="unset"[^>]*placeholder="未設定"/);
   });
 
-  it("兩個形狀 fill 不同：mixed，data-state 與 placeholder 一致", () => {
+  it("two shapes with different fill: mixed, data-state and placeholder agree", () => {
     const markup = render(stateFor(["el-a", "el-b"]));
     expect(markup).toMatch(/data-attr="fill" data-state="mixed"[^>]*placeholder="不一致"/);
   });
 
-  it("混合型別選取（文字＋形狀）：只顯示 Appearance 與骨架段，附提示，不顯示 Text/Shape", () => {
+  it("a mixed-type selection (text + shape): shows only Appearance and the skeleton sections with a hint, hides Text/Shape", () => {
     const markup = render(stateFor(["el-text", "el-a"]));
     expect(markup).toContain("選取包含多種元素型別，只顯示共同屬性");
     expect(markup).not.toContain('data-section="text"');
@@ -84,7 +84,7 @@ describe("StyleObjectPanel（#200 §4.1/§4.6）", () => {
     expect(markup).toContain('data-section="appearance"');
   });
 
-  it("骨架段（Table／Chart）一律渲染，且每個控制項都是 disabled", () => {
+  it("the skeleton sections (Table/Chart) are always rendered, and every control in them is disabled", () => {
     const markup = render(stateFor(["el-a"]));
     expect(markup).toContain('data-section="table"');
     expect(markup).toContain('data-section="chart"');

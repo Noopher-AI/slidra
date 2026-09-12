@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyClipboardText } from "../src/clipboard/payload.js";
 import { copyCommandFor, cutCommandFor, pasteCommandFor, type ClipboardTarget } from "../src/clipboard/dispatch.js";
 
-// F8 (NOOP-289 決定 C1): recognition is now a shallow DOMParser check on the
+// Recognition is now a shallow DOMParser check on the
 // root `<svg>`'s own marker attribute (`data-slidra-clipboard="elements"`) —
 // this literal is the same shape core's `serializeClipboardSvg`
 // writes (element-clipboard.ts), inlined rather than generated, since the

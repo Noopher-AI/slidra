@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { TitleBar, type TitleBarProps } from "../src/shell/TitleBar.js";
 
-// TitleBar 的公開邊界是 props → 渲染出的字串（export-panel.test.ts 同一個
-// 慣例）。agent 連線指示（.agent-dot）已經搬到對話框下面，那組斷言跟著搬到
-// chat-panel-status.test.ts。
+// TitleBar's public boundary is props → the rendered string (same convention
+// as export-panel.test.ts). The agent connection indicator (.agent-dot) has
+// moved below the chat panel, so those assertions moved to chat-panel-status.test.ts.
 function markup(): string {
   const props: TitleBarProps = {
     deckName: "deck.slidra",
@@ -30,13 +30,13 @@ function markup(): string {
 }
 
 describe("TitleBar", () => {
-  it("New 鈕排在 Open 左邊", () => {
+  it("positions the New button to the left of Open", () => {
     const rendered = markup();
     expect(rendered).toContain(">New</button>");
     expect(rendered.indexOf(">New</button>")).toBeLessThan(rendered.indexOf(">Open</button>"));
   });
 
-  it("連線指示已經不在標題列", () => {
+  it("no longer renders the connection indicator in the title bar", () => {
     expect(markup()).not.toContain("agent-dot");
   });
 });

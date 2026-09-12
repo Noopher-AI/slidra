@@ -3,22 +3,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// [E1.T6] AC: 播放舞台、遮罩、載入底色與控制列均透過語意 token 取色，投影片
-// 內容不被產品主題改色 — constraints on source text (var() usage, selector
+// AC: the play stage, mask, loading backdrop and control bar all take their
+// color from semantic tokens, and slide content is never recolored by the
+// product theme — constraints on source text (var() usage, selector
 // shape), not on rendered layout, so they belong here as source scans
 // rather than in e2e's boundingBox()/getComputedStyle() assertions (see
 // e2e/play-grid-visual.test.ts's own header for why *those* never read CSS
-// text). Modeled on apps/web/test/side-panel-css-tokens.test.ts.
+// text). Modeled on packages/web/test/side-panel-css-tokens.test.ts.
 
 const stylesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
 
-// grid.css was deleted (New v3 shell rebuild — GridView.tsx/網格檢視整個拿
-// 掉，見該張票的 PR 報告): C1/F4 below now only apply to play.css, the one
-// file left that still renders presentation content inside its own iframe.
+// grid.css was deleted (the v3 shell rebuild removed GridView.tsx / grid
+// view entirely — see that PR's report): C1/F4 below now only apply to
+// play.css, the one file left that still renders presentation content
+// inside its own iframe.
 const FILES = ["play.css"];
 
 /** Strips /* ... *\/ comments first — issue references in prose comments
- * (`#54`, `#55`, …) would otherwise false-positive the hex-colour scan. */
+ * would otherwise false-positive the hex-colour scan. */
 function withoutComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
@@ -38,22 +40,26 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly patter
   { name: "cubic-bezier()", pattern: /cubic-bezier\(/g },
 ];
 
-describe("播放／網格 CSS 不得寫死色值／duration／easing（E1.T6，A1）", () => {
-  // 泛用的 FORBIDDEN_PATTERNS 掃描已由 apps/web/test/design-contract.test.ts
-  // 取代（它涵蓋全部 12 個 CSS 檔，不只 play.css／grid.css）——NOOP-9 Plan §1。
-  // A2/C1/F4 是這兩個檔案專屬的斷言，design-contract.test.ts 不涵蓋，保留。
+describe("play/grid CSS must not hard-code color values, durations, or easing (A1)", () => {
+  // The generic FORBIDDEN_PATTERNS scan has been superseded by
+  // packages/web/test/design-contract.test.ts (which covers all 12 CSS
+  // files, not just play.css/grid.css). A2/C1/F4 are assertions specific to
+  // these two files that design-contract.test.ts doesn't cover, so they
+  // stay here.
 
-  // A2：邊界收尾——.play-bar/.view-fullscreen-bar 已整段遷到 play.css，
-  // shell.css 不應再留下任何殘跡（含註解裡的提及）。
-  it("shell.css 不再出現 .play-bar／.view-fullscreen-bar（已遷到 play.css，A2）", () => {
+  // A2: boundary cleanup — .play-bar/.view-fullscreen-bar has fully moved
+  // to play.css, so shell.css should no longer retain any trace of it
+  // (including mentions in comments).
+  it("shell.css no longer references .play-bar/.view-fullscreen-bar (moved to play.css, A2)", () => {
     const raw = readFileSync(path.join(stylesDir, "shell.css"), "utf8");
     expect(raw).not.toMatch(/play-bar|view-fullscreen-bar/);
   });
 
-  // C1：投影片／縮圖 iframe 文件內部不得被產品框架改色——選擇器以
-  // .grid-frame 或 .slide-frame 結尾的規則不得設定 background/color/
-  // filter/mix-blend-mode。
-  it("play.css／grid.css 沒有規則對 .grid-frame／.slide-frame 設定 background/color/filter/mix-blend-mode（C1）", () => {
+  // C1: the slide/thumbnail iframe document's internals must never be
+  // recolored by the product frame — rules whose selector ends in
+  // .grid-frame or .slide-frame must not set background/color/filter/
+  // mix-blend-mode.
+  it("play.css/grid.css has no rule setting background/color/filter/mix-blend-mode on .grid-frame/.slide-frame (C1)", () => {
     for (const fileName of FILES) {
       const raw = readFileSync(path.join(stylesDir, fileName), "utf8");
       const css = withoutComments(raw);
@@ -74,9 +80,10 @@ describe("播放／網格 CSS 不得寫死色值／duration／easing（E1.T6，A
     }
   });
 
-  // F4：reduced-motion 由 tokens.css 的兩層機制統一處理，play.css／grid.css
-  // 不得自寫 @media (prefers-reduced-motion) 區塊。
-  it("play.css／grid.css 沒有自己的 @media (prefers-reduced-motion) 區塊（F4）", () => {
+  // F4: reduced-motion is handled uniformly by tokens.css's two-layer
+  // mechanism, so play.css/grid.css must not write their own
+  // @media (prefers-reduced-motion) block.
+  it("play.css/grid.css has no @media (prefers-reduced-motion) block of its own (F4)", () => {
     for (const fileName of FILES) {
       const raw = readFileSync(path.join(stylesDir, fileName), "utf8");
       const css = withoutComments(raw);

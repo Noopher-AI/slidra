@@ -7,11 +7,12 @@ import { computeGroupButtonState, Dock, DockToast, groupToastText, type DockProp
 import { ShapeMenu } from "../src/shell/dock/menus/ShapeMenu.js";
 
 /**
- * [E2.T15]/#205 §6.3: Dock 的按鈕狀態與 toast 文字的公開邊界是 props/純函式
- * 輸出（animate-panel.test.ts 的慣例），不是 hook 呼叫次數或 mock 有沒有被
- * 叫到。`controller`/`selection.elements` 只需要 Dock 實際讀到的欄位，其餘
- * 用型別斷言補完——這幾個測試從不觸發任何互動事件，renderToStaticMarkup
- * 也不會呼叫它們。
+ * Dock's public boundary for button state and toast text is props/pure-function
+ * output (the convention already used by animate-panel.test.ts), not hook call
+ * counts or whether a mock got called. `controller`/`selection.elements` only
+ * need the fields Dock actually reads; the rest is filled in with a type
+ * assertion — these tests never fire any interaction event, and
+ * renderToStaticMarkup never calls them either.
  */
 
 function element(kind: SlideElement["kind"]): SlideElement {
@@ -64,57 +65,57 @@ function commandDisabledMap(markup: string): Record<string, boolean> {
   return result;
 }
 
-describe("computeGroupButtonState（05-INTERACTIONS.feature「停用態」＋ D5 單一按鈕切換）", () => {
-  it("沒有選取：Group、disabled", () => {
+describe("computeGroupButtonState (disabled states + single-button toggle behavior)", () => {
+  it("no selection: label Group, disabled", () => {
     expect(computeGroupButtonState(selection([]), controllerStub, "slides/001.svg", false)).toEqual({
       label: "Group",
       disabled: true,
     });
   });
 
-  it("選了 1 個非群組元素：Group、disabled", () => {
+  it("one non-group element selected: label Group, disabled", () => {
     expect(computeGroupButtonState(selection([element("rect")]), controllerStub, "slides/001.svg", false)).toEqual({
       label: "Group",
       disabled: true,
     });
   });
 
-  it("選了 1 個群組：Ungroup、enabled", () => {
+  it("one group selected: label Ungroup, enabled", () => {
     expect(computeGroupButtonState(selection([element("group")]), controllerStub, "slides/001.svg", false)).toEqual({
       label: "Ungroup",
       disabled: false,
     });
   });
 
-  it("選了 2 個元素（含巢狀「群組＋元素」）：Group、enabled", () => {
+  it("two elements selected (a nested group + a plain element): label Group, enabled", () => {
     expect(computeGroupButtonState(selection([element("group"), element("rect")]), controllerStub, "slides/001.svg", false)).toEqual({
       label: "Group",
       disabled: false,
     });
   });
 
-  it("slidePath 為 null：即使選取合法也 disabled", () => {
+  it("slidePath is null: disabled even with a valid selection", () => {
     expect(computeGroupButtonState(selection([element("group")]), controllerStub, null, false)).toEqual({
       label: "Ungroup",
       disabled: true,
     });
   });
 
-  it("controller 為 null：disabled", () => {
+  it("controller is null: disabled", () => {
     expect(computeGroupButtonState(selection([element("group")]), null, "slides/001.svg", false)).toEqual({
       label: "Ungroup",
       disabled: true,
     });
   });
 
-  it("selection.elements[0] 為 null（reload 與選取賽跑）：視為非群組，不得當成群組", () => {
+  it("selection.elements[0] is null (a reload racing with selection): treated as non-group, must not be mistaken for a group", () => {
     expect(computeGroupButtonState(selection([null]), controllerStub, "slides/001.svg", false)).toEqual({
       label: "Group",
       disabled: true,
     });
   });
 
-  it("pending 中：即使選取合法也 disabled（避免連點兩次送出兩次命令）", () => {
+  it("while pending: disabled even with a valid selection (prevents a double-click firing the command twice)", () => {
     expect(computeGroupButtonState(selection([element("group")]), controllerStub, "slides/001.svg", true)).toEqual({
       label: "Ungroup",
       disabled: true,
@@ -122,8 +123,8 @@ describe("computeGroupButtonState（05-INTERACTIONS.feature「停用態」＋ D5
   });
 });
 
-describe("Dock 選取狀態 → 每顆 dock 按鈕的 disabled 集合（接手 e2e/selection.test.ts 被刪掉的那條）", () => {
-  it("沒有選取：只有 Animate／Arrange／Group 三顆 disabled，Insert 群組與 Zoom 不受影響", () => {
+describe("Dock selection state → the disabled set for every dock button (covers a case previously in e2e/selection.test.ts, now removed there)", () => {
+  it("no selection: only Animate/Arrange/Group are disabled, the Insert group and Zoom are unaffected", () => {
     const disabled = commandDisabledMap(markupFor({ selection: selection([]) }));
     expect(disabled).toEqual({
       Text: false,
@@ -139,7 +140,7 @@ describe("Dock 選取狀態 → 每顆 dock 按鈕的 disabled 集合（接手 e
     });
   });
 
-  it("選了 1 個非群組元素：Animate／Arrange 變 enabled，Group 仍 disabled，其餘不受影響", () => {
+  it("one non-group element selected: Animate/Arrange become enabled, Group stays disabled, everything else unaffected", () => {
     const disabled = commandDisabledMap(markupFor({ selection: selection([element("rect")]) }));
     expect(disabled).toEqual({
       Text: false,
@@ -155,41 +156,41 @@ describe("Dock 選取狀態 → 每顆 dock 按鈕的 disabled 集合（接手 e
     });
   });
 
-  it("選了 2 個元素：Group 也變 enabled，沒有任何按鈕維持 disabled", () => {
+  it("two elements selected: Group also becomes enabled, no button remains disabled", () => {
     const disabled = commandDisabledMap(markupFor({ selection: selection([element("rect"), element("rect")]) }));
     expect(Object.values(disabled).every((v) => v === false)).toBe(true);
   });
 
-  it("選了 1 個群組：label 是 Ungroup 且 enabled", () => {
+  it("one group selected: label is Ungroup and enabled", () => {
     const markup = markupFor({ selection: selection([element("group")]) });
     expect(markup).toContain('aria-label="Ungroup"');
     expect(commandDisabledMap(markup).Ungroup).toBe(false);
   });
 });
 
-describe("groupToastText（D3/D4：文案照抄原型，不翻譯不改寫）", () => {
-  it("成組、有移除動畫", () => {
+describe("groupToastText (wording copied verbatim from the prototype, not translated or reworded)", () => {
+  it("grouping, with animations removed", () => {
     expect(groupToastText("group", 2, 1)).toBe("Grouped 2 elements · their animations were removed");
   });
-  it("成組、沒有移除動畫", () => {
+  it("grouping, no animations removed", () => {
     expect(groupToastText("group", 3, 0)).toBe("Grouped 3 elements");
   });
-  it("解組、有移除動畫", () => {
+  it("ungrouping, with animation removed", () => {
     expect(groupToastText("ungroup", 1, 1)).toBe("Ungrouped · the group animation was removed");
   });
-  it("解組、沒有移除動畫", () => {
+  it("ungrouping, no animation removed", () => {
     expect(groupToastText("ungroup", 1, 0)).toBe("Ungrouped");
   });
 });
 
-describe("DockToast 標記", () => {
-  it("role=status、class 是 dock-toast", () => {
+describe("DockToast markup", () => {
+  it("role=status, class is dock-toast", () => {
     const markup = renderToStaticMarkup(createElement(DockToast, { text: "Grouped 2 elements" }));
     expect(markup).toBe('<div role="status" class="dock-toast">Grouped 2 elements</div>');
   });
 });
 
-describe("ShapeMenu（[E2.T17] plan §4.1：Rectangle/Ellipse/Line 三個項目與 disabled 條件）", () => {
+describe("ShapeMenu (the Rectangle/Ellipse/Line items and their disabled conditions)", () => {
   const controllerStubShape = {} as CanvasController;
 
   function shapeMenuMarkup(overrides: Partial<Parameters<typeof ShapeMenu>[0]> = {}): string {
@@ -205,19 +206,19 @@ describe("ShapeMenu（[E2.T17] plan §4.1：Rectangle/Ellipse/Line 三個項目�
     );
   }
 
-  it("渲染三個項目：Rectangle/Ellipse/Line", () => {
+  it("renders three items: Rectangle/Ellipse/Line", () => {
     const markup = shapeMenuMarkup();
     expect(markup).toContain(">Rectangle<");
     expect(markup).toContain(">Ellipse<");
     expect(markup).toContain(">Line<");
   });
 
-  it("controller 為 null 時三個項目都 disabled", () => {
+  it("when controller is null, all three items are disabled", () => {
     const markup = shapeMenuMarkup({ controller: null });
     expect((markup.match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
   });
 
-  it("canvasSize 或 slidePath 為 null 時同樣 disabled；三者都齊全時可按", () => {
+  it("canvasSize or slidePath being null likewise disables them; with all three present, they're clickable", () => {
     expect((shapeMenuMarkup({ canvasSize: null }).match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
     expect((shapeMenuMarkup({ slidePath: null }).match(/ disabled(?:="")?[ >]/g) ?? []).length).toBe(3);
     expect(shapeMenuMarkup().match(/ disabled(?:="")?[ >]/g)).toBeNull();

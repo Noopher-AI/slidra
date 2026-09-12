@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { contrastRatio, parseColor } from "../../../e2e/helpers/contrast.js";
 
 // token-level WCAG contrast matrix. Reads tokens.css's raw text — the same
-// public boundary apps/web/test/tokens.test.ts already uses — and
+// public boundary packages/web/test/tokens.test.ts already uses — and
 // resolves var(--x) chains to literal values itself, rather than mounting a
 // stylesheet in jsdom (jsdom's CSS engine, not this file's contents, would be
 // under test otherwise).
@@ -73,72 +73,75 @@ function formatRatio(ratio: number): string {
   return ratio.toFixed(2);
 }
 
-// 外殼中性色（暖）— app 背景、面板、卡片等淺色表面。
+// Shell neutrals (warm) — app background, panels, cards, and other light surfaces.
 const SHELL_SURFACES = ["--surface-0", "--surface-1", "--surface-2", "--surface-3", "--surface-white"];
 
-// ink.900–500 是文件自己標的「文字」用途（主要文字／訊息內文／工具列按鈕文字／指令碼文字／次要文字、
-// 欄位標籤）；ink.400 以下（提示文字、更淡提示、虛線框）文件沒有宣稱要達到 AA 文字對比，不進矩陣。
+// ink.900-500 are the design docs' own "text" usages (primary text / message
+// body / toolbar button text / script text / secondary text / field labels);
+// ink.400 and below (hint text, fainter hints, dashed outlines) are not
+// claimed to meet AA text contrast by the docs, so they're excluded from the matrix.
 const SHELL_TEXT_INKS = ["--ink-900", "--ink-800", "--ink-700", "--ink-600", "--ink-500"];
 
-// 舞台（深）— 投影片渲染區的深色表面與對應文字色。
+// Stage (dark) — the dark surfaces of the slide-rendering area and their corresponding text colors.
 const STAGE_SURFACES = ["--well-bg", "--well-play", "--slide-bg-a", "--slide-bg-b"];
 const STAGE_TEXT_INKS = ["--slide-ink", "--slide-ink-2", "--slide-muted"];
 
-describe("contrast.test.ts — token 對比矩陣", () => {
-  describe("外殼一般文字 ≥ 4.5:1（WCAG 2.2 AA，SC 1.4.3）", () => {
+describe("contrast.test.ts — token contrast matrix", () => {
+  describe("shell regular text >= 4.5:1 (WCAG 2.2 AA, SC 1.4.3)", () => {
     for (const surface of SHELL_SURFACES) {
       for (const ink of SHELL_TEXT_INKS) {
-        it(`${ink} × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf(ink, surface))}）`, () => {
+        it(`${ink} × ${surface} >= 4.5:1 (actual ${formatRatio(ratioOf(ink, surface))})`, () => {
           expect(ratioOf(ink, surface)).toBeGreaterThanOrEqual(4.5);
         });
       }
     }
   });
 
-  describe("舞台一般文字 ≥ 4.5:1（WCAG 2.2 AA，SC 1.4.3）", () => {
+  describe("stage regular text >= 4.5:1 (WCAG 2.2 AA, SC 1.4.3)", () => {
     for (const surface of STAGE_SURFACES) {
       for (const ink of STAGE_TEXT_INKS) {
-        it(`${ink} × ${surface} ≥ 4.5:1（實際 ${formatRatio(ratioOf(ink, surface))}）`, () => {
+        it(`${ink} × ${surface} >= 4.5:1 (actual ${formatRatio(ratioOf(ink, surface))})`, () => {
           expect(ratioOf(ink, surface)).toBeGreaterThanOrEqual(4.5);
         });
       }
     }
   });
 
-  describe("非文字對比 ≥ 3:1（WCAG 2.2 AA，SC 1.4.11）", () => {
-    // brand.red / brand.red.hover：文件用途是「主要動作、選取框、pin 編號、播放鈕、開關 on 態」——
-    // 都是非文字 UI 元件（按鈕底色、選取框邊線），不是本文文字。
+  describe("non-text contrast >= 3:1 (WCAG 2.2 AA, SC 1.4.11)", () => {
+    // brand.red / brand.red.hover: the docs' use case is "primary actions, selection
+    // boxes, pin numbers, play button, switch-on state" — all non-text UI elements
+    // (button fills, selection outlines), not body text.
     for (const surface of SHELL_SURFACES) {
-      it(`--brand-red × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--brand-red", surface))}）`, () => {
+      it(`--brand-red × ${surface} >= 3:1 (actual ${formatRatio(ratioOf("--brand-red", surface))})`, () => {
         expect(ratioOf("--brand-red", surface)).toBeGreaterThanOrEqual(3.0);
       });
-      it(`--brand-red-hover × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--brand-red-hover", surface))}）`, () => {
+      it(`--brand-red-hover × ${surface} >= 3:1 (actual ${formatRatio(ratioOf("--brand-red-hover", surface))})`, () => {
         expect(ratioOf("--brand-red-hover", surface)).toBeGreaterThanOrEqual(3.0);
       });
     }
 
-    // info：文件用途「PDF+ 標籤、圖表第二色」——標籤底色/圖表描邊，非本文文字。
+    // info: the docs' use case is "PDF+ badge, secondary chart color" — badge fills / chart strokes, not body text.
     for (const surface of SHELL_SURFACES) {
-      it(`--info × ${surface} ≥ 3:1（實際 ${formatRatio(ratioOf("--info", surface))}）`, () => {
+      it(`--info × ${surface} >= 3:1 (actual ${formatRatio(ratioOf("--info", surface))})`, () => {
         expect(ratioOf("--info", surface)).toBeGreaterThanOrEqual(3.0);
       });
     }
   });
 
-  describe("解析規則", () => {
-    it("token 值為 var(--other) 時遞迴解析（--font-slide → --font-ui）", () => {
+  describe("resolution rules", () => {
+    it("recursively resolves a token whose value is var(--other) (--font-slide -> --font-ui)", () => {
       expect(resolveTokenValue("--font-slide")).toBe(resolveTokenValue("--font-ui"));
     });
 
-    it("清單裡的 token 在 tokens.css 不存在時明確報錯", () => {
+    it("raises a clear error when a listed token doesn't exist in tokens.css", () => {
       expect(() => resolveTokenValue("--does-not-exist")).toThrow(/token --does-not-exist.*不存在/);
     });
 
-    it("token 值帶 alpha（rgba）時明確報錯，不假裝 alpha=1 偷算", () => {
+    it("raises a clear error when a token's value carries alpha (rgba), instead of silently assuming alpha=1", () => {
       expect(() => resolveTokenRgb("--brand-red-glow")).toThrow(/帶有 alpha 通道/);
     });
 
-    it("邊界值：比值剛好等於門檻時通過（>=）", () => {
+    it("boundary value: passes when the ratio is exactly equal to the threshold (>=)", () => {
       expect(3.0).toBeGreaterThanOrEqual(3.0);
       expect(4.5).toBeGreaterThanOrEqual(4.5);
     });

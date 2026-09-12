@@ -18,10 +18,10 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "
 const designTokensDocPath = path.join(repoRoot, "docs", "design", "docs", "01-DESIGN_TOKENS.md");
 const designTokensDoc = readFileSync(designTokensDocPath, "utf8");
 
-// F8 (NOOP-289): the web bundle no longer depends on core's chart module at
-// all — this reads the Rust CLI's own palette constants with node:fs +
-// regex instead, the same "the file's own text is the contract" posture
-// this whole test file already applies to tokens.css/the design doc.
+// The web bundle no longer depends on core's chart module at all — this
+// reads the Rust CLI's own palette constants with node:fs + regex instead,
+// the same "the file's own text is the contract" posture this whole test
+// file already applies to tokens.css/the design doc.
 const chartRenderRsPath = path.join(repoRoot, "crates", "slidra", "src", "chart", "render.rs");
 const chartRenderRs = readFileSync(chartRenderRsPath, "utf8");
 
@@ -49,21 +49,24 @@ function declaredRootTokenValue(name: string): string {
   return match[1].trim();
 }
 
-// ── 解析 docs/design/docs/01-DESIGN_TOKENS.md 的 token 表 ──────────────
+// ── Parsing the token table in docs/design/docs/01-DESIGN_TOKENS.md ──────
 //
-// 文件裡每一列都是 `| \`token.path\` | 值 | (用途) |` 這種 pipe-table 格式
-// （用途欄位不是每個表都有）。第一欄用 backtick 包住、只含小寫字母/數字/點
-// 的字串視為一個「設計包 token 名稱」；`hs-fade` 這類含連字號的動效預設名
-// 不會被這個 pattern 吃到（連字號不在字元類別裡），這是刻意的——那些欄位
-// 的「值」是動畫效果描述（例如「4px 上移 + 淡入」），不是可以落地成 CSS
-// 值的字面量。
+// Each row in the doc is a pipe-table row of the form
+// `| \`token.path\` | value | (purpose) |` (not every table has the purpose
+// column). The first column, wrapped in backticks and containing only
+// lowercase letters/digits/dots, is treated as a "design package token
+// name"; hyphenated animation-preset names like `hs-fade` are deliberately
+// NOT matched by this pattern (hyphens aren't in the character class) —
+// their "value" column is a prose description of the animation effect
+// (e.g. "4px shift up + fade in"), not a literal that can land as a CSS
+// value.
 //
-// `space.1..6` 這種壓縮記法（代表 space.1 ~ space.6 六個 token）在這裡展開
-// 成六個獨立條目。
+// Compressed notation like `space.1..6` (meaning the six tokens space.1
+// through space.6) is expanded here into six separate entries.
 
 interface DesignToken {
   path: string;
-  /** The raw "值" cell text, for range-extraction below. */
+  /** The raw "value" cell text, for range-extraction below. */
   valueCell: string;
 }
 
@@ -96,24 +99,24 @@ function dotPathToCssVar(tokenPath: string): string {
   return `--${tokenPath.replace(/\./g, "-")}`;
 }
 
-/** Design tokens documented as a *range* (e.g. "10.5–11") that this ticket resolved to a single
+/** Design tokens documented as a *range* (e.g. "10.5–11") that got resolved to a single
  * real value — or, when the same token is genuinely used for two distinct named purposes at two
  * distinct real values, split into two CSS custom properties. Every value on the right must lie
  * within the design doc's own stated range for that token (checked mechanically below) — this
  * records *which* CSS vars a doc token landed as, not new numbers invented outside its range. */
 const SPLIT_TOKENS: Record<string, string[]> = {
-  ok: ["--ok", "--ok-text", "--ok-bg"], // 一格三色（主色／文字／底色），CSS 自訂屬性一次只能放一個值
+  ok: ["--ok", "--ok-text", "--ok-bg"], // one doc cell packs three colours (main/text/background); a CSS custom property can only hold one value
   info: ["--info", "--info-bg"],
-  "text.2xs": ["--text-2xs", "--text-2xs-chart"], // BETA(10px) vs 圖表類型標(9.5px)
-  "text.xs": ["--text-xs", "--text-xs-hint"], // 區塊標題(10.5px) vs 提示/快捷鍵(11px)
-  "text.md": ["--text-md", "--text-md-panel-title"], // 檔名(13.5px) vs 面板標題(14px)
-  "text.lg": ["--text-lg", "--text-lg-dialog"], // 總覽標題(18px) vs 對話框標題(17px)
-  "radius.md": ["--radius-md", "--radius-md-segmented"], // 輸入框(9px) vs segmented(10px)
-  "radius.xl": ["--radius-xl", "--radius-xl-dialog"], // 玻璃面板(14px) vs 對話框(16px)
-  "radius.2xl": ["--radius-2xl", "--radius-2xl-empty"], // 大型對話框(18px) vs 空狀態卡(20px)
-  "space.gutter": ["--space-gutter", "--space-gutter-bottom"], // "28px 36px" 對／"76px" 底部保留區
-  "control.h": ["--control-h", "--control-h-compact"], // 30px 一般 vs 28px 緊湊版（doc 自己就分兩值）
-  // E2.T12: each `accent.palette.*` doc cell packs six hex colours into one
+  "text.2xs": ["--text-2xs", "--text-2xs-chart"], // BETA badge (10px) vs chart type label (9.5px)
+  "text.xs": ["--text-xs", "--text-xs-hint"], // section heading (10.5px) vs hint/shortcut (11px)
+  "text.md": ["--text-md", "--text-md-panel-title"], // filename (13.5px) vs panel title (14px)
+  "text.lg": ["--text-lg", "--text-lg-dialog"], // overview title (18px) vs dialog title (17px)
+  "radius.md": ["--radius-md", "--radius-md-segmented"], // input field (9px) vs segmented control (10px)
+  "radius.xl": ["--radius-xl", "--radius-xl-dialog"], // glass panel (14px) vs dialog (16px)
+  "radius.2xl": ["--radius-2xl", "--radius-2xl-empty"], // large dialog (18px) vs empty-state card (20px)
+  "space.gutter": ["--space-gutter", "--space-gutter-bottom"], // "28px 36px" pair vs "76px" bottom reserved area
+  "control.h": ["--control-h", "--control-h-compact"], // 30px regular vs 28px compact variant (the doc itself splits these into two values)
+  // Each `accent.palette.*` doc cell packs six hex colours into one
   // token path — one CSS custom property cannot hold six values, so it
   // splits the same way `ok`/`info` above do, six-ways instead of two.
   "accent.palette.brand": [1, 2, 3, 4, 5, 6].map((n) => `--accent-palette-brand-${n}`),
@@ -121,12 +124,12 @@ const SPLIT_TOKENS: Record<string, string[]> = {
   "accent.palette.warm": [1, 2, 3, 4, 5, 6].map((n) => `--accent-palette-warm-${n}`),
 };
 
-/** No tokens excluded for this ticket. `accent.palette.*` was the one exclusion (chart colour
- * palette, "belongs to a future chart ticket") and E2.T12 IS that future chart ticket — landed
- * via the `SPLIT_TOKENS` six-way split above instead, not excluded. */
+/** No tokens are currently excluded. `accent.palette.*` used to be the one exclusion (chart colour
+ * palette, "belongs to a future chart ticket") — that work has since landed via the
+ * `SPLIT_TOKENS` six-way split above instead, so it's no longer excluded. */
 const EXCLUDED_DESIGN_TOKENS = new Set<string>([]);
 
-/** 玻璃材質 (Glass material) is documented as prose + a CSS code block, not a `token.path | value`
+/** Glass material is documented as prose + a CSS code block, not a `token.path | value`
  * table row — there is no doc-mechanical name to derive these from. Each entry below is this
  * file's own name, justified inline in tokens.css's own comment for that line. Listed here (rather
  * than silently allowed by a loose rule) so the "nothing invented" check stays meaningful for
@@ -140,10 +143,10 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--glass-divider",
   "--glass-input-bg",
   "--glass-input-bg-focus",
-  // 圖示 (icon) geometry: prose in the doc's § 圖示 (20×20 viewBox / stroke 1.5),
+  // Icon geometry: prose in the doc's icon section (20×20 viewBox / stroke 1.5),
   // no table row. Consumed by icons/Icon.tsx via *inline* style var() — the two
   // mechanical scans below cannot see that usage, which is how they went missing
-  // in round 1 (every shell icon collapsed to 0px). --icon-control is listed with
+  // initially (every shell icon collapsed to 0px). --icon-control is listed with
   // the compat layer below (play.css reads it too).
   "--icon-inline",
   "--icon-command",
@@ -156,8 +159,8 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   // happened here before this allowlist existed (e2e player-effect-error /
   // player-media / play-appearance all failed on a vanished `.play-bar`).
   // Values are copied verbatim from base (b0de47f)'s old tokens.css, not
-  // redesigned. Removed together with play.css's own migration in a future
-  // ticket.
+  // redesigned. Will be removed together with play.css's own migration in a
+  // future pass.
   "--u",
   "--ink",
   "--ink-dim",
@@ -179,7 +182,7 @@ const NON_TABULAR_DESIGN_TOKENS = new Set([
   "--r",
   "--s-raised",
   "--line",
-  // [E2.T7]: the Animate insert panel's looping effect-preview thumbnail
+  // The Animate insert panel's looping effect-preview thumbnail
   // (animate.css) is a genuinely new UI concept the design package's token
   // table has no row for — not a landed `dur.*` value, and not a one-shot
   // view-switch/dialog duration `--dur-fast`/`--dur-base` already name.
@@ -193,19 +196,19 @@ function expectedCssVarsFor(tokenPath: string): string[] {
   return SPLIT_TOKENS[tokenPath] ?? [dotPathToCssVar(tokenPath)];
 }
 
-describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 token 表）", () => {
-  it("設計包文件本身至少解析出目標分類的 token（parser 沒有讀空）", () => {
+describe("tokens.css against docs/design/docs/01-DESIGN_TOKENS.md (design package token table)", () => {
+  it("the design package doc itself parses out at least the tokens in each target category (the parser isn't reading empty)", () => {
     // Sanity check on the parser itself, independent of tokens.css: if this fails, the parser's
     // regex stopped matching the doc's real table format and every other test below is vacuous.
     expect(designTokenPaths.has("brand.red")).toBe(true);
     expect(designTokenPaths.has("surface.0")).toBe(true);
     expect(designTokenPaths.has("radius.pill")).toBe(true);
     expect(designTokenPaths.has("dur.fast")).toBe(true);
-    // "hs-fade" 之類含連字號的動效預設名不該被解析成 token（見上方 parser 註解）。
+    // A hyphenated animation-preset name like "hs-fade" should not be parsed as a token (see the parser comment above).
     expect(designTokenPaths.has("hs-fade")).toBe(false);
   });
 
-  it("tokens.css 的 :root 沒有發明任何不存在於設計包的 token 名稱", () => {
+  it("tokens.css's :root doesn't invent any token name absent from the design package", () => {
     const declared = declaredRootTokenNames();
     const legalNames = new Set<string>(NON_TABULAR_DESIGN_TOKENS);
     for (const tokenPath of designTokenPaths) {
@@ -216,7 +219,7 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(invented).toEqual([]);
   });
 
-  it("計畫要落地的每個分類（色彩／字體／字級 UI／間距與尺寸／圓角／陰影／玻璃材質／動效）在 tokens.css 都有對應宣告", () => {
+  it("every planned category (colour/font/UI type scale/spacing & sizing/radius/shadow/glass material/motion) has a corresponding declaration in tokens.css", () => {
     const declared = declaredRootTokenNames();
     const missing: string[] = [];
     for (const tokenPath of designTokenPaths) {
@@ -228,29 +231,29 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(missing).toEqual([]);
   });
 
-  it("EXCLUDED_DESIGN_TOKENS 目前是空集合——E2.T12 落地 accent.palette.* 後已無排除項（NOOP-159r2 三項債之一：舊測試對空集合迭代是空操作，此斷言取代它，讓「集合為空」本身成為看得見的斷言，而不是悄悄不測任何東西）", () => {
+  it("EXCLUDED_DESIGN_TOKENS is currently empty, now that accent.palette.* has landed and there are no remaining exclusions (an older test iterated over the empty set, which was a no-op; this assertion replaces it so \"the set is empty\" is itself a visible assertion instead of silently testing nothing)", () => {
     expect(EXCLUDED_DESIGN_TOKENS.size).toBe(0);
   });
 
   // control.h's cell packs a second, explicitly-separate number ("30–34
-  // px；28 px 緊湊版") that is NOT part of the 30–34 range — the doc gives
-  // it as its own compact-variant value. It gets its own exact-match test
-  // below instead of the generic range-membership loop.
+  // px; 28 px compact variant") that is NOT part of the 30–34 range — the
+  // doc gives it as its own compact-variant value. It gets its own
+  // exact-match test below instead of the generic range-membership loop.
   const RANGE_CHECK_EXCLUDE = new Set(["--control-h-compact"]);
 
-  it("設計包標成「範圍」的值，落地後的每一個 CSS 值都落在該範圍內（含兩端）", () => {
+  it("every value the design package marks as a \"range\" lands as a CSS value within that range (inclusive)", () => {
     const outOfRange: string[] = [];
     for (const { path: tokenPath, valueCell } of designTokens) {
       if (EXCLUDED_DESIGN_TOKENS.has(tokenPath)) continue;
       const rangeMatch = valueCell.match(/(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)/);
-      if (!rangeMatch) continue; // 不是範圍值（例如單一固定值 "12 px"）——不需要範圍檢查
+      if (!rangeMatch) continue; // not a range value (e.g. a single fixed value like "12 px") — no range check needed
       const low = Number(rangeMatch[1]);
       const high = Number(rangeMatch[2]);
       for (const cssVar of expectedCssVarsFor(tokenPath)) {
         if (RANGE_CHECK_EXCLUDE.has(cssVar)) continue;
         const declaredValue = declaredRootTokenValue(cssVar);
         const numMatch = declaredValue.match(/^(\d+(?:\.\d+)?)(?:px|ms)$/);
-        if (!numMatch) continue; // 這個 split 出來的值不是單純數字＋單位（例如 --space-gutter 是複合值）
+        if (!numMatch) continue; // this split-out value isn't a plain number + unit (e.g. --space-gutter is a compound value)
         const actual = Number(numMatch[1]);
         if (actual < low || actual > high) {
           outOfRange.push(`${cssVar}（${tokenPath} 的範圍是 ${low}–${high}，實際是 ${actual}）`);
@@ -260,20 +263,20 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(outOfRange).toEqual([]);
   });
 
-  it("--control-h-compact 與設計包文件明講的「28 px 緊湊版」數值一致", () => {
+  it("--control-h-compact matches the compact-variant value the design package doc states explicitly", () => {
     const docToken = designTokens.find((t) => t.path === "control.h");
     if (!docToken) throw new Error("設計包文件找不到 control.h");
-    const compactMatch = docToken.valueCell.match(/(\d+(?:\.\d+)?)\s*px\s*緊湊版/);
-    if (!compactMatch) throw new Error("control.h 的值欄位找不到「緊湊版」數值——文件格式可能變了");
+    const compactMatch = docToken.valueCell.match(/(\d+(?:\.\d+)?)\s*px compact variant/);
+    if (!compactMatch) throw new Error("control.h 的值欄位找不到「compact variant」數值——文件格式可能變了");
     expect(declaredRootTokenValue("--control-h-compact")).toBe(`${compactMatch[1]}px`);
   });
 
-  it("設計包標成色彩（值欄位含 #RRGGBB 字面量）的 token，落地後的 CSS 值都是合法的十六進位色碼（NOOP-159r2 三項債之一：先前沒有格式檢查，--accent-palette-brand-1 改成 notacolor 仍全綠）", () => {
+  it("every token the design package marks as a colour (its value cell contains a #RRGGBB literal) lands as a valid hex colour code (previously there was no format check — --accent-palette-brand-1 could be changed to \"notacolor\" and this would still pass)", () => {
     const HEX_COLOR = /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/;
     const malformed: string[] = [];
     for (const { path: tokenPath, valueCell } of designTokens) {
       if (EXCLUDED_DESIGN_TOKENS.has(tokenPath)) continue;
-      if (!/#[0-9a-fA-F]{3,8}\b/.test(valueCell)) continue; // 值欄位沒有十六進位字面量 -> 不是色彩 token
+      if (!/#[0-9a-fA-F]{3,8}\b/.test(valueCell)) continue; // value cell has no hex literal -> not a colour token
       for (const cssVar of expectedCssVarsFor(tokenPath)) {
         const declaredValue = declaredRootTokenValue(cssVar);
         if (!HEX_COLOR.test(declaredValue)) malformed.push(`${cssVar}: "${declaredValue}"`);
@@ -282,7 +285,7 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(malformed).toEqual([]);
   });
 
-  it("accent.palette.* 的三組 CSS 變數與 crates/slidra 的 CHART_PALETTE_HEX_* 逐色一致（NOOP-159r2 三項債之一：兩份色票各自獨立維護，先前沒有測試綁住；F8/NOOP-289 起改比對 Rust 端，TS 端的等價常數已隨 core 一起從 web 移除）", () => {
+  it("the three accent.palette.* CSS variable sets match crates/slidra's CHART_PALETTE_HEX_* colour-for-colour (the two palettes used to be maintained independently with nothing tying them together; this now compares against the Rust side, since the equivalent TS constants were removed from web along with core)", () => {
     for (const [palette, key] of [["brand", "BRAND"], ["cool", "COOL"], ["warm", "WARM"]] as const) {
       chartPaletteHex(key).forEach((hex, index) => {
         const cssVar = `--accent-palette-${palette}-${index + 1}`;
@@ -292,8 +295,8 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
   });
 });
 
-describe("tokens.css — 字型", () => {
-  it("含且僅含六個 @font-face：Plus Jakarta Sans 與 Noto Sans TC 各三個字重（400/500/700），src 檔名互不相同且實際存在", () => {
+describe("tokens.css — fonts", () => {
+  it("contains exactly six @font-face rules: three weights each (400/500/700) for Plus Jakarta Sans and Noto Sans TC, with distinct src filenames that actually exist", () => {
     const fontFaceBlocks = [...tokensCss.matchAll(/@font-face\s*{([\s\S]*?)}/g)].map((match) => match[1]);
     expect(fontFaceBlocks).toHaveLength(6);
 
@@ -322,7 +325,7 @@ describe("tokens.css — 字型", () => {
     }
   });
 
-  it("--font-ui 字型堆疊（依序）與設計包文件（font.ui）相符", () => {
+  it("the --font-ui font stack (in order) matches the design package doc (font.ui)", () => {
     // Compares the ordered list of font names, ignoring quote style (doc uses
     // single quotes, this file's existing convention uses double quotes) and
     // incidental whitespace — neither is semantically meaningful in CSS.
@@ -337,13 +340,13 @@ describe("tokens.css — 字型", () => {
     expect(fontNames(declaredRootTokenValue("--font-ui"))).toEqual(fontNames(docValue));
   });
 
-  it("--font-slide 透過 var() 鏈接到 --font-ui（文件：「同 font.ui」）", () => {
+  it("--font-slide links to --font-ui via var() (doc: \"same as font.ui\")", () => {
     expect(declaredRootTokenValue("--font-slide")).toBe("var(--font-ui)");
   });
 });
 
 describe("tokens.css — prefers-reduced-motion", () => {
-  it("prefers-reduced-motion 區塊同時覆寫 --dur-fast／--dur-base 為 0ms，並停用持續動畫", () => {
+  it("the prefers-reduced-motion block overrides both --dur-fast and --dur-base to 0ms and disables looping animations", () => {
     const mediaMatch = tokensCss.match(/@media \(prefers-reduced-motion: reduce\)\s*{([\s\S]*)}\s*$/);
     if (!mediaMatch) throw new Error("tokens.css 沒有 prefers-reduced-motion 區塊");
     const block = mediaMatch[1];
@@ -374,8 +377,8 @@ function usedVarNames(css: string): Set<string> {
   return names;
 }
 
-describe("tokens.css — 區域 CSS 消費的每個 var(--x) 都要有定義", () => {
-  it("區域 CSS 用到的每一個 var(--x)（豁免 --overview-aspect-ratio）都在 tokens.css 的 :root 有定義", () => {
+describe("tokens.css — every var(--x) consumed by regional CSS must be defined", () => {
+  it("every var(--x) used by regional CSS (exempting --overview-aspect-ratio) is defined in tokens.css's :root", () => {
     const declared = declaredRootTokenNames();
     const missing = new Set<string>();
     for (const file of regionalCssFiles()) {
@@ -388,7 +391,7 @@ describe("tokens.css — 區域 CSS 消費的每個 var(--x) 都要有定義", (
     expect([...missing]).toEqual([]);
   });
 
-  it("apps/web/src 下 JS 端 getPropertyValue(\"--x\") 讀的每個字面 token 名稱也都在 :root 有定義", () => {
+  it("every literal token name read by getPropertyValue(\"--x\") on the JS side under packages/web/src is also defined in :root", () => {
     const declared = declaredRootTokenNames();
     const missing = new Set<string>();
     const srcFiles: string[] = [];

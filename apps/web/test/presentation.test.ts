@@ -50,7 +50,7 @@ describe("fetchPresentationInfo", () => {
     });
   });
 
-  it("carries the name through from post-[E4.T7] { file, name } template entries", async () => {
+  it("carries the name through from post-upgrade { file, name } template entries", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>

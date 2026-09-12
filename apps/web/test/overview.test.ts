@@ -34,12 +34,12 @@ function fakeCanvas(
       return () => listeners.delete(listener);
     },
     destroy: vi.fn(),
-    // [E2.T3]: overview.ts's drag/drop reordering calls this directly
-    // (T3 plan §7 決定 7 — no separate hook needed, the controller it
-    // already holds is enough). The rest of `CanvasController`'s surface
+    // overview.ts's drag/drop reordering calls this directly — no separate
+    // hook needed, the controller it already holds is enough. The rest of
+    // `CanvasController`'s surface
     // (play/exitPlay/focusPlayer/stepPlayer/beginTextEdit/importAsset/
     // reportError) stays unimplemented here, matching this file's existing
-    // convention — apps/web/tsconfig.json excludes `test/` from
+    // convention — packages/web/tsconfig.json excludes `test/` from
     // type-checking, and nothing above this ticket ever needed them either.
     runCommand: vi.fn(async (name: string, input: Record<string, unknown>) => {
       runCommandCalls.push({ name, input });
@@ -97,7 +97,7 @@ function presentationResponse(): Response {
   );
 }
 
-// [E5.T11]: a `GET /api/effects/<slidePath>` response (effects.ts's
+// A `GET /api/effects/<slidePath>` response (effects.ts's
 // `fetchFresh` wire shape) carrying `effectCount` items — content beyond
 // the count is irrelevant to overview.ts, which only ever reads
 // `plan.effects.length`.
@@ -626,13 +626,14 @@ describe("mountOverview", () => {
     expect(() => setState({ slides: ["slides/001.svg", "slides/002.svg"], currentIndex: 1 })).not.toThrow();
   });
 
-  // [E2.T3] 拖曳排序。jsdom 沒有 DragEvent／DataTransfer 建構子
-  // （已驗證：`new window.DragEvent(...)` 會丟「not a constructor」），所以
-  // 這裡用一般 `Event` 手動掛上 `dataTransfer`／`clientX`／`clientY` 屬性
-  // 後 dispatch——overview.ts 的監聽器只讀這幾個屬性，不會注意到事件的真
-  // 實建構子是什麼。真的原生 HTML5 拖放（含視覺的插入線顏色）在
-  // `e2e/page-management.test.ts` 用真 Chromium 驗證。
-  describe("拖曳排序", () => {
+  // Drag-and-drop reordering. jsdom has no DragEvent/DataTransfer constructor
+  // (verified: `new window.DragEvent(...)` throws "not a constructor"), so
+  // this uses a plain `Event` with `dataTransfer`/`clientX`/`clientY`
+  // manually attached before dispatching — overview.ts's listeners only read
+  // these properties and don't care what the event's real constructor is.
+  // Real native HTML5 drag-and-drop (including the visual drop-line colour)
+  // is verified with a real Chromium in `e2e/page-management.test.ts`.
+  describe("drag-and-drop reordering", () => {
     function fakeDataTransfer(): { setData: (type: string, value: string) => void; getData: (type: string) => string } {
       const store: Record<string, string> = {};
       return {
@@ -680,7 +681,7 @@ describe("mountOverview", () => {
 
     const FOUR_SLIDES = ["slides/001.svg", "slides/002.svg", "slides/003.svg", "slides/004.svg"];
 
-    it("drop 在目標項上緣：送 slide move 且 newIndex 正確；成功後 reload()+showSlide(newIndex)（T3 plan §3.8/§7 決定 6）", async () => {
+    it("drop on the top half of a target item: sends slide move with the correct newIndex; on success calls reload()+showSlide(newIndex)", async () => {
       const { controller, runCommandCalls, showSlideCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
       mountOverview(container, controller);
       await tick();
@@ -700,7 +701,7 @@ describe("mountOverview", () => {
       expect(showSlideCalls).toEqual([1]);
     });
 
-    it("拖到目標項下緣：插在它後面，newIndex 也正確（T3 plan §5-B 的期望結果 [2,3,1,4]）", async () => {
+    it("drop on the bottom half of a target item: inserts after it, newIndex is also correct (expected order [2,3,1,4])", async () => {
       const { controller, runCommandCalls, showSlideCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
       mountOverview(container, controller);
       await tick();
@@ -720,7 +721,7 @@ describe("mountOverview", () => {
       expect(showSlideCalls).toEqual([2]);
     });
 
-    it("no-op：拖到自己身上，不畫插入線、不送命令", async () => {
+    it("no-op: dropping an item onto itself draws no drop-line and sends no command", async () => {
       const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
       mountOverview(container, controller);
       await tick();
@@ -739,7 +740,7 @@ describe("mountOverview", () => {
       expect(runCommandCalls).toEqual([]);
     });
 
-    it("no-op：拖到自己的正下一個位置，不畫插入線、不送命令", async () => {
+    it("no-op: dropping an item onto the position immediately after itself draws no drop-line and sends no command", async () => {
       const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
       mountOverview(container, controller);
       await tick();
@@ -758,7 +759,7 @@ describe("mountOverview", () => {
       expect(runCommandCalls).toEqual([]);
     });
 
-    it("格式錯誤：drop 時 dataTransfer 讀不到來源索引，放棄這次 drop，不猜一個索引（T3 plan §4.2）", async () => {
+    it("malformed payload: if dataTransfer's source index can't be read at drop time, abandon the drop instead of guessing an index", async () => {
       const { controller, runCommandCalls } = fakeCanvas({ slides: FOUR_SLIDES, currentIndex: 0 });
       mountOverview(container, controller);
       await tick();
@@ -782,8 +783,8 @@ describe("mountOverview", () => {
 });
 
 
-describe("縮圖只在畫面真的變了才重畫 (#303)", () => {
-  it("refresh() 遇到只有 <metadata> 變動的投影片不重設 srcdoc；內容變了才重設", async () => {
+describe("a thumbnail only repaints when the visible picture actually changed", () => {
+  it("refresh() does not reset srcdoc for a slide where only <metadata> changed; it resets only when the visible content changes", async () => {
     const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">講稿</slidra:notes></metadata>';
     let s1 = '<svg data-testid="s1"><circle r="1"/></svg>';
     vi.stubGlobal(

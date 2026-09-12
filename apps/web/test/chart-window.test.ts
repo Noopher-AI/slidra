@@ -6,15 +6,15 @@ import type { ChartWindowState } from "../src/canvas.js";
 import type { ChartModel } from "../src/chart-model.js";
 
 /**
- * E2.T12 plan §6.2/§6.4: `chartDataSetInputFromDraft` (the "資料格 state →
- * chart data set input" conversion, pulled out of the JSX for the same
- * reason `TextPanel.tsx`'s own `textPanelInsertInput` is — this codebase's
- * React component tests are `renderToStaticMarkup` only, no
- * testing-library, so an interactive behaviour can only be unit tested by
- * extracting the computation) plus a `renderToStaticMarkup` smoke test of
- * `ChartWindow` itself, plus AC-12's DOMParser regression (§3.2 of the
- * plan: an unbound `<slidra:chart>` produces a `parsererror` when the front
- * end's effects parser reads the WHOLE slide document).
+ * `chartDataSetInputFromDraft` (the "cell-draft state → chart data set
+ * input" conversion, pulled out of the JSX for the same reason
+ * `TextPanel.tsx`'s own `textPanelInsertInput` is — this codebase's React
+ * component tests are `renderToStaticMarkup` only, no testing-library, so
+ * an interactive behaviour can only be unit tested by extracting the
+ * computation) plus a `renderToStaticMarkup` smoke test of `ChartWindow`
+ * itself, plus a DOMParser regression check: an unbound `<slidra:chart>`
+ * produces a `parsererror` when the front end's effects parser reads the
+ * WHOLE slide document.
  */
 
 describe("chartDataSetInputFromDraft", () => {
@@ -75,8 +75,8 @@ function windowState(model: ChartModel): ChartWindowState {
   return { id: "el-chart", slidePath: "slides/001.svg", model };
 }
 
-describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜態結構)", () => {
-  it("渲染 role=dialog、標題列、六個類型按鈕，目前類型 aria-pressed=true", () => {
+describe("ChartWindow — renderToStaticMarkup (static structure)", () => {
+  it("renders role=dialog, a title bar, and six type buttons, with the current type aria-pressed=true", () => {
     const markup = renderToStaticMarkup(
       createElement(ChartWindow, { state: windowState(baseModel()), controller: null, bounds: { width: 1000, height: 700 } }),
     );
@@ -86,7 +86,7 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
     expect(markup).toMatch(/aria-pressed="true"[^>]*>Bar</);
   });
 
-  it("資料表格：類別數列 × 系列數欄，每格帶目前的值", () => {
+  it("data table: category rows x series columns, each cell with its current value", () => {
     const markup = renderToStaticMarkup(
       createElement(ChartWindow, { state: windowState(baseModel()), controller: null, bounds: { width: 1000, height: 700 } }),
     );
@@ -95,7 +95,7 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
     expect(markup).toContain('value="Revenue"');
   });
 
-  it("pie 類型：不顯示 + Series、堆疊、雙軸、X/Y 軸標題控制", () => {
+  it("pie type: hides the + Series, stacked, dual-axis, and X/Y axis title controls", () => {
     const markup = renderToStaticMarkup(
       createElement(ChartWindow, { state: windowState(baseModel({ type: "pie", axes: "single" })), controller: null, bounds: { width: 1000, height: 700 } }),
     );
@@ -105,7 +105,7 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
     expect(markup).toContain("Pie uses the first series");
   });
 
-  it("非堆疊型別（line）：Stacked 開關 disabled；可堆疊型別（bar）：Stacked 開關可用", () => {
+  it("a non-stackable type (line) disables the Stacked toggle; a stackable type (bar) enables it", () => {
     const lineMarkup = renderToStaticMarkup(
       createElement(ChartWindow, { state: windowState(baseModel({ type: "line" })), controller: null, bounds: { width: 1000, height: 700 } }),
     );
@@ -117,7 +117,7 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
     expect(barMarkup).not.toMatch(/<input type="checkbox"[^>]*disabled=""[^>]*\/>\s*Stacked/);
   });
 
-  it("dual 軸：顯示每個系列的「→ right」指派勾選框，含目前哪個系列在右軸", () => {
+  it("dual axis: shows a \"→ right\" assignment checkbox for each series, reflecting which series is on the right axis", () => {
     const markup = renderToStaticMarkup(
       createElement(
         ChartWindow,
@@ -142,8 +142,8 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
   });
 });
 
-describe("AC-12: a slide containing a chart parses without a DOMParser parsererror", () => {
-  it("含 <slidra:chart>（帶 xmlns:slidra）與內嵌 <svg> 的投影片，DOMParser 解析出 svg 根節點、無 parsererror", () => {
+describe("a slide containing a chart parses without a DOMParser parsererror", () => {
+  it("a slide with a <slidra:chart> (with xmlns:slidra bound) and an embedded <svg> parses to an svg root element with no parsererror", () => {
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">` +
       `<g id="el-chart" data-slidra-type="chart" transform="translate(100 50)">` +
