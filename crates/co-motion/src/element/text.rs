@@ -436,11 +436,7 @@ fn render_plain_text_content(
         // (table/model.rs) and slide-dom.ts's `readTextContent` already
         // read to reconstruct a `\n` — so a plain `<text>`'s hard breaks
         // survive a re-read (double-click) the same way a text box's do.
-        let break_attr = if index + 1 < lines.len() {
-            " data-comot-break=\"1\""
-        } else {
-            ""
-        };
+        let break_attr = if index + 1 < lines.len() { " data-comot-break=\"1\"" } else { "" };
         write!(
             out,
             "<tspan x=\"{}\" y=\"{}\"{break_attr}>{}</tspan>",

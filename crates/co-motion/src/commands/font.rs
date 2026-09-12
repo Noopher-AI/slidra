@@ -139,20 +139,10 @@ fn file_name_for(source: &str, family: &str) -> String {
         .unwrap_or("ttf");
     let cleaned: String = family
         .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '-' })
         .collect();
     let cleaned = cleaned.trim_matches('-').replace("--", "-");
-    let stem = if cleaned.is_empty() {
-        "font".to_string()
-    } else {
-        cleaned
-    };
+    let stem = if cleaned.is_empty() { "font".to_string() } else { cleaned };
     format!("{stem}.{extension}")
 }
 
@@ -179,9 +169,10 @@ fn import(args: &[String]) -> CommandResult {
     // A family may only appear once — the format says so, and a duplicate
     // would silently shadow whichever entry parsed first.
     if let Some(fonts) = project.raw.get("fonts").and_then(Value::as_array) {
-        if fonts.iter().any(|entry| {
-            entry.get("family").and_then(Value::as_str) == Some(parsed.family.as_str())
-        }) {
+        if fonts
+            .iter()
+            .any(|entry| entry.get("family").and_then(Value::as_str) == Some(parsed.family.as_str()))
+        {
             return CommandResult::failure(
                 format!("簡報已內嵌字型家族：{}", parsed.family),
                 FailureKind::Failed,
@@ -240,8 +231,6 @@ fn import(args: &[String]) -> CommandResult {
 
     CommandResult::success(
         format!("已內嵌字型 {}（{}）", parsed.family, font_path),
-        Some(
-            serde_json::json!({ "family": parsed.family, "file": font_path, "licenseFile": license_path }),
-        ),
+        Some(serde_json::json!({ "family": parsed.family, "file": font_path, "licenseFile": license_path })),
     )
 }
