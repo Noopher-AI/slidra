@@ -12,7 +12,7 @@
     <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">Direct manipulation test deck</text>
   </g>
   <g id="el-text" data-slidra-text-width="300" transform="translate(950 100)">
-    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hello Slidra text box test content</tspan></text>
+    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hello Slidra</tspan></text>
   </g>
   <g id="el-group" data-slidra-name="Group" transform="translate(300 550)">
     <g id="el-group-child" data-slidra-name="Group Child" transform="translate(0 0)">
