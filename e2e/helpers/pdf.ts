@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser } from "playwright";
 
 /**
- * Test-only PDF reader (NOOP-93 §6.3): page count and per-page rasterized
+ * Test-only PDF reader: page count and per-page rasterized
  * screenshots, via `pdfjs-dist` (a root `devDependency` — production code
  * must never import it, this file included only under `e2e/`).
  *
