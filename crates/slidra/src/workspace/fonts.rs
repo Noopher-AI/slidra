@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! A presentation's embedded font book, ported from
 //! `packages/core/src/fonts.ts`'s `resolvePresentationFonts` — the half of
 //! that file the write path needs. `measurePresentationText`'s

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Barrel for the text-layout engine (NOOP-278), ported from
 //! `packages/core/src/text/` and `packages/core/src/text-metrics.ts`.
 //! Mirrors `packages/core/src/text/index.ts`'s re-export surface, plus

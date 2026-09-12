@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! SVG transform maths, ported from `packages/core/src/geometry/transform.ts`.
 //! This is the single implementation of "where is this element, really"
 //! (ADR-0012: absolute coordinates come from multiplying the container

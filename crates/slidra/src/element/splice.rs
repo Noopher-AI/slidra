@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The splice primitives every pure mutation function in `element::edit`,
 //! `element::group`, `element::arrange`, and `element::clipboard` builds its
 //! output from. Ported from four near-identical copies TS keeps (in

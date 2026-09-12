@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Icon } from "../icons/index.js";
 import { useCloseFloatingLayer } from "./use-floating-layer.js";

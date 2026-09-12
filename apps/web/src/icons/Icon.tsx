@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { CSSProperties } from "react";
 import { ICON_REGISTRY, type IconName } from "./registry.js";
 

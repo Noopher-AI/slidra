@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `element group` / `element ungroup` / `element name set` — the container
 //! structure commands (ADR-0012 nested groups), ported from
 //! `packages/core/src/element-group.ts` (plan section 1.1, phase P3).

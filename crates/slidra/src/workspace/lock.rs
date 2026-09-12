@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Per-presentation advisory lock.
 //!
 //! Every `slidra` invocation that names a presentation holds this lock

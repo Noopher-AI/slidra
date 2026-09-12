@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * The titlebar's own read of `/api/presentation` (ticket #51). Deliberately
  * duplicates overview.ts's fetch of the same endpoint rather than sharing a

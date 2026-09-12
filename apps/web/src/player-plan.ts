@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Seam C's parent half (C3 in the design doc): slide markup in, a play
  * plan out. All derivation logic lives here in the parent, where it is

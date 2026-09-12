@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Shared "no accent set" fallback for inserted elements (decision
  * 7, verbatim): a dark page gets a light `fill`/`stroke`, a light page gets

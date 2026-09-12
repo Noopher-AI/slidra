@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { SlashCommandOption } from "./slash-commands.js";
 
 /** core's own `SaveState` shape (`workspace.ts`), restated here rather than imported: the browser bundle no longer depends on core at all. */

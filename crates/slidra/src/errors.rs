@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Shared error type for the Rust engine. The two variants here exist
 //! purely so that `undo`/`redo` can map "no such presentation" to
 //! `FailureKind::NotFound` (see result.rs) without string-matching the

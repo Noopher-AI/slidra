@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Third-party video embeds (YouTube) — the web's own copy of
  * core's `embed.ts` URL recognition helpers (F8, NOOP-289). Pure

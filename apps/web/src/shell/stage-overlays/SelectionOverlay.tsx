@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 export interface SelectionOverlayProps {
   /** The selection's union box, `.stage-overlays`-relative px; `null` when nothing is selected. */
   union: { x: number; y: number; width: number; height: number } | null;

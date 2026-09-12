@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with Slidra
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Slidra version
+      description: Output of `slidra --version`
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "e.g. macOS 15.1, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent used
+      options:
+        - Claude Code
+        - Codex
+        - Other
+        - None (manual/CLI only)
+    validations:
+      required: true
+  - type: textarea
+    id: slidra-file
+    attributes:
+      label: Minimal .slidra file
+      description: The smallest `.slidra` file that reproduces the problem.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: check-output
+    attributes:
+      label: "`slidra check --json` output"
+      render: json

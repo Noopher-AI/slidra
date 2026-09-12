@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `asset import` argv parsing.
 //!
 //! There was no existing TS `argv.ts` `case "asset"` to port field-for-field

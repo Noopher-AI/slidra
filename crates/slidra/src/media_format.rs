@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Media format byte-header detection — ported from
 //! `packages/core/src/media-format.ts` (NOOP-90/T4, ADR-0015): one
 //! extension/MIME/kind entry per format, plus a byte-signature detector

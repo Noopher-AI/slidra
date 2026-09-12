@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `formatSvgNumber`, ported from `packages/core/src/svg-number.ts` (10
 //! lines in TS, all of it subtle):
 //!

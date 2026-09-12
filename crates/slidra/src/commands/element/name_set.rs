@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra element name set` argv layer. Unlike `argv.ts`'s runtime
 //! `sub === "name"` then `args[0] !== "set"` check, `resolve_takeover`
 //! already matched the full three-token `["element", "name", "set"]`

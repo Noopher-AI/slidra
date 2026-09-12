@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Undo/redo for presentation content. Ported from
 //! `packages/core/src/history.ts`, full file. The previous ticket ported
 //! only the read/apply half (`stack.json`/`snapshots/` storage, the

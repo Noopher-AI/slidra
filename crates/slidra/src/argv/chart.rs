@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `chart` family argv parsing, ported from `packages/cli/src/argv.ts`'s
 //! `case "chart":` block (lines 664-777) — flag names, positional order,
 //! and every error message are ported verbatim from that range.

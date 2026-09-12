@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `text set` / `text style set` / `text list set` / `textbox add` /
 //! `textbox width` / `textbox align` (plan section 1.1, phase P6). Ported
 //! from `packages/core/src/element-text.ts` and the pure-logic half of

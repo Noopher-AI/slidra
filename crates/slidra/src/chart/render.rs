@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `render_chart_svg(model) -> String`: the ONE place a chart's pixels get
 //! computed, ported from `packages/core/src/chart/render.ts` (311 lines).
 //! Geometry is carried over from the prototype's `chartSvg`, extended with

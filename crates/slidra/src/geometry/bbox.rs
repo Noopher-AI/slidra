@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Bounding boxes.
 //! Together with `transform.rs` this is the whole of "where is this
 //! element, and how big is it" — one implementation, so a CLI-side answer

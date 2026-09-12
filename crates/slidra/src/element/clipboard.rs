@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `element copy` / `element cut` / `element paste` / `element duplicate`
 //! (plan section 1.1, phase P7) — this ticket's
 //! technically riskiest phase (plan section 0): a from-scratch allowlist

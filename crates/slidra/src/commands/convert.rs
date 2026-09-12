@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra convert <presentation-id>`. Every slide is read and
 //! normalised BEFORE anything is written, so one unconvertible slide aborts
 //! the run with not a single byte written; the write loop rolls already-

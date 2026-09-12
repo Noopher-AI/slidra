@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra slide add|set|delete|duplicate|move|notes set|style set|
 //! transition set|render`.
 

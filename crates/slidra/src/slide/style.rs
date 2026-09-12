@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `PageStyle` + `readSlidePageStyle`. Only the READ half is implemented —
 //! `slide/format.rs`'s `SlideModel.page_style` is currently the only
 //! caller. Writing the page style needs a splice-based rewrite helper

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra element group` argv layer.
 
 use crate::commands::argv::{require_id_list, require_id_positional, require_positional};

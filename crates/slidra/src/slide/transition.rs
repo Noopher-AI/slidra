@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Per-page enter/exit transitions (`slide transition set`), ported from
 //! `packages/core/src/slide/transition.ts` (full file): a pure
 //! `svg_content -> ...` splice reader/writer, modeled on `notes.rs`. Lives

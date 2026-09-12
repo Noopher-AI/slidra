@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Single source of truth for "what is a legal effect item": the value
 //! sets, per-attribute validation, and step derivation. `effects::edit` is
 //! the reader/writer half, built on these types.

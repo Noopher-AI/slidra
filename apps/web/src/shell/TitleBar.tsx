@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useRef } from "react";
 import { Icon } from "../icons/index.js";
 import { ExportPanel, type ExportUiState } from "./ExportPanel.js";

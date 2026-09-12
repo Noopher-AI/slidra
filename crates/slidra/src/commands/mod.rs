@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The takeover table: the exact, closed set of `argv[0]` names this binary
 //! dispatches itself. `serve`/`export` are the two names `main.rs` execs
 //! Node for instead (`node_entry.rs` — a normative entry point per spec,

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The normal-form slide model.
 //!
 //! The single answer to "what is a compliant slide" (ADR-0012). The normal

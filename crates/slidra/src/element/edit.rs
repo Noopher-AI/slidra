@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `element insert` / `delete` / `move` / `rotate` / `order` / `lock` /
 //! `unlock` — ported from `packages/core/src/element-edit.ts` (plan section
 //! 1.1, phase P3; `scale`/`resize`/`style set` are the same TS file's

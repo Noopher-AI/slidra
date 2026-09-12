@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { watch as fsWatch } from "node:fs";
 import { SlidraError } from "./slidra/errors.js";
 import { workDirFor } from "./slidra/home.js";

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import path from "node:path";
 import { SlidraNotFoundError } from "./errors.js";
 import { maxMtimeInDirectory, readProjectsRegistry } from "./home.js";

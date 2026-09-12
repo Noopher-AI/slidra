@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra asset import <presentation-id> <source> [--as csv]` — copies
 //! or downloads a media (or, with `--as csv`, data) asset into the
 //! presentation's `assets/` (or `assets/data/`) directory (NOOP-90/T4,

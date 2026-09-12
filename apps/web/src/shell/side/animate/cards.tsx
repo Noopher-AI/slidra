@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectName, type EffectStart } from "../../../effects.js";
 import { Icon } from "../../../icons/index.js";
 import type { Effect } from "../../../effects.js";

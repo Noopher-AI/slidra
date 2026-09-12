@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The Rust binary's only remaining reliance on Node: `docs/spec/cli.md`'s
 //! "## Entry points that bypass the registry: serve and export" is normative — `serve` and
 //! `export` are not CLI commands with a `data` shape, they start a

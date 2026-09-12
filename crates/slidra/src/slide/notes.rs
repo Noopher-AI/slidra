@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Speaker notes (`slide notes set`): a pure string -> string splice — every
 //! other byte of `svg_content` is preserved exactly. Notes live in the same
 //! `<metadata>` a slide's `<slidra:effects>`/`<slidra:transition>` use, as

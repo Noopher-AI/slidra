@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Resolves every font a presentation embeds, keyed by font-family (plan
 //! section 3.2). This is what the text write path (`textbox add`/`text
 //! set`/`text style set`/`text list set`/`element style set`) needs to pick

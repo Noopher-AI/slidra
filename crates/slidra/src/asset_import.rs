@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `asset import`'s pure decisions (format detection dispatch, filename
 //! sanitization/conflict resolution). No I/O here: reading the source (a
 //! local path or a URL) and writing the result into `assets/`/`assets/data/`

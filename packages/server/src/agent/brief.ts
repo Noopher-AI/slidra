@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Builds the "editorial brief": Slidra's own opening message to
  * whichever agent is connected, sent as a plain user message before the

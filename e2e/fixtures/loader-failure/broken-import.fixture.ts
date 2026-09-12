@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 // Deliberately broken: used by loader-failure-guard.test.ts to prove that a
 // file that fails to *load* still fails the run, not just a file whose
 // assertions fail. Named `.fixture.ts`, not `.test.ts`, so the main

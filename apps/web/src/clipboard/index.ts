@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 export { classifyClipboardText, type ClipboardTextKind } from "./payload.js";
 export {
   copyCommandFor,

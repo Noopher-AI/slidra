@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `themedCellStyle`, ported from `packages/core/src/table/theme.ts` (73
 //! lines, ported in full).
 //!

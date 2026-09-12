@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Shared argv parsing helpers for the command handlers in `commands/`
 //! (`require_positional`/`is_flag_like`/`require_flag`/`optional_flag`/
 //! `require_number_flag`/`has_flag`). Every function at THIS module's root

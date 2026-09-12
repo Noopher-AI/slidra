@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Table/Chart/Image-caption skeletons (§1/§2): the repo has no
  * table or chart element kind at all (`SlideElementKind` — `format.ts`), and

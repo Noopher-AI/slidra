@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `renderTextBoxContent`, ported from `packages/core/src/text/render.ts`
 //! (69 lines, ported in full).
 //!

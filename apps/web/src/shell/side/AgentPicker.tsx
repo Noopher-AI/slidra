@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useRef, useState } from "react";
 import type { AgentKind } from "../../live-reload.js";
 import type { AgentCardView, AgentConnection, AgentModelOption, AgentUiStatus } from "../../agent-status.js";

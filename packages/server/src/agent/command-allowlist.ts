@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Recognises a `slidra` invocation written in a shape that is provably
  * free of shell syntax.

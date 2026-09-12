@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { createRequire } from "node:module";
 import { accessSync, chmodSync, constants, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path, { dirname } from "node:path";

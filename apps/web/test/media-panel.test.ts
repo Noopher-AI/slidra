@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { embedInsertInput, mediaInsertInput, shouldAutoPlayOnClick } from "../src/shell/dock/panels/media-insert.js";
 

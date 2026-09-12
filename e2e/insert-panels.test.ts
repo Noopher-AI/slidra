@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";

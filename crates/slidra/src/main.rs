@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Entry point. Dispatch order (plan section 4.1) is hand-written here
 //! rather than handed to `clap` for the whole argv: `slidra`'s existing
 //! (Node-side) commands accept a large surface of `--` flags (`--name`,

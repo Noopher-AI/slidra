@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The splice-only reader/writer for `<slidra:effects>`. Ported from
 //! `packages/core/src/effects/edit.ts`. Same conventions as
 //! `slide/format.rs`: pure `svg_content: &str -> SlidraResult<String>`,

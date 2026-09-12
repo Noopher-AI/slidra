@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `presentation canvas set`, ported from
 //! `packages/core/src/presentation-canvas.ts` (full file). Deliberately the
 //! ONE command that never touches an element's own `transform`/geometry —

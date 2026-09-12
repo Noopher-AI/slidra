@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra presentation canvas set <presentation-id> --width <n> --height <n>`.
 
 use crate::errors::SlidraError;

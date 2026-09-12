@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Crate root — wires together the modules ported from `packages/core`
 //! (NOOP-278). Nothing here previously declared any of these as part of the
 //! compiled crate (this file was a bare placeholder comment), so `errors`,

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 // `scan` landed in an earlier commit (NOOP-278's scan/svgnum/transform
 // slice). `format`/`style`/`table_grid` landed in the F2 commit (the
 // slide/format.ts + slide-style.ts + table/model.ts(partial) slice).

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Table model, layout, theme, CSV/markdown parsing, rendering, edit and
 //! clipboard functions — ported from `packages/core/src/table/*.ts` and
 //! `packages/core/src/table-clipboard.ts`. STUB — filled in by NOOP-299

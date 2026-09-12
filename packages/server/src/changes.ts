@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { ServerResponse } from "node:http";
 import { SlidraError } from "./slidra/errors.js";
 import { watchPresentation } from "./watch.js";

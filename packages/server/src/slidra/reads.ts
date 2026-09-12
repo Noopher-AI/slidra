@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { runJsonCommand } from "./command.js";
 import { SlidraError, SlidraNotFoundError } from "./errors.js";
 import { validateMinimalProjectJson, type ProjectJson } from "./project-json.js";

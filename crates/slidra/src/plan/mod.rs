@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `plan/` — the presentation's own plan files (#303, ADR-0018):
 //! `plan/outline.md` (page roster, mode, gate questions, status) and
 //! `plan/design-spec.md` (density, palette, type scale). Each file opens

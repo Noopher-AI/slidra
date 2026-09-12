@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { startServe } from "./serve.js";
 import { readAgentSettings } from "./agent/settings.js";
 import type { AgentKind } from "./agent/adapters.js";

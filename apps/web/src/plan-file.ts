@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Reads the machine-readable head of `plan/outline.md` — the plan
  * file `slidra-plan` writes through `slidra plan set` (contract §1: a

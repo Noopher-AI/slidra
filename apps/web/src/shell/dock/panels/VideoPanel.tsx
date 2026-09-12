@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useState, type ChangeEvent, type DragEvent } from "react";
 import type { CanvasController } from "../../../canvas.js";
 import { embedUrlFor } from "../../../embed.js";

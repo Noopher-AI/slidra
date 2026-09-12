@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Minimal HTTP GET for `asset import <url>` — the only user of the `ureq`
 //! dependency in this crate. Ported from the private `downloadSource`
 //! helper at the bottom of `packages/cli/src/commands/asset-import.ts`

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `table *` command handlers (17 commands), mirroring
 //! `packages/core/src/workspace.ts`'s `createSlideTable`/
 //! `setSlideTableCellText`/`setSlideTableCellStyle`/`mergeSlideTableCells`/

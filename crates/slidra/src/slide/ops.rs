@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Slide- and template-level file orchestration, ported from
 //! `packages/core/src/slide-ops.ts` (the subset this ticket needs: `slide
 //! add / delete / duplicate / move`, `template add / list / rename /

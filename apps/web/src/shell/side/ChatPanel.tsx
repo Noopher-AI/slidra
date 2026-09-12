@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { AgentUiStatus } from "../../agent-status.js";
 import { AgentPicker, type AgentPickerProps } from "./AgentPicker.js";

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `table` family argv parsing: flag names, positional order, the
 //! `level1`/`level2`/`level3` sub-verb dispatch shape for multi-word
 //! commands (`table cell style set`), and every error message.
