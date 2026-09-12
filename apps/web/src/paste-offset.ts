@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * NOOP-275/#156: how far a Ribbon paste (`element paste`) shifts the pasted
  * copy from its source, in SVG user-space units (the canvas viewBox is

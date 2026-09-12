@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Standard base64 (RFC 4648 §4, with `=` padding) — used only by `--json`
 //! output's `content` field (`cat`/`slide render`). Deliberately separate
 //! from `id.rs`'s base64**url** alphabet (no padding, `-`/`_` instead of

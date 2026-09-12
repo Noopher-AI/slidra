@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * [E3.T3] #232/#236: pure logic for the chat input's `/` slash-command
  * menu. Deliberately no React import here — `ChatPanel.tsx` owns the UI

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";

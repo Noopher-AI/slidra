@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * The chat sidebar's `/api/chat/stream` connection (ticket #19).
  *

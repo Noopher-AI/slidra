@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * WCAG 2.x relative-luminance / contrast-ratio maths, shared by the e2e
  * layer (real `getComputedStyle()` colours, always opaque `rgb(...)`) and

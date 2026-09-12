@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Same marker `element-clipboard.ts` writes onto a
  * copied selection's root `<svg>` and reads back to recognise one

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it, vi } from "vitest";
 import { buildConfirmMessage, buildRedoMessage, extractJsonFence, parsePlanOutline } from "../src/plan-file.js";
 

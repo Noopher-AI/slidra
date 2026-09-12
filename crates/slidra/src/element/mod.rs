@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The pure `svgContent: string -> string` mutation layer. Every function
 //! here takes and returns plain SVG text, never touches the filesystem,
 //! and reports every failure as `SlidraError` — the CLI argv

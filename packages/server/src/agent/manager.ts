@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type * as acp from "@agentclientprotocol/sdk";
 import { SlidraError } from "../slidra/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";

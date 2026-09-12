@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `substituteDynamicText`, ported from
 //! `packages/core/src/element-text.ts` lines 1003-1057: replaces
 //! `{{ variableName }}` placeholders with the values in `variables`,

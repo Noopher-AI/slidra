@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `TextRun`, `apply_run_style`, and `read_text_box_runs`.
 //!
 //! ## The UTF-16 index space (critical, load-bearing)

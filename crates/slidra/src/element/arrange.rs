@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `element align` / `element distribute` (ADR-0012, plan section 3.4).
 //! Ported from `packages/core/src/element-arrange.ts`. Both commands only
 //! ever touch the translate component of a target's own container

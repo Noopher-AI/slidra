@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * [E2.T17] plan §4.2: the `ImportedAsset`/kind + canvas-size → `element
  * insert` input conversion, pulled out as a pure function (same reasoning

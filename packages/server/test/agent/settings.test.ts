@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { mkdir, mkdtemp, readFile, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

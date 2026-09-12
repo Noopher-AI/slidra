@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Normalisation (`slidra convert`), ported from
 //! `packages/core/src/slide/normalise.ts` (full file, 234 lines): wraps bare
 //! primitives into `<g>` containers, and moves `id`/`data-slidra-name`/

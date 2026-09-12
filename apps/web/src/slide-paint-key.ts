@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * #303: what the stage actually *paints* of a slide — its markup with every
  * `<metadata>…</metadata>` block removed and trailing whitespace dropped.

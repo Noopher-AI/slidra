@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { EffectName, EffectStart } from "../../../effects.js";
 import { EffectCard, type EffectCardData } from "./cards.js";
 

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect, useState, type ChangeEvent } from "react";
 import type { BackgroundImage, PageStyle } from "../../slide-dom.js";
 import { fetchAssetList, type CanvasController } from "../../canvas.js";

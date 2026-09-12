@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountCanvas } from "../src/canvas.js";
 import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.js";

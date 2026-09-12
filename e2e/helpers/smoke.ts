@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { Browser, Page } from "playwright";
 import { expect } from "vitest";
 import type { RunningServer } from "../../packages/server/src/serve.js";

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 export interface GuideLayerProps {
   /** `.stage-overlays`-relative px (already converted by `OverlayLayer`). */
   guides: { orientation: "v" | "h"; position: number }[];

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useCloseFloatingLayer } from "../use-floating-layer.js";
 

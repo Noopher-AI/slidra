@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra effect add / remove / move / set / list`. Ported from
 //! `packages/cli/src/argv.ts`'s `"effect"` case (argv parsing) plus
 //! `packages/cli/src/commands/effect/*.ts` (handlers) and

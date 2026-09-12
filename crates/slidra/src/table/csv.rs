@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `parseTableCsv`.
 //!
 //! RFC 4180 CSV parsing shared by `table bind`/`table refresh`/`table set

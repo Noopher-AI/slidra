@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 import { INITIAL_PASTE_OFFSET_STATE, PASTE_OFFSET_STEP, clipboardWritten, nextPasteOffset } from "../src/paste-offset.js";
 

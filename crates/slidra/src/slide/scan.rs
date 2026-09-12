@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! A hand-written, offset-carrying SVG scanner, ported from
 //! `packages/core/src/slide/scan.ts` (the one SVG scanner in the TS
 //! codebase, per that file's own header comment — every module that needs

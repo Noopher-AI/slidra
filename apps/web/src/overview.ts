@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Overview: a vanilla DOM module, same style and trust posture as canvas.ts
  * (ADR-0001, ADR-0010). React hands it the aside container once and never

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `renderTableMarkup`, ported from `packages/core/src/table/render.ts` (76
 //! lines, ported in full).
 //!

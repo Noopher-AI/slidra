@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * `packages/server`'s own copy of `packages/core`'s error hierarchy
  * ([E4.T9]/F7 — the server no longer imports `packages/core` at all).

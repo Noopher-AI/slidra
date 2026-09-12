@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Turns a command Slidra refused into one sentence telling the agent what
  * to use instead.

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `textbox *` family: `textbox add` / `textbox width` / `textbox align`.
 //! CLI argv layer only — the pure mutation logic lives at
 //! `crate::element::text`, mirroring the original CLI's own split between

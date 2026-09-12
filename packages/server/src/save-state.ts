@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { readSaveState } from "./slidra/save-state.js";
 import type { ChangeBroadcaster } from "./changes.js";
 

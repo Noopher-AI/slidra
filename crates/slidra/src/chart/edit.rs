@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The container-level splice writers for the `chart` command family.
 //! Every command re-derives the FULL `ChartModel` (`read_chart_model`),
 //! applies one patch, re-validates the WHOLE result (`validate_chart_model`

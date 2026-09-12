@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `.slidra` zip container read/write, using the `zip`/`flate2`
 //! crates in place of `fflate` (§3.6/D2 of the plan — version pinned to
 //! `zip = "7.2.0"`, the newest release this workspace's `rust-toolchain.toml`

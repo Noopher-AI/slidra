@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `measureTextWidth`, ported from `packages/core/src/text-metrics.ts` lines
 //! 591-626 (the `FontMetrics`/`parseFont` half of that file lives in
 //! `font.rs`).

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! TTF/OTF (sfnt) binary parsing, ported from `packages/core/src/text-metrics.ts`
 //! (the `parseFont`/`FontMetrics` half of that file — `measureTextWidth` is
 //! ported separately into `metrics.rs`).

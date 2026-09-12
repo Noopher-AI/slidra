@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountOverview } from "../src/overview.js";
 import { invalidateSlideEffectPlans } from "../src/effects.js";

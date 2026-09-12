@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Pure geometry for the table cell-range overlay, the column-width drag
  * handles, and the cell editor's position (E2.T14, plan §4.5). All inputs

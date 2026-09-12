@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { KeyboardEvent, ReactNode } from "react";
 import type { CanvasController, CanvasState } from "../../canvas.js";
 import { StylePagePanel } from "./StylePagePanel.js";

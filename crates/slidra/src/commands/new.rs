@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra new <path> [--name <name>]`.
 
 use crate::errors::SlidraError;

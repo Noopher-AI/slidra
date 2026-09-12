@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `element *` family: CLI argv layer for the `element` subcommands (plan
 //! section 1.1). Each subcommand's argv parsing + `CommandResult` assembly
 //! lives in its own sibling module — this file only owns the family's

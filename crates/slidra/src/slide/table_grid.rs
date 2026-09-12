@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `TableGrid` plus `describeTableShapeProblem`, ported from
 //! `packages/core/src/table/model.ts` — but deliberately NOT the whole of
 //! that file. `table/model.ts` also owns `TableModel` (cells, header, theme,

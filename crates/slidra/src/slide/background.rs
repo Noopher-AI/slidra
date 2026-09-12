@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra slide background set`: a locked, full-canvas
 //! `<image>` at the very back of a page, marked
 //! `data-slidra-role="background"`, pointing at an SVG (or raster) asset.

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Author comments pinned to an element or a whole slide (ADR-0008, plan
 //! section 1.1, phase P8). Ported from `packages/core/src/slide/comments.ts`
 //! (166 lines, in full) — a pure `svg_content: &str -> String` splice,

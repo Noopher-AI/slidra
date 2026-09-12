@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! XML escaping for text content and attribute values embedded in
 //! `<tspan>`/`<text>` markup.
 //!

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { useEffect } from "react";
 import type { EffectName, EffectStart } from "../../effects.js";
 import type { CanvasController, CanvasState } from "../../canvas.js";

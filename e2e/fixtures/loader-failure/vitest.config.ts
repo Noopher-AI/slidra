@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { defineConfig } from "vitest/config";
 
 // Used only by loader-failure-guard.test.ts's subprocess run. The main

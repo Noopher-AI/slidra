@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `FORMAT_VERSION` and `build_minimal_presentation`,
 //! originally ported from `packages/core/src/presentation.ts` ([E4.T12]
 //! deletes that TypeScript source; Rust is now the sole implementation).

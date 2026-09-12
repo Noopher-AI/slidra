@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Workspace write paths. `write_presentation_file`
 //! (the one door every content-writing command goes through),
 //! `assert_slide_path_listed` (the widened slide-or-template membership

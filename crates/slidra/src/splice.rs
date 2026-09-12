@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `Splice`/`apply_splices`/`set_attr_splice`/`resolve_font`, ported from
 //! `packages/core/src/element-text.ts`'s splice primitives (`Splice`,
 //! `applySplices`, `setAttrSplice`, `resolveFont`). Every slide mutation in

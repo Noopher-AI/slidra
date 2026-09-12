@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra validate <presentation-id> [slide-path]` (#303): runs the
 //! deterministic design rules in `crate::validate` and reports every
 //! failure. Exit code is 1 when there are errors (see `main.rs`) — like

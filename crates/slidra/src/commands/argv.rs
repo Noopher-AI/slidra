@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! Shared argv-parsing helpers for every multi-token command family
 //! (`element`/`text`/`textbox`/`comment`) — mirroring the original CLI's
 //! own private helpers of the same names

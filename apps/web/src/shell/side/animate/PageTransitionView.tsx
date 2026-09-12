@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import type { PageTransitionEffect, SlideTransition } from "../../../effects.js";
 
 /** The value set both `enter` and `exit` share (§4.1) — only the GUI label differs by direction (`ENTER_LABELS`/`EXIT_LABELS` below). */

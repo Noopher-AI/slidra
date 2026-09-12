@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra undo <presentation-id> [extra...]`. Ported to Rust as one of
 //! this ticket's two takeover-table commands (the other is `redo.rs`, which
 //! is this file's near-mirror).

@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Browser-side effect model + route client + cache ([E4.T7]). Replaces the
  * former DOMParser-based `parseEffects`/`deriveSteps` (that computation now

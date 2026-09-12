@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * SVG transform math and drag-snap ("snap to guide") calculation — pure
  * matrix/snap functions (decision G1). The browser no longer has a bundled

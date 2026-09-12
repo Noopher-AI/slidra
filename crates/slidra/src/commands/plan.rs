@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra plan set|list|delete` (ADR-0018): the presentation's
 //! plan files under `plan/`. Reading is `cat <id> plan/outline.md`.
 

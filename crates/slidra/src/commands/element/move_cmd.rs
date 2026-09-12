@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra element move` argv layer. Named `move_cmd` (not `move`) —
 //! `move` is a Rust keyword and cannot be a module identifier.
 

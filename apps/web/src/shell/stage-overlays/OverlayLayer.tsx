@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { CanvasController, CanvasState, ChartWindowState, OverlayState } from "../../canvas.js";
 import { SelectionOverlay } from "./SelectionOverlay.js";

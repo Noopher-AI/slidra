@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! CLI-boundary tests: `slidra`'s argv -> (stdout, stderr, exit code)
 //! contract (plan section 6.2, boundary 1). Runs the REAL compiled binary
 //! via `CARGO_BIN_EXE_slidra` (proving these commands are actually

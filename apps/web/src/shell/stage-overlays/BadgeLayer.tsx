@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 export interface StageBadge {
   target: string;
   /** 1-based, the target's first effect entry position in the file (matches Animate › Object's own card order). */

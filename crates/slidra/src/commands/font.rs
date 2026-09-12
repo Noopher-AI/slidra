@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra font import <presentation-id> <source> --family <name>
 //! --license <text> --source <origin> [--license-file <path-or-url>]` —
 //! embeds an additional font family in the presentation (#303).

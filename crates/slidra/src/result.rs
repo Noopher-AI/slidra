@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `CommandResult` and stdout/stderr rendering, ported from the contract
 //! `packages/cli/src/bin.ts` `main()` implements (see NOOP-277 plan, section
 //! 4.3). This is the single place that decides what bytes reach stdout/

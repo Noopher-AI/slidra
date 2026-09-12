@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { readSlideComments, type SlideComment } from "./metadata-scan.js";
 
 /** [E2.T8]: a comment read back out with the slide it lives on — mirrors core's `SlideCommentWithPath` without importing the CLI-facing package into the browser bundle. */

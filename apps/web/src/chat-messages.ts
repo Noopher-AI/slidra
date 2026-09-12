@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Pure message-list operations for the chat sidebar (ticket #6, fix 3).
  *

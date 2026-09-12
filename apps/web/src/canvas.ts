@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * The canvas: a vanilla DOM module. React hands it a container element and
  * never touches what ends up inside it (ADR-0001) — the slide is the

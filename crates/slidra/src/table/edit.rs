@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! The container-level rewriters for the `table` command family, ported
 //! from `packages/core/src/table/edit.ts` (785 lines): every command
 //! re-derives the FULL `TableModel` (`read_table_model`), applies one

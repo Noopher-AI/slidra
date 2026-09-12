@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 import { afterEach, describe, expect, it } from "vitest";
 import { startChatStream, type ChatStream } from "../src/chat-stream.js";
 import type { ChatMessage, CommandMessage } from "../src/chat-messages.js";

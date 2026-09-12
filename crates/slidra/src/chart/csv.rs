@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `chart data set --csv` / `--csv-asset`'s parser, ported from
 //! `packages/core/src/chart/csv.ts` (139 lines). RFC 4180 quoted fields (a
 //! series name may legally contain a comma), BOM-stripped (CSV is data, not

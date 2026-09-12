@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Style panel (§4.1-4.3): the eight attributes the panel exposes, and
  * the pure functions that read their current value off a `SlideElement` and

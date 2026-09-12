@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra element insert` argv layer — mirrors `packages/cli/src/
 //! commands/element/insert.ts` + the `"insert"` branch of `argv.ts`'s
 //! `case "element":`. `kind` is validated here, at the argv layer, exactly

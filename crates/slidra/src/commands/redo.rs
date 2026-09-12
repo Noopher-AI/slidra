@@ -1,3 +1,6 @@
+// Copyright 2026 Noopher AI
+// SPDX-License-Identifier: Apache-2.0
+
 //! `slidra redo <presentation-id> [extra...]` — mirrors `undo.rs`; see
 //! its doc comments for the shared rationale (extra positional args ignored,
 //! `--json` already stripped by main.rs, `FailureKind` mapping).
