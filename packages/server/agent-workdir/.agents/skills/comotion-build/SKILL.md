@@ -72,9 +72,9 @@ page-5.note=數字改成 11.8 分鐘
       - **臨時有了圖**：22 `image-left`、23 `image-full-bleed`、24 `image-grid`。
       - **臨時有了一組數據**：27 `chart-focus`、26 `kpi-row`，多組同型用 40 `chart-small-multiples`。
       - **內容其實是循環、漏斗、金字塔或地理分布**：46 `cycle`、47 `funnel`、48 `pyramid`、50 `map`。
-      換版面就要**同步改 `blueprint.shape`、`nodes` 與 `steps`**（`plan set outline` 寫回），否則 `validate` 的 `blueprint.*` 會抓到兩邊不一致——那正是它存在的目的。**素材還不存在時不要先排版**：不要放佔位圖、不要編數字，先用不需要素材的版面，素材到了再 `slide set --svg` 換掉。
+      換版面就要**同步改 `blueprint.shape`、`nodes` 與 `steps`**（`plan set outline` 寫回），否則 `validate` 的 `blueprint.*` 會抓到兩邊不一致——那正是它存在的目的。那一頁**已經畫出來**時，`plan set` 會擋下這個改動，要在命令最後加 `--force`，並在最後的回報裡告訴作者你換了版面、為什麼。**素材還不存在時不要先排版**：不要放佔位圖、不要編數字，先用不需要素材的版面，素材到了再 `slide set --svg` 換掉。
 
-   6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。`validate` 會拿步驟 1 的 `blueprint` 跟實際頁面對帳——`blueprint.nodes` 是畫出來的 node 數不符、`blueprint.steps` 是點擊步數不符。**兩邊不一致時先問哪一邊對**：頁面畫錯就改頁面，構圖當初想錯就改 `blueprint`（用 `plan set outline` 寫回），不要留著不管，也不要為了讓數字好看而亂改構圖。然後補這一頁的收尾：
+   6. **檢視頁面**：`co-motion validate <presentation-id> slides/00N.svg` 要 0 錯誤。`validate` 會拿步驟 1 的 `blueprint` 跟實際頁面對帳——`blueprint.nodes` 是畫出來的 node 數不符、`blueprint.steps` 是點擊步數不符。**頁面一旦畫出來，那一頁的 `blueprint` 就是唯讀的**：對帳對不上就是改頁面——`nodes` 不符就補或拿掉 node，`steps` 不符就補或拿掉 `on-click`。`plan set outline` 會擋下已畫頁面的 `blueprint` 改動，這是刻意的：畫完再回頭改構圖數字，這兩條規則就只是在對事後補的答案卡。構圖當初真的想錯了（例如整頁換了版面），加 `--force` 改，並且**在最後的回報裡告訴作者你改了什麼、為什麼**。然後補這一頁的收尾：
       - `co-motion slide notes set <presentation-id> slides/00N.svg '<計畫裡的備忘稿，2～5 句口語>'`。
       - 該頁型第一次出現：`co-motion template add <presentation-id> --from slides/00N.svg --name <頁型名>`（cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`）。之後同頁型仍然照這六步重寫整頁（不用範本複製再改字，改字容易漏掉條數與動畫），範本是給作者在 New 面板用的。
 
@@ -82,7 +82,7 @@ page-5.note=數字改成 11.8 分鐘
 6. **逐頁建置**：依 `pages` 的順序，一頁做完再做下一頁。頁面只放計畫裡的「頁面關鍵詞」，完整的句子、論證、數據解釋全部進備忘稿。**字數門檻（presentation：標題 ≤ 24 字、每條 ≤ 32 字且 ≤ 2 行、2～7 條、全頁 ≤ 1000 字；其他密度 `validate` 會告訴你）是「明顯誇張」的底線，不是目標**——好的頁面通常遠比它短，但沒有超過就不要為了更短而犧牲把話講清楚。大數字頁的數字、任何名稱與日期只能來自計畫。
 7. **整份轉場**：`animation` 不是 `none` 時，第 1 頁一做完就先下一次 `co-motion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（不然第一頁閘門的 `validate` 一定報 `motion.transition`），全部頁面做完再下一次，讓後加的頁也有轉場。
 8. **全份驗證，修到 0 錯誤**：`co-motion validate <presentation-id>`。讀 `data.errors[]`，每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`：
-   - `text.*`：改短關鍵詞或把句子搬進備忘稿；條數超過就拆頁（同時用 `plan set outline` 補一頁進計畫，`status` 維持 `confirmed`）。單一文字框的字可以用 `text set` 改，改動多就整頁 `slide set --svg` 重寫。
+   - `text.*`：改短關鍵詞或把句子搬進備忘稿；條數超過就拆頁（同時用 `plan set outline` 補一頁進計畫，`status` 維持 `confirmed`）。**接在最後面加頁**不受限；插在中間會讓後面每一頁都往後移，`plan set` 會擋下來，要加 `--force`。單一文字框的字可以用 `text set` 改，改動多就整頁 `slide set --svg` 重寫。
    - `geometry.*`：縮短文字或減少條數，不縮字級、不挪座標。
    - `style.*`：把字級或顏色改回 type_scale／palette 的值（`element style set`）。
    - `structure.*`：補背景、補備忘稿、補登記範本；`structure.scrim` 是某個文字框沒有墊 scrim——照第 4b 節：先看這段文字能不能歸進某個 `field`，不能才替它加一塊涵蓋它的 scrim rect（放在那個文字框之前），然後 `slide set --svg` 整頁重寫，再重新下背景圖與動畫。
@@ -103,7 +103,7 @@ page-5.note=數字改成 11.8 分鐘
 ## 不可做的事
 
 - **計畫未確認不動手**：`status` 不是 `confirmed` 且訊息沒帶【計畫確認】時，只回一句話。
-- **不改計畫的內容判斷**：頁的主張、順序、模式以確認過的計畫為準；只有 `validate` 逼你拆頁時才改 `pages`，而且要寫回檔案。
+- **不改計畫的內容判斷**：頁的主張、順序、模式以確認過的計畫為準；只有 `validate` 逼你拆頁時才改 `pages`，而且要寫回檔案。計畫確認之後，`mode`／`animation`／`background`、既有頁的 `relationship`／`rhythm`／`title`、以及刪頁，`plan set` 一律擋下——這些是作者在閘門上答過的題目，要改就回頭問作者，不要自己加 `--force` 繞過去。
 - **不把整段講稿放上頁面**：一條要點佔到三行、或長得像完整論證，就改短並把句子搬進備忘稿。（門檻見步驟 6：那是底線不是目標。）
 - **不自己發明錨點**：配色、字級、安全區、欄間距與間距級距一律取自 `design-spec`——**這幾樣全份一致，不可以逐頁調整**。座標與版面本身不在此列（見步驟 4.3）。背景圖只用第 4b 節的四種配方，不畫插圖、不放圖示、不讓背景承載意義；不自己放 `<tspan>`、不用 `<script>`、不加 rect 框線與陰影。
 - **不逐元素拼頁**：`textbox add`／`element insert` 只用來微調一個元素；整頁一律用 `--svg` 寫。

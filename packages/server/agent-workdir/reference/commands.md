@@ -287,8 +287,9 @@
 
 ## plan set
 
-**參數**：`<presentation-id>` `<name>`（`outline` 或 `design-spec`）`<content>`（檔案全文，開頭是一個 ```` ```json ```` 圍欄，其後接 markdown 正文）。
+**參數**：`<presentation-id>` `<name>`（`outline` 或 `design-spec`）`<content>`（檔案全文，開頭是一個 ```` ```json ```` 圍欄，其後接 markdown 正文）、`--force`（選填，只能接在 `<content>` 後面）。
 **用途**：寫入 `plan/outline.md` 或 `plan/design-spec.md`；寫入前驗證 JSON 段的欄位，不合就拒絕。讀取用 `cat <presentation-id> plan/outline.md`。不進 undo 歷史。
+計畫 `status` 已經是 `confirmed` 時，outline 有一份受保護的欄位：`mode`、`animation`、`background`、既有頁的 `relationship`／`rhythm`／`title`、不能刪頁，以及**已經畫出來的那一頁的 `blueprint`**；改這些要加 `--force`。第一次寫某頁的 `blueprint`、改還沒畫的頁、改 `type`、在最後面加頁都不受限。
 **範例**：`co-motion plan set <presentation-id> outline '<全文>'`
 
 ## presentation canvas set
