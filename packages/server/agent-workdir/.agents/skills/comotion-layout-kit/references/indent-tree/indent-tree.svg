@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<text x="120" y="220" font-size="28" fill="#2E2E2E" font-weight="700">Root: one whole</text><line x1="140" y1="240" x2="140" y2="560" stroke="#BFBFBF" stroke-width="2"/><line x1="140" y1="310" x2="210" y2="310" stroke="#BFBFBF" stroke-width="2"/><text x="232" y="319" font-size="24" fill="#777777">Child 1</text><line x1="140" y1="420" x2="210" y2="420" stroke="#BFBFBF" stroke-width="2"/><text x="232" y="429" font-size="24" fill="#777777">Child 2</text><line x1="140" y1="560" x2="210" y2="560" stroke="#BFBFBF" stroke-width="2"/><text x="232" y="569" font-size="24" fill="#777777">Child 3</text><line x1="268" y1="430" x2="268" y2="500" stroke="#DDDDDD" stroke-width="2"/><line x1="268" y1="500" x2="338" y2="500" stroke="#DDDDDD" stroke-width="2"/><text x="360" y="509" font-size="20" fill="#A0A0A0">Grandchild</text><text x="700" y="310" font-size="20" fill="#A0A0A0">Right side can hold a caption or an image</text>
+
+</svg>

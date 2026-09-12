@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="160" y="476" width="220" height="140" fill="#EDEDED" stroke="#BFBFBF"/><text x="270" y="458" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">Value</text><text x="270" y="554" font-size="24" fill="#777777" text-anchor="middle">Stage 1</text><rect x="400" y="376" width="220" height="240" fill="#EDEDED" stroke="#BFBFBF"/><text x="510" y="358" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">Value</text><text x="510" y="504" font-size="24" fill="#777777" text-anchor="middle">Stage 2</text><rect x="640" y="286" width="220" height="330" fill="#EDEDED" stroke="#BFBFBF"/><text x="750" y="268" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">Value</text><text x="750" y="459" font-size="24" fill="#777777" text-anchor="middle">Stage 3</text><rect x="880" y="176" width="220" height="440" fill="#DCDCDC" stroke="#BFBFBF"/><text x="990" y="158" font-size="24" fill="#555555" font-weight="700" text-anchor="middle">Value</text><text x="990" y="404" font-size="24" fill="#777777" text-anchor="middle">Stage 4</text>
+
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<defs>
+<radialGradient id="bg-blob-1" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.55"/>
+<stop offset="0.45" stop-color="var(--primary, #4F8DFF)" stop-opacity="0.2"/>
+<stop offset="1" stop-color="var(--primary, #4F8DFF)" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="bg-blob-2" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="var(--accent, #F5B942)" stop-opacity="0.4"/>
+<stop offset="0.5" stop-color="var(--accent, #F5B942)" stop-opacity="0.12"/>
+<stop offset="1" stop-color="var(--accent, #F5B942)" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="bg-blob-3" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="var(--secondary_accent, #6DD3A5)" stop-opacity="0.3"/>
+<stop offset="1" stop-color="var(--secondary_accent, #6DD3A5)" stop-opacity="0"/>
+</radialGradient>
+</defs>
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<ellipse cx="1120" cy="140" rx="560" ry="420" fill="url(#bg-blob-1)"/>
+<ellipse cx="1000" cy="640" rx="480" ry="320" fill="url(#bg-blob-2)"/>
+<ellipse cx="1300" cy="480" rx="360" ry="300" fill="url(#bg-blob-3)"/>
+  <ellipse cx="1120" cy="120" rx="460" ry="460" fill="var(--primary, #4F8DFF)" opacity="0.12"/>
+  <ellipse cx="1320" cy="440" rx="300" ry="300" fill="var(--primary, #4F8DFF)" opacity="0.06"/>
+  <line x1="760" y1="720" x2="1280" y2="200" stroke="var(--accent, #F5B942)" stroke-width="2" opacity="0.6"/>
+</svg>

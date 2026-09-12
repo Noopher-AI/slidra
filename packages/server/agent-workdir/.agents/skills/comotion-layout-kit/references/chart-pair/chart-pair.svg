@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="176" width="540" height="400" fill="#F1F1F1" stroke="#BFBFBF"/><text x="350" y="386" font-size="22" fill="#777777" text-anchor="middle">Chart A</text><rect x="660" y="176" width="540" height="400" fill="#F1F1F1" stroke="#BFBFBF"/><text x="930" y="386" font-size="22" fill="#777777" text-anchor="middle">Chart B</text><text x="80" y="614" font-size="26" fill="#555555" font-weight="700">Subject A</text><text x="660" y="614" font-size="26" fill="#555555" font-weight="700">Subject B</text>
+
+</svg>

@@ -2,6 +2,26 @@
 //! `packages/core/src/effects/edit.ts`. Same conventions as
 //! `slide/format.rs`: pure `svg_content: &str -> CoMotionResult<String>`,
 //! `scan_document` + splice, re-scan fresh before every mutation.
+//!
+//! # Every offset in this file is a UTF-16 offset
+//!
+//! `ScannedNode`/`ScannedAttribute`'s `start`/`end`/`content_start`/
+//! `content_end` are UTF-16 code-unit offsets (`slide::scan`'s module doc),
+//! NOT Rust byte offsets. Nothing here may slice `svg_content` with one:
+//! every mutation goes through `element::splice::apply_splices` and every
+//! read-back through `text::runs::utf16_slice`, the two places allowed to
+//! convert.
+//!
+//! This is not a style rule. Slicing bytes with a UTF-16 offset lands the
+//! splice *earlier* than intended by one position per non-BMP-safe
+//! character before it, so a slide carrying so much as one line of CJK
+//! speaker notes gets its `<comot:effect>` written into the middle of a
+//! neighbouring attribute value — producing an unparseable slide that
+//! `validate`, `effect list` and even a whole-page `slide set` all then
+//! refuse to touch, leaving `slide delete` + `slide add` as the only way
+//! out. `remove_effects_targeting` was fixed for this once; the other four
+//! write paths (`add`/`remove`/`move`/`set`) kept their own byte-slicing
+//! copy of the primitive until this commit removed it.
 
 use crate::effects::{
     Effect, RawEffectAttributes, allowed_effects, assert_legal_seconds, default_duration_for,
@@ -16,25 +36,20 @@ use crate::text::escape::escape_xml_attr;
 /// Custom namespace the effect list lives in.
 pub const EFFECTS_NS: &str = "https://co-motion.dev/ns";
 
-struct Splice {
-    start: usize,
-    end: usize,
-    text: String,
-}
+// The shared primitive, not a private copy: it takes the same UTF-16
+// offsets `scan_document` hands out and is the one place that converts them
+// to bytes. This file used to define its own `Splice`/`apply_splices` that
+// sliced bytes directly — see the module doc for what that cost.
+use crate::element::splice::{Splice, apply_splices};
 
-fn apply_splices(svg: &str, splices: &[Splice]) -> String {
-    let mut ordered: Vec<&Splice> = splices.iter().collect();
-    ordered.sort_by(|a, b| b.start.cmp(&a.start));
-    let mut result = svg.to_string();
-    for splice in ordered {
-        result = format!(
-            "{}{}{}",
-            &result[..splice.start],
-            splice.text,
-            &result[splice.end..]
-        );
+/// One insertion at a UTF-16 offset — the shape almost every mutation here
+/// needs, and the shape most likely to be written as a raw slice by mistake.
+fn insert_at(offset: usize, text: String) -> Splice {
+    Splice {
+        start: offset,
+        end: offset,
+        text,
     }
-    result
 }
 
 fn require_svg_root(roots: &[ScannedNode]) -> CoMotionResult<&ScannedNode> {
@@ -212,19 +227,22 @@ fn with_corrected_namespace(svg_content: &str, list: &ScannedNode) -> String {
         if ns_attr.value == EFFECTS_NS {
             return svg_content.to_string();
         }
-        return format!(
-            "{}xmlns:comot=\"{}\"{}",
-            &svg_content[..ns_attr.start],
-            EFFECTS_NS,
-            &svg_content[ns_attr.end..]
+        return apply_splices(
+            svg_content,
+            &[Splice {
+                start: ns_attr.start,
+                end: ns_attr.end,
+                text: format!("xmlns:comot=\"{EFFECTS_NS}\""),
+            }],
         );
     }
-    let insert_at = list.start + 1 + "comot:effects".len();
-    format!(
-        "{} xmlns:comot=\"{}\"{}",
-        &svg_content[..insert_at],
-        EFFECTS_NS,
-        &svg_content[insert_at..]
+    let after_tag_name = list.start + 1 + "comot:effects".len();
+    apply_splices(
+        svg_content,
+        &[insert_at(
+            after_tag_name,
+            format!(" xmlns:comot=\"{EFFECTS_NS}\""),
+        )],
     )
 }
 
@@ -244,23 +262,13 @@ fn insert_effect_items(
                 let block = format!(
                     "<metadata><comot:effects xmlns:comot=\"{EFFECTS_NS}\">{items_markup}</comot:effects></metadata>"
                 );
-                format!(
-                    "{}{}{}",
-                    &svg_content[..svg_root.content_start],
-                    block,
-                    &svg_content[svg_root.content_start..]
-                )
+                apply_splices(svg_content, &[insert_at(svg_root.content_start, block)])
             }
             Some(metadata) => {
                 let block = format!(
                     "<comot:effects xmlns:comot=\"{EFFECTS_NS}\">{items_markup}</comot:effects>"
                 );
-                format!(
-                    "{}{}{}",
-                    &svg_content[..metadata.content_start],
-                    block,
-                    &svg_content[metadata.content_start..]
-                )
+                apply_splices(svg_content, &[insert_at(metadata.content_start, block)])
             }
         });
     };
@@ -272,16 +280,14 @@ fn insert_effect_items(
     let refreshed_list = refreshed_located.list.expect("just confirmed present");
     let items = effect_nodes_of(refreshed_list);
     let index = validate_insert_index(requested_index, items.len())?;
-    let insert_at = if index == items.len() + 1 {
+    let offset = if index == items.len() + 1 {
         refreshed_list.content_end
     } else {
         items[index - 1].start
     };
-    Ok(format!(
-        "{}{}{}",
-        &fixed[..insert_at],
-        items_markup,
-        &fixed[insert_at..]
+    Ok(apply_splices(
+        &fixed,
+        &[insert_at(offset, items_markup.to_string())],
     ))
 }
 
@@ -407,7 +413,14 @@ pub fn remove_effects(
         let fresh_svg_root = require_svg_root(&fresh_roots)?;
         let fresh_list = require_effects_list(fresh_svg_root)?;
         let node = effect_nodes_of(fresh_list)[index as usize - 1];
-        current = format!("{}{}", &current[..node.start], &current[node.end..]);
+        current = apply_splices(
+            &current,
+            &[Splice {
+                start: node.start,
+                end: node.end,
+                text: String::new(),
+            }],
+        );
     }
     Ok(current)
 }
@@ -448,8 +461,11 @@ pub fn move_effect(
     let hi = index.max(other_index) as usize - 1;
     let first = items[lo];
     let second = items[hi];
-    let first_text = svg_content[first.start..first.end].to_string();
-    let second_text = svg_content[second.start..second.end].to_string();
+    // Read back through `utf16_slice`, not `svg_content[a..b]` — these are
+    // UTF-16 offsets, and byte-slicing them either panics on a char
+    // boundary or silently lifts the wrong span.
+    let first_text = crate::text::runs::utf16_slice(svg_content, first.start, first.end);
+    let second_text = crate::text::runs::utf16_slice(svg_content, second.start, second.end);
     Ok(apply_splices(
         svg_content,
         &[
@@ -489,12 +505,10 @@ fn attr_splice(node: &ScannedNode, name: &str, value: &str) -> Splice {
             text: format!("{name}=\"{escaped}\""),
         }
     } else {
-        let insert_at = node.start + 1 + node.tag.len();
-        Splice {
-            start: insert_at,
-            end: insert_at,
-            text: format!(" {name}=\"{escaped}\""),
-        }
+        insert_at(
+            node.start + 1 + node.tag.len(),
+            format!(" {name}=\"{escaped}\""),
+        )
     }
 }
 
@@ -948,6 +962,154 @@ mod tests {
             updated,
             r#"<svg viewBox="0 0 100 100"><title>投影片標題文字</title><metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#
         );
+    }
+
+    // The same regression, for the four write paths that kept slicing bytes
+    // with a UTF-16 offset until this commit. One CJK character is 1 UTF-16
+    // unit but 3 UTF-8 bytes, so every one of these landed its splice short
+    // of the intended position — in practice, inside a neighbouring
+    // attribute value, producing a slide nothing could parse afterwards.
+    //
+    // Each case re-parses its own output: an assertion on the exact string
+    // would pass just as well if the splice were merely *differently*
+    // wrong, but a document that scans back to the effects we asked for
+    // cannot be corrupt.
+
+    /// A slide carrying CJK speaker notes — the shape that made this bug
+    /// reachable from ordinary use, since every Chinese deck has them.
+    fn with_cjk_notes(items: &str) -> String {
+        format!(
+            r#"<svg viewBox="0 0 100 100"><metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">這是一段中文備忘稿，用來把效果清單往後推。</comot:notes><comot:effects xmlns:comot="https://co-motion.dev/ns">{items}</comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g><g id="el2"><rect width="1" height="1"/></g></svg>"#
+        )
+    }
+
+    const ITEM_EL1: &str = r#"<comot:effect target="el1" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>"#;
+    const ITEM_EL2: &str = r#"<comot:effect target="el2" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>"#;
+
+    #[test]
+    fn add_effects_lands_in_the_right_place_when_cjk_notes_precede_the_list() {
+        let svg = with_cjk_notes(ITEM_EL1);
+        let updated = add_effects(
+            &svg,
+            "slides/001.svg",
+            &["el2".to_string()],
+            &AddEffectInput {
+                family: "enter".to_string(),
+                effect: "fade".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let effects = read_effect_list(&updated, "slides/001.svg").unwrap();
+        assert_eq!(effects.len(), 2);
+        assert_eq!(effects[0].target, "el1");
+        assert_eq!(effects[1].target, "el2");
+    }
+
+    #[test]
+    fn add_effects_corrects_the_namespace_at_the_right_place_after_cjk() {
+        let svg = r#"<svg viewBox="0 0 100 100"><metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">中文備忘稿</comot:notes><comot:effects xmlns:comot="https://schemas.comotion.app/effects"></comot:effects></metadata><g id="el1"><rect width="1" height="1"/></g></svg>"#;
+        let updated = add_effects(
+            svg,
+            "slides/001.svg",
+            &["el1".to_string()],
+            &AddEffectInput {
+                family: "enter".to_string(),
+                effect: "fade".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(updated.contains(&format!("xmlns:comot=\"{EFFECTS_NS}\"")));
+        assert!(!updated.contains("schemas.comotion.app"));
+        assert_eq!(
+            read_effect_list(&updated, "slides/001.svg").unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn remove_effects_removes_the_right_item_when_cjk_notes_precede_the_list() {
+        let svg = with_cjk_notes(&format!("{ITEM_EL1}{ITEM_EL2}"));
+        let updated = remove_effects(&svg, "slides/001.svg", &[1]).unwrap();
+
+        let effects = read_effect_list(&updated, "slides/001.svg").unwrap();
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].target, "el2");
+    }
+
+    #[test]
+    fn move_effect_swaps_the_right_spans_when_cjk_notes_precede_the_list() {
+        let svg = with_cjk_notes(&format!("{ITEM_EL1}{ITEM_EL2}"));
+        let updated = move_effect(&svg, "slides/001.svg", 1, "down").unwrap();
+
+        let effects = read_effect_list(&updated, "slides/001.svg").unwrap();
+        assert_eq!(effects.len(), 2);
+        assert_eq!(effects[0].target, "el2");
+        assert_eq!(effects[1].target, "el1");
+    }
+
+    #[test]
+    fn set_effect_edits_the_right_attribute_when_cjk_notes_precede_the_list() {
+        let svg = with_cjk_notes(ITEM_EL1);
+        let updated = set_effect(
+            &svg,
+            "slides/001.svg",
+            1,
+            &SetEffectInput {
+                duration: Some(1.25),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let effects = read_effect_list(&updated, "slides/001.svg").unwrap();
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].duration, 1.25);
+    }
+
+    /// The exact corruption seen in the wild (a real session's
+    /// `slides/001.svg`): the second `effect add` on a slide that had
+    /// gained CJK notes since the first one spliced itself into the middle
+    /// of `xmlns:comot="https://co-motion.dev/ns"`, splitting it into
+    /// `…co-motion.d` + `ev/ns` and leaving a document no command could
+    /// parse again.
+    #[test]
+    fn add_effects_twice_around_a_notes_edit_never_writes_into_an_attribute_value() {
+        const TWO_ELEMENTS: &str = r#"<svg viewBox="0 0 100 100"><g id="el1"><rect width="1" height="1"/></g><g id="el2"><rect width="1" height="1"/></g></svg>"#;
+        let first = add_effects(
+            TWO_ELEMENTS,
+            "slides/001.svg",
+            &["el1".to_string()],
+            &AddEffectInput {
+                family: "enter".to_string(),
+                effect: "fade".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let with_notes =
+            crate::slide::notes::set_slide_notes(&first, "這座島從此進入世界的視野。").unwrap();
+        let second = add_effects(
+            &with_notes,
+            "slides/001.svg",
+            &["el2".to_string()],
+            &AddEffectInput {
+                family: "enter".to_string(),
+                effect: "fade".to_string(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(
+            second.contains(&format!("xmlns:comot=\"{EFFECTS_NS}\"")),
+            "the namespace attribute must survive intact: {second}"
+        );
+        let effects = read_effect_list(&second, "slides/001.svg").unwrap();
+        assert_eq!(effects.len(), 2);
     }
 
     #[test]
