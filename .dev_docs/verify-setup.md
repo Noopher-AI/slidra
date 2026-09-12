@@ -6,8 +6,8 @@ deck, start) aren't repeated here — run `npm run verify:setup --help` to see t
 
 ## Why you have to rebuild every time you touch the frontend
 
-`slidra serve` only reads static files from `packages/web/dist` — there's no dev-server proxy
-(ADR-0002). If you've changed source under `packages/web` but rerun with `--skip-build`, what you see
+`slidra serve` only reads static files from `apps/web/dist` — there's no dev-server proxy
+(ADR-0002). If you've changed source under `apps/web` but rerun with `--skip-build`, what you see
 on screen is the old build output. `--skip-build` is only safe to use when you haven't touched frontend
 source at all.
 

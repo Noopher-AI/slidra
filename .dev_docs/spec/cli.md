@@ -2,7 +2,7 @@
 
 This document is the sole normative reference for the `slidra` command-line tool. The TypeScript engine (`packages/core`/`packages/cli`) has been removed — Rust is now the only implementation, and this document is its sole source of truth. During the period the two implementations coexisted, three known gaps (`asset import`'s argv handling, `chart data set --csv -`, and the `data` shape of `effect list`) were settled, and the Rust implementation follows this spec for all three.
 
-`docs/adr/` records the history of decisions; this document records the current and future normative facts about the command set. Where the two conflict, this document takes precedence.
+`.dev_docs/adr/` records the history of decisions; this document records the current and future normative facts about the command set. Where the two conflict, this document takes precedence.
 
 **Compatibility level 2 frozen surface**: command names, the number and order of positional arguments, flag names, exit codes (0 for success, 1 for failure), and the output bytes of the three renderer commands `cat`, `ls`, and `slide render` — these must be byte-for-byte compatible with the Rust implementation. **Mutable surface**: the success `data` JSON shape of every other command (the settlement of the three known gaps is authoritative in this spec), and the Chinese-language wording of the `message` field (human-readable text, never a pattern-matchable contract).
 
@@ -79,7 +79,7 @@ Currently the **only** substitutable flag is `chart data set`'s `--csv`. `slidra
 
 ## Environment variables
 
-- **`SLIDRA_HOME`**: The workspace root directory outside of `.slidra`, defaulting to `~/.slidra`. This environment variable is re-read on every invocation and is never cached — changing it during the lifetime of the same process takes effect on the next invocation. See `docs/spec/slidra-format.md` for layout details.
+- **`SLIDRA_HOME`**: The workspace root directory outside of `.slidra`, defaulting to `~/.slidra`. This environment variable is re-read on every invocation and is never cached — changing it during the lifetime of the same process takes effect on the next invocation. See `slidra-format.md` for layout details.
 - **`SLIDRA_BIN`**: Before the Rust entry point execs Node (to run `serve`/`export`), it sets its own absolute path into this environment variable. Anywhere on the Node side that needs to spawn the `slidra` command again must use the **same binary** pointed to by this environment variable; if it isn't set, that is an outright error, and there is **no fallback to searching PATH for `slidra`** (the architectural principle of "one binary, one truth": it must never be possible for the Node side to accidentally spawn a different, unrelated `slidra` binary elsewhere on the system).
 - **`SLIDRA_ID_SEED`**: When set, the id generators (`<presentation-id>`/`<element-id>`) switch to deterministic output, for test use only; the literal id format (`el-` prefix + 12-character base64url) does not change as a result. **The actual algorithm behind the deterministic sequence is not part of this spec's contract** — it is left to the implementing crate; the only required external behavior is "setting this environment variable makes the output deterministic, and the format is unchanged."
 
@@ -88,7 +88,7 @@ Currently the **only** substitutable flag is `chart data set`'s `--csv`. `slidra
 - **One operation = one command = one undo step** (ADR-0002). Batch addressing (a single command that touches multiple `<element-id>`s at once) still counts as one step, even though it affects multiple elements internally.
 - **Read-only commands do not enter history**: `cat`, `ls`, `effect list`, `template list`, `comment list` — these commands do not write to disk, do not create a history group, and do not produce an undo step.
 - **One known exception**: `presentation canvas set` does write to `project.json` (changing the canvas dimensions), but is deliberately designed to **not consume any undo step** — this is the one exception to the "one operation, one undo step" rule, on the grounds that canvas size is a presentation-level property rather than a piece of step-revertible content editing.
-- The actual storage location and on-disk format of history is described in the "`~/.slidra/`" section of `docs/spec/slidra-format.md`.
+- The actual storage location and on-disk format of history is described in the "`~/.slidra/`" section of `slidra-format.md`.
 
 ## Entry points that bypass the registry: `serve` and `export`
 
@@ -160,7 +160,7 @@ slidra open <path>
 { "id": "AbCdEfGhIjKl" }
 ```
 
-`id` is a 12-character base64url opaque identifier (see the "element id format" section of `docs/spec/slidra-format.md`; `<presentation-id>` uses the same generator), and is the first positional argument of every subsequent command.
+`id` is a 12-character base64url opaque identifier (see the "element id format" section of `slidra-format.md`; `<presentation-id>` uses the same generator), and is the first positional argument of every subsequent command.
 
 **Error cases**
 
@@ -169,7 +169,7 @@ slidra open <path>
 | The file at `path` does not exist, or fails to read | `failed` |
 | `path` points to something that is not a file (e.g. a directory) | `failed` |
 | The file is not a valid zip (the `.slidra` is corrupted) | `failed` |
-| The decompressed content is missing a parseable `project.json`, or `project.json`'s format does not match the spec (see `docs/spec/slidra-format.md`) | `failed` |
+| The decompressed content is missing a parseable `project.json`, or `project.json`'s format does not match the spec (see `slidra-format.md`) | `failed` |
 | `project.json.formatVersion` is greater than the maximum version this build supports | `failed` |
 | An error occurs while registering the presentation, whether a disk error or an error in the registry file itself (`projects.json`) | `failed` |
 
@@ -192,7 +192,7 @@ slidra pack <presentation-id> <path>
 **Parameters**
 
 - `presentation-id`: string, required, the identifier of an opened presentation.
-- `path`: string, required, the local filesystem path of the output `.slidra` file; if it is the same as the source path originally read by `open`, this `pack` also marks the presentation as "saved" (`~/.slidra/projects.json`'s `savedAt` is updated — see `docs/spec/slidra-format.md`). Writing to any other path is simply a separate save that does not affect the "saved" status.
+- `path`: string, required, the local filesystem path of the output `.slidra` file; if it is the same as the source path originally read by `open`, this `pack` also marks the presentation as "saved" (`~/.slidra/projects.json`'s `savedAt` is updated — see `slidra-format.md`). Writing to any other path is simply a separate save that does not affect the "saved" status.
 
 **Success `data`**
 

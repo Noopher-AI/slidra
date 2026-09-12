@@ -19,7 +19,7 @@ Always cite an ADR by number (`ADR-0002`), never by filename — filenames chang
 | --- | --- | --- |
 | 0001 | SVG is the artifact | Partially superseded → 0016 |
 | 0002 | CLI is the only vocabulary | Partially superseded → 0014; later revised to "a single binary" |
-| 0003 | The `.slidra` container | Partially superseded → 0016; the `transition` field was retired and `formatVersion` moved 2→3, then 3→4, with format details moved to `docs/spec/slidra-format.md` |
+| 0003 | The `.slidra` container | Partially superseded → 0016; the `transition` field was retired and `formatVersion` moved 2→3, then 3→4 under the old TypeScript engine. **Since the Rust rewrite, `FORMAT_VERSION` was reset to 1 with no migration chain** — see `.dev_docs/spec/slidra-format.md` (the current authority) |
 | 0004 | Presentation content is read-only to agents | Partially superseded → 0015; its second layer was overturned by 0019 |
 | 0005 | Step-driven animation | Substantially revised → 0007, 0009 |
 | 0006 | Connecting external agents via ACP | Partially superseded |

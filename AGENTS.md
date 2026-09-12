@@ -4,15 +4,15 @@
 
 ### Issue tracker
 
-Issues and PRDs are tracked via GitHub Issues, operated through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs are tracked via GitHub Issues, operated through the `gh` CLI. See `.dev_docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Reuses the five canonical roles; the label strings match the role names. See `docs/agents/triage-labels.md`.
+Reuses the five canonical roles; the label strings match the role names. See `.dev_docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: root `CONTEXT.md` + `.dev_docs/adr/`. See `.dev_docs/agents/domain.md`.
 
 ## Verification prerequisites
 
@@ -20,7 +20,7 @@ Manual acceptance always starts with `npm run verify:setup` — don't assemble t
 installs, builds, checks prerequisites, prepares a deck, puts the workspace's `node_modules/.bin` on
 PATH, and then starts `serve`. There are two setup modes: with no flag you get the e2e four-slide demo
 (for verifying existing behavior); `--blank` gives you a blank deck (for verifying a from-scratch path).
-Details, and cases this command doesn't cover, are in `docs/verify-setup.md`.
+Details, and cases this command doesn't cover, are in `.dev_docs/verify-setup.md`.
 
 `npm test` (unit tests) already runs `npm run build` as a prerequisite (in the root `package.json`), so
 you don't need to `npm run build` manually beforehand. The tests under `packages/server/test/agent/`
