@@ -1,25 +1,29 @@
-"""F-09：儲存格編輯中按 Tab 跳到下一格，焦點留在同一個
-`INPUT.table-cell-editor`（父票 [E5.T9]／NOOP-354，對應 GitHub #286；本
-案例對應 Execute 階段 NOOP-399）。
+"""F-09: pressing Tab while editing a table cell should jump to the next
+cell, with focus staying on the same `INPUT.table-cell-editor`.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列原語）——這支腳本只用這個清單，不新增原語、不改寫成別的 harness：
+Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+`qa/agent_helpers.py` provides the following primitives) — this script only
+uses this list; it doesn't add new primitives or rewrite itself against a
+different harness:
 
     open_deck() / goto_slide(n) / click_ui(selector) / click_at(x, y) /
     cell_box(row, col) / dblclick(x, y) / active_element() / press(key) /
     type_text(text) / slide_svg(n)
 
-`click_ui`/`click_at`/`cell_box`/`press`/`type_text` 是本輪新增（demo 四
-頁沒有任何表格，必須先從 Dock › Table 插入——照 e2e/table.test.ts 的 E1
-步驟；`qa/agent_helpers.py` 原本也沒有任何打字用的原語）。
+`click_ui`/`click_at`/`cell_box`/`press`/`type_text` are new additions (the
+demo's four pages have no table, so one has to be inserted first via Dock >
+Table — following e2e/table.test.ts's E1 steps; `qa/agent_helpers.py` also
+had no typing primitives before this).
 
-判準：base 上 `TableOverlay.tsx` 的 cell-editor `<input>` 完全沒有處理
-Tab，falls through 到瀏覽器預設行為——焦點離開這個 input，跳到 dock 的
-hand-tool 按鈕（`BUTTON.dock-hand-button`，票面重現的原文），Tab 之後打的
-字沒進到任何地方。分支上 Tab 被攔截：先提交本格，編輯換到下一格，且刻意
-不透過 `setEditing(null)` 中間值卸載再掛載——焦點全程留在同一個
-`INPUT.table-cell-editor`。PASS/FAIL 的判準就是 Tab 之後 `active_element()`
-是不是還是那個 input。
+Judgment criteria: on base, `TableOverlay.tsx`'s cell-editor `<input>` doesn't
+handle Tab at all and falls through to the browser's default behavior —
+focus leaves the input and lands on the dock's hand-tool button
+(`BUTTON.dock-hand-button`), and whatever is typed after Tab goes nowhere. On
+the fix branch, Tab is intercepted: the current cell is committed first, then
+editing switches to the next cell, deliberately without unmounting/
+remounting through a `setEditing(null)` intermediate state — focus stays on
+the same `INPUT.table-cell-editor` throughout. The pass/fail criterion is
+simply whether `active_element()` after Tab is still that same input.
 """
 
 import re
@@ -37,7 +41,7 @@ def check(label: str, ok: bool, actual: object) -> None:
 def _cell_markup(svg: str, row: int, col: int) -> str:
     match = re.search(rf'<g data-slidra-cell="{row},{col}"[^>]*>.*?</g>', svg, re.S)
     if not match:
-        raise RuntimeError(f"找不到儲存格 ({row},{col})")
+        raise RuntimeError(f"could not find cell ({row},{col})")
     return match.group(0)
 
 
@@ -59,20 +63,22 @@ def main() -> int:
     open_deck()  # noqa: F821
     goto_slide(1)  # noqa: F821
 
-    # 從 Dock › Table 插入一張 3×4 表格（e2e/table.test.ts 的 E1 步驟）——
-    # demo 四頁沒有任何表格，Tab 跳格要有格子可跳。
+    # Insert a 3x4 table from Dock > Table (following e2e/table.test.ts's E1
+    # steps) — the demo's four pages have no table, and Tab-jumping needs a
+    # cell to jump to.
     click_ui('button[aria-label="Table"]')  # noqa: F821
     click_ui('.table-panel-cell[aria-label="3 × 4"]')  # noqa: F821
     click_ui(".table-panel-insert")  # noqa: F821
 
     box00 = _poll(lambda: cell_box(0, 0), lambda b: b is not None)  # noqa: F821
     if box00 is None:
-        print("FAIL: cell_box(0, 0) expected=not None actual=None（表格沒插入成功）")
+        print("FAIL: cell_box(0, 0) expected=not None actual=None (table failed to insert)")
         return 1
 
-    # 先點一下再雙擊——一張從未被選取過的表格，第一次雙擊會跟
-    # TableOverlay 自己的 mount effect 賽跑（e2e/table.test.ts E8 的註解已
-    # 記錄這個現象，不是 Tab 功能本身的缺陷）。
+    # Click once before double-clicking — for a table that's never been
+    # selected before, the first double-click can race with TableOverlay's
+    # own mount effect (e2e/table.test.ts E8's comment already documents
+    # this; it's not a defect in the Tab behavior itself).
     click_at(box00["x"] + box00["width"] / 2, box00["y"] + box00["height"] / 2)  # noqa: F821
     dblclick(box00["x"] + box00["width"] / 2, box00["y"] + box00["height"] / 2)  # noqa: F821
 
@@ -80,7 +86,7 @@ def main() -> int:
         lambda: active_element(),
         lambda a: a.get("tag") == "INPUT" and "table-cell-editor" in (a.get("class") or ""),
     )
-    check("雙擊 (0,0) 後進入編輯：active_element() 是 INPUT.table-cell-editor", ae.get("tag") == "INPUT" and "table-cell-editor" in (ae.get("class") or ""), ae)
+    check("double-clicking (0,0) enters edit mode: active_element() is INPUT.table-cell-editor", ae.get("tag") == "INPUT" and "table-cell-editor" in (ae.get("class") or ""), ae)
 
     type_text("A1")  # noqa: F821
     press("Tab")  # noqa: F821
@@ -90,11 +96,11 @@ def main() -> int:
         lambda a: a.get("tag") == "INPUT" and "table-cell-editor" in (a.get("class") or ""),
     )
     check(
-        "Tab 之後：active_element() 仍是 INPUT.table-cell-editor（沒有跑到 dock 的 hand-tool 按鈕）",
+        "after Tab: active_element() is still INPUT.table-cell-editor (didn't land on the dock's hand-tool button)",
         ae_after_tab.get("tag") == "INPUT" and "table-cell-editor" in (ae_after_tab.get("class") or ""),
         ae_after_tab,
     )
-    check("Tab 之後：焦點不在 iframe 裡（cell-editor 的 input 畫在父文件的覆蓋層上）", ae_after_tab.get("in_iframe") is False, ae_after_tab)
+    check("after Tab: focus is not inside the iframe (the cell-editor input is drawn in the parent document's overlay)", ae_after_tab.get("in_iframe") is False, ae_after_tab)
 
     type_text("B1")  # noqa: F821
     press("Enter")  # noqa: F821
@@ -103,15 +109,16 @@ def main() -> int:
         lambda: slide_svg(1),
         lambda svg: ">A1<" in svg and ">B1<" in svg,
     )
-    check("提交後：slide_svg(1) 讀回 (0,0)=A1", ">A1<" in _cell_markup(after, 0, 0), _cell_markup(after, 0, 0))
-    check("提交後：slide_svg(1) 讀回 (0,1)=B1（Tab 打的字真的進到下一格）", ">B1<" in _cell_markup(after, 0, 1), _cell_markup(after, 0, 1))
+    check("after commit: slide_svg(1) reads back (0,0)=A1", ">A1<" in _cell_markup(after, 0, 0), _cell_markup(after, 0, 0))
+    check("after commit: slide_svg(1) reads back (0,1)=B1 (what was typed after Tab actually landed in the next cell)", ">B1<" in _cell_markup(after, 0, 1), _cell_markup(after, 0, 1))
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failure(s)" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use executes the stdin script via exec(code, globals()), so
+# globals()['__name__'] is "browser_harness.run", never "__main__" — the
+# `if __name__ == "__main__"` guard never fires (qa/README.md §2). Call
+# main() unconditionally instead and let the exit code decide the caller's
+# process exit status.
 raise SystemExit(main())

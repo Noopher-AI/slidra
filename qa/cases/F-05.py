@@ -1,20 +1,25 @@
-"""F-05：選取後點投影片外圈的深灰舞台底無法取消選取（父票 NOOP-385/NOOP-351，
-對應 GitHub #283）。
+"""F-05: after selecting an element, clicking the dark-gray stage backdrop
+around the slide fails to clear the selection.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供固定原
-語——見 qa/README.md 與 qa/cases/F-15.py 的說明）。本檔額外用到的
-`click_at_xy(x, y)`／`js(expression)` 不是 slidra 專屬原語，是 browser-use
-核心本來就有的全域（agent_helpers.py 檔頭 docstring 自己說「every top-level
-name not starting with '_' becomes a global... the same way core helpers like
-js()/cdp() are」），用來找出並點擊 `.canvas-area` 減去 `.stage` 的那一圈灰底
-——「投影片外圈的深灰舞台底」在 DOM 上就是這塊，e2e/stage-navigation.test.ts
-的 `gutterPoint()` 已經在用同一個座標公式：
+Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+`qa/agent_helpers.py` provides the fixed primitives — see qa/README.md and the
+notes in qa/cases/F-15.py). This file also uses `click_at_xy(x, y)` /
+`js(expression)`, which are not Slidra-specific primitives but globals that
+browser-use's core already provides (the agent_helpers.py module docstring
+itself says "every top-level name not starting with '_' becomes a global...
+the same way core helpers like js()/cdp() are"), used here to locate and click
+the ring of `.canvas-area` minus `.stage` — the "dark-gray stage backdrop
+around the slide" is exactly this DOM region, and
+e2e/stage-navigation.test.ts's `gutterPoint()` already uses the same
+coordinate formula:
 
     open_deck() / goto_slide(n) / select(name_or_id) / selection() /
     console_errors() / shot(name) / click_at_xy(x, y) / js(expression)
 
-重現（06-KEYBOARD_AND_GESTURES.md「點空白取消」）：選取第 1 頁標題後，點舞台
-外圈一點，base 上選取框、把手、情境列全部留著；本票分支修好後應該清空。
+Repro (06-KEYBOARD_AND_GESTURES.md, "click empty space to deselect"): select
+the title on page 1, then click a point on the stage backdrop — on base, the
+selection box, handles, and context bar all stay put; after the fix they
+should clear.
 """
 
 import time
@@ -42,11 +47,13 @@ def wait_selection_cleared(timeout: float = 2.0) -> dict:
 
 
 def wait_context_bar_gone(timeout: float = 2.0) -> bool:
-    """情境列的 `union` 來自 runtime 一趟 postMessage 來回（selection 命令 ->
-    updateBoxes() -> bounds 事件 -> canvas.ts 的 overlayUnion -> React 重
-    render），比 chip 的清空（同步的 React state）多一段非同步，兩者不會在
-    同一個 tick 內同時完成——`wait_selection_cleared()` 回傳後仍要單獨等這
-    個信號，不能假設已經一起到位。"""
+    """The context bar's `union` comes from one round trip of runtime
+    postMessage (the selection command -> updateBoxes() -> a bounds event ->
+    canvas.ts's overlayUnion -> a React re-render), which is one async hop
+    more than the chip clearing (synchronous React state) — the two don't
+    finish in the same tick, so after `wait_selection_cleared()` returns we
+    still need to wait for this signal separately rather than assume both
+    are already settled."""
     deadline = time.time() + timeout
     present = context_bar_present()
     while time.time() < deadline and present:
@@ -57,19 +64,23 @@ def wait_context_bar_gone(timeout: float = 2.0) -> bool:
 
 def main() -> int:
     open_deck()  # noqa: F821
-    # goto_slide() 重建投影片 iframe（新的 srcdoc），把前一個 browser-use 呼叫
-    # 可能留下的就地編輯狀態（例如 F-02.py 最後一步的雙擊編輯，沒有離開編輯
-    # 就結束）一併重置——同一個瀏覽器分頁跨呼叫共用，不能假設乾淨狀態。
+    # goto_slide() rebuilds the slide iframe (a new srcdoc), which also
+    # resets any inline-editing state a previous browser-use call may have
+    # left behind (e.g. F-02.py's last step doing a double-click edit
+    # without exiting it) — the browser tab is shared across calls, so don't
+    # assume a clean state.
     goto_slide(1)  # noqa: F821
 
-    sel = select("標題")  # noqa: F821
-    check("A-0 選取後狀態列有 chip", sel["chip"] != "", sel["chip"])
-    check("A-1 選取後情境列在 DOM 裡", context_bar_present(), context_bar_present())
+    sel = select("Title")  # noqa: F821
+    check("A-0 status bar shows a chip after selecting", sel["chip"] != "", sel["chip"])
+    check("A-1 context bar is in the DOM after selecting", context_bar_present(), context_bar_present())
 
-    # 舞台外圈：`.canvas-area` 左上角往內 10px——落在 `.canvas-area` 但不在
-    # `.stage`（投影片本體）範圍內，同 e2e/stage-navigation.test.ts 的
-    # `gutterPoint()`。自檢一次這個點真的落在 `.stage` 之外，版面假設錯了就
-    # 直接以非零碼結束，不繼續跑（誤判的 FAIL/PASS 都不可信）。
+    # Stage backdrop: 10px inward from `.canvas-area`'s top-left corner —
+    # inside `.canvas-area` but outside `.stage` (the slide itself), same as
+    # e2e/stage-navigation.test.ts's `gutterPoint()`. Self-check once that
+    # this point is really outside `.stage`; if the layout assumption is
+    # wrong, bail immediately with a nonzero exit rather than keep going
+    # (any PASS/FAIL after that would be untrustworthy).
     backdrop = js(  # noqa: F821
         "(()=>{const w=document.querySelector('.canvas-area');const s=document.querySelector('.stage');"
         "if(!w||!s)return null;const wr=w.getBoundingClientRect();const sr=s.getBoundingClientRect();"
@@ -78,24 +89,25 @@ def main() -> int:
         "return {x:x,y:y,insideStage:insideStage};})()"
     )
     if backdrop is None or backdrop.get("insideStage"):
-        print(f"FAIL A-2 座標自檢：舞台外圈的點落在 .stage 之外才有效，實測 {backdrop!r}")
+        print(f"FAIL A-2 coordinate self-check: the backdrop point is only valid outside .stage, got {backdrop!r}")
         return 1
-    print(f"PASS A-2 座標自檢：{backdrop!r}")
+    print(f"PASS A-2 coordinate self-check: {backdrop!r}")
 
     click_at_xy(backdrop["x"], backdrop["y"])  # noqa: F821
     after = wait_selection_cleared()
-    check("B-1 點舞台外圈後選取清空", after["chip"] == "", after)
+    check("B-1 selection clears after clicking the stage backdrop", after["chip"] == "", after)
     bar_still_present = wait_context_bar_gone()
-    check("B-2 點舞台外圈後情境列不在 DOM 裡", not bar_still_present, bar_still_present)
-    check("B-3 無 console error", console_errors() == [], console_errors())  # noqa: F821
+    check("B-2 context bar leaves the DOM after clicking the stage backdrop", not bar_still_present, bar_still_present)
+    check("B-3 no console errors", console_errors() == [], console_errors())  # noqa: F821
     shot("F-05")  # noqa: F821
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failure(s)" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use executes the stdin script via exec(code, globals()), so
+# globals()['__name__'] is "browser_harness.run", never "__main__" — the
+# `if __name__ == "__main__"` guard never fires (qa/README.md §2). Call
+# main() unconditionally instead and let the exit code decide the caller's
+# process exit status.
 raise SystemExit(main())

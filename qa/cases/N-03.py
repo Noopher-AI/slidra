@@ -1,9 +1,10 @@
-"""N-03：投影片 iframe 內任何雙擊都不得產生可見的文字選取（父票
-[E5.T9]／NOOP-354，對應 GitHub #286 的 #279 修復清單；本案例對應 Execute
-階段 NOOP-399）。
+"""N-03: no double-click inside the slide iframe should ever produce
+visible text selection.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列原語）——這支腳本只用這個清單，不新增原語、不改寫成別的 harness：
+Depends on the sandbox QA layer (`quick_start.sh --qa` brings up the
+environment; `qa/agent_helpers.py` provides the following primitives) —
+this script only uses this list; it doesn't add new primitives or switch
+to a different harness:
 
     open_deck() / goto_slide(n) / select(name_or_id) / click_ui(selector) /
     click_at(x, y) / cell_box(row, col) / dblclick(x, y) / active_element() /
@@ -11,14 +12,18 @@
     slide_svg(n)
 
 `click_ui`/`click_at`/`cell_box`/`press`/`iframe_selection_text`/
-`edit_textarea_user_select` 是本輪新增（demo 四頁沒有表格，且原本沒有任
-何檢查投影片 iframe 原生選字狀態的原語）。
+`edit_textarea_user_select` are new in this round (the demo's four slides
+have no table, and there was previously no primitive to check the slide
+iframe's native text-selection state at all).
 
-拍板依據（qa/README.md §4「偶發缺陷的豁免寫法」，N-03 本身就是該節的例
-子）：原始重現是偶發的（10 次 1 次），不要求案例腳本重現它；改成防禦性
-描述——不論雙擊會不會刷出選字，投影片 iframe 內 `window.getSelection()`
-永遠不該不是空字串。本案例只要求 PR 分支 PASS（票面豁免，不要求對 base
-重跑）。
+Rationale (qa/README.md §4, "how to write around an intermittent defect" —
+N-03 itself is that section's worked example): the original repro is
+intermittent (about 1 in 10), so the case script isn't required to
+reproduce it. Instead it's written defensively: regardless of whether a
+double-click happens to flash a text selection, `window.getSelection()`
+inside the slide iframe should never come back non-empty. This case is
+only required to PASS on the PR branch (an accepted exemption; it isn't
+re-run against base).
 """
 
 import time
@@ -50,31 +55,32 @@ def main() -> int:
     open_deck()  # noqa: F821
     goto_slide(3)  # noqa: F821
 
-    # 從 Dock › Table 插入一張 3×4 表格（e2e/table.test.ts 的 E1 步驟／票
-    # 面原文「第 3 頁插入 3×4 表格」）。
+    # Insert a 3x4 table from Dock > Table (matches e2e/table.test.ts's E1
+    # step / the acceptance criterion's "insert a 3x4 table on slide 3").
     click_ui('button[aria-label="Table"]')  # noqa: F821
     click_ui('.table-panel-cell[aria-label="3 × 4"]')  # noqa: F821
     click_ui(".table-panel-insert")  # noqa: F821
 
     box11 = _poll(lambda: cell_box(1, 1), lambda b: b is not None)  # noqa: F821
     if box11 is None:
-        print("FAIL: cell_box(1, 1) expected=not None actual=None（表格沒插入成功）")
+        print("FAIL: cell_box(1, 1) expected=not None actual=None (table failed to insert)")
         return 1
     cell_x, cell_y = box11["x"] + box11["width"] / 2, box11["y"] + box11["height"] / 2
 
-    # 先點一下再雙擊（e2e/table.test.ts E8 的冷啟動賽跑，同 F-09.py）。
+    # Click once before double-clicking (same cold-start race as
+    # e2e/table.test.ts's E8, and as F-09.py).
     click_at(cell_x, cell_y)  # noqa: F821
 
     for i in range(10):
         dblclick(cell_x, cell_y)  # noqa: F821
         sel = iframe_selection_text()  # noqa: F821
-        check(f"雙擊儲存格 #{i + 1}：iframe 內 getSelection() 為空", sel == "", sel)
+        check(f"double-click cell #{i + 1}: getSelection() inside the iframe is empty", sel == "", sel)
         ae = _poll(  # noqa: F821
             lambda: active_element(),
             lambda a: a.get("tag") == "INPUT" and "table-cell-editor" in (a.get("class") or ""),
         )
         check(
-            f"雙擊儲存格 #{i + 1}：仍照常開出 INPUT.table-cell-editor（防禦性修法沒擋住正常雙擊）",
+            f"double-click cell #{i + 1}: INPUT.table-cell-editor still opens as normal (the defensive fix doesn't block a normal double-click)",
             ae.get("tag") == "INPUT" and "table-cell-editor" in (ae.get("class") or ""),
             ae,
         )
@@ -90,22 +96,25 @@ def main() -> int:
     for i in range(10):
         dblclick(plain_x, plain_y)  # noqa: F821
         sel = iframe_selection_text()  # noqa: F821
-        check(f"雙擊投影片文字 #{i + 1}：iframe 內 getSelection() 為空", sel == "", sel)
+        check(f"double-click slide text #{i + 1}: getSelection() inside the iframe is empty", sel == "", sel)
         press("Escape")  # noqa: F821
 
-    # 就地編輯 textarea 本身刻意排除在 user-select:none 之外——它是打字用
-    # 的 IME 接收器，雙擊仍要能選字。再進一次編輯，量它的 computed style。
+    # The in-place edit textarea is deliberately excluded from
+    # user-select:none — it's the IME input target for typing, and a
+    # double-click there still needs to select text. Enter edit mode once
+    # more and check its computed style.
     dblclick(plain_x, plain_y)  # noqa: F821
     user_select = _poll(lambda: edit_textarea_user_select(), lambda v: v is not None)  # noqa: F821
-    check("就地編輯 textarea 的 computed user-select 仍是 text（雙擊仍能選字）", user_select == "text", user_select)
+    check("the in-place edit textarea's computed user-select is still text (double-click can still select text)", user_select == "text", user_select)
     press("Escape")  # noqa: F821
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failed" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use executes stdin scripts with exec(code, globals()), where
+# globals()['__name__'] is "browser_harness.run" — never "__main__", so an
+# `if __name__ == "__main__"` guard would never trigger (qa/README.md §2).
+# Call unconditionally instead, and let the exit code decide the caller's
+# process exit status.
 raise SystemExit(main())

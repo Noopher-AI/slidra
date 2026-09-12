@@ -1,21 +1,24 @@
-"""F-16：動畫編號徽章擋住縮放把手（父票 NOOP-352／GitHub #284，[E5.T7]）。
+"""F-16: the animation-order badge blocks the resize handle.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列固定原語）——這支腳本只用這個清單，不新增原語、不改寫成別的 harness：
+Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+`qa/agent_helpers.py` provides the fixed primitives below) -- this script only uses
+this list, without adding new primitives or rewriting it against another harness:
 
     open_deck() / goto_slide(n) / select(name_or_id) / drag(from_xy, to_xy) /
     slide_svg(n) / console_errors()
 
-**Plan 開工對帳（Dev-Planner，NOOP-384）**：F-16 已由 [E5.T3]（`e9da8cf`）
-在 main 上修好——`.animation-badge` 的 `pointer-events: none` 移進
-`stage-overlays.css` 的 `.stage-geometry, .stage-geometry * { pointer-
-events: none !important }` 結構性規則，`BadgeLayer` 掛在該層之下，徽章
-不會再擋住把手；`e2e/object-animation.test.ts:520-568` 已有同一行為的
-e2e 回歸測試在 main 上綠燈。**這支腳本因此預期 base／分支都 PASS**（驗收
-條件寫「本票 PASS、base FAIL」是父票／計畫沿用舊模板的殘留，不是這裡的
-真實判準）——留著只是把票面指定的回歸案例腳本補齊，供 Dev-Reviewer 對照
-父票驗收清單第二條打勾，PASS/PASS 不代表本票沒做事，代表 F-16 這部分不
-是本票的修復範圍。
+**Status check against the fix already on main**: this bug has already been fixed on
+main -- `.animation-badge`'s `pointer-events: none` was moved into
+`stage-overlays.css`'s structural rule (`.stage-geometry, .stage-geometry * {
+pointer-events: none !important }`), and `BadgeLayer` sits under that layer, so the
+badge no longer blocks the handle; `e2e/object-animation.test.ts:520-568` already has
+an e2e regression test for this same behavior, green on main. **This script is
+therefore expected to PASS on both base and the branch** (an acceptance criterion
+elsewhere saying "this ticket PASS, base FAIL" is a leftover from reusing an older
+template, not the actual criterion here) -- it's kept only to round out the regression
+case script called for by the ticket, so a PASS/PASS result here doesn't mean this
+ticket did nothing; it means this part of F-16 simply isn't in this ticket's scope of
+work.
 """
 
 import re  # noqa: E402
@@ -30,9 +33,10 @@ def check(label: str, ok: bool, actual: object) -> None:
 
 
 def font_size_of(svg: str, element_id: str) -> str | None:
-    """`<g id="el-step-one">...<text ... font-size="40" .../></g>` 的
-    font-size 值——用最小可行的正規式抓同一個 `<g>` 區塊內第一個
-    font-size，不引入完整 XML parser（這份腳本唯一需要的是「有沒有變」）。"""
+    """The font-size value from `<g id="el-step-one">...<text ... font-size="40"
+    .../></g>` -- uses the smallest workable regex to grab the first font-size
+    within the same `<g>` block, without pulling in a full XML parser (all this
+    script needs is "did it change")."""
     g_match = re.search(rf'<g id="{re.escape(element_id)}"[^>]*>(.*?)</g>', svg, re.S)
     if not g_match:
         return None
@@ -46,31 +50,32 @@ def main() -> int:
 
     before = slide_svg(3)  # noqa: F821
     before_fs = font_size_of(before, "el-step-one")
-    check("前置：el-step-one 縮放前 font-size=40", before_fs == "40", before_fs)
+    check("Setup: el-step-one has font-size=40 before resizing", before_fs == "40", before_fs)
 
     sel = select("第一點")  # noqa: F821
     nw = sel["handles"].get("nw")
-    check("前置：左上角把手 (nw) 存在", nw is not None, sel["handles"])
+    check("Setup: the top-left handle (nw) exists", nw is not None, sel["handles"])
     if nw is None:
-        print("總結：1 項失敗（無法取得把手座標，中止）")
+        print("Summary: 1 failure (could not get handle coordinates, aborting)")
         return 1
 
-    # 票面重現手法：拖左上角把手往左上 (611,312) 一類座標，動畫徽章 ①
-    # (603,304)-(619,320) 正好蓋住這個把手；[E5.T3] 已把徽章移到強制穿透
-    # 的幾何層，這裡拖曳應該正常生效。
+    # Reproduction from the ticket: drag the top-left handle toward the top-left
+    # by something like (611,312); the animation badge ① at (603,304)-(619,320)
+    # sits right on top of this handle. The badge has since been moved to a
+    # forced-pass-through geometry layer, so this drag should now work normally.
     drag(nw, (nw[0] - 40, nw[1] - 40))  # noqa: F821
 
     after = slide_svg(3)  # noqa: F821
     after_fs = font_size_of(after, "el-step-one")
-    check("A 拖左上角把手後 el-step-one 的 font-size 改變（縮放生效）", after_fs is not None and after_fs != before_fs, after_fs)
-    check("B 無 console error", console_errors() == [], console_errors())  # noqa: F821
+    check("A el-step-one's font-size changes after dragging the top-left handle (resize took effect)", after_fs is not None and after_fs != before_fs, after_fs)
+    check("B no console error", console_errors() == [], console_errors())  # noqa: F821
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failure(s)" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use runs the stdin script via exec(code, globals()); globals()['__name__']
+# is "browser_harness.run", never "__main__", so the `if __name__ == "__main__"` guard
+# would never fire (qa/README.md §2). Call main() unconditionally instead and let
+# the caller's process exit code carry the result.
 raise SystemExit(main())

@@ -2,18 +2,15 @@
 // `slidra pack <presentation-id> <path>` packs an ALREADY-OPEN
 // presentation, not an arbitrary directory (`docs/spec/cli.md`'s `pack`
 // entry) — there is no CLI command for "zip this directory into a
-// `.slidra`" and this ticket deliberately does not add one (plan section
-// 0.4: the 81 registered commands are a frozen contract). This script is
-// the replacement for the (deleted) `packages/core`'s `packDirectory`, kept
-// as a standalone script rather than a new command for exactly that
-// reason — `quick_start.sh`'s demo-deck packing and the e2e suite's fixture
-// packing both need it, neither is a CLI user.
+// `.slidra`", and the registered commands are a frozen contract. This script
+// covers that gap as a standalone script rather than a new command —
+// `quick_start.sh`'s demo-deck packing and the e2e suite's fixture packing
+// both need it, neither is a CLI user.
 //
-// The body below is ported byte-for-byte (same REQUIRED_DIRS, same empty-
-// directory placeholder entries, same zip level) from the deleted
-// `packages/core/src/container.ts`'s `packDirectory` — deliberately NOT
-// "improved" in the port, since that would change the zipped bytes of every
-// existing `.slidra` fixture this repo's tests compare against.
+// The zipping logic below (same REQUIRED_DIRS, same empty-directory
+// placeholder entries, same zip level) is deliberately NOT "improved",
+// since that would change the zipped bytes of every existing `.slidra`
+// fixture this repo's tests compare against.
 
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -35,7 +32,7 @@ export async function packDirectory(sourceDir, outputPath) {
   } catch {
     // sourceDir is either a private staging directory or the hidden work
     // directory (ADR-0004) — never quote it.
-    throw new Error("讀取簡報內容時發生錯誤");
+    throw new Error("Error reading presentation content");
   }
 
   for (const dir of REQUIRED_DIRS) {
@@ -51,7 +48,7 @@ export async function packDirectory(sourceDir, outputPath) {
     await mkdir(path.dirname(outputPath), { recursive: true });
     await writeFile(outputPath, zipped);
   } catch {
-    throw new Error(`無法寫入簡報檔案：${outputPath}`);
+    throw new Error(`Failed to write presentation file: ${outputPath}`);
   }
 }
 
@@ -79,7 +76,7 @@ async function collectFiles(root, currentDir, zippable) {
 // needing URL-encoding — and then this script exits 0 having packed
 // nothing. `quick_start.sh` passes "$ROOT/scripts/pack-directory.mjs", so
 // on a machine reaching the repo through a symlink the demo deck never got
-// repacked and the next step failed with a misleading "找不到簡報檔案".
+// repacked and the next step failed with a misleading "presentation file not found".
 // Compare realpaths instead, which is what the question actually means.
 if (await isEntryPoint()) {
   const [sourceDir, outputPath] = process.argv.slice(2);

@@ -2,7 +2,7 @@
 // Fails when packages/server/agent-workdir/reference/commands.md (the
 // agent-facing command summary) names a command or flag that
 // docs/spec/cli.md (the regulatory CLI spec) does not cover — reference is
-// supposed to be a strict subset of the spec (spec 訪談決策 #6). The
+// supposed to be a strict subset of the spec. The
 // opposite direction (a command in cli.md but not in reference) is not a
 // violation: reference intentionally only summarizes a subset. Run
 // manually or via `npm test`:
@@ -34,10 +34,10 @@ function splitSections(content, headingPattern) {
 /**
  * Parses `reference/commands.md`: every `## <name>` heading is a command
  * (the file contains nothing else at H2). Flags are read only from that
- * command's `**參數**` line — the file's own format convention — not from
- * `**用途**`/`**範例**`/free-text notes, so a flag mentioned only in prose
- * (e.g. a caveat about a flag that doesn't exist) is never treated as a
- * real parameter.
+ * command's `**參數**` (Parameters) line — the file's own format convention
+ * — not from `**用途**` (Usage)/`**範例**` (Example)/free-text notes, so a
+ * flag mentioned only in prose (e.g. a caveat about a flag that doesn't
+ * exist) is never treated as a real parameter.
  */
 export function extractReferenceCommands(content) {
   const commands = new Map();
@@ -56,11 +56,13 @@ export function extractReferenceCommands(content) {
 /**
  * Parses `docs/spec/cli.md`: only a heading of the exact form `` ## `name` ``
  * (backticks, nothing else on the line) is a command entry — every other H2
- * in the file (the 通則 sections, appendices) deliberately does not start
- * with a backtick (see the file's own "命令條目格式說明" section), so this
- * pattern alone is enough to separate the two. Flags are read from the
- * command's ENTIRE section (語法/參數/成功 data/錯誤情境/範例 all count),
- * matching the spec's own rule: "cli.md 的條目整節都沒有這個 flag token".
+ * in the file (the 通則 (general rules) sections, appendices) deliberately
+ * does not start with a backtick (see the file's own "命令條目格式說明"
+ * (command entry format) section), so this pattern alone is enough to
+ * separate the two. Flags are read from the command's ENTIRE section
+ * (語法/參數/成功 data/錯誤情境/範例 — syntax/parameters/success data/error
+ * cases/example — all count), matching the spec's own rule: an entry's
+ * whole section must contain the flag token.
  */
 export function extractSpecCommands(content) {
   const commands = new Map();
@@ -114,7 +116,7 @@ function main() {
 
   if (violations.length === 0) {
     console.log(
-      `檢查了 ${referenceCommands.size} 條命令、${flagCount} 個旗標，reference/commands.md 是 docs/spec/cli.md 的子集，沒有發現違規。`,
+      `Checked ${referenceCommands.size} commands, ${flagCount} flags — reference/commands.md is a subset of docs/spec/cli.md, no violations found.`,
     );
     return;
   }

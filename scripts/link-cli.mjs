@@ -1,12 +1,8 @@
 #!/usr/bin/env node
-// NOOP-278: after `cargo build --release`, point `node_modules/.bin/slidra`
-// at the Rust binary. [E4.T12] deletes `packages/cli` — with it, the
-// npm-workspaces-generated symlink this script used to race against (`npm
-// install` recreating `node_modules/.bin/slidra` from
-// `packages/cli/package.json`'s own `bin` field) is gone too, but this
-// script still has to run at the END of every build: nothing else creates
-// `node_modules/.bin/slidra` at all now that there is no `bin`-declaring
-// workspace package for npm to wire up by default.
+// After `cargo build --release`, point `node_modules/.bin/slidra`
+// at the Rust binary. There is no `bin`-declaring workspace package for npm
+// to wire up by default, so this script still has to run at the END of
+// every build: nothing else creates `node_modules/.bin/slidra` at all.
 
 import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

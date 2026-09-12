@@ -1,22 +1,28 @@
-"""N-02：縮圖右鍵「Save as template」入口（父票 NOOP-357／GitHub #289）。
+"""N-02: thumbnail right-click "Save as template" entry point.
 
-`qa/cases/F-15.py` 用的固定原語（open_deck()/goto_slide()/select()/
-selection()/drag()/slide_svg()/status_bar()/console_errors()/shot()）是
-`qa/agent_helpers.py` 針對「投影片畫布手勢」提供的介面。這張票要操作的
-三個 UI（縮圖右鍵選單、Save as template 對話框、New 面板的 Layouts 清
-單）全部落在畫布 iframe 之外的一般 parent-document DOM——`agent_helpers.py`
-沒有對應原語（它的 select()/drag() 只查詢 iframe 內、帶 data-slidra-name
-的畫布元素）。`browser-use` 的核心層 `browser_harness.helpers`
-（`click_at_xy`/`js`/`fill_input`/`wait_for_element`/`http_get`）用同一
-套 `exec(code, globals())` 機制成為全域名稱（`browser_harness/run.py`：
-`from .helpers import *`），跟 `agent_helpers.py` 的原語是同一層注入的
-另一半、不是另開一套 harness；本檔對 parent-document 的操作改用它們，
-呼叫處同樣加 `# noqa: F821`。
+The fixed primitives used by `qa/cases/F-15.py` (open_deck()/goto_slide()/
+select()/selection()/drag()/slide_svg()/status_bar()/console_errors()/
+shot()) are the interface `qa/agent_helpers.py` provides for "slide canvas
+gestures". The three UI surfaces this case needs to drive — the thumbnail
+context menu, the Save as template dialog, and the New panel's Layouts
+list — all live in the ordinary parent-document DOM outside the canvas
+iframe, and `agent_helpers.py` has no primitives for that (its
+select()/drag() only query canvas elements inside the iframe that carry
+data-slidra-name). `browser-use`'s core layer, `browser_harness.helpers`
+(`click_at_xy`/`js`/`fill_input`/`wait_for_element`/`http_get`), is injected
+as globals through the same `exec(code, globals())` mechanism
+(`browser_harness/run.py`: `from .helpers import *`) — it's the other half
+of the same injection layer as `agent_helpers.py`'s primitives, not a
+separate harness; this file uses them for the parent-document operations,
+with `# noqa: F821` added at each call site the same way.
 
-判準：base（main）縮圖右鍵選單沒有「Save as template」項目——
-`_menuitem_rect` 找不到就直接視為 FAIL 並中止（不會誤判成別的原因）；
-PR 分支新增這一項後，存檔、Templates 清單即時出現、New › Layouts 套用
-後新頁內容與來源頁一致，應全數 PASS。
+Acceptance: on base (main), the thumbnail context menu has no "Save as
+template" entry — `_menuitem_rect` returning nothing is treated as an
+immediate FAIL and the script stops there (so it can't be misread as
+failing for some other reason). On the PR branch, once this entry is
+added, saving should make the Templates list update immediately, and
+applying it via New › Layouts should produce a new slide whose content
+matches the source slide.
 """
 
 import json
@@ -46,12 +52,15 @@ def _center(selector: str) -> dict:
         "return {x:r.x+r.width/2,y:r.y+r.height/2};})()"
     )
     if r is None:
-        raise RuntimeError(f"找不到元素：{selector}")
+        raise RuntimeError(f"Element not found: {selector}")
     return r
 
 
 def _wait_gone(selector: str, timeout: float = 5.0) -> bool:
-    """輪詢直到 `selector` 從 DOM 消失（或逾時），回傳是否真的消失了。`wait_for_element` 只等「出現」，方向相反，不能拿來等「關閉」。"""
+    """Polls until `selector` disappears from the DOM (or times out),
+    returning whether it actually disappeared. `wait_for_element` only
+    waits for something to *appear* — the opposite direction — so it can't
+    be reused for waiting on a close."""
     import time
 
     deadline = time.time() + timeout
@@ -63,7 +72,9 @@ def _wait_gone(selector: str, timeout: float = 5.0) -> bool:
 
 
 def _menuitem_rect(text: str):
-    """`[role=menuitem]` 裡文字以 `text` 開頭的第一個項目的中心座標，找不到回傳 None（呼叫端自行決定是 FAIL 還是中止）。"""
+    """Center coordinates of the first `[role=menuitem]` whose text starts
+    with `text`, or None if not found (the caller decides whether that's a
+    FAIL or a reason to abort)."""
     return js(  # noqa: F821
         "(()=>{const items=[...document.querySelectorAll('[role=\"menuitem\"]')];"
         f"const el=items.find(e=>e.textContent.trim().startsWith({json.dumps(text)}));"
@@ -74,37 +85,37 @@ def _menuitem_rect(text: str):
 
 def main() -> int:
     open_deck()  # noqa: F821
-    template_name = "N-02 範本"
+    template_name = "N-02 template"
     before = _read_project()
-    source_path = before["slides"][1]  # 第 2 頁（0-based index 1）
+    source_path = before["slides"][1]  # slide 2 (0-based index 1)
 
-    # 右鍵開啟第 2 頁縮圖的 context menu。
+    # Right-click slide 2's thumbnail to open its context menu.
     thumb = _center('.overview-item[data-index="1"]')
     click_at_xy(thumb["x"], thumb["y"], button="right")  # noqa: F821
     ok = wait_for_element('[data-testid="thumb-context-menu"]', timeout=5, visible=True)  # noqa: F821
-    check("A-1 縮圖右鍵選單開啟", ok, ok)
+    check("A-1 thumbnail context menu opens", ok, ok)
     if not ok:
-        print("總結：1 項失敗（無法繼續）")
+        print("Summary: 1 failure (cannot continue)")
         return 1
 
     save_item = _menuitem_rect("Save as template")
-    check("A-2 選單有「Save as template」項目（base 應該沒有）", save_item is not None, save_item)
+    check("A-2 menu has a \"Save as template\" entry (base should not)", save_item is not None, save_item)
     if save_item is None:
-        print(f"總結：{len(FAILURES)} 項失敗（base 上的已知缺口，無法繼續）")
+        print(f"Summary: {len(FAILURES)} failed (known gap on base, cannot continue)")
         return 1
 
     click_at_xy(save_item["x"], save_item["y"])  # noqa: F821
 
-    # 對話框：輸入名稱、送出。
+    # Dialog: enter a name and submit.
     ok = wait_for_element('[aria-label="Save as template"]', timeout=5, visible=True)  # noqa: F821
-    check("B-1 Save as template 對話框開啟", ok, ok)
+    check("B-1 Save as template dialog opens", ok, ok)
     fill_input(".save-template-modal-input", template_name)  # noqa: F821
     save_button = _center(".save-template-modal-submit")
     click_at_xy(save_button["x"], save_button["y"])  # noqa: F821
     modal_closed = _wait_gone('[aria-label="Save as template"]', timeout=5)
-    check("B-2 存檔後對話框關閉", modal_closed, modal_closed)
+    check("B-2 dialog closes after saving", modal_closed, modal_closed)
 
-    # Templates 清單即時出現新範本（不需重新整理頁面）。
+    # Templates list shows the new template immediately (no page refresh).
     templates_button = js(  # noqa: F821
         "(()=>{const b=[...document.querySelectorAll('.rail-action-button')]"
         ".find(e=>e.textContent.trim().startsWith('Templates'));"
@@ -113,12 +124,12 @@ def main() -> int:
     )
     click_at_xy(templates_button["x"], templates_button["y"])  # noqa: F821
     ok = wait_for_element('[role="menu"][data-menu="templates"]', timeout=5, visible=True)  # noqa: F821
-    check("C-1 Templates 選單開啟", ok, ok)
+    check("C-1 Templates menu opens", ok, ok)
     in_templates_menu = _menuitem_rect(template_name)
-    check("C-2 Templates 清單即時出現新範本（未重新整理頁面）", in_templates_menu is not None, in_templates_menu)
+    check("C-2 Templates list shows the new template immediately (no page refresh)", in_templates_menu is not None, in_templates_menu)
     press_key("Escape")  # noqa: F821
 
-    # New › Layouts 用新範本新增一頁。
+    # New › Layouts adds a slide from the new template.
     new_button = js(  # noqa: F821
         "(()=>{const b=[...document.querySelectorAll('.rail-action-button')]"
         ".find(e=>e.textContent.trim().startsWith('New'));"
@@ -127,11 +138,11 @@ def main() -> int:
     )
     click_at_xy(new_button["x"], new_button["y"])  # noqa: F821
     ok = wait_for_element('[role="menu"][data-menu="new"]', timeout=5, visible=True)  # noqa: F821
-    check("D-1 New 選單開啟", ok, ok)
+    check("D-1 New menu opens", ok, ok)
     in_new_menu = _menuitem_rect(template_name)
-    check("D-2 New › Layouts 清單即時出現新範本", in_new_menu is not None, in_new_menu)
+    check("D-2 New › Layouts shows the new template immediately", in_new_menu is not None, in_new_menu)
     if in_new_menu is None:
-        print(f"總結：{len(FAILURES)} 項失敗（無法繼續套用範本）")
+        print(f"Summary: {len(FAILURES)} failed (cannot apply the template)")
         return 1
     click_at_xy(in_new_menu["x"], in_new_menu["y"])  # noqa: F821
 
@@ -154,7 +165,7 @@ def main() -> int:
     if after is not None:
         candidates = [p for p in after["slides"] if p not in before["slides"]]
         new_slide_path = candidates[0] if candidates else None
-    check("E-2 找得到新插入的投影片路徑", new_slide_path is not None, new_slide_path)
+    check("E-2 can locate the newly inserted slide's path", new_slide_path is not None, new_slide_path)
 
     if new_slide_path is not None:
         source_content = http_get(f"{_server_url()}/api/raw/{source_path}")  # noqa: F821
@@ -176,15 +187,15 @@ def main() -> int:
             return re.sub(r"el-[A-Za-z0-9_-]+", repl, svg)
 
         check(
-            "E-3 新頁內容與第 2 頁一致（忽略重新產生的 element id）",
+            "E-3 new slide's content matches slide 2 (ignoring regenerated element ids)",
             normalize_ids(new_content) == normalize_ids(source_content),
             {"new_len": len(new_content), "source_len": len(source_content)},
         )
 
-    check("F-1 無 console error", console_errors() == [], console_errors())  # noqa: F821
+    check("F-1 no console errors", console_errors() == [], console_errors())  # noqa: F821
     shot("N-02")  # noqa: F821
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failed" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 

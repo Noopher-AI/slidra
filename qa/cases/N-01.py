@@ -1,76 +1,92 @@
-"""N-01：拖曳搬移回歸（父票 NOOP-350 [E5.T5]，Execute 子票 NOOP-382／NOOP-407 round 2）。
+"""N-01: drag-to-move regression test.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列固定原語）：
+Depends on the sandbox QA layer (`quick_start.sh --qa` brings up the
+environment; `qa/agent_helpers.py` provides the following fixed primitives):
 
     open_deck() / select(name_or_id) / selection() / drag(from_xy, to_xy) /
     slide_svg(n) / save_state() / console_errors()
 
-原語由 `browser-use` 以 `exec(code, globals())` 注入為全域名稱（見
-qa/cases/smoke.py），不是可 import 的模組，本檔直接呼叫它們並在呼叫處加
-`# noqa: F821`。除了上面這份固定清單，本檔另外用了 browser-use 的兩個
-「核心」原語 `cdp()` 與 `js()`（不是 agent_helpers.py 的新增，任何案例腳
-本本來就能用）——理由見下面兩段，都不是可以繞過的。
+These primitives are injected as globals by `browser-use` via
+`exec(code, globals())` (see qa/cases/smoke.py) — they aren't an importable
+module, so this file calls them directly and adds `# noqa: F821` at each
+call site. Beyond that fixed list, this file also uses two of browser-use's
+"core" primitives, `cdp()` and `js()` (not additions to agent_helpers.py —
+any case script can already use them) — the reasoning is in the two
+sections below, and neither is avoidable.
 
-## 根因（與票面原始假設不同，已當面向 Dev-Leader 回報）
+## Root cause
 
-票面描述懷疑根因在 `beginMoveGesture`（`selectionIds`/`originals` 的建構
-邏輯）。實測不成立：`gesture-start`/`gesture-move`/`preview` 全部正常送
-達，`beginMoveGesture` 從未提前 return。真正根因是投影片跑在一個獨立進
-程（out-of-process）的 sandboxed iframe 裡——拖曳把游標帶出這個 iframe
-的「實際渲染範圍」之後，一般的跨文件 hit-test 不會再把後續的
-pointermove/pointerup 送進 iframe（`Element.setPointerCapture()` 在
-iframe 內呼叫對 out-of-process sandboxed frame 沒有作用，這點已經實測驗
-證、不是臆測），iframe 因此永遠等不到自己的 `gesture-end`：預覽卡住、不
-送 `element move`、沒有 undo 步驟、主控台也不會有任何錯誤——正是 N-01 的
-症狀。修復把「pointer 離開 iframe 之後」的 pointermove/pointerup 交給
-host（`canvas.ts` 自己的 window 監聽）接手完成手勢。
+The original suspicion was that the bug lived in `beginMoveGesture` (the
+construction of `selectionIds`/`originals`). That didn't hold up under
+testing: `gesture-start`/`gesture-move`/`preview` all arrive fine, and
+`beginMoveGesture` never returns early. The real root cause is that the
+slide runs in an out-of-process sandboxed iframe — once a drag carries the
+cursor past that iframe's actual rendered bounds, the ordinary
+cross-document hit-test stops routing further pointermove/pointerup events
+into the iframe (calling `Element.setPointerCapture()` inside the iframe has
+no effect on an out-of-process sandboxed frame — verified by testing, not a
+guess), so the iframe never gets its own `gesture-end`: the preview freezes,
+no `element move` is emitted, there's no undo step, and nothing shows up in
+the console either — exactly N-01's symptom. The fix hands off
+pointermove/pointerup, once the pointer has left the iframe, to the host
+(canvas.ts's own window listener) to finish the gesture.
 
-## 字面 200px 之外為什麼還保留「邊界外 20px」案例（round 2 更新）
+## Why the "20px past the boundary" case is kept alongside the literal 200px case
 
-第 1 輪把驗收條件寫的「drag 200px」整段換成「拖到 iframe 實際邊界外
-20px」，Reviewer 判定不等價（demo 第 1 頁在 1440x900 視窗、預設縮放下，
-標題中心到 iframe 右緣還有約 416px 的餘裕，單純橫向拖 200px 根本不會跨
-出 iframe 邊界，這個字面數字量不到 out-of-process 的缺陷本身）。Dev-Leader
-round 2 裁示：驗收條件本身沒有問題，兩個案例都要留——`_move_and_undo()`
-下面先跑「200px」（字面驗收，量測的是拖曳/選取/存檔/undo 這條路徑本身沒
-被破壞，PR 分支與 base 對這個案例通常會一起 PASS，因為 200px 在這個版面
-下不會跨出 iframe）、再跑「邊界外20px」（保留作為 out-of-process 缺陷本身
-的回歸案例，PR 分支 PASS、base FAIL）。兩案例共用同一段拖曳/驗證/undo邏
-輯（`_move_and_undo()`），差別只在終點怎麼算。
+An earlier draft replaced the acceptance criterion's "drag 200px" entirely
+with "drag 20px past the iframe's actual boundary", but that isn't
+equivalent: on the demo's first slide, at 1440x900 with default zoom, the
+title's center has about 416px of room before it reaches the iframe's right
+edge, so a plain 200px horizontal drag never crosses the iframe boundary at
+all — that literal number doesn't exercise the out-of-process defect itself.
+The resolution: the acceptance criterion is fine as written, and both cases
+should stay — `_move_and_undo()` first runs the literal "200px" case (this
+measures that the drag/select/save/undo path itself isn't broken; the PR
+branch and base will typically both PASS here, since 200px doesn't cross the
+iframe boundary at this layout), then the "20px past the boundary" case
+(kept as the actual regression case for the out-of-process defect; PR branch
+PASSes, base FAILs). Both cases share the same drag/verify/undo logic
+(`_move_and_undo()`) — they differ only in how the endpoint is computed.
 
-## 環境陷阱：同一個 QA session 內比較 PR 分支與 base 時的快取
+## Environment trap: caching when comparing the PR branch against base within the same QA session
 
-`qa/README.md` §3 的既定流程是同一個 pod 裡先跑一次 PR 分支、`--qa-stop`
-收掉、切 base、再 `--qa` 起一次。Chromium 的 `--user-data-dir` 是同一份
-`profile/`，不會在兩次 `--qa` 之間清空；`index.html` 本身沒有防快取表
-頭，只有資產檔名有 hash——因此第二次 `--qa` 啟動的分頁完全可能繼續沿用
-上一個 commit 的 bundle，讓兩次跑的其實是同一份程式碼，PASS/FAIL 因此
-失去意義（實測踩過：`document.scripts` 顯示的 `src` hash 跟伺服器當下
-真正在服務的 hash 對不上）。`main()` 一開始的 `cdp("Network.setCacheDisabled")`
-+ `cdp("Page.reload", ignoreCache=True)` 就是防這個——不是這支腳本專屬的
-怪癖，是任何要在同一 QA session 內比較兩個 commit 的案例腳本都會踩到的
-陷阱，已在交付留言另外提出。
+The established flow (qa/README.md §3) is: within the same pod, run the PR
+branch once, tear it down with `--qa-stop`, switch to base, and bring it up
+again with `--qa`. Chromium's `--user-data-dir` is the same `profile/`
+across both runs and isn't cleared between `--qa` invocations; `index.html`
+itself carries no cache-busting headers, and only asset filenames are
+hashed — so the tab started by the second `--qa` can easily keep serving
+the previous commit's bundle, making both runs execute the same code and
+rendering PASS/FAIL meaningless (verified in practice: the hash in
+`document.scripts`'s `src` didn't match the hash the server was actually
+serving at the time). The `cdp("Network.setCacheDisabled")` +
+`cdp("Page.reload", ignoreCache=True)` at the start of `main()` guards
+against exactly this — it isn't unique to this script; it's a trap any case
+script comparing two commits within the same QA session will hit.
 
-## 輔助線斷言為什麼繞過 drag()
+## Why the snap-guide assertion bypasses drag()
 
-`agent_helpers.py` 的 `drag()` 是一次性、阻塞到底的原語（press -> N 個
-move -> release 一次呼叫做完），沒有「拖曳中途暫停檢查 DOM」的原語，票
-面卻要求「拖曳靠近另一元素邊線時輔助線 DOM 出現」這種只在手勢進行中才
-觀察得到的狀態。這裡改用 `cdp()`/`js()` 自己手動送出低階 mouse 事件、
-在每一步 move 之間輪詢 `.guide` 元素——步驟與 `drag()` 內部完全一致，只
-是拆開讓中途可以檢查，不是換一套 harness、也沒有在 agent_helpers.py 裡
-新增具名原語。
+`agent_helpers.py`'s `drag()` is a one-shot, blocking-to-completion
+primitive (press -> N moves -> release, all in one call) with no primitive
+for "pause mid-drag to inspect the DOM", but the acceptance criterion
+requires observing the snap-guide DOM appearing while the gesture is still
+in progress — something only visible mid-gesture. So this uses `cdp()`/`js()`
+to dispatch raw mouse events by hand and poll for the `.guide` element
+between each move step — the steps match `drag()`'s internals exactly, just
+split apart so it can be inspected mid-gesture; this isn't a different
+harness, and it doesn't add a named primitive to agent_helpers.py.
 
-## 縮圖同步（round 2 [Fix.2]）
+## Thumbnail sync
 
-「N-01 沒有驗證縮圖同步」這項 Reviewer feedback 改在既有 e2e 層處理：
-`e2e/direct-manipulation.test.ts` 新增了「拖曳單一元素放手後：overview
-縮圖（iframe.overview-frame）的 transform 跟著同步更新；undo 後縮圖也還
-原」——QA 沙箱層沒有能直接讀 `.overview-thumb` iframe `srcdoc` 內容的原
-語，且 e2e 層已經是「同輸入、可驗 thumbnail 更新」的既有測試檔，比在這
-支腳本裡重造一個新原語更便宜（Dev-Leader round 2 裁示二擇一，這裡選 e2e
-層）。本檔不重複這項斷言。
+Feedback that "N-01 doesn't verify thumbnail sync" is instead covered at
+the existing e2e layer: `e2e/direct-manipulation.test.ts` gained a case —
+"after releasing a single-element drag: the overview thumbnail's
+(`iframe.overview-frame`) transform updates in step; undo restores the
+thumbnail too" — the QA sandbox layer has no primitive that can read the
+`.overview-thumb` iframe's `srcdoc` content directly, and the e2e layer
+already has an existing test file with the same input that can verify
+thumbnail updates, which is cheaper than inventing a new primitive in this
+script. This file doesn't duplicate that assertion.
 """
 
 import os
@@ -97,38 +113,52 @@ def _title_transform(svg_text: str) -> str | None:
 
 
 def _server_url() -> str:
-    # qa/agent_helpers.py 的 `_server_url()` 是私有名稱，exec() 注入時被
-    # 濾掉；`SLIDRA_QA_URL` 是同一份資訊的公開來源（`quick_start.sh`
-    # 寫進 qa.env），用它就不必自己重造一個同名原語。
+    # `qa/agent_helpers.py`'s `_server_url()` is a private name and gets
+    # filtered out by the exec() injection; `SLIDRA_QA_URL` is the public
+    # source of the same information (written into qa.env by
+    # quick_start.sh), so using it avoids re-inventing a primitive of the
+    # same name.
     return os.environ.get("SLIDRA_QA_URL", "http://127.0.0.1:5173").rstrip("/")
 
 
 def _move_and_undo(label: str, next_n: int, to_point) -> int:
-    """選取「標題」、從其中心拖到 `to_point(box, from_x, from_y)` 算出的終
-    點，驗證 transform 改變／選取狀態保留／已存檔，再 POST /api/undo 還原
-    並驗證 transform 復原成拖曳前的值。`next_n` 是這組斷言要用的起始編
-    號，回傳下一組可用的編號（呼叫端串接多組場景時共用同一套編號）。
+    """Selects "標題" (Title), drags from its center to the endpoint computed
+    by `to_point(box, from_x, from_y)`, verifies the transform changed /
+    selection is preserved / it was saved, then POSTs /api/undo to restore it
+    and verifies the transform reverted to its pre-drag value. `next_n` is
+    the starting number for this group of assertions; returns the next
+    available number (so callers chaining multiple scenarios share one
+    numbering sequence).
     """
     before_svg = slide_svg(1)  # noqa: F821
     before_transform = _title_transform(before_svg)
 
-    # 當這是同一個 session 裡緊接在另一組 _move_and_undo() 之後的呼叫時，
-    # 上一組的 /api/undo 觸發的 SSE 重載可能還沒送到這個分頁：
-    # select()（只靠 _wait_frame_ready()）可能量到「舊一代」iframe 上標題
-    # 的畫面座標，等真正派送滑鼠事件時新一代 iframe 已經換上、標題已經
-    # 不在那個座標，導致按下點落在空白處——選取變成空字串，不是「標題」，
-    # 也量不到任何 transform 變化。這跟票面症狀本身（iframe 收不到
-    # pointerup、選取「標題」不變但沒有 element move）在選取結果上截然
-    # 不同：真的重現時選取一定還留著「標題」。用這個訊號分辨兩者：只有
-    # 「選取變空」才視為量到舊一代畫面、重試；選取還在「標題」但沒有新
-    # transform，是要如實回報的 FAIL，不重試。
+    # When this call comes right after another `_move_and_undo()` call in
+    # the same session, the SSE reload triggered by the previous call's
+    # /api/undo may not have reached this tab yet: select() (which only
+    # relies on _wait_frame_ready()) might measure the title's on-screen
+    # position from the "previous generation" iframe, and by the time the
+    # mouse events actually dispatch the new iframe is already in place and
+    # the title is no longer at that position — the press lands on empty
+    # space, so the selection comes back empty instead of "標題", and no
+    # transform change is measured at all. This is distinct from the actual
+    # bug's symptom (iframe never gets pointerup, selection stays "標題" but
+    # no element move happens) — a real repro always leaves the selection
+    # on "標題". Use this signal to tell the two apart: only treat "selection
+    # came back empty" as "measured a stale generation, retry"; if the
+    # selection is still "標題" but there's no new transform, report it as
+    # the real FAIL it is, without retrying.
     #
-    # 實測第一次嘗試不等待（settle_wait=0）時，不只選取會撲空，
-    # `Input.dispatchMouseEvent` 本身在這個 sandbox pod 上會直接卡住 20
-    # 秒逾時（daemon 對著一個正在被 SSE 重載換掉的 CDP target 派送事件）；
-    # `_dispatch_mouse()` 逾時後刻意不重試（agent_helpers.py 的說明：逾時
-    # 不代表事件沒送達，重試可能讓手勢重複觸發），所以這裡不能靠事後重試
-    # 補救，只能在派送前就先等夠——第一次嘗試也要等，不能是 0。
+    # Testing showed that not waiting at all on the first attempt
+    # (settle_wait=0) doesn't just cause a stale selection —
+    # `Input.dispatchMouseEvent` itself can hang for a full 20-second
+    # timeout on this sandbox pod (the daemon dispatching events at a CDP
+    # target that's mid-swap from an SSE reload); `_dispatch_mouse()`
+    # deliberately doesn't retry after a timeout (per agent_helpers.py: a
+    # timeout doesn't mean the event never landed, and retrying risks
+    # firing the gesture twice), so this can't be patched up after the
+    # fact by retrying post-dispatch — the only fix is waiting long enough
+    # before dispatching, including on the very first attempt.
     after_transform = None
     after_sel = {"chip": ""}
     for attempt, settle_wait in enumerate((1.5, 3.0, 5.0), start=1):
@@ -137,7 +167,7 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
         sel = select("標題")  # noqa: F821
         box = sel["box"]
         if box is None:
-            check(f"{next_n} [{label}] select('標題')['box'] 不是 None", False, None)
+            check(f"{next_n} [{label}] select('標題')['box'] is not None", False, None)
             return next_n + 1
 
         from_x, from_y = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
@@ -150,46 +180,48 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
         after_sel = selection()  # noqa: F821
         if after_sel["chip"] != "":
             break
-        print(f"  ([{label}] 第 {attempt} 次嘗試：拖曳後選取變空，疑似量到上一動作 SSE 重載前的舊畫面座標，重試)")
+        print(f"  ([{label}] attempt {attempt}: selection came back empty after the drag, likely measured a stale frame from a prior action's SSE reload — retrying)")
 
     n = next_n
     check(
-        f"{n} [{label}] 拖曳後 el-title 帶新的 transform（且與拖曳前不同）",
+        f"{n} [{label}] el-title carries a new transform after the drag (and it differs from before)",
         after_transform is not None and after_transform != before_transform,
         after_transform,
     )
     n += 1
 
     check(
-        f"{n} [{label}] 拖曳後選取狀態仍是「標題」（情境列/狀態列未因拖曳遺失選取）",
+        f"{n} [{label}] selection is still 「標題」 after the drag (the context bar/status bar didn't lose the selection)",
         after_sel["chip"] == "Selected: 標題",
         after_sel["chip"],
     )
     n += 1
 
     save = save_state()  # noqa: F821
-    check(f"{n} [{label}] save_state() 顯示已寫檔", save.get("dirty") is True, save)
+    check(f"{n} [{label}] save_state() shows the file was written", save.get("dirty") is True, save)
     n += 1
 
-    # agent_helpers.py 沒有 undo 或通用 POST 原語：直接打 /api/undo，跟
-    # UI 的 Undo 按鈕、⌘Z 走的是同一個端點（apps/web/src/App.tsx 的
-    # runUndoRedo），只用 Python 標準庫，不算新增原語。base 上第 1 項本
-    # 來就會 FAIL（拖曳從未寫檔）時，這裡沒有任何歷史可 undo，`/api/undo`
-    # 因此回 400（實測），不是 200——用 try/except 接住讓腳本能繼續往下
-    # 印出完整的 FAIL 清單，而不是在這裡整支腳本噴例外中斷。
+    # agent_helpers.py has no undo or generic POST primitive: this hits
+    # /api/undo directly, the same endpoint the UI's Undo button / Cmd-Z use
+    # (apps/web/src/App.tsx's runUndoRedo) — using only the standard
+    # library, so it doesn't count as a new primitive. On base, where item 1
+    # above is already expected to FAIL (the drag never got saved), there's
+    # no history to undo here, so `/api/undo` returns 400 (verified) instead
+    # of 200 — caught with try/except so the script can keep printing the
+    # full FAIL list instead of raising and aborting here.
     try:
         undo_req = urllib.request.Request(_server_url() + "/api/undo", method="POST")
         with urllib.request.urlopen(undo_req) as resp:
             undo_status = resp.status
     except urllib.error.HTTPError as exc:
         undo_status = exc.code
-    check(f"{n} [{label}] POST /api/undo 回 200（回其他值代表沒有可 undo 的歷史步驟）", undo_status == 200, undo_status)
+    check(f"{n} [{label}] POST /api/undo returns 200 (any other value means there was no history to undo)", undo_status == 200, undo_status)
     n += 1
 
     after_undo_svg = slide_svg(1)  # noqa: F821
     after_undo_transform = _title_transform(after_undo_svg)
     check(
-        f"{n} [{label}] Undo 一次後 el-title 的 transform 還原成拖曳前的值",
+        f"{n} [{label}] el-title's transform reverts to its pre-drag value after one undo",
         after_undo_transform == before_transform,
         after_undo_transform,
     )
@@ -199,7 +231,9 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
 
 
 def main() -> int:
-    # 見檔案開頭「環境陷阱」一節：避免量到上一個 commit 留下的快取 bundle。
+    # See the "environment trap" section at the top of this file: this
+    # guards against measuring a cached bundle left over from a previous
+    # commit.
     cdp("Network.setCacheDisabled", cacheDisabled=True)  # noqa: F821
     cdp("Page.reload", ignoreCache=True)  # noqa: F821
     time.sleep(1.5)
@@ -211,11 +245,12 @@ def main() -> int:
 
     n = 1
 
-    # --- 場景 A：父票驗收條件字面「drag 200px」---
+    # --- Scenario A: the acceptance criterion's literal "drag 200px" ---
     n = _move_and_undo("200px", n, lambda box, fx, fy: (fx + 200, fy))
 
-    # --- 場景 B：拖到 iframe 實際邊界外 20px（保留的額外回歸案例，見檔案
-    # 開頭「字面 200px 之外為什麼還保留...」）---
+    # --- Scenario B: drag to 20px past the iframe's actual boundary (the
+    # extra regression case kept alongside the literal one — see "Why the
+    # 20px past the boundary case is kept" at the top of this file) ---
     def _to_iframe_edge(box, fx, fy):
         iframe_rect = js(  # noqa: F821
             "(()=>{const f=document.querySelector('iframe.slide-frame');"
@@ -224,23 +259,32 @@ def main() -> int:
         )
         return (iframe_rect["x"] + iframe_rect["width"] + 20, fy)
 
-    n = _move_and_undo("邊界外20px", n, _to_iframe_edge)
+    n = _move_and_undo("20px past boundary", n, _to_iframe_edge)
 
-    # --- 吸附輔助線：靠近另一元素邊線時 DOM 真的畫出來過 ---
-    # 見檔案開頭「輔助線斷言為什麼繞過 drag()」。拖回「標題」再往下拖向
-    # 「副標」：兩者都是置中文字，水平中心線本來就對齊，貼齊時應該畫出
-    # 一條垂直輔助線（`.guide.guide-v`）。
+    # --- Snap guide: the DOM really does appear while dragging close to
+    # another element's edge ---
+    # See "Why the snap-guide assertion bypasses drag()" at the top of this
+    # file. Re-select "標題" (Title) and drag it down toward "副標"
+    # (Subtitle): both are center-aligned text, so their horizontal centers
+    # are already aligned, and a vertical snap guide (`.guide.guide-v`)
+    # should be drawn once they line up.
     #
-    # 吸附候選（例如「副標」）的邊界只在 selection-runtime.js 的
-    # reportElementBounds() 送出「element-bounds」之後才進得了 host 的
-    # elementBoundsById——每次 iframe 重建（這裡是上面兩組場景各自的 undo
-    # 觸發的 SSE 重載）都要重報一次，`select()` 內部的 `_wait_frame_ready()`
-    # 只確認 iframe 自己的 DOM 就緒，不等這個額外的 postMessage 往返，字型
-    # document.fonts.ready 也要重等一輪。這段時序在這個 sandbox pod 上
-    # 波動很大：固定睡 2.5～5 秒都各自量到過一次假陰性（guide 沒出現，不
-    # 是斷言寫錯，是「這一次還沒等到量測回報就開始拖」）。與其繼續加長
-    # 一個猜的固定秒數，改成最多重試 3 次、每次重新 select 拿最新座標
-    # 並遞增等待時間——量到一次真陽性就算 PASS，全部落空才是真的 FAIL。
+    # The snap candidate's (e.g. "副標") bounds only make it into the host's
+    # elementBoundsById after selection-runtime.js's reportElementBounds()
+    # sends "element-bounds" — this has to be re-reported every time the
+    # iframe is rebuilt (here, the SSE reload triggered by each of the two
+    # scenarios' undo above), and `select()`'s internal
+    # `_wait_frame_ready()` only confirms the iframe's own DOM is ready — it
+    # doesn't wait for this extra postMessage round trip, and
+    # document.fonts.ready needs to be waited on again too. This timing is
+    # quite noisy on this sandbox pod: a fixed sleep anywhere from 2.5 to 5
+    # seconds has produced a false negative at least once (the guide didn't
+    # appear — not because the assertion is wrong, but because the drag
+    # started before the measurement round trip had landed). Rather than
+    # guessing at a longer fixed delay, this retries up to 3 times,
+    # re-selecting for fresh coordinates each time and increasing the wait —
+    # one true positive counts as a PASS; only failing every attempt is a
+    # real FAIL.
     guide_seen = False
     for attempt, wait_s in enumerate((2.0, 4.0, 6.0), start=1):
         sel2 = select("標題")  # noqa: F821
@@ -264,29 +308,33 @@ def main() -> int:
             "Input.dispatchMouseEvent", type="mouseReleased", x=tx2, y=ty2, button="left", buttons=0, clickCount=1
         )
         time.sleep(0.3)
-        print(f"  (輔助線第 {attempt} 次嘗試，等待 {wait_s}s 後拖曳：{'量到' if guide_seen else '沒量到'})")
+        print(f"  (snap guide attempt {attempt}, dragged after waiting {wait_s}s: {'seen' if guide_seen else 'not seen'})")
         if guide_seen:
             break
-    check(f"{n} 拖曳靠近另一元素邊線時，輔助線 DOM（.guide）在過程中出現過", guide_seen, guide_seen)
+    check(f"{n} the snap-guide DOM (.guide) appeared at some point while dragging near another element's edge", guide_seen, guide_seen)
     n += 1
 
-    # console_errors() 放在所有手勢斷言之後才呼叫：它會對投影片 iframe 的
-    # CDP target 額外 attach 一個 session 並 Runtime.enable（見
-    # agent_helpers.py 的實作），實測這個 attach 會讓「之後」在同一個
-    # iframe 世代上發生的量測/吸附時序變得不可靠（上面輔助線那項若在
-    # console_errors() 之後才做，guide 會測不到，換個順序就穩定重現）——
-    # qa/README.md 已經記過它跟 wait_for_network_idle() 互斥，這裡是另一
-    # 個一樣成因（都是 attach 一個額外 debugger session）但先前沒寫下來
-    # 的交互作用，已在交付留言另外提出。
+    # console_errors() is called only after all gesture assertions: it
+    # attaches an extra CDP session to the slide iframe's target and calls
+    # Runtime.enable (see agent_helpers.py's implementation), and in testing
+    # this attach makes measurement/snap timing unreliable for anything that
+    # happens "afterward" on the same iframe generation (the snap-guide
+    # check above fails to measure the guide if done after
+    # console_errors() — reordering it makes it reliable again). qa/README.md
+    # already notes it's mutually exclusive with wait_for_network_idle();
+    # this is the same underlying cause (both attach an extra debugger
+    # session) showing up in a new interaction that hadn't been documented
+    # before.
     errs = console_errors()  # noqa: F821
-    check(f"{n} 全程無 console error", errs == [], errs)
+    check(f"{n} no console errors throughout", errs == [], errs)
     n += 1
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failed" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"（qa/README.md §2）。改為
-# 無條件呼叫，離開碼交給呼叫端的行程退出碼決定。
+# browser-use executes stdin scripts with exec(code, globals()), where
+# globals()['__name__'] is "browser_harness.run" — never "__main__"
+# (qa/README.md §2). Call unconditionally instead, and let the exit code
+# decide the caller's process exit status.
 raise SystemExit(main())

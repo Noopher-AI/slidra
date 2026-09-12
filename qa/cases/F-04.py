@@ -1,24 +1,30 @@
-"""F-04：就地編輯中 Enter 插入硬換行，編輯時立即可見、提交後兩個 tspan
-（父票 [E5.T9]／NOOP-354，對應 GitHub #286；本案例對應 Execute 階段
-NOOP-399）。
+"""F-04: pressing Enter during inline text editing should insert a hard line
+break, visible immediately while editing, and produce two tspans once
+committed.
 
-依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
-下列原語）——這支腳本只用這個清單，不新增原語、不改寫成別的 harness：
+Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+`qa/agent_helpers.py` provides the primitives below) — this script only uses
+this list; it doesn't add new primitives or rewrite itself against a different
+harness:
 
     open_deck() / goto_slide(n) / select(name_or_id) / active_element() /
     dblclick(x, y) / press(key) / type_text(text) / iframe_count(selector) /
     slide_svg(n)
 
-`press`/`type_text`/`iframe_count` 是本輪新增（原本這個模組只有滑鼠手勢，
-沒有任何打字用的原語，見這三個函式在 `qa/agent_helpers.py` 裡的 docstring）。
+`press`/`type_text`/`iframe_count` are new additions (this module previously
+only had mouse-gesture primitives, nothing for typing — see these three
+functions' docstrings in `qa/agent_helpers.py`).
 
-判準：demo 第 1 頁標題（`el-title`）是一個 plain `<text>`（沒有
-`data-slidra-text-width`）。base 上，`applyTextEditContent` 對這種元素只做
-`textEl.textContent = text`——SVG 原生不會對 "\\n" 換行，所以編輯中打
-Enter 之後，畫面上 `#el-title` 底下仍然只有 1 個直接子 tspan（其實是 0
-個，內容是純文字節點），要等 Esc 提交、SVG 端重新排版之後才看得到兩行。
-分支上 `applyTextEditContent` 統一走 `renderTextBoxLines`，Enter 之後
-「編輯中」畫面就已經是 2 個 tspan——這是 PR PASS、base FAIL 的判準來源。
+Judgment criteria: on the demo, page 1's title (`el-title`) is a plain
+`<text>` (no `data-slidra-text-width`). On base, `applyTextEditContent` for
+this kind of element just does `textEl.textContent = text` — SVG doesn't
+natively line-break on "\\n", so after typing Enter while editing, `#el-title`
+still has only 1 direct child tspan on screen (actually 0 — the content is a
+plain text node); the two lines only show up after Esc commits and the SVG
+side re-lays it out. On the fix branch, `applyTextEditContent` always goes
+through `renderTextBoxLines`, so right after Enter, while still editing, the
+screen already shows 2 tspans — this is the criterion that makes the PR pass
+and base fail.
 """
 
 import re
@@ -36,7 +42,7 @@ def check(label: str, ok: bool, actual: object) -> None:
 def _title_text_markup(svg: str) -> str:
     match = re.search(r'<g id="el-title"[^>]*>\s*(<text[^>]*>.*?</text>)', svg, re.S)
     if not match:
-        raise RuntimeError("找不到 el-title 的 <text>")
+        raise RuntimeError("could not find el-title's <text>")
     return match.group(1)
 
 
@@ -58,18 +64,18 @@ def main() -> int:
     open_deck()  # noqa: F821
     goto_slide(1)  # noqa: F821
     before = slide_svg(1)  # noqa: F821
-    check("前置：base 標題內容是「驗收用簡報」（尚未編輯）", "驗收用簡報" in _title_text_markup(before), before)
+    check("precondition: base title content is 'Acceptance Test Deck' (not yet edited)", "Acceptance Test Deck" in _title_text_markup(before), before)
 
-    sel = select("標題")  # noqa: F821
+    sel = select("Title")  # noqa: F821
     box = sel["box"]
     if box is None:
-        print("FAIL: select('標題')['box'] expected=not None actual=None")
+        print("FAIL: select('Title')['box'] expected=not None actual=None")
         return 1
     cx, cy = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
     dblclick(cx, cy)  # noqa: F821
 
     ae = _poll(lambda: active_element(), lambda a: a.get("tag") == "TEXTAREA")  # noqa: F821
-    check("雙擊標題後進入編輯（focus 落在就地編輯的 textarea）", ae.get("tag") == "TEXTAREA", ae)
+    check("double-clicking the title enters edit mode (focus lands in the inline-edit textarea)", ae.get("tag") == "TEXTAREA", ae)
 
     type_text("QA")  # noqa: F821
     press("Enter")  # noqa: F821
@@ -77,7 +83,7 @@ def main() -> int:
 
     tspan_count = iframe_count("#el-title text > tspan")  # noqa: F821
     check(
-        "Esc 前：#el-title 的 <text> 直接子 tspan 已經是 2 個（換行編輯中就看得到，不必等提交）",
+        "before Esc: #el-title's <text> already has 2 direct child tspans (visible while still editing, no need to wait for commit)",
         tspan_count == 2,
         tspan_count,
     )
@@ -87,15 +93,16 @@ def main() -> int:
     after = _poll(lambda: slide_svg(1), lambda svg: "<tspan" in _title_text_markup(svg))  # noqa: F821
     title_markup = _title_text_markup(after)
     committed_tspan_count = title_markup.count("<tspan")
-    check("Esc 後：slide_svg(1) 的 el-title 有 2 個 <tspan>（提交後真的寫進檔案）", committed_tspan_count == 2, title_markup)
-    check("Esc 後：兩個 tspan 分別含打過的 QA／X", "QA" in title_markup and "X" in title_markup, title_markup)
+    check("after Esc: slide_svg(1)'s el-title has 2 <tspan>s (actually committed to the document)", committed_tspan_count == 2, title_markup)
+    check("after Esc: the two tspans contain the typed QA / X respectively", "QA" in title_markup and "X" in title_markup, title_markup)
 
-    print(f"總結：{len(FAILURES)} 項失敗" if FAILURES else "總結：全數通過")
+    print(f"Summary: {len(FAILURES)} failure(s)" if FAILURES else "Summary: all passed")
     return 1 if FAILURES else 0
 
 
-# browser-use 用 exec(code, globals()) 執行 stdin 腳本，globals()['__name__']
-# 是 "browser_harness.run"，永遠不是 "__main__"，`if __name__ == "__main__"`
-# guard 永遠不會觸發（qa/README.md §2）。改為無條件呼叫，離開碼交給呼叫端
-# 的行程退出碼決定。
+# browser-use executes the stdin script via exec(code, globals()), so
+# globals()['__name__'] is "browser_harness.run", never "__main__" — the
+# `if __name__ == "__main__"` guard never fires (qa/README.md §2). Call
+# main() unconditionally instead and let the exit code decide the caller's
+# process exit status.
 raise SystemExit(main())

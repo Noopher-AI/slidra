@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Builds the three static Noto Sans TC subsets (400/500/700) the web app
 // ships under apps/web/src/assets/fonts/ — the only fonts it uses, so
-// its UI never falls back to system-ui (ticket #49) and 700 doesn't fall
-// back to the browser's synthesized bold (NOOP-376). `system-ui` resolves to
-// 蘋方 on macOS and 微軟正黑 on Windows, which would make the screenshot
-// regression baselines in e2e/ non-reproducible across machines.
+// its UI never falls back to system-ui and 700 doesn't fall
+// back to the browser's synthesized bold. `system-ui` resolves to
+// PingFang on macOS and Microsoft JhengHei on Windows, which would make the
+// screenshot regression baselines in e2e/ non-reproducible across machines.
 //
 // Run manually whenever the UI's visible text changes (this script is not
 // wired into `npm run build` — the subsets it produces are committed
@@ -27,8 +27,8 @@
 //      This is a source-text scan, not a scan of what actually reaches
 //      the DOM — it also picks up characters that only ever appear in code
 //      comments (this repo's source comments are supposed to be English
-//      per AGENTS.md, but existing files were not written under this
-//      ticket's ownership and were left as-is). That makes the subset
+//      per AGENTS.md, but some existing files predate that convention and
+//      were left as-is). That makes the subset
 //      mildly larger than the strict minimum, in exchange for a script
 //      simple enough to re-run correctly without a JS/JSX parser. A
 //      handful of extra glyphs costs a few hundred bytes each; missing a
@@ -48,8 +48,8 @@ const webSrcDir = path.join(rootDir, "apps/web/src");
 const indexHtmlPath = path.join(rootDir, "apps/web/index.html");
 const fontsDir = path.join(rootDir, "apps/web/src/assets/fonts");
 
-// 400 keeps its pre-existing filename (README.md's OFL notice and this
-// ticket's own PR both only add the two new ones); 500/700 are new.
+// 400 keeps its pre-existing filename (README.md's OFL notice only adds the
+// two new ones); 500/700 are new.
 const WEIGHTS = [
   { weight: 400, outputPath: path.join(fontsDir, "NotoSansTC-subset.woff2") },
   { weight: 500, outputPath: path.join(fontsDir, "NotoSansTC-subset-500.woff2") },
@@ -97,12 +97,12 @@ async function fetchNotoSansTC(weight) {
   const cssResponse = await fetch(`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@${weight}&display=swap`, {
     headers: { "User-Agent": "Mozilla/5.0" },
   });
-  if (!cssResponse.ok) throw new Error(`無法取得 Noto Sans TC（字重 ${weight}）的 CSS：HTTP ${cssResponse.status}`);
+  if (!cssResponse.ok) throw new Error(`Failed to fetch Noto Sans TC CSS (weight ${weight}): HTTP ${cssResponse.status}`);
   const css = await cssResponse.text();
   const match = css.match(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+\.ttf)\)/);
-  if (!match) throw new Error(`在 Google Fonts 的 CSS 回應裡找不到字重 ${weight} 的 .ttf 來源網址`);
+  if (!match) throw new Error(`Could not find a .ttf source URL for weight ${weight} in Google Fonts' CSS response`);
   const fontResponse = await fetch(match[1]);
-  if (!fontResponse.ok) throw new Error(`無法下載 Noto Sans TC（字重 ${weight}）：HTTP ${fontResponse.status}`);
+  if (!fontResponse.ok) throw new Error(`Failed to download Noto Sans TC (weight ${weight}): HTTP ${fontResponse.status}`);
   return Buffer.from(await fontResponse.arrayBuffer());
 }
 
@@ -111,15 +111,15 @@ function sha256(buffer) {
 }
 
 async function main() {
-  console.log("掃描原始碼收集字集…");
+  console.log("Scanning source files to collect the character set...");
   const text = await collectCharacterSet();
-  console.log(`字集大小（不重複字元數）：${[...text].length}`);
+  console.log(`Character set size (unique characters): ${[...text].length}`);
 
   const sources = [];
   for (const { weight } of WEIGHTS) {
-    console.log(`下載 Noto Sans TC（wght ${weight}）…`);
+    console.log(`Downloading Noto Sans TC (wght ${weight})...`);
     const buffer = await fetchNotoSansTC(weight);
-    console.log(`原始字體大小（wght ${weight}）：${buffer.length} bytes`);
+    console.log(`Original font size (wght ${weight}): ${buffer.length} bytes`);
     sources.push({ weight, buffer, hash: sha256(buffer) });
   }
 
@@ -131,7 +131,7 @@ async function main() {
     for (let j = i + 1; j < sources.length; j++) {
       if (sources[i].hash === sources[j].hash) {
         throw new Error(
-          `字重 ${sources[i].weight} 與字重 ${sources[j].weight} 下載到相同的來源字型（sha256 ${sources[i].hash}）——這兩個字重應該是各自獨立的靜態字型，不是同一顆字型被下載了兩次`,
+          `weight ${sources[i].weight} and weight ${sources[j].weight} downloaded the same source font (sha256 ${sources[i].hash}) — these two weights should be independent static fonts, not the same font downloaded twice`,
         );
       }
     }
@@ -140,9 +140,9 @@ async function main() {
   const subsets = [];
   for (const { weight, outputPath } of WEIGHTS) {
     const { buffer } = sources.find((source) => source.weight === weight);
-    console.log(`子集化為 woff2（字重 ${weight}）…`);
+    console.log(`Subsetting to woff2 (weight ${weight})...`);
     const subsetBuffer = await subsetFont(buffer, text, { targetFormat: "woff2" });
-    console.log(`子集後大小（字重 ${weight}）：${subsetBuffer.length} bytes`);
+    console.log(`Subset size (weight ${weight}): ${subsetBuffer.length} bytes`);
     subsets.push({ outputPath, subsetBuffer });
   }
 
@@ -151,7 +151,7 @@ async function main() {
   // fresh files sitting next to one stale one.
   for (const { outputPath, subsetBuffer } of subsets) {
     await writeFile(outputPath, subsetBuffer);
-    console.log(`已寫入：${path.relative(rootDir, outputPath)}`);
+    console.log(`Written to: ${path.relative(rootDir, outputPath)}`);
   }
 }
 

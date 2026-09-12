@@ -1,34 +1,39 @@
 #!/usr/bin/env bash
 #
-# quick_start.sh — 一鍵啟動 Slidra 前端，供人工驗收使用。
+# quick_start.sh — one-command launcher for the Slidra frontend, for manual
+# acceptance testing.
 #
-# 它做的事：
-#   1. 同步相依套件（含各 workspace 的新增相依）
-#   2. 建置 server（tsc -b）與 web（vite build），以及 Rust 二進位
-#   3. 檢查前置條件（建置產物、CLI 執行檔、agent adapter）
-#   4. 準備簡報（示範簡報，或 --blank 的空白簡報）
-#   5. 執行 slidra serve，開瀏覽器看畫面
+# What it does:
+#   1. Sync dependencies (including any new ones added to a workspace)
+#   2. Build server (tsc -b) and web (vite build), plus the Rust binary
+#   3. Check preconditions (build artifacts, CLI executable, agent adapter)
+#   4. Prepare a presentation (the demo deck, or a blank one with --blank)
+#   5. Run slidra serve, open a browser to look at it
 #
-# 兩種簡報準備方式：
-#   - 預設（不加旗標）：把 demo/ 打包成示範簡報，四頁投影片、三個資產（圖、
-#     影片、音檔），其中兩頁帶效果清單。用來驗**既有行為沒壞**——換頁、資產、
-#     播放、效果、倒退、全螢幕這些都需要現成內容才驗得到。想改驗收素材就改
-#     demo/，然後用 --fresh 重跑。
-#   - --blank：建立一份全新的空白簡報。用來驗**從零開始的路徑**——新簡報建立、
-#     第一次插入元素、空狀態畫面、agent 對一份空簡報下第一道命令。
+# Two ways to prepare a presentation:
+#   - Default (no flag): packs demo/ into a demo presentation, four slides,
+#     three assets (an image, a video, an audio file), two of which carry an
+#     effect list. Used to verify **existing behavior still works** — page
+#     navigation, assets, playback, effects, rewind, fullscreen all need
+#     ready-made content to verify against. To change the test material, edit
+#     demo/, then rerun with --fresh.
+#   - --blank: creates a brand-new blank presentation. Used to verify **the
+#     from-scratch path** — new presentation creation, the first element
+#     insertion, the empty-state screen, an agent's first command against a
+#     blank presentation.
 #
-# 用法：
-#   ./quick_start.sh                      # 全自動，示範簡報
-#   ./quick_start.sh --blank              # 全自動，空白簡報
-#   ./quick_start.sh --port 6000          # 換連接埠
-#   ./quick_start.sh --agent claude       # 指定 agent（偵測到多個時建議加）
-#   ./quick_start.sh --fresh              # 丟掉舊簡報，重新建立
-#   ./quick_start.sh --skip-build         # 跳過建置（只改前端原始碼時不要用）
-#   ./quick_start.sh --open               # 順便開瀏覽器（預設不開）
-#   ./quick_start.sh --no-open            # 保留給既有指令；已是預設行為
-#   ./quick_start.sh --qa --no-open       # 沙箱 QA 層：背景起 serve + headless
-#                                         #   Chromium，寫出 browser-use 用的 env 檔
-#   ./quick_start.sh --qa-stop            # 收掉 --qa 留下的背景 serve 與 Chromium
+# Usage:
+#   ./quick_start.sh                      # fully automatic, demo presentation
+#   ./quick_start.sh --blank              # fully automatic, blank presentation
+#   ./quick_start.sh --port 6000          # change the port
+#   ./quick_start.sh --agent claude       # pick an agent (recommended when several are detected)
+#   ./quick_start.sh --fresh              # discard the old presentation, recreate it
+#   ./quick_start.sh --skip-build         # skip the build (don't use this when you only changed frontend source)
+#   ./quick_start.sh --open               # also open a browser (default: don't)
+#   ./quick_start.sh --no-open            # kept for existing invocations; already the default behavior
+#   ./quick_start.sh --qa --no-open       # sandbox QA layer: starts serve + headless
+#                                         #   Chromium in the background, writes the env file browser-use uses
+#   ./quick_start.sh --qa-stop            # tears down the background serve and Chromium left by --qa
 
 set -euo pipefail
 
@@ -39,9 +44,10 @@ PORT=5173
 AGENT=""
 FRESH=0
 SKIP_BUILD=0
-# 預設不開瀏覽器：這個腳本常常是重跑的（改一行、重跑驗證、再改一行），每次都
-# 彈一個新分頁出來，最後累積一堆指向同一個網址、其中大多數還是過期簡報識別碼的
-# 分頁。要開就自己加 --open。
+# Default to not opening a browser: this script is often rerun repeatedly
+# (change a line, rerun verification, change another line), and opening a new
+# tab every time leaves a pile of tabs pointing at the same URL, most of them
+# carrying a stale presentation id. Add --open yourself if you want one.
 OPEN_BROWSER=0
 BLANK=0
 QA=0
@@ -49,18 +55,18 @@ QA_STOP=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --port) PORT="${2:?--port 缺少值}"; shift 2 ;;
-    --agent) AGENT="${2:?--agent 缺少值}"; shift 2 ;;
+    --port) PORT="${2:?--port requires a value}"; shift 2 ;;
+    --agent) AGENT="${2:?--agent requires a value}"; shift 2 ;;
     --fresh) FRESH=1; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --open) OPEN_BROWSER=1; shift ;;
-    # 已是預設，保留旗標本身以免既有指令與文件（qa/README.md）壞掉。
+    # Already the default; the flag itself is kept so existing invocations and docs (qa/README.md) don't break.
     --no-open) OPEN_BROWSER=0; shift ;;
     --blank) BLANK=1; shift ;;
     --qa) QA=1; shift ;;
     --qa-stop) QA_STOP=1; shift ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
-    *) echo "未知的參數：$1" >&2; exit 1 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
@@ -74,10 +80,11 @@ BLANK_ID_FILE="$DEMO_DIR/blank-presentation-id"
 
 step() { printf '\n\033[1;36m▸ %s\033[0m\n' "$1"; }
 
-# --qa / --qa-stop 共用狀態 ---------------------------------------------------
-# 沙箱 QA 層：--qa 在既有流程（1~4 步）之後另外背景起一份 serve + headless
-# Chromium，供 browser-use 操作；--qa-stop 收掉它們。這兩個旗標不影響 1~4 步
-# 的任何行為。
+# --qa / --qa-stop shared state -----------------------------------------------
+# Sandbox QA layer: --qa starts an extra serve + headless Chromium in the
+# background after the normal flow (steps 1-4), for browser-use to drive;
+# --qa-stop tears them down. These two flags don't change any behavior in
+# steps 1-4.
 QA_DIR="$ROOT/.quickstart/qa"
 QA_SERVE_PGID_FILE="$QA_DIR/serve.pgid"
 QA_CHROMIUM_PGID_FILE="$QA_DIR/chromium.pgid"
@@ -85,10 +92,12 @@ QA_ENV_FILE="$QA_DIR/qa.env"
 QA_SERVE_LOG="$QA_DIR/serve.log"
 QA_CDP_PORT="${SLIDRA_QA_CDP_PORT:-9222}"
 
-# 收掉一個 pgid 檔記錄的行程群組：TERM，等最多 5 秒，還活著就 KILL。
-# slidra serve 是 spawn 出一個獨立的 node 子行程（不是 exec），所以
-# 只殺 wrapper 收不掉 server；--qa 用 setsid 起、記整個行程群組的 PGID，
-# 這裡對整組送信號才收得乾淨。
+# Tears down the process group recorded in a pgid file: TERM, wait up to 5
+# seconds, KILL if it's still alive. slidra serve spawns an independent
+# node child process (not exec), so killing just the wrapper doesn't take
+# down the server; --qa starts it via setsid and records the whole process
+# group's PGID, so signaling the whole group here is what actually cleans it
+# up.
 qa_kill_pgid_file() {
   local pgid_file="$1"
   [ -f "$pgid_file" ] || return 1
@@ -107,16 +116,17 @@ qa_kill_pgid_file() {
   return 0
 }
 
-# 收尾指令不該因為「已經收乾淨」而失敗，所以永遠以 0 結束。
+# Teardown should never fail just because things were already clean, so it
+# always exits 0.
 qa_stop() {
   local found=0
   qa_kill_pgid_file "$QA_SERVE_PGID_FILE" && found=1
   qa_kill_pgid_file "$QA_CHROMIUM_PGID_FILE" && found=1
   rm -f "$QA_ENV_FILE"
   if [ "$found" -eq 0 ]; then
-    echo "沒有在跑的 QA 環境。"
+    echo "No QA environment was running."
   else
-    echo "QA 環境已收掉。"
+    echo "QA environment torn down."
   fi
 }
 
@@ -126,62 +136,68 @@ if [ "$QA_STOP" -eq 1 ] && [ "$QA" -eq 0 ]; then
 fi
 
 if [ "$QA" -eq 1 ]; then
-  # 在花時間 build 之前先確認 browser-use 在 PATH 上——它由工作區的 sandbox
-  # tools mount（/opt/sandbox）提供，不是 npm 相依、不是本專案 Dockerfile
-  # 的責任，缺了也不該讓人等完整個 build 才看到這行錯誤。
+  # Check that browser-use is on PATH before spending time on a build — it's
+  # provided by the workspace's sandbox tools mount (/opt/sandbox), not an npm
+  # dependency and not this project's Dockerfile's responsibility, and a
+  # missing binary shouldn't make someone wait through a whole build before
+  # seeing this error.
   if ! command -v browser-use >/dev/null 2>&1; then
-    echo "找不到 browser-use：它應由工作區的 sandbox tools mount（/opt/sandbox）提供，不是本專案的 npm 相依，也不是 .devcontainer/Dockerfile 的責任。請確認執行環境掛載了 /opt/sandbox。" >&2
+    echo "browser-use not found: it should be provided by the workspace's sandbox tools mount (/opt/sandbox), not an npm dependency of this project nor .devcontainer/Dockerfile's responsibility. Confirm the runtime environment has /opt/sandbox mounted." >&2
     exit 1
   fi
   if [ "$QA_STOP" -eq 1 ]; then
-    # 與 --qa 同時給：視為「先停再起」。
+    # Given together with --qa: treated as "stop first, then start".
     qa_stop
   elif [ -f "$QA_SERVE_PGID_FILE" ] || [ -f "$QA_CHROMIUM_PGID_FILE" ]; then
-    echo "偵測到既有的 QA 環境，先收掉再重新啟動。" >&2
+    echo "Detected an existing QA environment, tearing it down before restarting." >&2
     qa_stop
   fi
   mkdir -p "$QA_DIR"
 fi
 
-# 1. 相依套件 ---------------------------------------------------------------
-# 切換分支可能只改 workspace 的 package.json 或 lockfile；node_modules
-# 目錄的時間戳也不能證明上次安裝已完成。交由 npm 同步整個相依樹。
-step "同步相依套件"
+# 1. Dependencies -------------------------------------------------------------
+# Switching branches can change just a workspace's package.json or the
+# lockfile; node_modules' own timestamp doesn't prove the last install
+# actually finished. Let npm sync the whole dependency tree.
+step "Syncing dependencies"
 npm install
 
-# 2. 建置 -------------------------------------------------------------------
-# serve 只吃 apps/web/dist 的靜態檔，沒有 dev server proxy（ADR-0002），
-# 所以前端每次改動都必須重新 build 才看得到。
+# 2. Build --------------------------------------------------------------------
+# serve only serves apps/web/dist's static files, with no dev-server
+# proxy (ADR-0002), so the frontend must be rebuilt after every change to see
+# it.
 if [ "$SKIP_BUILD" -eq 0 ]; then
-  step "建置 server / web / Rust CLI"
+  step "Building server / web / Rust CLI"
   npm run build
 fi
 
 if [ ! -f "$ROOT/apps/web/dist/index.html" ]; then
-  echo "apps/web/dist 不存在，請先執行 npm run build（或不要加 --skip-build 重跑）。" >&2
+  echo "apps/web/dist does not exist — run npm run build first (or rerun without --skip-build)." >&2
   exit 1
 fi
 
-# 3. 前置檢查 -----------------------------------------------------------------
-# NOOP-278：node_modules/.bin/slidra 是 npm run build 最後一步
-# （scripts/link-cli.mjs）指到 Rust 產物（target/release/slidra）的連結，
-# 現在只由 scripts/link-cli.mjs 建立。
+# 3. Preconditions --------------------------------------------------------------
+# node_modules/.bin/slidra is a link to the Rust artifact
+# (target/release/slidra), created only by scripts/link-cli.mjs as the last
+# step of npm run build.
 if [ ! -x "$CLI" ]; then
-  echo "找不到可執行的 node_modules/.bin/slidra（應指向 cargo build 產出的 target/release/slidra）。請執行 npm run build 後重試。" >&2
+  echo "No executable node_modules/.bin/slidra found (it should point at cargo build's output, target/release/slidra). Run npm run build and retry." >&2
   exit 1
 fi
 
-step "檢查 agent"
-# NOOP-230：兩個 adapter（claude-code-acp／codex-acp）現在是 @slidra/server
-# 的一般 npm 相依，隨第 1 步的 npm install 一起裝好，不用再另外全域安裝、也
-# 不用探測 PATH。「要用哪一個」改成使用者層級設定（settings.json）或
-# --agent 這次覆蓋一次，沒選時 serve 照常啟動，只是聊天功能要等選定才能用。
+step "Checking agent"
+# Both adapters (claude-code-acp / codex-acp) are ordinary npm dependencies of
+# @slidra/server, installed together with step 1's npm install — no
+# separate global install or PATH probing needed. Which one to use is a
+# user-level setting (settings.json) or a one-time override via --agent; when
+# none is chosen, serve still starts normally, only the chat feature waits
+# until one is selected.
 if [ -n "$AGENT" ] && [ "$AGENT" != "claude" ] && [ "$AGENT" != "codex" ]; then
-  echo "--agent 必須是 claude 或 codex。" >&2
+  echo "--agent must be claude or codex." >&2
   exit 1
 fi
 
-# 4. 簡報 ---------------------------------------------------------------------
+# 4. Presentation ---------------------------------------------------------------
 if [ "$FRESH" -eq 1 ]; then
   rm -rf "$DEMO_DIR"
 fi
@@ -189,13 +205,13 @@ mkdir -p "$DEMO_DIR"
 
 if [ "$BLANK" -eq 1 ]; then
   if [ ! -f "$BLANK_SLIDRA" ]; then
-    step "建立空白簡報"
-    "$CLI" new "$BLANK_SLIDRA" --name "空白簡報"
+    step "Creating a blank presentation"
+    "$CLI" new "$BLANK_SLIDRA" --name "Blank Presentation"
   fi
 
   if [ ! -s "$BLANK_ID_FILE" ]; then
-    step "開啟空白簡報，取得識別碼"
-    # open 先印一行訊息，再印 { "id": "..." }；只取 id 欄位。
+    step "Opening the blank presentation to get its id"
+    # open prints one message line, then { "id": "..." }; only the id field is kept.
     "$CLI" open "$BLANK_SLIDRA" \
       | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
       | sed 's/.*"\([^"]*\)"$/\1/' > "$BLANK_ID_FILE"
@@ -203,41 +219,46 @@ if [ "$BLANK" -eq 1 ]; then
 
   PRESENTATION_ID="$(cat "$BLANK_ID_FILE")"
   if [ -z "$PRESENTATION_ID" ]; then
-    echo "無法取得簡報識別碼，請用 --fresh 重跑。" >&2
+    echo "Could not get the presentation id — rerun with --fresh." >&2
     exit 1
   fi
 else
-  # demo/ 比打包出來的 .slidra 新，代表素材改過了。人工驗收路徑不自動重打包——
-  # 重打包就得重新 open，會換一組簡報識別碼，把使用者手上的網址與終端機指令
-  # 都作廢。
+  # demo/ being newer than the packed .slidra means the source material has
+  # changed. The manual-verification path never repacks automatically —
+  # repacking requires reopening, which would issue a new presentation id and
+  # invalidate any URL or terminal command the user is already holding.
   #
-  # NOOP-349：--qa 沒有這個顧慮（每次都重寫 QA 環境變數檔裡的
-  # SLIDRA_QA_PRESENTATION_ID，沒有人手上握著舊網址），而過期的 deck 在
-  # QA 路徑上是災難：agent 會對著舊素材跑案例腳本，拿到的 PASS/FAIL 全部
-  # 對應到錯的簡報內容，而唯一的線索只有下面這行 stderr 提醒。#294 就是這樣
-  # 連續五輪對著一份含滿版背景 rect 的舊 demo 跑 F-15，把「拖曳空白」永遠
-  # 判成 move 手勢的環境問題，誤診成 browser-use／CDP 的不穩定。所以 --qa
-  # 直接重打包，不留讓人踩過去的餘地。
+  # --qa doesn't have this concern (it rewrites SLIDRA_QA_PRESENTATION_ID in
+  # the QA env file on every run, so nobody is holding onto an old URL), and a
+  # stale deck is a real hazard on the QA path: an agent would run case
+  # scripts against old material, and every PASS/FAIL would reflect the wrong
+  # presentation content, with the only clue being the stderr note below. This
+  # has previously caused several rounds of running a case against a stale
+  # demo deck with a full-bleed background rect, misdiagnosing an environment
+  # problem — a blank-area drag always being read as a move gesture — as
+  # browser-use/CDP flakiness. So --qa just repacks unconditionally, leaving
+  # no room to trip over this.
   if [ -f "$DEMO_SLIDRA" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_SLIDRA" -type f -print -quit)" ]; then
     if [ "$QA" -eq 1 ]; then
-      step "demo/ 比示範簡報新，重新打包（--qa）"
+      step "demo/ is newer than the demo presentation, repacking (--qa)"
       rm -f "$DEMO_SLIDRA" "$DEMO_ID_FILE"
     else
-      echo "提醒：demo/ 已被修改，但示範簡報還是舊的，要套用請加 --fresh 重跑。" >&2
+      echo "Note: demo/ has been modified, but the demo presentation is still the old one — rerun with --fresh to apply the change." >&2
     fi
   fi
 
   if [ ! -f "$DEMO_SLIDRA" ]; then
-    step "打包示範簡報（demo/ → .slidra）"
-    # 把一個目錄打包成 .slidra 沒有對應的 CLI 命令（見 docs/spec/cli.md 的
-    # `pack` 條目——那是打包一份已開啟的簡報，不是任意目錄），所以直接呼叫
-    # scripts/pack-directory.mjs。
+    step "Packing the demo presentation (demo/ -> .slidra)"
+    # There is no CLI command to pack a directory into a .slidra (see
+    # docs/spec/cli.md's `pack` entry — that packs an already-open
+    # presentation, not an arbitrary directory), so call
+    # scripts/pack-directory.mjs directly.
     node "$ROOT/scripts/pack-directory.mjs" "$DEMO_SOURCE" "$DEMO_SLIDRA"
   fi
 
   if [ ! -s "$DEMO_ID_FILE" ]; then
-    step "開啟示範簡報，取得識別碼"
-    # open 先印一行訊息，再印 { "id": "..." }；只取 id 欄位。
+    step "Opening the demo presentation to get its id"
+    # open prints one message line, then { "id": "..." }; only the id field is kept.
     "$CLI" open "$DEMO_SLIDRA" \
       | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
       | sed 's/.*"\([^"]*\)"$/\1/' > "$DEMO_ID_FILE"
@@ -245,151 +266,155 @@ else
 
   PRESENTATION_ID="$(cat "$DEMO_ID_FILE")"
   if [ -z "$PRESENTATION_ID" ]; then
-    echo "無法取得簡報識別碼，請用 --fresh 重跑。" >&2
+    echo "Could not get the presentation id — rerun with --fresh." >&2
     exit 1
   fi
 fi
 
-# 5. 啟動 -------------------------------------------------------------------
+# 5. Launch ---------------------------------------------------------------
 SERVE_ARGS=("serve" "$PRESENTATION_ID" "--port" "$PORT")
 if [ -n "$AGENT" ]; then
   SERVE_ARGS+=("--agent" "$AGENT")
 fi
 
-# agent 執行的是 `slidra ...`（編輯規約裡就是這樣寫的），它的 shell 從
-# serve 行程繼承環境變數。專案沒有全域安裝 CLI，所以必須把 workspace 的
-# node_modules/.bin 掛進 PATH——少了這一步，agent 會拿到
-# 「command not found: slidra」而完全改不動簡報。
+# The agent runs `slidra ...` (that's how the editing contract specifies
+# it), and its shell inherits environment variables from the serve process.
+# The project has no globally installed CLI, so the workspace's
+# node_modules/.bin must be added to PATH — without this, the agent would get
+# "command not found: slidra" and be completely unable to edit the
+# presentation.
 export PATH="$ROOT/node_modules/.bin:$PATH"
 
-step "驗證 PATH"
+step "Verifying PATH"
 RESOLVED="$(command -v slidra || true)"
 if [ "$RESOLVED" != "$CLI" ]; then
-  echo "PATH 修正失敗：slidra 解析到「${RESOLVED:-（找不到）}」，預期是 ${CLI}。" >&2
+  echo "PATH fixup failed: slidra resolved to \"${RESOLVED:-(not found)}\", expected ${CLI}." >&2
   exit 1
 fi
-# slidra 沒有 --help；用不帶參數呼叫來確認它真的執行了（Rust 二進位自己印出
-# 「缺少命令名稱」並以非 0 結束，不再回退給 Node），而不是被 shell 當成
-# command not found。
+# slidra has no --help; invoking it with no arguments confirms it actually
+# ran (the Rust binary itself prints "missing command name" and exits
+# non-zero, it no longer falls back to Node) rather than the shell treating
+# it as command not found.
 INVOKE_OUTPUT="$(slidra 2>&1 || true)"
 if printf '%s' "$INVOKE_OUTPUT" | grep -qi "command not found"; then
-  echo "slidra 執行失敗，agent 會拿到 command not found。" >&2
+  echo "slidra failed to run — the agent would get command not found." >&2
   exit 1
 fi
-echo "slidra 已可用：$RESOLVED"
+echo "slidra is available: $RESOLVED"
 
 URL="http://127.0.0.1:$PORT"
 
 if [ "$QA" -eq 1 ]; then
-  : # --qa 不印人工驗收清單（下面走的是背景啟動路徑，見腳本尾端）。
+  : # --qa doesn't print the manual verification checklist (it takes the background-launch path further down instead).
 elif [ "$BLANK" -eq 1 ]; then
   cat <<INFO
 
-簡報識別碼：$PRESENTATION_ID
-簡報檔：    $BLANK_SLIDRA
-網址：      $URL
+Presentation id: $PRESENTATION_ID
+Presentation file: $BLANK_SLIDRA
+URL: $URL
 
-驗收清單（空白簡報，驗從零開始的路徑）：
-  - 畫面開到一份空白簡報，沒有任何投影片（新簡報零頁，ADR-0018），舞台上沒有白底，只有中間一行白字「No slides now」。
-  - 按 New → From outline… 貼一份大綱送出：訊息以 /slidra-plan 開頭，agent 寫出
-    plan/outline.md 與 plan/design-spec.md 後，編輯器彈出擋住式的計畫確認視窗。
-  - 視窗裡每題預設是 agent 的建議，可切換或自由填寫；按「確認並建置」後 agent 走
-    /slidra-build 從第 1 頁建出整份、登記範本、用 slidra validate 修到 0 錯誤。
-  - 在聊天框輸入一道建立元素的指令（例如「加一個標題文字」），agent 會經 CLI
-    改檔，畫面自動更新出現這個元素——這是這份簡報第一次被下命令。
-  - 從終端機看同一份內容：
+Verification checklist (blank presentation, verifying the from-scratch path):
+  - The screen opens to a blank presentation with no slides at all (a new presentation has zero pages, ADR-0018); the stage has no white background, just a single centered line of white text reading "No slides now".
+  - Click New -> From outline... and paste in an outline: the message starts with /slidra-plan, and after the agent writes out
+    plan/outline.md and plan/design-spec.md, the editor pops up a blocking plan-confirmation dialog.
+  - Each question in the dialog defaults to the agent's suggestion, and can be switched or freely edited; after clicking "Confirm and build" the agent runs
+    /slidra-build to build the whole deck from page 1, register templates, and fix errors down to zero with slidra validate.
+  - Type a command to create an element in the chat box (e.g. "add a title text"), and the agent edits the file via the CLI —
+    the screen updates automatically with the new element showing up: this is the first command ever issued against this presentation.
+  - View the same content from the terminal:
       node_modules/.bin/slidra cat $PRESENTATION_ID project.json
 
-其他：
-  - 按 Ctrl+C 結束。
+Other:
+  - Press Ctrl+C to stop.
 
 INFO
 else
 cat <<INFO
 
-簡報識別碼：$PRESENTATION_ID
-示範簡報檔：$DEMO_SLIDRA
-網址：      $URL
+Presentation id: $PRESENTATION_ID
+Demo presentation file: $DEMO_SLIDRA
+URL: $URL
 
-驗收清單（這一輪做完的部分）：
-  換頁 #25
-    - 畫面上是第 1 頁「驗收用簡報」，右下角顯示 1 / 4。
-    - 按 › 或方向鍵右到第 2、3、4 頁；到底時按鈕變灰、再按不動也不當機。
-    - 游標在聊天輸入框裡時按方向鍵，應該是移動游標，不會翻頁。
-  資產 #11 / #13
-    - 第 2 頁的藍色方塊圖有畫出來（相對路徑經 <base> 轉到 /api/raw/）。
-    - Range 請求要回 206 與 Content-Range：
+Verification checklist (covering what's done so far):
+  Page navigation
+    - The screen shows page 1, "驗收用簡報" (Acceptance Test Presentation), with 1 / 4 shown at the bottom right.
+    - Press > or the right arrow key to move to pages 2, 3, 4; at the end the button greys out and pressing again does nothing and doesn't crash.
+    - Pressing arrow keys while the cursor is in the chat input box should move the cursor, not change pages.
+  Assets
+    - Page 2's blue square image renders (its relative path is resolved to /api/raw/ via <base>).
+    - A Range request should return 206 and Content-Range:
         curl -si -H 'Range: bytes=0-9' $URL/api/raw/assets/photo.svg | head -5
-    - 壞掉的 Range 要回 416：
+    - An invalid Range should return 416:
         curl -si -H 'Range: bytes=99999999-' $URL/api/raw/assets/photo.svg | head -3
-  即時預覽 #5
-    - 另開一個終端機改內容，畫面應該不重整就更新，且停在你正在看的那一頁：
+  Live preview
+    - Edit the content from a separate terminal — the screen should update without a full reload, and should stay on whichever page you're currently viewing:
         node_modules/.bin/slidra text set $PRESENTATION_ID slides/001.svg el-title "Q3 財報"
-  agent 對話 #6
-    - 在聊天框輸入「把第一頁標題改成 Q3 財報」，agent 會經 CLI 改檔，畫面自動更新。
-    - agent 執行命令時畫面不會顯示工具進度，看起來像停住是正常的，等它回話即可。
-  總覽 #27
-    - 左側依序看到每一頁的真實縮圖，點一下跳到那一頁，目前那一頁看得出來。
-  播放模式 #28
-    - 翻到第 1 頁，按「播放」：從頭開始一路按方向鍵右，不必離開畫面。
-    - 第 1、2 頁沒有效果清單，按一次方向鍵右直接換到下一頁。
-    - 第 3 頁（有效果清單那頁）：畫面立刻不會閃過完整內容——「步驟一」
-      「步驟二」「步驟三」三行文字一開始就是隱藏的，標題維持可見。
-      按方向鍵右，三行文字依序出現，每按一次只出現一行；按完三步後再按
-      一次會換到第 4 頁。
-    - 點畫面別處（例如聊天輸入框）搶走焦點，畫面應明確提示「焦點不在播放器上」，
-      並提供一顆點回去的按鈕。
-    - 按「離開播放」回到檢視模式，這時方向鍵才會重新翻頁而不是推進步驟。
-  全螢幕開關 #29
-    - 播放模式下，畫面上會有一顆「全螢幕」按鈕（檢視模式沒有這顆按鈕）。
-    - 按下去整個播放畫面（含控制列）撐滿螢幕，按鈕文字變成「退出全螢幕」；
-      方向鍵推進、按鈕點擊在全螢幕狀態下都照常可用。
-    - 按 Esc 或再按一次按鈕，回到內嵌播放，不會掉出播放模式。
-  影音效果 #30（第 4 頁）
-    - 從第 3 頁按完三步、再按一次方向鍵右，換到第 4 頁「影音」。
-    - 說明文字「重點說明」一開始是隱藏的，按方向鍵右淡入出現。
-    - 再按一次，影片色塊換成真的在播放的影片畫面，對齊原本佔位色塊的位置。
-    - 再按一次，喇叭圖示旁開始播放旁白音檔（沒有畫面變化，但可從瀏覽器分頁
-      的靜音圖示或開發者工具的 Elements 面板看到多了一個 <audio> 在播放）。
-    - 此時已是整份簡報的最後一步，再按方向鍵右不動、不當機。
-  倒退播放 #46（接著上面的第 4 頁最後一步，一路按方向鍵左）
-    - 按一次方向鍵左：只退回「音檔開始播放」的前一步，畫面仍在第 4 頁，
-      影片畫面與喇叭旁白都會消失（不是暫停，是整個拿掉），沒有任何聲音。
-    - 再按一次：退到「說明文字淡入」那一步本身，仍在第 4 頁。
-    - 再按一次：跨頁退回第 3 頁，而且第 3 頁是「整頁跑完」的樣子——
-      「步驟一」「步驟二」「步驟三」三行文字全部可見，不是第 3 頁剛進來
-      的空白開頭。
-    - 在第 3 頁再按一次方向鍵左：只有「步驟三」消失，「步驟一」「步驟二」
-      仍然可見——確認是一次只退一步，不是整頁重來。
-    - 繼續按方向鍵左，會依序退回第 2 頁、第 1 頁；沒有效果清單的頁面一按
-      就整頁跨過去。
-    - 退到第 1 頁最一開始時，再按方向鍵左：畫面不動、不當機。
-    - 整個倒退過程：畫面全程沒有跳出任何錯誤訊息，也沒有任何影片或音檔
-      還在播放。
+  Agent chat
+    - Type "change the title on page one to Q3 財報" in the chat box — the agent edits the file via the CLI, and the screen updates automatically.
+    - The screen shows no tool-progress indicator while the agent runs a command — it's normal for it to look stalled until the agent replies.
+  Overview
+    - The left side shows real thumbnails of every page in order; clicking one jumps to that page, and the current page is visually distinguishable.
+  Play mode
+    - Go to page 1 and click "Play": press the right arrow key repeatedly from the start without leaving the screen.
+    - Pages 1 and 2 have no effect list, so pressing the right arrow key once moves straight to the next page.
+    - Page 3 (the one with an effect list): the screen doesn't flash the full content immediately — the three lines
+      「步驟一」「步驟二」「步驟三」(Step one/two/three) start hidden, while the title stays visible.
+      Pressing the right arrow key reveals the three lines one at a time, one per press; after all three steps, pressing
+      again moves to page 4.
+  - Clicking elsewhere on the screen (e.g. the chat input box) to steal focus should clearly indicate "focus is not on the player",
+      with a button provided to click back into it.
+    - Clicking "Exit playback" returns to view mode, and arrow keys resume changing pages instead of advancing steps.
+  Fullscreen toggle
+    - In play mode there is a "Fullscreen" button (not present in view mode).
+    - Clicking it makes the whole playback screen (including the control bar) fill the display, and the button label changes to "Exit fullscreen";
+      arrow-key advancement and button clicks both keep working while in fullscreen.
+    - Pressing Esc or the button again returns to inline playback without leaving play mode.
+  Audio/video effects (page 4)
+    - After completing the three steps on page 3, pressing the right arrow key once more moves to page 4, "Media".
+    - The caption text "重點說明" (Key point) starts hidden, and fades in on the right arrow key.
+    - Pressing again swaps the video placeholder block for the actual playing video, aligned to where the placeholder was.
+    - Pressing again starts narration audio playing next to the speaker icon (no visible change, but the browser tab's mute icon,
+      or the devtools Elements panel, will show an extra <audio> element playing).
+    - This is now the final step of the whole presentation; pressing the right arrow key again does nothing and doesn't crash.
+  Rewind (continuing from the last step of page 4 above, pressing the left arrow key repeatedly)
+    - Press the left arrow key once: this only rewinds to the step right before "narration audio started" — the screen stays on page 4,
+      and both the video and the narration audio disappear (not paused, fully removed), with no sound at all.
+    - Press again: rewinds to the "caption fade-in" step itself, still on page 4.
+    - Press again: crosses back to page 3, and page 3 appears as if it had "played all the way through" —
+      「步驟一」「步驟二」「步驟三」are all visible, not page 3's blank starting state.
+    - Pressing the left arrow key once more on page 3: only "步驟三" disappears, "步驟一" "步驟二"
+      remain visible — confirming it rewinds one step at a time, not the whole page at once.
+    - Continuing to press the left arrow key rewinds through pages 2 and 1 in order; a page with no effect list
+      crosses in a single press.
+    - Once rewound all the way to the very start of page 1, pressing the left arrow key again does nothing and doesn't crash.
+    - Throughout the whole rewind: no error message ever appears on screen, and no video or audio
+      is left playing.
 
-其他：
-  - 從終端機看同一份內容：
+Other:
+  - View the same content from the terminal:
       node_modules/.bin/slidra cat $PRESENTATION_ID slides/001.svg
-  - 按 Ctrl+C 結束。
+  - Press Ctrl+C to stop.
 
 INFO
 fi
 
 if [ "$QA" -eq 0 ] && [ "$OPEN_BROWSER" -eq 1 ] && command -v open >/dev/null 2>&1; then
-  # serve 綁定成功後才開瀏覽器，避免開到一個還沒起來的頁面。
+  # Only open the browser once serve has successfully bound, to avoid opening a page that isn't up yet.
   ( sleep 2; open "$URL" ) &
 fi
 
-# 5. 啟動 ---------------------------------------------------------------------
+# 5. Launch ---------------------------------------------------------------------
 if [ "$QA" -eq 0 ]; then
-  step "啟動 slidra serve"
+  step "Starting slidra serve"
   exec "$CLI" "${SERVE_ARGS[@]}"
 fi
 
-# --qa：背景起 serve，輪詢直到有回應，再起 headless Chromium，最後寫 env 檔並
-# 跑 browser-use --doctor 冒煙測試。與不帶 --qa 的路徑不同，這裡必須讓腳本
-# 自己結束（父票驗收條件 1：「一個指令跑完」），所以不能用 exec。
-step "啟動 slidra serve（QA，背景）"
+# --qa: start serve in the background, poll until it responds, then start
+# headless Chromium, and finally write the env file and run browser-use
+# --doctor as a smoke test. Unlike the non---qa path, this one must let the
+# script finish on its own (the requirement being "one command finishes
+# completely"), so exec isn't used here.
+step "Starting slidra serve (QA, background)"
 
 qa_wait_http() {
   local url="$1" timeout_s="$2" waited=0
@@ -411,23 +436,23 @@ setsid bash -c '
 disown
 
 if ! qa_wait_http "$URL/" 60; then
-  echo "slidra serve 在 60 秒內沒有回應 $URL/。serve.log 最後 20 行：" >&2
+  echo "slidra serve did not respond at $URL/ within 60 seconds. Last 20 lines of serve.log:" >&2
   tail -n 20 "$QA_SERVE_LOG" >&2 || true
   exit 1
 fi
-echo "serve 已就緒：$URL"
+echo "serve is ready: $URL"
 
-step "解析 Chromium 路徑"
+step "Resolving Chromium's path"
 CHROMIUM="$(node -e "console.log(require('playwright').chromium.executablePath())")"
 if [ ! -x "$CHROMIUM" ]; then
-  echo "Chromium 執行檔不存在或不可執行：${CHROMIUM}。請執行 npx playwright install chromium 後重試。" >&2
+  echo "Chromium executable does not exist or is not executable: ${CHROMIUM}. Run npx playwright install chromium and retry." >&2
   exit 1
 fi
-echo "Chromium：$CHROMIUM"
+echo "Chromium: $CHROMIUM"
 
-step "啟動 headless Chromium（QA，背景）"
+step "Starting headless Chromium (QA, background)"
 if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$QA_CDP_PORT/json/version" 2>/dev/null | grep -q '^200$'; then
-  echo "CDP port $QA_CDP_PORT 已被佔用。改用 SLIDRA_QA_CDP_PORT 環境變數指定別的 port。" >&2
+  echo "CDP port $QA_CDP_PORT is already in use. Set the SLIDRA_QA_CDP_PORT environment variable to use a different port." >&2
   exit 1
 fi
 
@@ -452,13 +477,13 @@ setsid bash -c '
 disown
 
 if ! qa_wait_http "http://127.0.0.1:$QA_CDP_PORT/json/version" 30; then
-  echo "Chromium 在 30 秒內沒有開放 CDP port ${QA_CDP_PORT}。chromium.log 最後 20 行：" >&2
+  echo "Chromium did not open the CDP port ${QA_CDP_PORT} within 30 seconds. Last 20 lines of chromium.log:" >&2
   tail -n 20 "$CHROMIUM_LOG" >&2 || true
   exit 1
 fi
-echo "Chromium CDP 已就緒：127.0.0.1:$QA_CDP_PORT"
+echo "Chromium CDP is ready: 127.0.0.1:$QA_CDP_PORT"
 
-step "寫出 QA env 檔"
+step "Writing the QA env file"
 cat > "$QA_ENV_FILE" <<ENV
 export BU_CDP_URL="http://127.0.0.1:$QA_CDP_PORT"
 export BH_AGENT_WORKSPACE="$ROOT/qa"
@@ -469,13 +494,15 @@ export BH_TMP_DIR="$QA_DIR/tmp"
 export SLIDRA_QA_CDP_PORT="$QA_CDP_PORT"
 ENV
 mkdir -p "$QA_DIR/tmp"
-echo "已寫出：$QA_ENV_FILE"
+echo "Written: $QA_ENV_FILE"
 
-step "開啟 Slidra（透過 qa/agent_helpers.py 的 open_deck()）"
-# `browser-use --doctor` 是唯讀診斷，本身不會啟動 daemon（daemon 只在跑一般腳本時
-# 由 ensure_daemon() 啟動，見 browser_harness/run.py）。父票驗收條件要求 doctor
-# 印出「active page 是 Slidra」，所以這裡先跑一段會導覽到 SLIDRA_QA_URL 的腳本
-# ——同時完成「啟動 daemon」與「開到 Slidra」兩件事，再進 doctor 檢查。
+step "Opening Slidra (via qa/agent_helpers.py's open_deck())"
+# `browser-use --doctor` is a read-only diagnostic and doesn't start the
+# daemon itself (the daemon only starts when running an actual script, via
+# ensure_daemon(), see browser_harness/run.py). Doctor is expected to report
+# that the active page is Slidra, so a script that navigates to
+# SLIDRA_QA_URL is run first here — accomplishing both "start the daemon"
+# and "open Slidra" together — before running the doctor check.
 set +e
 DOCTOR_OPEN_OUTPUT="$( set -a; source "$QA_ENV_FILE"; set +a; browser-use <<'PY' 2>&1
 print(open_deck())
@@ -484,9 +511,9 @@ PY
 DOCTOR_OPEN_RC=$?
 set -e
 if [ "$DOCTOR_OPEN_RC" -ne 0 ]; then
-  echo "開啟 Slidra 失敗（離開碼 ${DOCTOR_OPEN_RC}）：" >&2
+  echo "Failed to open Slidra (exit code ${DOCTOR_OPEN_RC}):" >&2
   echo "$DOCTOR_OPEN_OUTPUT" >&2
-  echo "QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
+  echo "The QA environment has been left running (.quickstart/qa/) — tear it down with --qa-stop, or troubleshoot from the output above and rerun." >&2
   exit "$DOCTOR_OPEN_RC"
 fi
 echo "$DOCTOR_OPEN_OUTPUT"
@@ -498,17 +525,17 @@ DOCTOR_RC=$?
 set -e
 
 if [ "$DOCTOR_RC" -ne 0 ]; then
-  echo "browser-use --doctor 回報異常（離開碼 ${DOCTOR_RC}）。QA 環境已保留（.quickstart/qa/），可用 --qa-stop 收掉，或依上面的輸出排查後重跑。" >&2
+  echo "browser-use --doctor reported a problem (exit code ${DOCTOR_RC}). The QA environment has been left running (.quickstart/qa/) — tear it down with --qa-stop, or troubleshoot from the output above and rerun." >&2
   exit "$DOCTOR_RC"
 fi
 
 cat <<QAINFO
 
-QA 環境已就緒。
+QA environment is ready.
   source $QA_ENV_FILE
   browser-use < qa/cases/smoke.py
 
-收尾：
+To tear down:
   ./quick_start.sh --qa-stop
 
 QAINFO
