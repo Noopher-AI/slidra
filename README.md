@@ -1,6 +1,6 @@
-<p align="center">
+<!-- <p align="center">
   <img src="docs/assets/logo.svg" width="120" alt="Slidra">
-</p>
+</p> -->
 
 <h1 align="center">Slidra</h1>
 
@@ -10,15 +10,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Noopher-AI/slidra/actions"><img src="https://github.com/Noopher-AI/slidra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://crates.io/crates/slidra"><img src="https://img.shields.io/crates/v/slidra.svg" alt="crates.io"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
   <a href="https://slidra.vercel.app"><img src="https://img.shields.io/badge/demo-live-black?logo=vercel" alt="Demo"></a>
 </p>
 
-<p align="center">
+<!-- <p align="center">
   <img src="docs/assets/hero.gif" width="800" alt="An agent detects and fixes a text-overflow issue while the slide updates live.">
-</p>
+</p> -->
 
 ---
 
