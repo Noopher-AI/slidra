@@ -64,7 +64,7 @@ impl Fixture {
             "--width",
             "600",
             "--text",
-            "標題",
+            "title",
         ]);
         assert!(
             textbox.status.success(),
@@ -127,7 +127,7 @@ fn extract_first_element_id(svg: &str) -> String {
 fn concurrent_effect_adds_on_one_slide_are_serialised_by_the_presentation_lock() {
     let fixture = Fixture::new("concurrent-effects");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     fixture.seed_slide(&id);
@@ -198,7 +198,7 @@ fn version_flag_is_answered_by_rust_not_node() {
     assert!(output.stderr.is_empty());
 }
 
-/// Plan 4.1's first contract row: empty argv reports "缺少命令名稱" and
+/// Plan 4.1's first contract row: empty argv reports "missing command name" and
 /// exits 1 — Rust's own message now, no longer forwarded from Node
 /// (the fallback this used to go through was removed; the bytes are
 /// unchanged).
@@ -206,7 +206,10 @@ fn version_flag_is_answered_by_rust_not_node() {
 fn empty_argv_reports_missing_command_name() {
     let output = Command::new(rust_bin()).output().expect("binary must run");
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(String::from_utf8_lossy(&output.stderr), "缺少命令名稱\n");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "missing command name\n"
+    );
     assert!(output.stdout.is_empty());
 }
 
@@ -234,7 +237,8 @@ fn no_takeover_table_command_ever_invokes_node() {
     };
 
     let new_path = fixture.workspace.join("t2.slidra");
-    let new_output = run_without_node(&["new", new_path.to_str().unwrap(), "--name", "無node測試"]);
+    let new_output =
+        run_without_node(&["new", new_path.to_str().unwrap(), "--name", "no-node test"]);
     assert!(
         new_output.status.success(),
         "`new` must succeed without node on PATH: {:?}",
@@ -311,7 +315,7 @@ fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "未知的子命令：slide frobnicate\n"
+        "unknown subcommand: slide frobnicate\n"
     );
     assert!(output.stdout.is_empty());
 }
@@ -320,14 +324,14 @@ fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
 /// registered at all, e.g. `frobnicate`; or a legacy-table-eligible name
 /// used with a sub-command that isn't, e.g. `effect duplicate`; or a
 /// family name outside its own table, e.g. `element frobnicate`)
-/// must be rejected by Rust's own "未知的命令" branch, never forwarded to
+/// must be rejected by Rust's own "unknown command" branch, never forwarded to
 /// Node — that fallback was deleted outright (plan section 0.1/2.1).
 /// Previously only exercised via the deleted
 /// `fallback_path_is_byte_identical_to_node_for_every_non_takeover_command`,
 /// which compared against the now-deleted Node CLI; this keeps the
 /// behavior itself under test, reusing
 /// `no_takeover_table_command_ever_invokes_node`'s empty-`PATH` technique
-/// so that a reintroduced fallback would surface as "找不到 node" instead
+/// so that a reintroduced fallback would surface as "node not found" instead
 /// of silently passing.
 #[test]
 fn unknown_command_never_falls_back_to_node() {
@@ -361,7 +365,7 @@ fn unknown_command_never_falls_back_to_node() {
         assert_eq!(output.status.code(), Some(1), "args={args:?}: {output:?}");
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
-            format!("未知的命令：{unknown_name}\n"),
+            format!("unknown command: {unknown_name}\n"),
             "args={args:?}"
         );
         assert!(output.stdout.is_empty(), "args={args:?}: {output:?}");
@@ -374,7 +378,7 @@ fn unknown_command_never_falls_back_to_node() {
 fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     let fixture = Fixture::new("undo-empty");
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(new_output.status.success());
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
@@ -383,7 +387,7 @@ fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "沒有可復原的操作\n"
+        "no operation to undo\n"
     );
 }
 
@@ -391,7 +395,7 @@ fn undo_with_no_history_reports_nothing_to_undo_via_rust() {
 fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
     let fixture = Fixture::new("undo-redo-roundtrip");
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
@@ -410,7 +414,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
         &id,
         "slides/001.svg",
         &element_id,
-        "改過的標題",
+        "edited title",
     ]);
     assert!(
         text_set.status.success(),
@@ -460,7 +464,7 @@ fn undo_redo_round_trip_via_rust_binary_restores_exact_bytes() {
 /// below runs `convert` too before touching effect commands.
 fn new_open_and_convert(fixture: &Fixture) -> String {
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
@@ -557,7 +561,7 @@ fn effect_list_without_a_list_matches_stderr_and_exit_code() {
     );
     assert_eq!(
         String::from_utf8_lossy(&rust_out.stderr),
-        "這張投影片沒有效果清單\n"
+        "this slide has no effect list\n"
     );
 }
 
@@ -597,7 +601,7 @@ fn effect_list_with_damaged_list_matches_stderr() {
         String::from_utf8_lossy(&rust_out.stderr),
         String::from_utf8_lossy(&node_out.stderr),
     );
-    assert!(String::from_utf8_lossy(&rust_out.stderr).contains("尚未實作"));
+    assert!(String::from_utf8_lossy(&rust_out.stderr).contains("not yet implemented"));
 }
 
 /// Plan 6.2 item 6: `effect add` occupies exactly one undo step — `undo`
@@ -726,7 +730,7 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
     let slidra_path = fixture.workspace.join("t.slidra");
     let slidra_path_str = slidra_path.to_str().unwrap();
 
-    let new_out = fixture.run_rust(&["new", slidra_path_str, "--name", "測試", "--json"]);
+    let new_out = fixture.run_rust(&["new", slidra_path_str, "--name", "test", "--json"]);
     assert!(new_out.status.success(), "`new --json` failed: {new_out:?}");
     assert_eq!(
         data_key_types(&json_envelope(&new_out)["data"]),
@@ -959,7 +963,7 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
         "rename",
         &id,
         &template_path,
-        "改過的名字",
+        "edited name",
         "--json",
     ]);
     assert!(
@@ -1033,7 +1037,7 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
 fn cat_json_multi_path_returns_ordered_array_shape() {
     let fixture = Fixture::new("cat-json-multi-path");
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_out);
@@ -1155,7 +1159,7 @@ fn normalize_element_ids_assigns_placeholders_in_order_of_first_appearance() {
 fn chart_table_asset_commands_are_dispatched_by_rust_not_node() {
     let fixture = Fixture::new("dispatch-not-node");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     fixture.seed_slide(&id);
@@ -1351,7 +1355,7 @@ fn chart_table_asset_commands_are_dispatched_by_rust_not_node() {
             .output()
             .expect("compiled slidra binary must run");
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.trim() == "找不到 node" {
+        if stderr.trim() == "node not found" {
             failures.push(format!("args={args:?} fell back to node: {stderr}"));
         }
     }
@@ -1379,7 +1383,7 @@ fn extract_id_field(stdout: &[u8], field: &str) -> String {
 fn asset_import_local_file_lands_under_assets_via_rust_binary() {
     let fixture = Fixture::new("asset-import-cli");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     fixture.seed_slide(&id);
@@ -1411,7 +1415,7 @@ fn asset_import_local_file_lands_under_assets_via_rust_binary() {
 fn chart_data_set_reads_csv_from_stdin() {
     let fixture = Fixture::new("chart-csv-stdin");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     fixture.seed_slide(&id);
@@ -1597,7 +1601,7 @@ fn takeover_table_contains_all_29_commands() {
 /// `Fixture` around.
 fn new_and_open(fixture: &Fixture) -> (String, String) {
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_output = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(
         new_output.status.success(),
         "setup: `new` failed: {:?}",
@@ -1688,7 +1692,7 @@ fn undo_step_accounting_advances_by_exactly_one_on_success_and_not_at_all_on_fai
             id.clone(),
             "slides/001.svg".into(),
             element_id.clone(),
-            "改過的標題".into(),
+            "edited title".into(),
         ],
         vec![
             "element".into(),
@@ -1940,7 +1944,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
     assert_eq!(cat_missing_env["ok"], serde_json::json!(false));
     assert_eq!(
         cat_missing_env["message"],
-        serde_json::json!("命令 cat 缺少參數：path")
+        serde_json::json!("command cat missing argument: path")
     );
 }
 
@@ -2086,7 +2090,7 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
 /// commands is actually dispatched by Rust — `PATH` pointed at an empty
 /// directory (`no_takeover_table_command_ever_invokes_node`'s own
 /// technique) so a command that fell through to a Node fallback would fail
-/// with "找不到 node" instead of running; and (plan N2) `cat`/`ls`/`slide render`
+/// with "node not found" instead of running; and (plan N2) `cat`/`ls`/`slide render`
 /// are the only three with a renderer — their plain (non-`--json`) stdout
 /// is raw content with no leading status line, unlike the other 78's
 /// "<message>\n{...}" shape.
@@ -2112,7 +2116,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
         "new",
         slidra_path.to_str().unwrap(),
         "--name",
-        "87 條命令煙霧測試",
+        "87-command smoke test",
     ]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = run_without_node(&["open", slidra_path.to_str().unwrap()]);
@@ -2184,7 +2188,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
         }
         let output = run_without_node(&args);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.trim() == "找不到 node" {
+        if stderr.trim() == "node not found" {
             failures.push(format!("{name}: fell back to node ({stderr})"));
             continue;
         }
@@ -2238,7 +2242,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
 fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
     let fixture = Fixture::new("epipe");
     let slidra_path = fixture.workspace.join("t.slidra");
-    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     assert!(new_out.status.success(), "setup: `new` failed: {new_out:?}");
     let open_out = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     assert!(
@@ -2285,12 +2289,12 @@ fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
 fn plan_set_then_validate_round_trip_via_rust_binary() {
     let fixture = Fixture::new("plan-validate");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
     fixture.seed_slide(&id);
 
-    let design_spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n正文\n";
+    let design_spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\nBody\n";
     let bad_spec = design_spec.replace("\"presentation\"", "\"loose\"");
     let rejected = fixture.run_rust(&["plan", "set", &id, "design-spec", &bad_spec]);
     assert_eq!(rejected.status.code(), Some(1));
@@ -2318,7 +2322,7 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
         ]))["data"]["path"],
         "plan/design-spec.md"
     );
-    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"標題\" } ] }\n```\n";
+    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"Title\" } ] }\n```\n";
     assert!(
         fixture
             .run_rust(&["plan", "set", &id, "outline", outline])
@@ -2346,13 +2350,13 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
     assert_eq!(envelope["ok"], true);
     assert_eq!(
         envelope["message"],
-        "共 1 頁，".to_string()
+        "1 pages total, ".to_string()
             + &envelope["data"]["errors"]
                 .as_array()
                 .unwrap()
                 .len()
                 .to_string()
-            + " 個錯誤"
+            + " errors"
     );
     let rules: Vec<&str> = envelope["data"]["errors"]
         .as_array()
@@ -2374,7 +2378,7 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
     let envelope = json_envelope(&report);
     let message = envelope["message"].as_str().unwrap();
     assert!(
-        message.ends_with("（沒有 plan/ 計畫檔，只驗幾何與骨架）"),
+        message.ends_with("(no plan/ plan file, only validating geometry and skeleton)"),
         "{message}"
     );
     let rules: Vec<&str> = envelope["data"]["errors"]
@@ -2398,13 +2402,13 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
 fn a_confirmed_plans_drawn_page_guards_its_blueprint() {
     let fixture = Fixture::new("plan-guard");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let id = extract_id(&fixture.run_rust(&["open", slidra_path.to_str().unwrap()]));
     fixture.seed_slide(&id);
 
     let outline = |nodes: u32| {
         format!(
-            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"narrative\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"標題\", \"blueprint\": {{ \"shape\": \"spine-path\", \"nodes\": {nodes}, \"steps\": 4 }} }} ] }}\n```\n"
+            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"narrative\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"Title\", \"blueprint\": {{ \"shape\": \"spine-path\", \"nodes\": {nodes}, \"steps\": 4 }} }} ] }}\n```\n"
         )
     };
     assert!(
@@ -2443,7 +2447,7 @@ fn a_confirmed_plans_drawn_page_guards_its_blueprint() {
 fn font_import_embeds_a_second_family_that_text_can_then_use() {
     let fixture = Fixture::new("font-import");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
@@ -2493,7 +2497,7 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
         "--width",
         "600",
         "--text",
-        "新字型",
+        "new font",
         "--font-family",
         "Catalogue Serif",
     ]);
@@ -2540,7 +2544,7 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
 fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
     let fixture = Fixture::new("slide-background");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
@@ -2573,7 +2577,7 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
         "bg-mesh.svg",
     ]);
     assert!(!again.status.success());
-    assert!(String::from_utf8_lossy(&again.stderr).contains("已存在"));
+    assert!(String::from_utf8_lossy(&again.stderr).contains("already exists"));
     let bad_name = fixture.run_rust(&[
         "asset",
         "import",
@@ -2614,9 +2618,9 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
             .success()
     );
 
-    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">n</slidra:notes><slidra:transition xmlns:slidra="https://slidra.app/ns/2026" enter="fade" enter-duration="0.3"/><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="el-title" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></slidra:effects></metadata><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text><text id="el-body" data-slidra-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-slidra-list="bullet bullet bullet">一
-二
-三</text></svg>"##;
+    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">n</slidra:notes><slidra:transition xmlns:slidra="https://slidra.app/ns/2026" enter="fade" enter-duration="0.3"/><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="el-title" family="enter" effect="fade" start="on-click" duration="0.4" delay="0"/></slidra:effects></metadata><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">Title</text><text id="el-body" data-slidra-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-slidra-list="bullet bullet bullet">one
+two
+three</text></svg>"##;
     assert!(
         fixture
             .run_rust(&["slide", "add", &id, "--svg", page])
@@ -2632,7 +2636,7 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
                 "--from",
                 "slides/001.svg",
                 "--name",
-                "要點頁"
+                "bullet point page"
             ])
             .status
             .success()
@@ -2810,13 +2814,13 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
 fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
     let fixture = Fixture::new("slide-svg");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     let id = extract_id(&open_output);
 
-    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><defs><linearGradient id="glow"><stop offset="0" stop-color="#4F8DFF"/></linearGradient></defs><ellipse cx="1180" cy="60" rx="420" ry="420" fill="url(#glow)" opacity="0.12"/><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text><text data-slidra-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-slidra-list="bullet bullet bullet">一
-二
-三</text></svg>"##;
+    let page = r##"<svg xmlns="http://www.w3.org/2000/svg" style="background-color:#101418"><defs><linearGradient id="glow"><stop offset="0" stop-color="#4F8DFF"/></linearGradient></defs><ellipse cx="1180" cy="60" rx="420" ry="420" fill="url(#glow)" opacity="0.12"/><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">Title</text><text data-slidra-text-width="1120" x="80" y="176" font-size="24" fill="#F4F6F8" data-slidra-list="bullet bullet bullet">one
+two
+three</text></svg>"##;
     let added = fixture.run_rust(&["slide", "add", &id, "--svg", page, "--json"]);
     assert!(added.status.success(), "{added:?}");
     let envelope = json_envelope(&added);
@@ -2894,7 +2898,14 @@ fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
     assert_eq!(listed.matches(".svg").count(), 1, "{listed}");
 
     // `slide set --svg` keeps the notes the old page carried.
-    let notes = fixture.run_rust(&["slide", "notes", "set", &id, "slides/001.svg", "講稿"]);
+    let notes = fixture.run_rust(&[
+        "slide",
+        "notes",
+        "set",
+        &id,
+        "slides/001.svg",
+        "speaker notes",
+    ]);
     assert!(notes.status.success(), "{notes:?}");
     let replaced = fixture.run_rust(&[
         "slide",
@@ -2902,7 +2913,7 @@ fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
         &id,
         "slides/001.svg",
         "--svg",
-        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" fill="#F4F6F8">改寫</text></svg>"##,
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" fill="#F4F6F8">rewritten</text></svg>"##,
         "--json",
     ]);
     assert!(replaced.status.success(), "{replaced:?}");
@@ -2912,8 +2923,11 @@ fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
     );
     let cat = String::from_utf8_lossy(&fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout)
         .into_owned();
-    assert!(cat.contains("講稿"), "notes must survive slide set: {cat}");
-    assert!(cat.contains("改寫"), "{cat}");
+    assert!(
+        cat.contains("speaker notes"),
+        "notes must survive slide set: {cat}"
+    );
+    assert!(cat.contains("rewritten"), "{cat}");
     assert!(!cat.contains("<defs>"), "{cat}");
     let undo = fixture.run_rust(&["undo", &id]);
     assert!(undo.status.success(), "{undo:?}");
@@ -2939,7 +2953,7 @@ fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
 fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
     let fixture = Fixture::new("write-gate");
     let slidra_path = fixture.workspace.join("t.slidra");
-    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "測試"]);
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
     let id = extract_id(&fixture.run_rust(&["open", slidra_path.to_str().unwrap()]));
 
     // Two text boxes at the same place, plus an asset that does not exist.
@@ -2948,7 +2962,7 @@ fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
         "add",
         &id,
         "--svg",
-        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-slidra-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">上面</text><text id="el-b" data-slidra-text-width="600" x="80" y="110" font-size="40" fill="#F4F6F8">下面</text><image id="el-p" x="0" y="0" width="10" height="10" href="../assets/nope.png"/></svg>"##,
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-slidra-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">top</text><text id="el-b" data-slidra-text-width="600" x="80" y="110" font-size="40" fill="#F4F6F8">bottom</text><image id="el-p" x="0" y="0" width="10" height="10" href="../assets/nope.png"/></svg>"##,
     ]);
     assert_eq!(refused.status.code(), Some(1), "{refused:?}");
     let message = String::from_utf8_lossy(&refused.stderr).into_owned();
@@ -2966,7 +2980,7 @@ fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
         "add",
         &id,
         "--svg",
-        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-slidra-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">上面</text><text id="el-b" data-slidra-text-width="600" x="80" y="300" font-size="40" fill="#F4F6F8">下面</text></svg>"##,
+        r##"<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-a" data-slidra-text-width="600" x="80" y="100" font-size="40" fill="#F4F6F8">top</text><text id="el-b" data-slidra-text-width="600" x="80" y="300" font-size="40" fill="#F4F6F8">bottom</text></svg>"##,
     ]);
     assert!(written.status.success(), "{written:?}");
 
@@ -2976,11 +2990,11 @@ fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
         "add",
         &id,
         "--svg",
-        r##"<svg viewBox="0 0 1280 720"><g id="el-t"><text x="80" y="100" font-size="40">裸文字</text></g></svg>"##,
+        r##"<svg viewBox="0 0 1280 720"><g id="el-t"><text x="80" y="100" font-size="40">bare text</text></g></svg>"##,
     ]);
     assert_eq!(raw_text.status.code(), Some(1), "{raw_text:?}");
     assert!(
-        String::from_utf8_lossy(&raw_text.stderr).contains("不是文字框"),
+        String::from_utf8_lossy(&raw_text.stderr).contains("is not a text box"),
         "{raw_text:?}"
     );
     // The documented exception: a watermark that says it is decoration.
@@ -3002,7 +3016,7 @@ fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
     ]);
     assert_eq!(bad_role.status.code(), Some(1), "{bad_role:?}");
     assert!(
-        String::from_utf8_lossy(&bad_role.stderr).contains("不是合法角色"),
+        String::from_utf8_lossy(&bad_role.stderr).contains("is not a valid role"),
         "{bad_role:?}"
     );
 }

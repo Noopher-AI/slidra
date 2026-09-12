@@ -183,57 +183,57 @@
     {
       "label": "empty-tag-name",
       "svg": "<>",
-      "expectedMessage": "標記語法錯誤：第 1 行第 1 欄 不是合法的標籤"
+      "expectedMessage": "markup syntax error: line 1, column 1 is not a valid tag"
     },
     {
       "label": "open-tag-missing-gt",
       "svg": "<foo note=\"測試\"",
-      "expectedMessage": "標記語法錯誤：第 1 行第 1 欄 的 <foo> 標籤沒有結尾的 >"
+      "expectedMessage": "markup syntax error: line 1, column 1's <foo> tag has no closing >"
     },
     {
       "label": "attribute-name-unparseable",
       "svg": "<a =\"x\"/>",
-      "expectedMessage": "屬性語法錯誤：無法解析屬性名稱"
+      "expectedMessage": "attribute syntax error: cannot parse attribute name"
     },
     {
       "label": "attribute-missing-equals",
       "svg": "<a bar/>",
-      "expectedMessage": "屬性語法錯誤：屬性 bar 缺少 ="
+      "expectedMessage": "attribute syntax error: attribute bar is missing ="
     },
     {
       "label": "attribute-value-not-quoted",
       "svg": "<a bar=1/>",
-      "expectedMessage": "屬性語法錯誤：屬性 bar 的值未以引號括住"
+      "expectedMessage": "attribute syntax error: value of attribute bar is not quoted"
     },
     {
       "label": "attribute-value-quote-unterminated",
       "svg": "<a \"=\"/>",
-      "expectedMessage": "屬性語法錯誤：屬性 \" 的引號未封閉"
+      "expectedMessage": "attribute syntax error: quote of attribute \" is not closed"
     },
     {
       "label": "close-tag-missing-gt",
       "svg": "<a></a",
-      "expectedMessage": "標記語法錯誤：第 1 行第 4 欄 的結束標籤沒有結尾的 >"
+      "expectedMessage": "markup syntax error: closing tag in line 1, column 4 has no closing >"
     },
     {
       "label": "stray-close-tag-at-top-level",
       "svg": "<a></a></a>",
-      "expectedMessage": "標記語法錯誤：第 1 行第 8 欄 出現多餘的結束標籤"
+      "expectedMessage": "markup syntax error: line 1, column 8 has an extra closing tag"
     },
     {
       "label": "close-tag-name-mismatch",
       "svg": "<a></b>",
-      "expectedMessage": "標記語法錯誤：第 1 行第 4 欄 的結束標籤是 </b>，但目前開啟的是 <a>"
+      "expectedMessage": "markup syntax error: closing tag in line 1, column 4 is </b>, but the currently open tag is <a>"
     },
     {
       "label": "eof-with-unclosed-element",
       "svg": "<a><b></b>",
-      "expectedMessage": "標記語法錯誤：<a> 沒有對應的結束標籤"
+      "expectedMessage": "markup syntax error: <a> has no matching closing tag"
     },
     {
       "label": "unclosed-processing-instruction",
       "svg": "<a><?pi unterminated</a>",
-      "expectedMessage": "標記語法錯誤：第 1 行第 4 欄 的註解或宣告沒有結尾"
+      "expectedMessage": "markup syntax error: comment or declaration in line 1, column 4 has no end"
     }
   ]
 }

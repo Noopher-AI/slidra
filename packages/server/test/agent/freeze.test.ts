@@ -275,7 +275,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const secondUndoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
     expect(secondUndoResponse.status).toBe(400);
     const body = (await secondUndoResponse.json()) as { error: string };
-    expect(body.error).toBe("沒有可復原的操作");
+    expect(body.error).toBe("no operation to undo");
   });
 
   it("AC2-a: after the turn, stack.json has no open group and exactly one undo entry for it", async () => {

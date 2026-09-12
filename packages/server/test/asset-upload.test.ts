@@ -160,7 +160,7 @@ it("plain text disguised with a .png extension returns 400, assets/ unchanged", 
   const { status, json } = await postAsset(server, "this is not a real image", "fake.png");
 
   expect(status).toBe(400);
-  expect(json.error).toContain("不支援的媒體格式");
+  expect(json.error).toContain("unsupported media format");
   expect(await listAssets(id)).toEqual([]);
 });
 

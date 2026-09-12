@@ -361,7 +361,7 @@ describe("startServe", () => {
         '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
         '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "已讀取：slides/fake.svg" };',
         "} else {",
-        '  result = { ok: false, message: "找不到檔案：" + rest.join(" "), failureKind: "not-found" };',
+        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
         "}",
         "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
@@ -470,7 +470,7 @@ describe("startServe", () => {
       expect(response.status).toBe(500);
       expect(body.error).toBeTruthy();
       // A real I/O failure must never be told back as "the file is missing".
-      expect(body.error).not.toBe("找不到檔案：slides/001.svg");
+      expect(body.error).not.toBe("file not found: slides/001.svg");
       // The real filesystem path must never leak (ADR-0004, third layer).
       expect(body.error).not.toContain(realSlidePath);
       expect(body.error).not.toContain(slidraHome);
@@ -493,7 +493,7 @@ describe("startServe", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).toBe("簡報登記資料已損毀");
+    expect(body.error).toBe("presentation registry data is corrupted");
     expect(body.error).not.toContain(slidraHome);
   });
 
@@ -586,7 +586,7 @@ describe("startServe", () => {
       const body = await response.json();
 
       expect(response.status).toBe(500);
-      expect(body.error).toContain("尚未實作");
+      expect(body.error).toContain("not yet implemented");
     });
   });
 

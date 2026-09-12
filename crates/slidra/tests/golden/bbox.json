@@ -63,7 +63,7 @@
     "arcRejected": {
       "label": "path-elliptical-arc-rejected",
       "d": "M0 0 A5 5 0 0 1 10 10",
-      "expectedError": "尚無法計算含橢圓弧（A/a 指令）的 <path> 邊界框"
+      "expectedError": "cannot yet compute bounding box for <path> containing elliptical arcs (A/a commands)"
     }
   },
   "group": {

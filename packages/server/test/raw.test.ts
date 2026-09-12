@@ -204,7 +204,7 @@ describe("GET /api/raw/<virtual path>", () => {
         expect(body.error).toBeTruthy();
         // A real I/O failure must never be told back to the browser as
         // "the file is missing".
-        expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+        expect(body.error).not.toBe("file not found: assets/photo.png");
         // The real filesystem path must never leak into the response.
         expect(body.error).not.toContain(realAssetPath);
         expect(body.error).not.toContain(slidraHome);
@@ -236,7 +236,7 @@ describe("GET /api/raw/<virtual path>", () => {
         expect(body.error).toBeTruthy();
         // A real I/O failure must never be told back to the browser as
         // "the file is missing".
-        expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+        expect(body.error).not.toBe("file not found: assets/photo.png");
         // The real filesystem path must never leak into the response.
         expect(body.error).not.toContain(realAssetsDir);
         expect(body.error).not.toContain(slidraHome);
@@ -263,7 +263,7 @@ describe("GET /api/raw/<virtual path>", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).toBeTruthy();
-    expect(body.error).not.toBe("找不到檔案：assets/photo.png");
+    expect(body.error).not.toBe("file not found: assets/photo.png");
     expect(body.error).not.toContain(registryPath);
     expect(body.error).not.toContain(slidraHome);
   });

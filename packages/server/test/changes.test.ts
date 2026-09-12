@@ -288,7 +288,7 @@ describe("GET /api/events", () => {
         "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
         '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "已讀取：project.json" };',
         "} else {",
-        '  result = { ok: false, message: "找不到檔案：" + rest.join(" "), failureKind: "not-found" };',
+        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
         "}",
         "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
@@ -305,7 +305,7 @@ describe("GET /api/events", () => {
       const body = await response.json();
 
       expect(response.status).toBe(500);
-      expect(body.error).toMatch(/找不到識別碼對應的簡報/);
+      expect(body.error).toMatch(/no presentation found for id/);
     } finally {
       process.env.SLIDRA_BIN = slidraBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });

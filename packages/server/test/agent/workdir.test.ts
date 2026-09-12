@@ -240,14 +240,14 @@ describe("readAgentWorkdirFile", () => {
   });
 
   it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file'", async () => {
-    await expect(readAgentWorkdirFile(workdirReal, "")).rejects.toMatchObject({ message: "找不到檔案：" });
-    await expect(readAgentWorkdirFile(workdirReal, "/")).rejects.toMatchObject({ message: "找不到檔案：/" });
-    await expect(readAgentWorkdirFile(workdirReal, ".")).rejects.toMatchObject({ message: "找不到檔案：." });
+    await expect(readAgentWorkdirFile(workdirReal, "")).rejects.toMatchObject({ message: "file not found: " });
+    await expect(readAgentWorkdirFile(workdirReal, "/")).rejects.toMatchObject({ message: "file not found: /" });
+    await expect(readAgentWorkdirFile(workdirReal, ".")).rejects.toMatchObject({ message: "file not found: ." });
   });
 
   it("refuses a '..' escape as not-found — '..' is just a name the real directory tree never contains", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "../outside.txt")).rejects.toMatchObject({
-      message: "找不到檔案：../outside.txt",
+      message: "file not found: ../outside.txt",
     });
   });
 
@@ -257,7 +257,7 @@ describe("readAgentWorkdirFile", () => {
       await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
       await symlink(path.join(outsideDir, "secret.txt"), path.join(workdirReal, "link.txt"));
       await expect(readAgentWorkdirFile(workdirReal, "link.txt")).rejects.toMatchObject({
-        message: "找不到檔案：link.txt",
+        message: "file not found: link.txt",
       });
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
@@ -266,13 +266,13 @@ describe("readAgentWorkdirFile", () => {
 
   it("refuses a genuinely absent path as not-found", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "does/not/exist.md")).rejects.toMatchObject({
-      message: "找不到檔案：does/not/exist.md",
+      message: "file not found: does/not/exist.md",
     });
   });
 
   it("reports a directory as 'not a file', not as absent", async () => {
     await expect(readAgentWorkdirFile(workdirReal, "reference")).rejects.toMatchObject({
-      message: "不是檔案：reference",
+      message: "not a file: reference",
     });
   });
 

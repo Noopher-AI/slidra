@@ -181,7 +181,7 @@ describe("slidra/argv.ts: encodeCommandArgv", () => {
   });
 
   it("throws for a name with no encoder, never sending a partial argv", async () => {
-    await expect(encodeCommandArgv("not a real command", { id: ID })).rejects.toThrow(/未知的命令/);
+    await expect(encodeCommandArgv("not a real command", { id: ID })).rejects.toThrow(/unknown command/);
   });
 });
 
@@ -240,9 +240,9 @@ describe("slidra/command.ts: runJsonCommand (envelope parsing, exit-code-blind)"
   });
 
   it("ok:false envelope with failureKind, exit 0 → {ok:false, message, failureKind}", async () => {
-    await installFakeBin('{"ok":false,"message":"找不到識別碼對應的簡報：x","failureKind":"not-found"}\n');
+    await installFakeBin('{"ok":false,"message":"no presentation found for id: x","failureKind":"not-found"}\n');
     const result = await runJsonCommand(["cat", "x", "project.json"]);
-    expect(result).toEqual({ ok: false, message: "找不到識別碼對應的簡報：x", failureKind: "not-found" });
+    expect(result).toEqual({ ok: false, message: "no presentation found for id: x", failureKind: "not-found" });
   });
 
   it("ok:false envelope, exit code 0 (§3.3's known Rust/spec mismatch) — still read as ok:false, exit code never consulted", async () => {

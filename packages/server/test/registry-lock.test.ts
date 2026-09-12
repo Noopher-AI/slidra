@@ -79,7 +79,7 @@ describe("withProjectsRegistryLock", () => {
     await writeFile(lockPath(), "");
 
     await expect(withProjectsRegistryLock(async () => "never runs")).rejects.toThrow(
-      "另一個 slidra 正在寫入簡報登記資料，請稍後再試",
+      "another slidra is writing presentation registry data, please try again later",
     );
   }, 15_000);
 });

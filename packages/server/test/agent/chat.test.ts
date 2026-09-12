@@ -1065,7 +1065,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：does/not/exist.svg");
+    expect(errorEntry?.readTextFileError?.message).toBe("file not found: does/not/exist.svg");
     expect(errorEntry?.readTextFileError?.message).not.toContain(slidraHome);
   });
 
@@ -1090,7 +1090,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const errorEntry = log.find((entry) => "readTextFileError" in entry) as
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.readTextFileError?.message).toBe("不是檔案：slides");
+    expect(errorEntry?.readTextFileError?.message).toBe("not a file: slides");
   });
 
   it("keeps the existing text-read refusal for a binary asset — this method does not widen what cat allows", async () => {
