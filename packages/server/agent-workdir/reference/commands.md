@@ -6,7 +6,7 @@
 
 ## asset import
 
-**參數**：`<presentation-id>` `<source>`（本機絕對路徑或 `http(s)://` URL）、`--as csv`（選填，宣告這是資料資產而非媒體）；或改給 `--svg '<SVG 圖>'` 與 `--name <檔名.svg>`（從命令列內容建立 SVG 資產，與 `<source>` 互斥，`--name` 只允許英數、底線、連字號，同名已存在會失敗）。
+**參數**：`<presentation-id>` `<source>`（本機檔案路徑，相對路徑相對於 CLI 行程的工作目錄解析；或 `http(s)://` URL）、`--as csv`（選填，宣告這是資料資產而非媒體）；或改給 `--svg '<SVG 圖>'` 與 `--name <檔名.svg>`（從命令列內容建立 SVG 資產，與 `<source>` 互斥，`--name` 只允許英數、底線、連字號，同名已存在會失敗）。
 **用途**：把一張圖片／影片／音訊（或宣告 `--as csv` 時的一份資料表）匯入簡報的 `assets/` 目錄，或用 `--svg` 直接寫一張 SVG（例如背景圖配方）進去。
 **範例**：`co-motion asset import <presentation-id> --svg '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">…</svg>' --name bg-mesh.svg`
 

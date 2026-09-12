@@ -315,12 +315,12 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   it("before any message is sent, GET returns only what the skill directories contribute (agent has reported nothing yet)", async () => {
     // 出貨 skill 的目錄名本身就帶 `comotion-` 前綴（#248：名字要跟 agent
     // 註冊的一致），和 agent／使用者自己的 skill 區隔開來。
-    await mkSkill(bundledDir, "comotion-outline", "---\nname: comotion-outline\ndescription: 出貨版\n---\n");
-    const server = await serve(fakeAgent({ availableCommands: [{ name: "outline", description: "agent 版" }] }));
+    await mkSkill(bundledDir, "comotion-plan", "---\nname: comotion-plan\ndescription: 出貨版\n---\n");
+    const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent 版" }] }));
 
     const response = await fetch(`${server.url}/api/agent/commands`);
     const body = (await response.json()) as { commands: SlashCommand[] };
-    expect(body.commands).toEqual([{ name: "comotion-outline", description: "出貨版", source: "bundled" }]);
+    expect(body.commands).toEqual([{ name: "comotion-plan", description: "出貨版", source: "bundled" }]);
   });
 
   it("no agent report and no skill directories at all: GET returns 200 with an empty list, not an error", async () => {

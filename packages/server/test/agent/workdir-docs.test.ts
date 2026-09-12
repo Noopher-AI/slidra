@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { collectSlashCommands, parseSkillFrontmatter } from "../../src/agent/commands.js";
 import { resolveAgentWorkdirSource } from "../../src/agent/workdir.js";
 
-// [E3.T6] #236/#237: the outline/reshape/check skills and the AGENTS.md
+// [E3.T6] #236/#237: the shipped skills and the AGENTS.md
 // prose that indexes them are hand-written content, not generated — what
 // keeps them honest is reading the real shipped directory (the same one
 // `deployAgentWorkdir` copies verbatim) rather than a fixture standing in
@@ -15,34 +15,32 @@ import { resolveAgentWorkdirSource } from "../../src/agent/workdir.js";
 const bundledSkillDir = path.join(resolveAgentWorkdirSource(), ".agents", "skills");
 const agentsMdPath = path.join(resolveAgentWorkdirSource(), "AGENTS.md");
 
-const REQUIRED_SKILL_SECTIONS = ["## 觸發語", "## 輸入格式", "## 步驟", "## 使用的命令", "## 回報格式", "## 不可做的事"];
+// Triggers live in the frontmatter `description` (the only part loaded
+// before a skill fires), so the body only has to carry the ordered steps.
+const REQUIRED_SKILL_SECTIONS = ["## 步驟"];
 
 describe("[NOOP-236] shipped work directory documentation", () => {
-  it("has exactly the fourteen shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
+  it("has exactly the thirteen shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     // The `comotion-` namespace lives in the directory name itself, so the
     // name an author types is the name the agent registered (#248).
-    expect(dirNames.sort()).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-check", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
+    expect(dirNames.sort()).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
 
     for (const dirName of dirNames) {
       const text = await readFile(path.join(bundledSkillDir, dirName, "SKILL.md"), "utf8");
       const { name, description } = parseSkillFrontmatter(text, dirName);
       expect(name).toBe(dirName);
       expect(description.length).toBeGreaterThan(0);
-      if (dirName !== "comotion-new-slide") {
-        // new-slide predates the six-section convention (T2, unmerged when
-        // this table was written) and is exempt from it.
-        for (const section of REQUIRED_SKILL_SECTIONS) {
-          expect(text, `${dirName}/SKILL.md missing ${section}`).toContain(section);
-        }
+      for (const section of REQUIRED_SKILL_SECTIONS) {
+        expect(text, `${dirName}/SKILL.md missing ${section}`).toContain(section);
       }
     }
 
     const emptyUserDir = await mkdtemp(path.join(tmpdir(), "co-motion-user-skills-"));
     try {
       const commands = await collectSlashCommands([], { bundled: bundledSkillDir, user: emptyUserDir });
-      expect(commands.map((c) => c.name)).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-check", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
+      expect(commands.map((c) => c.name)).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
       for (const command of commands) {
         expect(command.description.length).toBeGreaterThan(0);
         expect(command.source).toBe("bundled");

@@ -1,19 +1,15 @@
 ---
 name: comotion-validate
-description: 跑 co-motion validate 驗證指定頁或整份投影片的文字量、版面、字級配色與骨架，把每個錯誤釘成留言並解讀給作者；只留言不動手
+description: 審閱整份或指定頁：跑 co-motion validate，再通讀補抓命令驗不到的錯字與動畫順序，把每個問題釘成留言並解讀給作者；只留言不動手。作者的訊息以 /comotion-validate 開頭、或要你「檢查」「體檢」「驗證」簡報時用
 ---
 
-# 驗證投影片的設計密度與版面
+# 審閱投影片
 
-你是審閱者。真正算規則的是 `co-motion validate` 命令（門檻與規則寫在 CLI 裡，不靠你目測）；你的工作是跑它、把 `errors[]` 翻成作者看得懂的話、釘成留言。**只回報與留言，不修改任何內容。**
+你是**審閱者**。真正算規則的是 `co-motion validate` 命令（門檻與規則寫在 CLI 裡，不靠你目測）；你的工作是跑它、把 `errors[]` 翻成作者看得懂的話、釘成留言，再通讀一次補抓命令看不到的兩類問題。**只回報與留言，不修改任何內容**——要修由作者決定，或由 `comotion-build` 自己修。
 
-## 觸發語
+## 輸入
 
-作者的訊息以 `/comotion-validate` 開頭；後面接頁碼（`3`）、頁碼範圍（`2-5`）或省略（整份）。`comotion-build` 自己也會跑同一條命令，但那是它自己修，不經過這個 skill。
-
-## 輸入格式
-
-- 目標：頁碼、範圍，或省略＝全部頁。
+- 目標：頁碼（`3`）、頁碼範圍（`2-5`），或省略＝整份。
 - 選填：「不留言」——只在對話裡回報，不 `comment add`。
 
 ## 步驟
@@ -25,44 +21,15 @@ description: 跑 co-motion validate 驗證指定頁或整份投影片的文字�
    { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "37 字", "limit": "≤ 32 字", "message": "第 2 頁要點第 3 條 37 字，上限 32 字" } ] }
    ```
 
-3. **沒有計畫檔的簡報**：message 尾巴帶「（沒有 plan/ 計畫檔，只驗幾何與骨架）」時，`validate` 只跑了溢出、重疊、背景、備忘稿與禁忌；在回報裡說明文字量與字級配色沒有驗到，作者要完整驗證得先跑 `/comotion-plan`。
-4. **留言**：每一筆錯誤 `co-motion comment add <presentation-id> <slide> <element 或 page> '<rule>：<actual> vs 門檻 <limit>'`；`element` 是 `null` 就用 `page`。作者說「不留言」時跳過。留言文字不能含半形單引號。
-5. **回報**：照下面的格式，並依 `rule` 的前綴分類（`text.`、`focus.`、`geometry.`、`style.`、`structure.`、`roster.`、`rhythm.`、`motion.`、`taboo.`）指出最該先修哪一類——通常是 `text.`。
-
-## 規則對照
-
-| rule 前綴 | 在驗什麼 | 作者通常該怎麼修 |
-|---|---|---|
-| `text.` | 標題字數、每條要點字數與行數、條數、全頁字數（門檻依 design-spec 的 density） | 改短、把句子搬進備忘稿、拆頁 |
-| `focus.` | 一頁只有一個標題角色 | 合併或拆頁 |
-| `geometry.` | 文字框的右緣、下緣溢出；同欄文字框重疊（裝飾用的圓、線、path 可以出血，不驗） | 縮短文字或減少條數 |
-| `style.` | 字級、文字色、色塊色是否在 design-spec 的表上（大數字與粗體標籤可用 accent、結語頁文字可用 background；色塊可 `none` 或 `url(#…)` 漸層） | 改回表上的值 |
-| `blueprint.required` | 計畫已確認，但這一頁沒有寫下構圖決定 | 補上 `blueprint`（`shape`／`nodes`／`steps`），用 `plan set outline` 寫回 |
-| `role.garnish-animated` | 標成 `garnish` 的元素卻有動畫——裝飾沒有可以講的那一步 | 拿掉那個效果，或這個元素根本不是裝飾、改標 `node`／`label` |
-| `role.required` | 有關係的頁面沒有標出任何 `node` | 替每個語意單位加 `data-comot-role="node"`（指南第 3b 節） |
-| `roster.relationship-variety` | 4 頁以上、同一種關係佔超過一半——每頁資訊結構都一樣 | 回去看內容，找出其實是順序／對比／一個數字的那幾節，改它們的 `relationship` |
-| `rhythm.repeated-shape` | 相鄰兩頁用同一個 `blueprint.shape` 解同一種 `relationship`、單位數也一樣——同一頁做了兩次 | 換一種構圖（第 6.2 節有別的解），或把兩頁合併 |
-| `blueprint.` | 頁面跟構圖時寫下的 `blueprint` 對不上：`blueprint.nodes` 是 node 數不符、`blueprint.steps` 是 on-click 步數不符 | 先判斷哪一邊對：頁面畫錯就改頁面，構圖想錯就用 `plan set outline` 改 blueprint |
-| `role.` | 有宣告 `data-comot-role` 的頁面要自洽：`garnish` 不承載文字、一頁 ≤ 1 條 `spine`、有 `edge` 就 ≥ 2 個 `node`、`label` 不少於 node 色塊 | 改角色或補標籤；裝飾要承載意義就不該是 `garnish` |
-| `structure.background-image` | 計畫 `background` 是 `on` 時，每頁都要有 `data-comot-role="background"` 的圖片元素 | 補 `slide background set --asset <該頁型配方>`，或把計畫的 `background` 改成 `off` |
-| `structure.` | 背景已設、備忘稿非空、頁型範本已登記；`structure.scrim`：有背景圖的頁，某個文字框沒有落在 scrim 面板（fill 是 background／secondary_bg、opacity ≥ 0.6、在它之前的 rect）上，頁尾與 ≥ claim 的大字除外 | 補上；scrim 缺的話在那個文字框底下加一塊 `slide-design.md` 第 4b 節的 scrim rect，或把該頁背景圖 `--none` 拿掉 |
-| `roster.` | 頁數與頁型跟 `plan/outline.md` 對得上 | 以計畫為準補頁或改頁型 |
-| `rhythm.` | breathing 頁的面板（secondary_bg 的大色塊）≤ 2，裝飾幾何不算 | 刪面板 |
-| `motion.` | `plan/outline.md` 的 `animation` 不是 `none` 時每頁要有轉場；`full` 每頁至少一個進場效果、`minimal` 封面／要點／對照頁至少一個 | 補 `effect add`／`slide transition set --all`，或把計畫的 `animation` 改成 `none` |
-| `taboo.` | 謝謝頁、重複封面、rect 的框線（ellipse／line／path 的 stroke 是裝飾，不算） | 刪掉 |
-
-## 使用的命令
-
-`ls`、`validate`、`comment add`。
+   message 尾巴帶「（沒有 plan/ 計畫檔，只驗幾何與骨架）」時，文字量與字級配色沒有驗到，在回報裡說明作者要完整驗證得先跑 `/comotion-plan`。
+3. **通讀**：逐頁 `co-motion cat <presentation-id> slides/00N.svg` 與 `co-motion effect list <presentation-id> slides/00N.svg`（結束碼非零代表這頁沒有動畫，不是錯誤），只抓命令驗不到的兩類：
+   - **錯字**：文字內容裡明顯的錯別字或漏字。
+   - **動畫順序與版面順序不合**：效果的播放順序與元素在畫面上由上到下、由左到右的視覺順序不一致。
+   規則類的判斷一律以 `errors[]` 為準；命令沒報的不算違規。
+4. **留言**：每一筆 `co-motion comment add <presentation-id> <slide> <element 或 page> '<rule>：<actual> vs 門檻 <limit>'`（通讀抓到的寫 `錯字：…`／`動畫順序：…`）；`element` 是 `null` 或抓不到特定元素就用 `page`。作者說「不留言」時跳過。留言文字不能含半形單引號。既有留言一律不動。
+5. **回報**：照下面的格式。每個 `rule` 在驗什麼、作者通常該怎麼修，見 `reference/slide-design.md` 第 9 節那張表；依 `rule` 的前綴分類指出最該先修哪一類——通常是 `text.`。
 
 ## 回報格式
 
 逐頁一行：`第 N 頁（slides/00N.svg）：通過` 或 `第 N 頁（slides/00N.svg）：不通過——<rule>：<actual> vs 門檻 <limit>；…`（直接用 `message` 的文字也可以）。
-最後一行：`共 N 頁，M 頁通過；不通過最多的是 <rule 前綴>`，加一句最該先修什麼。沒有計畫檔時多一句說明驗證範圍。
-
-## 不可做的事
-
-- **不修改任何內容**：不下 `text set`、`textbox add`、`element *`、`slide *`、`plan set` 等寫入命令；要修由作者決定，或由 `comotion-build` 自己修。
-- **不自己算規則**：一律以 `validate` 的 `errors[]` 為準，不憑印象補判；命令沒報的不算錯。
-- **不刪、不改既有留言**。
-- 不用雙引號或反斜線；留言文字含半形單引號時改寫成不含單引號的說法。
+最後一行：`共 N 頁，M 頁通過；不通過最多的是 <rule 前綴>`，加一句最該先修什麼。一個問題都沒有時回報「審閱完成，沒有發現問題」。沒有計畫檔時多一句說明驗證範圍。

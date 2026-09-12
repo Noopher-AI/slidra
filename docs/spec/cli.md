@@ -122,7 +122,7 @@ co-motion new <path> [--name <名稱>]
 - `path`：字串，必填。要建立的 `.comot` 檔案的本機檔案系統路徑（新檔案，不是既有簡報的識別碼——`new` 是唯一直接操作真實檔案系統路徑、不透過 `<presentation-id>` 的命令之一，因為它建立的目標本來就還不是一份「已開啟」的簡報）。
 - `--name`：字串，選填。簡報的顯示名稱，寫入 `project.json.name`；省略時預設為「新簡報」。
 
-建立出來的簡報**沒有任何投影片**（`project.json.slides` 是空陣列），只有 `project.json`、內嵌字型與其授權文字（ADR-0018）：第一頁由作者或 agent 之後用 `slide add` 或 `/comotion-outline` 產生，不預先放一張未經設計的佔位頁。
+建立出來的簡報**沒有任何投影片**（`project.json.slides` 是空陣列），只有 `project.json`、內嵌字型與其授權文字（ADR-0018）：第一頁由作者或 agent 之後用 `slide add` 或 `/comotion-plan` → `/comotion-build` 產生，不預先放一張未經設計的佔位頁。
 
 **成功 `data`**
 
@@ -3010,7 +3010,7 @@ co-motion asset import <presentation-id> --svg <markup> --name <檔名.svg>
 **參數**
 
 - `presentation-id`：字串，必填。
-- `source`：字串，必填。開頭是 `http://` 或 `https://` 時視為 URL，一律用 `fetch` 下載；否則視為本機檔案系統路徑，用 `readFile` 讀取。**相對路徑合法，相對於 CLI 行程當下的工作目錄解析**（這是凍結現行行為的定案；`packages/server/agent-workdir/reference/commands.md` 目前寫的「本機絕對路徑」是敘述不精確，不是契約，本規格才是準確描述）。
+- `source`：字串，必填。開頭是 `http://` 或 `https://` 時視為 URL，一律用 `fetch` 下載；否則視為本機檔案系統路徑，用 `readFile` 讀取。**相對路徑合法，相對於 CLI 行程當下的工作目錄解析**（這是凍結現行行為的定案）。
 - `--as`：字串，選填。唯一合法值是 `csv`，代表這是一筆資料資產而非媒體資產；給其他任何值都直接失敗。省略 `--as` 時走既有的媒體匯入路徑（byte-for-byte 相容現行行為）。
 - `--svg`：字串，選填（#303 §13）。從命令列內容直接建立一個 SVG 資產，與 `source` 位置參數、`--as` 互斥。內容根節點必須是 `<svg>`，不允許 `<script>`／`<foreignObject>`。
 - `--name`：字串，只能與 `--svg` 一起給、且必填。只允許 `[A-Za-z0-9_-]+\.svg`；寫入 `assets/<檔名>`，**不做衝突改名**：同名已存在時失敗（背景配方靠路徑重用，靜默改名會破壞重用）。成功 `data` 為 `{ "path": "assets/<檔名>", "mimeType": "image/svg+xml", "kind": "image" }`。
