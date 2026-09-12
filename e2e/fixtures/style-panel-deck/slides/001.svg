@@ -1,25 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-a" data-slidra-name="方塊 A" transform="translate(80 80)">
+  <g id="el-a" data-slidra-name="Block A" transform="translate(80 80)">
     <rect x="0" y="0" width="140" height="90" fill="#c43e1c"/>
   </g>
-  <g id="el-b" data-slidra-name="方塊 B" transform="translate(80 250)">
+  <g id="el-b" data-slidra-name="Block B" transform="translate(80 250)">
     <rect x="0" y="0" width="140" height="90" fill="#c43e1c"/>
   </g>
-  <g id="el-c" data-slidra-name="方塊 C" transform="translate(80 420)">
+  <g id="el-c" data-slidra-name="Block C" transform="translate(80 420)">
     <rect x="0" y="0" width="140" height="90" fill="#2a6f3d"/>
   </g>
-  <g id="el-text" data-slidra-name="文字框" data-slidra-text-width="300" transform="translate(500 80)">
-    <text font-size="24" text-anchor="start" xml:space="preserve"><tspan x="0" y="24">樣式面板測試文字框</tspan></text>
+  <g id="el-text" data-slidra-name="Text Box" data-slidra-text-width="300" transform="translate(500 80)">
+    <text font-size="24" text-anchor="start" xml:space="preserve"><tspan x="0" y="24">Style panel test text box</tspan></text>
   </g>
-  <g id="el-group" data-slidra-name="群組" transform="translate(500 300)">
-    <g id="el-group-child" data-slidra-name="群組子元素" transform="translate(0 0)">
+  <g id="el-group" data-slidra-name="Group" transform="translate(500 300)">
+    <g id="el-group-child" data-slidra-name="Group Child" transform="translate(0 0)">
       <rect x="0" y="0" width="80" height="60" fill="#6a4ac9"/>
     </g>
   </g>
-  <g id="el-caption" data-slidra-name="標題">
-    <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">樣式面板測試簡報</text>
+  <g id="el-caption" data-slidra-name="Title">
+    <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">Style panel test deck</text>
   </g>
-  <g id="el-image" data-slidra-name="圖片" data-slidra-media="../assets/photo.png" transform="translate(900 80)">
+  <g id="el-image" data-slidra-name="Image" data-slidra-media="../assets/photo.png" transform="translate(900 80)">
     <rect x="0" y="0" width="160" height="120" fill="#444"/>
   </g>
 </svg>

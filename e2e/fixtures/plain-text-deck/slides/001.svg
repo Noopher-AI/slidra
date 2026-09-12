@@ -1,11 +1,11 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-box" data-slidra-name="沒有 font-family 的文字框" data-slidra-text-width="200" transform="translate(100 100)">
+  <g id="el-box" data-slidra-name="Text box with no font-family" data-slidra-text-width="200" transform="translate(100 100)">
     <text font-size="24" fill="#f4f6f8" xml:space="preserve"><tspan x="0" y="24">起頭</tspan></text>
   </g>
-  <g id="el-plain" data-slidra-name="一般文字">
-    <text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">一般文字</text>
+  <g id="el-plain" data-slidra-name="Plain Text">
+    <text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">Plain text</text>
   </g>
-  <g id="el-broken" data-slidra-name="已有硬換行的一般文字">
-    <text x="640" y="620" text-anchor="middle" font-size="28" fill="#c9d3dc"><tspan x="640" y="620" data-slidra-break="1">第一行</tspan><tspan x="640" y="648">第二行</tspan></text>
+  <g id="el-broken" data-slidra-name="Plain text with an existing hard break">
+    <text x="640" y="620" text-anchor="middle" font-size="28" fill="#c9d3dc"><tspan x="640" y="620" data-slidra-break="1">Line one</tspan><tspan x="640" y="648">Line two</tspan></text>
   </g>
 </svg>

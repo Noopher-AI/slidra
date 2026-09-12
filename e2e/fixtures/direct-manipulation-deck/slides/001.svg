@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-a" data-slidra-name="方塊 A" transform="translate(100 100)">
+  <g id="el-a" data-slidra-name="Block A" transform="translate(100 100)">
     <rect x="0" y="0" width="160" height="100" fill="#c66"/>
   </g>
-  <g id="el-b" data-slidra-name="方塊 B" transform="translate(700 300)">
+  <g id="el-b" data-slidra-name="Block B" transform="translate(700 300)">
     <rect x="0" y="0" width="140" height="90" fill="#6a6"/>
   </g>
-  <g id="el-c" data-slidra-name="方塊 C" transform="translate(550 500)">
+  <g id="el-c" data-slidra-name="Block C" transform="translate(550 500)">
     <rect x="0" y="0" width="120" height="80" fill="#66c"/>
   </g>
-  <g id="el-caption" data-slidra-name="說明">
-    <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">直接操作測試簡報</text>
+  <g id="el-caption" data-slidra-name="Caption">
+    <text id="el-caption-text" x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">Direct manipulation test deck</text>
   </g>
   <g id="el-text" data-slidra-text-width="300" transform="translate(950 100)">
-    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hello Slidra 文字框測試內容</tspan></text>
+    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hello Slidra text box test content</tspan></text>
   </g>
-  <g id="el-group" data-slidra-name="群組" transform="translate(300 550)">
-    <g id="el-group-child" data-slidra-name="群組子元素" transform="translate(0 0)">
+  <g id="el-group" data-slidra-name="Group" transform="translate(300 550)">
+    <g id="el-group-child" data-slidra-name="Group Child" transform="translate(0 0)">
       <rect x="0" y="0" width="80" height="60" fill="#c9c"/>
     </g>
   </g>
-  <g id="el-group-rotate" data-slidra-name="旋轉群組" transform="translate(1150 250) rotate(30)">
-    <g id="el-group-rotate-child" data-slidra-name="旋轉群組子元素" transform="translate(0 0)">
+  <g id="el-group-rotate" data-slidra-name="Rotated Group" transform="translate(1150 250) rotate(30)">
+    <g id="el-group-rotate-child" data-slidra-name="Rotated Group Child" transform="translate(0 0)">
       <rect x="0" y="0" width="80" height="60" fill="#9c6"/>
     </g>
   </g>
-  <g id="el-group-scale" data-slidra-name="縮放群組" transform="translate(1150 450) scale(1.5)">
-    <g id="el-group-scale-child" data-slidra-name="縮放群組子元素" transform="translate(0 0)">
+  <g id="el-group-scale" data-slidra-name="Scaled Group" transform="translate(1150 450) scale(1.5)">
+    <g id="el-group-scale-child" data-slidra-name="Scaled Group Child" transform="translate(0 0)">
       <rect x="0" y="0" width="60" height="40" fill="#6cc"/>
     </g>
   </g>

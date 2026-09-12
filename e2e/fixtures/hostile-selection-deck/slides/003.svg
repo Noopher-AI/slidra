@@ -8,5 +8,5 @@
     gate, so slide 2 being second-to-last, not last, is load-bearing for
     the test to mean anything).
   -->
-  <text id="el-slide-three" x="640" y="360" text-anchor="middle" font-size="56">第三頁：正常內容</text>
+  <text id="el-slide-three" x="640" y="360" text-anchor="middle" font-size="56">Page 3: Normal Content</text>
 </svg>

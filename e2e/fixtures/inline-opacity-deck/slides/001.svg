@@ -11,5 +11,5 @@
     the cascade and this element flashes fully visible at the start of
     play, defeating the whole point of pre-hiding.
   -->
-  <text id="el-stubborn" style="opacity:1" x="640" y="360" text-anchor="middle" font-size="56">固執的文字</text>
+  <text id="el-stubborn" style="opacity:1" x="640" y="360" text-anchor="middle" font-size="56">Stubborn Text</text>
 </svg>

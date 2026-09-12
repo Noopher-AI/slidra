@@ -4,6 +4,6 @@
       <slidra:effect target="el-only-step" family="enter" effect="fade" start="on-click"/>
     </slidra:effects>
   </metadata>
-  <text id="el-title3" x="640" y="120" text-anchor="middle" font-size="64">匯出第三頁</text>
-  <text id="el-only-step" x="640" y="360" text-anchor="middle" font-size="56">唯一步驟</text>
+  <text id="el-title3" x="640" y="120" text-anchor="middle" font-size="64">Export Slide 3</text>
+  <text id="el-only-step" x="640" y="360" text-anchor="middle" font-size="56">Only Step</text>
 </svg>

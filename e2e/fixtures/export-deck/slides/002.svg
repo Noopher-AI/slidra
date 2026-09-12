@@ -5,7 +5,7 @@
       <slidra:effect target="el-step-two" family="enter" effect="appear" start="on-click"/>
     </slidra:effects>
   </metadata>
-  <text id="el-title2" x="640" y="120" text-anchor="middle" font-size="64">匯出第二頁</text>
-  <text id="el-step-one" x="640" y="320" text-anchor="middle" font-size="56">步驟一</text>
-  <text id="el-step-two" x="640" y="440" text-anchor="middle" font-size="56">步驟二</text>
+  <text id="el-title2" x="640" y="120" text-anchor="middle" font-size="64">Export Slide 2</text>
+  <text id="el-step-one" x="640" y="320" text-anchor="middle" font-size="56">Step One</text>
+  <text id="el-step-two" x="640" y="440" text-anchor="middle" font-size="56">Step Two</text>
 </svg>

@@ -5,14 +5,14 @@
       <slidra:effect target="el-audio-icon" family="media" effect="play" start="on-click"/>
     </slidra:effects>
   </metadata>
-  <text id="el-title" x="640" y="100" text-anchor="middle" font-size="56">媒體播放測試</text>
+  <text id="el-title" x="640" y="100" text-anchor="middle" font-size="56">Media Playback Test</text>
 
-  <!-- 影片佔位元素：播放前顯示這個矩形色塊，這個位置不是一個洞 (ADR-0005). -->
+  <!-- Video placeholder: shows this colored rectangle before playback starts; this spot is not a hole (ADR-0005). -->
   <rect id="el-video-placeholder" data-slidra-media="../assets/clip.webm"
         x="140" y="200" width="400" height="300" fill="#889" />
 
-  <!-- 音訊掛在一個可見元素上：這裡用一顆喇叭圖形代表 (ADR-0009). -->
+  <!-- Audio attached to a visible element: a speaker shape stands in for it here (ADR-0009). -->
   <circle id="el-audio-icon" data-slidra-media="../assets/narration.oga"
           cx="900" cy="350" r="60" fill="#c66" />
-  <text x="900" y="440" text-anchor="middle" font-size="28">旁白</text>
+  <text x="900" y="440" text-anchor="middle" font-size="28">Narration</text>
 </svg>

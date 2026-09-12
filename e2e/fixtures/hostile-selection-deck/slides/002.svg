@@ -9,7 +9,7 @@
     load, well after the app has settled on this page, and proving
     canvas.ts's mode gate rejects it.
   -->
-  <text id="el-slide-two" x="640" y="360" text-anchor="middle" font-size="56">第二頁：偽造訊息</text>
+  <text id="el-slide-two" x="640" y="360" text-anchor="middle" font-size="56">Page 2: Forged Message</text>
   <script><![CDATA[
     setTimeout(function () {
       parent.postMessage({ source: "slidra-player", event: "advance-past-end" }, "*");

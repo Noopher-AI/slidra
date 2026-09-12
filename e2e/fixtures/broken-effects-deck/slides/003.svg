@@ -1,14 +1,15 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
-      <!-- 損壞之處：family="build" 不在 Slidra 支援的效果家族清單裡
-           （[E2.T7] 的固定值集是 enter/emphasis/exit/
-           path/media，D4）。"build" 是這輪「一個永遠不會被實作的家族名稱」
-           的守門測試值——emphasis 本輪已經是真正實作的家族，不能再拿來當
-           反例（[E2.T7] 測試盤點）。 -->
+      <!-- Breakage: family="build" is not in Slidra's supported effect
+           family list ([E2.T7]'s fixed set is enter/emphasis/exit/path/
+           media, D4). "build" is this round's guard value for "a family
+           name that will never be implemented" — emphasis is now a really
+           implemented family, so it can no longer serve as the
+           counterexample ([E2.T7] test inventory). -->
       <slidra:effect target="el-emphasis-target" family="build" effect="pulse" start="on-click"/>
     </slidra:effects>
   </metadata>
-  <text id="el-broken-title-3" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 3 頁：未實作的 family</text>
-  <text id="el-emphasis-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>
+  <text id="el-broken-title-3" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">Slide 3: unimplemented family</text>
+  <text id="el-emphasis-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">This element really exists</text>
 </svg>

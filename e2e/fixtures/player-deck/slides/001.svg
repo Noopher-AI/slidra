@@ -1,3 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <text id="el-first-title" data-slidra-name="標題" x="640" y="360" text-anchor="middle" font-size="72">第一頁</text>
+  <text id="el-first-title" data-slidra-name="Title" x="640" y="360" text-anchor="middle" font-size="72">First Slide</text>
 </svg>

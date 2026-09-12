@@ -5,42 +5,48 @@
 // content and it exercises `comment`/`slide add` commands, not `text set`.
 //
 // What it does on the author's first real message (index 1; index 0 is the
-// 編輯規約) depends on the message text:
+// agent's own editing-charter turn) depends on the message text:
 //   - contains "【從大綱規劃】" (the position line Plan with agent puts
-//     after `/slidra-plan`, #303 contract §4): requests permission for,
-//     then actually runs, `slidra plan set <id> outline '…'` and
-//     `plan set <id> design-spec '…'` — a minimal but valid draft plan
-//     with one page and one question (contract §1) — and replies
-//     「計畫已寫好」. The editor's plan gate opens off that file write
-//     (ai-collab.test.ts asserts on `.plan-gate`), not off this reply.
-//   - contains "【計畫確認】" (what the gate's 確認並建置 sends, any author
-//     message index — it is always the *second* author turn): requests
-//     permission for `slidra slide add <id>` (append), holds for
-//     E2E_DRAFT_HOLD_MS, then actually runs it and replies 「已建置」 —
-//     reports `completed` only if the command succeeds, `failed` (with
-//     stdout/stderr) if it doesn't. This fixture never reports success it
-//     didn't observe.
-//   - contains "寫留言": requests permission for, then actually runs,
-//     `slidra comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
-//     write, unaffected by the defect above) — AC8(b) needs the write to
-//     really land, not just a UI event.
-//   - contains "持鎖": reads slides/001.svg to find its `<text id=…>`, then
-//     the same request-permission/hold/run dance as editing-fake-acp-agent.mjs's
-//     default case, giving AC5's titlebar-frozen screenshot a real,
-//     observable freeze window (E2E_FREEZE_HOLD_MS).
+//     after `/slidra-plan`, #303 contract §4 — a literal Chinese marker
+//     left untranslated because it comes from apps/web's App.tsx, outside
+//     this file's translation scope, and must keep matching what the real
+//     app actually sends): requests permission for, then actually runs,
+//     `slidra plan set <id> outline '…'` and `plan set <id> design-spec
+//     '…'` — a minimal but valid draft plan with one page and one question
+//     (contract §1) — and replies "plan is ready". The editor's plan gate
+//     opens off that file write (ai-collab.test.ts asserts on
+//     `.plan-gate`), not off this reply.
+//   - contains "【計畫確認】" (what the gate's confirm-and-build button
+//     sends, any author message index — it is always the *second* author
+//     turn; same untranslated-marker note as above, sourced from
+//     apps/web's plan-file.ts): requests permission for `slidra slide add
+//     <id>` (append), holds for E2E_DRAFT_HOLD_MS, then actually runs it
+//     and replies "build complete" — reports `completed` only if the
+//     command succeeds, `failed` (with stdout/stderr) if it doesn't. This
+//     fixture never reports success it didn't observe.
+//   - contains "write a comment": requests permission for, then actually
+//     runs, `slidra comment add … page '<E2E_AGENT_COMMENT>'` (a
+//     single-file write, unaffected by the defect above) — AC8(b) needs
+//     the write to really land, not just a UI event.
+//   - contains "hold the lock": reads slides/001.svg to find its `<text
+//     id=…>`, then the same request-permission/hold/run dance as
+//     editing-fake-acp-agent.mjs's default case, giving AC5's
+//     titlebar-frozen screenshot a real, observable freeze window
+//     (E2E_FREEZE_HOLD_MS).
 //   - anything else, at index 1 or later: echoes the received prompt text
-//     back verbatim as an `agent_message_chunk` — this is what AC1's "送出"
-//     scenario actually asserts on (proof the comment-context prefix, built
-//     server-side by session.ts, really reached the agent; §4.4 of the
-//     plan), and also what [E3.T3]'s "送出 /xxx 參數" e2e test asserts on
-//     (proof Slidra never rewrites the text before it reaches the agent).
+//     back verbatim as an `agent_message_chunk` — this is what AC1's
+//     "submitting" scenario actually asserts on (proof the comment-context
+//     prefix, built server-side by session.ts, really reached the agent;
+//     §4.4 of the plan), and also what [E3.T3]'s "sending /xxx with an
+//     argument" e2e test asserts on (proof Slidra never rewrites the text
+//     before it reaches the agent).
 //
 // [E3.T3] #232/#236's own two env vars (the `/` command list):
 //   - E2E_AVAILABLE_COMMANDS (JSON array of {name, description}): sent as
 //     one `available_commands_update` right after `newSession` returns —
 //     the agent's *initial* report, before any author turn.
 //   - E2E_AVAILABLE_COMMANDS_UPDATE (JSON array): whenever an author
-//     message (index >= 1) contains "更新命令", sends this as a second,
+//     message (index >= 1) contains "update commands", sends this as a second,
 //     full-replacement `available_commands_update` instead of running any
 //     of the branches below — proves a client subscribed to the
 //     `agent-commands` SSE event actually reacts to a *later* report, not
@@ -56,7 +62,7 @@ const AUTHOR_PROMPT_INDEX = 1;
 const presentationId = requireEnv("E2E_PRESENTATION_ID");
 const draftHoldMs = Number(process.env.E2E_DRAFT_HOLD_MS ?? "0");
 const freezeHoldMs = Number(process.env.E2E_FREEZE_HOLD_MS ?? "0");
-const agentComment = process.env.E2E_AGENT_COMMENT ?? "agent 透過命令寫的留言";
+const agentComment = process.env.E2E_AGENT_COMMENT ?? "comment written by the agent via a command";
 const availableCommands = process.env.E2E_AVAILABLE_COMMANDS ? JSON.parse(process.env.E2E_AVAILABLE_COMMANDS) : undefined;
 const availableCommandsUpdate = process.env.E2E_AVAILABLE_COMMANDS_UPDATE
   ? JSON.parse(process.env.E2E_AVAILABLE_COMMANDS_UPDATE)
@@ -64,7 +70,7 @@ const availableCommandsUpdate = process.env.E2E_AVAILABLE_COMMANDS_UPDATE
 
 function requireEnv(name) {
   const value = process.env[name];
-  if (!value) throw new Error(`fake agent 缺少環境變數：${name}`);
+  if (!value) throw new Error(`fake agent is missing environment variable: ${name}`);
   return value;
 }
 
@@ -106,7 +112,7 @@ class CommentFakeAgent {
     // [E3.T3] #232/#236: a later, full-replacement report — checked before
     // the AUTHOR_PROMPT_INDEX gate below (unlike every other branch, this
     // one must also fire for a *second* or later author message).
-    if (availableCommandsUpdate && index >= AUTHOR_PROMPT_INDEX && authorText.includes("更新命令")) {
+    if (availableCommandsUpdate && index >= AUTHOR_PROMPT_INDEX && authorText.includes("update commands")) {
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "available_commands_update", availableCommands: availableCommandsUpdate },
@@ -114,8 +120,8 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    // The 編輯規約 turn (index 0) is the agent's own bookkeeping — never
-    // echoed, never matched against any branch below.
+    // The editing-charter turn (index 0) is the agent's own bookkeeping —
+    // never echoed, never matched against any branch below.
     if (index < AUTHOR_PROMPT_INDEX) {
       return { stopReason: "end_turn" };
     }
@@ -126,26 +132,26 @@ class CommentFakeAgent {
       const outlineFile = "```json\n" + JSON.stringify({
         status: "draft",
         mode: "pyramid",
-        pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "e2e 計畫封面" }],
+        pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "e2e plan cover" }],
         questions: [{
           id: "mode",
-          question: "敘事骨架",
-          note: "e2e 假 agent 的建議",
+          question: "Narrative skeleton",
+          note: "the e2e fake agent's recommendation",
           recommended: "pyramid",
-          options: [{ value: "pyramid", label: "結論先行" }, { value: "narrative", label: "故事線" }],
+          options: [{ value: "pyramid", label: "Conclusion first" }, { value: "narrative", label: "Story arc" }],
           free_text: true,
         }],
-      }) + "\n```\n\n## 第 1 頁\ne2e 假 agent 寫的計畫正文\n";
+      }) + "\n```\n\n## Page 1\nbody text of the e2e fake agent's plan\n";
       const specFile = "```json\n" + JSON.stringify({
         density: "presentation",
         palette: { background: "#FFFFFF", secondary_bg: "#F3F4F6", primary: "#1F3A93", accent: "#E4572E", secondary_accent: "#2A9D8F", text: "#1F1A1A", muted: "#6B7280" },
         type_scale: { cover: 64, section: 56, number: 140, claim: 48, title: 40, subtitle: 28, body: 24, column: 22, caption: 18 },
       }) + "\n```\n";
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "寫入計畫", `slidra plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "寫入設計規格", `slidra plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "Write plan", `slidra plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "Write design spec", `slidra plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "計畫已寫好" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "plan is ready" } },
       });
       return { stopReason: "end_turn" };
     }
@@ -154,7 +160,7 @@ class CommentFakeAgent {
       const command = `slidra slide add ${presentationId}`;
       const toolCallId = "e2e-slide-add";
 
-      await requestPermissionFor(this.connection, sessionId, toolCallId, "依計畫建置", command);
+      await requestPermissionFor(this.connection, sessionId, toolCallId, "Build per plan", command);
 
       // A real agent reports its own tool-call lifecycle over
       // `session/update`, independently of `session/request_permission`
@@ -162,7 +168,7 @@ class CommentFakeAgent {
       // drives the Running command card (`chat-command-in_progress`).
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "tool_call", toolCallId, title: "依計畫建置", kind: "execute", status: "pending", rawInput: { command } },
+        update: { sessionUpdate: "tool_call", toolCallId, title: "Build per plan", kind: "execute", status: "pending", rawInput: { command } },
       });
       await this.connection.sessionUpdate({
         sessionId,
@@ -194,30 +200,30 @@ class CommentFakeAgent {
       });
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已建置" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "build complete" } },
       });
       return { stopReason: "end_turn" };
     }
 
-    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("寫留言")) {
+    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("write a comment")) {
       const command = `slidra comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
-      await requestAndRun(this.connection, sessionId, "e2e-comment-add", "新增留言", command, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-comment-add", "Add comment", command, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已新增留言" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "comment added" } },
       });
       return { stopReason: "end_turn" };
     }
 
-    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("持鎖")) {
+    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("hold the lock")) {
       const slide = await this.connection.readTextFile({ sessionId, path: SLIDE_PATH, line: null, limit: null });
       const elementId = extractTextElementId(slide.content);
-      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
-      const ran = await requestAndRun(this.connection, sessionId, "e2e-text-set", "修改標題文字", command, this.sessionCwd, freezeHoldMs);
+      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} 'text changed by the lock-holding test'`;
+      const ran = await requestAndRun(this.connection, sessionId, "e2e-text-set", "Edit title text", command, this.sessionCwd, freezeHoldMs);
       if (!ran) return { stopReason: "cancelled" };
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已鎖定並修改" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "locked and edited" } },
       });
       return { stopReason: "end_turn" };
     }
@@ -249,12 +255,12 @@ async function requestPermissionFor(connection, sessionId, toolCallId, title, co
     sessionId,
     toolCall: { toolCallId, title, rawInput: { command } },
     options: [
-      { kind: "allow_once", name: "允許", optionId: "allow" },
-      { kind: "reject_once", name: "拒絕", optionId: "reject" },
+      { kind: "allow_once", name: "Allow", optionId: "allow" },
+      { kind: "reject_once", name: "Reject", optionId: "reject" },
     ],
   });
   if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
-    throw new Error(`命令未獲允許：${JSON.stringify(permission.outcome)}`);
+    throw new Error(`command was not allowed: ${JSON.stringify(permission.outcome)}`);
   }
 }
 
@@ -298,7 +304,7 @@ function extractPromptText(prompt) {
 
 function extractTextElementId(svg) {
   const match = /<text[^>]*\bid="([^"]+)"/.exec(svg);
-  if (!match) throw new Error("投影片裡找不到帶 id 的 <text> 元素");
+  if (!match) throw new Error("could not find a <text> element with an id in the slide");
   return match[1];
 }
 
@@ -306,7 +312,7 @@ function runShellCommand(command, cwd) {
   return new Promise((resolve, reject) => {
     execFile("/bin/sh", ["-c", command], { cwd }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(`命令執行失敗：${command}\n${stdout}\n${stderr}`));
+        reject(new Error(`command failed: ${command}\n${stdout}\n${stderr}`));
         return;
       }
       resolve();

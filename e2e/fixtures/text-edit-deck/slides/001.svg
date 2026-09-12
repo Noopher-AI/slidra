@@ -3,9 +3,9 @@
     <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text>
   </g>
   <g id="el-locked-text" data-slidra-text-width="220" data-slidra-lock="true" transform="translate(100 420)">
-    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">鎖定文字</tspan></text>
+    <text font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="0" y="24">Locked text</tspan></text>
   </g>
-  <g id="el-decoy" data-slidra-name="旁邊的方塊">
+  <g id="el-decoy" data-slidra-name="Nearby Block">
     <rect x="900" y="100" width="200" height="120" fill="#69c"/>
   </g>
 </svg>

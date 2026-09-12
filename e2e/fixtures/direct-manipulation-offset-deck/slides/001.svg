@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-a" data-slidra-name="方塊 A">
+  <g id="el-a" data-slidra-name="Block A">
     <rect x="100" y="100" width="160" height="100" fill="#c66"/>
   </g>
-  <g id="el-caption" data-slidra-name="說明">
-    <text x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">非零原點縮放錨點測試</text>
+  <g id="el-caption" data-slidra-name="Caption">
+    <text x="640" y="680" text-anchor="middle" font-size="24" fill="#9aa7b4">Non-zero-origin scale anchor test</text>
   </g>
 </svg>

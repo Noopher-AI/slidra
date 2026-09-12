@@ -17,7 +17,7 @@
     listener, before this one does. wrapSelectionDocument() now injects
     the runtime before `bodyMarkup`, which is what makes that true.
   -->
-  <text id="el-title" data-slidra-name="標題" x="640" y="200" text-anchor="middle" font-size="56">第四頁：搶先攔截點擊</text>
+  <text id="el-title" data-slidra-name="Title" x="640" y="200" text-anchor="middle" font-size="56">Page 4: Intercepting the Click First</text>
   <script><![CDATA[
     window.addEventListener("click", function (event) {
       event.stopImmediatePropagation();
