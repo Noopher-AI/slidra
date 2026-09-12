@@ -1,6 +1,5 @@
-# Public demo image, deployed to Vercel Functions as a custom container
-# image (Vercel auto-detects `Dockerfile.vercel` at the project root and
-# routes all traffic to it).
+# Public demo image for the self-hosted Kubernetes backend. Vercel serves the
+# static frontend and rewrites authenticated API traffic to this container.
 #
 # This runs the real `slidra serve` — the same resident CLI mode a local
 # user runs — not a reimplementation. ADR-0002 still holds: the frontend
@@ -80,10 +79,10 @@ RUN node scripts/pack-directory.mjs demo /app/demo.slidra \
        | sed 's/.*"\([^"]*\)"$/\1/' > /app/presentation-id \
     && test -s /app/presentation-id
 
-COPY docker-entrypoint.sh /usr/local/bin/
+COPY deploy/container/docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Vercel routes to port 80 by default; PORT overrides it in project settings.
+# Kubernetes sets PORT explicitly; 80 remains the local-container default.
 ENV PORT=80
 EXPOSE 80
 

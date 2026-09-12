@@ -107,6 +107,5 @@ export default async function middleware(request: Request): Promise<Response> {
 }
 
 export const config = {
-  runtime: "nodejs",
   matcher: ["/", "/api/:path*"],
 };

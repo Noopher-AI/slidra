@@ -1,5 +1,5 @@
 #!/bin/sh
-# Starts the public demo. The presentation id was resolved at image build
+# Starts the self-hosted public demo. The presentation id was resolved at image build
 # time (see Dockerfile.vercel); this only binds and serves.
 set -e
 
