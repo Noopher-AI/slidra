@@ -80,7 +80,7 @@ it('an element with its own inline style="opacity:1" is still hidden before ente
   await page.goto(server.url);
 
   const stubborn = page.frameLocator("iframe.slide-frame").locator("#el-stubborn");
-  await expect.poll(() => stubborn.textContent().catch(() => null), { timeout: 30_000 }).toBe("固執的文字");
+  await expect.poll(() => stubborn.textContent().catch(() => null), { timeout: 30_000 }).toBe("Stubborn Text");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);

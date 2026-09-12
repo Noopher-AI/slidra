@@ -163,7 +163,7 @@ it("video on the stage (view mode) can play, pause, and seek", async () => {
     const viewFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     const video = viewFrame().locator("video");
     await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
@@ -214,7 +214,7 @@ it("audio on the stage (view mode) can play, pause, and seek", async () => {
     const viewFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => viewFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     const audio = viewFrame().locator("audio");
     await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(1);
@@ -268,7 +268,7 @@ it("clicking .media-play while an element is selected leaves the selection unaff
 
     await expect
       .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     const frame = await canvasFrame(page);
     await frame.locator("#el-video-placeholder").click();
     await expect.poll(() => selectionChip.textContent()).toBe("Selected: el-video-placeholder");
@@ -298,7 +298,7 @@ it("holding and dragging on .media-seek produces no marquee and does not change 
 
     await expect
       .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     const frame = await canvasFrame(page);
     await expect.poll(() => frame.locator('[data-slidra-media-control="seek"]').count()).toBeGreaterThan(0);
     await expect.poll(() => selectionChip.textContent()).toBe("");
@@ -343,7 +343,7 @@ it("advancing to a video step plays it, aligned to the placeholder's position an
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -411,7 +411,7 @@ it("advancing to an audio step plays it, with the server responding 206 Partial 
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -448,7 +448,7 @@ it("leaving a slide stops all playing video and audio; returning to it never sho
     const playFrame = () => page.frameLocator("iframe.slide-frame");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
 
     await page.locator('.play-button').click();
     await waitForPlayerFocus(page);
@@ -470,7 +470,7 @@ it("leaving a slide stops all playing video and audio; returning to it never sho
     await page.keyboard.press("ArrowRight");
     await expect
       .poll(() => playFrame().locator("#el-title2").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第二頁：離開第一頁後，媒體應已停止");
+      .toBe("Slide Two: media should have stopped after leaving slide one");
 
     // The old document's own execution context is gone along with it — a
     // handle from before the navigation can no longer be evaluated. This is
@@ -492,7 +492,7 @@ it("leaving a slide stops all playing video and audio; returning to it never sho
     await page.locator('.play-bar button[aria-label="Previous"]').click();
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("媒體播放測試");
+      .toBe("Media Playback Test");
     // showSlide() while still in play mode reassigns srcdoc just like
     // entering play the first time did, so the fresh runtime's own "ready"
     // message re-triggers canvas.ts's focusPlayer() automatically — no

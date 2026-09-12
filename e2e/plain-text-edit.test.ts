@@ -193,17 +193,17 @@ it("a plain <text> (no data-slidra-text-width): double-click enters edit mode, c
     await dblclickAtEnd(page, "el-plain");
     await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 
-    await page.keyboard.type("改過了");
+    await page.keyboard.type(" edited");
     await page.keyboard.press("Escape");
 
     await expect
       .poll(async () => readTextMarkup(await readSlide(registry, presentationId), "el-plain"), { timeout: 10_000 })
-      .toBe('<text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">一般文字改過了</text>');
+      .toBe('<text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">Plain text edited</text>');
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
     expect(readTextMarkup(await readSlide(registry, presentationId), "el-plain")).toBe(
-      '<text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">一般文字</text>',
+      '<text x="640" y="500" text-anchor="middle" font-size="36" fill="#9aa7b4">Plain text</text>',
     );
   } finally {
     await cleanup();
@@ -257,7 +257,7 @@ it("a hard line break inserted with Enter is visible immediately while editing, 
     const markupAfterCommit = readTextMarkup(await readSlide(registry, presentationId), "el-plain");
     const tspans = [...markupAfterCommit.matchAll(/<tspan([^>]*)>([^<]*)<\/tspan>/g)];
     expect(tspans.length).toBe(2);
-    expect(tspans[0][2]).toBe("一般文字QA");
+    expect(tspans[0][2]).toBe("Plain textQA");
     expect(tspans[0][1]).toContain('data-slidra-break="1"');
     expect(tspans[1][2]).toBe("X");
     expect(tspans[1][1]).not.toContain("data-slidra-break");
@@ -284,7 +284,7 @@ it("an existing hard break (data-slidra-break) survives into the textarea's init
     await dblclickAtEnd(page, "el-broken");
     await expect.poll(() => isEditTextareaFocused(page), { timeout: 10_000 }).toBe(true);
 
-    expect(await readTextareaValue(page)).toBe("第一行\n第二行");
+    expect(await readTextareaValue(page)).toBe("Line one\nLine two");
     await page.keyboard.press("Escape");
   } finally {
     await cleanup();

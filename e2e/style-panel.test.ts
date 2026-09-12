@@ -36,7 +36,7 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
 });
 
@@ -119,7 +119,7 @@ async function canvasFrame(page: Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 async function readSlide(registry: CommandRegistry, presentationId: string): Promise<string> {

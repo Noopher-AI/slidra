@@ -186,7 +186,7 @@ it("pasting an element on the same page — a new <g>, a new id ≠ the original
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   // el-solo's own translate is (100 100); the paste's first landing on its
   // own source slide gets one PASTE_OFFSET_STEP (20), per paste-offset.ts.
-  const match = /<g id="(el-[^"]+)" data-slidra-name="單一元素" transform="translate\(120 120\)">/.exec(after);
+  const match = /<g id="(el-[^"]+)" data-slidra-name="Single Element" transform="translate\(120 120\)">/.exec(after);
   expect(match).not.toBeNull();
   expect(match![1]).not.toBe("el-solo");
 });
@@ -228,12 +228,12 @@ it("pasting a group — both child containers get new ids, and the children's re
   await expect
     .poll(async () => {
       const svg = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-      return (svg.match(/data-slidra-name="群組"/g) ?? []).length;
+      return (svg.match(/data-slidra-name="Group"/g) ?? []).length;
     }, { timeout: 10_000 })
     .toBe(2);
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   const doc = parseSlideSvg(after);
-  const groups = [...doc.querySelectorAll('g[data-slidra-name="群組"]')];
+  const groups = [...doc.querySelectorAll('g[data-slidra-name="Group"]')];
   const pastedGroup = groups.find((el) => el.id !== "el-group");
   expect(pastedGroup).toBeDefined();
   const children = [...pastedGroup!.children].filter((el) => el.tagName === "g");
@@ -295,7 +295,7 @@ it("the file change from a paste is reproducible via CLI element paste (the GUI 
     })
     .toBe(true);
   const guiResult = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  const guiNewId = /<g id="(el-[^"]+)" data-slidra-name="單一元素" transform="translate\(120 120\)">/.exec(guiResult)![1];
+  const guiNewId = /<g id="(el-[^"]+)" data-slidra-name="Single Element" transform="translate\(120 120\)">/.exec(guiResult)![1];
 
   await page.keyboard.press("Meta+z");
   await expect

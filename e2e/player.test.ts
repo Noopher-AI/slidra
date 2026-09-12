@@ -34,10 +34,10 @@ let registry: CommandRegistry;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-files-"));
@@ -87,37 +87,37 @@ it("author can page forward and backward in the browser, and stops at both ends"
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
   const currentSlideText = async (): Promise<string | null> => {
-    if (pageErrors.length > 0) return `頁面錯誤：${pageErrors.join("; ")}`;
+    if (pageErrors.length > 0) return `Page errors: ${pageErrors.join("; ")}`;
     return slideText.textContent().catch(() => null);
   };
   const nextButton = page.locator('.slide-nav-button[aria-label="Next slide"]');
   const previousButton = page.locator('.slide-nav-button[aria-label="Previous slide"]');
   const position = page.locator(".slide-nav-position");
 
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
   await expect.poll(() => position.textContent(), { timeout: 30_000 }).toBe("Slide 1 of 3");
   // On the first slide, going back further does nothing: the control is there, and it refuses.
   await expect.poll(() => previousButton.isDisabled()).toBe(true);
 
   await nextButton.click();
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
   await expect.poll(() => position.textContent()).toBe("Slide 2 of 3");
 
   await nextButton.click();
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Third Slide");
   await expect.poll(() => position.textContent()).toBe("Slide 3 of 3");
 
   // On the last slide, going forward further does nothing, and it doesn't crash.
   await expect.poll(() => nextButton.isDisabled()).toBe(true);
   await page.keyboard.press("ArrowRight");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Third Slide");
 
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
   expect(pageErrors).toEqual([]);
 });
@@ -143,10 +143,10 @@ it("the second slide's relative-path image actually loads", async () => {
   await page.goto(server.url);
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
-  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第一頁");
+  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("First Slide");
 
   await page.locator('.slide-nav-button[aria-label="Next slide"]').click();
-  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("第二頁");
+  await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Second Slide");
 
   // The frame the main canvas renders into. Its identity is stable across
   // srcdoc navigations (only play mode rebuilds the element, and this test

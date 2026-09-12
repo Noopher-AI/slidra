@@ -73,9 +73,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -162,7 +162,7 @@ async function canvasFrame(page: Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 function sha256(text: string): string {
@@ -249,7 +249,7 @@ it("the status bar shows the selected element's display name; an element with no
     const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     await slideFrame.locator("#el-plain").click();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: el-plain");
@@ -271,7 +271,7 @@ async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: ()
   await writeFile(
     path.join(dir, "project.json"),
     JSON.stringify(
-      { formatVersion: 1, name: "選取測試簡報", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] },
+      { formatVersion: 1, name: "Selection Test Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] },
       null,
       2,
     ),
@@ -291,13 +291,13 @@ async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: ()
 it("clicking empty space deselects, clearing the status bar's selection display", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-slidra-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="Square">\n' +
       '    <rect x="540" y="280" width="200" height="160" fill="#c66"/>\n' +
       "  </g>\n" +
       // openApp waits for the first painted <text>; a deck with none would
       // never finish loading as far as that helper is concerned.
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">Square</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -316,7 +316,7 @@ it("clicking empty space deselects, clearing the status bar's selection display"
     // 1280×720 viewBox, so this point has no element under it at all.
     const svgRoot = slideFrame.locator("svg").first();
     const box = await svgRoot.boundingBox();
-    if (!box) throw new Error("量不到 svg 的邊界框");
+    if (!box) throw new Error("could not measure the svg's bounding box");
     await page.mouse.click(box.x + 4, box.y + 4);
 
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("");
@@ -344,14 +344,14 @@ it("clicking empty space deselects, clearing the status bar's selection display"
 it("selecting a single element: a name label appears (above the selection box) along with the context bar (below the selection box)", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-slidra-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="Square">\n' +
       // Bottom edge at y=200, leaving 520 user units of slide below it —
       // comfortably more than the context bar's fixed 49 CSS px (GAP 13 +
       // BAR_HEIGHT 36) floor at any realistic render scale.
       '    <rect x="540" y="100" width="200" height="100" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">Square</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -362,7 +362,7 @@ it("selecting a single element: a name label appears (above the selection box) a
     await slideFrame.locator("#el-square").click();
 
     const label = page.locator(".selection-label");
-    await expect.poll(() => label.textContent().catch(() => null)).toBe("方塊");
+    await expect.poll(() => label.textContent().catch(() => null)).toBe("Square");
 
     const selBox = await slideFrame.locator(".sel").boundingBox();
     const labelBox = await label.boundingBox();
@@ -397,18 +397,18 @@ it("selecting a single element: a name label appears (above the selection box) a
 it("the context bar passes clicks through to blocked content underneath while unhovered; hovering long enough lets its own button receive clicks", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-title" data-slidra-name="標題">\n' +
+      '  <g id="el-title" data-slidra-name="Title">\n' +
       '    <rect x="100" y="60" width="1080" height="100" fill="#c66"/>\n' +
       // openApp() waits for the slide's first painted <text> before
       // returning — this fixture is otherwise all <rect>.
-      '    <text x="120" y="120" font-size="20">標題</text>\n' +
+      '    <text x="120" y="120" font-size="20">Title</text>\n' +
       "  </g>\n" +
       // Starts right at the title's bottom edge and runs deep enough
       // (measured empirically: with this deck's viewBox/viewport pair the
       // context bar renders fully inside this rect's on-screen box) that
       // the bar's fixed CSS-px band below the title always lands on top of
       // it, reproducing the "context bar blocks the next line" layout.
-      '  <g id="el-subtitle" data-slidra-name="副標">\n' +
+      '  <g id="el-subtitle" data-slidra-name="Subtitle">\n' +
       '    <rect x="100" y="170" width="1080" height="400" fill="#6c9"/>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -418,7 +418,7 @@ it("the context bar passes clicks through to blocked content underneath while un
     const page = await openApp(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator("#el-title").click();
-    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("標題");
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("Title");
 
     const barBox = await page.locator(".context-bar").boundingBox();
     expect(barBox).not.toBeNull();
@@ -429,7 +429,7 @@ it("the context bar passes clicks through to blocked content underneath while un
     // on-screen position must pass straight through to the subtitle rect
     // the bar happens to be sitting on top of.
     await page.mouse.click(overBar.x, overBar.y);
-    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("副標");
+    await expect.poll(() => page.locator(".selection-label").textContent().catch(() => null)).toBe("Subtitle");
 
     // Hover the (subtitle's own, freshly repositioned) bar long enough to
     // solidify, then its Delete button must actually receive a click —
@@ -621,7 +621,7 @@ it("a slide's own script intercepting the click first (stopImmediatePropagation)
 
     const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
@@ -659,7 +659,7 @@ it("selection still works after leaving play mode: the status bar shows the disp
 
     const selName = page.locator(".status-selection-chip");
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
@@ -681,18 +681,18 @@ it("selection still works after leaving play mode: the status bar shows the disp
 it("clicking a child inside a group selects the whole group, and the status bar shows the group's display name", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-slidra-name="群組">\n' +
-      '    <g id="el-child-left" data-slidra-name="左邊">\n' +
+      '  <g id="el-group" data-slidra-name="Group">\n' +
+      '    <g id="el-child-left" data-slidra-name="Left">\n' +
       '      <rect x="200" y="260" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
-      '    <g id="el-child-right" data-slidra-name="右邊">\n' +
+      '    <g id="el-child-right" data-slidra-name="Right">\n' +
       '      <rect x="880" y="260" width="200" height="200" fill="#69c"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other
       // caller. This one sits well outside the group.
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Group test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -705,11 +705,11 @@ it("clicking a child inside a group selects the whole group, and the status bar 
     // el-child-left; the outermost is el-group, and el-group is the answer.
     await page.frameLocator("iframe.slide-frame").locator("#el-child-left rect").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group");
     // Feature "Groups (including nested)" › Scenario "Select group": the label
     // shows the group's display name (selection stays at the top level here,
     // so groupPath is [] and the label has no "A › B" path prefix — just the name itself).
-    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("群組");
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("Group");
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -757,15 +757,15 @@ async function groupFrameBoxes(
 async function makeNestedGroupDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
       '    <rect x="450" y="200" width="380" height="320" fill="none" stroke="#ccc"/>\n' +
-      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(500 260)">\n' +
-      '      <rect id="el-leaf" data-slidra-name="葉節點" width="200" height="200" fill="#c66"/>\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(500 260)">\n' +
+      '      <rect id="el-leaf" data-slidra-name="Leaf Node" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other callers.
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組虛線框測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Group dashed-box test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -811,7 +811,7 @@ it("drilling into nested groups one level at a time stacks dashed boxes: each le
     // dashed box" above), on top of el-outer's own entered-scope frame —
     // 2 frames already, not 1.
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     // The click/dblclick sequence's own select messages each round-trip
     // through the host (which echoes group scope + handle flags back down
     // — see canvas.ts's pushSelectionToRuntime); give the last echo time to
@@ -830,7 +830,7 @@ it("drilling into nested groups one level at a time stacks dashed boxes: each le
     // real must not move or drop either one (a single-element frame that
     // moved to the innermost level would make the outer group vanish).
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
     await page.waitForTimeout(50);
     const afterInner = await groupFrameBoxes(page);
     expect(afterInner).toHaveLength(2);
@@ -862,12 +862,12 @@ it("exiting one level at a time with Esc: each press collapses only the innermos
     const selName = page.locator(".status-selection-chip");
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     await page.waitForTimeout(50);
     const [outerFrame] = await groupFrameBoxes(page);
 
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
     // See the previous test's comment: wait for the dblclick's own select
     // message to round-trip back through the host before pressing Escape,
     // so a late-arriving echo cannot re-apply the just-entered scope on
@@ -919,18 +919,18 @@ it("exiting one level at a time with Esc: each press collapses only the innermos
 async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
-      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(460 220)">\n' +
-      '      <g id="el-blue" data-slidra-name="藍色方塊">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(460 220)">\n' +
+      '      <g id="el-blue" data-slidra-name="Blue Square">\n' +
       '        <rect width="150" height="150" fill="#69c"/>\n' +
       "      </g>\n" +
-      '      <g id="el-pink" data-slidra-name="粉色方塊" transform="translate(190 0)">\n' +
+      '      <g id="el-pink" data-slidra-name="Pink Square" transform="translate(190 0)">\n' +
       '        <rect width="150" height="150" fill="#c9a"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">拖曳一致性測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">Drag consistency test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -939,9 +939,9 @@ async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => 
 /** `translate(x y)` on `elementId`'s own `<g>` — mirrors e2e/direct-manipulation.test.ts's own `readTranslate`. */
 function readTranslate(svg: string, elementId: string): { x: number; y: number } {
   const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
-  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  if (!elementMatch) throw new Error(`could not find ${elementId}'s transform`);
   const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
-  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  if (!translateMatch) throw new Error(`${elementId}'s transform has no translate: ${elementMatch[1]}`);
   return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
 }
 
@@ -967,7 +967,7 @@ it("the drag target matches the selection level: the node marked by the solid bo
     // the solid selection box must land on the whole group, not on
     // el-pink alone.
     await pink.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     await page.waitForTimeout(50);
 
     // The iframe is sandboxed without allow-same-origin (see the sandbox
@@ -981,7 +981,7 @@ it("the drag target matches the selection level: the node marked by the solid bo
       return { width: rect.width, height: rect.height };
     });
     const pinkBox = await pink.boundingBox();
-    if (!pinkBox) throw new Error("量不到 el-pink 的邊界框");
+    if (!pinkBox) throw new Error("could not measure el-pink's bounding box");
     // el-inner's own box (blue + pink side by side) is roughly twice as
     // wide as el-pink alone — a box that had wrongly wrapped just the leaf
     // would be close to pinkBox.width, not ~2x it.
@@ -1037,8 +1037,8 @@ it("the label after drilling into a group (Group 2 › Group 1 path)", async () 
     // ends up "outer group › inner group › leaf node".
     await slideLeaf.dblclick();
     await slideLeaf.dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
-    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("外層群組 › 內層群組 › 葉節點");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Leaf Node");
+    await expect.poll(() => page.locator(".selection-label").textContent()).toBe("Outer Group › Inner Group › Leaf Node");
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -1061,14 +1061,14 @@ async function effectCount(registry: CommandRegistry, presentationId: string): P
 async function makeGroupCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-a" data-slidra-name="矩形A">\n' +
+      '  <g id="el-a" data-slidra-name="Rectangle A">\n' +
       '    <rect x="200" y="80" width="160" height="120" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-b" data-slidra-name="矩形B">\n' +
+      '  <g id="el-b" data-slidra-name="Rectangle B">\n' +
       '    <rect x="500" y="80" width="160" height="120" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">成組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">Grouping test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -1117,7 +1117,7 @@ it("grouping: shift-selecting 2 elements and clicking Group removes the members'
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
     const groupMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
-    if (!groupMatch) throw new Error("找不到新群組的 <g data-slidra-name=\"Group 1\">");
+    if (!groupMatch) throw new Error("could not find the new group's <g data-slidra-name=\"Group 1\">");
     expect(svg.indexOf('id="el-a"')).toBeGreaterThan(groupMatch.index);
     expect(svg.indexOf('id="el-b"')).toBeGreaterThan(groupMatch.index);
   } finally {
@@ -1133,16 +1133,16 @@ it("grouping: shift-selecting 2 elements and clicking Group removes the members'
 async function makeNestingCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-slidra-name="子群組">\n' +
-      '    <g id="el-child" data-slidra-name="子項">\n' +
+      '  <g id="el-group" data-slidra-name="Subgroup">\n' +
+      '    <g id="el-child" data-slidra-name="Child">\n' +
       '      <rect x="150" y="80" width="120" height="100" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-extra" data-slidra-name="額外元素">\n' +
+      '  <g id="el-extra" data-slidra-name="Extra Element">\n' +
       '    <rect x="450" y="80" width="120" height="100" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">巢狀成組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">Nested grouping test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -1174,7 +1174,7 @@ it("nesting: selecting one existing group plus one element and clicking Group wr
     expect(svg).toContain('id="el-group"');
     expect(svg).toContain('id="el-child"');
     const outerMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
-    if (!outerMatch) throw new Error("找不到新的外層群組");
+    if (!outerMatch) throw new Error("could not find the new outer group");
     expect(svg.indexOf('id="el-group"')).toBeGreaterThan(outerMatch.index);
     expect(svg.indexOf('id="el-extra"')).toBeGreaterThan(outerMatch.index);
   } finally {
@@ -1194,15 +1194,15 @@ it("nesting: selecting one existing group plus one element and clicking Group wr
 async function makeCompliantNestedDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
-      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(500 60)">\n' +
-      '      <g id="el-leaf" data-slidra-name="葉節點">\n' +
+      '  <g id="el-outer" data-slidra-name="Outer Group">\n' +
+      '    <g id="el-inner" data-slidra-name="Inner Group" transform="translate(500 60)">\n' +
+      '      <g id="el-leaf" data-slidra-name="Leaf Node">\n' +
       '        <rect width="200" height="200" fill="#c66"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-slidra-name="說明">\n' +
-      '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">解組測試</text>\n' +
+      '  <g id="el-caption" data-slidra-name="Caption">\n' +
+      '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">Ungroup test</text>\n' +
       "  </g>\n" +
       "</svg>\n",
   );
@@ -1227,7 +1227,7 @@ it("ungrouping: selecting a whole group and clicking Ungroup dissolves only the 
     // Not yet drilled into anything: clicking the leaf resolves to the
     // outermost group at top scope, el-outer.
     await slideLeaf.click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 外層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Outer Group");
     expect(await groupButton.getAttribute("aria-label")).toBe("Ungroup");
     expect(await groupButton.isDisabled()).toBe(false);
 
@@ -1236,7 +1236,7 @@ it("ungrouping: selecting a whole group and clicking Ungroup dissolves only the 
 
     // After ungrouping, selection becomes the dissolved group's direct
     // child — el-outer's only direct child is el-inner.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 內層群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Inner Group");
     expect(await effectCount(registry, presentationId)).toBe(0);
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;

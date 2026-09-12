@@ -267,7 +267,7 @@ it("New panel: Blank and the template list are both usable, applying either inse
     // showSlide(at)), so this second insert lands right after IT, at index 2.
     const templateSlidePath = afterTemplate.slides[2];
     const templateContent = await readSlide(registry, presentationId, templateSlidePath);
-    expect(templateContent).toContain("Title 範本");
+    expect(templateContent).toContain("Title Template");
     expect(templateContent).not.toContain('id="el-template-title"'); // re-minted, not copied verbatim
     expect(templateContent).toMatch(/id="el-[^"]+"/);
   } finally {
@@ -292,7 +292,7 @@ it("Templates button: lists only templates (no Blank/From outline…), applying 
     );
     const project = await readProject(registry, presentationId);
     const newContent = await readSlide(registry, presentationId, project.slides[1]);
-    expect(newContent).toContain("Section 範本");
+    expect(newContent).toContain("Section Template");
   } finally {
     await cleanup();
   }
@@ -370,7 +370,7 @@ it("root-cause regression guard: entering play mode after slide notes set shows 
     const result = await registry.dispatch("slide notes set", {
       id: presentationId,
       slidePath: "slides/001.svg",
-      text: "講者備忘稿：這段話不該出現在縮圖或播放畫面上",
+      text: "Speaker notes: this text must not appear in the thumbnail or the play view",
     });
     expect(result.ok).toBe(true);
     const content = await readSlide(registry, presentationId, "slides/001.svg");
@@ -393,11 +393,11 @@ it("root-cause regression guard: entering play mode after slide notes set shows 
     await page.waitForTimeout(500);
 
     expect(await page.locator('[role="alert"]').count()).toBe(0);
-    expect(await page.content()).not.toContain("無法讀取效果清單");
+    expect(await page.content()).not.toContain("Failed to load effect list");
 
     const playFrame = page.frameLocator("iframe.slide-frame");
     await expect.poll(() => playFrame.locator("#el-page-1").textContent().catch(() => null), { timeout: 15_000 }).toBe(
-      "第一頁",
+      "Page One",
     );
   } finally {
     await cleanup();
@@ -411,11 +411,11 @@ it("speaker notes: type -> blur -> file content; survives switching pages back a
     const notes = page.getByRole("textbox", { name: "Speaker notes" });
 
     await notes.click();
-    await notes.fill("第一頁的講稿");
+    await notes.fill("Page One notes");
     await page.locator(".rail-slides-label").click(); // blur the textarea
     await expect
       .poll(async () => readSlide(registry, presentationId, "slides/001.svg"), { timeout: 10_000 })
-      .toEqual(expect.stringContaining('<slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一頁的講稿</slidra:notes>'));
+      .toEqual(expect.stringContaining('<slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Page One notes</slidra:notes>'));
 
     // Switching pages and back: switch to slide 2 (no notes, shows the
     // placeholder), then switch back to slide 1 — the field must show what
@@ -423,7 +423,7 @@ it("speaker notes: type -> blur -> file content; survives switching pages back a
     await page.locator('.overview-item[data-index="1"] .overview-thumb').click();
     await expect.poll(() => notes.inputValue()).toBe("");
     await page.locator('.overview-item[data-index="0"] .overview-thumb').click();
-    await expect.poll(() => notes.inputValue()).toBe("第一頁的講稿");
+    await expect.poll(() => notes.inputValue()).toBe("Page One notes");
 
     // Escaped characters round-trip: the file must escape them, and the UI
     // must decode them back on read.
@@ -528,19 +528,19 @@ it("thumbnail context menu \"Save as template\": saving makes the template appea
 
     const modal = page.locator('[role="dialog"][aria-label="Save as template"]');
     await expect.poll(() => modal.isVisible()).toBe(true);
-    await modal.getByLabel("Template name").fill("我的範本");
+    await modal.getByLabel("Template name").fill("My Template");
     await modal.getByRole("button", { name: "Save" }).click();
     await expect.poll(() => modal.isVisible()).toBe(false);
 
     await page.getByRole("button", { name: "Templates" }).click();
     const templatesMenu = page.locator('[role="menu"][data-menu="templates"]');
-    await expect.poll(() => templatesMenu.getByRole("menuitem", { name: "我的範本" }).isVisible()).toBe(true);
+    await expect.poll(() => templatesMenu.getByRole("menuitem", { name: "My Template" }).isVisible()).toBe(true);
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "New" }).click();
     const newMenu = page.locator('[role="menu"][data-menu="new"]');
-    await expect.poll(() => newMenu.getByRole("menuitem", { name: "我的範本" }).isVisible()).toBe(true);
-    await newMenu.getByRole("menuitem", { name: "我的範本" }).click();
+    await expect.poll(() => newMenu.getByRole("menuitem", { name: "My Template" }).isVisible()).toBe(true);
+    await newMenu.getByRole("menuitem", { name: "My Template" }).click();
 
     await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
       5,
@@ -747,7 +747,7 @@ it("GUI and CLI are byte-for-byte equivalent (every operation has a matching CLI
 
   // 5) slide notes set: GUI types + blur, the equivalent CLI is `slide notes set slides/001.svg "…"`.
   {
-    const text = "GUI／CLI 等價測試備忘稿";
+    const text = "GUI/CLI equivalence test notes";
     const gui = await startServerFor();
     let guiContent: string;
     try {

@@ -405,7 +405,7 @@ it("double-clicking a text box to edit, typing, and pressing Esc: the SVG's tspa
     // fixture's own initial text ("Hi"), so typing appends after it
     // rather than replacing it. `finalText` below is what actually ends
     // up committed.
-    const typed = "Hello Slidra 文字框就地編輯測試內容一二三四五六七八九十";
+    const typed = "Hello Slidra this line of test content is long enough to wrap across multiple lines";
     const finalText = "Hi" + typed;
     await page.keyboard.type(typed);
     // Let the rAF/postMessage round trip for the live preview settle before
@@ -535,7 +535,7 @@ it("double-clicking a locked text box does not enter edit mode: no focus lands o
 
     expect(await isEditTextareaFocused(page)).toBe(false);
 
-    await page.keyboard.type("這不應該寫進檔案");
+    await page.keyboard.type("this should not be written to the file");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 

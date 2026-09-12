@@ -109,7 +109,7 @@ it("a hostile slide's script still cannot reach presentation data once in play m
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("看起來人畜無害的投影片");
+    .toBe("A seemingly harmless slide");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -137,7 +137,7 @@ it("a hostile slide's script still cannot reach presentation data once in play m
     // but must never have handed real presentation content to the script:
     // the server's `Origin: null` gate must have refused it.
     expect(probe.status).toBe(403);
-    expect(probe.text ?? "").not.toContain("惡意投影片測試簡報");
+    expect(probe.text ?? "").not.toContain("Hostile slide test deck");
     expect(opaqueOriginResponses.length).toBeGreaterThan(0);
     expect(opaqueOriginResponses.every((status) => status === 403)).toBe(true);
   } else {

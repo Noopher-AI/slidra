@@ -42,7 +42,7 @@ const dmDeckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
-const NEW_TITLE = "凍結測試改過的標題";
+const NEW_TITLE = "Freeze test changed title";
 const FREEZE_HOLD_MS = 1500;
 const DM_VIEWPORT = { width: 1440, height: 900 };
 const DM_VIEWBOX = { width: 1280, height: 720 };
@@ -51,9 +51,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -125,7 +125,7 @@ async function openApp(server: RunningServer): Promise<{ page: Page; pageErrors:
 function currentSlideTextOf(page: Page, pageErrors: string[]): () => Promise<string | null> {
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text");
   return async () => {
-    if (pageErrors.length > 0) return `頁面錯誤：${pageErrors.join("; ")}`;
+    if (pageErrors.length > 0) return `Page errors: ${pageErrors.join("; ")}`;
     return slideText.textContent().catch(() => null);
   };
 }
@@ -242,7 +242,7 @@ async function openAppDrag(server: RunningServer): Promise<{ page: Page; pageErr
 async function svgBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
   const svg = page.frameLocator("iframe.slide-frame").locator("svg").first();
   const box = await svg.boundingBox();
-  if (!box) throw new Error("量不到主畫布 svg 的邊界框");
+  if (!box) throw new Error("could not measure the main canvas svg's bounding box");
   return box;
 }
 
@@ -279,9 +279,9 @@ async function dragBy(
 /** `translate(x y)` -> `{x, y}`. Throws if the element carries no such transform. */
 function readTranslate(svg: string, elementId: string): { x: number; y: number } {
   const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
-  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  if (!elementMatch) throw new Error(`could not find ${elementId}'s transform`);
   const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
-  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  if (!translateMatch) throw new Error(`${elementId}'s transform has no translate: ${elementMatch[1]}`);
   return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
 }
 
@@ -299,18 +299,18 @@ it("can still navigate slides and enter/exit play mode while frozen; the title h
     const nextButton = page.locator('.slide-nav-button[aria-label="Next slide"]');
     const previousButton = page.locator('.slide-nav-button[aria-label="Previous slide"]');
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "改標題");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
 
     // Navigating slides: freezing doesn't block browsing.
     await nextButton.click();
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第二頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Second Slide");
     expect(await editingFrozen(page)).toBe(true);
 
     await previousButton.click();
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     // Entering play mode: freezing doesn't block browsing.
     await page.locator('.play-button').click();
@@ -338,7 +338,7 @@ it("Ctrl/Cmd+Z works once unfrozen and undoes what the agent's turn just did (gr
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "改標題");
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(NEW_TITLE);
@@ -349,7 +349,7 @@ it("Ctrl/Cmd+Z works once unfrozen and undoes what the agent's turn just did (gr
     const isMac = process.platform === "darwin";
     await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     expect(pageErrors).toEqual([]);
   } finally {
@@ -363,7 +363,7 @@ it("a single Ctrl/Cmd+Z undoes every command from an agent's turn: both steps co
     const { page, pageErrors } = await openApp(server);
     const currentSlideText = currentSlideTextOf(page, pageErrors);
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     await sendChatMessage(page, "兩步");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
@@ -374,7 +374,7 @@ it("a single Ctrl/Cmd+Z undoes every command from an agent's turn: both steps co
 
     // One undo returns all the way to the pre-turn text, never stopping at
     // the intermediate first-command state — the whole turn is one group.
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
     expect(pageErrors).toEqual([]);
   } finally {
@@ -389,7 +389,7 @@ it("editing freezes while the agent is acting, the author can see the frozen sta
     const currentSlideText = currentSlideTextOf(page, pageErrors);
     const banner = page.locator(".editing-frozen-banner");
 
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
     expect(await banner.isVisible()).toBe(false);
 
     await sendChatMessage(page, "改標題");
@@ -418,14 +418,14 @@ it("editing freezes while the agent is acting, the author can see the frozen sta
     // `editingFrozenRef.current` is set).
     await undoButton.evaluate((el: HTMLButtonElement) => el.click());
     await redoButton.evaluate((el: HTMLButtonElement) => el.click());
-    expect(await currentSlideText()).toBe("第一頁");
+    expect(await currentSlideText()).toBe("First Slide");
 
     // The existing keyboard Cmd+Z assertion is kept unchanged —
     // App.tsx's editingFrozenRef early-return: Ctrl+Z while frozen sends no
     // request at all, so the (still first-page) text is untouched.
     const isMac = process.platform === "darwin";
     await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
-    expect(await currentSlideText()).toBe("第一頁");
+    expect(await currentSlideText()).toBe("First Slide");
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
     await expect.poll(() => banner.isVisible()).toBe(false);

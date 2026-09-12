@@ -33,7 +33,7 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
 });
 
@@ -168,7 +168,7 @@ it("clicking a neighboring unlocked element still selects it normally", async ()
 
     await slideFrame.locator("#el-unlocked").click();
 
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 未鎖定方塊");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Unlocked Box");
   } finally {
     await cleanup();
   }

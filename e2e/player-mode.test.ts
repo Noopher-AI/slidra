@@ -120,7 +120,7 @@ it("full play path: entering play, stepping through effects, changing pages, exi
   const appearText = playFrame().locator("#el-appear-in");
   const bgText = playFrame().locator("#el-title");
 
-  await expect.poll(() => bgText.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第一頁");
+  await expect.poll(() => bgText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Play Slide 1");
 
   // An element that belongs to no step is already on screen the moment its page is entered.
   await expectVisible(bgText);
@@ -155,7 +155,7 @@ it("full play path: entering play, stepping through effects, changing pages, exi
   // Press once more at the last step, changing to the next page.
   await page.keyboard.press("ArrowRight");
   const secondTitle = playFrame().locator("#el-title2");
-  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第二頁");
+  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("Play Slide 2");
   const secondFade = playFrame().locator("#el-second-fade");
   await expectHidden(secondFade);
 
@@ -164,14 +164,14 @@ it("full play path: entering play, stepping through effects, changing pages, exi
 
   // Already at the last step of the entire deck: pressing once more does nothing and doesn't crash.
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => secondTitle.textContent().catch(() => null)).toBe("播放第二頁");
+  await expect.poll(() => secondTitle.textContent().catch(() => null)).toBe("Play Slide 2");
 
   // Currently on slide 2's only step (el-second-fade), with no earlier step
   // to retreat to: ArrowLeft triggers retreat-past-start, switching back to
   // slide 1, which is presented as "the whole page already ran" — both
   // steps (fade, appear) already applied, not reset to its start.
   await page.keyboard.press("ArrowLeft");
-  await expect.poll(() => bgText.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第一頁");
+  await expect.poll(() => bgText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Play Slide 1");
   await expectVisible(fadeText);
   await expectVisible(appearText);
 
@@ -200,7 +200,7 @@ it("when focus is stolen out of the player, arrow keys still advance without nee
   const fadeText = playFrame().locator("#el-fade-in");
   const appearText = playFrame().locator("#el-appear-in");
 
-  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
+  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Fade-in text");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -242,7 +242,7 @@ it("while the player holds focus, one arrow-key press only advances one step —
   const fadeText = playFrame().locator("#el-fade-in");
   const appearText = playFrame().locator("#el-appear-in");
 
-  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("淡入文字");
+  await expect.poll(() => fadeText.textContent().catch(() => null), { timeout: 30_000 }).toBe("Fade-in text");
 
   await page.locator('.play-button').click();
   await expect
@@ -297,7 +297,7 @@ it("leaving a slide plays its exit transition before genuinely changing the page
     expect(await playFrame().locator("#el-title").count()).toBeGreaterThan(0);
 
     // Only once exit finishes does it genuinely switch to slide 2.
-    await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 10_000 }).toBe("播放第二頁");
+    await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 10_000 }).toBe("Play Slide 2");
     await expect.poll(() => frame.evaluate((el) => (el as HTMLElement).style.opacity), { timeout: 5_000 }).not.toBe("0");
 
     // Retreating back to slide 1: retreatPastStart() never calls
@@ -308,7 +308,7 @@ it("leaving a slide plays its exit transition before genuinely changing the page
     expect(await frame.evaluate((el) => (el as HTMLElement).style.opacity)).not.toBe("0");
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 10_000 })
-      .toBe("播放第一頁");
+      .toBe("Play Slide 1");
   } finally {
     await registry.dispatch("slide transition set", {
       id: presentationId,

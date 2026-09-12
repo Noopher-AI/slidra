@@ -150,7 +150,7 @@ it("the control bar's previous/next buttons change the slide itself, not a step 
     const titleText = () => playFrame().locator("#el-title").textContent().catch(() => null);
     const title2Text = () => playFrame().locator("#el-title2").textContent().catch(() => null);
 
-    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("Play Slide 1");
     // On entry neither enter element is applied yet (same existing check as
     // player-mode.test.ts).
     await expect.poll(fadeOpacity).toBe("0");
@@ -159,7 +159,7 @@ it("the control bar's previous/next buttons change the slide itself, not a step 
     // it jumps straight to slide 2, completely skipping slide 1's two
     // remaining effect steps.
     await page.locator('.play-bar button[aria-label="Next"]').click();
-    await expect.poll(title2Text, { timeout: 30_000 }).toBe("播放第二頁");
+    await expect.poll(title2Text, { timeout: 30_000 }).toBe("Play Slide 2");
     // No arrow key was pressed, and there was no intermediate "applying"
     // state — slide 1's fade-in element was simply swapped out along with
     // the whole document (changing pages in the play iframe reassigns the
@@ -170,7 +170,7 @@ it("the control bar's previous/next buttons change the slide itself, not a step 
     // disabled state stay in sync (the template's `N / M` form; play-deck
     // only has 2 slides).
     await page.locator('.play-bar button[aria-label="Previous"]').click();
-    await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
+    await expect.poll(titleText, { timeout: 30_000 }).toBe("Play Slide 1");
     expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 2");
     expect(await page.locator('.play-bar button[aria-label="Previous"]').isDisabled()).toBe(true);
   } finally {
@@ -345,7 +345,7 @@ it("both floating notices (play error/fullscreen error) are visible side by side
     // (playerHasFocus stuck at false), but it was never what this test needs
     // to prove — the point is "notices do not hide along with the control
     // bar", which both notice kinds equally demonstrate.
-    const errorNotice = page.locator(".player-error-notice", { hasText: "效果清單" });
+    const errorNotice = page.locator(".player-error-notice", { hasText: "effect list" });
     await expect.poll(() => errorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
     expect(await page.locator(".player-focus-notice").count()).toBe(0);
 
@@ -355,7 +355,7 @@ it("both floating notices (play error/fullscreen error) are visible side by side
     // success and then lying about failure), then click the fullscreen button.
     await page.evaluate(() => {
       const container = document.querySelector(".canvas-area") as HTMLElement;
-      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：Fullscreen請求被拒絕"));
+      container.requestFullscreen = () => Promise.reject(new Error("simulated test: Fullscreen request rejected"));
     });
     await page.locator(".play-bar .fullscreen-toggle-button").click();
     const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "Fullscreen toggle failed" });
@@ -542,7 +542,7 @@ it("a slide with no background rect (a blank page from `slide add`) still render
   try {
     const registry: CommandRegistry = createDefaultRegistry();
     const slidraPath = path.join(slidraDir, "deck.slidra");
-    await registry.dispatch("new", { path: slidraPath, name: "無背景播放測試" });
+    await registry.dispatch("new", { path: slidraPath, name: "Backgroundless playback test" });
     const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const presentationId = opened.data!.id;
     // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.

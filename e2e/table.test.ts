@@ -26,7 +26,7 @@ let openPages: Page[] = [];
 beforeAll(async () => {
   await requireBuilt(rootDir);
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -75,8 +75,8 @@ async function bindToSalesCsv(
   elementId: string,
   templateRow: number,
 ): Promise<void> {
-  await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: templateRow, col: 0, text: "{{ 產品 }}" });
-  await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: templateRow, col: 1, text: "{{ 銷量 }}" });
+  await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: templateRow, col: 0, text: "{{ Product }}" });
+  await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: templateRow, col: 1, text: "{{ Sales }}" });
   await registry.dispatch("table bind", { id: presentationId, slidePath: SLIDE_PATH, elementId, source: "assets/data/sales.csv" });
 }
 
@@ -100,7 +100,7 @@ async function undoCount(presentationId: string): Promise<number> {
 /** The single cell `<g data-slidra-cell="row,col">…</g>` block's raw markup, for regex assertions against a `cat` dump. */
 function cellMarkup(svg: string, row: number, col: number): string {
   const match = new RegExp(`<g data-slidra-cell="${row},${col}"[^>]*>[\\s\\S]*?</g>`).exec(svg);
-  if (!match) throw new Error(`找不到儲存格 (${row},${col})`);
+  if (!match) throw new Error(`could not find cell (${row},${col})`);
   return match[0];
 }
 
@@ -328,10 +328,10 @@ it("E8: double-clicking a cell opens an edit input; pressing Enter commits it, r
     await slideFrame.locator('[data-slidra-cell="0,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
-    await editor.fill("哈囉");
+    await editor.fill("Hello");
     await editor.press("Enter");
 
-    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">哈囉<");
+    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">Hello<");
     expect(await undoCount(presentationId)).toBe(beforeUndo + 1);
 
     const undo = await registry.dispatch("undo", { id: presentationId });
@@ -355,10 +355,10 @@ it("E8b: when the table is inside a group, double-clicking a cell directly enter
     await slideFrame.locator('[data-slidra-cell="0,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
-    await editor.fill("群內");
+    await editor.fill("In group");
     await editor.press("Enter");
 
-    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">群內<");
+    await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">In group<");
   } finally {
     await cleanup();
   }
@@ -380,7 +380,7 @@ it("E9: double-clicking a generated cell, the input's initial value is the raw t
     await slideFrame.locator('[data-slidra-cell="2,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
-    expect(await editor.inputValue()).toBe("{{ 產品 }}");
+    expect(await editor.inputValue()).toBe("{{ Product }}");
     // Drawn over the generated cell the author double-clicked — the template
     // row it edits is display:none and has no rect (was: a 12×12 input at
     // the slide's top-left corner, read as "cannot edit" in manual review).
@@ -456,16 +456,16 @@ it("F-09b: Tab landing on a generated cell has an input initial value of the sam
     await slideFrame.locator('[data-slidra-cell="2,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
-    expect(await editor.inputValue()).toBe("{{ 產品 }}");
+    expect(await editor.inputValue()).toBe("{{ Product }}");
 
     await editor.press("Tab");
 
-    expect(await editor.inputValue()).toBe("{{ 銷量 }}");
+    expect(await editor.inputValue()).toBe("{{ Sales }}");
 
     await editor.press("Enter");
     await expect
       .poll(async () => cellMarkup(await catSlide(registry, presentationId), 1, 1))
-      .toContain("{{ 銷量 }}");
+      .toContain("{{ Sales }}");
   } finally {
     await cleanup();
   }
@@ -481,7 +481,7 @@ it("E10: dragging a column-boundary handle changes the width live during the dra
     const handle = page.locator(".table-col-handle").first();
     await expect.poll(() => handle.count()).toBe(1);
     const box = await handle.boundingBox();
-    if (!box) throw new Error("量不到欄界把手的邊界框");
+    if (!box) throw new Error("could not measure the column-boundary handle's bounding box");
     const startX = box.x + box.width / 2;
     const startY = box.y + box.height / 2;
 
@@ -649,14 +649,14 @@ it("F1: the table-panel insert panel's cell count and enabled state", async () =
 
 // F2's fixed text (3×3, row 0 is the header).
 const F2_TEXT: Record<string, string> = {
-  "0,0": "產品",
-  "0,1": "區域",
-  "0,2": "銷量",
-  "1,0": "甲",
-  "1,1": "北區",
+  "0,0": "Product",
+  "0,1": "Region",
+  "0,2": "Sales",
+  "1,0": "Alpha",
+  "1,1": "North",
   "1,2": "120",
-  "2,0": "乙",
-  "2,1": "南區",
+  "2,0": "Beta",
+  "2,1": "South",
   "2,2": "340",
 };
 
@@ -676,7 +676,7 @@ for (const theme of ["dark", "light", "zebra"] as const) {
       expect(headerCell).toContain(`fill="${paint.fill}"`);
       if (paint.fillOpacity !== null) expect(headerCell).toContain(`fill-opacity="${paint.fillOpacity}"`);
       else expect(headerCell).not.toContain("fill-opacity");
-      expect(headerCell).toContain(">產品<");
+      expect(headerCell).toContain(">Product<");
     } finally {
       await cleanup();
     }

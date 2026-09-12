@@ -76,9 +76,9 @@ async function buildManyFrameDeck(): Promise<string> {
       <slidra:effect target="el-step-b-${i}" family="enter" effect="appear" start="on-click"/>
     </slidra:effects>
   </metadata>
-  <text id="el-title-${i}" x="640" y="120" text-anchor="middle" font-size="48">投影片 ${i}</text>
-  <text id="el-step-a-${i}" x="640" y="320" text-anchor="middle" font-size="40">步驟一</text>
-  <text id="el-step-b-${i}" x="640" y="440" text-anchor="middle" font-size="40">步驟二</text>
+  <text id="el-title-${i}" x="640" y="120" text-anchor="middle" font-size="48">Slide ${i}</text>
+  <text id="el-step-a-${i}" x="640" y="320" text-anchor="middle" font-size="40">Step One</text>
+  <text id="el-step-b-${i}" x="640" y="440" text-anchor="middle" font-size="40">Step Two</text>
 </svg>
 `,
     );
@@ -87,7 +87,7 @@ async function buildManyFrameDeck(): Promise<string> {
     path.join(dir, "project.json"),
     JSON.stringify({
       formatVersion: 1,
-      name: "多格畫面測試簡報",
+      name: "Many-frame test deck",
       canvas: { width: 1280, height: 720 },
       slides,
     }),
@@ -148,7 +148,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
           // observe before the export even starts (ExportPanel.tsx's three
           // conditional blocks).
           const anchor = document.querySelector(".export-panel-anchor");
-          if (!anchor) throw new Error("找不到 .export-panel-anchor");
+          if (!anchor) throw new Error("could not find .export-panel-anchor");
           const record = () => {
             const text = (document.querySelector(".export-status")?.textContent ?? "").trim();
             if (text && text !== rec.dom[rec.dom.length - 1]) rec.dom.push(text);
@@ -166,7 +166,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
           // "queued" broadcast is synchronous, so a not-yet-established
           // connection would miss the first event.
           await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error("EventSource 未在 5s 內連上")), 5_000);
+            const timer = setTimeout(() => reject(new Error("EventSource did not connect within 5s")), 5_000);
             es.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
           });
         });
@@ -191,7 +191,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
         //     This holds regardless of deck size, machine speed, or whether
         //     polling keeps up.
         const progressEvents = rec.sse.filter((e) => e.state === "progress");
-        expect(progressEvents, `未收到任何 state:"progress" 的 export SSE 事件。完整序列：${JSON.stringify(rec.sse)}`)
+        expect(progressEvents, `Did not receive any state:"progress" export SSE event. Full sequence: ${JSON.stringify(rec.sse)}`)
           .not.toHaveLength(0);
 
         // (2) The event sequence is valid and belongs to a single job (after
@@ -218,10 +218,10 @@ describe("export panel — progress, download, and parity with the CLI output", 
         //     rendering only the latter. Equality would be a new source of
         //     flakiness.
         const expectedTexts = rec.sse.flatMap((e) => {
-          if (e.state === "queued") return ["匯出中…"]; // this is also App.tsx's optimistic state
+          if (e.state === "queued") return ["Exporting…"]; // this is also App.tsx's optimistic state
           if (e.state === "running" || e.state === "progress")
-            return [e.totalFrames > 0 ? `匯出中… ${e.completedFrames}/${e.totalFrames}` : "匯出中…"];
-          if (e.state === "done") return [`下載 ${e.fileName}（${e.pageCount} 頁）`];
+            return [e.totalFrames > 0 ? `Exporting… ${e.completedFrames}/${e.totalFrames}` : "Exporting…"];
+          if (e.state === "done") return [`Download ${e.fileName} (${e.pageCount} pages)`];
           return [];
         });
         expect(isSubsequenceOf(rec.dom, expectedTexts)).toBe(true);
@@ -229,7 +229,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
         // (5) The DOM ends up showing the download link, with text matching the done event.
         const doneEvent = rec.sse.find((e) => e.state === "done");
         expect(doneEvent).toBeDefined();
-        expect(rec.dom.at(-1)).toBe(`下載 ${doneEvent!.fileName}（${doneEvent!.pageCount} 頁）`);
+        expect(rec.dom.at(-1)).toBe(`Download ${doneEvent!.fileName} (${doneEvent!.pageCount} pages)`);
 
         const downloadLink = page.locator(".export-status-done a");
         const downloadPath = await downloadLink.getAttribute("href");
@@ -310,7 +310,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
         });
         expect(second.status()).toBe(409);
         const body = (await second.json()) as { error: string };
-        expect(body.error).toBe("已有匯出工作進行中");
+        expect(body.error).toBe("An export job is already in progress");
       } finally {
         await started.cleanup();
       }
@@ -357,7 +357,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
       // of its content off the left side of the viewport; post-fix it
       // wraps and stays fully on-screen.
       const geometry = await page.locator(".export-status-error").evaluate((el) => {
-        const longMessage = "壞掉的效果清單：" + "元素｢el-speaker｣缺少 data-slidra-media 屬性，這是一段刻意加長、含有換行的合成錯誤訊息，用來驗證錯誤區塊在極端長度下仍完整落在畫面內。\n第二行：".repeat(4);
+        const longMessage = "Broken effect list: " + "element \u2018el-speaker\u2019 is missing the data-slidra-media attribute, this is a deliberately long synthetic error message with embedded line breaks, used to verify the error block stays fully on-screen at extreme lengths.\nLine two: ".repeat(4);
         const textNode = Array.from(el.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
         if (textNode) textNode.textContent = longMessage;
         else el.textContent = longMessage;
@@ -378,7 +378,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
       });
       expect(geometry.left).toBeGreaterThanOrEqual(0);
       const viewportWidth = page.viewportSize()?.width;
-      if (viewportWidth === undefined || viewportWidth === null) throw new Error("找不到 viewport 寬度");
+      if (viewportWidth === undefined || viewportWidth === null) throw new Error("could not find viewport width");
       expect(geometry.right).toBeLessThanOrEqual(viewportWidth);
       expect(geometry.lineCount).toBeGreaterThan(1);
     } finally {

@@ -111,37 +111,37 @@ describe("argv validation — no browser needed, fails before ever touching Play
   it("missing presentation-id", async () => {
     const result = await runCli(["export", "--format", "pdf"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr.trim()).toBe("命令 export 缺少參數：presentation-id");
+    expect(result.stderr.trim()).toBe("Command export is missing an argument: presentation-id");
   });
 
   it("missing --format", async () => {
     const result = await runCli(["export", "some-id"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr.trim()).toBe("命令 export 缺少參數：--format");
+    expect(result.stderr.trim()).toBe("Command export is missing an argument: --format");
   });
 
   it("--format is not one of pdf/pdf-frames (case-sensitive)", async () => {
     const result = await runCli(["export", "some-id", "--format", "PDF"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr.trim()).toBe("--format 必須是下列其中一個值：pdf、pdf-frames");
+    expect(result.stderr.trim()).toBe("--format must be one of: pdf, pdf-frames");
   });
 
   it("--format pptx is also rejected (not a supported format)", async () => {
     const result = await runCli(["export", "some-id", "--format", "pptx"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr.trim()).toBe("--format 必須是下列其中一個值：pdf、pdf-frames");
+    expect(result.stderr.trim()).toBe("--format must be one of: pdf, pdf-frames");
   });
 
   it("--out is missing a value", async () => {
     const result = await runCli(["export", "some-id", "--format", "pdf", "--out"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr.trim()).toBe("--out 缺少值");
+    expect(result.stderr.trim()).toBe("--out is missing a value");
   });
 
   it("id does not exist", async () => {
     const result = await runCli(["export", "no-such-id", "--format", "pdf"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("找不到識別碼對應的簡報：no-such-id");
+    expect(result.stderr).toContain("no presentation found for id: no-such-id");
   });
 });
 
@@ -153,7 +153,7 @@ describe("successful export", () => {
 
     expect(result.stderr).toBe("");
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`已匯出：${outPath}（3 頁）`);
+    expect(result.stdout).toContain(`Exported: ${outPath} (3 pages)`);
 
     const pdfBytes = await readFile(outPath);
     const info = await loadPdf(browser, pdfBytes);
@@ -171,12 +171,12 @@ describe("successful export", () => {
 
     expect(result.code).toBe(0);
     // export-deck's step counts are [0, 2, 1] -> sum(steps+1) = 1 + 3 + 2 = 6.
-    expect(result.stdout).toContain(`已匯出：${outPath}（6 頁）`);
+    expect(result.stdout).toContain(`Exported: ${outPath} (6 pages)`);
     // Progress output: expect at least a start line and one progress line
     // (not every frame is required to print, see the polling comment in
     // export/render.ts).
-    expect(result.stdout).toContain("匯出開始：pdf-frames，共 6 格");
-    expect(result.stdout).toMatch(/進度：\d+\/6/);
+    expect(result.stdout).toContain("Export started: pdf-frames, 6 frames total");
+    expect(result.stdout).toMatch(/Progress: \d+\/6/);
 
     const pdfBytes = await readFile(outPath);
     const info = await loadPdf(browser, pdfBytes);
@@ -206,8 +206,8 @@ describe("successful export", () => {
     try {
       const result = await runCli(["export", id, "--format", "pdf"], { env: env(), cwd: workDir });
       expect(result.code).toBe(0);
-      const expectedPath = path.join(workDir, "匯出測試簡報.pdf");
-      expect(result.stdout).toContain(`已匯出：${expectedPath}（3 頁）`);
+      const expectedPath = path.join(workDir, "Export test deck.pdf");
+      expect(result.stdout).toContain(`Exported: ${expectedPath} (3 pages)`);
       const stats = await stat(expectedPath);
       expect(stats.isFile()).toBe(true);
     } finally {
@@ -242,14 +242,14 @@ describe("no partial PDF is produced on failure", () => {
       await mkdir(path.join(emptyDeckDir, "assets"), { recursive: true });
       await writeFile(
         path.join(emptyDeckDir, "project.json"),
-        JSON.stringify({ formatVersion: 1, name: "空白簡報", canvas: { width: 1280, height: 720 }, slides: [] }),
+        JSON.stringify({ formatVersion: 1, name: "Blank deck", canvas: { width: 1280, height: 720 }, slides: [] }),
       );
       const id = await openFixture(emptyDeckDir);
       const outPath = path.join(slidraDir, "should-not-exist.pdf");
       const result = await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
 
       expect(result.code).toBe(1);
-      expect(result.stderr.trim()).toBe("簡報沒有投影片");
+      expect(result.stderr.trim()).toBe("Presentation has no slides");
       await expect(stat(outPath)).rejects.toThrow();
     } finally {
       await rm(emptyDeckDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

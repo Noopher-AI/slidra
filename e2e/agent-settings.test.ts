@@ -99,7 +99,7 @@ async function textOf(page: Page, selector: string): Promise<string | null> {
 // ─────────────────────────────────────────────────────────────────────────
 
 it("agent menu shows active/not-logged-in/probing based on probe results, with a login command on the not-logged-in row", async () => {
-  // An artificial pause before a probe resolves gives "Probing…" a
+  // An artificial pause before a probe resolves gives "Checking…" a
   // deterministic observation window. Only re-probes are delayed (not the
   // initial mount GET) so the menu opens against already-known data.
   const PROBE_DELAY_MS = 1200;
@@ -117,7 +117,7 @@ it("agent menu shows active/not-logged-in/probing based on probe results, with a
     prefix: "agent-settings-a1",
     initialAgent: { kind: "claude", source: "settings" },
     runCommand: runner,
-    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "不會用到"),
+    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "unused"),
   });
 
   const page = await openPage(activeServer.server);
@@ -125,17 +125,17 @@ it("agent menu shows active/not-logged-in/probing based on probe results, with a
 
   // Initial load (no delay): claude is active, codex is not logged in and that row carries a login command.
   await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
-  expect(await itemDetail(page, "claude")).toBe("使用中");
+  expect(await itemDetail(page, "claude")).toBe("In use");
   expect(await itemChecked(page, "codex")).toBe("false");
-  expect(await itemDetail(page, "codex")).toBe("未登入 · codex login");
+  expect(await itemDetail(page, "codex")).toBe("Not signed in · codex login");
 
   // Click "re-probe": this probe is delayed, so the probing label has a deterministic observation window.
   const probeButton = page.locator(".chat-chip-menu-action");
   await probeButton.click();
-  await expect.poll(() => probeButton.textContent()).toBe("偵測中…");
-  await expect.poll(() => itemDetail(page, "codex")).toBe("偵測中…");
-  await expect.poll(() => probeButton.textContent(), { timeout: 10_000 }).toBe("重新偵測登入狀態");
-  expect(await itemDetail(page, "claude")).toBe("使用中");
+  await expect.poll(() => probeButton.textContent()).toBe("Checking…");
+  await expect.poll(() => itemDetail(page, "codex")).toBe("Checking…");
+  await expect.poll(() => probeButton.textContent(), { timeout: 10_000 }).toBe("Re-check sign-in status");
+  expect(await itemDetail(page, "claude")).toBe("In use");
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -155,18 +155,18 @@ it("menu status updates with probe results after clicking re-probe", async () =>
     prefix: "agent-settings-a2",
     initialAgent: { kind: "claude", source: "settings" },
     runCommand: runner,
-    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "不會用到"),
+    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "unused"),
   });
 
   const page = await openPage(activeServer.server);
   await openAgentMenu(page);
 
-  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("未登入 · codex login");
+  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("Not signed in · codex login");
 
   codexLoggedIn = true;
   await page.locator(".chat-chip-menu-action").click();
 
-  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("可用");
+  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("Available");
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ it("switching agents from the menu — system message, chip, next message, and e
     initialAgent: { kind: "claude", source: "cli" },
     runCommand: bothLoggedIn,
     resolveAdapter: (kind, presentationId) => {
-      const config = fixtureAdapterFor(kind, presentationId, kind === "claude" ? "Claude改的標題" : "Codex改的標題");
+      const config = fixtureAdapterFor(kind, presentationId, kind === "claude" ? "Title changed by Claude" : "Title changed by Codex");
       return { ...config, env: { ...config.env, E2E_FREEZE_HOLD_MS: String(FREEZE_HOLD_MS) } };
     },
   });
@@ -195,11 +195,11 @@ it("switching agents from the menu — system message, chip, next message, and e
 
   // claude is the currently active agent, set via the command line: in use, with an extra menu row explaining the source.
   await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
-  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("本次由命令列指定");
+  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("Set via the command line for this session");
 
   await page.locator('.chat-chip-menu [data-kind="codex"]').click();
 
-  await expect.poll(() => textOf(page, ".chat-system"), { timeout: 10_000 }).toBe("已切換到 Codex，接下來的訊息由它處理");
+  await expect.poll(() => textOf(page, ".chat-system"), { timeout: 10_000 }).toBe("Switched to Codex. It will handle messages from here.");
   await expect.poll(() => textOf(page, ".agent-dot-connected")).toBe("Codex");
   // The menu collapses once a selection is made; reopening it shows codex checked and the command-line hint gone.
   expect(await page.locator(".chat-chip-menu").count()).toBe(0);
@@ -212,7 +212,7 @@ it("switching agents from the menu — system message, chip, next message, and e
   // real author prompt — one message proves both: the next message really
   // reaches the new (codex) session, AND the editing lock it takes disables
   // the menu's agent rows for the freeze window before that session's turn ends.
-  await page.locator(".chat-input textarea").fill("改標題");
+  await page.locator(".chat-input textarea").fill("change the title");
   await page.locator('.chat-input button[type="submit"]').click();
 
   async function isFrozen(): Promise<boolean> {
@@ -226,11 +226,11 @@ it("switching agents from the menu — system message, chip, next message, and e
   const rows = page.locator(".chat-chip-menu [data-kind]");
   const disabledFlags = await Promise.all((await rows.all()).map((row) => row.isDisabled()));
   expect(disabledFlags.every(Boolean)).toBe(true);
-  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("agent 正在編輯中，切換請稍候");
+  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("The agent is editing — switching will have to wait");
   await page.keyboard.press("Escape");
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
-  await expect.poll(() => slideText.textContent(), { timeout: 10_000 }).toBe("Codex改的標題");
+  await expect.poll(() => slideText.textContent(), { timeout: 10_000 }).toBe("Title changed by Codex");
   await expect.poll(isFrozen, { timeout: 10_000 }).toBe(false);
 });
 
@@ -246,16 +246,16 @@ it("with no agent, the chat panel shows an empty state, the input is disabled, a
     prefix: "agent-settings-a4",
     initialAgent: { kind: null, source: "none" },
     runCommand: bothLoggedIn,
-    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "不會用到"),
+    resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "unused"),
   });
 
   const page = await openPage(activeServer.server);
 
   await expect.poll(() => page.locator(".chat-empty-state").count(), { timeout: 10_000 }).toBeGreaterThan(0);
-  expect(await textOf(page, ".chat-empty-state")).toContain("尚未選擇 agent");
+  expect(await textOf(page, ".chat-empty-state")).toContain("No agent selected");
   expect(await page.locator(".chat-input textarea").isDisabled()).toBe(true);
   expect(await page.locator('.chat-input button[type="submit"]').isDisabled()).toBe(true);
-  await expect.poll(() => textOf(page, '.chat-chip[data-chip="agent"]'), { timeout: 10_000 }).toContain("選擇 agent");
+  await expect.poll(() => textOf(page, '.chat-chip[data-chip="agent"]'), { timeout: 10_000 }).toContain("Select agent");
 
   await openAgentMenu(page);
   expect(await itemChecked(page, "claude")).toBe("false");

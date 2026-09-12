@@ -219,7 +219,7 @@ async function canvasFrame(page: Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 async function readSlide(registry: CommandRegistry, presentationId: string): Promise<string> {
@@ -253,7 +253,7 @@ async function svgBox(page: Page): Promise<{ x: number; y: number; width: number
   for (;;) {
     const box = await svg.boundingBox().catch(() => null);
     if (box) return box;
-    if (Date.now() > deadline) throw new Error("量不到主畫布 svg 的邊界框");
+    if (Date.now() > deadline) throw new Error("could not measure the main canvas svg's bounding box");
     await page.waitForTimeout(50);
   }
 }
@@ -356,7 +356,7 @@ async function waitForSlideSettled(page: Page): Promise<void> {
 
   const deadline = Date.now() + 5_000;
   if (!(await tagCurrentElA())) {
-    throw new Error("waitForSlideSettled: 找不到 #el-a 可標記，無從觀察這次 reload");
+    throw new Error("waitForSlideSettled: could not find #el-a to mark, unable to observe this reload");
   }
   let last: Awaited<ReturnType<typeof readBox>> = null;
   for (;;) {
@@ -364,7 +364,7 @@ async function waitForSlideSettled(page: Page): Promise<void> {
     const cur = await readBox();
     if (cur !== null && last !== null && JSON.stringify(cur) === JSON.stringify(last)) return;
     last = cur;
-    if (Date.now() > deadline) throw new Error("waitForSlideSettled: #el-a 在 5 秒內沒有出現 reload 後的穩定狀態");
+    if (Date.now() > deadline) throw new Error("waitForSlideSettled: #el-a did not reach a settled post-reload state within 5 seconds");
   }
 }
 
@@ -397,9 +397,9 @@ async function dragBy(
 /** `translate(x y)` -> `{x, y}`. Throws if the element carries no such transform. */
 function readTranslate(svg: string, elementId: string): { x: number; y: number } {
   const elementMatch = new RegExp(`<g id="${elementId}"[^>]*transform="([^"]*)"`).exec(svg);
-  if (!elementMatch) throw new Error(`找不到 ${elementId} 的 transform`);
+  if (!elementMatch) throw new Error(`could not find ${elementId}'s transform`);
   const translateMatch = /translate\(([-\d.]+)\s+([-\d.]+)\)/.exec(elementMatch[1]);
-  if (!translateMatch) throw new Error(`${elementId} 的 transform 沒有 translate：${elementMatch[1]}`);
+  if (!translateMatch) throw new Error(`${elementId}'s transform has no translate: ${elementMatch[1]}`);
   return { x: Number(translateMatch[1]), y: Number(translateMatch[2]) };
 }
 
@@ -426,7 +426,7 @@ function readRotation(transform: string): number {
 /** The `<rect>` primitive's own x/y/width/height directly inside `<g id="elementId">` — for scale assertions on a nested child, where a bare `/<rect .../ ` regex would match the wrong element. */
 function readRect(svg: string, elementId: string): { x: number; y: number; width: number; height: number } {
   const match = new RegExp(`<g id="${elementId}"[^>]*>\\s*<rect x="([-\\d.]+)" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)"`).exec(svg);
-  if (!match) throw new Error(`找不到 ${elementId} 的 <rect>`);
+  if (!match) throw new Error(`could not find ${elementId}'s <rect>`);
   return { x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) };
 }
 
@@ -447,7 +447,7 @@ function rotateVector(v: { x: number; y: number }, deltaDeg: number): { x: numbe
 async function handleCenter(page: Page, name: string): Promise<{ x: number; y: number }> {
   const handle = page.frameLocator("iframe.slide-frame").locator(`[data-slidra-handle="${name}"]`);
   const box = await handle.boundingBox();
-  if (!box) throw new Error(`量不到把手 ${name} 的邊界框（可能還沒顯示）`);
+  if (!box) throw new Error(`could not measure handle ${name}'s bounding box (it may not be visible yet)`);
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
@@ -639,7 +639,7 @@ it("the context bar hides during a drag; both selection and context bar survive 
     expect(barVisibleMidDrag).toBe(false);
 
     // The committed write reloads the slide; the selection must survive it.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim()), { timeout: 5_000 }).toBe("Selected: 方塊 A");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim()), { timeout: 5_000 }).toBe("Selected: Block A");
     await expect.poll(() => bar.isVisible(), { timeout: 5_000 }).toBe(true);
     expect(readTranslate(await readSlide(registry, presentationId), "el-a")).not.toEqual({ x: 100, y: 100 });
 
@@ -880,7 +880,7 @@ it("dragging within snap radius of a text element's left edge: snaps to the text
             })),
           );
           const canvasAreaBox = await page.locator(".canvas-area").boundingBox();
-          if (!canvasAreaBox) throw new Error("量不到 .canvas-area 的邊界框");
+          if (!canvasAreaBox) throw new Error("could not measure .canvas-area's bounding box");
           const expectedPageLeft = toPagePoint(box, targetLeft, 0).x;
           const expectedLocalLeft = expectedPageLeft - canvasAreaBox.x;
           sawVerticalGuideAt950 = guides.some(
@@ -1167,7 +1167,7 @@ it("double-click into a translated group, then Shift-drag a child's resize handl
 
     await slideFrame.locator("#el-group-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group Child");
 
     const box = await svgBox(page);
     // el-group: translate(300 550); el-group-child: translate(0 0), rect
@@ -1210,7 +1210,7 @@ it("double-click into a rotated group, then Shift-drag a child's resize handle: 
 
     await slideFrame.locator("#el-group-rotate-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 旋轉群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Rotated Group Child");
 
     const box = await svgBox(page);
     // el-group-rotate: translate(1150 250) rotate(30); child: translate(0
@@ -1260,7 +1260,7 @@ it("double-click into a scaled group, then drag a child's rotate handle: the ori
 
     await slideFrame.locator("#el-group-scale-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 縮放群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Scaled Group Child");
 
     const box = await svgBox(page);
     // el-group-scale: translate(1150 450) scale(1.5); child: translate(0
@@ -1342,7 +1342,7 @@ it("dragging the text box's left handle and releasing: data-slidra-text-width up
     for (const line of afterLines) {
       if (line === "") continue; // A trailing empty wrapped line has nothing to measure.
       const renderedWidth = await renderedWidthInChromium(page, line, 24);
-      expect(renderedWidth, `行 "${line}" 的實際渲染寬度`).toBeLessThanOrEqual(newWidth * 1.005);
+      expect(renderedWidth, `line "${line}"'s actual rendered width`).toBeLessThanOrEqual(newWidth * 1.005);
     }
 
     const undo = await registry.dispatch("undo", { id: presentationId });
@@ -1362,7 +1362,7 @@ it("double-click into a group, then drag a single child inside it: only the chil
 
     await slideFrame.locator("#el-group-child").dblclick();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group Child");
 
     // el-group: translate(300 550); el-group-child: translate(0 0), rect
     // 0 0 80 60 -> absolute 300..380 / 550..610. Alt disables snapping —
@@ -1394,17 +1394,17 @@ it("pressing Esc to exit group-edit mode, then clicking the same screen position
     const selName = page.locator(".status-selection-chip");
 
     await slideFrame.locator("#el-group-child").dblclick();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group Child");
 
     await page.keyboard.press("Escape");
     // Esc while not mid-gesture only pops the group-edit scope — the
     // selection itself is untouched until the next click.
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組子元素");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group Child");
 
     // Clicking the exact same screen position again now resolves at the
     // top level: the OUTERMOST id-carrying ancestor is the group itself.
     await slideFrame.locator("#el-group-child").click();
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 群組");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group");
   } finally {
     await cleanup();
   }
@@ -1590,7 +1590,7 @@ it("Cmd+Shift+]/Cmd+Shift+[ as keyboard entry points for z-order (element order 
     const active = await page.evaluate(() => document.activeElement?.tagName);
     expect(active).toBe("BODY");
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Block A");
 
     let after = "";
     await page.keyboard.press("ControlOrMeta+Shift+BracketRight");
@@ -1627,7 +1627,7 @@ it("context bar: clicking an element then pressing the context bar's Delete send
 
     await page.frameLocator("iframe.slide-frame").locator("#el-c").click();
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 C");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Block C");
 
     const bar = page.locator(".context-bar");
     expect(await bar.isVisible()).toBe(true);
@@ -1660,7 +1660,7 @@ it("context bar: Bring to front sends element order; right-clicking an element o
 
     await page.frameLocator("iframe.slide-frame").locator("#el-a").click({ button: "right" });
     const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 方塊 A");
+    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Block A");
     expect(await page.locator(".element-context-menu").count()).toBe(0);
 
     // Ghost until hovered long enough to solidify.

@@ -176,7 +176,7 @@ it("effect list parsing fails on entering play: an error notice on screen names 
     // broken, not the slide itself.
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-slidra-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
 
@@ -213,7 +213,7 @@ it("effect list parsing fails on entering play: an error notice on screen names 
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title-2").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 2 頁：指向不存在的元素");
+      .toBe("Slide 2: target points to a nonexistent element");
 
     const noticeText2 = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText2).toContain("el-does-not-exist");
@@ -246,7 +246,7 @@ it("an unimplemented family on entering play: an error notice on screen names th
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-slidra-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -258,11 +258,11 @@ it("an unimplemented family on entering play: an error notice on screen names th
     await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-3").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 3 頁：未實作的 family");
+      .toBe("Slide 3: unimplemented family");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("build");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
@@ -294,7 +294,7 @@ it("an unimplemented effect on entering play: an error notice on screen names th
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-slidra-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -305,11 +305,11 @@ it("an unimplemented effect on entering play: an error notice on screen names th
     await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-4").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 4 頁：未實作的 effect");
+      .toBe("Slide 4: unimplemented effect");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("wipe");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);
@@ -341,7 +341,7 @@ it("an unimplemented start on entering play: an error notice on screen names tha
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-slidra-media");
+      .toBe("Slide 1: missing data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -353,11 +353,11 @@ it("an unimplemented start on entering play: an error notice on screen names tha
     await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-5").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 5 頁：未實作的 start");
+      .toBe("Slide 5: unimplemented start");
 
     const noticeText = await page.locator(".player-error-notice").first().textContent();
     expect(noticeText).toContain("on-hover");
-    expect(noticeText).toContain("尚未實作");
+    expect(noticeText).toContain("not yet implemented");
 
     const opacityOf = (selector: string) =>
       playFrame().locator(selector).evaluate((el) => getComputedStyle(el).opacity).catch(() => null);

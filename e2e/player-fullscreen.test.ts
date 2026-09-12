@@ -118,7 +118,7 @@ it("the fullscreen toggle is only offered in play mode; this control does not ex
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   // View mode: the control doesn't exist (not hidden, absent from the DOM).
   expect(await page.locator(".fullscreen-toggle-button").count()).toBe(0);
@@ -185,7 +185,7 @@ it("clicking the button really enters fullscreen (container fills the screen, if
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -247,7 +247,7 @@ it("arrow-key advance works normally in both states; Esc-triggered exit fullscre
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   // Wait for play mode to actually take over the screen (both enter
@@ -295,7 +295,7 @@ it("arrow-key advance works normally in both states; Esc-triggered exit fullscre
   await expect.poll(() => page.locator('button:has-text("Exit Play")').count()).toBe(1);
   const secondTitle = playFrame().locator("#el-title2");
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第二頁");
+  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("Play Slide 2");
 });
 
 it("fullscreen survives a page change: the iframe element itself is never swapped, only its srcdoc changes, and the container stays the fullscreen element", async () => {
@@ -310,7 +310,7 @@ it("fullscreen survives a page change: the iframe element itself is never swappe
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expectHidden(fadeText);
@@ -336,7 +336,7 @@ it("fullscreen survives a page change: the iframe element itself is never swappe
   await expectVisible(appearText, 10_000);
   const secondTitle = playFrame().locator("#el-title2");
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第二頁");
+  await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("Play Slide 2");
 
   // After the page change: the iframe element was not swapped (the marker
   // is still there), the container is still the fullscreen element, and the
@@ -367,7 +367,7 @@ it("exiting play while fullscreen: a real button click exits it, the document ne
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expectHidden(fadeText);
@@ -410,7 +410,7 @@ it("after successfully exiting fullscreen from outside, a stale fullscreen-failu
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -440,7 +440,7 @@ it("after successfully exiting fullscreen from outside, a stale fullscreen-failu
       webkitExitFullscreen?: () => Promise<void>;
     };
     doc.__originalExitFullscreen = (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.bind(doc);
-    doc.exitFullscreen = () => Promise.reject(new Error("模擬測試：Exit Fullscreen被拒絕"));
+    doc.exitFullscreen = () => Promise.reject(new Error("simulated test: Exit Fullscreen rejected"));
   });
 
   // Real click on the "exit fullscreen" button — since isFullscreen is
@@ -483,7 +483,7 @@ it("if requestFullscreen() is still pending when exiting play, the document does
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -593,7 +593,7 @@ it("when neither fullscreen API exists, clicking the toggle still hands focus ba
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -623,7 +623,7 @@ it("when neither fullscreen API exists, clicking the toggle still hands focus ba
   await page.locator(".fullscreen-toggle-button").click();
 
   // This path is reached: the fullscreen error notice shows "this browser does not support fullscreen".
-  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "這個瀏覽器不支援Fullscreen" });
+  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "This browser does not support Fullscreen" });
   await expect.poll(() => unsupportedNotice.count(), { timeout: 10_000 }).toBe(1);
 
   // Before the fix: this early return never called focusPlayer(), so focus
@@ -640,7 +640,7 @@ it("sent first, arrives first: an earlier request settling first must not clear 
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -741,7 +741,7 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
     .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toBe("播放第一頁");
+    .toBe("Play Slide 1");
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
@@ -773,7 +773,7 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
     .poll(() => page.frameLocator("iframe.slide-frame").locator("body").textContent().catch(() => null), {
       timeout: 30_000,
     })
-    .toContain("此簡報沒有投影片");
+    .toContain("No slides now");
 
   // Before the fix: hasSlides became false, the whole <nav> disappeared,
   // and neither exit-play nor the fullscreen toggle were on screen anymore,
