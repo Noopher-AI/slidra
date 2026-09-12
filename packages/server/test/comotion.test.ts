@@ -191,13 +191,13 @@ describe("comotion/argv.ts: COMMAND_WHITELIST ⇔ ARGV_ENCODERS key set equality
   // variants (plan §6.1) — this is strictly stronger: it also proves every
   // whitelisted name actually encodes to a real argv, as a pure unit test
   // (no server, no subprocess).
-  it("COMMAND_WHITELIST and the encoder table name exactly the same 65 commands", () => {
+  it("COMMAND_WHITELIST and the encoder table name exactly the same 67 commands", () => {
     expect(new Set(Object.keys(ARGV_ENCODERS))).toEqual(new Set(COMMAND_WHITELIST));
   });
 
-  it("COMMAND_WHITELIST has exactly 65 entries, none of them repeated", () => {
-    expect(COMMAND_WHITELIST.length).toBe(65);
-    expect(new Set(COMMAND_WHITELIST).size).toBe(65);
+  it("COMMAND_WHITELIST has exactly 67 entries, none of them repeated", () => {
+    expect(COMMAND_WHITELIST.length).toBe(67);
+    expect(new Set(COMMAND_WHITELIST).size).toBe(67);
   });
 });
 

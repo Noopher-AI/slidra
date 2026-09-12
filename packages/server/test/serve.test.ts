@@ -499,25 +499,30 @@ describe("startServe", () => {
 
   // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
-  // the browser. Reuses `openFreshPresentation` + `convert` (a compliant,
-  // `<g>`-wrapped slide is required for `effect add`, same fixture shape
-  // `packages/cli/test/effect.test.ts` uses) rather than a hand-built
-  // container, since these tests exercise the route end-to-end against the
-  // real Rust binary, not a mocked one.
+  // the browser. Builds its fixture through the real Rust binary rather
+  // than a hand-built container, since these tests exercise the route
+  // end-to-end.
   describe("GET /api/effects/", () => {
-    async function openConvertedPresentation(): Promise<string> {
+    /**
+     * A presentation whose slides/001.svg holds exactly one element.
+     * `openFreshPresentation`'s `slide add` leaves the page empty
+     * (ADR-0018), and `effect add` needs something to target, so the page
+     * is written once with a bare shape: `slide set --svg` wraps it in a
+     * `<g>` and mints its id, and returns that id — no need to scrape the
+     * SVG for it.
+     */
+    async function openPresentationWithOneElement(): Promise<{ id: string; elementId: string }> {
       const id = await openFreshPresentation();
-      const converted = await runCli(["convert", id]);
-      expect(converted.ok).toBe(true);
-      return id;
+      const written = await runCli<{ elementIds: string[] }>([
+        "slide", "set", id, "slides/001.svg",
+        "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><rect x="100" y="100" width="200" height="120"/></svg>',
+      ]);
+      expect(written.ok).toBe(true);
+      return { id, elementId: written.data!.elementIds[0]! };
     }
 
     it("responds 200 with effects/steps/transition for a slide with an effect list", async () => {
-      const id = await openConvertedPresentation();
-      const svg = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-      expect(svg.ok).toBe(true);
-      const svgText = Buffer.from(svg.data![0]!.content, "base64").toString("utf-8");
-      const elementId = /id="(el-[^"]+)"/.exec(svgText)![1]!;
+      const { id, elementId } = await openPresentationWithOneElement();
       const added = await runCli([
         "effect", "add", id, "slides/001.svg", elementId, "--family", "enter", "--effect", "fade",
       ]);
@@ -539,7 +544,7 @@ describe("startServe", () => {
     });
 
     it("responds 200 with an empty plan for a declared slide that never had an effect list", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const server = await serve(id);
 
       const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
@@ -554,7 +559,7 @@ describe("startServe", () => {
     });
 
     it("responds 404 for a virtual path that is not a declared slide", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const server = await serve(id);
 
       const response = await fetch(`${server.url}/api/effects/project.json`);
@@ -565,7 +570,7 @@ describe("startServe", () => {
     });
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
       const original = await readFile(realSlidePath, "utf-8");
       const damaged = original.replace(
