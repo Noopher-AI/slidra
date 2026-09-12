@@ -15,7 +15,15 @@
 //                            `session/new` call, carrying the `cwd` it
 //                            received.
 //   FAKE_AGENT_CONFIG     - JSON: { authRequired?: boolean, replies?: string[][],
-//                            failFirstAttemptMarkerPath?: string }
+//                            failFirstAttemptMarkerPath?: string,
+//                            models?: { currentModelId, availableModels }   (claude-code-acp's shape),
+//                            modelConfigOption?: { currentValue, options } (codex-acp's shape) }
+//                            models: returned as `session/new`'s `models`;
+//                            `session/set_model` then moves currentModelId and
+//                            logs { setModel }. modelConfigOption: returned as
+//                            a `configOptions` entry with category "model";
+//                            `session/set_config_option` moves currentValue
+//                            and logs { setConfigOption }.
 //                            replies[i] are the text chunks streamed back as
 //                            separate agent_message_chunk updates for the
 //                            i-th `session/prompt` call (0 = the 編輯規約).
@@ -134,6 +142,17 @@ function log(entry) {
 
 log({ pid: process.pid });
 
+// Mutable copies of the scripted model state, so a switch is visible on the
+// next GET the same way it would be on a real adapter.
+const modelState = config.models ? { ...config.models, availableModels: [...config.models.availableModels] } : { currentModelId: "", availableModels: [] };
+const modelOption = config.modelConfigOption ? { ...config.modelConfigOption } : { currentValue: "", options: [] };
+function configOptions() {
+  return [
+    { id: "mode", name: "Approval Preset", category: "mode", type: "select", currentValue: "auto", options: [{ value: "auto", name: "Default" }] },
+    { id: "model", name: "Model", category: "model", type: "select", currentValue: modelOption.currentValue, options: modelOption.options },
+  ];
+}
+
 let promptCount = 0;
 
 class FakeAgent {
@@ -181,7 +200,28 @@ class FakeAgent {
       });
     }
 
-    return { sessionId: "fake-session-1" };
+    const response = { sessionId: "fake-session-1" };
+    if (config.models) response.models = modelState;
+    if (config.modelConfigOption) response.configOptions = configOptions();
+    return response;
+  }
+
+  async unstable_setSessionModel(params) {
+    log({ setModel: params.modelId });
+    if (!modelState.availableModels.some((model) => model.modelId === params.modelId)) {
+      throw acp.RequestError.invalidParams({ modelId: params.modelId });
+    }
+    modelState.currentModelId = params.modelId;
+    return {};
+  }
+
+  async setSessionConfigOption(params) {
+    log({ setConfigOption: { configId: params.configId, value: params.value } });
+    if (params.configId !== "model" || !modelOption.options.some((option) => option.value === params.value)) {
+      throw acp.RequestError.invalidParams({ configId: params.configId, value: params.value });
+    }
+    modelOption.currentValue = params.value;
+    return { configOptions: configOptions() };
   }
 
   async prompt(params) {

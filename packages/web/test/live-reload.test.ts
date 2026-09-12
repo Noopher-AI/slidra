@@ -363,6 +363,26 @@ describe("startLiveReload", () => {
     expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "codex", label: "Codex" });
   });
 
+  it("calls onAgentModelChanged with the parsed agent-model-changed payload, dropping malformed ones", () => {
+    let fake: FakeEventSource | undefined;
+    const onAgentModelChanged = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onAgentModelChanged,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-model-changed", { kind: "codex", modelId: "gpt-5.5", name: "GPT-5.5" });
+    fake!.emit("agent-model-changed", { kind: "gemini", modelId: "x", name: "X" });
+    fake!.emit("agent-model-changed", { kind: "claude" });
+
+    expect(onAgentModelChanged).toHaveBeenCalledTimes(1);
+    expect(onAgentModelChanged).toHaveBeenNthCalledWith(1, { kind: "codex", modelId: "gpt-5.5", name: "GPT-5.5" });
+  });
+
   it("drops a malformed agent-changed payload instead of fabricating a value ([E3.T5])", () => {
     let fake: FakeEventSource | undefined;
     const onAgentChanged = vi.fn();

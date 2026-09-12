@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, modelFrom, type AgentConnection, type AgentModelView, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
+import { fromAgentResponse, modelFrom, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentModelView, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
@@ -234,6 +234,9 @@ export function App() {
   // ACP session 真的建立起來之後才有值（session 是第一則訊息才建立的），
   // 沒有值就什麼都不顯示，不猜。
   const [agentModel, setAgentModel] = useState<AgentModelView | null>(null);
+  // 可切換的模型清單與目前的 id，同樣來自 `GET /api/agent`；空清單＝沒得選。
+  const [agentModelOptions, setAgentModelOptions] = useState<readonly AgentModelOption[]>([]);
+  const [agentModelId, setAgentModelId] = useState<string | null>(null);
   // [E3.T5]: the settings dialog's own open/closed state (Plan §4.2). Toggled
   // by the titlebar gear, force-opened by the chat empty state's "開啟設定"
   // button, closed by the dialog itself (Esc/mask/close button).
@@ -478,6 +481,12 @@ export function App() {
       // no-replay event on this stream.
       onAgentChanged: (event) => {
         setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
+        void refreshAgentStatus();
+      },
+      // 同 `agent-changed`：系統訊息只從這個事件插入，POST 自己的 200 不插，
+      // 發起切換的分頁也是靠這裡知道結果。
+      onAgentModelChanged: (event) => {
+        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `模型已切換為 ${event.name}`));
         void refreshAgentStatus();
       },
     });
@@ -922,6 +931,9 @@ export function App() {
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
       setAgentModel(modelFrom(data));
+      const models = modelOptionsFrom(data);
+      setAgentModelOptions(models.options);
+      setAgentModelId(models.current);
       // #303: a turn already in flight (started before this tab loaded, or
       // from another client) shows Stop right away.
       setWorking(turnRunningFrom(data));
@@ -929,6 +941,41 @@ export function App() {
       setAgentStatus({ kind: "error", message: "無法取得 agent 狀態：連線已中斷" });
     } finally {
       setAgentProbing(false);
+    }
+  }
+
+  /** `POST /api/agent/model`：對話框下方的模型選單。失敗（回合進行中、模型不存在、連線斷了）走聊天的錯誤列，狀態維持舊值。 */
+  async function selectAgentModel(modelId: string): Promise<void> {
+    if (modelId === "" || modelId === agentModelId) return;
+    try {
+      const response = await fetch("/api/agent/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "切換模型失敗");
+        return;
+      }
+      await refreshAgentStatus();
+    } catch {
+      setError("切換模型失敗：連線已中斷");
+    }
+  }
+
+  /** `POST /api/agent/session`：「選擇模型…」——先建 session，清單才會有東西。 */
+  async function loadAgentModels(): Promise<void> {
+    try {
+      const response = await fetch("/api/agent/session", { method: "POST" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "無法取得模型清單");
+        return;
+      }
+      await refreshAgentStatus();
+    } catch {
+      setError("無法取得模型清單：連線已中斷");
     }
   }
 
@@ -1792,6 +1839,10 @@ export function App() {
                 agentConnection={agentConnection}
                 agentLabel={agentLabel}
                 agentModel={agentModel}
+                agentModelOptions={agentModelOptions}
+                agentModelId={agentModelId}
+                onSelectModel={(modelId) => void selectAgentModel(modelId)}
+                onLoadModels={() => void loadAgentModels()}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}
                 onPinnedRemove={(commentId) => {

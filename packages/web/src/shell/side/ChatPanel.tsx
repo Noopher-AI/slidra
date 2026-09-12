@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { AgentConnection, AgentModelView, AgentUiStatus } from "../../agent-status.js";
+import type { AgentConnection, AgentModelOption, AgentModelView, AgentUiStatus } from "../../agent-status.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
@@ -33,6 +33,13 @@ export interface ChatPanelProps {
   agentLabel: string | null;
   /** 目前 session 跑在哪個模型（`GET /api/agent` 的 model）；adapter 沒報就是 null，什麼都不顯示。 */
   agentModel: AgentModelView | null;
+  /** 可切換的模型清單（`GET /api/agent` 的 `models`）與目前選的 id；清單為空時只顯示 `agentModel` 的名字。 */
+  agentModelOptions: readonly AgentModelOption[];
+  agentModelId: string | null;
+  /** 作者在選單裡挑了另一個模型：`POST /api/agent/model`。 */
+  onSelectModel(modelId: string): void;
+  /** 還沒有 session、所以還沒有模型清單時，「選擇模型…」按下去：`POST /api/agent/session` 先把 session 建起來。 */
+  onLoadModels(): void;
   /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
   agent: AgentUiStatus;
   /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
@@ -80,6 +87,10 @@ export function ChatPanel({
   agentConnection,
   agentLabel,
   agentModel,
+  agentModelOptions,
+  agentModelId,
+  onSelectModel,
+  onLoadModels,
   agent,
   onOpenSettings,
   comments,
@@ -385,12 +396,38 @@ export function ChatPanel({
           <i />
           {agentStatusText(agentConnection, agentLabel)}
         </span>
-        {agentModel && (
+        {agentModelOptions.length > 0 ? (
+          // 有得選就是選單：切換直接送 POST /api/agent/model，回合進行中先鎖住
+          // （server 也會拒絕，鎖只是不讓作者白按）。
+          <select
+            className="chat-status-model chat-status-model-select"
+            aria-label="模型"
+            title={agentModel?.detail}
+            value={agentModelId ?? ""}
+            disabled={working || stopping}
+            onChange={(event) => onSelectModel(event.target.value)}
+          >
+            {agentModelId === null && <option value="">選擇模型</option>}
+            {agentModelOptions.map((option) => (
+              <option key={option.id} value={option.id} title={option.detail}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        ) : agentModel ? (
           // claude-code-acp 把沒有指定模型時的預設叫「Default (recommended)」，
           // 真正會用到哪些模型寫在它的說明裡——名字照顯示，說明掛 tooltip。
           <span className="chat-status-model" title={agentModel.detail}>
             {agentModel.name}
           </span>
+        ) : (
+          agent.kind === "ready" && (
+            // session 要到第一則訊息才建立，模型清單也是——想先挑就先把
+            // session 叫起來（只送編輯規約，不會替作者發任何訊息）。
+            <button type="button" className="chat-status-model chat-status-model-select" disabled={working || stopping} onClick={onLoadModels}>
+              選擇模型…
+            </button>
+          )
         )}
       </div>
     </aside>

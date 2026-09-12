@@ -128,6 +128,35 @@ export function modelFrom(data: unknown): AgentModelView | null {
   return typeof detail === "string" && detail !== "" ? { name, detail } : { name };
 }
 
+/** 對話框下方模型選單的一列：`GET /api/agent` 的 `models[]`。 */
+export interface AgentModelOption {
+  id: string;
+  name: string;
+  detail?: string;
+}
+
+/**
+ * `GET /api/agent`'s `models` + `modelId` — every model the live session can
+ * switch to and which one it is on. `options` is empty until a session
+ * exists or when the adapter offers no choice; the chat panel then shows the
+ * plain model name (or nothing) instead of a picker.
+ */
+export function modelOptionsFrom(data: unknown): { current: string | null; options: AgentModelOption[] } {
+  if (typeof data !== "object" || data === null) return { current: null, options: [] };
+  const { models, modelId } = data as Record<string, unknown>;
+  const options: AgentModelOption[] = [];
+  if (Array.isArray(models)) {
+    for (const entry of models) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const { id, name, detail } = entry as Record<string, unknown>;
+      if (typeof id !== "string" || id === "" || typeof name !== "string" || name === "") continue;
+      options.push(typeof detail === "string" && detail !== "" ? { id, name, detail } : { id, name });
+    }
+  }
+  const current = typeof modelId === "string" && options.some((option) => option.id === modelId) ? modelId : null;
+  return { current, options };
+}
+
 export function turnRunningFrom(data: unknown): boolean {
   if (typeof data !== "object" || data === null) return false;
   return (data as Record<string, unknown>).turnRunning === true;

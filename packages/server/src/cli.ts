@@ -32,8 +32,11 @@ export async function runServeCli(argv: string[]): Promise<number> {
   // division of labor: settings.ts reports honestly, cli.ts is the one
   // place allowed to catch that and continue with `agent: null`).
   let settingsAgent: AgentKind | null = null;
+  let settingsModels: Partial<Record<AgentKind, string>> = {};
   try {
-    settingsAgent = (await readAgentSettings()).agent;
+    const settings = await readAgentSettings();
+    settingsAgent = settings.agent;
+    settingsModels = settings.models;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   }
@@ -47,6 +50,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
       presentationId: parsed.presentationId,
       port: parsed.port,
       initialAgent: { kind, source },
+      initialModels: settingsModels,
     });
   } catch (error) {
     // Unrelated to agent selection — a missing presentation, a bound port,

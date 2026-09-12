@@ -72,6 +72,8 @@ export interface ServeOptions {
    * works as usual.
    */
   initialAgent?: { kind: AgentKind | null; source: AgentSource };
+  /** The models picked earlier per agent kind (cli.ts reads them from settings.json); omitted in tests. */
+  initialModels?: Partial<Record<AgentKind, string>>;
   /**
    * Test-only injection seams for `AgentManager`'s login probe and adapter
    * resolution (`probe.ts`/`adapters.ts`). Production code (`cli.ts`) never
@@ -170,6 +172,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     runCommand: options.agentManager?.runCommand,
     resolveAdapter,
     onAgentChanged: (payload) => changeBroadcaster.broadcast("agent-changed", payload),
+    onModelChanged: (payload) => changeBroadcaster.broadcast("agent-model-changed", payload),
+    initialModels: options.initialModels,
     // Back-compat (see `agent`'s own docstring above and AgentManagerOptions.
     // assumeLoggedIn's docstring): a directly-given `agent` has no real
     // "logged in" concept to probe, so its kind is exempted from the real
@@ -380,6 +384,25 @@ async function handleRequest(
       }
       if (url.pathname === "/api/agent/select") {
         await handleAgentSelectPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/model") {
+        await handleAgentModelPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/session") {
+        // The chat panel's "選擇模型…": brings the ACP session up before
+        // the first message so the model list exists to pick from. Same
+        // handshake the first message would run; no author turn happens.
+        try {
+          sendJson(res, 200, await manager.warmSession());
+        } catch (error) {
+          if (error instanceof CoMotionError) {
+            sendJson(res, 409, { error: error.message });
+            return;
+          }
+          sendJson(res, 500, { error: error instanceof Error ? error.message : "建立對話失敗" });
+        }
         return;
       }
       if (url.pathname === "/api/command") {
@@ -708,6 +731,39 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
       return;
     }
     sendJson(res, 500, { error: error instanceof Error ? error.message : "選擇 agent 失敗" });
+  }
+}
+
+/**
+ * `POST /api/agent/model` — the chat panel's model picker. `modelId` must be
+ * one of `GET /api/agent`'s `models[].id`; the switch goes to the live ACP
+ * session (establishing one first if no message has been sent yet) and is
+ * persisted per agent kind. A `CoMotionError` (mid-turn, unknown model, no
+ * agent) is the author's problem to read, so it comes back as 409 with its
+ * own wording rather than a generic 500.
+ */
+async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    return;
+  }
+  const modelId = (body as { modelId?: unknown } | null)?.modelId;
+  if (typeof modelId !== "string" || modelId === "") {
+    sendJson(res, 400, { error: "modelId 必須是非空字串" });
+    return;
+  }
+  try {
+    const status = await manager.setModel(modelId);
+    sendJson(res, 200, { ok: true, modelId: status.modelId, model: status.model });
+  } catch (error) {
+    if (error instanceof CoMotionError) {
+      sendJson(res, 409, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "切換模型失敗" });
   }
 }
 

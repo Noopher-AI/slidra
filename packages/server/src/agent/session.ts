@@ -149,6 +149,22 @@ export interface AgentModel {
   detail?: string;
 }
 
+/** One model the adapter lets the session switch to — the chat panel's picker rows. */
+export interface AgentModelChoice {
+  id: string;
+  name: string;
+  detail?: string;
+}
+
+/**
+ * Where a session's model list came from, which also decides how a switch
+ * is sent back: `claude-code-acp` reports ACP's (experimental) `models`
+ * state and takes `session/set_model`; `codex-acp` reports it as the
+ * `configOptions` entry whose `category` is `model` and takes
+ * `session/set_config_option` instead.
+ */
+type ModelMechanism = { kind: "models" } | { kind: "config"; configId: string };
+
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
   "chat-chunk": (payload: { text: string }) => void;
@@ -244,8 +260,11 @@ export class AgentChatSession extends EventEmitter {
   private cancelledUntilNextPrompt = false;
   private droppedOutsideTurn = 0;
   private refusedOutsideTurnLogged = false;
-  /** Set once at `session/new` from the adapter's own model report; stays null when it reports none. */
+  /** Set at `session/new` from the adapter's own model report (and again on every switch); stays null when it reports none. */
   private model: AgentModel | null = null;
+  private modelId: string | null = null;
+  private modelChoices: AgentModelChoice[] = [];
+  private modelMechanism: ModelMechanism | null = null;
   /**
    * The most recent `available_commands_update` the agent has sent, or `[]`
    * if it has never sent one. Unlike the turn-scoped events above, this
@@ -315,12 +334,27 @@ export class AgentChatSession extends EventEmitter {
    */
   private turnHasEditLock = false;
 
-  constructor(config: AgentAdapterConfig, presentationId: string, editingLock: EditingLock, workdirReal: string) {
+  /**
+   * The model the author last picked for this adapter kind (settings.json),
+   * applied right after `session/new` when the adapter still offers it —
+   * a "new session" or a reconnect after a crash keeps the author's choice
+   * instead of silently reverting to the adapter's default.
+   */
+  private readonly preferredModelId: string | null;
+
+  constructor(
+    config: AgentAdapterConfig,
+    presentationId: string,
+    editingLock: EditingLock,
+    workdirReal: string,
+    preferredModelId: string | null = null,
+  ) {
     super();
     this.config = config;
     this.presentationId = presentationId;
     this.editingLock = editingLock;
     this.workdirReal = workdirReal;
+    this.preferredModelId = preferredModelId;
   }
 
   override on<K extends keyof ChatEvents>(event: K, listener: ChatEvents[K]): this {
@@ -338,6 +372,97 @@ export class AgentChatSession extends EventEmitter {
   /** The model this session runs on, as the adapter named it at `session/new`; null when the adapter reports none. */
   getModel(): AgentModel | null {
     return this.model;
+  }
+
+  /**
+   * Establishes the ACP session without sending an author message, so the
+   * model list (a `session/new` fact) exists before the first message. The
+   * 編輯規約 goes out exactly as it would on the first message; a later
+   * message reuses this session. No-op when a session is already live.
+   */
+  async warm(): Promise<void> {
+    await this.ensureSession();
+  }
+
+  /** The current model's id, or null when the adapter reports no model state. */
+  getModelId(): string | null {
+    return this.modelId;
+  }
+
+  /** Every model the adapter lets this session switch to; `[]` when it reports none. */
+  getModelChoices(): readonly AgentModelChoice[] {
+    return this.modelChoices;
+  }
+
+  /**
+   * Switches the live session to `modelId`. Establishes the session first
+   * when no message has been sent yet (the model list only exists once
+   * `session/new` has answered), so the picker works before the first
+   * message too. Refused mid-turn: the adapter would apply it to a reply
+   * already in progress.
+   */
+  async setModel(modelId: string): Promise<void> {
+    if (this.relayingCurrentTurn || this.pendingTurns.length > 0) {
+      throw new CoMotionError("agent 正在回覆中，等這一輪結束再切換模型");
+    }
+    await this.ensureSession();
+    const choice = this.modelChoices.find((candidate) => candidate.id === modelId);
+    if (!choice || !this.modelMechanism || !this.connection || !this.sessionId) {
+      throw new CoMotionError(`${this.config.label} 沒有這個模型：${modelId}`);
+    }
+    await this.applyModel(this.connection, this.sessionId, this.modelMechanism, choice);
+  }
+
+  /** Sends the switch over whichever request the adapter's mechanism uses, then records the new current model. */
+  private async applyModel(
+    connection: acp.ClientSideConnection,
+    sessionId: string,
+    mechanism: ModelMechanism,
+    choice: AgentModelChoice,
+  ): Promise<void> {
+    if (mechanism.kind === "models") {
+      await connection.unstable_setSessionModel({ sessionId, modelId: choice.id });
+    } else {
+      const response = await connection.setSessionConfigOption({ sessionId, configId: mechanism.configId, value: choice.id });
+      this.readConfigOptions(response.configOptions);
+    }
+    this.modelId = choice.id;
+    this.model = { name: choice.name, ...(choice.detail ? { detail: choice.detail } : {}) };
+  }
+
+  /**
+   * Reads the model list out of a `session/new` response, preferring ACP's
+   * own `models` state over a `configOptions` entry. Leaves everything null
+   * when the adapter reports neither — the chat panel then shows no model
+   * rather than a guessed one.
+   */
+  private readModelState(session: acp.NewSessionResponse): void {
+    if (session.models) {
+      this.modelMechanism = { kind: "models" };
+      this.modelChoices = session.models.availableModels.map(toChoice);
+      this.setCurrentModel(session.models.currentModelId);
+      return;
+    }
+    this.readConfigOptions(session.configOptions ?? []);
+  }
+
+  /** `codex-acp`'s shape: the `configOptions` entry whose `category` is `model`. Grouped options are flattened. */
+  private readConfigOptions(options: readonly acp.SessionConfigOption[]): void {
+    const option = options.find((candidate) => candidate.category === "model");
+    if (!option) return;
+    this.modelMechanism = { kind: "config", configId: option.id };
+    this.modelChoices = option.options.flatMap((entry) =>
+      "options" in entry
+        ? entry.options.map((inner) => ({ id: inner.value, name: inner.name, ...(inner.description ? { detail: inner.description } : {}) }))
+        : [{ id: entry.value, name: entry.name, ...(entry.description ? { detail: entry.description } : {}) }],
+    );
+    this.setCurrentModel(option.currentValue);
+  }
+
+  private setCurrentModel(id: string): void {
+    const current = this.modelChoices.find((candidate) => candidate.id === id);
+    this.modelId = current ? id : null;
+    this.model = current ? { name: current.name, ...(current.detail ? { detail: current.detail } : {}) } : null;
   }
 
   /** The agent's most recently reported `available_commands_update`, or `[]` if it has never sent one. */
@@ -673,11 +798,18 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     this.sessionId = session.sessionId;
-    // ACP's model state is still marked experimental, and `codex-acp` sends
-    // nothing at all — so this is read defensively and stays `null` when
-    // absent. The author sees "which model am I talking to" under the chat
-    // box; saying nothing is the honest answer when the adapter did not say.
-    this.model = modelOf(session.models);
+    // ACP's model state is still marked experimental (`claude-code-acp`
+    // sends it; `codex-acp` reports the same thing as a config option), so
+    // this is read defensively and stays `null` when absent. The author sees
+    // "which model am I talking to" under the chat box; saying nothing is
+    // the honest answer when the adapter did not say.
+    this.readModelState(session);
+    if (this.preferredModelId !== null && this.preferredModelId !== this.modelId && this.modelMechanism) {
+      const preferred = this.modelChoices.find((candidate) => candidate.id === this.preferredModelId);
+      // A model the adapter no longer offers is simply not applied — the
+      // adapter's own default is the truthful state, and the picker shows it.
+      if (preferred) await this.applyModel(connection, session.sessionId, this.modelMechanism, preferred);
+    }
 
     // The 編輯規約 is the first user message the agent ever sees — its own
     // `session/prompt` call, never folded into the author's first message.
@@ -973,22 +1105,11 @@ export class AgentChatSession extends EventEmitter {
   }
 }
 
-/**
- * The current model in ACP's (experimental) model state: `currentModelId`
- * looked up in `availableModels`. Returns null for anything it cannot read
- * that way — an adapter that reports no models, or a current id that is
- * not in the list.
- *
- * `detail` matters more than it looks: `claude-code-acp` names the unpinned
- * default "Default (recommended)" and puts which models that actually
- * resolves to in the description. The name alone would tell the author
- * nothing, and inventing a better one here would be guessing.
- */
-function modelOf(models: acp.SessionModelState | null | undefined): AgentModel | null {
-  if (!models) return null;
-  const current = models.availableModels.find((model) => model.modelId === models.currentModelId);
-  if (!current) return null;
-  return { name: current.name, ...(current.description ? { detail: current.description } : {}) };
+function toChoice(info: acp.ModelInfo): AgentModelChoice {
+  // `claude-code-acp` names the unpinned default "Default (recommended)" and
+  // puts which models that actually resolves to in the description — so the
+  // description is kept, as the picker's tooltip.
+  return { id: info.modelId, name: info.name, ...(info.description ? { detail: info.description } : {}) };
 }
 
 /** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */

@@ -401,6 +401,24 @@
   content: "·";
   margin-right: var(--space-2);
 }
+/* 模型選單長得跟純文字的模型名一樣，只在 hover 時露出是可以按的。 */
+.chat-status-model-select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-xs-hint);
+  color: var(--ink-400);
+  cursor: pointer;
+}
+.chat-status-model-select:hover:not(:disabled) {
+  color: var(--ink-700, inherit);
+  text-decoration: underline dotted;
+}
+.chat-status-model-select:disabled {
+  cursor: default;
+}
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your
    next message」提醒作者這是隨下一則訊息一起送出的 context，不是已經送

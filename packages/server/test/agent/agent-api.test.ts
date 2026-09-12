@@ -161,6 +161,8 @@ async function selectAgent(server: RunningServer, kind: AgentKind): Promise<Resp
 interface LogLine {
   pid?: number;
   sessionId?: string;
+  setModel?: string;
+  setConfigOption?: { configId: string; value: string };
   prompt?: Array<{ type: string; text: string }>;
   permissionOutcome?: { outcome: string; optionId?: string };
   turn?: number;
@@ -254,6 +256,164 @@ async function connectEvents(server: RunningServer) {
   streams.push(frameReader);
   return frameReader;
 }
+
+describe("POST /api/agent/model (chat-panel model picker)", () => {
+  const claudeShapedModels = {
+    currentModelId: "default",
+    availableModels: [
+      { modelId: "default", name: "Default (recommended)", description: "Opus 4.6" },
+      { modelId: "sonnet", name: "Sonnet" },
+    ],
+  };
+  const codexShapedOption = {
+    currentValue: "gpt-5.4",
+    options: [{ value: "gpt-5.4", name: "gpt-5.4" }, { value: "gpt-5.5", name: "GPT-5.5", description: "Frontier" }],
+  };
+
+  async function selectModel(server: RunningServer, modelId: unknown): Promise<Response> {
+    return fetch(`${server.url}/api/agent/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId }),
+    });
+  }
+
+  async function getAgent(server: RunningServer): Promise<{ modelId: string | null; model: { name: string } | null; models: Array<{ id: string; name: string; detail?: string }> }> {
+    return (await (await fetch(`${server.url}/api/agent`)).json()) as never;
+  }
+
+  it("claude-shaped adapter: GET lists models after session/new, POST switches via session/set_model, persists, and broadcasts agent-model-changed", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "claude", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels }),
+    });
+    const events = await connectEvents(server);
+
+    // No session yet: nothing to choose from, and the picker stays hidden.
+    expect(await getAgent(server)).toMatchObject({ modelId: null, models: [] });
+
+    // The picker works before any message: the POST establishes the session itself.
+    const response = await selectModel(server, "sonnet");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, modelId: "sonnet", model: { name: "Sonnet" } });
+    await waitForLog((line) => line.setModel === "sonnet");
+    // The 編輯規約 still went out as the session's first prompt.
+    await waitForPromptCount(1);
+
+    expect(await getAgent(server)).toMatchObject({
+      modelId: "sonnet",
+      model: { name: "Sonnet" },
+      models: [{ id: "default", name: "Default (recommended)", detail: "Opus 4.6" }, { id: "sonnet", name: "Sonnet" }],
+    });
+    expect(JSON.parse(await readFile(agentSettingsPath(), "utf8"))).toMatchObject({ models: { claude: "sonnet" } });
+
+    let frame = "";
+    for (let i = 0; i < 10 && !frame.includes("agent-model-changed"); i++) frame = await events.readFrame();
+    expect(frame).toContain("event: agent-model-changed");
+    expect(frame).toContain(JSON.stringify({ kind: "claude", modelId: "sonnet", name: "Sonnet" }));
+
+    // A model the adapter does not offer is refused with the adapter's own wording, nothing switched.
+    const bad = await selectModel(server, "gpt-9");
+    expect(bad.status).toBe(409);
+    expect(((await bad.json()) as { error: string }).error).toContain("gpt-9");
+    expect((await getAgent(server)).modelId).toBe("sonnet");
+
+    expect((await selectModel(server, "")).status).toBe(400);
+  });
+
+  it("the persisted pick is applied to a new session of the same kind (POST /api/chat/new) and on a restart", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "claude", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels }),
+    });
+    expect((await selectModel(server, "sonnet")).status).toBe(200);
+
+    expect((await fetch(`${server.url}/api/chat/new`, { method: "POST" })).status).toBe(200);
+    expect((await postChat(server, "hi")).status).toBe(202);
+    await waitForPidCount(2);
+    await waitForPromptCount(3);
+    const setModels = (await readLog()).filter((line) => line.setModel !== undefined);
+    expect(setModels).toHaveLength(2);
+    expect((await getAgent(server)).modelId).toBe("sonnet");
+
+    await server.close();
+    servers = servers.filter((candidate) => candidate !== server);
+    const restarted = await startServe({
+      presentationId: id,
+      port: 0,
+      initialAgent: { kind: "claude", source: "cli" },
+      initialModels: (await import("../../src/agent/settings.js").then((m) => m.readAgentSettings())).models,
+      agentManager: { runCommand: bothAvailable, resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels }) },
+    });
+    servers.push(restarted);
+    expect((await postChat(restarted, "hi again")).status).toBe(202);
+    await waitForPromptCount(5);
+    expect((await readLog()).filter((line) => line.setModel === "sonnet")).toHaveLength(3);
+    expect((await getAgent(restarted)).modelId).toBe("sonnet");
+  });
+
+  it("codex-shaped adapter: the model comes from the `model` config option and switches via session/set_config_option", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "codex", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture, { modelConfigOption: codexShapedOption }),
+    });
+    expect((await postChat(server, "hi")).status).toBe(202);
+    await waitForPromptCount(2);
+    expect(await getAgent(server)).toMatchObject({
+      modelId: "gpt-5.4",
+      models: [{ id: "gpt-5.4", name: "gpt-5.4" }, { id: "gpt-5.5", name: "GPT-5.5", detail: "Frontier" }],
+    });
+
+    expect((await selectModel(server, "gpt-5.5")).status).toBe(200);
+    await waitForLog((line) => line.setConfigOption?.value === "gpt-5.5");
+    expect(await getAgent(server)).toMatchObject({ modelId: "gpt-5.5", model: { name: "GPT-5.5", detail: "Frontier" } });
+    expect(JSON.parse(await readFile(agentSettingsPath(), "utf8"))).toMatchObject({ models: { codex: "gpt-5.5" } });
+  });
+
+  it("POST /api/agent/session brings the session up ahead of the first message: models listed, only the 編輯規約 sent", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "claude", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels }),
+    });
+    const response = await fetch(`${server.url}/api/agent/session`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ modelId: "default", models: [{ id: "default" }, { id: "sonnet" }] });
+    await waitForPromptCount(1);
+    expect((await readLog()).filter((line) => line.prompt !== undefined)).toHaveLength(1);
+
+    // The first author message reuses that session: still one process, prompt #2.
+    expect((await postChat(server, "hi")).status).toBe(202);
+    await waitForPromptCount(2);
+    expect((await readLog()).filter((line) => line.pid !== undefined)).toHaveLength(1);
+  });
+
+  it("refused (409) while a turn is in flight; the model stays", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "claude", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels, replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }),
+    });
+    expect((await postChat(server, "hi")).status).toBe(202);
+    await waitForPromptCount(2);
+    const response = await selectModel(server, "sonnet");
+    expect(response.status).toBe(409);
+    expect((await getAgent(server)).modelId).toBe("default");
+  });
+});
 
 describe("GET /api/agent", () => {
   it("A7/A10: reports both cards, each correctly available/unauthenticated, with their static login commands", async () => {

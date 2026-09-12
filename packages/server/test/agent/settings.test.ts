@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CoMotionError } from "../../src/comotion/errors.js";
-import { agentSettingsPath, readAgentSettings, writeAgentSelection } from "../../src/agent/settings.js";
+import { agentSettingsPath, readAgentSettings, writeAgentModel, writeAgentSelection } from "../../src/agent/settings.js";
 
 // Pure filesystem behaviour (no subprocess): every row of NOOP-230 §4.1's
 // settings.ts behaviour table, driven purely through CO_MOTION_HOME pointed
@@ -24,7 +24,7 @@ describe("agent settings", () => {
 
   it("returns { agent: null } and creates no file when settings.json does not exist", async () => {
     const result = await readAgentSettings();
-    expect(result).toEqual({ agent: null });
+    expect(result).toEqual({ agent: null, models: {} });
     await expect(readFile(agentSettingsPath())).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -50,19 +50,19 @@ describe("agent settings", () => {
   it("returns { agent: null } when the agent field is absent", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({}));
-    expect(await readAgentSettings()).toEqual({ agent: null });
+    expect(await readAgentSettings()).toEqual({ agent: null, models: {} });
   });
 
   it("returns { agent: null } when the agent field is explicitly null", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: null }));
-    expect(await readAgentSettings()).toEqual({ agent: null });
+    expect(await readAgentSettings()).toEqual({ agent: null, models: {} });
   });
 
   it("returns the stored kind for claude and codex", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex" }));
-    expect(await readAgentSettings()).toEqual({ agent: "codex" });
+    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
   });
 
   it("throws a CoMotionError listing the valid values when agent is an unknown value", async () => {
@@ -78,6 +78,26 @@ describe("agent settings", () => {
     expect(JSON.parse(raw)).toEqual({ agent: "claude" });
   });
 
+  it("models: absent reads as {}, a per-kind pick reads back, and a wrong shape is a CoMotionError", async () => {
+    await mkdir(home, { recursive: true });
+    await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex", models: { codex: "gpt-5.5" } }));
+    expect(await readAgentSettings()).toEqual({ agent: "codex", models: { codex: "gpt-5.5" } });
+
+    await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex", models: { codex: 3 } }));
+    await expect(readAgentSettings()).rejects.toThrow(CoMotionError);
+  });
+
+  it("writeAgentModel keeps the other kind's pick, the agent key, and unknown keys", async () => {
+    await mkdir(home, { recursive: true });
+    await writeFile(agentSettingsPath(), JSON.stringify({ agent: "claude", models: { codex: "gpt-5.5" }, theme: "dark" }));
+    await writeAgentModel("claude", "claude-opus-5");
+    expect(JSON.parse(await readFile(agentSettingsPath(), "utf8"))).toEqual({
+      agent: "claude",
+      models: { codex: "gpt-5.5", claude: "claude-opus-5" },
+      theme: "dark",
+    });
+  });
+
   it("writeAgentSelection preserves unknown keys already in the file", async () => {
     await mkdir(home, { recursive: true });
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "claude", futureKey: "kept" }));
@@ -88,7 +108,7 @@ describe("agent settings", () => {
 
   it("writeAgentSelection then readAgentSettings round-trips", async () => {
     await writeAgentSelection("codex");
-    expect(await readAgentSettings()).toEqual({ agent: "codex" });
+    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
   });
 
   it("a real I/O failure on read (EACCES) propagates as-is, not as { agent: null }", async () => {

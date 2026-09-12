@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromAgentResponse } from "../src/agent-status.js";
+import { fromAgentResponse, modelOptionsFrom } from "../src/agent-status.js";
 
 // agent-status.ts's public boundary is the pure conversion `GET /api/agent`
 // JSON → AgentUiStatus | null ([E3.T5] Plan §6.3) — no React, no fetch.
@@ -124,5 +124,25 @@ describe("fromAgentResponse ([E3.T5] Plan §4.1)", () => {
     expect(fromAgentResponse(null)).toBeNull();
     expect(fromAgentResponse("not-an-object")).toBeNull();
     expect(fromAgentResponse(undefined)).toBeNull();
+  });
+});
+
+describe("modelOptionsFrom (chat-panel model picker)", () => {
+  it("reads models[] and modelId, keeping detail only when present", () => {
+    expect(
+      modelOptionsFrom({
+        modelId: "b",
+        models: [{ id: "a", name: "A" }, { id: "b", name: "B", detail: "the good one" }],
+      }),
+    ).toEqual({ current: "b", options: [{ id: "a", name: "A" }, { id: "b", name: "B", detail: "the good one" }] });
+  });
+
+  it("current is null when modelId is not one of the options; malformed rows are dropped", () => {
+    expect(modelOptionsFrom({ modelId: "zzz", models: [{ id: "a", name: "A" }, { id: "" }, "junk"] })).toEqual({
+      current: null,
+      options: [{ id: "a", name: "A" }],
+    });
+    expect(modelOptionsFrom({})).toEqual({ current: null, options: [] });
+    expect(modelOptionsFrom(null)).toEqual({ current: null, options: [] });
   });
 });
