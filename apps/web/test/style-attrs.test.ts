@@ -15,8 +15,8 @@ const cliSpecPath = path.join(repoRoot, "docs", "spec", "cli.md");
 const cliSpec = readFileSync(cliSpecPath, "utf8");
 
 function styleAttributeWhitelist(): string[] {
-  const match = cliSpec.match(/`attr`：必填，位置參數，必須落在白名單內（ADR-0014）：([^。]+)。/);
-  if (!match) throw new Error("cli.md 找不到 element style set 的 attr 白名單描述");
+  const match = cliSpec.match(/`attr`: required, positional, must be one of the allow-listed values \(ADR-0014\): ([^.]+)\./);
+  if (!match) throw new Error("cli.md is missing element style set's attr whitelist description");
   return [...match[1].matchAll(/`([a-z-]+)`/g)].map((m) => m[1]);
 }
 
