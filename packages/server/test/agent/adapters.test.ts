@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -33,6 +34,25 @@ describe("resolveAdapterConfig", () => {
     ]);
     expect(existsSync(config.args![0])).toBe(true);
     expect(config.args![0]).toContain(path.join("@zed-industries", "codex-acp"));
+  });
+
+  it("claude: points claude-code-acp at the `claude` on PATH (resolved through symlinks) so the model list is the author's own CLI's", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "co-motion-claude-on-path-"));
+    const originalPath = process.env.PATH;
+    try {
+      await writeFile(path.join(dir, "claude-real"), "#!/bin/sh\n", { mode: 0o755 });
+      await symlink(path.join(dir, "claude-real"), path.join(dir, "claude"));
+      process.env.PATH = `${dir}${path.delimiter}${originalPath ?? ""}`;
+      expect(resolveAdapterConfig("claude").env?.CLAUDE_CODE_EXECUTABLE).toBe(await realpath(path.join(dir, "claude-real")));
+      // Codex never gets it — the variable means nothing to codex-acp.
+      expect(resolveAdapterConfig("codex").env?.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
+
+      process.env.PATH = dir.replace(/[^/]+$/, "nowhere");
+      expect(resolveAdapterConfig("claude").env?.CLAUDE_CODE_EXECUTABLE).toBeUndefined();
+    } finally {
+      process.env.PATH = originalPath;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("package.json pins both adapters to exact versions", async () => {

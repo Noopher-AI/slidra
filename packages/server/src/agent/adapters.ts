@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
+import { accessSync, constants, realpathSync } from "node:fs";
+import path, { dirname } from "node:path";
 import type { AgentAdapterConfig } from "./session.js";
 
 /**
@@ -113,5 +114,33 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
     config.env = { PATH: `${dirname(coMotionBin)}:${process.env.PATH ?? ""}` };
   }
 
+  // claude-code-acp drives Claude Code through the Agent SDK, which ships
+  // its own (older) copy of the Claude Code CLI — and the model list the
+  // adapter reports at `session/new` comes from whichever CLI it runs. The
+  // adapter honours `CLAUDE_CODE_EXECUTABLE`, so when the author has Claude
+  // Code installed (the same `claude` the login probe already looks up on
+  // PATH) point the SDK at it: the models the author can pick are then the
+  // ones their own Claude Code offers, not the bundled copy's shorter list.
+  // Absent `claude` on PATH, nothing is set and the bundled CLI is used.
+  if (kind === "claude") {
+    const claude = findOnPath("claude");
+    if (claude) config.env = { ...config.env, CLAUDE_CODE_EXECUTABLE: claude };
+  }
+
   return config;
+}
+
+/** The first `name` on PATH, resolved through its symlinks (Claude's launcher is a symlink into a versioned directory); undefined when none. */
+export function findOnPath(name: string): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir === "") continue;
+    const candidate = path.join(dir, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      return realpathSync(candidate);
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
