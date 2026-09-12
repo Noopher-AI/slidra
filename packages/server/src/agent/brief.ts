@@ -1,5 +1,5 @@
 /**
- * Builds the 編輯規約 ("editorial brief"): CoMotion's own opening message to
+ * Builds the "editorial brief" (編輯規約): CoMotion's own opening message to
  * whichever agent is connected, sent as a plain user message before the
  * author's first message ever reaches the agent (ADR-0006).
  *
@@ -9,22 +9,21 @@
  *
  * Slimmed down to only what changes per conversation — the identifier and
  * this comment-prefix note — plus a pointer to the work directory's own
- * `reference/commands.md` for the command catalogue itself (NOOP-238,
- * GitHub #235): that document lives in a real file the agent reads with
- * its native file access, not in a string rebuilt on every turn, and it is
- * the one place with room to list every command's parameters, not just a
- * handful as illustrative syntax. `text set` and `comment list` stay named
- * here, verbatim, purely as the two worked examples for 【命令參數怎麼寫】's
- * quoting rules — `commands-reference.test.ts` asserts this brief names
- * only those two commands, so a change here that adds a third command name
- * fails loudly rather than silently drifting the brief and the reference
- * apart again.
+ * `reference/commands.md` for the command catalogue itself: that document
+ * lives in a real file the agent reads with its native file access, not in
+ * a string rebuilt on every turn, and it is the one place with room to
+ * list every command's parameters, not just a handful as illustrative
+ * syntax. `text set` and `comment list` stay named here, verbatim, purely
+ * as the two worked examples for the "how to write command parameters"
+ * section's quoting rules — `commands-reference.test.ts` asserts this
+ * brief names only those two commands, so a change here that adds a third
+ * command name fails loudly rather than silently drifting the brief and
+ * the reference apart again.
  *
- * Takes the presentation's opaque id (fix 2, ticket #7) — the id is the
- * *only* handle the agent is ever given, it never sees a real path (issue
- * #1) — folded into `識別碼是：${presentationId}` in a fixed shape
- * `chat.test.ts` extracts with a regex, and into the two worked command
- * examples below.
+ * Takes the presentation's opaque id — the id is the *only* handle the
+ * agent is ever given, it never sees a real path — folded into
+ * `識別碼是：${presentationId}` in a fixed shape `chat.test.ts` extracts
+ * with a regex, and into the two worked command examples below.
  */
 export function buildEditorialBrief(presentationId: string): string {
   return `你正在透過 CoMotion 協助編輯一份簡報。

@@ -202,8 +202,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     editingLock.off("unfrozen", onUnfrozen);
   });
 
-  // `/` 斜線命令清單（architecture comment on #232/#236): agent report ∪
-  // bundled skills ∪ user skills, recomputed on demand rather than cached —
+  // The `/` slash-command list: agent report ∪ bundled skills ∪ user
+  // skills, recomputed on demand rather than cached —
   // the underlying skill directories can change between calls and this is
   // never hot-path code. `GET /api/agent/commands` below calls this
   // directly for the initial value; the SSE push below recomputes and
@@ -329,7 +329,7 @@ async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    // ADR-0010: 播放模式 gives the (untrusted, ADR-0003) slide's iframe
+    // ADR-0010: play mode gives the (untrusted, ADR-0003) slide's iframe
     // `allow-scripts`, which puts it in an opaque origin. An opaque origin
     // can still send cross-origin *simple* requests — it cannot read the
     // response, but it can write — so a hostile slide could otherwise fire
@@ -392,7 +392,7 @@ async function handleRequest(
         return;
       }
       if (url.pathname === "/api/agent/session") {
-        // The chat panel's "選擇模型…": brings the ACP session up before
+        // The chat panel's "Choose model…": brings the ACP session up before
         // the first message so the model list exists to pick from. Same
         // handshake the first message would run; no author turn happens.
         try {

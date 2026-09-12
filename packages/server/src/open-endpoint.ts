@@ -263,8 +263,8 @@ export async function handleOpenPost(
   }
 
   sendJson(res, 200, { ok: true, fileName: safeName });
-  // §4.1: "同一輪內廣播 presentation-changed 與 save-state（dirty:false）" —
-  // called directly here rather than left to changes.ts's own debounced
+  // "presentation-changed and save-state (dirty:false) are broadcast in the
+  // same turn" — called directly here rather than left to changes.ts's own debounced
   // fs.watch pickup, which would (a) only fire once some browser tab has
   // opened /api/events at all (ensureWatcher() starts lazily) and (b) lag
   // by its 100ms debounce. Both events share the one existing broadcaster.
