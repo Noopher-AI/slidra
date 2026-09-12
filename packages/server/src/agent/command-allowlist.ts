@@ -1,6 +1,14 @@
 /**
- * Decides whether a shell command string is allowed to reach the shell at
- * all (ADR-0004, second layer).
+ * Recognises a `comotion` invocation written in a shape that is provably
+ * free of shell syntax.
+ *
+ * **Its role changed with ADR-0019.** This used to be the gate: a command
+ * that did not match was refused. It is now the fast path — a command that
+ * matches is the CLI and is allowed outright, and one that does not is
+ * judged by `protected-paths.ts` instead (refused only if it names the
+ * presentation's real files). Everything below is unchanged and must stay
+ * that way: it is still what lets a `comotion` command be allowed without
+ * looking at what its arguments contain.
  *
  * Earlier revisions of this module tried to *recognise danger*: tokenize
  * the string the way a POSIX shell would, and refuse anything that looked

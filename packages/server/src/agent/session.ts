@@ -9,7 +9,10 @@ import { runJsonCommand } from "../comotion/command.js";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
+import { hintForBlockedCommand } from "./command-hints.js";
+import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js";
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
+import { readProjectsRegistry, resolveCoMotionHome } from "../comotion/home.js";
 import type { EditingLock } from "../editing-lock.js";
 
 /**
@@ -137,7 +140,7 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * This says what actually happened, on the author's side of the screen.
  */
 const BLOCKED_COMMAND_MESSAGE =
-  "CoMotion 擋下了這條命令（不是作者拒絕的）。只有 comotion 開頭、參數為裸 token 或單引號字串的命令可以執行；管線、`&&`、`;`、寫入檔案的重導向、雙引號與反斜線一律擋下。";
+  "CoMotion 擋下了這條命令（不是作者拒絕的）：它直接動到這份簡報的檔案，而簡報只能透過 comotion 命令讀寫。其他不碰簡報檔案的命令不受限制。";
 
 /**
  * Said once when a refused command took the whole turn down with it — see
@@ -145,8 +148,34 @@ const BLOCKED_COMMAND_MESSAGE =
  * Without it the conversation ends on 「已停止」, which reads as the author's
  * own doing.
  */
+/**
+ * How many times one author message may be handed back to the agent with
+ * advice after a refusal. Two is enough for the case this exists for (the
+ * agent reached for `cat`, was told to use the read tool, carried on); an
+ * agent still refused after that is not going to be talked round, and the
+ * author should see the turn end rather than watch it loop.
+ */
+const MAX_REFUSAL_CORRECTIONS = 2;
+
+/** What the agent is told after CoMotion takes the turn back — see the loop in `runTurn`. */
+function refusalCorrectionPrompt(hints: string[]): string {
+  const advice = hints.map((hint) => `- ${hint}`).join("\n");
+  return [
+    "【CoMotion 系統訊息｜不是作者說的】",
+    "剛剛那條命令沒有執行：它直接動到這份簡報的檔案，而簡報的內容只能透過 `comotion` 命令讀寫（其他不碰簡報檔案的命令不受限制）。",
+    "這不是作者拒絕你，也不需要問他——換成下面的做法就可以繼續：",
+    advice,
+    "請接著把剛才沒做完的部分做完，不要再送同一條被擋下的命令。",
+  ].join("\n");
+}
+
+/** The same thing, said to the author, so the take-back is visible rather than mysterious. */
+function refusalCorrectionNotice(hints: string[]): string {
+  return `CoMotion 擋下了 agent 直接改簡報檔案的命令並告訴它該用什麼（${hints.length} 則建議），對話繼續。`;
+}
+
 const TURN_ABORTED_BY_REFUSAL_MESSAGE =
-  "這一輪到此為止：CoMotion 擋下了上面那條命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用允許的命令重新發送即可。";
+  "這一輪到此為止：CoMotion 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 comotion 命令重新發送即可。";
 
 const MAX_COMMAND_OUTPUT_CHARS = 2000;
 const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
@@ -241,6 +270,13 @@ export class AgentChatSession extends EventEmitter {
    * resolved form is what actually matches.
    */
   private readonly workdirReal: string;
+  /**
+   * The open presentation's `.comot` file, read once from the registry
+   * when the session is established. Undefined when the registry has no
+   * `sourcePath` for this id (a presentation created but never saved out)
+   * — `<COMOTION_HOME>` still covers its live files either way.
+   */
+  private sourcePath: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -301,6 +337,13 @@ export class AgentChatSession extends EventEmitter {
    * turn scope, and cleared alongside, `relayedToolCalls`.
    */
   private readonly refusedToolCalls = new Set<string>();
+  /**
+   * This turn's advice for the commands the allowlist refused, keyed by
+   * tool call so the author sees it attached to the command it belongs to,
+   * and deduplicated on the way out (an agent that tried `cat` three times
+   * gets told once). Same turn scope as `refusedToolCalls`.
+   */
+  private readonly refusalHints = new Map<string, string>();
   private disposed = false;
   /**
    * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
@@ -604,27 +647,64 @@ export class AgentChatSession extends EventEmitter {
     }
     this.refusedOutsideTurnLogged = false;
     try {
-      const response = await this.withInterrupt(
-        this.connection!.prompt({
-          sessionId: this.sessionId!,
-          prompt: [{ type: "text", text: prompt }],
-        }),
-      );
-      // A turn that ends `cancelled` after we refused a command, with no
-      // Stop from the author, was ended by that refusal: the adapter had
-      // no way to say "skip this one and carry on" and aborted instead.
-      // Without this line the author sees only the 「已停止」 notice and
-      // reads it as something they did.
-      if (response.stopReason === "cancelled" && this.refusedToolCalls.size > 0 && !this.cancelledUntilNextPrompt) {
-        this.emitTyped("chat-notice", { text: TURN_ABORTED_BY_REFUSAL_MESSAGE });
+      // One author message can take more than one ACP turn: a command the
+      // allowlist refused ends the turn under both adapters (see
+      // `findRejectOption`), and the agent is never told why — so CoMotion
+      // takes the turn back, says what to use instead, and lets the agent
+      // carry on. Bounded, because an agent that ignores the advice twice
+      // will ignore it a third time.
+      for (let correction = 0; ; correction++) {
+        let response: acp.PromptResponse | undefined;
+        let failure: unknown;
+        try {
+          response = await this.withInterrupt(
+            this.connection!.prompt({
+              sessionId: this.sessionId!,
+              prompt: [{ type: "text", text: prompt }],
+            }),
+          );
+        } catch (error) {
+          failure = error;
+        }
+
+        // The turn ended without the agent getting anywhere: either the
+        // adapter aborted it on our refusal (`cancelled`), or it turned
+        // the refusal into a protocol error (claude-code-acp's
+        // `interrupt: true`, which surfaces as `Internal error`). The
+        // author pressing Stop is neither, and never continues.
+        const hints = [...new Set(this.refusalHints.values())];
+        const endedOnRefusal =
+          this.refusedToolCalls.size > 0 &&
+          !this.cancelledUntilNextPrompt &&
+          (failure !== undefined || response?.stopReason === "cancelled");
+
+        if (endedOnRefusal && hints.length > 0 && correction < MAX_REFUSAL_CORRECTIONS && !this.disposed) {
+          this.emitTyped("chat-notice", { text: refusalCorrectionNotice(hints) });
+          prompt = refusalCorrectionPrompt(hints);
+          this.relayedToolCalls.clear();
+          this.refusedToolCalls.clear();
+          this.refusalHints.clear();
+          continue;
+        }
+
+        if (failure !== undefined) {
+          this.emitTyped("chat-error", { message: describeError(failure) });
+          return;
+        }
+        // A refusal ended the turn and there was nothing useful to say
+        // about it (or the advice has already been given twice): at least
+        // tell the author it was not their Stop that did this.
+        if (endedOnRefusal) {
+          this.emitTyped("chat-notice", { text: TURN_ABORTED_BY_REFUSAL_MESSAGE });
+        }
+        this.emitTyped("chat-done", { stopReason: response!.stopReason });
+        return;
       }
-      this.emitTyped("chat-done", { stopReason: response.stopReason });
-    } catch (error) {
-      this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
       this.relayingCurrentTurn = false;
       this.relayedToolCalls.clear();
       this.refusedToolCalls.clear();
+      this.refusalHints.clear();
       await this.closeEditLockIfOpen();
     }
   }
@@ -750,6 +830,12 @@ export class AgentChatSession extends EventEmitter {
 
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
+    // The `.comot` this presentation was opened from, for the permission
+    // policy's protected set. A registry that cannot be read is not worth
+    // failing the session over: `<COMOTION_HOME>` still covers the live
+    // files, and the container is only reachable through a path the agent
+    // was never told.
+    this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
     const child = spawn(this.config.command, this.config.args ?? [], {
       stdio: ["pipe", "pipe", "pipe"],
       env: this.config.env ? { ...process.env, ...this.config.env } : process.env,
@@ -908,7 +994,7 @@ export class AgentChatSession extends EventEmitter {
         // disk, so freezing for it would be pure side effect with no
         // corresponding write to protect (and would open/immediately-close
         // an empty history group for every refused command, for nothing).
-        if (isAllowedCommand(params)) {
+        if (isCoMotionCliCommand(params)) {
           await this.openEditLockOnFirstCommand();
         }
         return this.decidePermission(params);
@@ -982,8 +1068,11 @@ export class AgentChatSession extends EventEmitter {
     // "the user rejected this" text describes neither what happened nor
     // who did it — CoMotion's wording replaces it.
     const blocked = update.status === "failed" && this.refusedToolCalls.has(update.toolCallId);
+    const hint = this.refusalHints.get(update.toolCallId);
     const output = blocked
-      ? BLOCKED_COMMAND_MESSAGE
+      ? hint === undefined
+        ? BLOCKED_COMMAND_MESSAGE
+        : `${BLOCKED_COMMAND_MESSAGE}\n${hint}`
       : update.status === "failed"
         ? extractCommandOutput(update.content, update.rawOutput)
         : undefined;
@@ -1034,9 +1123,53 @@ export class AgentChatSession extends EventEmitter {
    * that path.) Rejecting has no equivalent risk, so `reject_once` and
    * `reject_always` are both acceptable there.
    */
+  /**
+   * The permission policy (ADR-0004's second layer, as re-drawn): the CLI
+   * is the only way to change a `.comot`, and everything else the agent
+   * wants to run is its own business. So a `comotion` command is allowed
+   * because it *is* the CLI, and every other command is allowed unless it
+   * names one of the presentation's real files (`touchesProtectedPath`).
+   *
+   * A tool call carrying no command string at all is not a shell command
+   * and has nothing to judge — but its raw input is still scanned for a
+   * protected path, so an unrecognised shell shape (Codex has more than
+   * one) cannot slip a work-directory path past this by arriving in a
+   * field this code does not know how to read.
+   */
+  private isPermittedCommand(params: acp.RequestPermissionRequest): boolean {
+    const command = extractCommand(params.toolCall);
+    if (command !== undefined) {
+      if (isCoMotionCommand(command)) return true;
+      // A command an encoder shell-quoted (see `unquoteShellWord`) is
+      // judged on the literal text it stands for, never on the quoting.
+      const literal = unquoteShellWord(command);
+      if (literal !== undefined && isCoMotionCommand(literal)) return true;
+      return !touchesProtectedPath(literal ?? command, this.protectedPaths);
+    }
+    return !touchesProtectedPath(collectStrings(params.toolCall.rawInput).join(" "), this.protectedPaths);
+  }
+
+  /** Where the presentation's real files live — see `protected-paths.ts`. */
+  private get protectedPaths(): ProtectedPaths {
+    return {
+      comotionHome: resolveCoMotionHome(),
+      agentWorkdir: this.workdirReal,
+      ...(this.sourcePath === undefined ? {} : { sourcePath: this.sourcePath }),
+    };
+  }
+
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
-    const allow = isAllowedCommand(params);
-    if (!allow) this.refusedToolCalls.add(params.toolCall.toolCallId);
+    const allow = this.isPermittedCommand(params);
+    if (!allow) {
+      this.refusedToolCalls.add(params.toolCall.toolCallId);
+      // What to use instead, decided here (where the refused command
+      // string is still in hand) and delivered in two directions: to the
+      // author with the blocked command, and to the agent itself once the
+      // turn ends (`deliverRefusalHints`).
+      const command = extractCommand(params.toolCall);
+      const hint = command === undefined ? undefined : hintForBlockedCommand(command, this.presentationId);
+      if (hint !== undefined) this.refusalHints.set(params.toolCall.toolCallId, hint);
+    }
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
       : this.findRejectOption(params.options);
@@ -1167,11 +1300,20 @@ function toChoice(info: acp.ModelInfo): AgentModelChoice {
   return { id: info.modelId, name: info.name, ...(info.description ? { detail: info.description } : {}) };
 }
 
-/** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */
-function isAllowedCommand(params: acp.RequestPermissionRequest): boolean {
+/**
+ * True for an invocation of the `comotion` CLI itself. The T5 freeze gate
+ * uses this (and not the permission decision) because it is the CLI, and
+ * only the CLI, that writes to the presentation — a `curl` the policy now
+ * allows must not open a history group.
+ */
+function isCoMotionCliCommand(params: acp.RequestPermissionRequest): boolean {
   const command = extractCommand(params.toolCall);
   if (command === undefined) return false;
   if (isCoMotionCommand(command)) return true;
+  // The strict grammar is no longer what decides whether a command runs,
+  // so the gate cannot depend on it either: `comotion undo X | head` is
+  // still the CLI writing to the presentation and still has to freeze.
+  if (namesCoMotionProgram(command)) return true;
   // Second chance for a command that reached us shell-*quoted* rather than
   // as the script itself (see `unquoteShellWord`). The allowlist itself is
   // unchanged and still has the last word — this only decides which string
@@ -1261,6 +1403,23 @@ function unquoteShellWord(command: string): string | undefined {
     i++;
   }
   return literal;
+}
+
+/**
+ * Every string sitting anywhere in a raw input, so an unrecognised tool
+ * shape can still be checked for a protected path. Deliberately shallow in
+ * ambition: it looks at the values, not at what the fields mean.
+ */
+function collectStrings(value: unknown, depth = 0): string[] {
+  if (typeof value === "string") return [value];
+  if (depth > 4 || typeof value !== "object" || value === null) return [];
+  return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, depth + 1));
+}
+
+/** True when the command's first word invokes `comotion`, whatever follows it. */
+function namesCoMotionProgram(command: string): boolean {
+  const first = command.trim().split(/\s+/)[0];
+  return first !== undefined && first.replace(/^['"]|['"]$/g, "").split("/").pop() === "comotion";
 }
 
 /** Recognizes Claude's command string and Codex's shell argv; unknown shapes fail closed. */

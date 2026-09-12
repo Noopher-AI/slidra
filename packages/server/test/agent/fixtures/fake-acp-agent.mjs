@@ -257,7 +257,11 @@ class FakeAgent {
           // permissionOmitCommand scripts a tool call whose rawInput carries
           // no `command` key at all — the "cannot determine the command"
           // case the allowlist must fail closed on (ticket #7).
-          rawInput: config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "comotion ls" },
+          // permissionRawInput: an arbitrary raw input shape, for the case
+          // where the command cannot be read out of it at all (a shell
+          // shape this client does not know) but a protected path is still
+          // sitting in there somewhere.
+          rawInput: config.permissionRawInput ?? (config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "comotion ls" }),
         },
         // permissionOptions: overrides the default option list below (ticket
         // #7 fix 2) — used to script an adapter that offers only
