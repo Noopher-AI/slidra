@@ -1,6 +1,4 @@
 //! Virtual path resolution within a presentation's real work directory.
-//! Ported from `packages/core/src/virtual-fs.ts`, full file, unchanged
-//! semantics.
 //!
 //! Public API:
 //! - `list_virtual_entries(work_dir, virtual_path) -> CoMotionResult<Vec<String>>`
@@ -48,8 +46,8 @@ fn build_virtual_tree(work_dir: &Path) -> CoMotionResult<VirtualNode> {
 fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> CoMotionResult<()> {
     // A failing read here is an operational failure, not evidence that
     // anything is absent — stays a plain `CoMotionError::invalid`, matching
-    // the TS original's "only CoMotionNotFoundError is granted a 404"
-    // discipline (ticket #11, fourth fix round).
+    // the original engine's "only CoMotionNotFoundError is granted a 404"
+    // discipline.
     let entries = std::fs::read_dir(real_dir)
         .map_err(|_| CoMotionError::invalid("讀取簡報內容時發生錯誤"))?;
     for entry in entries {

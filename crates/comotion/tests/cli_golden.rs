@@ -202,7 +202,7 @@ fn version_flag_is_answered_by_rust_not_node() {
 
 /// Plan 4.1's first contract row: empty argv reports "缺少命令名稱" and
 /// exits 1 — Rust's own message now, no longer forwarded from Node
-/// ([E4.T12] removes the fallback this used to go through; the bytes are
+/// (the fallback this used to go through was removed; the bytes are
 /// unchanged).
 #[test]
 fn empty_argv_reports_missing_command_name() {
@@ -212,7 +212,7 @@ fn empty_argv_reports_missing_command_name() {
     assert!(output.stdout.is_empty());
 }
 
-/// A1: for every one of the 26 registered commands, a successful run must
+/// For every one of the 26 registered commands, a successful run must
 /// never start a `node` child process at all — proven structurally (not by
 /// inspecting output) by pointing `PATH` at a directory with no `node`
 /// binary in it. A command that still fell back would fail with "找不到
@@ -305,7 +305,7 @@ fn no_takeover_table_command_ever_invokes_node() {
 }
 
 /// Unknown sub-commands within a taken-over family must be rejected by Rust
-/// itself, never forwarded to Node (A1's "回退不再觸發" — the family name
+/// itself, never forwarded to Node (the fallback no longer triggers — the family name
 /// alone already committed argv[0] to Rust dispatch).
 #[test]
 fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
@@ -321,10 +321,10 @@ fn unknown_subcommand_within_a_takeover_family_never_falls_back() {
 
 /// Regression: an argv[0] that matches neither takeover mechanism (never
 /// registered at all, e.g. `frobnicate`; or a legacy-table-eligible name
-/// used with a sub-command that isn't, e.g. `effect duplicate`; or an
-/// [E4.T5]-family name outside its own table, e.g. `element frobnicate`)
+/// used with a sub-command that isn't, e.g. `effect duplicate`; or a
+/// family name outside its own table, e.g. `element frobnicate`)
 /// must be rejected by Rust's own "未知的命令" branch, never forwarded to
-/// Node — [E4.T12] deletes that fallback outright (plan section 0.1/2.1).
+/// Node — that fallback was deleted outright (plan section 0.1/2.1).
 /// Previously only exercised via the deleted
 /// `fallback_path_is_byte_identical_to_node_for_every_non_takeover_command`,
 /// which compared against the now-deleted Node CLI; this keeps the
@@ -656,7 +656,7 @@ fn json_type_tag(value: &serde_json::Value) -> &'static str {
 }
 
 /// Every key present in a `data` object, paired with a one-word type tag —
-/// used to pin `cli.md`'s documented "成功 `data`" shape without also
+/// used to pin `cli.md`'s documented "Success `data`" shape without also
 /// pinning the specific values (those are covered by unit tests elsewhere,
 /// e.g. `slide/ops.rs`).
 fn data_key_types(data: &serde_json::Value) -> std::collections::BTreeMap<String, &'static str> {
@@ -707,7 +707,7 @@ fn base64_decode_for_test(input: &str) -> Vec<u8> {
 
 /// NOOP-297 review round 1, item 2: plan NOOP-303 §6 required a `cli_golden`
 /// case pinning every takeover-table command's `--json` `data` shape
-/// against `docs/spec/cli.md`'s documented "成功 `data`" — none existed,
+/// against `docs/spec/cli.md`'s documented "Success `data`" — none existed,
 /// proven by the review's mutation E (renaming `slide add`'s `slidePath`
 /// key to `slide_path` left `cargo test` fully green). This test covers
 /// every command plan NOOP-308's feedback names: `slide`
@@ -753,7 +753,7 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
     // `new`'s default slide has a bare `<text>` primitive not yet wrapped in
     // a `<g id="el-…">` container — `presentation canvas set` needs typed,
     // normalized elements to rescale (unlike `convert` itself, whose whole
-    // job is performing that normalization), so it fails with "不合規" on an
+    // job is performing that normalization), so it fails as non-compliant on an
     // unconverted slide. Not asserted here; `convert`'s own data shape is
     // checked later, once already-normalized, at the end of this sequence.
     let setup_convert = fixture.run_rust(&["convert", &id]);
@@ -1027,11 +1027,11 @@ fn json_data_shape_matches_cli_md_for_every_documented_command() {
     );
 }
 
-/// NOOP-297 review round 1, item 2 (5): `cat --json`'s multi-path array
-/// shape (`docs/spec/cli.md`'s "--json" section: "`data` 變成 `[{ path,
-/// content }]` 陣列，順序與 argv 給的路徑順序相同") had no golden coverage.
-/// Also pins the "單一路徑也回陣列" behavior this ticket's own plan flagged
-/// as a 保留事項 needing a test.
+/// `cat --json`'s multi-path array
+/// shape (`docs/spec/cli.md`'s "--json" section: "`data` becomes a `[{ path,
+/// content }]` array, in the same order as the paths given on argv") had no golden coverage.
+/// Also pins the "a single path also returns an array" behavior the plan flagged
+/// as an open item needing a test.
 #[test]
 fn cat_json_multi_path_returns_ordered_array_shape() {
     let fixture = Fixture::new("cat-json-multi-path");
@@ -1145,8 +1145,8 @@ fn normalize_element_ids_assigns_placeholders_in_order_of_first_appearance() {
     );
 }
 
-/// Acceptance criterion A2 (extended from NOOP-277's undo/redo-only version
-/// to this ticket's 26 new commands): every one of them must actually be
+/// Acceptance criterion A2 (extended from the undo/redo-only version
+/// to these 26 new commands): every one of them must actually be
 /// dispatched by Rust, not merely happen to produce output that looks
 /// right because it fell through to a Node fallback that isn't even on
 /// `PATH`. `fallback::exec_node_fallback` prints the literal string "找不到
@@ -1396,11 +1396,10 @@ fn asset_import_local_file_lands_under_assets_via_rust_binary() {
     let path_field = extract_id_field(&import_result.stdout, "path");
     assert_eq!(path_field, "assets/tiny.png");
 
-    // `cat` decodes strict UTF-8 and refuses binary content ("是二進位資產，
-    // 無法以文字讀取") — not a usable read path for this assertion. Read the
-    // real file back directly via the registry's workDir instead, the same
-    // shortcut `packages/cli/test/asset-import.test.ts`'s
-    // `readRealAssetBytes` uses.
+    // `cat` decodes strict UTF-8 and refuses binary content (it is a binary
+    // asset and cannot be read as text) — not a usable read path for this
+    // assertion. Read the real file back directly via the registry's
+    // workDir instead.
     let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
     let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
     let work_dir = registry[&id]["workDir"].as_str().unwrap();
@@ -2053,7 +2052,7 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
     );
 
     // Every entry has all five required subsections, in order (spec's own
-    // "命令條目格式說明": 語法 → 參數 → 成功 data → 錯誤情境 → 範例).
+    // command-entry format: 語法(syntax) → 參數(parameters) → 成功 data(success data) → 錯誤情境(error cases) → 範例(example)).
     let required_markers = [
         "**語法**",
         "**參數**",
@@ -2089,8 +2088,7 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
 /// commands is actually dispatched by Rust — `PATH` pointed at an empty
 /// directory (`no_takeover_table_command_ever_invokes_node`'s own
 /// technique) so a command that fell through to a Node fallback would fail
-/// with "找不到 node" instead of running; and (plan N2, replacing
-/// `packages/cli/test/registry-split.test.ts`) `cat`/`ls`/`slide render`
+/// with "找不到 node" instead of running; and (plan N2) `cat`/`ls`/`slide render`
 /// are the only three with a renderer — their plain (non-`--json`) stdout
 /// is raw content with no leading status line, unlike the other 78's
 /// "<message>\n{...}" shape.
@@ -2098,10 +2096,8 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
 fn every_documented_command_is_dispatched_by_rust_without_node() {
     let fixture = Fixture::new("all-81-smoke");
 
-    let empty_path_dir = env::temp_dir().join(format!(
-        "comotion-all-81-empty-path-{}",
-        std::process::id()
-    ));
+    let empty_path_dir =
+        env::temp_dir().join(format!("comotion-all-81-empty-path-{}", std::process::id()));
     fs::create_dir_all(&empty_path_dir).unwrap();
 
     let run_without_node = |args: &[&str]| -> Output {
@@ -2455,12 +2451,21 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
 
     // The bundled font doubles as a stand-in for "some other open-source
     // family": what matters here is the embedding path, not which face it is.
-    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/NotoSansTC-Presentation.ttf");
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../assets/fonts/NotoSansTC-Presentation.ttf"
+    );
     let imported = fixture.run_rust(&[
-        "font", "import", &id, source,
-        "--family", "Catalogue Serif",
-        "--license", "SIL Open Font License 1.1",
-        "--source", "https://example.org/font",
+        "font",
+        "import",
+        &id,
+        source,
+        "--family",
+        "Catalogue Serif",
+        "--license",
+        "SIL Open Font License 1.1",
+        "--source",
+        "https://example.org/font",
         "--json",
     ]);
     assert!(imported.status.success(), "{imported:?}");
@@ -2479,23 +2484,49 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
     // The new family is usable straight away.
     fixture.run_rust(&["slide", "add", &id]);
     let textbox = fixture.run_rust(&[
-        "textbox", "add", &id, "slides/001.svg",
-        "--x", "80", "--y", "100", "--width", "600",
-        "--text", "新字型", "--font-family", "Catalogue Serif",
+        "textbox",
+        "add",
+        &id,
+        "slides/001.svg",
+        "--x",
+        "80",
+        "--y",
+        "100",
+        "--width",
+        "600",
+        "--text",
+        "新字型",
+        "--font-family",
+        "Catalogue Serif",
     ]);
     assert!(textbox.status.success(), "{textbox:?}");
 
     // A family may only be embedded once, and a non-font is refused.
     let duplicate = fixture.run_rust(&[
-        "font", "import", &id, source,
-        "--family", "Catalogue Serif",
-        "--license", "x", "--source", "y",
+        "font",
+        "import",
+        &id,
+        source,
+        "--family",
+        "Catalogue Serif",
+        "--license",
+        "x",
+        "--source",
+        "y",
     ]);
     assert!(!duplicate.status.success(), "{duplicate:?}");
     let readme = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
     let not_a_font = fixture.run_rust(&[
-        "font", "import", &id, readme,
-        "--family", "Bogus", "--license", "x", "--source", "y",
+        "font",
+        "import",
+        &id,
+        readme,
+        "--family",
+        "Bogus",
+        "--license",
+        "x",
+        "--source",
+        "y",
     ]);
     assert!(!not_a_font.status.success(), "{not_a_font:?}");
 }
@@ -2614,7 +2645,8 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
     let before = fixture.run_rust(&["validate", &id, "--json"]);
     let before_out = String::from_utf8_lossy(&before.stdout).to_string();
     assert!(
-        before_out.contains("structure.background-image") && !before_out.contains("structure.scrim"),
+        before_out.contains("structure.background-image")
+            && !before_out.contains("structure.scrim"),
         "no background yet, no scrim needed: {before:?}"
     );
 

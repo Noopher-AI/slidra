@@ -116,10 +116,8 @@ fn snapshot_path(home: &Path, id: &str, snapshot_id: &str) -> PathBuf {
 /// yet) is an empty stack; anything else — an I/O error other than "file
 /// missing", corrupt JSON, or a malformed shape (`undo` not an array, an
 /// entry missing `virtualPath`, ...) — is a loud `CoMotionError`, never a
-/// silent fallback to empty. All three of those failure modes collapse to
-/// the same message (`復原歷史已損毀`), matching the TS original exactly —
-/// this is a *narrower* set of distinct messages than `workspace.ts`'s
-/// `readRegistry` uses for its analogous cases, not an inconsistency.
+/// silent fallback to empty. All three of those failure modes deliberately
+/// collapse to the same message (`復原歷史已損毀`, "undo history is corrupted").
 ///
 /// `openGroup` (a previous turn left an edit group open without closing it)
 /// is read and round-tripped by `write_stack`, but never inspected or

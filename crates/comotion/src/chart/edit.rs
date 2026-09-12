@@ -1,15 +1,13 @@
-//! The container-level splice writers for the `chart` command family,
-//! ported from `packages/core/src/chart/edit.ts` (363 lines). Every command
-//! re-derives the FULL `ChartModel` (`read_chart_model`), applies one
-//! patch, re-validates the WHOLE result (`validate_chart_model` — never
-//! just the touched field, since cross-field rules like "stacked requires
-//! axes=single" can be broken by a change to either field), then
+//! The container-level splice writers for the `chart` command family.
+//! Every command re-derives the FULL `ChartModel` (`read_chart_model`),
+//! applies one patch, re-validates the WHOLE result (`validate_chart_model`
+//! — never just the touched field, since cross-field rules like "stacked
+//! requires axes=single" can be broken by a change to either field), then
 //! re-renders and splices both the data element and the embedded `<svg>`
 //! back in.
 //!
-//! NOT ported: `scaleChartElement` (`element scale`/`element resize` on a
-//! chart container) — that is F4's (element edit) territory, not one of
-//! this ticket's 8 CLI commands.
+//! NOT handled here: `scaleChartElement` (`element scale`/`element resize`
+//! on a chart container) — that lives in element edit, not this file.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use crate::slide::format::assert_slide_compliant;
@@ -26,7 +24,7 @@ use super::render::{render_chart_svg, round_half_up};
 
 /// Reads the slide's root `<svg viewBox="minX minY width height">` — the
 /// canvas dimensions `chart create`'s default position/size are relative
-/// to. Ported from `chart/edit.ts`'s private `readViewBox`.
+/// to.
 fn read_view_box(svg_content: &str) -> CoMotionResult<(f64, f64)> {
     let roots = scan_document(svg_content)?;
     let svg_root = roots

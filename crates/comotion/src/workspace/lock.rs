@@ -1,4 +1,4 @@
-//! Per-presentation advisory lock (#303).
+//! Per-presentation advisory lock.
 //!
 //! Every `comotion` invocation that names a presentation holds this lock
 //! for the lifetime of the process, so two concurrent invocations against

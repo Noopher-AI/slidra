@@ -6,7 +6,8 @@ use crate::result::{CommandResult, FailureKind};
 use crate::{argv, workspace};
 
 /// `json_flag` changes `cat`'s own arity, not just its output format:
-/// `docs/spec/cli.md` — "`cat --json` 是唯一允許接受多個 `<path>` 的形式"
+/// `docs/spec/cli.md` — "`cat --json` is the only form allowed to accept
+/// multiple `<path>`s"
 /// — so `main.rs` must tell this handler whether `--json` was present
 /// before argv parsing happens here, not only pass it to `result::render`
 /// afterwards.

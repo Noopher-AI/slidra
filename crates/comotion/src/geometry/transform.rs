@@ -285,13 +285,13 @@ fn parse_arguments(name: &str, args_text: &str) -> CoMotionResult<Vec<f64>> {
     Ok(values)
 }
 
-/// Ports `functionToMatrix`. The final `_ =>` arm mirrors the TS `switch`'s
+/// The final `_ =>` arm mirrors the TS `switch`'s
 /// own `default` case, which is unreachable in practice today (every name
-/// `arity_for` accepts is handled above) but throws the same "不支援的
-/// transform 函式" error rather than panicking if the two tables ever drift
-/// out of sync — matching the TS source's defensive-but-dead branch exactly
-/// rather than replacing it with an `unreachable!()` that would turn a
-/// future drift into a crash instead of a clean error.
+/// `arity_for` accepts is handled above) but throws the same "unsupported
+/// transform function" error rather than panicking if the two tables ever
+/// drift out of sync — matching the TS source's defensive-but-dead branch
+/// exactly rather than replacing it with an `unreachable!()` that would turn
+/// a future drift into a crash instead of a clean error.
 fn function_to_matrix(name: &str, args: &[f64]) -> CoMotionResult<Matrix> {
     match name {
         "matrix" => Ok(Matrix {

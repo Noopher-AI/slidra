@@ -7,47 +7,46 @@
 //!
 //! Two matching mechanisms coexist here, one per generation of families:
 //!
-//! - The legacy `TAKEOVER_TABLE: &[&str]` (F2/[E4.T4]/[E4.T7]/NOOP-281 F5)
-//!   is keyed on `argv[0]` (D1, plan §7) for most families — a hit routes
-//!   the rest of argv into that family's own sub-command dispatch
-//!   (`commands::slide::run`, `argv::chart`/`argv::table`'s `parse`, etc.)
-//!   — except `effect`, whose entries are the full two-word `"effect <sub>"`
-//!   form ([E4.T7]; `match_takeover` tries the two-token join first, falling
-//!   back to the single first token, so `chart`/`table`/`asset`/every other
-//!   single-word family still match via the second branch).
-//! - [E4.T5] adds a second mechanism for `undo`/`redo`/`element`/`text`/
-//!   `textbox`/`comment`: each family owns a `CommandTokens = &'static
-//!   [&'static str]` table of full multi-token command names (`element
-//!   move`, `text style set`, ...), and `resolve_takeover` matches the
-//!   LONGEST registered sequence that is a literal prefix of argv (plan
-//!   section 1.4, decision D2) — not a family-prefix match — specifically
-//!   so that an unregistered subcommand of a known family (e.g. `element
-//!   frobnicate`) matches NOTHING and falls all the way through to
-//!   `main.rs`'s final "未知的命令：<argv[0]>" branch. A family-prefix
-//!   match would instead require Rust to reproduce every family's own
-//!   "unknown subcommand" error text (`未知的子命令：<family> <sub>`)
-//!   itself, which is exactly the extra error-surface this design avoids.
+//! - The legacy `TAKEOVER_TABLE: &[&str]` is keyed on `argv[0]` for most
+//!   families — a hit routes the rest of argv into that family's own
+//!   sub-command dispatch (`commands::slide::run`,
+//!   `argv::chart`/`argv::table`'s `parse`, etc.) — except `effect`, whose
+//!   entries are the full two-word `"effect <sub>"` form (`match_takeover`
+//!   tries the two-token join first, falling back to the single first
+//!   token, so `chart`/`table`/`asset`/every other single-word family still
+//!   match via the second branch).
+//! - A newer mechanism handles `undo`/`redo`/`element`/`text`/`textbox`/
+//!   `comment`: each family owns a `CommandTokens = &'static [&'static
+//!   str]` table of full multi-token command names (`element move`, `text
+//!   style set`, ...), and `resolve_takeover` matches the LONGEST
+//!   registered sequence that is a literal prefix of argv — not a
+//!   family-prefix match — specifically so that an unregistered subcommand
+//!   of a known family (e.g. `element frobnicate`) matches NOTHING and
+//!   falls all the way through to `main.rs`'s final "未知的命令：
+//!   <argv[0]>" branch. A family-prefix match would instead require Rust to
+//!   reproduce every family's own "unknown subcommand" error text
+//!   (`未知的子命令：<family> <sub>`) itself, which is exactly the extra
+//!   error-surface this design avoids.
 //!
-//! `main.rs`'s `dispatch` tries the [E4.T5] mechanism (`resolve_takeover`)
+//! `main.rs`'s `dispatch` tries the newer mechanism (`resolve_takeover`)
 //! first, then falls back to the legacy one (`match_takeover`) — the two
 //! tables' first-token sets are disjoint (`undo`/`redo`/`element`/`text`/
 //! `textbox`/`comment` vs. everything else), so there is no ordering
 //! ambiguity between them. `undo`/`redo` are listed in both tables (they
-//! predate the family split and fit either shape); the [E4.T5] mechanism
+//! predate the family split and fit either shape); the newer mechanism
 //! resolves them first in practice, so the legacy arms for them are inert
 //! but kept for `match_takeover`'s own unit tests and to avoid special-
 //! casing `TAKEOVER_TABLE`'s contents.
 //!
 //! `REGISTERED_COMMAND_NAMES` is the fuller list of actual registered
 //! command names (family plus sub-command, where one exists) across BOTH
-//! mechanisms — [E4.T4]'s full scope, [E4.T7]'s five `effect` sub-commands,
-//! NOOP-281/F5's 26 `chart`/`table`/`asset` commands, and (once each phase
-//! below lands) [E4.T5]'s 29 `element`/`text`/`textbox`/`comment` commands —
-//! and what A1's acceptance criterion is checked against, not either
+//! mechanisms — the legacy mechanism's full scope, `effect`'s five
+//! sub-commands, the 26 `chart`/`table`/`asset` commands, and the 29
+//! `element`/`text`/`textbox`/`comment` commands — and what the
+//! command-coverage acceptance criterion is checked against, not either
 //! takeover table itself.
 //!
-//! The exact-contents tripwire tests below are deliberate, same spirit as
-//! F2's original `takeover_table_is_exactly_undo_and_redo`: a future ticket
+//! The exact-contents tripwire tests below are deliberate: a future change
 //! adding a command WILL break one of them, forcing a conscious edit here
 //! rather than a command silently becoming Rust-dispatched as a side effect
 //! of some other change.
@@ -83,15 +82,15 @@ use crate::result::CommandResult;
 pub type CommandTokens = &'static [&'static str];
 
 /// `undo`/`redo` are the only single-token, family-less entries under the
-/// [E4.T5] mechanism — kept directly here rather than given their own
+/// newer mechanism — kept directly here rather than given their own
 /// one-command "family module" (that would just be `element`/`text`/
 /// `textbox`/`comment`'s pattern with an extra layer of indirection for two
-/// commands that predate this ticket's family concept entirely).
+/// commands that predate the family concept entirely).
 const CORE_TAKEOVER: &[CommandTokens] = &[&["undo"], &["redo"]];
 
-/// Every [E4.T5]-mechanism family's token-sequence list, in the fixed order
-/// the combined table is defined in. A `const fn`/array (not a `Vec`) so
-/// `resolve_takeover` allocates nothing on the hot path.
+/// Every family's token-sequence list under the newer mechanism, in the
+/// fixed order the combined table is defined in. A `const fn`/array (not a
+/// `Vec`) so `resolve_takeover` allocates nothing on the hot path.
 fn takeover_families() -> [&'static [CommandTokens]; 5] {
     [
         CORE_TAKEOVER,
@@ -102,8 +101,8 @@ fn takeover_families() -> [&'static [CommandTokens]; 5] {
     ]
 }
 
-/// Flattens every [E4.T5]-mechanism family's table into one list — used
-/// only by tests (the A1/exact-membership assertion) and nowhere on the
+/// Flattens every family's table (under the newer mechanism) into one list
+/// — used only by tests (the exact-membership assertion) and nowhere on the
 /// dispatch hot path, which walks `takeover_families()` directly to avoid
 /// allocating a `Vec` per CLI invocation.
 #[cfg(test)]
@@ -111,14 +110,14 @@ fn flattened_takeover_table() -> Vec<CommandTokens> {
     takeover_families().into_iter().flatten().copied().collect()
 }
 
-/// Resolves argv's [E4.T5]-mechanism command-name prefix, if any (`undo`/
-/// `redo`/`element`/`text`/`textbox`/`comment`). Walks every family's table
-/// and returns the LONGEST token sequence that is a literal prefix of
-/// `argv` (ties cannot occur: no two registered commands share a full token
-/// sequence, and no registered command is itself a prefix of another in
-/// this ticket's table — plan section 1.4). `None` means "no entry in this
-/// mechanism matches" — callers must still try the legacy `match_takeover`
-/// before falling back to Node.
+/// Resolves argv's command-name prefix under the newer mechanism, if any
+/// (`undo`/`redo`/`element`/`text`/`textbox`/`comment`). Walks every
+/// family's table and returns the LONGEST token sequence that is a literal
+/// prefix of `argv` (ties cannot occur: no two registered commands share a
+/// full token sequence, and no registered command is itself a prefix of
+/// another in this table). `None` means "no entry in this mechanism
+/// matches" — callers must still try the legacy `match_takeover` before
+/// falling back to Node.
 pub fn resolve_takeover(argv: &[&str]) -> Option<CommandTokens> {
     let mut best: Option<CommandTokens> = None;
     for candidate in takeover_families().into_iter().flatten().copied() {
@@ -135,7 +134,7 @@ pub fn resolve_takeover(argv: &[&str]) -> Option<CommandTokens> {
     best
 }
 
-/// Dispatches a resolved [E4.T5]-mechanism takeover-table command to its
+/// Dispatches a resolved takeover-table command (newer mechanism) to its
 /// family's handler. `tokens` must be a value `resolve_takeover` actually
 /// returned — the `unreachable!` below is guarded by that invariant, not a
 /// runtime check.
@@ -151,10 +150,10 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     }
 }
 
-/// The legacy (pre-[E4.T5]) takeover table: `argv[0]` for most entries, the
-/// full two-word `"effect <sub>"` form for `effect`. Every pre-existing
-/// family stays here unchanged; see this module's doc comment for why
-/// `undo`/`redo` also appear in the [E4.T5] `CORE_TAKEOVER` table above.
+/// The legacy takeover table: `argv[0]` for most entries, the full
+/// two-word `"effect <sub>"` form for `effect`. Every pre-existing family
+/// stays here unchanged; see this module's doc comment for why `undo`/
+/// `redo` also appear in the newer mechanism's `CORE_TAKEOVER` table above.
 pub const TAKEOVER_TABLE: &[&str] = &[
     "asset",
     "cat",
@@ -208,11 +207,9 @@ pub fn is_in_takeover_table(name: &str) -> bool {
 }
 
 /// The 58 full registered command names this crate's scope covers —
-/// `argv[0]` alone for the single-level commands, `"<family> <sub...>"` for
-/// the rest. `undo`/`redo` are commands F2 already registered; [E4.T4] left
-/// their entries exactly as they were, [E4.T7] added the five `effect`
-/// sub-commands, and NOOP-281/F5 added the 26 `chart`/`table`/`asset`
-/// commands.
+/// `argv[0]` alone for the single-level commands, `"<family> <sub...>"`
+/// for the rest: `undo`/`redo`, the five `effect` sub-commands, and the 26
+/// `chart`/`table`/`asset` commands.
 pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "new",
     "open",
@@ -280,19 +277,17 @@ mod tests {
     use super::*;
 
     // `takeover_table_is_exactly_undo_and_redo`, the tripwire this module's
-    // previous revision carried, is removed rather than updated in place —
-    // see the `test: prune` commit's message for why. Its replacement is
-    // below, now that P9 has landed every family's commands: asserting the
-    // FULL 29-command membership before that point would just have
-    // re-derived `CORE_TAKEOVER` — not a stronger assertion, a vacuous one.
+    // previous revision carried, was removed rather than updated in place.
+    // Its replacement is below, now that every family's commands have
+    // landed: asserting the FULL 29-command membership before that point
+    // would just have re-derived `CORE_TAKEOVER` — not a stronger
+    // assertion, a vacuous one.
 
     #[test]
     fn takeover_table_is_exactly_the_29_registered_commands_no_more_no_fewer() {
-        // Round-1 review (NOOP-283/NOOP-292) debt item 2, deferred to P9 by
-        // Dev-Leader's ruling on NOOP-309: the weaker
-        // `flattened_table_has_no_duplicate_command` test below proves no
-        // command is registered twice, but never proves the table is
-        // exactly this ticket's 29 — it would pass equally well with 5
+        // The weaker `flattened_table_has_no_duplicate_command` test below
+        // proves no command is registered twice, but never proves the
+        // table is exactly this 29 — it would pass equally well with 5
         // commands registered, or 40. This is the exhaustive version:
         // exact set equality, hand-written independently of
         // `commands::element`/`text`/`textbox`/`comment`'s own `TAKEOVER`
@@ -333,11 +328,11 @@ mod tests {
         .collect();
         assert_eq!(expected.len(), 29, "this test's own list drifted from 29");
 
-        // Scoped to this ticket's four families, not `flattened_takeover_table()`
+        // Scoped to these four families, not `flattened_takeover_table()`
         // as a whole — that also carries `CORE_TAKEOVER`'s pre-existing
-        // `undo`/`redo` (a prior ticket's entries, already covered by
+        // `undo`/`redo` (entries that predate this set, already covered by
         // `undo_and_redo_still_resolve_as_single_token_commands` above),
-        // which are no more "this ticket's 29 commands" than a sixth
+        // which are no more part of "these 29 commands" than a sixth
         // family would be.
         let actual: std::collections::HashSet<CommandTokens> = element::TAKEOVER
             .iter()
@@ -457,9 +452,9 @@ mod tests {
 
     #[test]
     fn ls_is_now_in_the_takeover_table() {
-        // Was `!is_in_takeover_table("ls")` before this ticket (F2's own
-        // tripwire, explicitly named by the F2 plan as something that WOULD
-        // break once `ls` moved to Rust — that ticket is this one).
+        // Was `!is_in_takeover_table("ls")` before `ls` moved to Rust — a
+        // tripwire explicitly anticipating that this assertion would need
+        // to flip once that happened.
         assert!(is_in_takeover_table("ls"));
     }
 
@@ -528,9 +523,9 @@ mod tests {
     #[test]
     fn ls_is_not_in_the_takeover_table() {
         // `ls` is dispatched through the legacy `TAKEOVER_TABLE` mechanism
-        // (F3, above) — it never was and still is not one of the [E4.T5]
-        // family mechanism's own entries, which is what `resolve_takeover`
-        // reports on.
+        // (above) — it never was and still is not one of the newer family
+        // mechanism's own entries, which is what `resolve_takeover` reports
+        // on.
         assert!(resolve_takeover(&["ls"]).is_none());
     }
 

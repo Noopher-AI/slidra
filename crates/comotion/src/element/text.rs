@@ -34,13 +34,13 @@ use crate::text::wrap::{Align, WrapOptions, WrappedText, wrap_text};
 use crate::text::{DEFAULT_FONT_FAMILY, FontMetrics, escape_xml_attr, escape_xml_text};
 use std::collections::HashMap;
 
-/// `data-comot-text-align` (NOOP-65 決定 D). Duplicated as a literal rather
+/// `data-comot-text-align`. Duplicated as a literal rather
 /// than imported from `slide::format` — that module's own copy is private
 /// (only `read_text_align` is exported), mirroring the TS original's
 /// module-cycle-driven duplication of this exact constant.
 const TEXT_ALIGN_ATTRIBUTE: &str = "data-comot-text-align";
 
-/// `data-comot-list` (NOOP-65 決定 E): one whitespace-separated token per
+/// `data-comot-list`: one whitespace-separated token per
 /// paragraph, on the content `<text>` (not the container).
 const LIST_ATTRIBUTE: &str = "data-comot-list";
 
@@ -431,12 +431,16 @@ fn render_plain_text_content(
     let mut out = String::new();
     for (index, line) in lines.iter().enumerate() {
         use std::fmt::Write as _;
-        // F-04b (NOOP-399): every line but the last carries
+        // Every line but the last carries
         // `data-comot-break="1"` — the same marker `read_text_box_runs`
         // (table/model.rs) and slide-dom.ts's `readTextContent` already
         // read to reconstruct a `\n` — so a plain `<text>`'s hard breaks
         // survive a re-read (double-click) the same way a text box's do.
-        let break_attr = if index + 1 < lines.len() { " data-comot-break=\"1\"" } else { "" };
+        let break_attr = if index + 1 < lines.len() {
+            " data-comot-break=\"1\""
+        } else {
+            ""
+        };
         write!(
             out,
             "<tspan x=\"{}\" y=\"{}\"{break_attr}>{}</tspan>",
@@ -483,7 +487,7 @@ fn replace_container_text(
         let align = read_text_align(container, element_id)?;
         // A full replace has no way to remap existing runs' character
         // ranges against the new text, so runs are dropped. List state is
-        // carried forward per paragraph index instead (#303): a text box
+        // carried forward per paragraph index instead: a text box
         // copied from a bullet-list template stays a bullet list after its
         // text is overwritten, and paragraphs beyond the old count inherit
         // the last paragraph's kind — the same "extend with the last token"
@@ -1102,7 +1106,7 @@ pub struct AddTextBoxInput<'a> {
 /// `<text>` with its wrapped `<tspan>` lines, and (when `list_tokens` has
 /// any non-`none` entry) the marker `<text>` — without touching any
 /// document. `add_text_box` appends it; `slide::ingest`'s text-box
-/// declarations (#303) splice it in place of the declaring `<text>`.
+/// declarations splice it in place of the declaring `<text>`.
 /// Returns `(markup, rendered line count)`.
 pub(crate) fn build_text_box_markup(
     element_id: &str,
@@ -1117,7 +1121,7 @@ pub(crate) fn build_text_box_markup(
     let font = resolve_font(fonts, input.font_family, element_id)?;
 
     // Wrap against the value that will actually be written, not the raw
-    // input (same #76 W1-R11 reasoning as `resize_text_box`): reject before
+    // input (same reasoning as `resize_text_box`): reject before
     // any splice happens rather than persisting a width/size the wrap never
     // agreed to.
     let normalized_width: f64 = format_svg_number(input.width).parse().unwrap_or(f64::NAN);
@@ -1176,7 +1180,7 @@ pub(crate) fn build_text_box_markup(
         .fill
         .map(|f| format!(" fill=\"{}\"", escape_xml_attr(f)))
         .unwrap_or_default();
-    // "只在建立當下決定" (align only ever set at insert time): `left` writes
+    // Align is only ever set at insert time: `left` writes
     // no attribute at all, matching every rewrap path's "absent means left"
     // default read.
     let align_attr = match input.align {
@@ -1384,7 +1388,7 @@ mod tests {
 
     #[test]
     fn text_set_on_a_text_box_rewraps_and_keeps_its_list_state() {
-        // #303: the list survives a full replace (it used to be cleared),
+        // The list survives a full replace (it used to be cleared),
         // and the marker `<text>` is rebuilt for the new paragraphs.
         let svg = slide(
             r#"<g id="tb" data-comot-text-width="200"><text font-family="Noto Sans TC" font-size="16" data-comot-list="bullet" xml:space="preserve"><tspan x="0" y="0">old</tspan></text><text data-comot-list-marker="true" font-family="Noto Sans TC" font-size="16" xml:space="preserve"><tspan x="0" y="0">•</tspan></text></g>"#,
@@ -1410,7 +1414,7 @@ mod tests {
     /// walks backward over whitespace back to the tag name.
     #[test]
     fn text_set_full_replace_keeps_the_list_and_extends_it_to_new_paragraphs() {
-        // #303: a text box copied from a bullet-list template must stay a
+        // A text box copied from a bullet-list template must stay a
         // list after `text set`; paragraphs beyond the old count inherit
         // the last paragraph's kind.
         let svg = slide(

@@ -1,7 +1,6 @@
 //! Single source of truth for "what is a legal effect item": the value
-//! sets, per-attribute validation, and step derivation. Ported from
-//! `packages/core/src/effects/index.ts` (full file). `effects::edit` is the
-//! reader/writer half, built on these types.
+//! sets, per-attribute validation, and step derivation. `effects::edit` is
+//! the reader/writer half, built on these types.
 
 pub mod edit;
 

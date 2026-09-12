@@ -1,11 +1,10 @@
-//! `.comot` zip container read/write, ported from
-//! `packages/core/src/container.ts` (full file), using the `zip`/`flate2`
+//! `.comot` zip container read/write, using the `zip`/`flate2`
 //! crates in place of `fflate` (§3.6/D2 of the plan — version pinned to
 //! `zip = "7.2.0"`, the newest release this workspace's `rust-toolchain.toml`
 //! 1.85.0 can build). The `.comot` zip's own bytes are never required to
 //! match the TS `fflate` output (comot-format.md: compression level is not
 //! part of the format) — only the decompressed "relative path -> bytes"
-//! mapping has to agree (see A2's "等價" definition, plan §5).
+//! mapping has to agree (see A2's "equivalence" definition, plan §5).
 
 use crate::errors::{CoMotionError, CoMotionResult};
 use std::collections::BTreeMap;

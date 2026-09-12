@@ -1,7 +1,5 @@
-//! The pure `svgContent: string -> string` mutation layer this ticket
-//! ports from `packages/core/src/element-edit.ts`, `element-group.ts`,
-//! `element-arrange.ts`, and `element-clipboard.ts` (plan section 1.1).
-//! Every function here takes and returns plain SVG text, never touches the
+//! The pure `svgContent: string -> string` mutation layer (plan section
+//! 1.1). Every function here takes and returns plain SVG text, never touches the
 //! filesystem, and reports every failure as `CoMotionError` — the CLI argv
 //! layer lives one level up, in `crate::commands::element` (a different
 //! module tree with a similar name; see that module's own doc comment for
@@ -22,11 +20,10 @@ pub mod text;
 use crate::slide::scan::{ScannedNode, attribute_value};
 
 /// `data-comot-lock="true"` marks an element as a locked layout skeleton
-/// piece (ADR-0013). Ported from `element-text.ts`'s `LOCK_ATTRIBUTE` —
-/// that file is TS's single source of truth for this constant (every other
-/// TS module imports it rather than redeclaring it), so unlike the four
-/// splice helpers this is not "one of several duplicated copies to
-/// consolidate" — it is simply this crate's one copy of what was always
+/// piece (ADR-0013). This constant has a single source of truth (every
+/// module that needs it imports it rather than redeclaring it), so unlike
+/// the four splice helpers this is not "one of several duplicated copies
+/// to consolidate" — it is simply this crate's one copy of what was always
 /// one thing.
 pub const LOCK_ATTRIBUTE: &str = "data-comot-lock";
 

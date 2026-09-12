@@ -1,5 +1,5 @@
-//! Whole-page SVG ingest for `slide add --svg` / `slide set --svg` (#303,
-//! ADR-0018): the agent authors one complete page, CoMotion makes it a
+//! Whole-page SVG ingest for `slide add --svg` / `slide set --svg`
+//! (ADR-0018): the agent authors one complete page, CoMotion makes it a
 //! compliant slide. Steps, in order:
 //!
 //! 1. The root must be `<svg>`; a missing `viewBox` is filled with the
@@ -26,7 +26,7 @@ use crate::svgnum::format_svg_number;
 use crate::text::list::{ListKind, parse_list_tokens};
 use crate::text::runs::utf16_slice;
 
-/// The composition roles an element may declare (#303 §B), borrowed from
+/// The composition roles an element may declare, borrowed from
 /// ppt-master's shape-role grammar. They say what an element *is for*, which
 /// is what `validate` can check once coordinates are the page's own
 /// business: `field` — the region a relationship operates in; `node` — a
@@ -143,7 +143,7 @@ const ASSET_REFERENCE_ATTRIBUTES: &[&str] = &["href", "xlink:href", "data-comot-
 ///
 /// Slides live in `slides/`, so an asset reference inside a page is written
 /// relative to that directory — the only form the stage's `/api/raw/slides/`
-/// base resolves (#303). But every command that hands an asset path back
+/// base resolves. But every command that hands an asset path back
 /// (`asset import`, `ls`) speaks *virtual* paths, which are rooted at the
 /// presentation: `assets/x.jpg`. An agent that pastes what it was just given
 /// therefore writes a href that resolves to `slides/assets/x.jpg` and renders
@@ -213,8 +213,8 @@ fn check_text_is_boxed(node: &ScannedNode, boxed: bool, top_level: bool) -> CoMo
     let garnish_here = attribute_value(node, ROLE_ATTRIBUTE).as_deref() == Some("garnish");
     for child in &node.children {
         if child.tag == "text" {
-            let garnish =
-                garnish_here || attribute_value(child, ROLE_ATTRIBUTE).as_deref() == Some("garnish");
+            let garnish = garnish_here
+                || attribute_value(child, ROLE_ATTRIBUTE).as_deref() == Some("garnish");
             if boxed || garnish || (top_level && is_declaration(child)) {
                 continue;
             }
@@ -306,7 +306,7 @@ fn declaration_markup(
     let name = attribute_value(node, "data-comot-name");
     // A declaration's role has to be carried onto the wrapper the builder
     // emits: the declaration `<text>` itself is replaced, so anything left
-    // on it is lost (#303 §B).
+    // on it is lost.
     let role = match attribute_value(node, ROLE_ATTRIBUTE) {
         None => None,
         Some(role) if ELEMENT_ROLES.contains(&role.as_str()) => Some(role),
@@ -482,8 +482,16 @@ mod tests {
             r##"<svg viewBox="0 0 1280 720"><image id="el-photo" x="0" y="0" width="10" height="10" href="assets/a.png"/><image id="el-keep" x="0" y="0" width="10" height="10" href="../assets/b.png"/><g id="el-clip" data-comot-media="assets/c.webm"><rect x="0" y="0" width="10" height="10"/></g><image id="el-remote" x="0" y="0" width="10" height="10" href="https://example.com/assets/d.png"/></svg>"##,
         )
         .unwrap();
-        assert!(out.svg.contains(r##"href="../assets/a.png""##), "{}", out.svg);
-        assert!(out.svg.contains(r##"href="../assets/b.png""##), "{}", out.svg);
+        assert!(
+            out.svg.contains(r##"href="../assets/a.png""##),
+            "{}",
+            out.svg
+        );
+        assert!(
+            out.svg.contains(r##"href="../assets/b.png""##),
+            "{}",
+            out.svg
+        );
         assert!(
             out.svg.contains(r##"data-comot-media="../assets/c.webm""##),
             "{}",

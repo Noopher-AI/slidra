@@ -188,11 +188,10 @@ fn require_positive_number(value: Option<f64>, flag: &str) -> CoMotionResult<f64
 }
 
 /// Narrows an arbitrary string to the one embed provider this project
-/// supports — ported out of `packages/core/src/embed.ts`'s
-/// `requireEmbedProvider` only (plan section 2, boundary 17: "照移，不擴充
-/// 支援的平台" — nothing else from `embed.ts` is in scope, since
-/// `element insert` never resolves a YouTube URL itself, only validates and
-/// stores the provider name the caller already resolved it to).
+/// supports (plan section 2, boundary 17: port as-is, without expanding
+/// the set of supported platforms) — `element insert` never resolves a
+/// YouTube URL itself, only validates and stores the provider name the
+/// caller already resolved it to.
 fn require_embed_provider(value: &str) -> CoMotionResult<&'static str> {
     match value {
         "youtube" => Ok("youtube"),
@@ -2177,12 +2176,11 @@ mod tests {
         assert_eq!(unlocked_again, svg);
     }
 
-    // Round-1 review (NOOP-300, debt item 3): every fixture above this point
-    // is pure ASCII, so a leading-CJK offset bug (UTF-16 code-unit vs. byte
-    // offset — the exact class of bug `effects::remove_effects_targeting`
-    // had, per this crate's `effects` module tests) would slip through
-    // undetected here. Each CJK character is 1 UTF-16 unit but 3 UTF-8
-    // bytes, so a `<title>投影片標題文字</title>` prefix (7 CJK chars) shifts
+    // Every fixture above this point is pure ASCII, so a leading-CJK offset
+    // bug (UTF-16 code-unit vs. byte offset — the exact class of bug
+    // `effects::remove_effects_targeting` had, per this crate's `effects`
+    // module tests) would slip through undetected here. Each CJK character is
+    // 1 UTF-16 unit but 3 UTF-8 bytes, so a `<title>投影片標題文字</title>` prefix (7 CJK chars) shifts
     // every later byte offset by 14 relative to its UTF-16 offset — large
     // enough that a wrong conversion reliably corrupts or panics rather than
     // accidentally landing on the right byte by coincidence.

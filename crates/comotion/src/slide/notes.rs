@@ -1,7 +1,6 @@
-//! Speaker notes (`slide notes set`), ported from `packages/core/src/notes.ts`
-//! (full file). A pure string -> string splice, modeled like `element-text.ts`:
-//! every other byte of `svg_content` is preserved exactly. Notes live in the
-//! same `<metadata>` a slide's `<comot:effects>`/`<comot:transition>` use, as
+//! Speaker notes (`slide notes set`): a pure string -> string splice — every
+//! other byte of `svg_content` is preserved exactly. Notes live in the same
+//! `<metadata>` a slide's `<comot:effects>`/`<comot:transition>` use, as
 //! `<comot:notes>`.
 
 use crate::errors::{CoMotionError, CoMotionResult};

@@ -905,7 +905,7 @@ fn synthesized_legacy_fade_transition_migrates_only_the_slide_without_one() {
     fs::remove_dir_all(&work).ok();
 }
 
-/// The frozen `project.json` write format (plan §4.2's "凍結格式"):
+/// The frozen `project.json` write format (plan §4.2's "frozen format"):
 /// `serde_json`'s 2-space pretty printer, exactly one trailing newline,
 /// existing keys keep their original position when their value changes,
 /// and a newly-added key (`fonts`) lands at the end.

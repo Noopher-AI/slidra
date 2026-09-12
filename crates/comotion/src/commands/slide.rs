@@ -5,10 +5,10 @@ use crate::argv;
 use crate::errors::CoMotionError;
 use crate::result::{CommandResult, FailureKind};
 use crate::slide::ingest;
-use crate::validate;
 use crate::slide::ops::{self, AddSlideInput, SetSlideTransitionOnInput};
 use crate::slide::style::PageStyleUpdate;
 use crate::slide::transition::PageTransitionEffect;
+use crate::validate;
 use crate::workspace::{self, project::read_project_json, virtual_fs, write as ws_write};
 
 pub fn run(args: &[String], json_flag: bool) -> CommandResult {
@@ -56,7 +56,8 @@ fn run_render(args: &[String], json_flag: bool) -> CommandResult {
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
     match render_slide_for_display(&id, &path) {
-        // `docs/spec/cli.md`'s renderer contract ("渲染規則與 `cat` 完全相同"):
+        // `docs/spec/cli.md`'s renderer contract ("rendering rules are
+        // exactly the same as `cat`"):
         // under `--json` the raw bytes go through `crate::base64::encode`
         // (see `cat::run`'s json_flag branch); the non-`--json` path keeps
         // the raw string so `render()` above still writes it byte-for-byte.
@@ -140,7 +141,12 @@ fn run_add(args: &[String]) -> CommandResult {
             // The page is judged at the position it will occupy — `--at`
             // inserts, so the pages after it shift and this one is the
             // (index + 1)-th, not the last.
-            ingest_for(&id, &raw, &format!("slides/{:03}.svg", index + 1), Some(index))
+            ingest_for(
+                &id,
+                &raw,
+                &format!("slides/{:03}.svg", index + 1),
+                Some(index),
+            )
         }) {
             Ok(v) => Some(v),
             Err(err) => {
@@ -241,7 +247,7 @@ fn describe_refusal(refused: &[validate::ValidationError]) -> String {
     )
 }
 
-/// `slide set <id> <slide-path> --svg '<整頁 SVG>'` (#303): overwrites one
+/// `slide set <id> <slide-path> --svg '<full-page SVG>'`: overwrites one
 /// existing slide (or template) with an agent-authored page. The old page's
 /// `<metadata>` survives when the new markup has none. Written through the
 /// one history-recording door, so undo restores the previous page.

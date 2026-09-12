@@ -57,8 +57,8 @@ fn is_finite_number_token(token: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Ports the regex `^(\d+),(\d+)$` from `describeTableShapeProblem`'s cell
-/// address check. `u128` (rather than `usize`) keeps an absurdly long digit
+/// Matches the regex `^(\d+),(\d+)$` used by the cell address check.
+/// `u128` (rather than `usize`) keeps an absurdly long digit
 /// string from overflowing into a parse failure that would misreport as
 /// "格式錯誤" instead of "超出表格範圍" — JS's `Number()` would instead
 /// silently lose precision on such a string and still produce *a* number,

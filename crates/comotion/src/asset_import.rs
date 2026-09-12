@@ -1,6 +1,5 @@
 //! `asset import`'s pure decisions (format detection dispatch, filename
-//! sanitization/conflict resolution) — ported from
-//! `packages/core/src/asset-import.ts`. No I/O here: reading the source (a
+//! sanitization/conflict resolution). No I/O here: reading the source (a
 //! local path or a URL) and writing the result into `assets/`/`assets/data/`
 //! is `commands::asset_import::run`'s job.
 //!
@@ -123,10 +122,9 @@ pub fn resolve_asset_import(input: ResolveAssetImportInput) -> CoMotionResult<Re
 }
 
 // ---------------------------------------------------------------------------
-// `asset import --as csv` (E2.T14, plan §0(c)/§4.3): a deliberate, explicit
-// hole in ADR-0015's "no text files, ever" guard. Without `--as csv`,
-// `resolve_asset_import` above is untouched byte-for-byte — this path only
-// runs when the caller opts in.
+// `asset import --as csv`: a deliberate, explicit hole in ADR-0015's "no
+// text files, ever" guard. Without `--as csv`, `resolve_asset_import` above
+// is untouched byte-for-byte — this path only runs when the caller opts in.
 // ---------------------------------------------------------------------------
 
 const RESERVED_CSV_HEADER_NAMES: [&str; 3] = ["slide_number", "slide_total", "presentation_name"];

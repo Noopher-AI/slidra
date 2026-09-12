@@ -1,33 +1,29 @@
-//! Shared argv parsing helpers for the command handlers in `commands/`,
-//! ported from `packages/cli/src/argv.ts`'s small-function toolkit
-//! (`requirePositional`/`isFlagLike`/`requireFlag`/`optionalFlag`/
-//! `requireNumberFlag`/`hasFlag`). Every function at THIS module's root
+//! Shared argv parsing helpers for the command handlers in `commands/`
+//! (`require_positional`/`is_flag_like`/`require_flag`/`optional_flag`/
+//! `require_number_flag`/`has_flag`). Every function at THIS module's root
 //! returns a plain `String` error message on failure — callers wrap it into
 //! a `CommandResult::failure` themselves (argv errors are reported the same
 //! way as any other command failure, `FailureKind::Failed`, never a
-//! separate exit path). This is [E4.T2]'s original single-file `argv.rs`,
-//! folded into this directory module (rather than kept as a sibling
-//! `argv.rs`, which Rust disallows alongside `argv/mod.rs`) so the
+//! separate exit path). This module folds what was originally a
+//! single-file `argv.rs` into this directory module (rather than kept as a
+//! sibling `argv.rs`, which Rust disallows alongside `argv/mod.rs`) so the
 //! `chart`/`table`/`asset` command families below can live at
 //! `argv::chart`/`argv::table`/`argv::asset`.
 //!
 //! `chart`/`table`/`asset` need every one of these SAME primitives, but
 //! returning `CoMotionError` (not `String`), since their own `parse`
-//! functions build on `CoMotionResult` and propagate with `?` — NOOP-281/F5
-//! ported them independently as its own `case "chart":`/`case "table":`
-//! copy of `argv.ts`'s toolkit before this ticket's rebase discovered
-//! [E4.T2]'s copy already existed under this same module path. Rather than
+//! functions build on `CoMotionResult` and propagate with `?`. Rather than
 //! rewrite every already-merged `String`-returning call site above (11
 //! command families) OR every `CoMotionError`-propagating call site in
 //! `argv::chart`/`argv::table`/`argv::asset` (26 commands), both toolkits
-//! are kept side by side: this module's own root keeps [E4.T2]'s original
+//! are kept side by side: this module's own root keeps its original
 //! `String` contract untouched, and `ct` below (private; visible to this
-//! module and its `chart`/`table`/`asset` children) holds NOOP-281/F5's
-//! `CoMotionError` contract. `collect_repeated_flag`/`parse_js_number` are
-//! NOOP-281/F5 additions with no `String`-returning equivalent above, so
-//! they stay at this module's root — `parse_js_number` in particular is
-//! called as `crate::argv::parse_js_number` from `chart`/`table`'s own
-//! model/edit/csv modules, not just from argv parsing.
+//! module and its `chart`/`table`/`asset` children) holds the
+//! `CoMotionError` contract. `collect_repeated_flag`/`parse_js_number` have
+//! no `String`-returning equivalent above, so they stay at this module's
+//! root — `parse_js_number` in particular is called as
+//! `crate::argv::parse_js_number` from `chart`/`table`'s own model/edit/csv
+//! modules, not just from argv parsing.
 
 pub mod asset;
 pub mod chart;
@@ -306,9 +302,9 @@ mod tests {
     }
 }
 
-/// NOOP-281/F5's own copy of this module's toolkit, returning
-/// `CoMotionError` instead of `String` — see this module's own doc comment
-/// for why it lives here rather than replacing the root copy above.
+/// A second copy of this module's toolkit, returning `CoMotionError`
+/// instead of `String` — see this module's own doc comment for why it
+/// lives here rather than replacing the root copy above.
 /// `pub(super)` (visible throughout `argv` and its `chart`/`table`/`asset`
 /// children, never outside `argv`) rather than `pub` — nothing outside this
 /// module's own command families should reach for a second, differently-

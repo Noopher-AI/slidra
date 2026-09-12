@@ -143,8 +143,9 @@ pub fn set_attr_splice(node: &ScannedNode, attr: &str, value: &str) -> Splice {
 /// `Err` when the container's existing `transform` cannot be parsed or
 /// decomposed (malformed value, skew, a degenerate/zero-scale matrix) —
 /// `parse_transform`/`decompose_matrix` are themselves fallible (plan
-/// section 3.4's move/rotate contract row: "目標既有的 transform 含傾斜…
-/// 無法拆解" is exactly this path surfacing).
+/// section 3.4's move/rotate contract row: "the container's existing
+/// transform has a skew … it cannot be decomposed" is exactly this path
+/// surfacing).
 ///
 /// `mutate` is fallible (`CoMotionResult`, not a bare `TransformParts`)
 /// because `element::group`'s ungroup uses this to install an entirely

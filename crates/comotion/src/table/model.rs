@@ -1,5 +1,4 @@
-//! `TableModel`/`TableCell`, ported from `packages/core/src/table/model.ts`
-//! (362 lines) — the rich, editable table model (cells, header, theme,
+//! `TableModel`/`TableCell` — the rich, editable table model (cells, header, theme,
 //! source, span coverage). `crates/comotion/src/slide/table_grid.rs` (F2's
 //! territory, read-only here) already ports the SHALLOW structural half of
 //! this same TS file — `TABLE_CONTAINER_TYPE` and `describe_table_shape_problem`

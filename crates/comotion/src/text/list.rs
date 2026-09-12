@@ -1,5 +1,4 @@
-//! `ListKind`, `LIST_INDENT_EM`, and list-indent calculation, ported from
-//! `packages/core/src/text/list.ts` (41 lines, ported in full).
+//! `ListKind`, `LIST_INDENT_EM`, and list-indent calculation.
 
 use crate::errors::{CoMotionError, CoMotionResult};
 

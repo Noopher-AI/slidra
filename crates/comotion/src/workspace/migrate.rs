@@ -1,10 +1,10 @@
 //! `formatVersion` 1→2→3→4 migration, run once by `open` (via
 //! `container::unpack_container`'s caller) on a freshly unpacked work
-//! directory. Ported from `packages/core/src/project-migration.ts`'s
-//! `migrateLegacyTransition` (the 2→3 step) plus two steps that TS never
-//! had to implement standalone (1→2's `templates` upgrade — TS does this
-//! lazily on next write instead; 3→4's `fonts` requirement — new to this
-//! ticket, see plan §0's "對帳中最重要的一件事").
+//! directory. Handles the 2→3 step (`migrateLegacyTransition`) plus two
+//! steps that TS never had to implement standalone (1→2's `templates`
+//! upgrade — TS does this lazily on next write instead; 3→4's `fonts`
+//! requirement — newly introduced here, see plan §0's "the single most
+//! important thing in reconciliation").
 //!
 //! `new` never calls this: it produces `formatVersion: 4` directly
 //! (`presentation::build_minimal_presentation`).

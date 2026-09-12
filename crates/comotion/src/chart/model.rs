@@ -538,8 +538,8 @@ fn parse_values(raw: &str, element_id: &str, series_name: &str) -> CoMotionResul
 /// Structural legality (exactly one `<comot:chart>` and one `<svg>`) was
 /// already checked by `assert_slide_compliant` — this only reads content.
 /// Tolerates `axes="single"` documents where a stray series still carries
-/// `axis="right"` (a hand-edited or pre-migration file, plan §4.4 "合法但
-/// 奇怪") by rendering that series against the left axis; it does not
+/// `axis="right"` (a hand-edited or pre-migration file, plan §4.4 "legal but
+/// odd") by rendering that series against the left axis; it does not
 /// tolerate anything `validate_chart_model` would reject for a FRESH write
 /// (missing attributes, non-finite numbers, count mismatches).
 pub fn read_chart_model(svg_content: &str, element_id: &str) -> CoMotionResult<ChartModel> {
@@ -691,7 +691,7 @@ pub fn read_chart_model(svg_content: &str, element_id: &str) -> CoMotionResult<C
 
     // Structural read only above; re-validate everything a write would
     // check EXCEPT the strict single-axis-implies-no-right-series rule
-    // (plan §4.4 "合法但奇怪" — a stray legacy axis="right" under
+    // (plan §4.4 "legal but odd" — a stray legacy axis="right" under
     // axes="single" is tolerated on read, treated as "left" by the
     // renderer, see chart/render.rs).
     let for_validation = if model.axes == ChartAxesMode::Single {
@@ -1049,7 +1049,7 @@ mod tests {
     fn read_chart_model_tolerates_legacy_right_axis_under_single_axes() {
         // Hand-crafted, not something `serialize_chart_data` would ever
         // produce for axes="single" — simulates a pre-migration file
-        // (plan §4.4 "合法但奇怪").
+        // (plan §4.4 "legal but odd").
         let svg = format!(
             r#"<svg viewBox="0 0 100 100"><g id="e1" data-comot-type="chart"><comot:chart xmlns:comot="{CHART_NS}" type="bar" stacked="false" axes="single" palette="brand" legend="bottom" grid="true" labels="true" x-title="" y-title="" width="100" height="100"><comot:series name="S1" values="1,2" axis="right"/><comot:categories values="C1,C2"/></comot:chart><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/></g></svg>"#
         );
