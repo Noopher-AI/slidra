@@ -176,7 +176,7 @@ it("full play path: entering play, stepping through effects, changing pages, exi
   await expectVisible(appearText);
 
   // Exit play mode, back to view.
-  await page.locator('button:has-text("離開播放")').click();
+  await page.locator('button:has-text("Exit Play")').click();
   // ADR-0011: view mode now runs a script too (selection-runtime.js), so
   // the sandbox no longer goes back to "" here. What this line pins is
   // that it carries only allow-scripts — never allow-same-origin.

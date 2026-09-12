@@ -615,7 +615,7 @@
     function reportError(err) {
       post({
         event: "error",
-        message: "媒體播放失敗（" + id + "）：" + (err && err.message ? err.message : String(err)),
+        message: "media playback failed (" + id + "): " + (err && err.message ? err.message : String(err)),
       });
     }
 
@@ -649,7 +649,7 @@
     // without taking down the rest of the slide's overlays — each
     // placeholder's overlay is independent.
     el.addEventListener("error", function () {
-      post({ event: "error", message: "媒體載入失敗（" + id + "）：" + cue.src });
+      post({ event: "error", message: "media load failed (" + id + "): " + cue.src });
     });
 
     return { placeholder: placeholder, media: el, bar: bar, playButton: playButton, seek: seek };

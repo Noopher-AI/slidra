@@ -32,7 +32,7 @@ const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 // lookup that failed during #8's manual acceptance.
 const binDir = path.join(rootDir, "node_modules/.bin");
 
-const NEW_TITLE = "煙霧測試改過的標題";
+const NEW_TITLE = "smoke test's changed title";
 
 let browser: Browser;
 let slidraHome: string;
@@ -45,12 +45,12 @@ beforeAll(async () => {
   // against whatever is in apps/web/dist, which is exactly what makes
   // "the bundle itself is broken" a failure it can see. Missing build
   // output is an explicit error — never a skip, never a silent pass.
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
   // Printed so a passing run visibly says which real browser it drove,
   // rather than leaving "a browser was involved" to be taken on trust.
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-files-"));
@@ -60,7 +60,7 @@ beforeAll(async () => {
 
   registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  await registry.dispatch("new", { path: slidraPath, name: "煙霧測試簡報" });
+  await registry.dispatch("new", { path: slidraPath, name: "Smoke Test Deck" });
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
   // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
@@ -121,18 +121,18 @@ it("sending a chat message in the browser actually changes the SVG text on the c
   // Reports an uncaught page error in place of the (absent) slide text, so
   // a broken bundle fails saying *why* rather than just timing out.
   const currentSlideText = async (): Promise<string | null> => {
-    if (pageErrors.length > 0) return `頁面錯誤：${pageErrors.join("; ")}`;
+    if (pageErrors.length > 0) return `Page error: ${pageErrors.join("; ")}`;
     return slideText.textContent().catch(() => null);
   };
 
   // The bundle has to boot, fetch the presentation and paint the slide for
   // this to ever resolve — a broken dist fails right here.
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("煙霧測試簡報");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Smoke Test Deck");
 
   // The send button is disabled until the chat SSE stream is open, so
   // waiting for it is also waiting for the stream.
   await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-  await page.locator(".chat-input textarea").fill("把標題改掉");
+  await page.locator(".chat-input textarea").fill("change the title");
   await page.locator(".chat-input button").click();
 
   // The whole chain in one assertion: POST /api/chat -> fake agent ->

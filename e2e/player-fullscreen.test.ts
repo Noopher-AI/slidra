@@ -130,8 +130,8 @@ it("the fullscreen toggle is only offered in play mode; this control does not ex
   // Whether to go fullscreen is the author's choice — starting play does not
   // auto-enter fullscreen: the button text reads "Fullscreen" (the action to
   // enter), not "Exit fullscreen".
-  expect(await page.locator('button:has-text("全螢幕")').count()).toBe(1);
-  expect(await page.locator('button:has-text("退出全螢幕")').count()).toBe(0);
+  expect(await page.locator('button:has-text("Fullscreen")').count()).toBe(1);
+  expect(await page.locator('button:has-text("Exit Fullscreen")').count()).toBe(0);
 });
 
 /**
@@ -221,7 +221,7 @@ it("clicking the button really enters fullscreen (container fills the screen, if
   expect(after.frameSize).not.toEqual(before.frameSize);
   expect(after.frameSize![0]).toBe(after.screenSize[0]);
   expect(after.frameSize![1]).toBeGreaterThan(after.screenSize[1] * 0.85);
-  await expect.poll(() => page.locator('button:has-text("退出全螢幕")').count()).toBe(1);
+  await expect.poll(() => page.locator('button:has-text("Exit Fullscreen")').count()).toBe(1);
 
   // The point of the container-based design: this second click must
   // be a genuine Playwright click landing on a real, on-screen button — no
@@ -232,7 +232,7 @@ it("clicking the button really enters fullscreen (container fills the screen, if
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(false);
-  await expect.poll(() => page.locator('button:has-text("全螢幕")').count()).toBe(1);
+  await expect.poll(() => page.locator('button:has-text("Fullscreen")').count()).toBe(1);
 });
 
 it("arrow-key advance works normally in both states; Esc-triggered exit fullscreen returns to embedded play instead of dropping out of play mode", async () => {
@@ -292,7 +292,7 @@ it("arrow-key advance works normally in both states; Esc-triggered exit fullscre
   // Exiting fullscreen (including via Esc) returns to embedded play instead
   // of dropping out of play mode: the exit-play button is still there
   // (mode is still play), and arrow keys can still advance to the next page.
-  await expect.poll(() => page.locator('button:has-text("離開播放")').count()).toBe(1);
+  await expect.poll(() => page.locator('button:has-text("Exit Play")').count()).toBe(1);
   const secondTitle = playFrame().locator("#el-title2");
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => secondTitle.textContent().catch(() => null), { timeout: 30_000 }).toBe("播放第二頁");
@@ -382,7 +382,7 @@ it("exiting play while fullscreen: a real button click exits it, the document ne
   // descendant of it, so a real Playwright click lands on it even while
   // fullscreen (an earlier design had to fall back to el.click() here
   // because a real click timed out).
-  await page.locator('button:has-text("離開播放")').click();
+  await page.locator('button:has-text("Exit Play")').click();
 
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
@@ -440,14 +440,14 @@ it("after successfully exiting fullscreen from outside, a stale fullscreen-failu
       webkitExitFullscreen?: () => Promise<void>;
     };
     doc.__originalExitFullscreen = (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.bind(doc);
-    doc.exitFullscreen = () => Promise.reject(new Error("模擬測試：退出全螢幕被拒絕"));
+    doc.exitFullscreen = () => Promise.reject(new Error("模擬測試：Exit Fullscreen被拒絕"));
   });
 
   // Real click on the "exit fullscreen" button — since isFullscreen is
   // true at this point, this button's onClick really calls the (patched)
   // exitFullscreen(), reaching the catch branch.
   await page.locator(".fullscreen-toggle-button").click();
-  const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+  const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "Fullscreen toggle failed" });
   await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBe(1);
   // Success must not be faked when an error occurs: the UI must still
   // report fullscreen (the real browser state genuinely is still
@@ -537,7 +537,7 @@ it("if requestFullscreen() is still pending when exiting play, the document does
   // Within the 300ms window before the real native call has even fired —
   // isFullscreen (React state) is still false here, exactly the moment the
   // race is about — a real click on the exit-play button.
-  await page.locator('button:has-text("離開播放")').click();
+  await page.locator('button:has-text("Exit Play")').click();
 
   // Wait until the delayed native requestFullscreen() call has actually
   // landed (t ≥ 300ms) before checking anything at all: only after this
@@ -604,7 +604,7 @@ it("when neither fullscreen API exists, clicking the toggle still hands focus ba
   const playBar = page.locator(".play-bar");
   // Wait for the initial auto-focus to settle first (same reasoning as the earlier tests), then steal focus ourselves.
   await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("true");
-  await page.locator('button:has-text("離開播放")').focus();
+  await page.locator('button:has-text("Exit Play")').focus();
   await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
   // One-time measurement: remove both fullscreen APIs from the container, to
@@ -623,7 +623,7 @@ it("when neither fullscreen API exists, clicking the toggle still hands focus ba
   await page.locator(".fullscreen-toggle-button").click();
 
   // This path is reached: the fullscreen error notice shows "this browser does not support fullscreen".
-  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "這個瀏覽器不支援全螢幕" });
+  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "這個瀏覽器不支援Fullscreen" });
   await expect.poll(() => unsupportedNotice.count(), { timeout: 10_000 }).toBe(1);
 
   // Before the fix: this early return never called focusPlayer(), so focus
@@ -704,7 +704,7 @@ it("sent first, arrives first: an earlier request settling first must not clear 
   // the first request settling doesn't touch a ref that already points to
   // the second request, so exiting play can still find the (second) pending
   // request to wait for.
-  await page.locator('button:has-text("離開播放")').click();
+  await page.locator('button:has-text("Exit Play")').click();
 
   // Wait for the second (later) request to genuinely land too before
   // checking the final state — the same principle as before: don't sample
@@ -780,7 +780,7 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
   // with nothing having actively exited fullscreen — the author was left in
   // a blank fullscreen screen with no built-in App exit, only the browser's
   // own Esc. After the fix: both buttons are still there.
-  await expect.poll(() => page.locator('button:has-text("離開播放")').count()).toBe(1);
+  await expect.poll(() => page.locator('button:has-text("Exit Play")').count()).toBe(1);
   await expect.poll(() => page.locator(".fullscreen-toggle-button").count()).toBe(1);
 
   // Fullscreen itself was not silently, forcibly exited without the
@@ -791,9 +791,9 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
   // A real click on exit-play, proving it isn't merely present in the DOM
   // but is genuinely clickable — also exercising handleExitPlay()'s
   // existing logic once, confirming fullscreen exits along with it.
-  await page.locator('button:has-text("離開播放")').click();
+  await page.locator('button:has-text("Exit Play")').click();
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(false);
-  await expect.poll(() => page.locator('button:has-text("離開播放")').count()).toBe(0);
+  await expect.poll(() => page.locator('button:has-text("Exit Play")').count()).toBe(0);
 });

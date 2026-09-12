@@ -189,7 +189,7 @@
           playResult.catch(function (err) {
             post({
               event: "error",
-              message: "媒體播放失敗（" + id + "）：" + (err && err.message ? err.message : String(err)),
+              message: "media playback failed (" + id + "): " + (err && err.message ? err.message : String(err)),
             });
           });
         }
@@ -207,7 +207,7 @@
     // failure does, rather than leaving a button that silently does
     // nothing.
     el.addEventListener("error", function () {
-      post({ event: "error", message: "媒體載入失敗（" + id + "）：" + cue.src });
+      post({ event: "error", message: "media load failed (" + id + "): " + cue.src });
     });
 
     var overlay = { media: el, button: button, placeholder: placeholder };
@@ -287,12 +287,12 @@
       // `play` media effect's target carries a cue before this plan was
       // built, so this should not happen — reported rather than silently
       // skipped, in case it ever does.
-      post({ event: "error", message: "找不到媒體效果的設定：" + target });
+      post({ event: "error", message: "could not find media effect config: " + target });
       return;
     }
     var placeholder = document.getElementById(target);
     if (!placeholder) {
-      post({ event: "error", message: "找不到媒體效果指向的元素：" + target });
+      post({ event: "error", message: "could not find the element the media effect targets: " + target });
       return;
     }
 
@@ -321,7 +321,7 @@
         if (err && err.name === "AbortError" && tornDownMedia.has(el)) return;
         post({
           event: "error",
-          message: "媒體播放失敗（" + target + "）：" + (err && err.message ? err.message : String(err)),
+          message: "media playback failed (" + target + "): " + (err && err.message ? err.message : String(err)),
         });
       });
     }
@@ -416,7 +416,7 @@
   function animatePath(el, effect, duration, delay) {
     var d = effect.d;
     if (!d) {
-      post({ event: "error", message: "路徑效果缺少 d：" + effect.target });
+      post({ event: "error", message: "path effect is missing d: " + effect.target });
       return null;
     }
     var pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -428,12 +428,12 @@
     } catch (err) {
       post({
         event: "error",
-        message: "路徑資料無法解析（" + effect.target + "）：" + (err && err.message ? err.message : String(err)),
+        message: "path data could not be parsed (" + effect.target + "): " + (err && err.message ? err.message : String(err)),
       });
       return null;
     }
     if (!isFinite(length) || length <= 0) {
-      post({ event: "error", message: "路徑效果的 d 長度為 0，無法建立動畫：" + effect.target });
+      post({ event: "error", message: "path effect's d has length 0, cannot build animation: " + effect.target });
       return null;
     }
 
@@ -483,7 +483,7 @@
         if (mediaEl) {
           mediaEl.pause();
         } else {
-          post({ event: "error", message: "找不到要暫停的媒體元素：" + effect.target });
+          post({ event: "error", message: "could not find the media element to pause: " + effect.target });
         }
         return null;
       }
@@ -496,7 +496,7 @@
       // exists before this plan was ever built, so this should not happen.
       // Reported rather than silently skipped, in case it ever does — e.g.
       // a future bug in the parent's derivation.
-      post({ event: "error", message: "找不到步驟中要顯示的元素：" + effect.target });
+      post({ event: "error", message: "could not find the element the step should show: " + effect.target });
       return null;
     }
 

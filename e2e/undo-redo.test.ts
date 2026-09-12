@@ -47,8 +47,8 @@ const frozenDeckDir = path.join(e2eDir, "fixtures/player-deck");
 const VIEWPORT = { width: 1440, height: 900 };
 const SLIDE_PATH = "slides/001.svg";
 const ELEMENT_ID = "el-title";
-const ORIGINAL_TEXT = "驗收用簡報";
-const NEW_TEXT = "驗收用簡報（改過）";
+const ORIGINAL_TEXT = "Acceptance Demo Deck";
+const NEW_TEXT = "Acceptance Demo Deck (edited)";
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -189,7 +189,7 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "凍結測試不看這個標題",
+      E2E_NEW_TITLE: "frozen test doesn't look at this title",
       E2E_FREEZE_HOLD_MS: "3000",
     },
   };
@@ -229,7 +229,7 @@ it("frozen state: Undo/Redo buttons are disabled while the agent holds the lock,
     await waitForAgentConnected(page);
 
     await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input textarea").fill("改標題");
+    await page.locator(".chat-input textarea").fill("change the title");
     await page.locator(".chat-input button").click();
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);

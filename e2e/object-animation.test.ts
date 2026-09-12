@@ -345,7 +345,7 @@ it("ordering and parameters: editing Duration writes back to the file immediatel
       .poll(async () => (await readEffects(registry, presentationId)).find((e) => e.target === "el-a")?.duration)
       .toBe(1.4);
 
-    await objectCards(page).nth(1).locator('button[aria-label="上移"]').click();
+    await objectCards(page).nth(1).locator('button[aria-label="Move Up"]').click();
     await expect
       .poll(async () => (await readEffects(registry, presentationId)).map((e) => e.target))
       .toEqual(["el-b", "el-a"]);
@@ -508,7 +508,7 @@ it("stage badges stay in sync with the list: pressing ↑ in the list also swaps
     expect(await badgeTextFor("el-a")).toBe("1");
     expect(await badgeTextFor("el-b")).toBe("2");
 
-    await objectCards(page).nth(1).locator('button[aria-label="上移"]').click();
+    await objectCards(page).nth(1).locator('button[aria-label="Move Up"]').click();
     await expect.poll(async () => (await readEffects(registry, presentationId)).map((e) => e.target)).toEqual(["el-b", "el-a"]);
 
     await expect.poll(() => badgeTextFor("el-b")).toBe("1");

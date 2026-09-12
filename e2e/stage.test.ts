@@ -45,9 +45,9 @@ let slidraHome: string;
 let slidraDir: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-files-"));
@@ -69,7 +69,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 
@@ -145,7 +145,7 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 
@@ -171,7 +171,7 @@ async function measureStage(page: Page): Promise<{
   well: { x: number; y: number; width: number; height: number; scrollWidth: number; scrollHeight: number; clientWidth: number; clientHeight: number };
 }> {
   const stageBox = await page.locator(".stage").boundingBox();
-  if (!stageBox) throw new Error("找不到 .stage");
+  if (!stageBox) throw new Error("could not find .stage");
   const stageScroll = await page.locator(".stage").evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     scrollHeight: el.scrollHeight,
@@ -179,7 +179,7 @@ async function measureStage(page: Page): Promise<{
     clientHeight: el.clientHeight,
   }));
   const wellBox = await page.locator(".canvas-area").boundingBox();
-  if (!wellBox) throw new Error("找不到 .canvas-area");
+  if (!wellBox) throw new Error("could not find .canvas-area");
   const wellScroll = await page.locator(".canvas-area").evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     scrollHeight: el.scrollHeight,

@@ -931,12 +931,12 @@ describe("mountCanvas play mode", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "slidra-player", event: "error", message: "找不到步驟中要顯示的元素：el-x" },
+        data: { source: "slidra-player", event: "error", message: "could not find the element the step should show: el-x" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
 
-    expect(state?.error).toBe("找不到步驟中要顯示的元素：el-x");
+    expect(state?.error).toBe("could not find the element the step should show: el-x");
   });
 
   it("ignores messages not from the current iframe, even when the source field claims slidra-player", async () => {

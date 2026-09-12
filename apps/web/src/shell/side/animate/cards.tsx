@@ -73,10 +73,10 @@ export function EffectCard({
           {cardNumber}
         </span>
         <span className="animate-card-label">{cardLabel(card, cardNumber)}</span>
-        <button type="button" className="animate-card-icon-button" aria-label="上移" disabled={isFirst} onClick={onMoveUp}>
+        <button type="button" className="animate-card-icon-button" aria-label="Move Up" disabled={isFirst} onClick={onMoveUp}>
           <Icon name="chevron-up" size="control" />
         </button>
-        <button type="button" className="animate-card-icon-button" aria-label="下移" disabled={isLast} onClick={onMoveDown}>
+        <button type="button" className="animate-card-icon-button" aria-label="Move Down" disabled={isLast} onClick={onMoveDown}>
           <Icon name="chevron-down" size="control" />
         </button>
         <button type="button" className="animate-card-icon-button" aria-label="Preview" onClick={onPreview}>

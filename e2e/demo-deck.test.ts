@@ -180,7 +180,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
 
   await expect
     .poll(() => textOf(playFrame().locator("#el-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("驗收用簡報");
+    .toBe("Acceptance Demo Deck");
 
   await page.locator('.play-button').click();
   await waitForPlayerFocus(page);
@@ -189,13 +189,13 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => textOf(playFrame().locator("#el-asset-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 2 頁：資產");
+    .toBe("Page 2: assets");
 
   // Page 2 also has no effects, so another press moves straight to page 3 (the effect list page).
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => textOf(playFrame().locator("#el-effects-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 3 頁：效果清單");
+    .toBe("Page 3: effect list");
 
   const stepOne = playFrame().locator("#el-step-one");
   const stepTwo = playFrame().locator("#el-step-two");
@@ -219,7 +219,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 4 頁：影音");
+    .toBe("Page 4: audio/video");
   // A page change is a srcdoc reload (ADR-0010): the runtime has to
   // complete the ready handshake again before hiding is applied, and before
   // the keyboard listener is remounted.
@@ -277,7 +277,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null))
-    .toBe("第 4 頁：影音");
+    .toBe("Page 4: audio/video");
 
   // --- Reverse walk: the acceptance criterion for this is the mirror of the
   // forward walk above — from page 4's last step, pressing the left arrow
@@ -342,7 +342,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 4 頁：影音");
+    .toBe("Page 4: audio/video");
   await expectVisible(caption);
   // A step-back replay does not replay media (an intentional design
   // decision): the video/audio overlay elements are torn down entirely, not
@@ -360,7 +360,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 4 頁：影音");
+    .toBe("Page 4: audio/video");
   await expectVisible(caption);
   await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(0);
   await expect.poll(() => audio.count(), { timeout: 10_000 }).toBe(0);
@@ -372,7 +372,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-effects-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 3 頁：效果清單");
+    .toBe("Page 3: effect list");
   await waitForPlayerFocus(page);
   const stepOneBack = playFrame().locator("#el-step-one");
   const stepTwoBack = playFrame().locator("#el-step-two");
@@ -434,7 +434,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-asset-title")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 2 頁：資產");
+    .toBe("Page 2: assets");
   await waitForPlayerFocus(page);
 
   // Page 2 has no effect steps at all: one press crosses straight back to page 1.
@@ -442,7 +442,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null), { timeout: 30_000 })
-    .toBe("第 1 頁：換頁、即時預覽");
+    .toBe("Page 1: paging, live preview");
   await waitForPlayerFocus(page);
 
   // Already at the very beginning of the whole deck: pressing again is a no-op, no crash.
@@ -450,12 +450,12 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null))
-    .toBe("第 1 頁：換頁、即時預覽");
+    .toBe("Page 1: paging, live preview");
   await page.keyboard.press("ArrowLeft");
   await expectNoErrorBanner(page);
   await expect
     .poll(() => textOf(playFrame().locator("#el-subtitle")).catch(() => null))
-    .toBe("第 1 頁：換頁、即時預覽");
+    .toBe("Page 1: paging, live preview");
 
   // No error ever surfaced across the whole run, and no media is still playing.
   expect(pageErrors).toEqual([]);
@@ -493,8 +493,8 @@ it("a converted slide opened directly via file:// renders correctly: text, posit
     await page.goto(`file://${path.join(demoDir, "slides/001.svg")}`);
 
     // The id resolves to the element, and the element carries the text.
-    expect((await page.locator("#el-title").textContent())?.trim()).toBe("驗收用簡報");
-    expect((await page.locator("#el-subtitle").textContent())?.trim()).toBe("第 1 頁：換頁、即時預覽");
+    expect((await page.locator("#el-title").textContent())?.trim()).toBe("Acceptance Demo Deck");
+    expect((await page.locator("#el-subtitle").textContent())?.trim()).toBe("Page 1: paging, live preview");
 
     // Geometry: the title is centred horizontally (text-anchor="middle" at
     // x=640 on a 1280-wide viewBox) and sits above the subtitle (y=330 vs
@@ -543,11 +543,11 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
   const bare =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
     '  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>\n' +
-    '  <text id="el-title" data-slidra-name="標題" x="640" y="200" text-anchor="middle" font-size="86" fill="#f4f6f8">轉檔前後</text>\n' +
+    '  <text id="el-title" data-slidra-name="Title" x="640" y="200" text-anchor="middle" font-size="86" fill="#f4f6f8">Before/after conversion</text>\n' +
     '  <image id="el-photo" href="assets/photo.svg" x="490" y="260" width="300" height="300"/>\n' +
     '  <line x1="100" y1="620" x2="1180" y2="620" stroke="#c66" stroke-width="6"/>\n' +
     '  <path d="M100 660 L200 700 L100 700 Z" fill="#9aa7b4"/>\n' +
-    '  <g id="el-icon" data-slidra-name="圖示">\n' +
+    '  <g id="el-icon" data-slidra-name="Icon">\n' +
     '    <circle cx="1100" cy="670" r="30" fill="#c66"/>\n' +
     '  </g>\n' +
     "</svg>\n";
@@ -565,7 +565,7 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
     // something to act on: write `bare` as its `slides/001.svg`, run
     // `convert`, read the result back.
     const convertSlidraPath = path.join(dir, "convert-test.slidra");
-    const newResult = await registry.dispatch("new", { path: convertSlidraPath, name: "轉檔前後像素比對" });
+    const newResult = await registry.dispatch("new", { path: convertSlidraPath, name: "Before/after conversion pixel comparison" });
     expect(newResult.ok).toBe(true);
     const opened = await registry.dispatch<{ id: string }>("open", { path: convertSlidraPath });
     const convertTestId = opened.data!.id;

@@ -1,8 +1,8 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-title" data-slidra-name="標題">
-    <text x="640" y="330" text-anchor="middle" font-size="86" fill="#f4f6f8">驗收用簡報</text>
+  <g id="el-title" data-slidra-name="Title">
+    <text x="640" y="330" text-anchor="middle" font-size="86" fill="#f4f6f8">Acceptance Demo Deck</text>
   </g>
-  <g id="el-subtitle" data-slidra-name="副標">
-    <text x="640" y="420" text-anchor="middle" font-size="36" fill="#9aa7b4">第 1 頁：換頁、即時預覽</text>
+  <g id="el-subtitle" data-slidra-name="Subtitle">
+    <text x="640" y="420" text-anchor="middle" font-size="36" fill="#9aa7b4">Page 1: paging, live preview</text>
   </g>
 </svg>

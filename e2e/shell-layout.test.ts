@@ -46,7 +46,7 @@ afterEach(async () => {
 
 async function boundingBoxOf(page: Page, selector: string): Promise<{ x: number; y: number; width: number; height: number }> {
   const box = await page.locator(selector).boundingBox();
-  if (!box) throw new Error(`${selector} 沒有量到 boundingBox（不存在或未渲染）`);
+  if (!box) throw new Error(`${selector} has no measured boundingBox (missing or not rendered)`);
   return box;
 }
 

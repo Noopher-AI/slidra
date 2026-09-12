@@ -158,7 +158,7 @@ it("the control bar's previous/next buttons change the slide itself, not a step 
     // Click "next" once: if it really is controller.next() (showSlide(+1)),
     // it jumps straight to slide 2, completely skipping slide 1's two
     // remaining effect steps.
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect.poll(title2Text, { timeout: 30_000 }).toBe("播放第二頁");
     // No arrow key was pressed, and there was no intermediate "applying"
     // state — slide 1's fade-in element was simply swapped out along with
@@ -169,10 +169,10 @@ it("the control bar's previous/next buttons change the slide itself, not a step 
     // Click "previous" once: switches back to slide 1, page number and
     // disabled state stay in sync (the template's `N / M` form; play-deck
     // only has 2 slides).
-    await page.locator('.play-bar button[aria-label="上一步"]').click();
+    await page.locator('.play-bar button[aria-label="Previous"]').click();
     await expect.poll(titleText, { timeout: 30_000 }).toBe("播放第一頁");
     expect(await page.locator(".play-bar-position").textContent()).toBe("1 / 2");
-    expect(await page.locator('.play-bar button[aria-label="上一步"]').isDisabled()).toBe(true);
+    expect(await page.locator('.play-bar button[aria-label="Previous"]').isDisabled()).toBe(true);
   } finally {
     await page.close();
     await cleanup();
@@ -208,7 +208,7 @@ it("the control bar's child node order matches the template (previous/page numbe
         return child.textContent?.trim() ?? child.tagName;
       }),
     );
-    expect(order).toEqual(["上一步", "pos", "下一步", "divider", "全螢幕", "離開播放"]);
+    expect(order).toEqual(["Previous", "pos", "Next", "divider", "Fullscreen", "Exit Play"]);
 
     const barBox = await page.locator(".play-bar").boundingBox();
     const canvasAreaBox = await page.locator(".canvas-area").boundingBox();
@@ -313,7 +313,7 @@ it("clicking the slide area still hands focus back to the player (the overlay's 
     // Steal focus (reusing the technique already validated in
     // e2e/player-fullscreen.test.ts).
     const playBar = page.locator(".play-bar");
-    await page.locator('button:has-text("離開播放")').focus();
+    await page.locator('button:has-text("Exit Play")').focus();
     await expect.poll(() => playBar.getAttribute("data-player-focus"), { timeout: 10_000 }).toBe("false");
 
     // Click in the center of the slide area — this coordinate lands on
@@ -355,10 +355,10 @@ it("both floating notices (play error/fullscreen error) are visible side by side
     // success and then lying about failure), then click the fullscreen button.
     await page.evaluate(() => {
       const container = document.querySelector(".canvas-area") as HTMLElement;
-      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：全螢幕請求被拒絕"));
+      container.requestFullscreen = () => Promise.reject(new Error("模擬測試：Fullscreen請求被拒絕"));
     });
     await page.locator(".play-bar .fullscreen-toggle-button").click();
-    const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "全螢幕切換失敗" });
+    const fullscreenErrorNotice = page.locator(".player-error-notice", { hasText: "Fullscreen toggle failed" });
     await expect.poll(() => fullscreenErrorNotice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     // The two notices must not overlap each other: previously both used the

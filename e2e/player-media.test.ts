@@ -489,7 +489,7 @@ it("leaving a slide stops all playing video and audio; returning to it never sho
     // this line used to make), replay both steps, and confirm exactly one
     // of each media element exists — never two stacked from an old and a
     // new document.
-    await page.locator('.play-bar button[aria-label="上一步"]').click();
+    await page.locator('.play-bar button[aria-label="Previous"]').click();
     await expect
       .poll(() => playFrame().locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");

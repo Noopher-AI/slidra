@@ -209,7 +209,7 @@ it("effect list parsing fails on entering play: an error notice on screen names 
     // control bar's "next" instead — it's wired to controller.next() (i.e.
     // showSlide(currentIndex+1), changing the page without changing effect
     // steps), which works in play mode without any runtime alive.
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title-2").textContent().catch(() => null), { timeout: 30_000 })
@@ -254,8 +254,8 @@ it("an unimplemented family on entering play: an error notice on screen names th
     // Switching from slide 1 to slide 3: the control bar's "next" changes
     // the page by ±1, not by jumping, so click it twice, passing through
     // slide 2 (a different kind of damage, see the previous test).
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-3").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 3 頁：未實作的 family");
@@ -300,9 +300,9 @@ it("an unimplemented effect on entering play: an error notice on screen names th
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     // Switching from slide 1 to slide 4: click "next" three times (see the previous test's explanation).
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-4").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 4 頁：未實作的 effect");
@@ -347,10 +347,10 @@ it("an unimplemented start on entering play: an error notice on screen names tha
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
     // Switching from slide 1 to slide 5: click "next" four times (see the previous test's explanation).
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
-    await page.locator('.play-bar button[aria-label="下一步"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
+    await page.locator('.play-bar button[aria-label="Next"]').click();
     await expect
       .poll(() => playFrame().locator("#el-broken-title-5").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("第 5 頁：未實作的 start");

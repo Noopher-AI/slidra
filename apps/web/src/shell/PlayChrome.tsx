@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 
-// The "退出全螢幕/全螢幕" (exit fullscreen / fullscreen) and "離開播放"
-// (leave play) buttons stay text buttons, matching the pre-existing play
-// chrome verbatim — see the class comment below. base-shell.html's
-// icon-only fullscreen/leave-play buttons are not adopted for these two:
-// the text-selector freeze (existing e2e locates them by their text, see
-// the comment below) still applies to them. "上一步/下一步" (previous/next
-// step) are new elements no existing test depends on the shape of, so
-// *those two* do follow the template's own SVG verbatim — see the buttons
-// below.
+// The "Exit Fullscreen/Fullscreen" and "Exit Play" buttons stay text
+// buttons, matching the pre-existing play chrome verbatim — see the class
+// comment below. base-shell.html's icon-only fullscreen/leave-play buttons
+// are not adopted for these two: the text-selector freeze (existing e2e
+// locates them by their text, see the comment below) still applies to
+// them. "Previous/Next" step are new elements no existing test depends on
+// the shape of, so *those two* do follow the template's own SVG verbatim
+// — see the buttons below.
 
 /** Idle time before the cursor and control bar hide together. */
 const IDLE_MS = 2500;
@@ -83,7 +82,7 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
         {fullscreenError && (
           <div className="player-notices">
             <div className="player-error-notice" role="alert">
-              全螢幕切換失敗：{fullscreenError}
+              Fullscreen toggle failed: {fullscreenError}
             </div>
           </div>
         )}
@@ -92,10 +91,10 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             <button
               type="button"
               className="fullscreen-toggle-button"
-              aria-label="退出全螢幕"
+              aria-label="Exit Fullscreen"
               onClick={() => void onToggleFullscreen()}
             >
-              退出全螢幕
+              Exit Fullscreen
             </button>
           </nav>
         )}
@@ -146,7 +145,7 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           events: none` keeps it from stealing clicks over
           .play-mousemove-catcher (below it, z-index:1) or .player-notices/
           .play-bar (same layer, z-index:2). */}
-      <div className={awake ? "play-hint awake" : "play-hint"}>← → 或點畫面前進 · Esc 離開播放</div>
+      <div className={awake ? "play-hint awake" : "play-hint"}>← → or click to advance · Esc to exit play</div>
       {/* Floating notices for play mode: the playback error and the
           fullscreen error can both be true at once (an effect-list parse
           failure coinciding with a rejected fullscreen request); they used
@@ -167,12 +166,12 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
         <div className="player-notices">
           {state.error && (
             <div className="player-error-notice" role="alert">
-              這一頁的效果清單無法播放：{state.error}
+              This slide's effect list failed to play: {state.error}
             </div>
           )}
           {fullscreenError && (
             <div className="player-error-notice" role="alert">
-              全螢幕切換失敗：{fullscreenError}
+              Fullscreen toggle failed: {fullscreenError}
             </div>
           )}
         </div>
@@ -200,7 +199,7 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
         <button
           type="button"
           className="play-nav-button"
-          aria-label="上一步"
+          aria-label="Previous"
           disabled={state.currentIndex <= 0}
           onClick={() => void controller?.previous()}
         >
@@ -221,7 +220,7 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
         <button
           type="button"
           className="play-nav-button"
-          aria-label="下一步"
+          aria-label="Next"
           disabled={state.currentIndex < 0 || state.currentIndex >= state.slides.length - 1}
           onClick={() => void controller?.next()}
         >
@@ -240,10 +239,10 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             Whether to go fullscreen is left to the author's choice; the
             tool doesn't force it by default. */}
         <button type="button" className="fullscreen-toggle-button" onClick={() => void onToggleFullscreen()}>
-          {isFullscreen ? "退出全螢幕" : "全螢幕"}
+          {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
         </button>
         <button type="button" className="play-toggle-button leave" onClick={() => void onExitPlay()}>
-          離開播放
+          Exit Play
         </button>
       </nav>
     </>

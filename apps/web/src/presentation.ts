@@ -37,7 +37,7 @@ export interface PresentationInfo {
 export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   const response = await fetch("/api/presentation");
   if (!response.ok) {
-    throw new Error("載入失敗：/api/presentation");
+    throw new Error("Failed to load: /api/presentation");
   }
   const data = (await response.json()) as {
     name?: unknown;
@@ -46,10 +46,10 @@ export async function fetchPresentationInfo(): Promise<PresentationInfo> {
   };
   const { width, height } = data.canvas ?? {};
   if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
-    throw new Error("project.json 的 canvas 尺寸無效，無法決定簡報資訊");
+    throw new Error("project.json's canvas size is invalid, cannot determine presentation info");
   }
   if (typeof data.name !== "string") {
-    throw new Error("project.json 的 name 無效，無法決定簡報資訊");
+    throw new Error("project.json's name is invalid, cannot determine presentation info");
   }
   const templates: TemplateInfo[] = Array.isArray(data.templates)
     ? data.templates.map(extractTemplateInfo).filter((info): info is TemplateInfo => info !== null)
@@ -108,7 +108,7 @@ export function createPresentationInfoLoader(callbacks: PresentationInfoLoaderCa
           callbacks.onSuccess(info);
         } catch (error) {
           if (generation !== thisGeneration) return;
-          callbacks.onError(error instanceof Error ? error.message : "簡報資訊載入失敗");
+          callbacks.onError(error instanceof Error ? error.message : "Failed to load presentation info");
         }
       })();
     },

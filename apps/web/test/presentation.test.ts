@@ -11,14 +11,14 @@ describe("fetchPresentationInfo", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ formatVersion: 1, name: "驗收用簡報", canvas: { width: 1280, height: 720 }, slides: [] }),
+          JSON.stringify({ formatVersion: 1, name: "Acceptance Demo Deck", canvas: { width: 1280, height: 720 }, slides: [] }),
           { status: 200 },
         ),
       ),
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "驗收用簡報",
+      name: "Acceptance Demo Deck",
       canvas: { width: 1280, height: 720 },
       templates: [],
     });
@@ -31,7 +31,7 @@ describe("fetchPresentationInfo", () => {
         new Response(
           JSON.stringify({
             formatVersion: 1,
-            name: "有範本的簡報",
+            name: "Deck with templates",
             canvas: { width: 1280, height: 720 },
             templates: ["templates/001.svg", "templates/002.svg"],
           }),
@@ -41,7 +41,7 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "有範本的簡報",
+      name: "Deck with templates",
       canvas: { width: 1280, height: 720 },
       templates: [
         { file: "templates/001.svg", name: "001" },
@@ -57,11 +57,11 @@ describe("fetchPresentationInfo", () => {
         new Response(
           JSON.stringify({
             formatVersion: 2,
-            name: "物件格式範本",
+            name: "Object-format templates",
             canvas: { width: 1280, height: 720 },
             templates: [
-              { file: "templates/001.svg", name: "封面" },
-              { file: "templates/002.svg", name: "章節頁" },
+              { file: "templates/001.svg", name: "Cover" },
+              { file: "templates/002.svg", name: "Section page" },
             ],
           }),
           { status: 200 },
@@ -70,11 +70,11 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "物件格式範本",
+      name: "Object-format templates",
       canvas: { width: 1280, height: 720 },
       templates: [
-        { file: "templates/001.svg", name: "封面" },
-        { file: "templates/002.svg", name: "章節頁" },
+        { file: "templates/001.svg", name: "Cover" },
+        { file: "templates/002.svg", name: "Section page" },
       ],
     });
   });
@@ -86,9 +86,9 @@ describe("fetchPresentationInfo", () => {
         new Response(
           JSON.stringify({
             formatVersion: 2,
-            name: "混合格式範本",
+            name: "Mixed-format templates",
             canvas: { width: 1280, height: 720 },
-            templates: ["templates/001.svg", { file: "templates/002.svg", name: "章節頁" }],
+            templates: ["templates/001.svg", { file: "templates/002.svg", name: "Section page" }],
           }),
           { status: 200 },
         ),
@@ -96,11 +96,11 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "混合格式範本",
+      name: "Mixed-format templates",
       canvas: { width: 1280, height: 720 },
       templates: [
         { file: "templates/001.svg", name: "001" },
-        { file: "templates/002.svg", name: "章節頁" },
+        { file: "templates/002.svg", name: "Section page" },
       ],
     });
   });
@@ -112,7 +112,7 @@ describe("fetchPresentationInfo", () => {
         new Response(
           JSON.stringify({
             formatVersion: 2,
-            name: "name 欄位型別不對",
+            name: "name field has the wrong type",
             canvas: { width: 1280, height: 720 },
             templates: [{ file: "templates/001.svg", name: 42 }],
           }),
@@ -122,7 +122,7 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "name 欄位型別不對",
+      name: "name field has the wrong type",
       canvas: { width: 1280, height: 720 },
       templates: [{ file: "templates/001.svg", name: "001" }],
     });
@@ -135,7 +135,7 @@ describe("fetchPresentationInfo", () => {
         new Response(
           JSON.stringify({
             formatVersion: 1,
-            name: "格式不對的範本欄位",
+            name: "malformed templates field",
             canvas: { width: 1280, height: 720 },
             templates: [1, 2],
           }),
@@ -145,7 +145,7 @@ describe("fetchPresentationInfo", () => {
     );
 
     await expect(fetchPresentationInfo()).resolves.toEqual({
-      name: "格式不對的範本欄位",
+      name: "malformed templates field",
       canvas: { width: 1280, height: 720 },
       templates: [],
     });
@@ -154,20 +154,20 @@ describe("fetchPresentationInfo", () => {
   it("throws on a non-2xx response, rather than returning a fabricated default", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
 
-    await expect(fetchPresentationInfo()).rejects.toThrow("載入失敗：/api/presentation");
+    await expect(fetchPresentationInfo()).rejects.toThrow("Failed to load: /api/presentation");
   });
 
   it("throws when the canvas size is invalid, rather than falling back to a made-up size", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        new Response(JSON.stringify({ formatVersion: 1, name: "測試", canvas: { width: 0, height: 720 } }), {
+        new Response(JSON.stringify({ formatVersion: 1, name: "test", canvas: { width: 0, height: 720 } }), {
           status: 200,
         }),
       ),
     );
 
-    await expect(fetchPresentationInfo()).rejects.toThrow("canvas 尺寸無效");
+    await expect(fetchPresentationInfo()).rejects.toThrow("canvas size is invalid");
   });
 });
 
@@ -193,7 +193,7 @@ describe("createPresentationInfoLoader", () => {
         return callCount === 1
           ? olderPromise
           : new Response(
-              JSON.stringify({ formatVersion: 1, name: "較新", canvas: { width: 1280, height: 720 } }),
+              JSON.stringify({ formatVersion: 1, name: "newer", canvas: { width: 1280, height: 720 } }),
               { status: 200 },
             );
       }),
@@ -208,12 +208,12 @@ describe("createPresentationInfoLoader", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onSuccess).toHaveBeenCalledTimes(1);
-    expect(onSuccess).toHaveBeenCalledWith({ name: "較新", canvas: { width: 1280, height: 720 }, templates: [] });
+    expect(onSuccess).toHaveBeenCalledWith({ name: "newer", canvas: { width: 1280, height: 720 }, templates: [] });
 
     // The older, slower fetch now resolves. Its result must be discarded —
     // it must not overwrite what the newer call already applied.
     resolveOlder(
-      new Response(JSON.stringify({ formatVersion: 1, name: "較舊", canvas: { width: 1280, height: 720 } }), {
+      new Response(JSON.stringify({ formatVersion: 1, name: "older", canvas: { width: 1280, height: 720 } }), {
         status: 200,
       }),
     );
@@ -236,7 +236,7 @@ describe("createPresentationInfoLoader", () => {
         return callCount === 1
           ? olderPromise
           : new Response(
-              JSON.stringify({ formatVersion: 1, name: "正確資料", canvas: { width: 1280, height: 720 } }),
+              JSON.stringify({ formatVersion: 1, name: "correct data", canvas: { width: 1280, height: 720 } }),
               { status: 200 },
             );
       }),
@@ -250,12 +250,12 @@ describe("createPresentationInfoLoader", () => {
     loader.load(); // newer, resolves immediately with the correct data
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(onSuccess).toHaveBeenCalledWith({ name: "正確資料", canvas: { width: 1280, height: 720 }, templates: [] });
+    expect(onSuccess).toHaveBeenCalledWith({ name: "correct data", canvas: { width: 1280, height: 720 }, templates: [] });
 
     // The older call's fetch now rejects. A stale failure must never fire
     // onError after a newer success has already landed — that would show
     // an error banner over metadata that is, in fact, correct.
-    rejectOlder(new Error("較舊的請求失敗"));
+    rejectOlder(new Error("older request failed"));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onError).not.toHaveBeenCalled();

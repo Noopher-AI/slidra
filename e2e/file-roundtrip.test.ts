@@ -113,7 +113,7 @@ describe("file round-trip via POST /api/save", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "text set",
-        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "roundtrip 已編輯" },
+        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "roundtrip edited" },
       }),
     });
     expect(setResponse.status).toBe(200);
@@ -154,7 +154,7 @@ describe("file round-trip via POST /api/save", () => {
       }
 
       const editedSlide = await readFile(path.join(secondWorkDir, "slides/001.svg"), "utf-8");
-      expect(editedSlide).toContain("roundtrip 已編輯");
+      expect(editedSlide).toContain("roundtrip edited");
     } finally {
       process.env.SLIDRA_HOME = previousHome;
       // slidra serve now spawns the Rust binary for every read/write.
@@ -177,7 +177,7 @@ describe("file round-trip via POST /api/save", () => {
     const saveResponse = await fetch(`${server.url}/api/save`, { method: "POST" });
     expect(saveResponse.status).toBe(400);
     const body = (await saveResponse.json()) as { error: string };
-    expect(body.error).toContain("沒有可寫回的檔案路徑");
+    expect(body.error).toContain("no file path to write back to");
   });
 });
 
@@ -207,7 +207,7 @@ describe("POST /api/open", () => {
 
       const presentationResponse = await fetch(`${server.url}/api/presentation`);
       const presentation = (await presentationResponse.json()) as { name: string; slides: string[] };
-      expect(presentation.name).toBe("驗收用簡報");
+      expect(presentation.name).toBe("Acceptance Demo Deck");
       expect(presentation.slides).toHaveLength(4);
 
       const stateResponse = await fetch(`${server.url}/api/save-state`);
@@ -217,7 +217,7 @@ describe("POST /api/open", () => {
       const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
       expect(undoResponse.status).toBe(400);
       const undoBody = (await undoResponse.json()) as { error: string };
-      expect(undoBody.error).toContain("沒有可復原的操作");
+      expect(undoBody.error).toContain("no operation to undo");
 
       // The presentation id served did not change.
       expect(await workDirFor(presentationId)).toBeTruthy();
@@ -235,7 +235,7 @@ describe("POST /api/open", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "text set",
-        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "尚未儲存的變更" },
+        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "unsaved change" },
       }),
     });
     expect(setResponse.status).toBe(200);
@@ -296,7 +296,7 @@ describe("POST /api/open", () => {
     });
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error: string };
-    expect(body.error).toBe("沒有收到檔案內容");
+    expect(body.error).toBe("No file content received");
   });
 });
 
@@ -318,7 +318,7 @@ describe("Cmd+S keyboard entry point (via a real browser — the two describe bl
         id: started.presentationId,
         slidePath: "slides/001.svg",
         elementId: "el-title",
-        newText: "⌘S 測試",
+        newText: "Cmd+S test",
       });
       expect(setResult.ok).toBe(true);
       await expect

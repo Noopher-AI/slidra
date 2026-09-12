@@ -118,7 +118,7 @@ async function startServerFor(
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 
@@ -652,7 +652,7 @@ it("selection still works after leaving play mode: the status bar shows the disp
     // carry allow-scripts (ADR-0011).
     await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
-    await page.locator('button:has-text("離開播放")').click();
+    await page.locator('button:has-text("Exit Play")').click();
     // Symmetric wait for the round trip back to view mode: the titlebar
     // (and with it its own Play-from-start button) reappears.
     await expect.poll(() => page.locator(".titlebar").count()).toBe(1);

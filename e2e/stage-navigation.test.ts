@@ -59,7 +59,7 @@ async function stageTransform(page: Page): Promise<string> {
 function scaleOf(matrix: string): number {
   // matrix(a, b, c, d, tx, ty) — a is the scale (this shell's zoom carries no rotation/skew).
   const m = matrix.match(/matrix\(([^,]+),/);
-  if (!m) throw new Error(`無法解析 transform matrix: ${matrix}`);
+  if (!m) throw new Error(`could not parse transform matrix: ${matrix}`);
   return parseFloat(m[1]);
 }
 
@@ -68,7 +68,7 @@ function scaleOf(matrix: string): number {
  * "on the slide, an element, or the blank area". */
 async function slidePoint(page: Page): Promise<{ x: number; y: number }> {
   const stage = await page.locator(".stage").boundingBox();
-  if (!stage) throw new Error(".stage 沒有 boundingBox");
+  if (!stage) throw new Error(".stage has no boundingBox");
   return { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
 }
 
@@ -87,7 +87,7 @@ async function slideCursor(page: Page): Promise<string> {
  * the file header comment. */
 async function gutterPoint(page: Page): Promise<{ x: number; y: number }> {
   const well = await page.locator(".canvas-area").boundingBox();
-  if (!well) throw new Error("canvas-area 沒有 boundingBox");
+  if (!well) throw new Error("canvas-area has no boundingBox");
   return { x: well.x + 10, y: well.y + 10 };
 }
 
@@ -122,7 +122,7 @@ async function gutterPoint(page: Page): Promise<{ x: number; y: number }> {
  */
 async function zoomAtPointAndAssertAnchored(page: Page, point: { x: number; y: number }): Promise<void> {
   const rect0 = await page.locator(".stage").boundingBox();
-  if (!rect0) throw new Error(".stage 沒有 boundingBox（縮放前）");
+  if (!rect0) throw new Error(".stage has no boundingBox (before zoom)");
   const u = (point.x - rect0.x) / rect0.width;
   const v = (point.y - rect0.y) / rect0.height;
   const before = scaleOf(await stageTransform(page));
@@ -134,7 +134,7 @@ async function zoomAtPointAndAssertAnchored(page: Page, point: { x: number; y: n
 
   await expect.poll(async () => scaleOf(await stageTransform(page))).toBeGreaterThan(before);
   const rect1 = await page.locator(".stage").boundingBox();
-  if (!rect1) throw new Error(".stage 沒有 boundingBox（縮放後）");
+  if (!rect1) throw new Error(".stage has no boundingBox (after zoom)");
   expect(Math.abs(rect1.x + u * rect1.width - point.x)).toBeLessThanOrEqual(3);
   expect(Math.abs(rect1.y + v * rect1.height - point.y)).toBeLessThanOrEqual(3);
 }
@@ -208,7 +208,7 @@ it("hand mode: clicking the hand toggles aria-pressed and both cursor spots, cle
     // Drag starting from an element — in hand mode this should not reselect it or start any other gesture, only pan.
     beforeTransform = await stageTransform(page);
     const titleBox = await page.frameLocator("iframe.slide-frame").locator("#el-title").boundingBox();
-    if (!titleBox) throw new Error("#el-title 沒有 boundingBox");
+    if (!titleBox) throw new Error("#el-title has no boundingBox");
     point = { x: titleBox.x + titleBox.width / 2, y: titleBox.y + titleBox.height / 2 };
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
@@ -313,7 +313,7 @@ it("zoom menu: opens centred directly above the dock, containing -/percentage/+/
 
     const dockBox = await page.locator(".dock").boundingBox();
     const menuBox = await menu.boundingBox();
-    if (!dockBox || !menuBox) throw new Error("dock 或 zoom-menu 沒有 boundingBox");
+    if (!dockBox || !menuBox) throw new Error("dock or zoom-menu has no boundingBox");
     const dockCenterX = dockBox.x + dockBox.width / 2;
     const menuCenterX = menuBox.x + menuBox.width / 2;
     expect(Math.abs(dockCenterX - menuCenterX)).toBeLessThanOrEqual(2);

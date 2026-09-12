@@ -59,7 +59,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test does not send a message",
     },
   };
 

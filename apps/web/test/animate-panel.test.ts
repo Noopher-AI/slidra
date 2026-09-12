@@ -77,8 +77,8 @@ describe("ObjectList", () => {
     const cards = buildCards([effect({ index: 0 }), effect({ target: "el-b", index: 1 })], new Map());
     const markup = renderToStaticMarkup(createElement(ObjectList, { cards, ...handlers }));
     // Two cards -> the first card's "move up" button and the second card's "move down" button are disabled.
-    expect(markup.match(/aria-label="上移"[^>]*disabled/g) ?? []).toHaveLength(1);
-    expect(markup.match(/aria-label="下移"[^>]*disabled/g) ?? []).toHaveLength(1);
+    expect(markup.match(/aria-label="Move Up"[^>]*disabled/g) ?? []).toHaveLength(1);
+    expect(markup.match(/aria-label="Move Down"[^>]*disabled/g) ?? []).toHaveLength(1);
   });
 
   it("for a family=path card, the Effect dropdown has only one option, path", () => {

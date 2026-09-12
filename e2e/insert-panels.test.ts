@@ -126,14 +126,14 @@ describe("bottom glass toolbar — insert panels (insert always asks for type fi
       await page.getByRole("button", { name: "Image" }).click();
       const panel = page.locator('.media-panel[aria-label="Image"]');
       await panel.locator(".media-panel-url").fill(sourceUrl);
-      await panel.locator(".media-panel-caption").fill("我的圖片");
+      await panel.locator(".media-panel-caption").fill("my picture");
       await panel.locator(".media-panel-insert").click();
 
       await expect.poll(() => panel.count()).toBe(0); // panel closed
 
       const after = await readSlide(started);
       expect(after).not.toBe(before);
-      expect(after).toContain('data-slidra-name="我的圖片"');
+      expect(after).toContain('data-slidra-name="my picture"');
       expect(after).toMatch(/<image[^>]*href="\.\.\/assets\/photo(-1)?\.gif"/);
 
       // the new element is selected
@@ -320,7 +320,7 @@ describe("disabled state (e2e covering three UI-reachable states apps/web/test/d
       const slideFrame = page.frameLocator("iframe.slide-frame");
       const selName = page.locator(".status-selection-chip");
       await slideFrame.locator("#el-subtitle").click();
-      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 副標");
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Subtitle");
       await slideFrame.locator("#el-title").click({ modifiers: ["Shift"] });
       await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
       expect(await groupButton.isDisabled()).toBe(false);
@@ -342,14 +342,14 @@ describe("Text insert panel (typing + style presets + alignment; Enter inserts d
       await page.getByRole("button", { name: "Text" }).click();
       const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
       await expect.poll(() => panel.count()).toBe(1);
-      await panel.locator(".text-panel-input").fill("Enter 直接插入");
+      await panel.locator(".text-panel-input").fill("Enter inserts directly");
       await panel.locator(".text-panel-input").press("Enter");
 
       await expect.poll(() => panel.count()).toBe(0); // panel closed
 
       const after = await readSlide(started);
       expect(after).not.toBe(before);
-      expect(after).toContain("Enter 直接插入");
+      expect(after).toContain("Enter inserts directly");
 
       const sel = page.frameLocator("iframe.slide-frame").locator(".sel");
       await expect.poll(() => sel.boundingBox()).not.toBeNull();
@@ -368,12 +368,12 @@ describe("Text insert panel (typing + style presets + alignment; Enter inserts d
       const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
       await expect.poll(() => panel.count()).toBe(1);
       const textarea = panel.locator(".text-panel-input");
-      await textarea.fill("第一行");
+      await textarea.fill("first line");
       await textarea.press("Shift+Enter");
-      await textarea.type("第二行");
+      await textarea.type("second line");
 
       expect(await panel.count()).toBe(1); // panel still open
-      expect(await textarea.inputValue()).toBe("第一行\n第二行");
+      expect(await textarea.inputValue()).toBe("first line\nsecond line");
       expect(await readSlide(started)).toBe(before); // nothing was inserted
     } finally {
       await started.cleanup();
@@ -423,7 +423,7 @@ describe("Escape key priority (with a panel open and a selection active, one Esc
       const selName = page.locator(".status-selection-chip");
 
       await slideFrame.locator("#el-title").click();
-      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題");
+      await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Title");
 
       await page.getByRole("button", { name: "Text" }).click();
       const panel = page.locator('.floating-layer.text-panel[aria-label="Text"]');
@@ -431,7 +431,7 @@ describe("Escape key priority (with a panel open and a selection active, one Esc
 
       await page.keyboard.press("Escape");
       await expect.poll(() => panel.count()).toBe(0); // panel closed
-      expect(await selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題"); // selection still there
+      expect(await selName.textContent().then((t) => t?.trim())).toBe("Selected: Title"); // selection still there
 
       // After the panel closes, focus is still on the Dock button that
       // opened it (the parent document), not inside the iframe —

@@ -79,13 +79,13 @@ describe("e2e dependency declaration guard", () => {
     const failures: string[] = [];
     for (const [name, fromFile] of usedPackages) {
       if (!declared.has(name)) {
-        failures.push(`"${name}"（來自 ${fromFile}）未宣告於 package.json 的 dependencies/devDependencies`);
+        failures.push(`"${name}" (from ${fromFile}) is not declared in package.json's dependencies/devDependencies`);
         continue;
       }
       try {
         require.resolve(name);
       } catch {
-        failures.push(`"${name}"（來自 ${fromFile}）已宣告但在 node_modules 中解析不到，請重新 npm install`);
+        failures.push(`"${name}" (from ${fromFile}) is declared but cannot be resolved in node_modules, run npm install again`);
       }
     }
 
