@@ -28,3 +28,5 @@ e2e/__screenshots__/__failed__/
 # Sandbox QA layer scratch (screenshots, iframe-session cache) — debugging
 # aids, not part of the product or its test fixtures.
 qa/out/
+.vercel
+.env*

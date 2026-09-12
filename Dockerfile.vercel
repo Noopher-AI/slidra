@@ -1,0 +1,90 @@
+# Public demo image, deployed to Vercel Functions as a custom container
+# image (Vercel auto-detects `Dockerfile.vercel` at the project root and
+# routes all traffic to it).
+#
+# This runs the real `slidra serve` — the same resident CLI mode a local
+# user runs — not a reimplementation. ADR-0002 still holds: the frontend
+# and the API are one process, and every read spawns the real Rust binary.
+#
+# No agent is selected, so chat stays gated off (409) exactly as NOOP-230
+# describes. That is a supported state, not a broken one: the demo shows
+# the editor, dragging, `check`, and PDF export.
+
+# ---------------------------------------------------------------------------
+# Builder: Rust toolchain (pinned by rust-toolchain.toml) + Node 22 (CI parity)
+# ---------------------------------------------------------------------------
+FROM rust:1.85-bookworm AS builder
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version | grep -q '^v22\.'
+
+WORKDIR /app
+
+# Dependency manifests first so `npm ci` caches independently of source edits.
+COPY package.json package-lock.json ./
+COPY packages/server/package.json packages/server/
+COPY apps/web/package.json apps/web/
+
+# Playwright's postinstall must not pull browsers into the builder — the
+# runtime stage installs the one browser that is actually needed.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm ci
+
+COPY . .
+
+# The root `build` script runs the workspace builds, `cargo build --release`,
+# and `scripts/link-cli.mjs` (which symlinks node_modules/.bin/slidra at the
+# Rust binary). Keeping the whole chain means the image is built the same way
+# a developer builds locally.
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Runtime: Node 22 + Chromium only. The Rust binary is already compiled, so
+# no Rust toolchain ships in the final image.
+# ---------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS runtime
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV NODE_ENV=production
+
+WORKDIR /app
+
+# `locate_repo_root()` in crates/slidra/src/node_entry.rs walks up from the
+# binary looking for a directory holding BOTH Cargo.toml and
+# packages/server/bin/slidra-node.js. So the repo layout has to be preserved
+# here — a bare binary would not be able to find its own Node entry point.
+COPY --from=builder /app/Cargo.toml /app/Cargo.lock /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/demo ./demo
+COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+COPY --from=builder /app/apps/web/dist ./apps/web/dist
+# Only the release binary — not the multi-gigabyte cargo intermediates.
+COPY --from=builder /app/target/release/slidra ./target/release/slidra
+
+# Export (`page.pdf()`) needs a real headless Chromium; install just that one
+# engine, with its system libraries, at the version playwright is pinned to.
+RUN npx --yes playwright@1.62.1 install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bake the demo presentation into the image so a cold start does not pay for
+# packing and opening it. SLIDRA_HOME holds the projects registry that maps
+# the id below back to this file.
+ENV SLIDRA_HOME=/app/.slidra
+RUN node scripts/pack-directory.mjs demo /app/demo.slidra \
+    && ./target/release/slidra open /app/demo.slidra \
+       | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+       | sed 's/.*"\([^"]*\)"$/\1/' > /app/presentation-id \
+    && test -s /app/presentation-id
+
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Vercel routes to port 80 by default; PORT overrides it in project settings.
+ENV PORT=80
+EXPOSE 80
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

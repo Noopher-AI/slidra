@@ -1,0 +1,10 @@
+.git/
+node_modules/
+target/
+dist/
+.quickstart/
+.fleet/
+qa/out/
+e2e/__screenshots__/__failed__/
+**/*.tsbuildinfo
+.DS_Store

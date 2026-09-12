@@ -52,6 +52,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
     server = await startServe({
       presentationId: parsed.presentationId,
       port: parsed.port,
+      host: parsed.host,
       initialAgent: { kind, source },
       initialModels: settingsModels,
     });
@@ -110,9 +111,10 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
 
 function parseServeArgv(
   argv: string[],
-): { presentationId: string; port?: number; agent?: AgentKind } | undefined {
+): { presentationId: string; port?: number; host?: string; agent?: AgentKind } | undefined {
   let presentationId: string | undefined;
   let port: number | undefined;
+  let host: string | undefined;
   let agent: AgentKind | undefined;
 
   for (let i = 0; i < argv.length; i++) {
@@ -125,6 +127,16 @@ function parseServeArgv(
         return undefined;
       }
       port = parsedPort;
+      i++;
+    } else if (arg === "--host") {
+      // Needed to bind 0.0.0.0 in a container, where the default loopback
+      // bind would be unreachable from outside.
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        console.error("--host is missing a value");
+        return undefined;
+      }
+      host = value;
       i++;
     } else if (arg === "--agent") {
       const value = argv[i + 1];
@@ -142,5 +154,5 @@ function parseServeArgv(
   if (!presentationId) {
     return undefined;
   }
-  return { presentationId, port, agent };
+  return { presentationId, port, host, agent };
 }
