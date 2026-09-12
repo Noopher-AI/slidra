@@ -6,7 +6,7 @@
 
 決定五件事：
 
-1. **新簡報不附任何投影片。** `co-motion new` 只寫 `project.json`（`slides: []`）、內嵌字型與授權文字。零頁簡報在編輯器裡顯示「此簡報沒有投影片」，`serve` 不再拒絕零頁；第一頁由作者或 agent 產生。
+1. **新簡報不附任何投影片。** `co-motion new` 只寫 `project.json`（`slides: []`）、內嵌字型與授權文字。零頁簡報在編輯器裡不畫白底投影片，只在舞台中央顯示一行白字「No slides now」，`serve` 不再拒絕零頁；第一頁由作者或 agent 產生。
 2. **計畫落地成 `.comot` 裡的 `plan/` 目錄，固定兩份檔案。** `plan/outline.md`（狀態、敘事模式、逐頁的頁型／節奏／主張、要問作者的題目）與 `plan/design-spec.md`（密度、六角色配色、字級表）。每份檔案開頭一個 JSON 圍欄區塊是機器可讀段，其後是給人與 agent 看的 markdown。只能經 `plan set|list|delete` 寫，經 `cat` 讀；`plan set` 寫入前驗欄位，錯就拒絕。計畫不進 undo 歷史。
 3. **三個角色，三個 skill，各自獨立。** `comotion-plan`（讀大綱、挑模式、逐頁計畫、出題、選配色與字級，寫兩份計畫檔後停下）、`comotion-build`（只在計畫為 `confirmed` 時動手：第一頁閘門、逐頁做、每種頁型第一次出現就登記成範本、`validate` 修到 0 錯誤）、`comotion-validate`（只驗只留言）。沒有入口 skill 串它們；`From outline…` 直接送 `/comotion-plan`。`comotion-outline` 刪除。
 4. **閘門是編輯器的擋住式視窗。** 計畫檔為 `draft` 且帶題目時，編輯器彈出視窗擋住一切操作：唯讀的逐頁計畫表、每題以 agent 的建議為預設值、可切換的選項與自由填寫。三個出口：「確認並建置」把答案組成一則 `/comotion-build 【計畫確認】` 訊息送回 agent；「重新規劃」必填一段話送 `/comotion-plan 【重做】`；「放棄」不經 agent、直接 `plan delete`。

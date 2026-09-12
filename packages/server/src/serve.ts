@@ -18,7 +18,7 @@ import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleCommandPost } from "./command-endpoint.js";
 import { handleAssetPost } from "./asset-upload.js";
-import { handleOpenPost } from "./open-endpoint.js";
+import { handleNewPost, handleOpenPost } from "./open-endpoint.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
@@ -367,6 +367,10 @@ async function handleRequest(
         await handleChatCancelPost(manager, res);
         return;
       }
+      if (url.pathname === "/api/chat/new") {
+        await handleChatNewPost(manager, res);
+        return;
+      }
       if (url.pathname === "/api/agent/probe") {
         // NOOP-230 §4.4: same shape as GET /api/agent, but always reruns
         // both login probes rather than reading the cache (§7.7).
@@ -413,6 +417,16 @@ async function handleRequest(
           return;
         }
         await handleOpenPost(presentationId, changeBroadcaster, req, res);
+        return;
+      }
+      if (url.pathname === "/api/new") {
+        // Replaces this id's whole content, so it sits behind the same
+        // "agent holds the floor" gate /api/open does.
+        if (editingLock.getState() === "agent") {
+          sendJson(res, 409, { error: new EditingLockConflictError().message });
+          return;
+        }
+        await handleNewPost(presentationId, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/save") {
@@ -644,6 +658,26 @@ async function handleChatCancelPost(manager: AgentManager, res: ServerResponse):
     return;
   }
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/chat/new` — the chat panel's "new session" button. Throws the
+ * current ACP session away and starts a fresh one with the same agent, so
+ * the next message arrives in a conversation with no history. No body.
+ * 409 while the agent holds the editing floor, or with no agent selected.
+ *
+ * The presentation itself is untouched: this clears the conversation, not
+ * the deck.
+ */
+async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+  try {
+    console.log(`[chat] ${new Date().toISOString()} new session requested`);
+    await manager.newSession();
+  } catch (error) {
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "無法重開對話" });
+    return;
+  }
+  sendJson(res, 200, { ok: true });
 }
 
 /**

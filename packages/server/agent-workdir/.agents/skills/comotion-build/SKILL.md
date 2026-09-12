@@ -13,19 +13,16 @@ description: 依作者確認過的 plan/ 計畫與設計規格逐頁建置投影
 
 ```
 /comotion-build 【計畫確認】
-mode=pyramid
-page-5=number
-animation=full
-background=on
-page-5.note=數字改成 11.8 分鐘
-補充：第 3 頁想再短一點
+<題目 id>=<選項 value>
+<題目 id>.note=<作者自由填寫的文字>
+補充：<整體意見>
 ```
 
 ## 輸入格式
 
 - 「【計畫確認】」後面每行一題：`<題目 id>=<選項 value>`；作者有自由填寫時多一行 `<題目 id>.note=<文字>`；最後可能有一行 `補充：<整體意見>`。
 - 沒有【計畫確認】、只有 `/comotion-build`：代表作者在終端機直接叫你建置，計畫必須已經是 `confirmed`。
-- 後面接頁碼（例如 `/comotion-build 3-4`）：只重做那幾頁（整頁 `slide set --svg` 覆寫），計畫同樣必須是 `confirmed`。
+- 後面接頁碼或頁碼範圍：只重做那幾頁（整頁 `slide set --svg` 覆寫），計畫同樣必須是 `confirmed`。
 
 ## 步驟
 
@@ -33,7 +30,7 @@ page-5.note=數字改成 11.8 分鐘
 2. **處理確認**：
    - 訊息帶【計畫確認】：把每題答案套進計畫的 JSON 段（`mode` 題改 `mode`；`animation` 題改 `animation`；`background` 題改 `background`；`page-N` 題改該頁的 `type`，並依 `slide-design.md` 對應調整 `rhythm`；`palette` 題改 `design-spec.md` 的 `palette`；`.note` 與「補充」的內容改進該頁正文的關鍵詞或備忘稿），`questions` 清空，`status` 改成 `confirmed`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（配色有改就也 `plan set design-spec`）。
    - 沒有【計畫確認】且 `status` 不是 `confirmed`：**停下來**回「計畫還沒確認，請先在確認視窗拍板」，不碰任何投影片。
-   - **帶【計畫確認】、但計畫已經是 `confirmed` 而且 `co-motion ls <presentation-id> slides` 已有投影片**：這是同一次確認被送了兩次（視窗與聊天框各一次，實際發生過）。**不要重建**——回一句「這份計畫已經建置過了（目前 N 頁）。要重做請說「重做第 X 頁」或「全部重做」」，然後停下。硬要重建會把作者手上的頁面覆蓋掉，而且兩次確認的答案可能不一樣。
+   - **帶【計畫確認】、但計畫已經是 `confirmed` 而且 `co-motion ls <presentation-id> slides` 已有投影片**：這是同一次確認被送了兩次（視窗與聊天框各送一次）。**不要重建**——回一句「這份計畫已經建置過了（目前 N 頁）。要重做請說「重做第 X 頁」或「全部重做」」，然後停下。硬要重建會把作者手上的頁面覆蓋掉，而且兩次確認的答案可能不一樣。
 3. **讀規格與現況**：`co-motion cat <presentation-id> plan/design-spec.md`（配色、密度、字級表、`shape_language`、`visual`；計畫的 `background` 決定要不要背景圖）。**`shape_language` 決定每一頁的形狀怎麼表現**——圓角、裝飾密度、留白節奏、材質；讀 `.agents/skills/comotion-style-kit/shapes/<名字>.md` 的「怎麼做到」那一節，整份每一頁都照它。一份簡報只有一種形狀語言、`co-motion cat <presentation-id> project.json`（畫布；`k = width ÷ 1280`，指南的所有座標、半徑、字級乘以 k，`viewBox` 寫成畫布尺寸）、`co-motion template list <presentation-id>`、`co-motion ls <presentation-id> slides`。讀工作目錄的 `reference/slide-design.md`（第 0、1、3b、4、4b、5、6 節是你的工作範圍）。
    - **背景圖資產先建好**（計畫 `background` 是 `on` 時）：依第 4b 節的「哪一頁放哪一種」（看 `rhythm`）決定這份簡報要用到哪幾種配方（通常 `anchor` 一種、內容頁一種），每種 `co-motion asset import <presentation-id> --svg '<配方 SVG，<role> 換成色碼>' --name bg-<配方>-<配色>.svg`，**一種配方只建一次**，記下回傳的 `data.path`，之後每頁重用。
 4. **一頁怎麼做**（六個階段，照順序；前一階段沒做完不要跳下一階段）
@@ -46,23 +43,23 @@ page-5.note=數字改成 11.8 分鐘
       4. 決定有幾個語意單位（`nodes`）與**講述步驟的切法**（`steps`）。想不出「這一頁分幾段講」就代表內容還沒理清楚，先回去看計畫，不要開始畫。想完**把結論寫下來**，不要只放在心裡——在 `plan/outline.md` 這一頁的物件加上 `blueprint`，用 `co-motion plan set <presentation-id> outline '<全文>'` 寫回（`status` 維持 `confirmed`）：
 
       ```json
-      { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "…",
-        "blueprint": { "shape": "shared-field", "nodes": 3, "steps": 4 } }
+      { "n": "頁碼", "relationship": "計畫給的關係", "rhythm": "計畫給的節奏", "title": "…",
+        "blueprint": { "shape": "你挑的構圖名字", "nodes": "語意單位數", "steps": "點擊步數" } }
       ```
 
       挑到的 `shape` 剛好是第 6.3 節某個已知解時（`card-wall`→`bullets`、`split-panel`→`compare`、`hero-number`→`number`、`cover-stack`→`cover`、`claim-field`→`section`／`closing`），**才**順手把 `"type"` 也寫進這一頁（`validate` 會多驗一條該頁型的簽名字級，範本也會登記）；自己組的構圖就不要寫 `type`。
 
       **這個 blueprint 是必填的**：計畫確認之後每一頁都要有，`validate` 的 `blueprint.required` 會擋。同樣地，前景階段每個語意單位都要標 `data-comot-role="node"`，否則 `role.required` 會擋——這兩條先前是選用的，結果沒有人寫，整套對帳形同虛設。
 
-      - `shape`：你選的構圖叫什麼（第 6.2 節的名字，例如 `card-wall`／`shared-field`／`spine-path`；自己組的就給一個描述性的名字）。**相鄰兩頁不要用同一個 shape 解同一種關係**，`validate` 的 `rhythm.repeated-shape` 會抓。
+      - `shape`：你選的構圖叫什麼（版面庫或第 6.2 節裡那個解的名字；自己組的就給一個描述性的名字）。**相鄰兩頁不要用同一個 shape 解同一種關係**，`validate` 的 `rhythm.repeated-shape` 會抓。
       - `nodes`：這一頁有幾個語意單位（之後要標成 `data-comot-role="node"` 的那些）。
       - `steps`：這一頁分幾次點擊講完，也就是 `on-click` 的數量。
       - **不要只因為節點數就採用等分格線或鏡射對稱**：三個並列的想法才用三欄，三段有先後的想法要看得出方向。
    2. **背景製作**：計畫 `background` 是 `on` 時，確認步驟 3 已經建好這個頁型要用的配方資產（一種配方只建一次，之後每頁重用）；`off` 就跳過。背景只負責氣氛，**不承載意義**。
-   3. **前景製作**：依步驟 1 挑好的 `shape` 決定怎麼畫——**版面庫該解的 `references/` 檔有槽位表（角色、字數預算、行數）與線框，照它排**；座標與比例仍由這一頁的內容與 `design-spec.layout` 推導，線框裡的數字是示意。`shape` 剛好等於第 6.3 節某個已知解的名字時，也可以看第 4 節該解的**骨架**（有哪些角色、誰墊著誰、垂直節奏怎麼走），比例與座標仍由這一頁的內容決定；**其餘一律用第 3b 節的角色把幾何自己拼出來**（`field` 圈出關係發生的區域、`node` 是每個語意單位、`spine` 是閱讀主軸、`edge` 是必要的連接、`label` 掛在 owner 上）。沒有現成範例不是退回卡片牆的理由——`order`／`parent`／`link`／`overlap` 本來就沒有範例，硬套並列的版面會把有方向的內容講成沒方向的，`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。**範例是起點不是規格**：欄寬比例、卡片高度、要不要合併成一塊面板、標題擺哪裡，都可以為了這一頁的內容調整——只要（一）不越過 `design-spec.layout` 的安全區，（二）字級與顏色仍取自字級表與配色，（三）間距取自 `layout.gutter` 與 `layout.spacing` 的級距。**不要為了貼合範例而犧牲內容**，也不要無緣無故偏離它。`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**依指南第 3b 節替元素標上角色**（`data-comot-role`：`field`／`node`／`spine`／`edge`／`label`／`garnish`）——這是之後 group 與動畫的依據，也是 `validate` 檢查結構的依據：卡片底是 `field`、整張卡片是 `node`、卡片裡的字是 `label`、底線與小方塊是 `garnish`。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
+   3. **前景製作**：依步驟 1 挑好的 `shape` 決定怎麼畫——**版面庫該解的 `references/` 檔有槽位表（角色、字數預算、行數）與線框，照它排**；座標與比例仍由這一頁的內容與 `design-spec.layout` 推導，線框裡的數字是示意。`shape` 剛好等於第 6.3 節某個已知解的名字時，也可以看第 4 節該解的**骨架**（有哪些角色、誰墊著誰、垂直節奏怎麼走），比例與座標仍由這一頁的內容決定；**其餘一律用第 3b 節的角色把幾何自己拼出來**（`field` 圈出關係發生的區域、`node` 是每個語意單位、`spine` 是閱讀主軸、`edge` 是必要的連接、`label` 掛在 owner 上）。沒有現成範例不是退回卡片牆的理由——`order`／`parent`／`link`／`overlap` 本來就沒有範例，硬套並列的版面會把有方向的內容講成沒方向的，`<role>` 換成 design-spec 的色碼、範例文字換成計畫裡的關鍵詞（標題＝主張），卡片或條目依計畫的條數增減（座標公式在範例下方）。**範例是起點不是規格**：欄寬比例、卡片高度、要不要合併成一塊面板、標題擺哪裡，都可以為了這一頁的內容調整——只要（一）不越過 `design-spec.layout` 的安全區，（二）字級與顏色仍取自字級表與配色，（三）間距取自 `layout.gutter` 與 `layout.spacing` 的級距。**不要為了貼合範例而犧牲內容**，也不要無緣無故偏離它。`background` 是 `on` 時把第 4b 節該頁型的 scrim rect 一起寫進去（放在被它墊著的文字之前）。**背景類型的裝飾（大圓、光暈、色團、光束、對角線、格線、光點）不進頁面 SVG**——那些都在背景圖資產裡；也不要自己加範例以外的裝飾幾何。**依指南第 3b 節替元素標上角色**（`data-comot-role`：`field`／`node`／`spine`／`edge`／`label`／`garnish`）——這是之後 group 與動畫的依據，也是 `validate` 檢查結構的依據：墊在底下的面板是 `field`、每個語意單位的整體是 `node`、單位裡的字是 `label`、純裝飾的線與塊是 `garnish`。**所有文字都用文字框宣告**（`<text data-comot-text-width=…>`，內容直接換行分段），不要自己放 `<tspan>`；每個元素保留範例的 `id` 與 `data-comot-name`。整段 SVG 用單引號包住、裡面只用雙引號、不能有半形單引號、`&` 寫 `&amp;`：第一頁 `co-motion slide add <presentation-id> --svg '<SVG>'`；接在既有頁面之後時加 `--at <n-1>`；重做某頁用 `co-motion slide set <presentation-id> slides/00N.svg --svg '<SVG>'`。接著把頁面底色與背景圖補上：
       - `co-motion slide style set <presentation-id> slides/00N.svg --background <角色色碼>`：多數頁面用 `background`；想讓一頁明顯安靜或明顯不同時用 `secondary_bg`；結語那種要整頁換調性的用 `primary`（文字全部改用 `background` 色）。同一份簡報裡**不要每頁換底色**——底色的變化本身就是一種訊號。
       - `background` 是 `on`：`co-motion slide background set <presentation-id> slides/00N.svg --asset <該 rhythm 配方的 data.path> --opacity <第 4b 節的建議值>`；是 `off` 就不下（重做某頁而它已有背景、計畫卻是 `off` 時，`--none` 拿掉）。
-   4. **group（把一段話變成一個東西）**：依步驟 1 切好的講述步驟與步驟 3 標好的角色，把**同一段裡的元素**（通常就是一個 `node` 連同它的 `field`、`label` 與 `garnish`）組成一個群組：`co-motion element group <presentation-id> slides/00N.svg <元素 id,逗號分隔>`，記下回傳的 `data.elementId`（群組自己的 id）。典型的分法——要點頁每張卡片一組（卡片底＋編號＋要點字）、對照頁左欄一組右欄一組（面板＋頂線＋欄標＋內文）、封面標題與副標一組、大數字頁數字與說明一組。標題自成一段時不必特地開群組。
+   4. **group（把一段話變成一個東西）**：依步驟 1 切好的講述步驟與步驟 3 標好的角色，把**同一段裡的元素**（通常就是一個 `node` 連同它的 `field`、`label` 與 `garnish`）組成一個群組：`co-motion element group <presentation-id> slides/00N.svg <元素 id,逗號分隔>`，記下回傳的 `data.elementId`（群組自己的 id）。標題自成一段時不必特地開群組。
       - 群組是**邏輯單位**：作者在編輯器裡拖一下就整段一起動，動畫也只要下一次。
       - `element group` 會清掉成員身上既有的效果（回傳的 `removedEffects` 會告訴你幾個），所以**一定要先 group 再套動畫**。
       - 背景圖、頁尾線、頁尾文字、頁碼不進任何群組。

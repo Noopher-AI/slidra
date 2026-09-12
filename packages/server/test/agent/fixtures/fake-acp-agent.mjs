@@ -268,6 +268,21 @@ class FakeAgent {
             : { command: config.toolCallCommand ?? "co-motion text set --id p1 --element-id el-1 --text 新標題" },
         },
       });
+      // permissionForToolCall: ask permission for *this* tool call, between
+      // its announcement and its outcome — the real shape of a command the
+      // allowlist refuses (claude-code-acp 0.16.2 then reports the tool
+      // call as failed with its own "the user rejected this" text).
+      if (config.permissionForToolCall) {
+        const response = await this.connection.requestPermission({
+          sessionId: params.sessionId,
+          toolCall: { toolCallId, title: "執行命令", rawInput: { command: config.toolCallCommand } },
+          options: [
+            { kind: "allow_once", name: "允許", optionId: "allow" },
+            { kind: "reject_once", name: "拒絕", optionId: "reject" },
+          ],
+        });
+        log({ permissionOutcome: response.outcome });
+      }
       await this.connection.sessionUpdate({
         sessionId: params.sessionId,
         update: { sessionUpdate: "tool_call_update", toolCallId, status: "in_progress" },

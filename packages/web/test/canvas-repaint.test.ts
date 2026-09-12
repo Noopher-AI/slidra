@@ -83,7 +83,7 @@ describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
     expect(srcdoc()).toContain('data-testid="s1"');
   });
 
-  it("零頁簡報的提示文字之後，第一頁真的出現時一定重畫", async () => {
+  it("零頁簡報的空白透明頁之後，第一頁真的出現時一定重畫", async () => {
     const empty = { name: "空", slides: [] as string[] };
     let project: { name: string; slides: string[] } = empty;
     vi.stubGlobal(
@@ -98,7 +98,7 @@ describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
     );
     controller = mountCanvas(container);
     await controller.reload();
-    expect(srcdoc()).toContain("此簡報沒有投影片");
+    expect(srcdoc()).toContain("background:transparent");
 
     project = deck;
     await controller.reload();

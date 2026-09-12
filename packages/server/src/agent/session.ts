@@ -127,8 +127,27 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * the way down would otherwise push the whole conversation off screen.
  * Truncation is announced in the text itself — never silent.
  */
+/**
+ * Shown in place of the adapter's own wording when the allowlist refused a
+ * command. ACP's `session/request_permission` can answer only allow or
+ * reject — there is no field to say *why* — so Claude Code renders every
+ * refusal as "The user doesn't want to proceed with this tool use", which
+ * reads to the author as though they had clicked something. They did not:
+ * the rule is hard-coded and the author is never asked (user story 12).
+ * This says what actually happened, on the author's side of the screen.
+ */
+const BLOCKED_COMMAND_MESSAGE =
+  "CoMotion 擋下了這條命令（不是作者拒絕的）。只有 co-motion 開頭、參數為裸 token 或單引號字串的命令可以執行；管線、`&&`、`;`、寫入檔案的重導向、雙引號與反斜線一律擋下。";
+
 const MAX_COMMAND_OUTPUT_CHARS = 2000;
 const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
+
+/** The model a live session runs on, as its adapter reports it at `session/new`. */
+export interface AgentModel {
+  name: string;
+  /** The adapter's own description of that model, when it gives one. */
+  detail?: string;
+}
 
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
@@ -137,11 +156,17 @@ interface ChatEvents {
   "chat-error": (payload: { message: string }) => void;
   /** A command the agent has started running — `command` verbatim from ACP's `rawInput.command`. */
   "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus }) => void;
-  /** A status change on a command already relayed by `chat-command`. `output` only ever accompanies a failure. */
+  /**
+   * A status change on a command already relayed by `chat-command`.
+   * `output` only ever accompanies a failure. `blocked` marks the one
+   * failure that is not the command's own: CoMotion's allowlist refused to
+   * let it run (see `BLOCKED_COMMAND_MESSAGE`).
+   */
   "chat-command-update": (payload: {
     toolCallId: string;
     status: acp.ToolCallStatus;
     output?: string;
+    blocked?: true;
   }) => void;
   /**
    * The agent's own `available_commands_update` — a session-level fact, not
@@ -219,6 +244,8 @@ export class AgentChatSession extends EventEmitter {
   private cancelledUntilNextPrompt = false;
   private droppedOutsideTurn = 0;
   private refusedOutsideTurnLogged = false;
+  /** Set once at `session/new` from the adapter's own model report; stays null when it reports none. */
+  private model: AgentModel | null = null;
   /**
    * The most recent `available_commands_update` the agent has sent, or `[]`
    * if it has never sent one. Unlike the turn-scoped events above, this
@@ -239,6 +266,13 @@ export class AgentChatSession extends EventEmitter {
    * scoped to the turn that showed them.
    */
   private readonly relayedToolCalls = new Set<string>();
+  /**
+   * Tool calls this turn whose command the allowlist refused. Kept so the
+   * failure the adapter reports for them can be shown to the author in
+   * CoMotion's own words rather than the adapter's misleading one — same
+   * turn scope, and cleared alongside, `relayedToolCalls`.
+   */
+  private readonly refusedToolCalls = new Set<string>();
   private disposed = false;
   /**
    * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
@@ -299,6 +333,11 @@ export class AgentChatSession extends EventEmitter {
 
   private emitTyped<K extends keyof ChatEvents>(event: K, ...args: Parameters<ChatEvents[K]>): void {
     this.emit(event, ...args);
+  }
+
+  /** The model this session runs on, as the adapter named it at `session/new`; null when the adapter reports none. */
+  getModel(): AgentModel | null {
+    return this.model;
   }
 
   /** The agent's most recently reported `available_commands_update`, or `[]` if it has never sent one. */
@@ -441,6 +480,7 @@ export class AgentChatSession extends EventEmitter {
     } finally {
       this.relayingCurrentTurn = false;
       this.relayedToolCalls.clear();
+      this.refusedToolCalls.clear();
       await this.closeEditLockIfOpen();
     }
   }
@@ -633,6 +673,11 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     this.sessionId = session.sessionId;
+    // ACP's model state is still marked experimental, and `codex-acp` sends
+    // nothing at all — so this is read defensively and stays `null` when
+    // absent. The author sees "which model am I talking to" under the chat
+    // box; saying nothing is the honest answer when the adapter did not say.
+    this.model = modelOf(session.models);
 
     // The 編輯規約 is the first user message the agent ever sees — its own
     // `session/prompt` call, never folded into the author's first message.
@@ -765,11 +810,20 @@ export class AgentChatSession extends EventEmitter {
     // An update carrying no status is a content/location-only update —
     // nothing the author's view of "running / done / failed" reacts to.
     if (update.status == null) return;
-    const output = update.status === "failed" ? extractCommandOutput(update.content) : undefined;
+    // A command the allowlist refused never ran, so the adapter's own
+    // "the user rejected this" text describes neither what happened nor
+    // who did it — CoMotion's wording replaces it.
+    const blocked = update.status === "failed" && this.refusedToolCalls.has(update.toolCallId);
+    const output = blocked
+      ? BLOCKED_COMMAND_MESSAGE
+      : update.status === "failed"
+        ? extractCommandOutput(update.content)
+        : undefined;
     this.emitTyped("chat-command-update", {
       toolCallId: update.toolCallId,
       status: update.status,
       ...(output === undefined ? {} : { output }),
+      ...(blocked ? { blocked: true as const } : {}),
     });
   }
 
@@ -814,6 +868,7 @@ export class AgentChatSession extends EventEmitter {
    */
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
     const allow = isAllowedCommand(params);
+    if (!allow) this.refusedToolCalls.add(params.toolCall.toolCallId);
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
       : params.options.find((candidate) => candidate.kind === "reject_once") ??
@@ -916,6 +971,24 @@ export class AgentChatSession extends EventEmitter {
     await this.closeEditLockIfOpen();
     await this.teardownSession();
   }
+}
+
+/**
+ * The current model in ACP's (experimental) model state: `currentModelId`
+ * looked up in `availableModels`. Returns null for anything it cannot read
+ * that way — an adapter that reports no models, or a current id that is
+ * not in the list.
+ *
+ * `detail` matters more than it looks: `claude-code-acp` names the unpinned
+ * default "Default (recommended)" and puts which models that actually
+ * resolves to in the description. The name alone would tell the author
+ * nothing, and inventing a better one here would be guessing.
+ */
+function modelOf(models: acp.SessionModelState | null | undefined): AgentModel | null {
+  if (!models) return null;
+  const current = models.availableModels.find((model) => model.modelId === models.currentModelId);
+  if (!current) return null;
+  return { name: current.name, ...(current.description ? { detail: current.description } : {}) };
 }
 
 /** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */

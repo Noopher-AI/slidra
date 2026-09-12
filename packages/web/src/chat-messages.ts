@@ -48,6 +48,16 @@ export interface CommandMessage {
    * hearing — and leaves `status` at the last thing ACP really told us.
    */
   interrupted?: true;
+  /**
+   * The command never ran: CoMotion's own allowlist refused it (server:
+   * `BLOCKED_COMMAND_MESSAGE`). A separate field rather than another
+   * `CommandStatus` for the same reason as `interrupted` — `status` is
+   * ACP's vocabulary, and ACP has no word for "the client refused this".
+   * The distinction is worth drawing on screen: a failed command is the
+   * agent's problem to fix, a blocked one is a rule the author should be
+   * able to recognise as CoMotion's, not as something they clicked.
+   */
+  blocked?: true;
 }
 
 /**
@@ -148,7 +158,7 @@ export function appendCommandMessage(
 export function updateCommandMessage(
   messages: ChatMessage[],
   toolCallId: string,
-  patch: { status: CommandStatus; output?: string },
+  patch: { status: CommandStatus; output?: string; blocked?: true },
 ): ChatMessage[] {
   return messages.map((message) =>
     message.role === "command" && message.toolCallId === toolCallId ? { ...message, ...patch } : message,

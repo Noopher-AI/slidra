@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { CoMotionError } from "../comotion/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
-import { AgentChatSession, type AgentAdapterConfig, type ChatStreamSend } from "./session.js";
+import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type ChatStreamSend } from "./session.js";
 import type { EditingLock } from "../editing-lock.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
 import { writeAgentSelection } from "./settings.js";
@@ -34,6 +34,13 @@ export interface AgentStatus {
    * `chat-chunk`. False with no session.
    */
   turnRunning: boolean;
+  /**
+   * The model the current session runs on, as the adapter reported it at
+   * `session/new` (`AgentChatSession.getModel`). Null when there is no
+   * session, or when the adapter reports no model state at all — the chat
+   * panel then simply shows nothing rather than guessing a name.
+   */
+  model: AgentModel | null;
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
@@ -199,6 +206,7 @@ export class AgentManager {
       current: this.current,
       source: this.source,
       turnRunning: this.session?.isBusy() ?? false,
+      model: this.session?.getModel() ?? null,
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
@@ -247,6 +255,36 @@ export class AgentManager {
 
     const spec = adapterSpecFor(kind);
     this.onAgentChanged?.({ kind, label: spec.label });
+
+    return this.status();
+  }
+
+  /**
+   * Starts a fresh conversation with the same agent: tears the current ACP
+   * session down and builds a new one in its place. The adapter process,
+   * its `session/new`, and the 編輯規約 all happen again, so the agent
+   * begins with no memory of the previous turns — the server side of the
+   * chat panel's "new session" button.
+   *
+   * Refused while the agent holds the editing floor, for the same reason
+   * `select()` is: killing the adapter mid-edit would strand a half-written
+   * undo group.
+   */
+  async newSession(): Promise<AgentStatus> {
+    if (this.editingLock.getState() === "agent") {
+      throw new AgentSwitchLockedError();
+    }
+    if (this.current === null) {
+      throw new CoMotionError("尚未選擇 agent，沒有可以重開的對話");
+    }
+
+    const previousSession = this.session;
+    if (previousSession) {
+      await previousSession.dispose();
+    }
+    const nextSession = this.buildSession(this.current);
+    this.session = nextSession;
+    this.rewireSession(nextSession);
 
     return this.status();
   }

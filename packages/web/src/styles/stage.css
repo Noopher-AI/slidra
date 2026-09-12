@@ -40,6 +40,29 @@
   overflow: hidden;
 }
 
+/* 還沒有任何投影片時，舞台不該長得像一張投影片：拿掉紙張的陰影與圓角，
+   iframe 本身也是透明的（canvas.ts 的 EMPTY_DECK_DOCUMENT），於是整個
+   井就是一片深色，只有中間一行白字。 */
+.stage[data-empty="true"] {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.stage-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--surface-white);
+  opacity: 0.55;
+  font-size: var(--text-md-panel-title);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
 /* 全螢幕下比例框失效，iframe 撐滿螢幕 — #29 既有回歸契約優先於這張骨架票
    的視覺（e2e/player-fullscreen.test.ts 斷言 frameSize[0] === screenSize[0]）。 */
 .canvas-area:fullscreen .stage,

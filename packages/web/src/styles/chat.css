@@ -120,6 +120,12 @@
   background: var(--surface-2);
   color: var(--ink-500);
 }
+/* 被白名單擋下：命令根本沒跑，也不是作者按了拒絕——用中性色跟真正的
+   「失敗」分開，別讓作者以為是 agent 執行出錯。 */
+.chat-command-blocked .chat-command-status {
+  background: var(--surface-2);
+  color: var(--ink-500);
+}
 
 .chat-command-text {
   font-family: var(--font-mono);
@@ -304,6 +310,12 @@
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3) var(--space-3) var(--space-4);
 }
+/* 送出／停止＋開新對話：黏成一組，中間沒有間隙。 */
+.chat-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
 .chat-input-hint {
   color: var(--ink-300);
   font-size: var(--text-xs-hint);
@@ -339,14 +351,55 @@
    same size, neutral ink instead of brand red so it reads as "halt", not
    "go"; wide enough for the two-character label. */
 .chat-input button.chat-stop {
-  width: auto;
-  padding: 0 var(--space-3);
   background: var(--ink-900);
-  font-size: var(--text-sm);
-  font-weight: 700;
 }
 .chat-input button.chat-stop:not(:disabled):hover {
   background: var(--ink-700);
+}
+
+/* 送出鍵右邊的「開新對話」：次要動作，所以不吃品牌紅——留白底、細框。
+   兩顆鍵是相連的一組：中間不留縫，只有最外側兩端有圓角（下面 :has 那組
+   規則），看起來是一個控制項的兩半，不是兩顆各自獨立的按鈕。 */
+.chat-input button.chat-new-session {
+  margin-left: -1px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-500);
+  font-weight: 600;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* 左半（送出或停止）把右側的圓角收掉，缺口交給右半補上。 */
+.chat-input button:not(.chat-new-session) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.chat-input button.chat-new-session:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--ink-900);
+}
+.chat-input button.chat-new-session:disabled {
+  background: transparent;
+  color: var(--ink-400);
+}
+
+/* 對話框下方的 agent 狀態列（連線燈＋模型）。`.agent-dot` 本身的樣式仍在
+   shell.css（那顆燈的三態沒有變，只是換了住處）；這裡只負責它在對話面板
+   底部的排列與間距。 */
+.chat-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5) var(--space-3);
+}
+.chat-status-model {
+  color: var(--ink-400);
+  font-size: var(--text-xs-hint);
+}
+.chat-status-model::before {
+  content: "·";
+  margin-right: var(--space-2);
 }
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your

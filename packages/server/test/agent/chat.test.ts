@@ -650,6 +650,36 @@ describe("chat: session/request_permission allows only the co-motion program", (
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
+
+  // Rule 5: a trailing `2>&1` is the one redirection the grammar accepts —
+  // agents append it by reflex to see stderr, and the refusal reached them
+  // as an opaque "the user rejected this" they stopped on. Everything
+  // before it is still judged by the unchanged grammar.
+
+  it("allows a co-motion command with a trailing 2>&1", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion cat abc project.json 2>&1" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  it("refuses a second command chained after a trailing 2>&1", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls abc 2>&1; rm -rf ~" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses a pipe following 2>&1", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls abc 2>&1 | sh" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses redirection to a file, which 2>&1 does not open the door to", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion ls abc > /tmp/evil" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
+  it("refuses an unterminated quote that only looks closed once 2>&1 is stripped", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "co-motion cat abc 'unterminated 2>&1" });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
 });
 
 describe("chat: session/request_permission never accepts a persistent grant", () => {
@@ -1378,6 +1408,41 @@ describe("chat: the author can see the command run (ticket #17)", () => {
       status: "failed",
       output: "zsh: command not found: co-motion\nexit code 127",
     });
+  });
+
+  it("marks a command the allowlist refused as blocked, in CoMotion's words rather than the adapter's", async () => {
+    // ACP's permission answer carries no reason, so claude-code-acp
+    // reports a refusal as "The user doesn't want to proceed…" — which the
+    // author never did. The card says who actually blocked it.
+    const events = await commandEventsFor({
+      toolCallCommand: "co-motion ls p1 | sh",
+      permissionForToolCall: true,
+      toolCallOutcome: "failed",
+      toolCallOutput: "The user doesn't want to proceed with this tool use.",
+    });
+
+    const failure = events
+      .filter((event) => event.event === "chat-command-update")
+      .map((event) => event.data as { status: string; output?: string; blocked?: true })
+      .find((data) => data.status === "failed");
+    expect(failure?.blocked).toBe(true);
+    expect(failure?.output).toContain("CoMotion 擋下了這條命令");
+    expect(failure?.output).not.toContain("The user doesn't want to proceed");
+  });
+
+  it("leaves a command's own failure alone — only a refused one gets CoMotion's wording", async () => {
+    const events = await commandEventsFor({
+      toolCallCommand: "co-motion ls p1",
+      permissionForToolCall: true,
+      toolCallOutcome: "failed",
+      toolCallOutput: "exit code 1",
+    });
+
+    const failure = events
+      .filter((event) => event.event === "chat-command-update")
+      .map((event) => event.data as { status: string; output?: string; blocked?: true })
+      .find((data) => data.status === "failed");
+    expect(failure).toEqual({ toolCallId: "fake-command-call", status: "failed", output: "exit code 1" });
   });
 
   it.each([

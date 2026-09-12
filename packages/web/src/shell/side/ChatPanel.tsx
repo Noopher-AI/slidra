@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { AgentUiStatus } from "../../agent-status.js";
+import type { AgentConnection, AgentModelView, AgentUiStatus } from "../../agent-status.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
 import { SlashMenu } from "./SlashMenu.js";
+import { Icon } from "../../icons/index.js";
 
 export interface ChatPanelProps {
   messages: ChatMessage[];
@@ -21,6 +22,17 @@ export interface ChatPanelProps {
    */
   onStop(): void;
   stopping: boolean;
+  /**
+   * 送出鍵右邊的「開新對話」：丟掉目前的 ACP session、清空訊息列表，
+   * 下一則訊息從零開始（`POST /api/chat/new`）。簡報本身不受影響。
+   */
+  onNewSession(): void;
+  /** `/api/chat/stream` 的連線狀態，由 App 從 streamReady 推導。以前在標題列，現在住在對話框下面。 */
+  agentConnection: AgentConnection;
+  /** 目前選定的 agent 名稱（`GET /api/agent` 的 label）；還沒取得或未選時為 null，只顯示連線狀態。 */
+  agentLabel: string | null;
+  /** 目前 session 跑在哪個模型（`GET /api/agent` 的 model）；adapter 沒報就是 null，什麼都不顯示。 */
+  agentModel: AgentModelView | null;
   /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
   agent: AgentUiStatus;
   /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
@@ -64,6 +76,10 @@ export function ChatPanel({
   onSubmit,
   onStop,
   stopping,
+  onNewSession,
+  agentConnection,
+  agentLabel,
+  agentModel,
   agent,
   onOpenSettings,
   comments,
@@ -229,12 +245,18 @@ export function ChatPanel({
           ) : message.role === "command" ? (
             <div
               key={message.id}
-              className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
+              className={`chat-command chat-command-${
+                message.interrupted ? "interrupted" : message.blocked ? "blocked" : message.status
+              }`}
               role={message.status === "failed" ? "alert" : undefined}
             >
               <p className="chat-command-line">
                 <span className="chat-command-status">
-                  {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
+                  {message.interrupted
+                    ? COMMAND_INTERRUPTED_LABEL
+                    : message.blocked
+                      ? COMMAND_BLOCKED_LABEL
+                      : COMMAND_STATUS_LABEL[message.status]}
                 </span>
                 <code className="chat-command-text">{message.command}</code>
               </p>
@@ -322,24 +344,55 @@ export function ChatPanel({
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          {working ? (
+          {/* 送出（或停止）與開新對話是相連的一組：footer 本身是
+              space-between，兩顆鍵若各自當直接子節點就會被推到兩端。 */}
+          <span className="chat-input-actions">
+            {working ? (
+              <button
+                type="button"
+                className="chat-stop"
+                aria-label="Stop"
+                title="停止 (Esc)"
+                disabled={stopping}
+                onClick={onStop}
+              >
+                <Icon name="stop" size="inline" />
+              </button>
+            ) : (
+              <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
+                ↑
+              </button>
+            )}
             <button
               type="button"
-              className="chat-stop"
-              aria-label="Stop"
-              title="停止 (Esc)"
-              disabled={stopping}
-              onClick={onStop}
+              className="chat-new-session"
+              aria-label="New session"
+              title="開新對話（清空這段對話，簡報不受影響）"
+              disabled={working || stopping}
+              onClick={onNewSession}
             >
-              停止
+              ＋
             </button>
-          ) : (
-            <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
-              ↑
-            </button>
-          )}
+          </span>
         </div>
       </form>
+      {/* 連線狀態與模型：作者真正在意這兩件事的時候，眼睛就在對話框上，
+          不在標題列。`.agent-dot` 的結構與 class 逐字沿用舊的標題列節點
+          （e2e/helpers/launch.ts 靠 `.agent-dot-connected` 的文字判斷連線
+          完成），模型另開一個節點，不混進那段文字裡。 */}
+      <div className="chat-status">
+        <span className={`agent-dot agent-dot-${agentConnection}`}>
+          <i />
+          {agentStatusText(agentConnection, agentLabel)}
+        </span>
+        {agentModel && (
+          // claude-code-acp 把沒有指定模型時的預設叫「Default (recommended)」，
+          // 真正會用到哪些模型寫在它的說明裡——名字照顯示，說明掛 tooltip。
+          <span className="chat-status-model" title={agentModel.detail}>
+            {agentModel.name}
+          </span>
+        )}
+      </div>
     </aside>
   );
 }
@@ -369,3 +422,23 @@ const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
 
 /** 串流中斷、結果不明時顯示的字（不是 CommandStatus 的一員：真的不知道成功與否，不編一個答案）。 */
 const COMMAND_INTERRUPTED_LABEL = "Unknown";
+
+/** 命令被 CoMotion 的白名單擋下時顯示的字——不是命令自己失敗，也不是作者按了拒絕。 */
+const COMMAND_BLOCKED_LABEL = "Blocked";
+
+const AGENT_LABEL: Record<AgentConnection, string> = {
+  connecting: "Agent connecting…",
+  connected: "Agent connected",
+  disconnected: "Agent disconnected",
+};
+
+/**
+ * 連上線之後，「Agent connected」這句話已經沒有新資訊了——真正想知道的是
+ * 現在跑的是哪一個 agent，所以連上線時改顯示它的名稱。connecting／
+ * disconnected 仍用原本的狀態文案（那時名稱不是重點，而且可能還沒取得）。
+ * 逐字搬自 TitleBar.tsx。
+ */
+function agentStatusText(connection: AgentConnection, label: string | null): string {
+  if (connection === "connected" && label !== null) return label;
+  return AGENT_LABEL[connection];
+}

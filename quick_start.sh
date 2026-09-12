@@ -290,7 +290,7 @@ elif [ "$BLANK" -eq 1 ]; then
 網址：      $URL
 
 驗收清單（空白簡報，驗從零開始的路徑）：
-  - 畫面開到一份空白簡報，沒有任何投影片（新簡報零頁，ADR-0018），顯示「此簡報沒有投影片」。
+  - 畫面開到一份空白簡報，沒有任何投影片（新簡報零頁，ADR-0018），舞台上沒有白底，只有中間一行白字「No slides now」。
   - 按 New → From outline… 貼一份大綱送出：訊息以 /comotion-plan 開頭，agent 寫出
     plan/outline.md 與 plan/design-spec.md 後，編輯器彈出擋住式的計畫確認視窗。
   - 視窗裡每題預設是 agent 的建議，可切換或自由填寫；按「確認並建置」後 agent 走

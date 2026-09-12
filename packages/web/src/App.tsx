@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
+import { fromAgentResponse, modelFrom, type AgentConnection, type AgentModelView, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
@@ -8,7 +8,7 @@ import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
-import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
+import { TitleBar } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
 import { SettingsDialog } from "./shell/settings/SettingsDialog.js";
@@ -230,6 +230,10 @@ export function App() {
   // 都有已知的 label（未登入不代表不知道是哪個 agent）。
   const agentLabel =
     agentStatus.kind === "ready" || agentStatus.kind === "unauthenticated" ? agentStatus.label : null;
+  // 對話框下方顯示的模型名稱。`GET /api/agent` 的 `model` 欄位——只有在
+  // ACP session 真的建立起來之後才有值（session 是第一則訊息才建立的），
+  // 沒有值就什麼都不顯示，不猜。
+  const [agentModel, setAgentModel] = useState<AgentModelView | null>(null);
   // [E3.T5]: the settings dialog's own open/closed state (Plan §4.2). Toggled
   // by the titlebar gear, force-opened by the chat empty state's "開啟設定"
   // button, closed by the dialog itself (Esc/mask/close button).
@@ -458,7 +462,14 @@ export function App() {
       onFrozenChange: setEditingFrozen,
       onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
-      onCommandsChange: setCommands,
+      onCommandsChange: (next) => {
+        setCommands(next);
+        // `agent-commands` 只會在一個 ACP session 剛建立、agent 報出它的命令
+        // 清單時送來——那也正是模型名稱第一次可讀的時刻（session/new 的回
+        // 應）。借同一個訊號回頭補一次 GET /api/agent，對話框下面的模型才
+        // 不用等到下一次重新整理才出現。
+        void refreshAgentStatus();
+      },
       // [E3.T5] NOOP-230 §4.4/Plan §4.6: the only place a system message is
       // ever inserted for a switch — POST /api/agent/select's own 200
       // response never inserts one (Plan §4.5 step 6), including when this
@@ -910,6 +921,7 @@ export function App() {
       const data: unknown = await response.json();
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
+      setAgentModel(modelFrom(data));
       // #303: a turn already in flight (started before this tab loaded, or
       // from another client) shows Stop right away.
       setWorking(turnRunningFrom(data));
@@ -1028,6 +1040,34 @@ export function App() {
     // success (open-endpoint.ts) — this tab's own live-reload subscription
     // picks both up the same way an external edit would. No extra refetch
     // needed here.
+  }
+
+  /**
+   * `POST /api/new` — New 按鈕。跟 Open 走同一條路：同樣的 409 未存檔確認、
+   * 同樣不在成功後自己 refetch（伺服器已經廣播 presentation-changed 與
+   * save-state，這個分頁的 live-reload 會收到）。
+   */
+  async function handleNew(discardUnsaved = false): Promise<void> {
+    setOpenError(null);
+    let response: Response;
+    try {
+      response = await fetch("/api/new", {
+        method: "POST",
+        headers: discardUnsaved ? { "x-co-motion-discard-unsaved": "1" } : {},
+      });
+    } catch {
+      setOpenError("建立新簡報失敗：連線已中斷");
+      return;
+    }
+    if (response.status === 409 && !discardUnsaved) {
+      const proceed = window.confirm("目前的簡報有未儲存的變更，確定要放棄並建立新簡報嗎？");
+      if (proceed) await handleNew(true);
+      return;
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setOpenError(body.error ?? "建立新簡報失敗");
+    }
   }
 
   /** `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this one path. Frozen guard matches runUndoRedo's: no request, no 409 to report, same as undo/redo. */
@@ -1381,6 +1421,28 @@ export function App() {
     }
   }
 
+  /**
+   * 送出鍵右邊的「開新對話」——`POST /api/chat/new`。伺服器把目前的 ACP
+   * session 丟掉、用同一個 agent 重開一個；這裡同時把訊息列表清空，因為那
+   * 段對話已經不存在於 agent 那一側了，留在畫面上只會讓人以為它還記得。
+   * 簡報本身完全不動。
+   */
+  async function startNewChatSession(): Promise<void> {
+    try {
+      const response = await fetch("/api/chat/new", { method: "POST" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "無法重開對話");
+        return;
+      }
+    } catch {
+      setError("無法重開對話：連線已中斷");
+      return;
+    }
+    setMessages([]);
+    setError(null);
+  }
+
   /** slidePath = the current slide's virtual path. */
   function currentSlidePath(): string | null {
     return canvasState.slides[canvasState.currentIndex] ?? null;
@@ -1586,11 +1648,10 @@ export function App() {
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
           savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
-          agentConnection={agentConnection}
-          agentLabel={agentLabel}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
+          onNew={() => void handleNew()}
           onOpenFile={(file) => void handleOpenFile(file)}
           onSave={() => void handleSave()}
           exportOpen={exportOpen}
@@ -1727,6 +1788,10 @@ export function App() {
                 onSubmit={() => void sendMessage()}
                 onStop={() => void stopChatTurn()}
                 stopping={stopping}
+                onNewSession={() => void startNewChatSession()}
+                agentConnection={agentConnection}
+                agentLabel={agentLabel}
+                agentModel={agentModel}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}
                 onPinnedRemove={(commentId) => {

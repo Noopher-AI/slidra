@@ -39,6 +39,9 @@ import { broadcastSaveState } from "./save-state.js";
 const FILE_NAME_HEADER = "x-co-motion-file-name";
 const DISCARD_UNSAVED_HEADER = "x-co-motion-discard-unsaved";
 const UNNAMED_FALLBACK = "未命名.comot";
+/** The deck `POST /api/new` creates: no slides, and a name the author is meant to replace. */
+const NEW_DECK_NAME = "未命名";
+const NEW_DECK_FILE_NAME = `${NEW_DECK_NAME}.comot`;
 
 /** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.comot` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
 export const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
@@ -140,6 +143,57 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
 
   await rm(stagedEntry.workDir, { recursive: true, force: true }).catch(() => {});
   await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
+}
+
+/**
+ * `POST /api/new` — the GUI's New action, the sibling of Open. Makes a
+ * brand-new presentation with no slides at all (`co-motion new` writes
+ * `"slides": []`) and swaps it into this server's own id through the very
+ * same `reopenPresentationInPlace` Open uses: `serve` is bound to one id
+ * for its whole lifetime (routes, change broadcaster, agent session), so
+ * "new" can only ever mean "this id, emptied", never a second id.
+ *
+ * Takes no request body. The unsaved-changes gate is Open's, verbatim —
+ * discarding the author's work is exactly as destructive here.
+ */
+export async function handleNewPost(
+  presentationId: string,
+  changeBroadcaster: ChangeBroadcaster,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
+    const saveState = await readSaveState(presentationId);
+    if (saveState.known && saveState.dirty) {
+      sendJson(res, 409, { error: "目前的簡報有未儲存的變更" });
+      return;
+    }
+  }
+
+  const home = resolveCoMotionHome();
+  const opaqueId = randomBytes(9).toString("hex");
+  const stagedDir = path.join(home, "opened", opaqueId);
+  const stagedPath = path.join(stagedDir, NEW_DECK_FILE_NAME);
+  await mkdir(stagedDir, { recursive: true });
+
+  const created = await runJsonCommand<unknown>(["new", stagedPath, "--name", NEW_DECK_NAME]);
+  if (!created.ok) {
+    await rm(stagedDir, { recursive: true, force: true }).catch(() => {});
+    sendJson(res, 400, { error: created.message });
+    return;
+  }
+
+  try {
+    await reopenPresentationInPlace(presentationId, stagedPath);
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "建立失敗" });
+    return;
+  }
+
+  sendJson(res, 200, { ok: true, fileName: NEW_DECK_FILE_NAME });
+  // Same pair of broadcasts, for the same reason, as handleOpenPost's.
+  changeBroadcaster.broadcast("presentation-changed", {});
+  await broadcastSaveState(changeBroadcaster, presentationId);
 }
 
 /**

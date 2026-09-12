@@ -224,7 +224,9 @@ describe("mountCanvas", () => {
 
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
     expect(iframe.srcdoc).not.toContain("<base");
-    expect(iframe.srcdoc).toContain("此簡報沒有投影片");
+    // 零頁的文件是透明的空白頁——白底會讓舞台看起來像有一張空白投影片，
+    // 「現在沒有投影片」那句話改由殼的 .stage-empty 說（Stage.tsx）。
+    expect(iframe.srcdoc).toContain("background:transparent");
   });
 });
 
@@ -396,7 +398,7 @@ describe("mountCanvas 的多頁換頁", () => {
 
     await expect(controller.next()).resolves.toBeUndefined();
     await expect(controller.previous()).resolves.toBeUndefined();
-    expect(srcdoc()).toContain("此簡報沒有投影片");
+    expect(srcdoc()).toContain("background:transparent");
   });
 
   // Same generation guard as reload(): rapid arrow presses issue

@@ -81,7 +81,10 @@ export type IconName =
   // 0 0 20 20 grid/stroke-1.5 contract as every other icon here: eight
   // teeth swept between root r=5.6 and tip r=7.6 around a r=2.6 hub, so
   // its 2.47..17.53 extent matches the neighbouring save/close icons.
-  | "settings";
+  | "settings"
+  // #303 的停止鍵原本寫「停止」兩個字，跟旁邊的送出箭頭不同調——這個是
+  // 同一套 0 0 20 20 網格上的實心方塊（播放器通用的 stop 字形）。
+  | "stop";
 
 /**
  * Canonical grid for every icon is `0 0 20 20` (Icon.tsx always renders
@@ -94,6 +97,7 @@ export type IconName =
 export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   // ── Ribbon.tsx:43-59, traced from docs/design/base-shell.html's `const I` ──
   plus: <path d="M10 4v12M4 10h12" />,
+  stop: <rect x={5.5} y={5.5} width={9} height={9} rx={1.5} fill="currentColor" stroke="none" />,
   template: (
     <>
       <rect x={3} y={2.5} width={14} height={15} />

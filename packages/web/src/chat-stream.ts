@@ -143,15 +143,21 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
   });
 
   source.addEventListener("chat-command-update", (event) => {
-    const { toolCallId, status, output } = JSON.parse((event as MessageEvent).data) as {
+    const { toolCallId, status, output, blocked } = JSON.parse((event as MessageEvent).data) as {
       toolCallId: string;
       status: CommandStatus;
       output?: string;
+      blocked?: true;
     };
     // `output` is only ever sent with a failure; passing it through as an
-    // explicit `undefined` would erase output already shown.
+    // explicit `undefined` would erase output already shown. `blocked`
+    // travels with it (the server sends both together or neither).
     options.updateMessages((previous) =>
-      updateCommandMessage(previous, toolCallId, output === undefined ? { status } : { status, output }),
+      updateCommandMessage(previous, toolCallId, {
+        status,
+        ...(output === undefined ? {} : { output }),
+        ...(blocked ? { blocked: true as const } : {}),
+      }),
     );
   });
 

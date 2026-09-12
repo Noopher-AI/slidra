@@ -3451,7 +3451,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       badgeTargets = [];
       overlayBadges = [];
       paintedView = null;
-      frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      frame.srcdoc = EMPTY_DECK_DOCUMENT;
       notifyChartWindow();
       return;
     }
@@ -3649,7 +3649,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (currentIndex === -1) {
       paintedView = null;
       paintedPlay = null;
-      frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      frame.srcdoc = EMPTY_DECK_DOCUMENT;
       return;
     }
 
@@ -4386,6 +4386,18 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
  * `#000`), so a transparent document there reads as solid black instead of a
  * blank page.
  */
+/**
+ * 沒有任何投影片時塞進 iframe 的文件：完全空白、**背景透明**。
+ *
+ * 舊版走 `wrapSlideDocument`，於是一份還沒有投影片的簡報在舞台上是一張
+ * 16:9 的白紙（那個包裝函式的 body 寫死 `background:#fff`），看起來像「有
+ * 一頁空白投影片」——但實際上一頁都沒有。透明之後井底的深色直接透出來，
+ * 「現在沒有投影片」這句話改由父文件的 `.stage-empty` 用白字說（Stage.tsx），
+ * 字級與顏色才吃得到殼的 design token。
+ */
+const EMPTY_DECK_DOCUMENT =
+  '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:transparent"></body></html>';
+
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
