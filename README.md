@@ -5,8 +5,7 @@
 <h1 align="center">Slidra</h1>
 
 <p align="center">
-  <b>The slide harness for coding agents.</b><br>
-  One presentation, with native interfaces for humans and agents.
+  <b>Agentic Slide Harness Powers a Unified Presentation Editor for Agent Experience and User Experience.</b>
 </p>
 
 <p align="center">
