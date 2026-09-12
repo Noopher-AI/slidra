@@ -127,6 +127,10 @@ import path from "node:path";
 const config = JSON.parse(process.env.FAKE_AGENT_CONFIG ?? "{}");
 const logPath = process.env.FAKE_AGENT_LOG;
 
+// stderrLine: whatever a real adapter would write to its own stderr. serve
+// forwards it tagged with the adapter's label instead of discarding it.
+if (config.stderrLine) process.stderr.write(`${config.stderrLine}\n`);
+
 // The cwd the client handed us in `session/new` (see `newSession` below) —
 // kept so `prompt` can build an absolute `fs/read_text_file` path the same
 // way a real, conforming ACP agent does (ticket #7 fix 3): resolve the cwd
@@ -265,6 +269,10 @@ class FakeAgent {
         ],
       });
       log({ permissionOutcome: response.outcome });
+      // abortTurnAfterPermission: Codex turns a refusal into an abort of
+      // the whole turn — the prompt is answered `cancelled` even though
+      // nobody ever called `session/cancel`.
+      if (config.abortTurnAfterPermission) return { stopReason: "cancelled" };
     }
 
     const shouldReadTextFile =

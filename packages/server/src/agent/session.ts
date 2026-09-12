@@ -139,6 +139,15 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
 const BLOCKED_COMMAND_MESSAGE =
   "CoMotion 擋下了這條命令（不是作者拒絕的）。只有 comotion 開頭、參數為裸 token 或單引號字串的命令可以執行；管線、`&&`、`;`、寫入檔案的重導向、雙引號與反斜線一律擋下。";
 
+/**
+ * Said once when a refused command took the whole turn down with it — see
+ * `findRejectOption` for why some adapters leave no other way to refuse.
+ * Without it the conversation ends on 「已停止」, which reads as the author's
+ * own doing.
+ */
+const TURN_ABORTED_BY_REFUSAL_MESSAGE =
+  "這一輪到此為止：CoMotion 擋下了上面那條命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用允許的命令重新發送即可。";
+
 const MAX_COMMAND_OUTPUT_CHARS = 2000;
 const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
 
@@ -601,6 +610,14 @@ export class AgentChatSession extends EventEmitter {
           prompt: [{ type: "text", text: prompt }],
         }),
       );
+      // A turn that ends `cancelled` after we refused a command, with no
+      // Stop from the author, was ended by that refusal: the adapter had
+      // no way to say "skip this one and carry on" and aborted instead.
+      // Without this line the author sees only the 「已停止」 notice and
+      // reads it as something they did.
+      if (response.stopReason === "cancelled" && this.refusedToolCalls.size > 0 && !this.cancelledUntilNextPrompt) {
+        this.emitTyped("chat-notice", { text: TURN_ABORTED_BY_REFUSAL_MESSAGE });
+      }
       this.emitTyped("chat-done", { stopReason: response.stopReason });
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });
@@ -734,10 +751,21 @@ export class AgentChatSession extends EventEmitter {
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
     const child = spawn(this.config.command, this.config.args ?? [], {
-      stdio: ["pipe", "pipe", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       env: this.config.env ? { ...process.env, ...this.config.env } : process.env,
     });
     this.child = child;
+    // The adapter's own diagnostics used to go to `"ignore"`, which is why
+    // an adapter-side failure reached serve's log as nothing at all —
+    // every question about *why* a turn behaved oddly had to be answered
+    // by re-running it against a hand-written ACP client. Tagged with the
+    // adapter's name so it is never mistaken for CoMotion's own output.
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      for (const line of chunk.split("\n")) {
+        if (line.trim() !== "") console.warn(`[${this.config.label}] ${line}`);
+      }
+    });
     // `error` fires when the process never spawns at all (e.g. the command
     // does not exist); `exit` fires whenever it stops running afterwards,
     // mid-setup or mid-turn. Both leave stdio dead, so both must reach for
@@ -1011,8 +1039,7 @@ export class AgentChatSession extends EventEmitter {
     if (!allow) this.refusedToolCalls.add(params.toolCall.toolCallId);
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
-      : params.options.find((candidate) => candidate.kind === "reject_once") ??
-        params.options.find((candidate) => candidate.kind === "reject_always");
+      : this.findRejectOption(params.options);
     if (!option) {
       // Cannot express the decision through any offered option — including
       // the case where we mean to allow but the agent offered no
@@ -1022,6 +1049,26 @@ export class AgentChatSession extends EventEmitter {
       return { outcome: { outcome: "cancelled" } };
     }
     return { outcome: { outcome: "selected", optionId: option.optionId } };
+  }
+
+  /**
+   * Picks the refusal that costs the turn the least. ACP says only "reject
+   * once" / "reject always", but `codex-acp` offers two different
+   * `reject_once` options behind those: `decline` ("No, continue without
+   * running it") lets the agent keep going and correct itself, while
+   * `cancel` ("No, and tell Codex what to do differently") is Codex's
+   * *abort* — it kills the whole turn, which is how a blocked command used
+   * to leave the author staring at a stopped conversation. So `decline` is
+   * taken by name when it is on offer; everything else falls back to the
+   * kinds ACP actually defines, and `cancel` remains the last resort
+   * (refusing is still better than allowing).
+   */
+  private findRejectOption(options: acp.PermissionOption[]): acp.PermissionOption | undefined {
+    return (
+      options.find((candidate) => candidate.kind === "reject_once" && candidate.optionId === "decline") ??
+      options.find((candidate) => candidate.kind === "reject_once") ??
+      options.find((candidate) => candidate.kind === "reject_always")
+    );
   }
 
   /**
@@ -1123,7 +1170,97 @@ function toChoice(info: acp.ModelInfo): AgentModelChoice {
 /** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */
 function isAllowedCommand(params: acp.RequestPermissionRequest): boolean {
   const command = extractCommand(params.toolCall);
-  return command !== undefined && isCoMotionCommand(command);
+  if (command === undefined) return false;
+  if (isCoMotionCommand(command)) return true;
+  // Second chance for a command that reached us shell-*quoted* rather than
+  // as the script itself (see `unquoteShellWord`). The allowlist itself is
+  // unchanged and still has the last word — this only decides which string
+  // it is asked about.
+  const literal = unquoteShellWord(command);
+  return literal !== undefined && isCoMotionCommand(literal);
+}
+
+/**
+ * Undoes one known encoder: `@agentclientprotocol/codex-acp` hands
+ * `session/request_permission` the shell-quoted *display* form of the
+ * command rather than the script itself, so a command carrying any
+ * quoting of its own arrives as e.g.
+ * `"comotion plan set abc outline '"'…'` where the `tool_call` update
+ * carried `comotion plan set abc outline '…'`. The allowlist refuses that
+ * on the leading `"` — which is why every writing command was blocked
+ * under this adapter while every read (which the sandbox runs without
+ * asking) went through.
+ *
+ * Returns the concatenated *literal* text of a word built from adjacent
+ * unquoted / single-quoted / double-quoted chunks, or undefined the moment
+ * anything falls outside that shape — an unterminated quote, a backslash
+ * outside double quotes, an escape other than `\"`/`\\`, or a `$`,
+ * backtick or `!` inside double quotes (all three still expand there, so a
+ * double-quoted chunk containing one is not literal text and this refuses
+ * to read it as such), or a word that does not start quoted at all.
+ *
+ * This is not the shell parser `command-allowlist.ts` warns against, and
+ * it must not grow into one: it decides nothing. Unquoting only ever
+ * *removes* quoting, so every character the shell would act on survives
+ * into the returned string and the allowlist judges it under rules 1–6
+ * unchanged — a `;` that was quoted comes out as a `;` and is refused.
+ * The original string is tried first, so no command that was allowed
+ * before now takes this path.
+ */
+function unquoteShellWord(command: string): string | undefined {
+  // Only a word an encoder quoted from its very first character — never a
+  // command the agent itself wrote, whose first token is the program name
+  // (rule 1) and which therefore keeps rule 3's outright refusal of double
+  // quotes anywhere in it.
+  if (!command.startsWith('"')) return undefined;
+  const chars = Array.from(command);
+  let literal = "";
+  let i = 0;
+  while (i < chars.length) {
+    const ch = chars[i];
+    if (ch === "'") {
+      i++;
+      let closed = false;
+      while (i < chars.length) {
+        if (chars[i] === "'") {
+          closed = true;
+          i++;
+          break;
+        }
+        literal += chars[i++];
+      }
+      if (!closed) return undefined;
+      continue;
+    }
+    if (ch === '"') {
+      i++;
+      let closed = false;
+      while (i < chars.length) {
+        const inner = chars[i];
+        if (inner === '"') {
+          closed = true;
+          i++;
+          break;
+        }
+        if (inner === "$" || inner === "`" || inner === "!") return undefined;
+        if (inner === "\\") {
+          const escaped = chars[i + 1];
+          if (escaped !== '"' && escaped !== "\\") return undefined;
+          literal += escaped;
+          i += 2;
+          continue;
+        }
+        literal += inner;
+        i++;
+      }
+      if (!closed) return undefined;
+      continue;
+    }
+    if (ch === "\\") return undefined;
+    literal += ch;
+    i++;
+  }
+  return literal;
 }
 
 /** Recognizes Claude's command string and Codex's shell argv; unknown shapes fail closed. */
@@ -1131,7 +1268,7 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
   const rawInput = toolCall.rawInput;
   if (typeof rawInput !== "object" || rawInput === null) return undefined;
   const command = (rawInput as Record<string, unknown>).command;
-  if (typeof command === "string") return unwrapDoubleQuotedScript(command) ?? command;
+  if (typeof command === "string") return command;
   // Codex sends the actual exec argv, including its shell wrapper. Only
   // unwrap a known shell with exactly one script; the existing allowlist
   // still validates that entire script (never the display title/parsed_cmd).
@@ -1142,6 +1279,7 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
   if (command[1] !== "-c" && command[1] !== "-lc") return undefined;
   return command[2];
 }
+
 
 /**
  * Pulls a failed command's own output out of a `tool_call_update`'s

@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
@@ -519,6 +519,91 @@ describe("chat: session/request_permission allows only the comotion program", ()
       permissionCommand: ["/bin/zsh", "-lc", "comotion text set abc slides/001.svg el-1 '新標題'"],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  // codex-acp sends the shell-*quoted* form of the command, not the script
+  // itself (see `unquoteShellWord`): a command carrying quotes of its own
+  // arrives wrapped in quotes it never had. Without unquoting, every
+  // writing command is refused on its leading `"`.
+  it("allows a comotion command codex-acp sent in its shell-quoted form", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: `"comotion text set abc slides/001.svg el-1 '新標題'"`,
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  // Verbatim from codex-acp's own shlexQuote: adjacent double- and
+  // single-quoted chunks for one `plan set` whose argument spans lines.
+  it("allows a shell-quoted command built from several adjacent quoted chunks", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: `"comotion plan set abc outline '"'\`\`\`json\n{ "n": 1 }\n\`\`\`'"'"`,
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
+  });
+
+  // codex-acp offers two different reject_once options: `decline` skips
+  // the command and lets the turn continue, `cancel` is Codex's abort.
+  it("refuses with decline, not the abort, when the adapter offers both", async () => {
+    const outcome = await permissionOutcomeFor({
+      permissionCommand: "rm -rf ~",
+      permissionOptions: [
+        { kind: "allow_once", name: "允許", optionId: "allow_once" },
+        { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
+        { kind: "reject_once", name: "不跑這條，繼續", optionId: "decline" },
+      ],
+    });
+    expect(outcome).toEqual({ outcome: "selected", optionId: "decline" });
+  });
+
+  it("says so when a refused command took the whole turn down with it", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["好的"]],
+        requestPermissionOnPromptIndex: 1,
+        permissionCommand: "rm -rf ~",
+        // Only the abort on offer, and the adapter aborts the turn on it.
+        permissionOptions: [
+          { kind: "allow_once", name: "允許", optionId: "allow_once" },
+          { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
+        ],
+        abortTurnAfterPermission: true,
+      }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const untilDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "幫我執行一個工具");
+    const collected = await untilDone;
+    await sse.close();
+
+    const notice = collected.find((e) => e.event === "chat-notice");
+    expect((notice!.data as { text: string }).text).toContain("不是作者按了停止");
+  });
+
+  it("forwards the adapter's own stderr to serve's log, tagged with its name", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]], stderrLine: "adapter said something" }));
+      const stream = await fetch(`${server.url}/api/chat/stream`);
+      const sse = new SseReader(stream);
+      const done = sse.readUntil((e) => e.event === "chat-done");
+      await postChat(server, "隨便一句");
+      await done;
+      await sse.close();
+      expect(warn.mock.calls.map(String)).toContain("[Claude Code] adapter said something");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    [`"comotion ls; rm -rf ~"`],
+    [`"comotion ls $(whoami)"`],
+    [`"comotion ls \`whoami\`"`],
+    [`"comotion ls`],
+  ])("still refuses an unsafe or malformed shell-quoted command %j", async (permissionCommand) => {
+    expect(await permissionOutcomeFor({ permissionCommand })).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
   it.each([
