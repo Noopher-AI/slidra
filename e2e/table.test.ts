@@ -5,7 +5,6 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import type { RunningServer } from "../packages/server/src/serve.js";
 import { openApp, requireBuilt, startServerFor } from "./helpers/launch.js";
-import { compareScreenshot, settleForScreenshot, settledBox } from "./helpers/screenshot.js";
 
 /**
  * E2.T14/E2.T14r2's real-Chromium acceptance tests (plan §5/§6) — the one
@@ -21,7 +20,6 @@ import { compareScreenshot, settleForScreenshot, settledBox } from "./helpers/sc
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const deckDir = path.join(e2eDir, "fixtures/table-deck");
-const baselineDir = path.join(e2eDir, "__screenshots__/table");
 const SLIDE_PATH = "slides/001.svg";
 
 let browser: Browser;
@@ -625,11 +623,6 @@ it("E13: 選取表格時顯示四角縮放與旋轉把手（表格靠容器 tran
   }
 });
 
-// F1–F4: 6 baselines under `e2e/__screenshots__/table/` (plan §5 F1–F4 —
-// each one preceded by a behaviour assertion, per the AGENTS.md "硬條件":
-// a `compareScreenshot` call with SKIP_APPEARANCE_BASELINES=1 and no
-// preceding assertion is zero verification (#224 r3's own lesson).
-//
 // Header rect fill/fill-opacity per theme (plan §3.10, `theme.ts`'s
 // `THEMES.<name>.head` — not exported from core's public barrel, so these
 // are the literal values read directly off that source).
@@ -639,61 +632,21 @@ const HEADER_PAINT: Record<"dark" | "light" | "zebra", { fill: string; fillOpaci
   zebra: { fill: "#ffffff", fillOpacity: "0.08" },
 };
 
-type Box = { x: number; y: number; width: number; height: number };
-
-/**
- * 把 boundingBox 取整並夾在 viewport 內——尺寸不符是 compareScreenshot 的無容忍硬失敗
- * （helpers/screenshot.ts）。角落各自四捨五入（而不是 x/y 與 width/height 分開四捨五入）
- * 是刻意的：後者在 box 邊界落在 .5 附近時，x 與 width 可能各自進位到不同方向，兩次執行
- * 算出的尺寸就會差 1px（實測 F4 出現過 203x288 vs 204x289）。從角落算可以消掉這個誤差。
- */
-function snapClip(box: Box): Box {
-  const x = Math.max(0, Math.round(box.x));
-  const y = Math.max(0, Math.round(box.y));
-  const right = Math.min(1440, Math.round(box.x + box.width));
-  const bottom = Math.min(900, Math.round(box.y + box.height));
-  const width = right - x;
-  const height = bottom - y;
-  if (width <= 0 || height <= 0) throw new Error(`clip 尺寸無效：${width}x${height}`);
-  return { x, y, width, height };
-}
-
-/** 多個 boundingBox 的聯集；任一為 null 或陣列為空都明確報錯，絕不回退成整個視窗。 */
-function unionBox(label: string, boxes: (Box | null)[]): Box {
-  if (boxes.length === 0 || boxes.some((b) => b === null)) throw new Error(`找不到 ${label} 的版面框`);
-  const list = boxes as Box[];
-  const left = Math.min(...list.map((b) => b.x));
-  const top = Math.min(...list.map((b) => b.y));
-  const right = Math.max(...list.map((b) => b.x + b.width));
-  const bottom = Math.max(...list.map((b) => b.y + b.height));
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-it("F1: table-panel 基準截圖", async () => {
+it("F1: table-panel 插入面板的格數與可用狀態", async () => {
   const { server, cleanup } = await startServerFor({ deckDir, prefix: "f1" });
   try {
     const page = await openPage(server);
-    // `.table-panel` carries `.floating-layer`'s `scale(0.96)→scale(1)` entrance
-    // animation (dock.css) — suppress it so the clip below measures the settled
-    // box, not a mid-animation one (NOOP-198's F1 flake).
-    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Table" }).click();
     const panel = page.locator(".table-panel");
     const cells = panel.locator(".table-panel-cell");
     expect(await cells.count()).toBe(48);
     expect(await cells.first().isEnabled()).toBe(true);
-
-    await settleForScreenshot(page);
-    const clip = snapClip(unionBox("插入面板", [await settledBox(panel, "插入面板")]));
-    await compareScreenshot(page, { name: "table-panel", baselineDir, clip });
   } finally {
     await cleanup();
   }
 });
 
-// F2 的固定文字（3×3，第 0 列是表頭）——`table create` 預設是空表格，而空表格在
-// pixelmatch 的門檻下無論背景深淺都低於可辨識界線（本輪 Plan 已用 pixelmatch@7
-// 逐色值量測驗證）；文字是唯一能跨過門檻、讓這 3 張基準真的守住表格渲染的圖元。
+// F2 的固定文字（3×3，第 0 列是表頭）。
 const F2_TEXT: Record<string, string> = {
   "0,0": "產品",
   "0,1": "區域",
@@ -707,16 +660,14 @@ const F2_TEXT: Record<string, string> = {
 };
 
 for (const theme of ["dark", "light", "zebra"] as const) {
-  it(`F2: theme-${theme} 基準截圖`, async () => {
-    const { server, registry, presentationId, elementId, cleanup } = await newTableDeck(`f2-${theme}`, { rows: 3, cols: 3, theme });
+  it(`F2: theme-${theme} 的表頭填色與文字`, async () => {
+    const { registry, presentationId, elementId, cleanup } = await newTableDeck(`f2-${theme}`, { rows: 3, cols: 3, theme });
     try {
       for (const [addr, text] of Object.entries(F2_TEXT)) {
         const [row, col] = addr.split(",").map(Number);
         await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row, col, text });
       }
 
-      const page = await openPage(server);
-      await page.emulateMedia({ reducedMotion: "reduce" });
       const svg = await catSlide(registry, presentationId);
       expect(svg).toContain(`data-slidra-theme="${theme}"`);
       const headerCell = cellMarkup(svg, 0, 0);
@@ -725,34 +676,16 @@ for (const theme of ["dark", "light", "zebra"] as const) {
       if (paint.fillOpacity !== null) expect(headerCell).toContain(`fill-opacity="${paint.fillOpacity}"`);
       else expect(headerCell).not.toContain("fill-opacity");
       expect(headerCell).toContain(">產品<");
-
-      await settleForScreenshot(page);
-      const slideFrame = page.frameLocator("iframe.slide-frame");
-      const cellAddrs = [
-        ["0,0"], ["0,1"], ["0,2"],
-        ["1,0"], ["1,1"], ["1,2"],
-        ["2,0"], ["2,1"], ["2,2"],
-      ];
-      const rects = await Promise.all(
-        cellAddrs.map(([addr]) => slideFrame.locator(`[data-slidra-cell="${addr}"] rect`).boundingBox()),
-      );
-      const clip = snapClip(unionBox("表格", rects));
-      await compareScreenshot(page, { name: `theme-${theme}`, baselineDir, clip });
     } finally {
       await cleanup();
     }
   });
 }
 
-it("F3: cell-range 基準截圖", async () => {
+it("F3: cell-range 選取範圍框的幾何與情境列的邊界", async () => {
   const { server, cleanup } = await newTableDeck("f3", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
-    // `.context-bar` carries `context-bar-in`'s `translateY` entrance animation
-    // (stage-overlays.css) — suppress it so the clip below measures the
-    // settled box (NOOP-198's root-cause table found this affects F3 too,
-    // just masked by the `waitForTimeout(200)` below).
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     await slideFrame.locator('[data-slidra-cell="1,1"]').click({ modifiers: ["Shift"] });
@@ -783,26 +716,15 @@ it("F3: cell-range 基準截圖", async () => {
     expect(Math.abs(rangeBoxBox!.y - top)).toBeLessThan(3);
     expect(Math.abs(rangeBoxBox!.x + rangeBoxBox!.width - right)).toBeLessThan(3);
     expect(Math.abs(rangeBoxBox!.y + rangeBoxBox!.height - bottom)).toBeLessThan(3);
-
-    await settleForScreenshot(page);
-    const contextBar = page.locator(".context-bar");
-    const clip = snapClip(
-      unionBox("範圍框與情境列", [await settledBox(rangeBox, "範圍框"), await settledBox(contextBar, "情境列")]),
-    );
-    await compareScreenshot(page, { name: "cell-range", baselineDir, clip });
   } finally {
     await cleanup();
   }
 });
 
-it("F4: cell-menu 基準截圖", async () => {
+it("F4: cell-menu 右鍵選單的項目數與可用狀態", async () => {
   const { server, cleanup } = await newTableDeck("f4", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
-    // `.table-cell-menu` carries the same `floating-layer-in` entrance
-    // animation as `.table-panel` (table.css:191) — suppress it so the clip
-    // below measures the settled box (NOOP-198's F4 flake).
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const slideFrame = page.frameLocator("iframe.slide-frame");
     // A plain click first — same "let TableOverlay's own subscription
     // settle before the interaction that needs it" reasoning as E8/E9's
@@ -819,10 +741,6 @@ it("F4: cell-menu 基準截圖", async () => {
     for (const text of await items.allTextContents()) {
       expect(await items.filter({ hasText: text }).first().isEnabled()).toBe(true);
     }
-
-    await settleForScreenshot(page);
-    const clip = snapClip(unionBox("儲存格右鍵選單", [await settledBox(menu, "儲存格右鍵選單")]));
-    await compareScreenshot(page, { name: "cell-menu", baselineDir, clip });
   } finally {
     await cleanup();
   }

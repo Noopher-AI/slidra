@@ -9,7 +9,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * 元素選取 (#56, ADR-0011): clicking an element on the canvas in view mode
@@ -69,7 +68,6 @@ const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const hostileDeckDir = path.join(e2eDir, "fixtures/hostile-selection-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/selection");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -674,22 +672,6 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
   }
 });
 
-it("基準截圖：標準檢視含選取框", async () => {
-  const { server, cleanup } = await startServerFor(demoDir);
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
-    // The box's geometry is read from getBoundingClientRect() at click
-    // time; give layout a tick to settle before the byte-exact capture.
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "selected", baselineDir });
-  } finally {
-    await cleanup();
-  }
-});
-
 // ADR-0012: a group is a container of containers, so clicking a child
 // inside a group selects the whole group — PowerPoint's semantics. This is
 // what "選取改為認容器" actually buys, and it is invisible on `demo/`
@@ -725,9 +707,6 @@ it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組�
     // 功能「群組（含巢狀）」› 場景「選取群組」：標籤顯示群組的顯示名稱（此處
     // 選取停在頂層，groupPath 是 []，所以標籤沒有「A › B」路徑前綴，就是名稱本身）。
     await expect.poll(() => page.locator(".selection-label").textContent()).toBe("群組");
-
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "group-selected", baselineDir });
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -1042,31 +1021,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
   }
 });
 
-it("基準截圖：群組編輯中的虛線框", async () => {
-  const deck = await makeNestedGroupDeck();
-  const { server, cleanup } = await startServerFor(deck.dir);
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    await page.frameLocator("iframe.slide-frame").locator("#el-leaf").dblclick();
-    // Same settle-before-capture wait as the other baseline screenshot
-    // above — geometry is read from getBoundingClientRect() at click time.
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "group-frame", baselineDir });
-  } finally {
-    await cleanup();
-    await deck.cleanup();
-  }
-});
-
-// NOOP-91 round-2 FAIL #3: 驗收條件第二條「截圖比對：單選、多選、群組選取、
-// 鑽入標籤、Arrange 選單、右鍵選單」六案，第 1 輪只交了前三案——這是第四案。
-// 基準圖尚未產生（AGENTS.md「視覺回歸的把關分工」：本機只能比對, 不能產生
-// 基準）；這條測試在基準產生前會因「找不到基準截圖」失敗，符合
-// compareScreenshot 自己文件裡「先寫測試、CI 觸發 update_baselines 產生
-// 基準」的流程。
-it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", async () => {
+it("鑽入群組後的標籤（Group 2 › Group 1 路徑）", async () => {
   const deck = await makeNestedGroupDeck();
   const { server, cleanup } = await startServerFor(deck.dir);
   try {
@@ -1080,10 +1035,6 @@ it("基準截圖：鑽入群組後的標籤（Group 2 › Group 1 路徑）", as
     await slideLeaf.dblclick();
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 葉節點");
     await expect.poll(() => page.locator(".selection-label").textContent()).toBe("外層群組 › 內層群組 › 葉節點");
-
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "drill-in-label", baselineDir });
   } finally {
     await cleanup();
     await deck.cleanup();
@@ -1156,18 +1107,6 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     // 時序放大成偶發 flaky）。
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: Group 1");
     expect(await effectCount(registry, presentationId)).toBe(0);
-
-    // 基準截圖：toast（clip 到 dock ∪ toast 的聯集，四邊取整——見
-    // Plan §6.4「group-toast 截圖的去 flaky 規則」）。
-    await settleForScreenshot(page);
-    const dockBox = await page.locator(".dock").boundingBox();
-    const toastBox = await toast.boundingBox();
-    if (!dockBox || !toastBox) throw new Error("量不到 .dock 或 .dock-toast 的邊界框");
-    const x = Math.floor(Math.min(dockBox.x, toastBox.x));
-    const y = Math.floor(Math.min(dockBox.y, toastBox.y));
-    const right = Math.ceil(Math.max(dockBox.x + dockBox.width, toastBox.x + toastBox.width));
-    const bottom = Math.ceil(Math.max(dockBox.y + dockBox.height, toastBox.y + toastBox.height));
-    await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
     const groupMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);

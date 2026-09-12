@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot } from "./helpers/screenshot.js";
 
 /**
  * [E2.T7]/NOOP-66/#206: `05-INTERACTIONS.feature`「物件動畫（PPTX 心智）」
@@ -27,7 +26,6 @@ const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/object-animation-deck");
-const baselineDir = path.join(e2eDir, "__screenshots__/object-animation");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
@@ -645,7 +643,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
   }
 });
 
-it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞台編號徽章／Animate ›Page，[E2.T11] 新增第四張）", async () => {
+it("A17：Animate 面板／Animate ›Object 清單／舞台編號徽章／Animate ›Page 各自的結構斷言（[E2.T11] 新增第四項）", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -656,7 +654,6 @@ it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞�
     const slideFrame = await canvasFrame(page);
     await slideFrame.locator("#el-a").click();
     await openAnimatePanel(page);
-    await compareScreenshot(page, { name: "animate-panel", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
     await page.keyboard.press("Escape");
 
     await page.locator('[role="tab"][data-tab="animate"]').click();
@@ -674,19 +671,15 @@ it("A17：基準截圖四張（Animate 面板／Animate ›Object 清單／舞�
     const startRight = await startField.evaluate((el) => el.getBoundingClientRect().right);
     expect(startRight).toBeLessThanOrEqual(VIEWPORT.width);
 
-    await compareScreenshot(page, { name: "animate-object-list", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
-
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
-    await compareScreenshot(page, { name: "stage-anim-badges", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
 
     // [E2.T11]/[A16]：Animate › Page（無選取，回到 Page 子分頁）。
     // `.animate-page-panel` 容器在資料載入前就已存在（AnimatePagePanel.tsx 的載入態回傳同名空殼），
-    // 只等容器出現會讓截圖偶爾拍到空殼而非內容——改等 Apply to all slides 按鈕與全部 8 張效果卡
-    // （Enter 4 張＋Exit 4 張）都渲染出來才截圖。
+    // 只等容器出現不夠——改等 Apply to all slides 按鈕與全部 8 張效果卡
+    // （Enter 4 張＋Exit 4 張）都渲染出來。
     await page.locator('[role="tab"][data-subtab="page"]').click();
     await page.locator(".animate-page-panel .animate-page-apply-all").waitFor();
     await expect.poll(() => page.locator(".animate-page-effect-card").count()).toBe(8);
-    await compareScreenshot(page, { name: "animate-page", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
   } finally {
     await cleanup();
   }

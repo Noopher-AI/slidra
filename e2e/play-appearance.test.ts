@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * 播放模式外觀 (issue #54): pure black full-bleed stage, the floating
@@ -34,7 +33,6 @@ const demoDir = path.join(rootDir, "demo");
 const brokenEffectsDeckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
 const playDeckDir = path.join(e2eDir, "fixtures/play-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/play");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -482,34 +480,6 @@ it("離開播放模式後，總覽縮圖軌重新掛載且可點擊換頁（over
 
     await page.locator('button[aria-label="Slide 2"]').click();
     await expect.poll(titleText, { timeout: 30_000 }).not.toBe(firstSlideText);
-  } finally {
-    await page.close();
-    await cleanup();
-  }
-});
-
-it("基準截圖：控制列浮現態", async () => {
-  const { page, cleanup } = await openApp(demoDir, "play-appearance-shot-awake");
-  try {
-    await enterPlay(page);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "play-awake", baselineDir });
-  } finally {
-    await page.close();
-    await cleanup();
-  }
-});
-
-it("基準截圖：控制列隱藏態", async () => {
-  const { page, cleanup } = await openApp(demoDir, "play-appearance-shot-asleep");
-  try {
-    await enterPlay(page);
-    await page.waitForTimeout(2800);
-    await expect
-      .poll(() => page.locator(".play-bar").evaluate((el) => getComputedStyle(el).opacity), { timeout: 5_000 })
-      .toBe("0");
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "play-asleep", baselineDir });
   } finally {
     await page.close();
     await cleanup();

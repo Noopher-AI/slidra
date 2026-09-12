@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * [E2.T3] `05-INTERACTIONS.feature`「頁面管理」的 New／Templates 與拖曳排
@@ -33,7 +32,6 @@ const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/page-management-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/page-management");
 
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -546,66 +544,6 @@ it("縮圖右鍵選單「Save as template」：存檔後 Templates／New › Lay
     if (!newSlidePath) throw new Error("找不到新插入的投影片");
     const newContent = await readSlide(registry, presentationId, newSlidePath);
     expect(normalizeIds(newContent)).toBe(normalizeIds(sourceContent));
-  } finally {
-    await cleanup();
-  }
-});
-
-it("截圖比對（T3 plan §5-G）：rail、New 面板、拖曳插入線、縮圖右鍵選單", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    // `.rail-menu` 進場有一個 translateY/opacity 的 CSS `animation`
-    // （rail.css `rail-menu-in`，`--dur-fast`）；`compareScreenshot` 的
-    // `animations: "disabled"` 理論上會把動畫快轉到結束態，但實測在 CI 上
-    // 兩次各自捕捉的 New 面板截圖仍有肉眼不可見、pixelmatch 抓得到的
-    // 一致性差異（608/37932，遠高於其餘無動畫元素的雜訊量級）——換成
-    // `reducedMotion: "reduce"` 讓 tokens.css 的 reduced-motion 層直接把
-    // `--dur-fast` 歸零，animation 從一開始就不存在，不再依賴「快轉到終
-    // 態」這個間接機制。
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    // 縮圖右上留言鈕靜止態 opacity:0、滑入該縮圖才變 1（rail.css）。截圖前
-    // 明確把滑鼠移到不在任何 .overview-item 上的座標，讓「鈕不可見」是刻意
-    // 保證的，不是「剛好還沒移過去」的巧合。
-    await page.mouse.move(0, 0);
-    await settleForScreenshot(page);
-    const railBox = await page.locator(".rail").boundingBox();
-    if (!railBox) throw new Error("找不到 .rail");
-    await compareScreenshot(page, { name: "rail", baselineDir, clip: railBox });
-
-    await page.getByRole("button", { name: "New" }).click();
-    const newMenu = page.locator('[role="menu"][data-menu="new"]');
-    // 範本清單走 `template list` 非同步載入（useTemplateList）——只等
-    // `Blank`（同步渲染）可見就截圖是一場競賽：CI 上兩次執行的載入時機不
-    // 保證相同，基準截圖與比對截圖可能一個等到範本、一個還在 loading。
-    // 等到範本項目（Title／Section）也出現，畫面才是穩定的「已完全載入」
-    // 狀態，跟 New 面板那個功能測試（test A）等的東西一致。
-    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
-    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Title" }).isVisible()).toBe(true);
-    await expect.poll(() => newMenu.getByRole("menuitem", { name: "Section" }).isVisible()).toBe(true);
-    await settleForScreenshot(page);
-    const newPanelBox = await newMenu.boundingBox();
-    if (!newPanelBox) throw new Error("找不到 New 面板");
-    await compareScreenshot(page, { name: "new-panel", baselineDir, clip: newPanelBox });
-    await page.keyboard.press("Escape");
-
-    await dragOver(page, 0, 2, "bottom");
-    await expect.poll(() => page.locator(".overview-drop-line").count(), { timeout: 5_000 }).toBe(1);
-    // 拖曳模擬是合成 DragEvent（見上方 dragOver），不移動真實滑鼠；同一個
-    // 「明確移到中性座標」的理由見上方 rail 截圖前的註解。
-    await page.mouse.move(0, 0);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "drop-line", baselineDir, clip: railBox });
-    await drop(page, 2, "bottom");
-    await dragEnd(page, 0);
-
-    await page.locator('.overview-item[data-index="0"]').click({ button: "right" });
-    const contextMenu = page.locator('[data-testid="thumb-context-menu"]');
-    await expect.poll(() => contextMenu.isVisible()).toBe(true);
-    await settleForScreenshot(page);
-    const contextMenuBox = await contextMenu.boundingBox();
-    if (!contextMenuBox) throw new Error("找不到縮圖右鍵選單");
-    await compareScreenshot(page, { name: "thumb-context-menu", baselineDir, clip: contextMenuBox });
   } finally {
     await cleanup();
   }

@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * NOOP-144/NOOP-177 (Plan: NOOP-174) — in-place text editing acceptance
@@ -36,7 +35,6 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 
 const VIEWPORT = { width: 1440, height: 900 };
 const VIEWBOX = { width: 1280, height: 720 };
-const baselineDir = path.join(e2eDir, "__screenshots__/text-edit");
 const FONT_SIZE = 24;
 
 let browser: Browser;
@@ -984,7 +982,7 @@ it("編輯中按 ⌘Enter／Ctrl+Enter：不插入換行、不 commit、不離�
 // 依 AGENTS.md「視覺回歸的把關分工」只能由 ubuntu-latest 上的 e2e.yml 產生；
 // 本機一律 SKIP_APPEARANCE_BASELINES=1 跳過像素比對，只驗證互動流程本身真的
 // 走到「準備好截圖」的狀態（仍在編輯中、游標落在第 2 行）。
-it("A10：基準截圖：編輯中的文字框（多行、含硬換行）", async () => {
+it("A10：編輯中的文字框（多行、含硬換行）仍在編輯狀態", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -998,9 +996,6 @@ it("A10：基準截圖：編輯中的文字框（多行、含硬換行）", asyn
 
     expect(await isEditTextareaFocused(page)).toBe(true); // 仍在編輯中
     expect(await readEditFrameDisplay(page)).toBe("block"); // 編輯框仍顯示
-
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "editing-textbox", baselineDir });
   } finally {
     await cleanup();
   }

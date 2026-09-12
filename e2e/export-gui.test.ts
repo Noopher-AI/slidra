@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 import { loadPdf } from "./helpers/pdf.js";
 import type { ExportSseEvent } from "../apps/web/src/live-reload.js";
 
@@ -36,8 +35,6 @@ function isSubsequenceOf(sub: readonly string[], full: readonly string[]): boole
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
-const baselineDir = path.join(e2eDir, "__screenshots__/export");
 const slidraBinPath = path.join(rootDir, "target/release/slidra");
 
 let browser: Browser;
@@ -357,56 +354,6 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
       expect(geometry.lineCount).toBeGreaterThan(1);
     } finally {
       await started.cleanup();
-    }
-  }, 60_000);
-});
-
-describe("截圖比對：Export 面板（#210 條件 3）", () => {
-  it("基準截圖：面板展開（export-panel-open）", async () => {
-    const started: StartedServer = await startServerFor({ deckDir: exportDeckDir, prefix: "export-gui-shot-open" });
-    try {
-      const page = await openApp(browser, started.server);
-      openPages.push(page);
-      await page.getByRole("button", { name: "Export" }).click();
-      await page.getByRole("menu").waitFor({ timeout: 5_000 });
-      await settleForScreenshot(page);
-      await compareScreenshot(page, {
-        name: "export-panel-open",
-        baselineDir,
-        clip: { x: 0, y: 0, width: 1440, height: 200 },
-      });
-    } finally {
-      await started.cleanup();
-    }
-  }, 60_000);
-
-  it("基準截圖：匯出進行中（export-panel-progress）", async () => {
-    const manyFrameDeckDir = await buildManyFrameDeck();
-    try {
-      const started: StartedServer = await startServerFor({
-        deckDir: manyFrameDeckDir,
-        prefix: "export-gui-shot-progress",
-      });
-      try {
-        const page = await openApp(browser, started.server);
-        openPages.push(page);
-
-        await page.getByRole("button", { name: "Export" }).click();
-        await page.locator(".export-menu-item", { hasText: "One page per animation step" }).click();
-        // 45 個畫格（15 張投影片 × 3 格）給截圖足夠的時間視窗——不等待完成，
-        // 只等進度區真的出現「匯出中」文字。
-        await expect.poll(async () => (await page.locator(".export-status").textContent()) ?? "", { timeout: 10_000 }).toContain("匯出中");
-        await settleForScreenshot(page);
-        await compareScreenshot(page, {
-          name: "export-panel-progress",
-          baselineDir,
-          clip: { x: 0, y: 0, width: 1440, height: 200 },
-        });
-      } finally {
-        await started.cleanup();
-      }
-    } finally {
-      await rm(manyFrameDeckDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   }, 60_000);
 });

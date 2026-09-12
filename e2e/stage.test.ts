@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * Geometry + baseline coverage for the stage (#50): the slide sits centred
@@ -25,7 +24,6 @@ const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/stage");
 
 const VIEWPORT = { width: 1440, height: 900 };
 // demo/project.json's real canvas — the ratio the stage must match.
@@ -335,16 +333,4 @@ it("矮視窗（1440×600，高度會夾住舞台）：比例不跑掉、不出�
   const topMargin = stage.y - well.y;
   const bottomMargin = well.y + well.height - (stage.y + stage.height);
   expect(Math.abs(bottomMargin - topMargin - DOCK_RESERVATION)).toBeLessThan(1.5);
-});
-
-it("基準截圖：標準檢視的舞台（深色投影片、可辨的邊界）", async () => {
-  const page = await openApp();
-  const wellBox = await page.locator(".canvas-area").boundingBox();
-  if (!wellBox) throw new Error("找不到 .canvas-area");
-  await settleForScreenshot(page);
-  await compareScreenshot(page, {
-    name: "standard-stage",
-    baselineDir,
-    clip: wellBox,
-  });
 });

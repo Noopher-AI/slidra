@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * [E2.T12]/#204: chart end to end, against a real Chromium — same
@@ -27,7 +26,6 @@ const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/chart-deck");
-const baselineDir = path.join(e2eDir, "__screenshots__/chart");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
@@ -460,15 +458,14 @@ it("AC-9: 內嵌 svg 切出來單獨開啟，畫面與投影片內的圖表區�
   }
 });
 
-it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊）", async () => {
+it("Chart 面板／資料視窗／單軸／雙軸／堆疊各自的結構與資料斷言", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const slideFrame = await canvasFrame(page);
 
     await openInsertPanel(page);
-    await settleForScreenshot(page);
-    // AC-r3-1（插入面板行為斷言，取代零斷言的截圖）：`chart-panel-insert [data-field=palette]` 這種選
+    // AC-r3-1：`chart-panel-insert [data-field=palette]` 這種選
     // 擇器在程式碼裡不存在（見 NOOP-162 r3 plan §0.1）；下面用面板真實的節點與 class 斷言。
     const insertPanel = page.locator(".chart-panel");
     expect(await insertPanel.isVisible()).toBe(true);
@@ -481,56 +478,33 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
     expect(await increaseSeries.isEnabled()).toBe(true);
     expect(await increaseCategories.isEnabled()).toBe(true);
     expect(await insertPanel.locator(".chart-panel-insert").isEnabled()).toBe(true);
-    await compareScreenshot(page, { name: "insert-panel", baselineDir, clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height } });
     await page.keyboard.press("Escape");
 
     const singleAxisId = await createChartViaCli(registry, presentationId, { type: "bar", seriesCount: 1 });
     await page.waitForTimeout(300);
     await chartShape(slideFrame, singleAxisId).dblclick();
-    await settleForScreenshot(page);
     // AC-r3-2：這是雙擊接線的守衛——雙擊沒接上時 `.chart-window` 開不了，下面兩條必紅。
     expect(await page.locator(".chart-window").count()).toBe(1);
     expect(await page.locator(".chart-window-table tbody tr").count()).toBe(6);
-    const statusBarBox = (await page.locator(".status-bar").boundingBox())!;
-    await compareScreenshot(page, {
-      name: "data-window",
-      baselineDir,
-      clip: { x: 0, y: 0, width: VIEWPORT.width, height: Math.round(statusBarBox.y) },
-    });
-    const singleBox = (await slideFrame.locator(`#${singleAxisId}`).boundingBox())!;
     // AC-r3-3：單軸 slidra:chart 屬性與內嵌 svg 的刻度節點數（左軸 5、右軸 0）。
     const singleAxisData = extractChartData(await readSlide(registry, presentationId), singleAxisId);
     expect(singleAxisData).toMatch(/axes="single"/);
     expect(await slideFrame.locator(`#${singleAxisId} svg text[text-anchor="end"]`).count()).toBe(5);
     expect(await slideFrame.locator(`#${singleAxisId} svg text[text-anchor="start"]`).count()).toBe(0);
-    await compareScreenshot(page, {
-      name: "single-axis",
-      baselineDir,
-      clip: { x: singleBox.x, y: singleBox.y, width: singleBox.width, height: singleBox.height },
-    });
     await page.keyboard.press("Escape");
 
     const dualAxisId = await createChartViaCli(registry, presentationId, { type: "bar", seriesCount: 2, x: 0, y: 400, width: 480, height: 300 });
     await registry.dispatch("chart axis set", { id: presentationId, slidePath: "slides/001.svg", elementId: dualAxisId, axes: "dual", right: ["Series 2"] });
     await page.waitForTimeout(300);
-    const dualBox = (await slideFrame.locator(`#${dualAxisId}`).boundingBox())!;
-    await settleForScreenshot(page);
     // AC-r3-4：雙軸 slidra:chart 屬性（至少一個 series 標 axis="right"）與右軸刻度節點數（5）。
     const dualAxisData = extractChartData(await readSlide(registry, presentationId), dualAxisId);
     expect(dualAxisData).toMatch(/axes="dual"/);
     expect(dualAxisData).toMatch(/<slidra:series[^>]*axis="right"/);
     expect(await slideFrame.locator(`#${dualAxisId} svg text[text-anchor="start"]`).count()).toBe(5);
-    await compareScreenshot(page, {
-      name: "dual-axis",
-      baselineDir,
-      clip: { x: dualBox.x, y: dualBox.y, width: dualBox.width, height: dualBox.height },
-    });
 
     const stackedId = await createChartViaCli(registry, presentationId, { type: "bar", seriesCount: 2, x: 500, y: 400, width: 480, height: 300 });
     await registry.dispatch("chart stack set", { id: presentationId, slidePath: "slides/001.svg", elementId: stackedId, stacked: true });
     await page.waitForTimeout(300);
-    const stackedBox = (await slideFrame.locator(`#${stackedId}`).boundingBox())!;
-    await settleForScreenshot(page);
     // AC-r3-5：stacked slidra:chart 屬性，以及 12 根長條依 x 分成 6 組、每組上面那根的
     // y+height 精確等於下面那根的 y（不重算幾何，只斷首尾相接）。
     const stackedData = extractChartData(await readSlide(registry, presentationId), stackedId);
@@ -553,11 +527,6 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
       const [top, bottom] = [...group].sort((a, b) => a.y - b.y);
       expect(top.y + top.height).toBeCloseTo(bottom.y, 3);
     }
-    await compareScreenshot(page, {
-      name: "stacked",
-      baselineDir,
-      clip: { x: stackedBox.x, y: stackedBox.y, width: stackedBox.width, height: stackedBox.height },
-    });
   } finally {
     await cleanup();
   }

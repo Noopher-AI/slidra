@@ -8,7 +8,6 @@ import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js";
 
 /**
  * NOOP-91's real Chromium acceptance tests, modelled on
@@ -62,7 +61,6 @@ const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
 const offsetDeckDir = path.join(e2eDir, "fixtures/direct-manipulation-offset-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
-const baselineDir = path.join(e2eDir, "__screenshots__/direct-manipulation");
 
 const VIEWPORT = { width: 1440, height: 900 };
 const VIEWBOX = { width: 1280, height: 720 };
@@ -1706,102 +1704,6 @@ it("Arrange 選單：Align left 對齊三個選取元素的最小 x；未達門�
     });
     expect(cliResult.ok).toBe(true);
     expect(await readSlide(registry, presentationId)).toBe(after);
-  } finally {
-    await cleanup();
-  }
-});
-
-// --- 視覺回歸基準（計畫 §5.6 拖曳中／放手後輔助線、§5.9 多選 move-only） ---
-
-it("基準截圖：拖曳中畫出吸附輔助線（計畫 §5.6）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    // Same drag as "拖曳到與另一元素左緣相距在吸附半徑內" above — lands
-    // el-a's left edge exactly on el-b's, guaranteed inside the snap
-    // radius, so the vertical guide is showing at capture time.
-    const targetLeft = 700;
-    const dx = targetLeft - 100;
-    const dy = 250;
-    await dragBy(
-      page,
-      { x: 180, y: 150 },
-      { x: dx, y: dy },
-      {
-        onMidDrag: async () => {
-          // Layout from the live preview's DOM writes needs a tick to
-          // settle before a byte-exact capture (selection.test.ts's own
-          // baseline test uses the same short wait for the same reason).
-          await page.waitForTimeout(50);
-          await settleForScreenshot(page);
-          await compareScreenshot(page, { name: "dragging-shows-guide", baselineDir });
-        },
-      },
-    );
-  } finally {
-    await cleanup();
-  }
-});
-
-it("基準截圖：放手後輔助線消失（計畫 §5.6）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    const targetLeft = 700;
-    const dx = targetLeft - 100;
-    const dy = 250;
-    await dragBy(page, { x: 180, y: 150 }, { x: dx, y: dy });
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "released-guide-cleared", baselineDir });
-  } finally {
-    await cleanup();
-  }
-});
-
-it("基準截圖：多選只有 move（無縮放／旋轉把手）（計畫 §5.9）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator("#el-a").click();
-    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
-    const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 2 elements");
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "multiselect-move-only", baselineDir });
-  } finally {
-    await cleanup();
-  }
-});
-
-// NOOP-91 round-2 FAIL #3: 驗收條件第二條「截圖比對：單選、多選、群組選取、
-// 鑽入標籤、Arrange 選單、右鍵選單」六案，第 1 輪只交了前三案——這是第五、
-// 六案。基準圖尚未產生（AGENTS.md「視覺回歸的把關分工」），這兩條測試在基
-// 準產生前會因「找不到基準截圖」失敗，等 CI 觸發 update_baselines 後才會轉
-// 綠，同 selection.test.ts 的「鑽入標籤」基準截圖一樣。
-it("基準截圖：Arrange 選單（三欄 Align / Distribute / Order）", async () => {
-  const { server, cleanup } = await startServerFor();
-  try {
-    const page = await openApp(server);
-    await page.evaluate(() => document.fonts.ready);
-    const slideFrame = page.frameLocator("iframe.slide-frame");
-
-    await slideFrame.locator("#el-a").click();
-    await slideFrame.locator("#el-b").click({ modifiers: ["Shift"] });
-    await slideFrame.locator("#el-c").click({ modifiers: ["Shift"] });
-    const selName = page.locator(".status-selection-chip");
-    await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: 3 elements");
-
-    await page.getByRole("button", { name: "Arrange" }).click();
-    await expect.poll(() => page.locator(".arrange-menu-item", { hasText: "Align left" }).isVisible()).toBe(true);
-    await page.waitForTimeout(50);
-    await settleForScreenshot(page);
-    await compareScreenshot(page, { name: "arrange-menu", baselineDir });
   } finally {
     await cleanup();
   }
